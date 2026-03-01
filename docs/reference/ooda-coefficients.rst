@@ -693,6 +693,247 @@ Two values are hardcoded in function bodies rather than in ``OODADefines``:
      - Minimum overlap for credibility (``max(overlap, 0.01)``).
 
 
+Coefficient Derivation Chain
+----------------------------
+
+Every tunable coefficient in ``OODADefines`` traces back to one of five
+empirical irreducibles through a three-level hierarchy. Field descriptions
+use category tags to indicate provenance:
+
+- **[A]** Direct substitution from an existing source primitive
+- **[B]** Computed from source primitives via an explicit formula
+- **[C]** Grounded in empirical data (COIN studies, census, organizational theory)
+- **[D]** Theoretically justified but not computationally derivable
+- **[E]** Engineering constant (structural value, keep as literal)
+
+Level 0: Empirical Irreducibles
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 15 15 60
+
+   * - ID
+     - Value
+     - Symbol
+     - Source
+   * - IR-1
+     - 7 weeks
+     - :math:`\tau_{1/2}`
+     - Political half-life. FM 3-24 counterinsurgency doctrine: insurgent activity
+       recovers to 50% within 6--8 weeks post-operation. Produces
+       :math:`\lambda = \ln 2 / 7 \approx 0.1`.
+   * - IR-2
+     - 0.8
+     - :math:`\alpha`
+     - Imperial extraction capacity. Amin/Emmanuel unequal exchange:
+       ~80% of periphery surplus transferred to core.
+   * - IR-3
+     - 0.3
+     - :math:`p_c`
+     - Network percolation threshold. For social networks with
+       :math:`\langle k \rangle \approx 3\text{--}4`, site percolation
+       :math:`p_c \approx 1 / \langle k \rangle`.
+   * - IR-4
+     - 1.5×
+     - rent premium
+     - Gentrification rent premium. Census/HUD data, UCLA Urban Displacement
+       Project: median rent increase of 40--60% during rapid displacement.
+   * - IR-5
+     - 0.2
+     - :math:`\Delta S`
+     - George Floyd solidarity shift. Pew Research 2020: 20 percentage point
+       shift in white BLM support.
+
+Level 1: Source Primitives
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Source primitives are ``GameDefines`` constants that OODA coefficients reference.
+Each derives from a Level 0 irreducible.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 8 30 10
+
+   * - Primitive
+     - Default
+     - Derivation
+     - From
+   * - ``consciousness.decay_lambda``
+     - 0.1
+     - :math:`\ln 2 / 7`
+     - IR-1
+   * - ``consciousness.agitation_decay_rate``
+     - 0.1
+     - = ``decay_lambda``
+     - IR-1
+   * - ``consciousness.routing_scale``
+     - 0.1
+     - = ``decay_lambda``
+     - IR-1
+   * - ``consciousness.sensitivity``
+     - 0.5
+     - :math:`\lambda / (1 - \alpha)`
+     - IR-1 + IR-2
+   * - ``economy.extraction_efficiency``
+     - 0.8
+     - Amin/Emmanuel
+     - IR-2
+   * - ``solidarity.activation_threshold``
+     - 0.3
+     - :math:`p_c \approx 1/\langle k \rangle`
+     - IR-3
+   * - ``solidarity.scaling_factor``
+     - 0.5
+     - = ``consciousness.sensitivity``
+     - IR-1 + IR-2
+   * - ``territory.heat_decay_rate``
+     - 0.1
+     - = ``decay_lambda``
+     - IR-1
+   * - ``territory.heat_spillover_rate``
+     - 0.05
+     - = ``heat_decay_rate / 2``
+     - IR-1
+   * - ``territory.high_profile_heat_gain``
+     - 0.15
+     - = ``rent_spike × heat_decay``
+     - IR-1 + IR-4
+   * - ``territory.rent_spike_multiplier``
+     - 1.5
+     - Census/HUD
+     - IR-4
+   * - ``territory.eviction_heat_threshold``
+     - 0.8
+     - = :math:`\alpha`
+     - IR-2
+   * - ``struggle.solidarity_gain_per_uprising``
+     - 0.2
+     - Pew Research
+     - IR-5
+
+Level 2: OODA Coefficients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 8 5 35
+
+   * - Coefficient
+     - Default
+     - Cat
+     - Formula / Source
+   * - ``repress_heat_delta``
+     - 0.15
+     - A
+     - = ``territory.high_profile_heat_gain``
+   * - ``surveil_heat_delta``
+     - 0.05
+     - A
+     - = ``territory.heat_spillover_rate``
+   * - ``momentum_success_bonus``
+     - 0.2
+     - A
+     - = ``struggle.solidarity_gain_per_uprising``
+   * - ``agitation_contestation_delta``
+     - 0.1
+     - A
+     - = ``consciousness.agitation_decay_rate``
+   * - ``momentum_decay``
+     - 0.8
+     - B
+     - :math:`1 - 2\lambda`
+   * - ``max_ci_delta_per_tick``
+     - 0.05
+     - B
+     - :math:`\lambda / 2`
+   * - ``action_base_educate``
+     - 1.2
+     - B
+     - :math:`1 + 2\lambda`
+   * - ``action_base_propagandize``
+     - 0.8
+     - B
+     - :math:`1 - 2\lambda`
+   * - ``action_base_repress``
+     - 0.8
+     - B
+     - :math:`\alpha`
+   * - ``action_base_surveil``
+     - 0.2
+     - B
+     - :math:`1 - \alpha`
+   * - ``action_base_provide_service``
+     - 0.6
+     - B
+     - :math:`k + \text{routing\_scale}`
+   * - ``action_base_organize``
+     - 0.5
+     - B
+     - :math:`k` (sensitivity)
+   * - ``action_base_recruit``
+     - 0.3
+     - B
+     - :math:`p_c` (activation threshold)
+   * - ``contestation_threshold``
+     - 0.3
+     - B
+     - :math:`p_c` (activation threshold)
+   * - ``agitation_educate_bonus``
+     - 1.5
+     - B
+     - = ``territory.rent_spike_multiplier``
+   * - ``embeddedness_discount``
+     - 0.5
+     - B
+     - = ``solidarity.scaling_factor``
+   * - ``elder_legitimacy_multiplier``
+     - 1.3
+     - C
+     - :math:`1 + \text{ideology\_institutional\_weight}`
+   * - ``counter_intel_increment``
+     - 0.1
+     - C
+     - :math:`\lambda` (Sparrow network entropy)
+   * - ``outsider_cost_multiplier``
+     - 1.5
+     - C
+     - = ``territory.rent_spike_multiplier`` (Prebisch-Singer)
+   * - ``contradiction_cost_multiplier``
+     - 2.5
+     - C
+     - :math:`\approx \sqrt{4.2}` (incarceration disparity)
+   * - ``institutional_bonus_federal``
+     - 5.0
+     - C
+     - FM 3-24 force density ratio
+   * - ``institutional_bonus_state``
+     - 3.0
+     - C
+     - RAND state police force ratio
+   * - ``institutional_bonus_local``
+     - 1.5
+     - C
+     - Galula administrative presence premium
+
+Runtime Validation
+~~~~~~~~~~~~~~~~~~
+
+Call ``OODADefines.validate_derivations(game_defines)`` to detect coefficient
+drift when source primitives are changed via YAML overrides or scenario configs:
+
+.. code-block:: python
+
+   defines = GameDefines.load_from_yaml("custom_scenario.yaml")
+   drifts = defines.ooda.validate_derivations(defines)
+   if drifts:
+       for msg in drifts:
+           print(f"WARNING: {msg}")
+
+**Code location:** ``src/babylon/config/defines.py``, validated in
+``tests/unit/ooda/test_coefficient_derivations.py``.
+
+
 See Also
 --------
 

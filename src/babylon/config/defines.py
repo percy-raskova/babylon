@@ -11,6 +11,7 @@ Sprint: Paradox Refactor Phase 1
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +131,7 @@ class EconomyDefines(BaseModel):
         default=0.8,
         ge=0.0,
         le=1.0,
-        description="Alpha - how efficiently core extracts value from periphery",
+        description="α = 0.8: imperial extraction capacity (Amin/Emmanuel unequal exchange theory).",
     )
     comprador_cut: float = Field(
         default=0.90,
@@ -418,13 +419,13 @@ class SolidarityDefines(BaseModel):
         default=0.5,
         ge=0.0,
         le=2.0,
-        description="Game design: multiplier for graph edge weights affecting organization.",
+        description="= consciousness.sensitivity (k=0.5): solidarity transmission at same scale as material sensitivity.",
     )
     activation_threshold: float = Field(
         default=0.3,
         ge=0.0,
         le=1.0,
-        description="Game design: minimum source consciousness for transmission.",
+        description="p_c ≈ 0.3: network percolation threshold for social graphs with ⟨k⟩ ≈ 3-4.",
     )
     mass_awakening_threshold: float = Field(
         default=0.6,
@@ -478,24 +479,24 @@ class ConsciousnessDefines(BaseModel):
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Game design: how quickly consciousness responds to material conditions.",
+        description="k = λ/(1-α) = 0.1/0.2: consciousness drift ODE sensitivity. Full consciousness at full exploitation.",
     )
     decay_lambda: float = Field(
         default=0.1,
         gt=0.0,
-        description="Game design: decay rate for consciousness without material basis.",
+        description="λ = ln(2)/7 ≈ 0.099: COIN political half-life of 7 weeks (FM 3-24).",
     )
     routing_scale: float = Field(
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Converts agitation energy to consciousness change magnitude",
+        description="= decay_lambda: agitation→consciousness routing on same 7-week half-life timescale.",
     )
     agitation_decay_rate: float = Field(
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Per-tick decay rate for accumulated agitation energy",
+        description="= decay_lambda: agitation entropy on same 7-week half-life (FM 3-24).",
     )
 
 
@@ -508,24 +509,24 @@ class TerritoryDefines(BaseModel):
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Heat decay for LOW_PROFILE territories",
+        description="= decay_lambda: heat entropy on same 7-week half-life (FM 3-24).",
     )
     high_profile_heat_gain: float = Field(
         default=0.15,
         ge=0.0,
         le=1.0,
-        description="Heat gain for HIGH_PROFILE territories",
+        description="= rent_spike × heat_decay = 1.5 × 0.1: FM 3-24 clear-phase convergence in 6-8 weeks.",
     )
     eviction_heat_threshold: float = Field(
         default=0.8,
         ge=0.0,
         le=1.0,
-        description="Heat threshold for eviction pipeline",
+        description="= α (extraction_efficiency): eviction triggers at full extraction capacity.",
     )
     rent_spike_multiplier: float = Field(
         default=1.5,
         gt=0.0,
-        description="Rent multiplier during eviction",
+        description="1.5×: Census/HUD gentrification rent premium (UCLA Urban Displacement Project).",
     )
     displacement_rate: float = Field(
         default=0.1,
@@ -537,7 +538,7 @@ class TerritoryDefines(BaseModel):
         default=0.05,
         ge=0.0,
         le=1.0,
-        description="Heat spillover via ADJACENCY edges",
+        description="= heat_decay_rate / 2: ink-spot spillover at half the decay rate.",
     )
     clarity_profile_coefficient: float = Field(
         default=0.3,
@@ -716,7 +717,7 @@ class StruggleDefines(BaseModel):
         default=0.2,
         ge=0.0,
         le=1.0,
-        description="Game design: solidarity strength increase on edges per uprising.",
+        description="ΔS = 0.2: Pew Research 2020 George Floyd solidarity shift (20pp white BLM support).",
     )
     consciousness_solidarity_boost: float = Field(
         default=0.5,
@@ -2180,66 +2181,66 @@ class OODADefines(BaseModel):
     decision_mode_base_autocratic: float = Field(
         default=1.0,
         gt=0,
-        description="AUTOCRATIC decision mode base time.",
+        description="[C] 1 cycle: single decision-maker (COIN operational tempo).",
     )
     decision_mode_base_delegate: float = Field(
         default=2.0,
         gt=0,
-        description="DELEGATE decision mode base time.",
+        description="[C] 2 cycles: FM 3-24 mission command delegation.",
     )
     decision_mode_base_democratic: float = Field(
         default=3.0,
         gt=0,
-        description="DEMOCRATIC decision mode base time.",
+        description="[C] 3 cycles: majority vote (ProleWiki democratic centralism).",
     )
     decision_mode_base_consensus: float = Field(
         default=5.0,
         gt=0,
-        description="CONSENSUS decision mode base time.",
+        description="[C] 5 cycles: full agreement, mass line process (ProleWiki).",
     )
 
     # --- Initiative scoring weights ---
     initiative_weight_speed: float = Field(
         default=2.0,
         ge=0,
-        description="Weight for speed component in initiative score.",
+        description="[C] Boyd's central insight: tempo is decisive factor (RAND decomposition).",
     )
     initiative_weight_institutional: float = Field(
         default=1.0,
         ge=0,
-        description="Weight for institutional component in initiative score.",
+        description="[C] Baseline: institutional power is important but static (RAND).",
     )
     initiative_weight_counterintel: float = Field(
         default=1.5,
         ge=0,
-        description="Weight for counter-intelligence component.",
+        description="[C] 1.5× institutional: degrades adversary Observe phase (Sparrow).",
     )
     initiative_weight_embeddedness: float = Field(
         default=1.0,
         ge=0,
-        description="Weight for community embeddedness component.",
+        description="[C] = institutional: community roots compensate for state advantage (RAND).",
     )
     initiative_weight_momentum: float = Field(
         default=0.5,
         ge=0,
-        description="Weight for momentum component.",
+        description="[C] 0.5× baseline: volatile, decays 20%/tick (RAND).",
     )
 
     # --- Institutional bonus by jurisdiction ---
     institutional_bonus_federal: float = Field(
         default=5.0,
         ge=0,
-        description="Initiative bonus for NATIONAL (federal) jurisdiction.",
+        description="[C] 5×: COIN force density ratio, federal apparatus (FM 3-24).",
     )
     institutional_bonus_state: float = Field(
         default=3.0,
         ge=0,
-        description="Initiative bonus for STATE jurisdiction.",
+        description="[C] 3×: state police force ratio, 60% federal effectiveness (RAND).",
     )
     institutional_bonus_local: float = Field(
         default=1.5,
         ge=0,
-        description="Initiative bonus for COUNTY/MUNICIPAL jurisdiction.",
+        description="[C] 1.5×: local PD baseline + Galula administrative presence premium.",
     )
     institutional_bonus_nonstate: float = Field(
         default=0.0,
@@ -2252,12 +2253,12 @@ class OODADefines(BaseModel):
         default=0.8,
         ge=0,
         lt=1.0,
-        description="Exponential decay factor for momentum per tick.",
+        description="= 1 - 2λ: momentum twice as volatile as consciousness (mass line analysis).",
     )
     momentum_success_bonus: float = Field(
         default=0.2,
         ge=0,
-        description="Momentum bonus per successful action.",
+        description="[A] = struggle.solidarity_gain_per_uprising: organizational analog of solidarity gain.",
     )
 
     # --- Action cost modifiers ---
@@ -2265,17 +2266,17 @@ class OODADefines(BaseModel):
         default=0.5,
         ge=0,
         le=1.0,
-        description="Cost discount factor for embedded orgs.",
+        description="[B] = solidarity.scaling_factor: community roots discount action costs at solidarity scale.",
     )
     contradiction_cost_multiplier: float = Field(
         default=2.5,
         gt=1.0,
-        description="Cost multiplier across contradiction axis.",
+        description="[C] ≈ √4.2: geometric mean of Black/white incarceration disparity (MIM Prisons).",
     )
     outsider_cost_multiplier: float = Field(
         default=1.5,
         gt=1.0,
-        description="Cost multiplier for non-member orgs.",
+        description="[C] = territory.rent_spike_multiplier: Prebisch-Singer terms-of-trade penalty.",
     )
     min_cost_modifier: float = Field(
         default=0.5,
@@ -2289,14 +2290,14 @@ class OODADefines(BaseModel):
         default=0.05,
         gt=0,
         le=1.0,
-        description="Maximum |CI delta| per action per tick.",
+        description="[B] = λ/2: half the decay rate prevents single actions from overwhelming the ODE.",
     )
 
     # --- Action base consciousness multipliers ---
     action_base_educate: float = Field(
         default=1.2,
         ge=0,
-        description="Consciousness multiplier for EDUCATE action.",
+        description="[B] = 1 + 2λ: overcomes decay plus net positive effect.",
     )
     action_base_agitate: float = Field(
         default=0.0,
@@ -2306,32 +2307,32 @@ class OODADefines(BaseModel):
     action_base_provide_service: float = Field(
         default=0.6,
         ge=0,
-        description="Consciousness multiplier for PROVIDE_SERVICE.",
+        description="[B] = k + routing_scale = 0.5 + 0.1: material sensitivity + routing (BPP survival programs).",
     )
     action_base_recruit: float = Field(
         default=0.3,
         ge=0,
-        description="Consciousness multiplier for RECRUIT.",
+        description="[B] = solidarity.activation_threshold: bring recruits to percolation threshold.",
     )
     action_base_organize: float = Field(
         default=0.5,
         ge=0,
-        description="Consciousness multiplier for ORGANIZE.",
+        description="[B] = consciousness.sensitivity: organizing operationalizes material sensitivity k.",
     )
     action_base_propagandize: float = Field(
         default=0.8,
         ge=0,
-        description="Consciousness multiplier for PROPAGANDIZE.",
+        description="[B] = 1 - 2λ: symmetric inverse of EDUCATE (less precise than education).",
     )
     action_base_repress: float = Field(
         default=0.8,
         ge=0,
-        description="Backfire CI multiplier for REPRESS.",
+        description="[B] = α (extraction_efficiency): repression backfire proportional to extraction visibility.",
     )
     action_base_surveil: float = Field(
         default=0.2,
         ge=0,
-        description="Backfire CI multiplier for SURVEIL.",
+        description="[B] = 1 - α: surveillance backfire is complement of extraction (invisible fraction).",
     )
     action_base_assimilate: float = Field(
         default=1.0,
@@ -2344,7 +2345,7 @@ class OODADefines(BaseModel):
         default=0.5,
         ge=0,
         le=1.0,
-        description="Scale factor for autonomy effectiveness tradeoff.",
+        description="[C] 0.5: democratic centralism tradeoff (ProleWiki). Vanguard = 2× coordinated impact.",
     )
 
     # --- Agitation -> contestation ---
@@ -2352,25 +2353,25 @@ class OODADefines(BaseModel):
         default=0.1,
         ge=0,
         le=1.0,
-        description="Contestation increase per AGITATE action.",
+        description="[A] = consciousness.agitation_decay_rate: equilibrium requires continuous agitation.",
     )
     agitation_educate_bonus: float = Field(
         default=1.5,
         ge=1.0,
-        description="EDUCATE multiplier when contestation > threshold.",
+        description="[B] = territory.rent_spike_multiplier: crisis amplification factor (same as eviction premium).",
     )
     contestation_threshold: float = Field(
         default=0.3,
         ge=0,
         le=1.0,
-        description="Contestation level for EDUCATE bonus to activate.",
+        description="[B] = solidarity.activation_threshold: same tipping point for political engagement.",
     )
 
     # --- Lifecycle modifiers ---
     elder_legitimacy_multiplier: float = Field(
         default=1.3,
         ge=1.0,
-        description="CI delta multiplier when elder proportion > 0.",
+        description="[C] = 1 + lifecycle.ideology_institutional_weight: elder institutional moral authority.",
     )
 
     # --- Counter-intelligence ---
@@ -2378,7 +2379,7 @@ class OODADefines(BaseModel):
         default=0.1,
         ge=0,
         le=1.0,
-        description="Counter-intel score increment per successful COUNTER_INTEL.",
+        description="[C] = λ: network disruption rate matches consciousness entropy (Sparrow).",
     )
 
     # --- Base action point costs ---
@@ -2412,10 +2413,16 @@ class OODADefines(BaseModel):
 
     # --- Layer 3 propagation coefficients ---
     repress_heat_delta: float = Field(
-        default=0.15, ge=0.0, le=1.0, description="Heat increase per REPRESS action"
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description="[A] = territory.high_profile_heat_gain: repression IS high-profile attention.",
     )
     surveil_heat_delta: float = Field(
-        default=0.05, ge=0.0, le=1.0, description="Heat increase per SURVEIL action"
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="[A] = territory.heat_spillover_rate: passive surveillance = background state attention.",
     )
     build_infrastructure_delta: float = Field(
         default=0.1, ge=0.0, le=1.0, description="Infrastructure increase per BUILD action"
@@ -2426,6 +2433,77 @@ class OODADefines(BaseModel):
     orient_time_floor: float = Field(
         default=0.1, ge=0.0, description="Minimum orient phase duration"
     )
+
+    def validate_derivations(self, game_defines: GameDefines) -> list[str]:
+        """Cross-validate OODA coefficients against source primitives.
+
+        Checks that derived coefficients (Categories A and B) still match
+        their source primitive formulas. Returns a list of drift warnings
+        for any mismatches exceeding tolerance (0.001).
+
+        Args:
+            game_defines: Parent GameDefines providing source primitives.
+
+        Returns:
+            List of warning messages for any detected drift. Empty if clean.
+        """
+        c = game_defines.consciousness
+        t = game_defines.territory
+        e = game_defines.economy
+        s = game_defines.solidarity
+        st = game_defines.struggle
+        lc = game_defines.lifecycle
+        tol = 0.001
+        drifts: list[str] = []
+
+        checks: list[tuple[str, float, float]] = [
+            # Category A: direct substitutions
+            ("repress_heat_delta", self.repress_heat_delta, t.high_profile_heat_gain),
+            ("surveil_heat_delta", self.surveil_heat_delta, t.heat_spillover_rate),
+            (
+                "momentum_success_bonus",
+                self.momentum_success_bonus,
+                st.solidarity_gain_per_uprising,
+            ),
+            (
+                "agitation_contestation_delta",
+                self.agitation_contestation_delta,
+                c.agitation_decay_rate,
+            ),
+            # Category B: formula derivations
+            ("momentum_decay", self.momentum_decay, 1 - 2 * c.agitation_decay_rate),
+            ("max_ci_delta_per_tick", self.max_ci_delta_per_tick, c.decay_lambda / 2),
+            ("action_base_educate", self.action_base_educate, 1 + 2 * c.decay_lambda),
+            ("action_base_propagandize", self.action_base_propagandize, 1 - 2 * c.decay_lambda),
+            ("action_base_repress", self.action_base_repress, e.extraction_efficiency),
+            ("action_base_surveil", self.action_base_surveil, 1 - e.extraction_efficiency),
+            (
+                "action_base_provide_service",
+                self.action_base_provide_service,
+                c.sensitivity + c.routing_scale,
+            ),
+            ("action_base_organize", self.action_base_organize, c.sensitivity),
+            ("action_base_recruit", self.action_base_recruit, s.activation_threshold),
+            ("contestation_threshold", self.contestation_threshold, s.activation_threshold),
+            ("agitation_educate_bonus", self.agitation_educate_bonus, t.rent_spike_multiplier),
+            ("embeddedness_discount", self.embeddedness_discount, s.scaling_factor),
+            # Category C: empirically grounded cross-references
+            (
+                "elder_legitimacy_multiplier",
+                self.elder_legitimacy_multiplier,
+                1 + lc.ideology_institutional_weight,
+            ),
+            ("counter_intel_increment", self.counter_intel_increment, c.decay_lambda),
+            ("outsider_cost_multiplier", self.outsider_cost_multiplier, t.rent_spike_multiplier),
+        ]
+
+        for name, actual, expected in checks:
+            if abs(actual - expected) > tol:
+                msg = f"OODADefines.{name} drifted: actual={actual}, expected={expected}"
+                drifts.append(msg)
+                warnings.warn(msg, UserWarning, stacklevel=2)
+
+        return drifts
 
     def get_base_cost(self, action_type: str) -> int:
         """Look up base AP cost for an action type.

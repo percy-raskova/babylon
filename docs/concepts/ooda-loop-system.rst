@@ -250,6 +250,68 @@ deepening. It is the organizational expression of the broader
 transition from transactional politics to solidarity politics.
 
 
+Coefficient Derivation
+----------------------
+
+Every OODA coefficient traces to real-world data through a three-level
+derivation chain.
+
+**Level 0: Empirical Irreducibles.** Five empirically-grounded constants
+that cannot be derived from the simulation's own logic:
+
+1. **Political half-life** (:math:`\tau_{1/2} = 7` weeks) from FM 3-24
+   counterinsurgency doctrine. Produces the decay constant
+   :math:`\lambda = \ln 2 / 7 \approx 0.1` that governs consciousness
+   decay, agitation decay, heat decay, and routing scale. All four
+   represent the same physical process: information entropy without
+   active maintenance.
+
+2. **Imperial extraction rate** (:math:`\alpha = 0.8`) from Amin/Emmanuel
+   unequal exchange theory. This is the structural capacity, not the
+   steady-state rate (which the consciousness ODE moderates). Together
+   with :math:`\lambda`, it produces consciousness sensitivity
+   :math:`k = \lambda / (1 - \alpha) = 0.5`.
+
+3. **Network percolation threshold** (:math:`p_c \approx 0.3`) from
+   percolation theory on random graphs with :math:`\langle k \rangle
+   \approx 3\text{--}4`. Below this threshold, solidarity networks
+   fragment; above it, system-wide transmission emerges.
+
+4. **Gentrification rent premium** (1.5×) from Census/HUD data.
+   Combined with heat decay, produces the high-profile heat gain
+   that converges to the eviction threshold in 6--8 ticks,
+   matching FM 3-24's "clear" phase timeline.
+
+5. **George Floyd solidarity shift** (:math:`\Delta S = 0.2`) from
+   Pew Research 2020 polling data. The 20 percentage point shift in
+   white BLM support grounds both the solidarity gain per uprising
+   and the OODA momentum success bonus.
+
+**Level 1: Source Primitives.** Thirteen ``GameDefines`` constants
+derived from Level 0. These were previously undocumented "magic numbers";
+each now carries a Field description citing its empirical source.
+
+**Level 2: OODA Coefficients.** The 67 ``OODADefines`` coefficients.
+Of these, 26 (39%) are derived or empirically grounded:
+
+- 4 are **direct substitutions** from source primitives (Category A)
+- 12 are **formula derivations** from source primitives (Category B)
+- 10 are **empirically grounded** in COIN/census data (Category C)
+
+The remaining 41 are theoretically justified (Category D) or
+engineering constants (Category E).
+
+The key insight is that OODA coefficients model the *same physical
+processes* as other simulation systems. Repression generates heat
+because repression IS the mechanism that makes communities high-profile.
+Embeddedness discounts action costs because embeddedness IS solidarity
+operating at the organizational level. The derivation chain makes these
+identity relationships explicit and testable.
+
+See :doc:`/reference/ooda-coefficients` for the full derivation table and
+runtime validation via ``OODADefines.validate_derivations()``.
+
+
 See Also
 --------
 

@@ -2702,6 +2702,305 @@ class BifurcationDefines(BaseModel):
     )
 
 
+class InfraTerrainDefines(BaseModel):
+    """Terrain classification and biocapacity coefficients (Feature 036).
+
+    Configures majority-coverage thresholds, initial biocapacity stock
+    values, and per-tick depletion rates. Also includes internet access
+    defaults.
+
+    See Also:
+        :mod:`babylon.infrastructure.terrain`: DefaultTerrainClassifier.
+        ``specs/036-infrastructure-topology/spec.md``: FR-001 through FR-008.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Terrain classification (FR-001)
+    majority_coverage_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "SYNTHETIC: Coverage fraction above which a hex is classified "
+            "as WATER or RESOURCE. 0.5 = majority rule."
+        ),
+    )
+
+    # Biocapacity initial stocks (FR-005, FR-006)
+    # SYNTHETIC: Game-design values, no empirical source
+    initial_freshwater: float = Field(
+        default=100.0,
+        ge=0.0,
+        description="SYNTHETIC: Initial FRESHWATER stock for WATER hexes.",
+    )
+    initial_fishery: float = Field(
+        default=80.0,
+        ge=0.0,
+        description="SYNTHETIC: Initial FISHERY stock for WATER hexes.",
+    )
+    initial_shipping_access: float = Field(
+        default=50.0,
+        ge=0.0,
+        description="SYNTHETIC: Initial SHIPPING_ACCESS stock for WATER hexes.",
+    )
+    initial_mineral: float = Field(
+        default=120.0,
+        ge=0.0,
+        description="SYNTHETIC: Initial MINERAL stock for RESOURCE hexes.",
+    )
+    initial_timber: float = Field(
+        default=90.0,
+        ge=0.0,
+        description="SYNTHETIC: Initial TIMBER stock for RESOURCE hexes.",
+    )
+    initial_hydroelectric: float = Field(
+        default=60.0,
+        ge=0.0,
+        description="SYNTHETIC: Initial HYDROELECTRIC stock for RESOURCE hexes.",
+    )
+
+    # Biocapacity depletion rates (FR-007)
+    # SYNTHETIC: Per-tick extraction fraction of current stock
+    depletion_freshwater: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="SYNTHETIC: Per-tick depletion rate for FRESHWATER.",
+    )
+    depletion_fishery: float = Field(
+        default=0.04,
+        ge=0.0,
+        le=1.0,
+        description="SYNTHETIC: Per-tick depletion rate for FISHERY.",
+    )
+    depletion_shipping_access: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description="SYNTHETIC: Per-tick depletion rate for SHIPPING_ACCESS.",
+    )
+    depletion_mineral: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=1.0,
+        description="SYNTHETIC: Per-tick depletion rate for MINERAL.",
+    )
+    depletion_timber: float = Field(
+        default=0.04,
+        ge=0.0,
+        le=1.0,
+        description="SYNTHETIC: Per-tick depletion rate for TIMBER.",
+    )
+    depletion_hydroelectric: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=1.0,
+        description="SYNTHETIC: Per-tick depletion rate for HYDROELECTRIC.",
+    )
+
+    # Internet access defaults (FR-024)
+    internet_access_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "SYNTHETIC: Minimum FCC broadband penetration percentage / 100 "
+            "for internet_access=True. 0.5 = 50% coverage required."
+        ),
+    )
+    default_surveillance_coupling: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "SYNTHETIC: Default fraction of consciousness flow visible "
+            "to state apparatus at internet-connected hexes."
+        ),
+    )
+
+    def get_initial_stock(self, stock_type: str) -> float:
+        """Get initial biocapacity stock value by type.
+
+        Args:
+            stock_type: BiocapacityType value (lowercase).
+
+        Returns:
+            Initial stock value.
+
+        Raises:
+            ValueError: If stock_type is not recognized.
+        """
+        stock_map: dict[str, float] = {
+            "freshwater": self.initial_freshwater,
+            "fishery": self.initial_fishery,
+            "shipping_access": self.initial_shipping_access,
+            "mineral": self.initial_mineral,
+            "timber": self.initial_timber,
+            "hydroelectric": self.initial_hydroelectric,
+        }
+        if stock_type not in stock_map:
+            msg = f"Unknown stock_type: {stock_type!r}"
+            raise ValueError(msg)
+        return stock_map[stock_type]
+
+    def get_depletion_rate(self, stock_type: str) -> float:
+        """Get per-tick depletion rate by stock type.
+
+        Args:
+            stock_type: BiocapacityType value (lowercase).
+
+        Returns:
+            Depletion rate per tick.
+
+        Raises:
+            ValueError: If stock_type is not recognized.
+        """
+        rate_map: dict[str, float] = {
+            "freshwater": self.depletion_freshwater,
+            "fishery": self.depletion_fishery,
+            "shipping_access": self.depletion_shipping_access,
+            "mineral": self.depletion_mineral,
+            "timber": self.depletion_timber,
+            "hydroelectric": self.depletion_hydroelectric,
+        }
+        if stock_type not in rate_map:
+            msg = f"Unknown stock_type: {stock_type!r}"
+            raise ValueError(msg)
+        return rate_map[stock_type]
+
+
+class InfrastructureDefines(BaseModel):
+    """Infrastructure capacity and internet operation coefficients (Feature 036).
+
+    Configures per-type capacity values, natural capacity defaults,
+    OPSEC tradeoff ratios, and internet throttle fractions.
+
+    See Also:
+        :mod:`babylon.infrastructure.capacity`: DefaultEdgeCapacityCalculator.
+        ``specs/036-infrastructure-topology/spec.md``: FR-009 through FR-029.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Per-type base capacity coefficients (FR-012)
+    # Format: {infra_type}_{flow_category}
+    # SYNTHETIC: Game-design values
+    highway_freight: float = Field(default=1.0, ge=0.0, description="SYNTHETIC")
+    highway_commuter: float = Field(default=1.0, ge=0.0, description="SYNTHETIC")
+    highway_value: float = Field(default=0.5, ge=0.0, description="SYNTHETIC")
+    highway_consciousness: float = Field(default=0.3, ge=0.0, description="SYNTHETIC")
+
+    arterial_freight: float = Field(default=0.6, ge=0.0, description="SYNTHETIC")
+    arterial_commuter: float = Field(default=0.7, ge=0.0, description="SYNTHETIC")
+    arterial_value: float = Field(default=0.3, ge=0.0, description="SYNTHETIC")
+    arterial_consciousness: float = Field(default=0.2, ge=0.0, description="SYNTHETIC")
+
+    local_road_freight: float = Field(default=0.2, ge=0.0, description="SYNTHETIC")
+    local_road_commuter: float = Field(default=0.4, ge=0.0, description="SYNTHETIC")
+    local_road_value: float = Field(default=0.1, ge=0.0, description="SYNTHETIC")
+    local_road_consciousness: float = Field(default=0.3, ge=0.0, description="SYNTHETIC")
+
+    rail_freight: float = Field(default=1.2, ge=0.0, description="SYNTHETIC")
+    rail_commuter: float = Field(default=0.3, ge=0.0, description="SYNTHETIC")
+    rail_value: float = Field(default=0.2, ge=0.0, description="SYNTHETIC")
+    rail_consciousness: float = Field(default=0.1, ge=0.0, description="SYNTHETIC")
+
+    pipeline_energy: float = Field(default=1.5, ge=0.0, description="SYNTHETIC")
+
+    transmission_energy: float = Field(default=1.0, ge=0.0, description="SYNTHETIC")
+
+    shipping_lane_freight: float = Field(default=1.5, ge=0.0, description="SYNTHETIC")
+
+    air_link_freight: float = Field(default=0.3, ge=0.0, description="SYNTHETIC")
+    air_link_commuter: float = Field(default=0.8, ge=0.0, description="SYNTHETIC")
+    air_link_value: float = Field(default=0.5, ge=0.0, description="SYNTHETIC")
+    air_link_consciousness: float = Field(default=0.5, ge=0.0, description="SYNTHETIC")
+
+    # Natural capacity (FR-014)
+    natural_capacity_coefficient: float = Field(
+        default=0.1,
+        ge=0.0,
+        description=(
+            "SYNTHETIC: Base natural capacity for LAND-LAND edges without "
+            "infrastructure. Applied to COMMUTER and CONSCIOUSNESS only."
+        ),
+    )
+
+    # Minimum capacity threshold (EC-006)
+    minimum_capacity_threshold: float = Field(
+        default=0.01,
+        ge=0.0,
+        description=(
+            "SYNTHETIC: Minimum edge capacity below which flow is zero. "
+            "Prevents numerical noise from near-zero weights."
+        ),
+    )
+
+    # OPSEC tradeoff (FR-028)
+    opsec_tradeoff_ratio: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "SYNTHETIC: Ratio of surveillance coupling reduction to "
+            "consciousness throughput loss when applying COUNTER_INTEL."
+        ),
+    )
+
+    # Throttle throughput (FR-029)
+    throttle_throughput_fraction: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "SYNTHETIC: Fraction of consciousness throughput remaining "
+            "when state sets THROTTLE response mode."
+        ),
+    )
+
+    # Snapping tolerance (FR-011)
+    snap_buffer_fraction: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "SYNTHETIC: Buffer around shared boundary as fraction of "
+            "hex diameter for spatial snapping of linear features."
+        ),
+    )
+
+    # Nonlocal locality thresholds (FR-020)
+    local_ratio_threshold: float = Field(
+        default=3.0,
+        gt=0.0,
+        description=(
+            "SYNTHETIC: Distance/hex_diameter ratio below which edge is classified as LOCAL."
+        ),
+    )
+    semi_local_ratio_threshold: float = Field(
+        default=20.0,
+        gt=0.0,
+        description=(
+            "SYNTHETIC: Distance/hex_diameter ratio below which edge "
+            "is classified as SEMI_LOCAL. Above = NONLOCAL."
+        ),
+    )
+
+    def get_capacity(self, infra_type: str, flow_category: str) -> float:
+        """Get base capacity for an infrastructure type and flow category.
+
+        Args:
+            infra_type: InfrastructureType value (lowercase).
+            flow_category: FlowCategory value (lowercase).
+
+        Returns:
+            Base capacity value, or 0.0 if combination not applicable.
+        """
+        key = f"{infra_type}_{flow_category}"
+        return getattr(self, key, 0.0)
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -2737,6 +3036,10 @@ class GameDefines(BaseModel):
     - class_dynamics: Class wealth flow dynamics (Feature 016, FRED DFA-derived)
     - edge_transition: Edge mode transition thresholds (Feature 002)
     - organization: Organization system coefficients (Feature 031)
+    - ooda: OODA loop system coefficients (Feature 032)
+    - bifurcation: Bifurcation topology analysis coefficients (Feature 033)
+    - infra_terrain: Terrain classification and biocapacity coefficients (Feature 036)
+    - infrastructure: Infrastructure capacity and internet coefficients (Feature 036)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -2780,6 +3083,9 @@ class GameDefines(BaseModel):
     ooda: OODADefines = Field(default_factory=OODADefines)
     # Bifurcation Topology Analysis (Feature 033)
     bifurcation: BifurcationDefines = Field(default_factory=BifurcationDefines)
+    # Infrastructure Topology Layer (Feature 036)
+    infra_terrain: InfraTerrainDefines = Field(default_factory=InfraTerrainDefines)
+    infrastructure: InfrastructureDefines = Field(default_factory=InfrastructureDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -2893,6 +3199,10 @@ class GameDefines(BaseModel):
             edge_transition=EdgeTransitionDefines(**data.get("edge_transition", {})),
             lifecycle=LifecycleDefines(**data.get("lifecycle", {})),
             organization=OrganizationDefines(**data.get("organization", {})),
+            ooda=OODADefines(**data.get("ooda", {})),
+            bifurcation=BifurcationDefines(**data.get("bifurcation", {})),
+            infra_terrain=InfraTerrainDefines(**data.get("infra_terrain", {})),
+            infrastructure=InfrastructureDefines(**data.get("infrastructure", {})),
         )
 
     @classmethod

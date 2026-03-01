@@ -269,3 +269,64 @@ organization:
   credibility_default_state: 0.5           # Game design: StateApparatus fallthrough credibility
   violence_capacity_default: 0.5           # Game design: default violence capacity
   surveillance_capacity_default: 0.3       # Game design: default surveillance capacity
+
+# Infrastructure Topology Layer - Terrain (Feature 036)
+# SYNTHETIC: Game-design values unless noted
+infra_terrain:
+  majority_coverage_threshold: 0.5      # Coverage fraction for WATER/RESOURCE classification
+  initial_freshwater: 100.0             # FRESHWATER stock for WATER hexes
+  initial_fishery: 80.0                 # FISHERY stock for WATER hexes
+  initial_shipping_access: 50.0         # SHIPPING_ACCESS stock for WATER hexes
+  initial_mineral: 120.0                # MINERAL stock for RESOURCE hexes
+  initial_timber: 90.0                  # TIMBER stock for RESOURCE hexes
+  initial_hydroelectric: 60.0           # HYDROELECTRIC stock for RESOURCE hexes
+  depletion_freshwater: 0.05            # Per-tick depletion rate for FRESHWATER
+  depletion_fishery: 0.04               # Per-tick depletion rate for FISHERY
+  depletion_shipping_access: 0.02       # Per-tick depletion rate for SHIPPING_ACCESS
+  depletion_mineral: 0.03               # Per-tick depletion rate for MINERAL
+  depletion_timber: 0.04                # Per-tick depletion rate for TIMBER
+  depletion_hydroelectric: 0.01         # Per-tick depletion rate for HYDROELECTRIC
+  internet_access_threshold: 0.5        # FCC broadband penetration threshold for access
+  default_surveillance_coupling: 0.3    # Default state surveillance coupling
+
+# Infrastructure Topology Layer - Infrastructure (Feature 036)
+# SYNTHETIC: Game-design capacity values per type x category
+infrastructure:
+  # Highway capacities
+  highway_freight: 1.0
+  highway_commuter: 1.0
+  highway_value: 0.5
+  highway_consciousness: 0.3
+  # Arterial capacities
+  arterial_freight: 0.6
+  arterial_commuter: 0.7
+  arterial_value: 0.3
+  arterial_consciousness: 0.2
+  # Local road capacities
+  local_road_freight: 0.2
+  local_road_commuter: 0.4
+  local_road_value: 0.1
+  local_road_consciousness: 0.3
+  # Rail capacities
+  rail_freight: 1.2
+  rail_commuter: 0.3
+  rail_value: 0.2
+  rail_consciousness: 0.1
+  # Pipeline/Transmission (single-category)
+  pipeline_energy: 1.5
+  transmission_energy: 1.0
+  # Shipping lane (freight only)
+  shipping_lane_freight: 1.5
+  # Air link capacities
+  air_link_freight: 0.3
+  air_link_commuter: 0.8
+  air_link_value: 0.5
+  air_link_consciousness: 0.5
+  # Derived coefficients
+  natural_capacity_coefficient: 0.1     # LAND-LAND natural capacity (COMMUTER, CONSCIOUSNESS)
+  minimum_capacity_threshold: 0.01      # Below this, flow is zero
+  opsec_tradeoff_ratio: 0.5             # Surveillance reduction / throughput loss ratio
+  throttle_throughput_fraction: 0.3     # THROTTLE mode throughput
+  snap_buffer_fraction: 0.3            # Buffer fraction for spatial snapping
+  local_ratio_threshold: 3.0           # Distance/diameter for LOCAL classification
+  semi_local_ratio_threshold: 20.0     # Distance/diameter for SEMI_LOCAL classification

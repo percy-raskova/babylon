@@ -60,6 +60,11 @@ xgi = "^0.10"
 rstcheck = "^6.2.5"
 doc8 = "^2.0.0"
 polars = "^1.38.1"
+psycopg = "^3.3.3"
+psycopg-pool = "^3.3.0"
+pyarrow = "^23.0.1"
+boto3 = "^1.42.59"
+duckdb = "^1.4.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

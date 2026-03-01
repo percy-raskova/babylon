@@ -22,6 +22,13 @@ Enums defined:
 - LegalStanding: Legal status of an organization (Feature 031)
 - JurisdictionLevel: State apparatus jurisdiction scope (Feature 031)
 - ServiceType: Civil society service domain (Feature 031)
+- TerrainType: Hex terrain classification (Feature 036)
+- BiocapacityType: Renewable resource stock categories (Feature 036)
+- InfrastructureType: Physical infrastructure categories (Feature 036)
+- FlowCategory: Flow categories for infrastructure capacity (Feature 036)
+- JunctionType: Point infrastructure at mesh vertices (Feature 036)
+- LocalityClass: Distance classification for nonlocal edges (Feature 036)
+- InternetResponseMode: State internet control modes (Feature 036)
 """
 
 from enum import StrEnum
@@ -824,3 +831,154 @@ class ActionType(StrEnum):
     BUILD_INFRASTRUCTURE = "build_infrastructure"
     ATTACK_INFRASTRUCTURE = "attack_infrastructure"
     ASSIMILATE = "assimilate"
+
+
+# ---------------------------------------------------------------------------
+# Infrastructure Topology Layer (Feature 036)
+# ---------------------------------------------------------------------------
+
+
+class TerrainType(StrEnum):
+    """Hex terrain classification (Feature 036).
+
+    Determined by spatial intersection of H3 cell boundaries with Natural
+    Earth water/resource polygons. Classification uses majority coverage
+    threshold from TerrainDefines.
+
+    Values:
+        LAND: Default — no dominant water/resource coverage
+        WATER: Majority water coverage (lakes, rivers)
+        RESOURCE: Majority resource region coverage (ranges, deltas, wetlands)
+    """
+
+    LAND = "land"
+    WATER = "water"
+    RESOURCE = "resource"
+
+
+class BiocapacityType(StrEnum):
+    """Renewable resource stock categories (Feature 036).
+
+    Each non-LAND hex initializes biocapacity stocks based on terrain type.
+    WATER hexes get FRESHWATER, FISHERY, SHIPPING_ACCESS.
+    RESOURCE hexes get MINERAL, TIMBER, HYDROELECTRIC.
+
+    Values:
+        FRESHWATER: Potable water extraction capacity
+        FISHERY: Marine/lacustrine food production
+        SHIPPING_ACCESS: Navigable waterway throughput
+        MINERAL: Extractable mineral resources
+        TIMBER: Harvestable timber stock
+        HYDROELECTRIC: Hydroelectric generation capacity
+    """
+
+    FRESHWATER = "freshwater"
+    FISHERY = "fishery"
+    SHIPPING_ACCESS = "shipping_access"
+    MINERAL = "mineral"
+    TIMBER = "timber"
+    HYDROELECTRIC = "hydroelectric"
+
+
+class InfrastructureType(StrEnum):
+    """Physical infrastructure categories (Feature 036).
+
+    Typed infrastructure links assigned to H3 mesh edges via spatial
+    snapping from Natural Earth road, railroad, and other linear features.
+
+    Values:
+        HIGHWAY: Major highway / interstate (high FREIGHT + COMMUTER)
+        ARTERIAL: Secondary highway (moderate FREIGHT + COMMUTER)
+        LOCAL_ROAD: Local / county road (low capacity, commuter-focused)
+        RAIL: Railroad line (high FREIGHT, low COMMUTER)
+        PIPELINE: Energy pipeline (ENERGY only)
+        TRANSMISSION: Power transmission line (ENERGY only)
+        SHIPPING_LANE: Navigable waterway or sea lane (FREIGHT only)
+        AIR_LINK: Air route between airports (all categories, nonlocal)
+    """
+
+    HIGHWAY = "highway"
+    ARTERIAL = "arterial"
+    LOCAL_ROAD = "local_road"
+    RAIL = "rail"
+    PIPELINE = "pipeline"
+    TRANSMISSION = "transmission"
+    SHIPPING_LANE = "shipping_lane"
+    AIR_LINK = "air_link"
+
+
+class FlowCategory(StrEnum):
+    """Flow categories for infrastructure capacity (Feature 036).
+
+    Each infrastructure link has per-category capacity values. Edge capacity
+    aggregation sums across all links per category.
+
+    Values:
+        FREIGHT: Physical goods movement
+        COMMUTER: Human movement (labor, consumption)
+        VALUE: Financial/value flow
+        ENERGY: Energy transmission
+        CONSCIOUSNESS: Ideology/information diffusion
+    """
+
+    FREIGHT = "freight"
+    COMMUTER = "commuter"
+    VALUE = "value"
+    ENERGY = "energy"
+    CONSCIOUSNESS = "consciousness"
+
+
+class JunctionType(StrEnum):
+    """Point infrastructure at mesh vertices (Feature 036).
+
+    Junction infrastructure snapped from NE point features (airports, ports)
+    to H3 mesh vertices. Degradation cascades to all 3 adjacent edges.
+
+    Values:
+        INTERCHANGE: Highway interchange (roads intersection)
+        SUBSTATION: Power substation (energy distribution)
+        RAIL_JUNCTION: Railroad junction (freight routing)
+        PORT: Seaport or river port (shipping + freight)
+        AIRPORT: Airport terminal (air link generation)
+    """
+
+    INTERCHANGE = "interchange"
+    SUBSTATION = "substation"
+    RAIL_JUNCTION = "rail_junction"
+    PORT = "port"
+    AIRPORT = "airport"
+
+
+class LocalityClass(StrEnum):
+    """Distance classification for nonlocal edges (Feature 036).
+
+    Ratio of great-circle distance to average hex diameter determines
+    locality. LOCAL < 3.0, SEMI_LOCAL < 20.0, NONLOCAL >= 20.0.
+
+    Values:
+        LOCAL: Within 3 hex diameters (adjacent-equivalent)
+        SEMI_LOCAL: 3-20 hex diameters (regional)
+        NONLOCAL: 20+ hex diameters (transcontinental)
+    """
+
+    LOCAL = "local"
+    SEMI_LOCAL = "semi_local"
+    NONLOCAL = "nonlocal"
+
+
+class InternetResponseMode(StrEnum):
+    """State apparatus internet control modes (Feature 036).
+
+    Determines how the state apparatus modulates internet consciousness
+    diffusion at a given hex. PERMIT is default. THROTTLE is covert.
+    SEVER is overt and triggers consciousness backfire.
+
+    Values:
+        PERMIT: Full throughput, full surveillance
+        THROTTLE: Reduced throughput, maintained surveillance, covert
+        SEVER: Zero throughput, zero surveillance, overt with backfire
+    """
+
+    PERMIT = "permit"
+    THROTTLE = "throttle"
+    SEVER = "sever"

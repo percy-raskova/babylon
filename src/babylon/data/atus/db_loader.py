@@ -35,13 +35,13 @@ from sqlalchemy import func
 
 from babylon.config.defines import GameDefines
 from babylon.data.atus.models import ATUSHouseholdSummary
-from babylon.data.atus.protocol import ReproductionLoaderProtocol
 from babylon.data.reference.schema import (
     DimATUSActivityCategory,
     DimGender,
     DimTime,
     FactATUSReproductiveLabor,
 )
+from babylon.economics.shadow_labor import ReproductionLoaderProtocol
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

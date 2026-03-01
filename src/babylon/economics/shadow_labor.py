@@ -54,12 +54,92 @@ See Also:
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from babylon.data.atus.protocol import (
-    ReproductionLoaderProtocol,
-    VisibilityComputerProtocol,
-)
+if TYPE_CHECKING:
+    from babylon.data.atus.models import ATUSHouseholdSummary, VisibilityDecomposition
+
+
+class ReproductionLoaderProtocol(ABC):
+    """Abstract protocol for reproductive labor data loaders.
+
+    All reproduction data loaders must implement this interface to work
+    with the ShadowLaborService. This enables dependency injection and
+    easy testing with mock data.
+
+    See Also:
+        :mod:`babylon.data.atus.mock_loader`: Mock implementation.
+        :mod:`babylon.economics.adapters`: Similar adapter patterns.
+    """
+
+    @abstractmethod
+    def load_county_summary(
+        self,
+        fips_code: str,
+        year: int,
+    ) -> ATUSHouseholdSummary:
+        """Load reproductive labor hours summary for a county-year.
+
+        Args:
+            fips_code: 5-digit FIPS county code.
+            year: Data year (>= 2003 for ATUS).
+
+        Returns:
+            ATUSHouseholdSummary with reproductive labor hours breakdown.
+
+        Raises:
+            ValueError: If FIPS code invalid or year out of range.
+        """
+        ...
+
+    @abstractmethod
+    def get_shadow_wage(
+        self,
+        fips_code: str,
+        year: int,
+    ) -> float:
+        """Get shadow wage (replacement cost) for a county-year.
+
+        Args:
+            fips_code: 5-digit FIPS county code.
+            year: Data year for wage lookup.
+
+        Returns:
+            Hourly wage rate for shadow labor valuation (USD/hour).
+        """
+        ...
+
+
+class VisibilityComputerProtocol(ABC):
+    """Abstract protocol for visibility decomposition computation.
+
+    Implementations provide g₃₃ visibility coefficient computation from
+    data sources (ATUS, OEWS, QCEW weights).
+
+    See Also:
+        :mod:`babylon.data.atus.visibility`: Reference implementation.
+    """
+
+    @abstractmethod
+    def compute_visibility(self) -> VisibilityDecomposition:
+        """Compute visibility decomposition from data sources.
+
+        Returns:
+            VisibilityDecomposition with four category fractions and total_g33.
+        """
+        ...
+
+    @abstractmethod
+    def get_national_g33(self) -> float:
+        """Get national-level g₃₃ visibility coefficient.
+
+        Returns:
+            Visibility coefficient in range [0.0, 1.0].
+        """
+        ...
 
 
 class ShadowLaborConfig(BaseModel):
@@ -360,7 +440,9 @@ class ShadowLaborService:
 
 
 __all__ = [
+    "ReproductionLoaderProtocol",
     "ShadowLaborConfig",
     "ShadowLaborResult",
     "ShadowLaborService",
+    "VisibilityComputerProtocol",
 ]

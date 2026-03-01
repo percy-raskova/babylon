@@ -20,11 +20,11 @@ from babylon.config.defines import GameDefines
 from babylon.data.atus.db_loader import ATUSDBLoader, create_atus_db_loader
 from babylon.data.atus.loader import ATUSReferenceLoader
 from babylon.data.atus.models import ATUSHouseholdSummary
-from babylon.data.atus.protocol import ReproductionLoaderProtocol
 from babylon.data.reference.database import NormalizedBase
 from babylon.data.reference.schema import (
     DimTime,
 )
+from babylon.economics.shadow_labor import ReproductionLoaderProtocol
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine

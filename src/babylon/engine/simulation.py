@@ -192,16 +192,16 @@ class Simulation:
         from pathlib import Path
 
         from babylon.data.reference.database import get_reference_session
-        from babylon.data.reference.hydrator import (
+        from babylon.economics.adapters import SQLiteQCEWSource
+        from babylon.economics.department_mapper import DepartmentMapper
+        from babylon.economics.hydrator import MarxianHydrator
+        from babylon.economics.tensor_registry import TensorRegistry
+        from babylon.engine.hydration.reference import (
             StubBEASource,
             hydrate_economy_constants,
             hydrate_reserve_army,
             hydrate_territories,
         )
-        from babylon.economics.adapters import SQLiteQCEWSource
-        from babylon.economics.department_mapper import DepartmentMapper
-        from babylon.economics.hydrator import MarxianHydrator
-        from babylon.economics.tensor_registry import TensorRegistry
 
         # Validate input
         if not fips_codes:

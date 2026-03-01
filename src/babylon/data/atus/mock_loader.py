@@ -21,7 +21,7 @@ See Also:
 from __future__ import annotations
 
 from babylon.data.atus.models import ATUSHouseholdSummary
-from babylon.data.atus.protocol import ReproductionLoaderProtocol
+from babylon.economics.shadow_labor import ReproductionLoaderProtocol
 
 # =============================================================================
 # Constants (ATUS 2022 National Averages)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.data.reference.hydrator import (
+from babylon.engine.hydration.reference import (
     hydrate_class_shares,
     hydrate_economy_constants,
     hydrate_reserve_army,

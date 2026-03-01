@@ -80,8 +80,8 @@ from babylon.data.atus.models import (
     ATUSHouseholdSummary,
     VisibilityDecomposition,
 )
-from babylon.data.atus.protocol import ReproductionLoaderProtocol
 from babylon.data.atus.visibility import DataSourceUnavailableError, VisibilityComputer
+from babylon.economics.shadow_labor import ReproductionLoaderProtocol
 
 
 def create_atus_loader(

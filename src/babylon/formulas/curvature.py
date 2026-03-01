@@ -30,6 +30,7 @@ def compute_ollivier_ricci(
     u: int | str,
     v: int | str,
     alpha: float = 0.5,
+    weight_attr: str | None = None,
 ) -> float:
     """Compute Ollivier-Ricci curvature for a single edge (u, v).
 
@@ -39,6 +40,11 @@ def compute_ollivier_ricci(
         v: Target node.
         alpha: Self-loop probability weight in [0, 1].
             Higher alpha = more weight on the node itself.
+        weight_attr: Optional edge attribute name for weights.
+            When set, probability measures distribute (1-alpha)
+            proportional to edge weights instead of uniformly,
+            and shortest path uses weighted distances.
+            None = unweighted (backward compatible).
 
     Returns:
         Curvature kappa(u,v) = 1 - W1(mu_u, mu_v) / d(u,v).
@@ -52,13 +58,13 @@ def compute_ollivier_ricci(
         raise ValueError(msg)
 
     # Graph distance between u and v
-    d_uv = _graph_distance(graph, u, v)
+    d_uv = _graph_distance(graph, u, v, weight_attr=weight_attr)
     if d_uv == 0:
         return 0.0  # Self-loop: curvature undefined, return 0
 
     # Construct probability measures
-    mu_u = _probability_measure(graph, u, alpha)
-    mu_v = _probability_measure(graph, v, alpha)
+    mu_u = _probability_measure(graph, u, alpha, weight_attr=weight_attr)
+    mu_v = _probability_measure(graph, v, alpha, weight_attr=weight_attr)
 
     # Union of supports
     all_nodes = sorted(set(mu_u.keys()) | set(mu_v.keys()))
@@ -73,7 +79,7 @@ def compute_ollivier_ricci(
     for i, ni in enumerate(all_nodes):
         for j, nj in enumerate(all_nodes):
             if i != j:
-                cost[i, j] = _graph_distance(graph, ni, nj)
+                cost[i, j] = _graph_distance(graph, ni, nj, weight_attr=weight_attr)
 
     # Solve transportation problem via LP
     w1 = _wasserstein_1(supply, demand, cost)
@@ -86,16 +92,20 @@ def _probability_measure(
     graph: nx.Graph,  # type: ignore[type-arg]
     node: int | str,
     alpha: float,
+    weight_attr: str | None = None,
 ) -> dict[int | str, float]:
     """Construct probability measure centered at node.
 
     With probability alpha, stay at the node.
-    With probability (1-alpha), move uniformly to neighbors.
+    With probability (1-alpha), distribute to neighbors:
+    - If weight_attr is None: uniformly
+    - If weight_attr is set: proportional to edge weights
 
     Args:
         graph: NetworkX graph.
         node: Center node.
         alpha: Self-loop weight.
+        weight_attr: Optional edge attribute for proportional weighting.
 
     Returns:
         Dict mapping node -> probability.
@@ -109,9 +119,30 @@ def _probability_measure(
         return measure
 
     measure[node] = alpha
-    neighbor_weight = (1.0 - alpha) / len(neighbors)
-    for neighbor in neighbors:
-        measure[neighbor] = measure.get(neighbor, 0.0) + neighbor_weight
+
+    if weight_attr is not None:
+        # Weighted: distribute (1-alpha) proportional to edge weights
+        neighbor_weights: list[tuple[int | str, float]] = []
+        for neighbor in neighbors:
+            edge_data = graph.get_edge_data(node, neighbor)
+            w = float(edge_data.get(weight_attr, 1.0)) if edge_data else 1.0
+            neighbor_weights.append((neighbor, w))
+
+        total_weight = sum(w for _, w in neighbor_weights)
+        if total_weight > 0:
+            for neighbor, w in neighbor_weights:
+                prob = (1.0 - alpha) * (w / total_weight)
+                measure[neighbor] = measure.get(neighbor, 0.0) + prob
+        else:
+            # All weights zero: uniform fallback
+            uniform = (1.0 - alpha) / len(neighbors)
+            for neighbor in neighbors:
+                measure[neighbor] = measure.get(neighbor, 0.0) + uniform
+    else:
+        # Unweighted: uniform distribution
+        neighbor_weight = (1.0 - alpha) / len(neighbors)
+        for neighbor in neighbors:
+            measure[neighbor] = measure.get(neighbor, 0.0) + neighbor_weight
 
     return measure
 
@@ -120,6 +151,7 @@ def _graph_distance(
     graph: nx.Graph,  # type: ignore[type-arg]
     u: int | str,
     v: int | str,
+    weight_attr: str | None = None,
 ) -> float:
     """Compute shortest path distance between u and v.
 
@@ -127,15 +159,17 @@ def _graph_distance(
         graph: NetworkX graph.
         u: Source node.
         v: Target node.
+        weight_attr: Optional edge attribute name for weighted distance.
+            None = hop count (unweighted).
 
     Returns:
-        Shortest path length (hop count). Returns inf if disconnected.
+        Shortest path length. Returns inf if disconnected.
     """
     if u == v:
         return 0.0
     try:
         # nosemgrep: babylon.layer-boundary.no-raw-networkx
-        return float(nx.shortest_path_length(graph, u, v))
+        return float(nx.shortest_path_length(graph, u, v, weight=weight_attr))
     except nx.NetworkXNoPath:
         return float("inf")
 

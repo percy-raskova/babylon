@@ -134,13 +134,19 @@ def _compute_node_derivatives(
     graph: GraphProtocol,
     field_names: list[str],
     history: dict[str, dict[str, list[float]]],
+    edge_weight_attr: str | None = None,
 ) -> None:
     """Compute Laplacian and temporal derivatives at each node.
+
+    When ``edge_weight_attr`` is provided, computes a weighted Laplacian:
+    ``sum(w_j * (f(j) - f(i)))`` instead of ``sum(f(j) - f(i))``.
 
     Args:
         graph: Graph with contradiction_fields on nodes.
         field_names: List of field names.
         history: contradiction_history from persistent_data.
+        edge_weight_attr: Optional edge attribute name for weights.
+            None = unweighted (all weights 1.0), preserving backward compat.
     """
     for node in graph.query_nodes(node_type="social_class"):
         node_id = node.id
@@ -150,17 +156,24 @@ def _compute_node_derivatives(
 
         node_history = history.get(node_id, {})
 
-        # Collect neighbor field values (both in and out edges)
-        neighbor_fields = _collect_neighbor_fields(graph, node_id, field_names)
+        # Collect neighbor field values and edge weights
+        neighbor_fields, edge_weights = _collect_neighbor_fields(
+            graph,
+            node_id,
+            field_names,
+            edge_weight_attr=edge_weight_attr,
+        )
 
         field_derivatives: dict[str, dict[str, float | None]] = {}
         for field_name in field_names:
             my_val = node_fields.get(field_name, 0.0)
 
-            # Laplacian: sum_j(f(j) - f(i))
+            # Laplacian: sum_j(w_j * (f(j) - f(i)))
             neighbor_vals = neighbor_fields.get(field_name, [])
             if neighbor_vals:
-                laplacian = sum(nv - my_val for nv in neighbor_vals)
+                laplacian = sum(
+                    w * (nv - my_val) for w, nv in zip(edge_weights, neighbor_vals, strict=True)
+                )
             else:
                 laplacian = 0.0
                 if not neighbor_vals:
@@ -196,8 +209,9 @@ def _collect_neighbor_fields(
     graph: GraphProtocol,
     node_id: str,
     field_names: list[str],
-) -> dict[str, list[float]]:
-    """Collect field values from all neighbors of a node.
+    edge_weight_attr: str | None = None,
+) -> tuple[dict[str, list[float]], list[float]]:
+    """Collect field values and edge weights from all neighbors of a node.
 
     Considers both incoming and outgoing edges to ensure full
     Laplacian computation on the undirected graph structure.
@@ -206,31 +220,48 @@ def _collect_neighbor_fields(
         graph: Graph protocol instance.
         node_id: Node to collect neighbors for.
         field_names: Field names to collect.
+        edge_weight_attr: Optional edge attribute name for weights.
+            None = all weights 1.0 (backward compatible).
 
     Returns:
-        Mapping of field_name -> list of neighbor values.
+        Tuple of (field_name -> neighbor values list, edge weights list).
+        Edge weights list is parallel to each field's neighbor values list
+        (one weight per neighbor, same order).
     """
     result: dict[str, list[float]] = {name: [] for name in field_names}
+    weights: list[float] = []
 
-    # Collect unique neighbor IDs from both directions
-    neighbor_ids: set[str] = set()
+    # Collect unique neighbor IDs and their edge weights from both directions
+    neighbor_weights: dict[str, float] = {}
 
     for edge in graph.query_edges():
+        nid: str | None = None
         if edge.source_id == node_id:
-            neighbor_ids.add(edge.target_id)
+            nid = edge.target_id
         elif edge.target_id == node_id:
-            neighbor_ids.add(edge.source_id)
+            nid = edge.source_id
 
-    for nid in neighbor_ids:
+        if nid is not None and nid not in neighbor_weights:
+            if edge_weight_attr is not None:
+                w = float(edge.attributes.get(edge_weight_attr, 1.0))
+            else:
+                w = 1.0
+            neighbor_weights[nid] = w
+
+    for nid, w in neighbor_weights.items():
         neighbor_node = graph.get_node(nid)
         if neighbor_node is None:
             continue
         n_fields: dict[str, float] = neighbor_node.attributes.get("contradiction_fields", {})
+        has_fields = False
         for field_name in field_names:
             if field_name in n_fields:
                 result[field_name].append(n_fields[field_name])
+                has_fields = True
+        if has_fields:
+            weights.append(w)
 
-    return result
+    return result, weights
 
 
 def _identify_principal_contradiction(

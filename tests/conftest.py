@@ -90,36 +90,22 @@ def test_dir() -> Generator[str, None, None]:
 
 @pytest.fixture(scope="session")
 def test_db() -> "Engine":
-    """Create a test database.
+    """Create a test database with reference schema.
 
     Imports are done lazily to support mutation testing with mutmut.
     """
-    # Lazy imports for mutmut compatibility
     from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
 
-    from babylon.config.testing import TestingConfig
-    from babylon.data.database import Base
+    from babylon.reference.database import NormalizedBase
 
-    # Create test engine with SQLite in-memory database
-    engine = create_engine(TestingConfig.DATABASE_URL)
-
-    # Create all tables
-    Base.metadata.create_all(bind=engine)
-
-    # Create session factory
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    # Override the SessionLocal in the database module
-    import babylon.data.database
-
-    babylon.data.database.SessionLocal = TestingSessionLocal
+    engine = create_engine("sqlite:///:memory:")
+    NormalizedBase.metadata.create_all(bind=engine)
 
     return engine
 
 
 @pytest.fixture(scope="function")
-def metrics_collector(test_db: "Engine") -> "MetricsCollector":
+def metrics_collector() -> "MetricsCollector":
     """Create a fresh metrics collector for each test.
 
     Imports are done lazily to support mutation testing with mutmut.

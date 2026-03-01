@@ -96,6 +96,10 @@ class ServiceContainer:
     inventory_data_source: Any = field(default=None)
     depreciation_data_source: Any = field(default=None)
 
+    # Persistence layer (Feature 037 - optional, default None)
+    persistence: Any = field(default=None)
+    tracer: Any = field(default=None)
+
     # Capital Volume III financial layer (Feature 024 - optional, default None)
     distribution_calculator: Any = field(default=None)
     interest_calculator: Any = field(default=None)
@@ -116,6 +120,8 @@ class ServiceContainer:
         defines: GameDefines | None = None,
         metrics: MetricsCollectorProtocol | None = None,
         *,
+        persistence: Any = None,
+        tracer: Any = None,
         reserve_army_data_source: Any = None,
         dispossession_data_source: Any = None,
         productivity_data_source: Any = None,
@@ -181,6 +187,8 @@ class ServiceContainer:
             formulas=FormulaRegistry.default(),
             defines=defines if defines is not None else GameDefines(),
             metrics=metrics,
+            persistence=persistence,
+            tracer=tracer,
             reserve_army_data_source=reserve_army_data_source,
             dispossession_data_source=dispossession_data_source,
             productivity_data_source=productivity_data_source,

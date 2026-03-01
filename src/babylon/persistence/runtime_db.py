@@ -28,6 +28,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
 
@@ -115,6 +116,8 @@ class RuntimeDatabase:
         tick: int,
         graph: nx.DiGraph[str],
         events: list[dict[str, Any]] | None = None,
+        *,
+        session_id: UUID | None = None,  # noqa: ARG002 - Required by RuntimePersistence protocol
     ) -> None:
         """Persist full graph snapshot at end of tick (ADR032).
 
@@ -125,6 +128,7 @@ class RuntimeDatabase:
             tick: Simulation tick number.
             graph: NetworkX graph with current simulation state.
             events: Optional list of event dicts for this tick.
+            session_id: Session scope (ignored for SQLite, required for Postgres).
         """
         with self.transaction() as con:
             # Persist nodes
@@ -187,11 +191,17 @@ class RuntimeDatabase:
         except (TypeError, ValueError):
             return False
 
-    def hydrate_graph(self, tick: int | None = None) -> nx.DiGraph[str]:
+    def hydrate_graph(
+        self,
+        tick: int | None = None,
+        *,
+        session_id: UUID | None = None,  # noqa: ARG002 - Required by RuntimePersistence protocol
+    ) -> nx.DiGraph[str]:
         """Load graph state from SQLite (ADR032).
 
         Args:
             tick: Tick to load. If None, loads the latest tick.
+            session_id: Session scope (ignored for SQLite, required for Postgres).
 
         Returns:
             NetworkX DiGraph with state at the specified tick.
@@ -343,6 +353,9 @@ class RuntimeDatabase:
         mutations: dict[str, Any] | None = None,
         invariant_checks: dict[str, bool] | None = None,
         wall_time_ms: int | None = None,
+        system_timings: dict[str, int] | None = None,  # noqa: ARG002 - Required by RuntimePersistence protocol
+        *,
+        session_id: UUID | None = None,  # noqa: ARG002 - Required by RuntimePersistence protocol
     ) -> None:
         """Log tick data for replay/debugging (ADR033).
 
@@ -352,6 +365,8 @@ class RuntimeDatabase:
             mutations: Dict of mutations that occurred this tick.
             invariant_checks: Dict of invariant check results.
             wall_time_ms: Wall clock time for this tick in milliseconds.
+            system_timings: Per-system execution time (ignored for SQLite).
+            session_id: Session scope (ignored for SQLite, required for Postgres).
         """
         self.con.execute(
             """

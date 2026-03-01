@@ -851,6 +851,65 @@ class PhaseTransitionEvent(TopologyEvent):
 
 
 # =============================================================================
+# Bifurcation Topology Events (Feature 033)
+# =============================================================================
+
+
+class BifurcationTendencyEvent(TopologyEvent):
+    """Bifurcation tendency change detected in solidarity network.
+
+    Emitted when the overall bifurcation tendency (revolutionary/fascist/
+    indeterminate) changes between ticks. Consciousness-weighted analysis
+    detects whether crisis routes to fascism or revolution.
+
+    Attributes:
+        event_type: Always BIFURCATION_TENDENCY_CHANGE.
+        previous_tendency: Overall tendency before change.
+        new_tendency: Overall tendency after change.
+        consciousness_weighted_cross_solidarity: Sum of consciousness-weighted
+            cross-line solidarity edges.
+        mean_collective_identity_marginalized: Mean CI across marginalized
+            communities.
+        bridge_potential_weighted: Sum of infrastructure * sigmoid(CI) for
+            communities bridging contradiction axes.
+        legitimation_index: Population-weighted mean legitimation index.
+    """
+
+    event_type: EventType = Field(
+        default=EventType.BIFURCATION_TENDENCY_CHANGE,
+        description="Event type (always BIFURCATION_TENDENCY_CHANGE)",
+    )
+    previous_tendency: str = Field(
+        ...,
+        min_length=1,
+        description="Overall tendency before change (revolutionary, fascist, indeterminate)",
+    )
+    new_tendency: str = Field(
+        ...,
+        min_length=1,
+        description="Overall tendency after change (revolutionary, fascist, indeterminate)",
+    )
+    consciousness_weighted_cross_solidarity: float = Field(
+        ge=0.0,
+        description="Sum of consciousness-weighted cross-line solidarity",
+    )
+    mean_collective_identity_marginalized: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Mean CI across marginalized communities",
+    )
+    bridge_potential_weighted: float = Field(
+        ge=0.0,
+        description="Sum of infrastructure * sigmoid(CI) for bridges",
+    )
+    legitimation_index: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Population-weighted mean legitimation index",
+    )
+
+
+# =============================================================================
 # Endgame Events (Slice 1.6)
 # =============================================================================
 
@@ -909,6 +968,7 @@ EVENT_CLASS_MAP: dict[str, type[SimulationEvent]] = {
     EventType.SOLIDARITY_SPIKE.value: SolidaritySpikeEvent,
     EventType.RUPTURE.value: RuptureEvent,
     EventType.PHASE_TRANSITION.value: PhaseTransitionEvent,
+    EventType.BIFURCATION_TENDENCY_CHANGE.value: BifurcationTendencyEvent,
     EventType.ENDGAME_REACHED.value: EndgameEvent,
 }
 

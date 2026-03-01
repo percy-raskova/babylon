@@ -247,6 +247,8 @@ class EventType(StrEnum):
     CONSCIOUSNESS_SHIFT = "consciousness_shift"  # Community CI change exceeds threshold
     INITIATIVE_CONTESTED = "initiative_contested"  # Non-state org seizes initiative
     INFRASTRUCTURE_CHANGE = "infrastructure_change"  # BUILD or ATTACK infrastructure
+    # Bifurcation Topology Analysis (Feature 033)
+    BIFURCATION_TENDENCY_CHANGE = "bifurcation_tendency_change"  # Overall tendency shifted
 
 
 class LegitimationClassification(StrEnum):

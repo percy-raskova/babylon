@@ -1358,3 +1358,67 @@ class MarxCapitalExamples:
     def all_ids(cls) -> list[str]:
         """Return pytest IDs for parametrized tests."""
         return ["occ_0.5", "occ_1.0", "occ_4.0"]
+
+
+# =============================================================================
+# UNIFIED CLASS SYSTEM (Feature 038)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class ClassSystemDefaults:
+    """Unified Class System test constants (Feature 038).
+
+    Source: specs/038-unified-class-system/spec.md
+    Provides wealth percentiles, precarity values, community memberships,
+    and rent differential test values for the unified class system.
+    """
+
+    # -------------------------------------------------------------------------
+    # Wealth Percentiles (from spec acceptance scenarios)
+    # -------------------------------------------------------------------------
+    WEALTH_LA: float = 75.0  # -> LABOR_ARISTOCRACY (50th-90th)
+    WEALTH_PROLETARIAT: float = 25.0  # -> PROLETARIAT (< 50th, STABLE)
+    WEALTH_LUMPEN: float = 10.0  # -> LUMPENPROLETARIAT (< 50th, EXCLUDED)
+    WEALTH_PB: float = 95.0  # -> PETIT_BOURGEOISIE (90th-99th)
+    WEALTH_BOURGEOISIE: float = 99.5  # -> BOURGEOISIE (>= 99th)
+    WEALTH_LA_EXCLUDED: float = 55.0  # -> LA even with EXCLUDED precarity
+    WEALTH_FIRST_NATIONS: float = 60.0  # -> filtered by trust_land_discount
+    WEALTH_INCARCERATED: float = 45.0  # -> filtered to LUMPEN
+    WEALTH_UNDOCUMENTED: float = 55.0  # -> filtered by doc_exclusion_factor
+    WEALTH_DISABLED: float = 65.0  # -> filtered by reproduction_cost_modifier
+
+    # -------------------------------------------------------------------------
+    # Filtration Parameters (from ClassSystemDefines defaults)
+    # -------------------------------------------------------------------------
+    TRUST_LAND_DISCOUNT: float = 0.5
+    DOCUMENTATION_EXCLUSION_FACTOR: float = 0.6
+    EQUITY_FACTOR: float = 0.6
+    REPRODUCTION_COST_MODIFIER: float = 1.3  # DISABLED community state
+
+    # -------------------------------------------------------------------------
+    # Solidarity Matrix Reference Values (from data-model.md)
+    # -------------------------------------------------------------------------
+    SOLIDARITY_PROL_PROL: float = 0.80
+    SOLIDARITY_BOURG_PROL: float = 0.00
+    SOLIDARITY_BOURG_BOURG: float = 0.70
+    SOLIDARITY_LA_PROL: float = 0.30
+    SOLIDARITY_PB_LA: float = 0.40
+
+    # -------------------------------------------------------------------------
+    # Rent Differential Test Values
+    # -------------------------------------------------------------------------
+    WAYNE_FIPS: str = "26163"
+    OAKLAND_FIPS: str = "26125"
+    MACOMB_FIPS: str = "26099"
+    RENT_YEAR: int = 2022
+    NAICS_MANUFACTURING: str = "31-33"
+    NAICS_RETAIL: str = "44-45"
+
+    # -------------------------------------------------------------------------
+    # Dual Criteria Test Values
+    # -------------------------------------------------------------------------
+    V_PRODUCED_HIGH: float = 50000.0  # Above reproduction -> bourgeois relation
+    V_REPRODUCTION: float = 35000.0  # Baseline reproduction cost
+    V_PRODUCED_LOW: float = 20000.0  # Below reproduction -> lumpen relation
+    MAGNITUDE_ZERO: float = 0.0  # Agreement magnitude

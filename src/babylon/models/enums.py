@@ -256,6 +256,8 @@ class EventType(StrEnum):
     INFRASTRUCTURE_CHANGE = "infrastructure_change"  # BUILD or ATTACK infrastructure
     # Bifurcation Topology Analysis (Feature 033)
     BIFURCATION_TENDENCY_CHANGE = "bifurcation_tendency_change"  # Overall tendency shifted
+    # Unified Class System (Feature 038)
+    CALIBRATION_DISAGREEMENT = "calibration_disagreement"  # Accounting vs wealth criteria disagree
 
 
 class LegitimationClassification(StrEnum):

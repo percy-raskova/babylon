@@ -10,6 +10,7 @@ for automatic subtype selection during deserialization.
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -206,6 +207,21 @@ class Organization(BaseModel):
         if not self.is_institution and self.institutional_persistence is not None:
             msg = "institutional_persistence must be None when is_institution is False"
             raise ValueError(msg)
+        if self.is_institution:
+            warnings.warn(
+                "Organization.is_institution is deprecated. "
+                "Use Institution entity (Feature 040) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if self.institutional_persistence is not None:
+            warnings.warn(
+                "Organization.institutional_persistence is deprecated. "
+                "Use Institution.formalization_level and "
+                "Institution.institutional_inertia (Feature 040) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         return self
 
 

@@ -119,23 +119,23 @@ Detroit test case (Wayne + Oakland Counties):
 
 | CommunityType | floor_value | confidence | data_sources |
 |---------------|-------------|------------|--------------|
-| NEW_AFRIKAN | ~0.10-0.15 | MEDIUM | Vera incarceration, Chetty mobility |
-| FIRST_NATIONS | ~0.10-0.15 | MEDIUM | Vera incarceration, Chetty mobility |
-| INCARCERATED | ~0.15-0.20 | MEDIUM | Vera incarceration |
-| CHICANO | ~0.05-0.10 | LOW | Chetty mobility |
-| WOMEN | ~0.03-0.05 | LOW | estimated |
-| TRANS | ~0.05-0.08 | LOW | estimated |
-| DISABLED | ~0.02-0.05 | LOW | estimated |
-| QUEER | ~0.03-0.05 | LOW | estimated |
-| UNDOCUMENTED | ~0.08-0.12 | LOW | estimated |
+| NEW_AFRIKAN | 0.12 | MEDIUM | Vera incarceration, Chetty mobility |
+| FIRST_NATIONS | 0.12 | MEDIUM | Vera incarceration, Chetty mobility |
+| INCARCERATED | 0.18 | MEDIUM | Vera incarceration |
+| CHICANO | 0.08 | LOW | Chetty mobility |
+| WOMEN | 0.04 | LOW | estimated |
+| TRANS | 0.06 | LOW | estimated |
+| DISABLED | 0.03 | LOW | estimated |
+| QUEER | 0.04 | LOW | estimated |
+| UNDOCUMENTED | 0.10 | LOW | estimated |
 | SETTLER | 0.0 | HIGH | structural (hegemonic default) |
 | PATRIARCHAL | 0.0 | HIGH | structural (hegemonic default) |
 | YOUTH | 0.0 | HIGH | structural (lifecycle phase) |
 | ADULT | 0.0 | HIGH | structural (lifecycle phase) |
-| ELDER | ~0.01-0.03 | LOW | estimated (generational memory) |
+| ELDER | 0.02 | LOW | estimated (generational memory) |
 
-Exact values determined during calibration against Detroit proxy data.
-Ranges shown here for planning purposes.
+Values are calibration starting points derived from midpoints of estimated
+ranges. Subject to adjustment during calibration against Detroit proxy data.
 
 ### CONSCIOUSNESS_DEFAULTS Migration
 

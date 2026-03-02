@@ -68,7 +68,9 @@ src/babylon/
 ├── engine/systems/
 │   └── community.py         # MODIFIED: call ternary computation in step()
 ├── bifurcation/
-│   └── consciousness.py     # UNCHANGED: reads r via collective_identity property
+│   ├── consciousness.py     # UNCHANGED: reads r via collective_identity property
+│   ├── bridges.py           # UNCHANGED: reads consciousness.collective_identity (line 132)
+│   └── analysis.py          # UNCHANGED: reads collective_identity (line 156) and dominant_tendency (line 179)
 ├── ooda/
 │   └── layer3.py            # MODIFIED: remove direct CI writes, rely on org landscape
 ├── persistence/

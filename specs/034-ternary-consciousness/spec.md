@@ -63,7 +63,7 @@ A simulation researcher needs each community hyperedge's consciousness to be com
 
 **Acceptance Scenarios**:
 
-1. **Given** a community with population 1000, one revolutionary organization with 100 members and resource base 1.0, and one liberal organization with 200 members and resource base 1.0, **When** ternary consciousness is computed, **Then** r = 0.1, l = 0.9 (0.2 organized liberal + 0.7 unorganized default), f = 0.0 (after normalization to simplex).
+1. **Given** a community with population 1000, one revolutionary organization with 100 members (cadre_level=1.0, cohesion=1.0), and one liberal organization with 200 members (cadre_level=1.0, cohesion=1.0), **When** ternary consciousness is computed, **Then** r = 0.1 (100/1000 membership density × capacity factor), l = 0.9 (200/1000 organized liberal + 700/1000 unorganized population defaulting to liberal), f = 0.0 (after normalization to simplex).
 
 2. **Given** a community with NO organizations present, **When** ternary consciousness is computed, **Then** r = substrate_floor (community-specific), l = 1.0 - substrate_floor, f = 0.0 — pure liberal default plus substrate.
 
@@ -183,7 +183,7 @@ ______________________________________________________________________
 
 ### Functional Requirements
 
-- **FR-001**: System MUST compute a community's consciousness as a point in the 2-simplex `(r, l, f)` where `r + l + f = 1.0`, derived from the organizations active within that community. The computation MUST weight each organization's contribution by its membership density in the community (members in community / community population) multiplied by the organization's resource base. Unorganized population fraction MUST default to the liberal component. The substrate floor MUST set a minimum on the revolutionary component.
+- **FR-001**: System MUST compute a community's consciousness as a point in the 2-simplex `(r, l, f)` where `r + l + f = 1.0`, derived from the organizations active within that community. The computation MUST weight each organization's contribution by its membership density in the community (members in community / community population) multiplied by the organization's capacity factor (`cadre_level * cohesion`). Unorganized population fraction MUST default to the liberal component. The substrate floor MUST set a minimum on the revolutionary component.
 
 - **FR-002**: System MUST compute a per-community substrate floor for the revolutionary component. The floor MUST be derived from empirical proxy data (incarceration rate, protest event density, intergenerational wealth destruction) where available. Where proxy data is unavailable, the floor MUST default to 0.0 with a logged provenance gap warning. The floor MUST be a slow-moving value (generational timescale, updated at most once per simulation year) distinct from the fast-moving organizational computation (per tick).
 
@@ -193,13 +193,13 @@ ______________________________________________________________________
 
 - **FR-005**: System MUST compute `assimilation_ratio = f / (l + f)` as a derived property. This captures how much of the non-revolutionary consciousness is fascist vs. liberal — the position along the bottom edge of the triangle. When `l + f` is near zero (fully revolutionary community), the ratio is undefined and MUST return 0.5 (neutral).
 
-- **FR-006**: Ternary consciousness MUST be recomputed each tick from the current organizational landscape. The system MUST NOT store ternary coordinates as persistent state that requires its own update dynamics. What is stored is the organizational membership data and substrate floor. The ternary point is derived.
+- **FR-006**: Ternary consciousness MUST be recomputed each tick from the current organizational landscape. The system MUST NOT treat ternary coordinates as independent mutable state that requires its own update dynamics — they are derived each tick from the organizational landscape and substrate floor. Note: archival persistence (writing r, l, f to postgres for historical queries) is permitted because the stored values are snapshots of derived state, not an independent mutation path.
 
 - **FR-007**: Each substrate floor value MUST carry provenance metadata: the data source(s) used, the proxy computation method, and a confidence level (HIGH if derived from multiple independent proxies, MEDIUM if from one proxy, LOW if estimated, SYNTHETIC if stipulated as placeholder). Substrate floors with SYNTHETIC provenance MUST be flagged at initialization with a logged warning.
 
-- **FR-008**: The bifurcation topology's consciousness_weighted_solidarity function MUST consume the ternary model's `r` component as its weighting factor. Solidarity edges between communities with low r MUST be marked as crisis-fragile (assimilation trap indicator) regardless of edge density.
+- **FR-008**: The bifurcation topology's consciousness_weighted_solidarity function MUST consume the ternary model's `r` component as its weighting factor. Solidarity edges between communities where both endpoints have r < 0.3 MUST be marked as crisis-fragile (assimilation trap indicator) regardless of edge density. The 0.3 threshold corresponds to the consciousness_weighted_solidarity sigmoid midpoint from spec 033.
 
-- **FR-009**: The state's ability to estimate a community's consciousness position MUST be anisotropic: position along the liberal-fascist axis (l/f ratio) is more observable (voting patterns, public discourse, media consumption) than the revolutionary component (r). The system MUST model this as a higher observation error on the r component than on the l/f ratio for state AttentionThread intelligence estimates.
+- **FR-009**: The state's ability to estimate a community's consciousness position MUST be anisotropic: position along the liberal-fascist axis (l/f ratio) is more observable (voting patterns, public discourse, media consumption) than the revolutionary component (r). The system MUST model this as a higher observation error on the r component than on the l/f ratio for state intelligence estimates. Note: full integration with AttentionThread is deferred to org-topology Phase 3; this feature implements the anisotropic error model as a standalone function that AttentionThread will consume when available.
 
 - **FR-010**: Existing CONSCIOUSNESS_DEFAULTS for all 14 community types MUST be migrated to ternary coordinates that produce backward-compatible derived fields. The migration MUST be documented as a mapping table showing old scalar values and new ternary coordinates with verification that derived fields match.
 
@@ -259,7 +259,7 @@ For organizational landscape seeding, use union density (from QCEW, already inge
 
 - **A-001**: Unorganized population defaults to liberal consciousness. This is a theoretical commitment grounded in Jackson's analysis, not an empirical claim. If challenged, the default could be made community-specific (e.g., unorganized population in a community with high substrate floor might default partially to revolutionary). Deferred to calibration.
 
-- **A-002**: Organizational resource base is a meaningful multiplier on consciousness influence. An organization with 50 members and $1M in assets has more consciousness-shaping capacity than one with 50 members and no assets. The resource_base field exists on Organization models from spec 031.
+- **A-002**: Organizational capacity (cadre_level × cohesion) is a meaningful multiplier on consciousness influence. An organization with high cadre development and internal cohesion has more consciousness-shaping capacity than one with low organizational discipline, independent of membership size. These fields exist on the Organization model from spec 031. Budget is excluded from the initial formula because it requires a normalization constant — can be added during calibration if needed.
 
 - **A-003**: The substrate floor changes on a generational timescale (updated at most yearly in the simulation). This means it is effectively constant for short-run dynamics and only matters for multi-generational DPD' analysis.
 

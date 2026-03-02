@@ -66,10 +66,11 @@ ______________________________________________________________________
 ### Implementation for User Story 3
 
 - [ ] T011 [US3] Create ternary CONSCIOUSNESS_DEFAULTS dict in src/babylon/models/entities/community.py mapping all 14 CommunityType values to TernaryConsciousness instances using migration table from data-model.md (r=old_CI, l and f split to preserve dominant_tendency argmax and approximate ideological_contestation entropy)
-- [ ] T012 [US3] Replace CommunityState.consciousness field type from CommunityConsciousness to TernaryConsciousness in src/babylon/models/entities/community.py. Update the consciousness field default factory to use new ternary defaults. Ensure infiltration_resistance computed field still works (reads consciousness.collective_identity which now returns r)
+- [ ] T012 [US3] Add backward-compatible constructor support so that existing call sites using `CommunityConsciousness(collective_identity=0.5, dominant_tendency=LIBERAL, ideological_contestation=0.3)` continue to work. Strategy: either (a) keep CommunityConsciousness as a factory/alias that maps old kwargs to TernaryConsciousness(r=collective_identity, l/f derived from dominant_tendency + ideological_contestation), or (b) add a `model_validator(mode="before")` on TernaryConsciousness that accepts old-style kwargs. This is required by SC-005 (18+ test sites construct CommunityConsciousness directly)
+- [ ] T012b [US3] Replace CommunityState.consciousness field type from CommunityConsciousness to TernaryConsciousness in src/babylon/models/entities/community.py. Update the consciousness field default factory to use new ternary defaults. Ensure infiltration_resistance computed field still works (reads consciousness.collective_identity which now returns r)
 - [ ] T013 [US3] Update import-time exhaustiveness check in src/babylon/models/entities/community.py (lines 341-343) to validate all 14 CommunityType values have ternary defaults
 - [ ] T014 [US3] Update build_community_hypergraph() in src/babylon/engine/systems/community.py (lines 82-84) to bridge TernaryConsciousness attributes to XGI hyperedge attributes (consciousness_ci from r, consciousness_tendency from dominant_tendency, consciousness_contestation from ideological_contestation)
-- [ ] T015 [US3] Verify ALL existing tests pass unchanged: `poetry run pytest tests/unit/models/test_community_models.py tests/unit/engine/systems/test_community_system.py tests/unit/formulas/test_community_formulas.py tests/unit/bifurcation/ -v` — zero modifications to existing test files
+- [ ] T015 [US3] Verify ALL existing tests pass unchanged: `poetry run pytest tests/unit/models/test_community_models.py tests/unit/engine/systems/test_community_system.py tests/unit/formulas/test_community_formulas.py tests/unit/bifurcation/ -v` — zero modifications to existing test files. Verified consumers include bifurcation/bridges.py (line 132), bifurcation/analysis.py (lines 156, 179), and bifurcation/consciousness.py (line 99)
 
 **Checkpoint**: TernaryConsciousness replaces CommunityConsciousness. All existing consumers work without modification. SC-001 and SC-005 verified.
 
@@ -113,7 +114,7 @@ ______________________________________________________________________
 
 ### Implementation for User Story 2
 
-- [ ] T023 [US2] Create SUBSTRATE_FLOOR_DEFAULTS dict in src/babylon/models/entities/consciousness.py mapping all 14 CommunityType values to SubstrateFloor instances with calibrated floor_value, confidence level, data_sources list, and computation_method per data-model.md ranges. Use Vera incarceration + Chetty mobility as primary proxies for MVP
+- [ ] T023 [US2] Create SUBSTRATE_FLOOR_DEFAULTS dict in src/babylon/models/entities/consciousness.py mapping all 14 CommunityType values to SubstrateFloor instances with calibrated floor_value (midpoint values from data-model.md: NEW_AFRIKAN=0.12, FIRST_NATIONS=0.12, INCARCERATED=0.18, CHICANO=0.08, WOMEN=0.04, TRANS=0.06, DISABLED=0.03, QUEER=0.04, UNDOCUMENTED=0.10, SETTLER=0.0, PATRIARCHAL=0.0, YOUTH=0.0, ADULT=0.0, ELDER=0.02), confidence level, data_sources list, and computation_method. Use Vera incarceration + Chetty mobility as primary proxies for MVP
 - [ ] T024 [US2] Wire SUBSTRATE_FLOOR_DEFAULTS into compute_ternary_consciousness() in src/babylon/formulas/consciousness.py so that substrate floor is looked up by community_type and applied as minimum r before simplex normalization
 - [ ] T025 [US2] Verify substrate floor tests pass and COINTELPRO scenario confirmed: `poetry run pytest tests/unit/models/test_ternary_consciousness.py tests/unit/formulas/test_consciousness_computation.py -v`
 
@@ -135,7 +136,7 @@ ______________________________________________________________________
 
 ### Implementation for User Story 5
 
-- [ ] T027 [US5] Add crisis-fragile marker logic to consciousness_weighted_solidarity in src/babylon/bifurcation/consciousness.py: solidarity edges between communities with r below a threshold are marked crisis-fragile regardless of edge density. The marker is a boolean attribute on the edge weight computation
+- [ ] T027 [US5] Add crisis-fragile marker logic to consciousness_weighted_solidarity in src/babylon/bifurcation/consciousness.py: solidarity edges between communities where both endpoints have r < 0.3 are marked crisis-fragile regardless of edge density. The 0.3 threshold corresponds to the sigmoid midpoint from spec 033's consciousness_weighted_solidarity formula. The marker is a boolean attribute on the edge weight computation
 - [ ] T028 [US5] Add assimilation_ratio consumption to BifurcationResult in src/babylon/bifurcation/consciousness.py: include mean_assimilation_ratio in results, flag communities with high assimilation_ratio + low r as fascist-vulnerable in the dominant_tendency_distribution
 - [ ] T029 [US5] Verify all bifurcation tests pass including new assimilation trap tests: `poetry run pytest tests/unit/bifurcation/ -v`
 
@@ -154,7 +155,7 @@ ______________________________________________________________________
 
 ### Observation Gap Anisotropy (FR-009)
 
-- [ ] T032 Create anisotropic observation error model in src/babylon/bifurcation/consciousness.py: higher observation error on r component than on l/f ratio for state intelligence estimates. Export as a function that takes TernaryConsciousness and returns observed TernaryConsciousness with anisotropic noise applied
+- [ ] T032 Create anisotropic observation error model in src/babylon/bifurcation/consciousness.py: higher observation error on r component than on l/f ratio for state intelligence estimates. Export as a standalone function that takes TernaryConsciousness and returns observed TernaryConsciousness with anisotropic noise applied. Note: full integration with AttentionThread is deferred to org-topology Phase 3 (AttentionThread does not yet exist); this task implements the error model function only
 
 ### Final Verification
 

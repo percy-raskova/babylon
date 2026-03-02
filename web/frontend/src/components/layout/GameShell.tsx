@@ -11,10 +11,11 @@ import { RightPanel } from "@/components/layout/RightPanel";
 import { BottomPanel } from "@/components/layout/BottomPanel";
 import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { ActionPanel } from "@/components/ActionPanel";
-import { OrgDashboard } from "@/components/OrgDashboard";
+import { Inspector } from "@/components/inspector/Inspector";
 import { TickResults } from "@/components/TickResults";
 import { TimeSeries } from "@/components/charts/TimeSeries";
 import { GraphView } from "@/components/graph/GraphView";
+import { EventLog } from "@/components/events/EventLog";
 import type { ActionResultData } from "@/types/game";
 
 interface GameShellProps {
@@ -82,11 +83,7 @@ export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps
           {/* Bottom panel */}
           <BottomPanel>
             {bottomTab === "timeseries" && <TimeSeries snapshot={snapshot} />}
-            {bottomTab === "events" && (
-              <div className="flex h-full items-center justify-center text-sm text-ash">
-                Event log — Phase 6
-              </div>
-            )}
+            {bottomTab === "events" && <EventLog snapshot={snapshot} />}
             {bottomTab === "graph" && <GraphView snapshot={snapshot} />}
           </BottomPanel>
         </div>
@@ -102,7 +99,7 @@ export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps
             />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
-            <OrgDashboard snapshot={snapshot} />
+            <Inspector snapshot={snapshot} />
           </div>
           {results && results.length > 0 && (
             <div className="max-h-[300px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">

@@ -13,7 +13,7 @@ import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { ActionPanel } from "@/components/ActionPanel";
 import { OrgDashboard } from "@/components/OrgDashboard";
 import { TickResults } from "@/components/TickResults";
-import { TimeSeriesPanel } from "@/components/TimeSeriesPanel";
+import { TimeSeries } from "@/components/charts/TimeSeries";
 import type { ActionResultData } from "@/types/game";
 
 interface GameShellProps {
@@ -80,7 +80,7 @@ export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps
 
           {/* Bottom panel */}
           <BottomPanel>
-            {bottomTab === "timeseries" && <TimeSeriesPanel snapshot={snapshot} />}
+            {bottomTab === "timeseries" && <TimeSeries snapshot={snapshot} />}
             {bottomTab === "events" && (
               <div className="flex h-full items-center justify-center text-sm text-ash">
                 Event log — Phase 6

@@ -17,12 +17,16 @@ Sprint 3.5.3: Territory integration for Layer 0.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from babylon.models.entities.economy import GlobalEconomy
+from babylon.models.entities.institution import (
+    Institution,
+    InstitutionOrgRelation,
+)
 from babylon.models.entities.organization import (
     KeyFigure,
     OrganizationType,
@@ -37,6 +41,28 @@ from babylon.models.types import Currency
 
 if TYPE_CHECKING:
     pass
+
+
+def _reconstruct_institution(node_data: dict[str, Any]) -> Institution:
+    """Reconstruct an Institution from graph node data (Feature 040).
+
+    Excludes computed fields and converts list-serialized frozenset fields
+    back to frozenset for Pydantic validation.
+
+    Args:
+        node_data: Node attribute dict without _node_type key.
+
+    Returns:
+        Reconstructed Institution instance.
+    """
+    institution_excluded = {"hegemonic_fraction", "reproduction_capacity"}
+    inst_data = {k: v for k, v in node_data.items() if k not in institution_excluded}
+    # Convert list back to frozenset for frozenset fields
+    if "legal_authorities" in inst_data and isinstance(inst_data["legal_authorities"], list):
+        inst_data["legal_authorities"] = frozenset(inst_data["legal_authorities"])
+    if "jurisdiction" in inst_data and isinstance(inst_data["jurisdiction"], list):
+        inst_data["jurisdiction"] = frozenset(inst_data["jurisdiction"])
+    return Institution(**inst_data)
 
 
 class WorldState(BaseModel):
@@ -115,6 +141,16 @@ class WorldState(BaseModel):
         description="Map of key figure ID to KeyFigure (Feature 031)",
     )
 
+    # Institution Base Model (Feature 040)
+    institutions: dict[str, Institution] = Field(
+        default_factory=dict,
+        description="Map of institution ID to Institution (Feature 040)",
+    )
+    institution_relations: list[InstitutionOrgRelation] = Field(
+        default_factory=list,
+        description="Institution-Organization housing relationships (Feature 040)",
+    )
+
     # =========================================================================
     # NetworkX Conversion
     # =========================================================================
@@ -177,6 +213,18 @@ class WorldState(BaseModel):
         for kf_id, kf in self.key_figures.items():
             G.add_node(kf_id, _node_type="key_figure", **kf.model_dump())
 
+        # Add institution nodes with _node_type marker (Feature 040)
+        for inst_id, inst in self.institutions.items():
+            G.add_node(inst_id, _node_type="institution", **inst.model_dump())
+            # Create PRESENCE edges to territory_ids
+            for tid in inst.territory_ids:
+                if tid in G:
+                    G.add_edge(inst_id, tid, edge_type=EdgeType.PRESENCE.value)
+            # Create HOUSES edges to housed_org_ids
+            for org_id in inst.housed_org_ids:
+                if org_id in G:
+                    G.add_edge(inst_id, org_id, edge_type=EdgeType.HOUSES.value)
+
         # Add edges with relationship data
         for rel in self.relationships:
             source, target = rel.edge_tuple
@@ -237,6 +285,7 @@ class WorldState(BaseModel):
         territories: dict[str, Territory] = {}
         organizations: dict[str, OrganizationType] = {}
         key_figures_dict: dict[str, KeyFigure] = {}
+        institutions_dict: dict[str, Institution] = {}
 
         # Computed fields to exclude during reconstruction (Slice 1.4)
         social_class_computed = {"consumption_needs"}
@@ -313,6 +362,9 @@ class WorldState(BaseModel):
             elif node_type == "key_figure":
                 # Reconstruct KeyFigure (Feature 031)
                 key_figures_dict[node_id] = KeyFigure(**node_data)
+            elif node_type == "institution":
+                # Reconstruct Institution (Feature 040)
+                institutions_dict[node_id] = _reconstruct_institution(node_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
                 # Filter out computed fields that shouldn't be passed to constructor
@@ -353,6 +405,7 @@ class WorldState(BaseModel):
             state_finances=state_finances,
             organizations=organizations,
             key_figures=key_figures_dict,
+            institutions=institutions_dict,
         )
 
     # =========================================================================

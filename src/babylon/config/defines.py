@@ -3598,6 +3598,73 @@ class StateApparatusAIDefines(BaseModel):
     )
 
 
+class InstitutionDefines(BaseModel):
+    """Institution Base Model coefficients (Feature 040).
+
+    Configures factional balance dynamics, Bonapartist threshold detection,
+    and default structural selectivity modifiers per apparatus type.
+
+    All thresholds are [S] SYNTHETIC unless otherwise noted.
+
+    See Also:
+        ``specs/040-institution-base-model/spec.md``: Full specification.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # -------------------------------------------------------------------------
+    # Balance Dynamics (FR-005)
+    # -------------------------------------------------------------------------
+    alpha_smoothing_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=0.5,
+        description="[S] Per-call smoothing rate for factional balance shifts.",
+    )
+    bonapartist_threshold: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="[S] BONAPARTIST weight above which Bonapartist mode triggers.",
+    )
+    bonapartist_exclusion_threshold: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=1.0,
+        description="[S] Other fractions must be below this for Bonapartist mode.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Default Structural Selectivity Modifiers (FR-007)
+    # -------------------------------------------------------------------------
+    # Keys: ApparatusType string values
+    # Values: dict mapping ActionType string values to cost multipliers
+    # < 1.0 = cheaper, > 1.0 = more expensive
+    default_action_modifiers: dict[str, dict[str, float]] = Field(
+        default={
+            "rsa_executive": {"propagandize": 0.5, "repress": 0.8, "educate": 1.5},
+            "rsa_police": {"repress": 0.6, "surveil": 0.7, "educate": 2.0},
+            "rsa_judicial": {"surveil": 0.5, "repress": 1.2},
+            "rsa_military": {"repress": 0.4, "attack_infrastructure": 0.5},
+            "rsa_carceral": {"repress": 0.5, "educate": 2.5},
+            "isa_educational": {"educate": 0.7, "recruit": 0.8, "repress": 2.0},
+            "isa_religious": {"educate": 0.8, "recruit": 0.7, "repress": 2.5},
+            "isa_family": {"educate": 0.9, "recruit": 1.5},
+            "isa_communications": {"propagandize": 0.5, "agitate": 0.6, "repress": 2.0},
+            "isa_cultural": {"educate": 0.8, "propagandize": 0.7, "repress": 2.0},
+            "isa_legal": {},
+            "isa_political": {},
+            "economic_productive": {"employ": 0.5, "fundraise": 0.7, "repress": 1.5},
+            "economic_financial": {"fundraise": 0.4, "employ": 0.8},
+            "economic_extractive": {"fundraise": 0.5, "attack_infrastructure": 0.8},
+        },
+        description=(
+            "[S] Default action cost modifiers per ApparatusType. "
+            "Keys are ApparatusType values, sub-keys are ActionType values."
+        ),
+    )
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -3688,6 +3755,8 @@ class GameDefines(BaseModel):
     class_system: ClassSystemDefines = Field(default_factory=ClassSystemDefines)
     # State Apparatus AI (Feature 039)
     state_ai: StateApparatusAIDefines = Field(default_factory=StateApparatusAIDefines)
+    # Institution Base Model (Feature 040)
+    institution: InstitutionDefines = Field(default_factory=InstitutionDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -3806,6 +3875,8 @@ class GameDefines(BaseModel):
             infra_terrain=InfraTerrainDefines(**data.get("infra_terrain", {})),
             infrastructure=InfrastructureDefines(**data.get("infrastructure", {})),
             class_system=ClassSystemDefines(**data.get("class_system", {})),
+            state_ai=StateApparatusAIDefines(**data.get("state_ai", {})),
+            institution=InstitutionDefines(**data.get("institution", {})),
         )
 
     @classmethod

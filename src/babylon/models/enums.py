@@ -116,6 +116,8 @@ class EdgeType(StrEnum):
     TARGETS = "targets"  # AttentionThread → target entity
     OWNED_BY = "owned_by"  # AttentionThread → StateApparatus
     JURISDICTION = "jurisdiction"  # LegalFramework → Territory
+    # Institution Base Model (Feature 040)
+    HOUSES = "houses"  # Institution → Organization (housing relationship)
 
 
 def resolve_edge_type(raw: str | EdgeType | None) -> EdgeType | None:
@@ -275,6 +277,10 @@ class EventType(StrEnum):
     THREAD_ESCALATION = "thread_escalation"  # AttentionThread phase advanced
     LEGAL_FRAMEWORK_ENACTED = "legal_framework_enacted"  # LEGISLATE created new law
     LEGAL_FRAMEWORK_REVOKED = "legal_framework_revoked"  # REVOKE removed a law
+    # Institution Base Model (Feature 040)
+    INSTITUTION_FACTION_SHIFT = "institution_faction_shift"  # Hegemonic fraction changed
+    INSTITUTION_REPRODUCTION = "institution_reproduction"  # Institution spawned replacement org
+    INSTITUTION_BONAPARTIST_MODE = "institution_bonapartist_mode"  # Bonapartist threshold crossed
 
 
 class LegitimationClassification(StrEnum):
@@ -1137,3 +1143,139 @@ class InternetResponseMode(StrEnum):
     PERMIT = "permit"
     THROTTLE = "throttle"
     SEVER = "sever"
+
+
+# ---------------------------------------------------------------------------
+# Institution Base Model (Feature 040)
+# ---------------------------------------------------------------------------
+
+
+class ApparatusType(StrEnum):
+    """Althusserian apparatus type classification (Feature 040).
+
+    Institutions are classified by their structural role in the reproduction
+    of class relations. RSA types operate through repression, ISA types
+    through ideology, and Economic types through surplus extraction.
+
+    Values:
+        RSA_EXECUTIVE: Government, administration
+        RSA_MILITARY: Armed forces
+        RSA_POLICE: Police departments
+        RSA_JUDICIAL: Courts
+        RSA_CARCERAL: Prisons
+        ISA_EDUCATIONAL: Schools, universities
+        ISA_RELIGIOUS: Churches, religious orders
+        ISA_FAMILY: The family as institution
+        ISA_LEGAL: Legal system as ideology
+        ISA_POLITICAL: Electoral system, party system
+        ISA_COMMUNICATIONS: Media
+        ISA_CULTURAL: Arts, sports, cultural bodies
+        ECONOMIC_PRODUCTIVE: Firms, factories
+        ECONOMIC_FINANCIAL: Banks, exchanges
+        ECONOMIC_EXTRACTIVE: Mining, resource firms
+    """
+
+    RSA_EXECUTIVE = "rsa_executive"
+    RSA_MILITARY = "rsa_military"
+    RSA_POLICE = "rsa_police"
+    RSA_JUDICIAL = "rsa_judicial"
+    RSA_CARCERAL = "rsa_carceral"
+    ISA_EDUCATIONAL = "isa_educational"
+    ISA_RELIGIOUS = "isa_religious"
+    ISA_FAMILY = "isa_family"
+    ISA_LEGAL = "isa_legal"
+    ISA_POLITICAL = "isa_political"
+    ISA_COMMUNICATIONS = "isa_communications"
+    ISA_CULTURAL = "isa_cultural"
+    ECONOMIC_PRODUCTIVE = "economic_productive"
+    ECONOMIC_FINANCIAL = "economic_financial"
+    ECONOMIC_EXTRACTIVE = "economic_extractive"
+
+
+class SocialFunction(StrEnum):
+    """Population need served by an institution (Feature 040).
+
+    Each institution carries a social function representing a material
+    need of the population. Institutions persist as long as their social
+    function is needed and unmet by alternatives.
+
+    Values:
+        EMPLOYMENT: Job provision
+        EDUCATION: Knowledge transmission
+        WORSHIP: Meaning-making, spiritual community
+        POLICING: Public safety (however distorted)
+        HEALTHCARE: Medical care provision
+        CARE: Dependent care (childcare, eldercare)
+        ADJUDICATION: Dispute resolution, justice
+        COMMUNICATION: Information dissemination
+        LEGISLATION: Law-making
+        INCARCERATION: Detention and punishment
+        MILITARY_DEFENSE: National defense
+        FINANCIAL_INTERMEDIATION: Banking, credit, investment
+    """
+
+    EMPLOYMENT = "employment"
+    EDUCATION = "education"
+    WORSHIP = "worship"
+    POLICING = "policing"
+    HEALTHCARE = "healthcare"
+    CARE = "care"
+    ADJUDICATION = "adjudication"
+    COMMUNICATION = "communication"
+    LEGISLATION = "legislation"
+    INCARCERATION = "incarceration"
+    MILITARY_DEFENSE = "military_defense"
+    FINANCIAL_INTERMEDIATION = "financial_intermediation"
+
+
+class ClassInscription(StrEnum):
+    """Class inscription of an institution (Feature 040).
+
+    More resistant to change than Organization.class_character. Changes
+    only through sustained class struggle on coefficient timescale
+    (alpha-smoothed).
+
+    Values:
+        BOURGEOIS: Serves ruling class interests
+        PROLETARIAN: Serves working class interests
+        CONTESTED: Actively contested terrain
+    """
+
+    BOURGEOIS = "bourgeois"
+    PROLETARIAN = "proletarian"
+    CONTESTED = "contested"
+
+
+class RulingClassFraction(StrEnum):
+    """Ruling-class faction within institutional balance of forces (Feature 040).
+
+    Three-value classification of competing strategies for maintaining
+    class rule. The hegemonic fraction (highest weight) modulates
+    housed Organization OODA orientation.
+
+    Values:
+        LIBERAL_TECHNOCRATIC: Consent-based rule, slow escalation
+        REVANCHIST_FASCIST: Naked repression, fast escalation
+        INSTITUTIONALIST_BONAPARTIST: Self-preservation, institutional independence
+    """
+
+    LIBERAL_TECHNOCRATIC = "liberal_technocratic"
+    REVANCHIST_FASCIST = "revanchist_fascist"
+    INSTITUTIONALIST_BONAPARTIST = "institutionalist_bonapartist"
+
+
+class LifecyclePhase(StrEnum):
+    """D-P-D' lifecycle phase assignment for institutions (Feature 040).
+
+    Optional phase assignment determining which stage of the lifecycle
+    circuit an institution primarily mediates.
+
+    Values:
+        D_DEPENDENT: Youth/dependent -- controls ideological transmission
+        P_PRODUCTIVE: Adult/productive -- where surplus extraction occurs
+        D_PRIME_DEPENDENT: Elder/dependent -- the legitimation bargain
+    """
+
+    D_DEPENDENT = "d_dependent"
+    P_PRODUCTIVE = "p_productive"
+    D_PRIME_DEPENDENT = "d_prime_dependent"

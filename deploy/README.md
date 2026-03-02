@@ -55,10 +55,7 @@ cd hetzner-vps-provision
 ```bash
 cd terraform
 
-# Create terraform.tfvars from the committed template
-cp terraform.tfvars.example terraform.tfvars
-
-# Or recreate the file manually with this full example
+# Create terraform.tfvars
 cat > terraform.tfvars <<EOF
 # Hetzner API Token
 hcloud_token = "your_hetzner_api_token_here"

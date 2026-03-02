@@ -97,6 +97,7 @@ Consciousness & Organization
    :maxdepth: 1
 
    organization-model
+   institution-model
    ooda-loop-system
    george-jackson-model
    community-hypergraph

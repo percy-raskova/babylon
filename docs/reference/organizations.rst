@@ -93,11 +93,14 @@ All four subtypes inherit these 15 fields. Frozen (immutable).
    * - ``is_institution``
      - ``bool``
      - ``False``
-     - Has crystallized into institution (Constitution I.16).
+     - **Deprecated** (Feature 040). Use ``Institution`` entity instead.
+       Emits ``DeprecationWarning`` when set to ``True``.
    * - ``institutional_persistence``
      - ``float | None``
      - ``None``
-     - Resistance to dissolution [0, 1]. Only valid when ``is_institution=True``.
+     - **Deprecated** (Feature 040). Use ``Institution.formalization_level``
+       and ``Institution.institutional_inertia``. Emits ``DeprecationWarning``
+       when set to a non-None value.
    * - ``member_node_ids``
      - ``list[str]``
      - ``[]``
@@ -884,6 +887,7 @@ See Also
 --------
 
 - :doc:`/concepts/organization-model` -- Why the model is structured this way
+- :doc:`/reference/institutions` -- Institution Base Model reference (Feature 040)
 - :doc:`/reference/data-models` -- SocialClass and Territory models
 - :doc:`/reference/formulas` -- Consciousness drift and solidarity formulas
 - :py:mod:`babylon.organizations` -- Source code

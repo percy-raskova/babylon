@@ -185,6 +185,10 @@ Node Types
    * - ``key_figure``
      - kf_*, kf-*
      - organization_id, role, structural_importance (Feature 031)
+   * - ``institution``
+     - inst_*, inst-*
+     - apparatus_type, social_function, class_inscription, internal_balance,
+       formalization_level, legitimacy (Feature 040)
 
 Edge Types
 ~~~~~~~~~~
@@ -229,6 +233,12 @@ Edge Types
    * - ``PRESENCE``
      - organization → territory
      - Operational footprint (Feature 031)
+   * - ``JURISDICTION``
+     - legal_framework → territory
+     - Legal jurisdiction boundary (Feature 039)
+   * - ``HOUSES``
+     - institution → organization
+     - Institution housing relationship (Feature 040)
 
 Entity Collections
 ------------------

@@ -55,6 +55,20 @@ Organization Base Model (Feature 031)
 
    organizations
 
+Institution Base Model (Feature 040)
+------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   institutions
+
+Entity models (Institution, InternalBalanceOfForces, ReproductionMechanism,
+SpawningBlueprint, InstitutionOrgRelation), three event types, four pure
+functions (structural selectivity, balance dynamics, OODA effects, community
+embeddedness), five enums, graph integration, and InstitutionDefines
+configuration.
+
 OODA Loop System (Feature 032)
 -------------------------------
 

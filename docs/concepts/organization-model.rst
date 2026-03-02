@@ -212,6 +212,7 @@ See Also
 --------
 
 - :doc:`/reference/organizations` -- Complete API reference
+- :doc:`/concepts/institution-model` -- Institution layer above organizations (Feature 040)
 - :doc:`/concepts/george-jackson-model` -- Consciousness formation theory
 - :doc:`/concepts/community-hypergraph` -- Hyperedge community layer
 - :doc:`/concepts/topology` -- Percolation theory and network metrics

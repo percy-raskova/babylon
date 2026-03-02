@@ -24,6 +24,18 @@ This specification covers:
 
 ---
 
+## Clarifications
+
+### Session 2026-03-02
+
+- Q: How many actions does the state execute per tick? → A: One action per tick, but designed for easy extensibility to multi-action mechanics later (e.g., budget-constrained variable count or per-verb-category parallelism)
+- Q: What can the player observe about state internals (faction balance, budget, threads)? → A: Indirect signals only (verb frequency shifts, narrative tone, public budget patterns), with player actions (COUNTER_INTEL, state apparatus infiltration) that can reveal internals. A "God Mode" debug toggle exposes all state internals (faction weights, budget, thread allocation) for testing and development.
+- Q: How large is the attention thread pool and how does it scale? → A: Thread pool size is derived from apparatus capacity — each StateApparatus contributes threads based on its surveillance_capacity attribute. FUND and STAFF can grow the pool. Detroit 2010 baseline: ~5-8 total threads across all apparatus.
+- Q: Should "measurably" in success criteria define minimum effect sizes? → A: Yes. Minimum effect sizes defined as tunable GameDefines parameters. Starting default floor: at least 0.02 faction weight shift per triggering event. Statistical validation: detectable by 2-sided t-test at p<0.05 over 100 seeded runs.
+- Q: What is the lifecycle of LegalFramework entities created by LEGISLATE? → A: All legislation (including EMERGENCY_POWERS) persists until explicitly revoked by a LEGISLATE(REVOKE) action. No automatic expiry. Revocation carries its own legitimacy cost/gain depending on context.
+
+---
+
 ## User Scenarios & Testing
 
 ### User Story 1 — State Responds to Player Organizing with Faction-Weighted Verbs (Priority: P1)
@@ -135,7 +147,7 @@ ______________________________________________________________________
 - What happens when a territory has no remaining population after DISPLACE? (Territory enters ABANDONED state; no further DEVELOP actions possible; available for SCORCHED_EARTH or recolonization)
 - What happens when fascist convergence threshold is reached and then conditions revert? (Fascism is a near-absorbing state — reversion requires external intervention or catastrophic state failure, modeled as very high reversion resistance)
 - What happens when the player infiltrates a state apparatus? (Counter-action to AUDIT: player INFILTRATE into StateApparatus degrades its OODA, reveals attention thread targets, provides early warning of REPRESS actions)
-- What happens when LEGISLATE (EMERGENCY_POWERS) expires? (Duration-limited; when expired, capabilities granted by emergency powers are revoked; thread capacity returns to baseline; LIQUIDATE becomes unavailable in core territories again)
+- What happens when LEGISLATE (EMERGENCY_POWERS) is revoked? (LEGISLATE(REVOKE) removes the LegalFramework entity; capabilities granted by emergency powers are revoked; thread capacity returns to baseline; LIQUIDATE becomes unavailable in core territories again. Revocation carries legitimacy implications — revoking may restore legitimacy but signals weakness)
 
 ---
 
@@ -145,7 +157,7 @@ ______________________________________________________________________
 
 #### Subsystem A: Attention Thread System
 
-- **FR-A01**: System MUST model state intelligence as a finite set of attention threads, each tracking a specific target (organization, territory, or community) with accumulated intelligence that grows over time
+- **FR-A01**: System MUST model state intelligence as a finite set of attention threads, each tracking a specific target (organization, territory, or community) with accumulated intelligence that grows over time. Thread pool size MUST be derived from the sum of surveillance_capacity across all StateApparatus nodes; FUND and STAFF actions that increase surveillance_capacity grow the pool. Detroit 2010 baseline: ~5-8 total threads
 - **FR-A02**: System MUST implement the observation gap — state analysis operates on G_observed (always incomplete, always distorted) not G_actual, with distortions including edge type conflation, temporal flattening, informant incentive distortion, cash invisibility, and face-to-face blindness
 - **FR-A03**: System MUST implement Sparrow's network analysis algorithms on G_observed: centrality computation (degree, betweenness, closeness, eigenvector), equivalence class computation via numerical signatures, singleton identification, and minimal cutset detection
 - **FR-A04**: System MUST implement meta-OODA for thread allocation — deciding which targets get threads based on heat level, collective_identity of communities the target operates in, organization size, and recent player actions
@@ -164,7 +176,7 @@ ______________________________________________________________________
 - **FR-B06**: System MUST implement REPRESS sub-verbs: SURVEIL (passive intelligence), INFILTRATE (insert corrupted node), RAID (kinetic action), PROSECUTE (legal warfare), LIQUIDATE (assassination/disappearance)
 - **FR-B07**: System MUST implement WITHDRAW sub-verbs: STRATEGIC_WITHDRAWAL (concede territory with hollowing), TACTICAL_RETREAT (temporary repositioning), SCORCHED_EARTH (active destruction)
 - **FR-B08**: System MUST enforce asymmetry — the player cannot execute any state verb; the state cannot execute player-specific verbs (Political Education generating CL, Mutual Aid creating SOLIDARITY edges from scratch)
-- **FR-B09**: System MUST implement LEGISLATE effects that modify game rules: SURVEILLANCE_AUTH increases observation ceiling, ANTI_PROTEST raises Heat generation for PROTEST actions, EMERGENCY_POWERS temporarily doubles thread capacity at severe legitimacy cost, ZONING enables DEVELOP in target territory
+- **FR-B09**: System MUST implement LEGISLATE effects that modify game rules: SURVEILLANCE_AUTH increases observation ceiling, ANTI_PROTEST raises Heat generation for PROTEST actions, EMERGENCY_POWERS doubles thread capacity at severe legitimacy cost, ZONING enables DEVELOP in target territory. All legislation persists until explicitly revoked via LEGISLATE(REVOKE); there is no automatic expiry. System MUST implement REVOKE as a LEGISLATE sub-action that removes an active LegalFramework entity
 - **FR-B10**: System MUST implement LIQUIDATE availability constraints: requires EMERGENCY_POWERS OR low international visibility territory OR prior terrorist designation; in core territories with high media presence, LIQUIDATE carries extreme legitimacy cost
 - **FR-B11**: System MUST implement NEGOTIATE as a resolution mechanic within WITHDRAW and CO_OPT — not a standalone verb but a negotiation phase when the state has decided to concede or bribe
 
@@ -185,12 +197,14 @@ ______________________________________________________________________
 - **FR-D02**: Finance-Capital objective MUST maximize: extraction efficiency, profit rate, stability; minimize: market disruption, uncertainty
 - **FR-D03**: Security-State objective MUST maximize: threat suppression, apparatus size, surveillance coverage; minimize: percolation ratio, maximum collective_identity
 - **FR-D04**: Settler-Populist objective MUST maximize: settler property values, cultural homogeneity, imperial rent to base; minimize: cross-line solidarity, demographic change in settler territories
-- **FR-D05**: System MUST implement the state OODA decision flow per tick: OBSERVE (read world state within intelligence limits), ORIENT (apply factional lens), DECIDE (score candidate actions against factional objective), ACT (execute in Layer 1)
+- **FR-D05**: System MUST implement the state OODA decision flow per tick: OBSERVE (read world state within intelligence limits), ORIENT (apply factional lens), DECIDE (score candidate actions against factional objective), ACT (execute exactly one action in Layer 1). The action-per-tick count MUST be a configurable parameter (default: 1) to allow future expansion to multi-action mechanics without architectural changes
 - **FR-D06**: System MUST implement escalation logic — state prefers cheap, low-visibility actions and escalates only when cheaper options fail: PROPAGANDIZE before BRIBE before SURVEIL before RAID before PROSECUTE before LIQUIDATE
 - **FR-D07**: System MUST implement de-escalation logic — when player pressure subsides, state prefers cheaper verbs; when CO-OPT succeeds, state de-escalates; budget pressure forces cheaper options
 - **FR-D08**: System MUST be deterministic given world state and RNG seed; no external AI service for state decisions in stub implementation
 - **FR-D09**: System MUST implement the NPCDecisionStrategy protocol (hot-swappable) allowing future replacement of rule-based AI with LLM-backed decision function
 - **FR-D10**: System MUST implement per-org-type AI: StateApparatus (verb taxonomy), Business (employ/lobby), CivilSocietyOrg (varies by consciousness_tendency), PoliticalFaction (varies by consciousness_strategy)
+- **FR-D11**: System MUST surface state behavior to the player only through indirect signals: observable verb selections, media narrative shifts, public budget records, and territory-level effects. Player actions (COUNTER_INTEL, infiltrating state apparatus) MUST be able to reveal deeper internals (faction weights, thread targets) proportional to intelligence success
+- **FR-D12**: System MUST implement a God Mode debug toggle that, when enabled, exposes all state internals to the player (faction weights, budget allocation, attention thread targets and intel_completeness, AI decision scoring) for testing and development purposes
 
 #### Subsystem E: Organization-Territory Integration
 
@@ -229,15 +243,15 @@ ______________________________________________________________________
 ### Measurable Outcomes
 
 - **SC-001**: All six top-level state verbs and all sub-verbs are executable by the state AI in a 52-tick test run; no verb category goes unused for 52 consecutive ticks
-- **SC-002**: Changing FactionBalance weights produces measurably different state verb selections over a 52-tick run — Security-State dominance increases REPRESS frequency by at least 2x compared to Finance-Capital dominance
+- **SC-002**: Changing FactionBalance weights produces different state verb selections over a 52-tick run (detectable at p<0.05 over 100 seeded runs) — Security-State dominance increases REPRESS frequency by at least 2x compared to Finance-Capital dominance
 - **SC-003**: Given rising player Heat and collective_identity, the state AI escalates from PROPAGANDIZE through SURVEIL through RAID in a legible, observable sequence within 20 ticks; given declining Heat, de-escalation occurs within 8 ticks
 - **SC-004**: When fascist convergence conditions are met, the state AI transitions to qualitatively different behavior within 4 ticks — REPRESS budget share exceeds 50%, DEVELOP shifts to displacement-oriented sub-verbs
 - **SC-005**: The state AI respects budget limits — when budget reaches zero, all remaining actions in that tick are zero-cost or deferred; no budget violations occur across 52 ticks
 - **SC-006**: Attention thread intel_completeness grows monotonically per thread (absent counter-intel); after 12 ticks, a MONITORING thread on a star-topology org identifies the hub as a singleton with probability > 0.8
 - **SC-007**: Cell topology organizations have intel_completeness at least 30% lower than equivalent star topology organizations after 12 ticks of surveillance, validating compartmentalization as a defensive mechanic
 - **SC-008**: INVEST in a territory measurably changes economic indicators within 8 ticks; NEGLECT measurably degrades territory within 12 ticks; DISPLACE removes at least 50% of target population from territory
-- **SC-009**: PROPAGANDIZE (WE_ARE_ALL_AMERICANS) measurably decreases collective_identity in target community within 4 ticks; INCORPORATE removes targeted KeyFigure with probability inversely proportional to org Coherence and community collective_identity
-- **SC-010**: Player-generated Heat measurably increases Security-State faction weight within 4 ticks; player disruption of extraction measurably shifts Finance-Capital response within 8 ticks; player legitimacy wins increase Settler-Populist reaction within 8 ticks
+- **SC-009**: PROPAGANDIZE (WE_ARE_ALL_AMERICANS) decreases collective_identity in target community by at least the minimum effect floor (default: 0.02 per application, tunable via GameDefines) within 4 ticks; INCORPORATE removes targeted KeyFigure with probability inversely proportional to org Coherence and community collective_identity
+- **SC-010**: Player-generated Heat increases Security-State faction weight by at least the minimum effect floor (default: 0.02 per event, tunable via GameDefines) within 4 ticks; player disruption of extraction shifts Finance-Capital response by at least the minimum effect floor within 8 ticks; player legitimacy wins increase Settler-Populist reaction by at least the minimum effect floor within 8 ticks. All effects detectable by 2-sided t-test at p<0.05 over 100 seeded runs
 
 ---
 
@@ -288,7 +302,7 @@ Rising collective_identity within a community is the signal that triggers state 
 
 **STAFF**: Hire and train personnel. Draws from ADULT population. Creates KeyFigure nodes within apparatus. Expands OODA capacity. Cost: budget + training time + labor pool draw.
 
-**LEGISLATE**: Create legal frameworks. Modifies game rules within jurisdiction scope. Legitimacy cost proportional to severity. SURVEILLANCE_AUTH, ANTI_PROTEST, EMERGENCY_POWERS, ZONING, TAX_INCENTIVE, LABOR_REGULATION.
+**LEGISLATE**: Create legal frameworks. Modifies game rules within jurisdiction scope. Legitimacy cost proportional to severity. Sub-actions: SURVEILLANCE_AUTH, ANTI_PROTEST, EMERGENCY_POWERS, ZONING, TAX_INCENTIVE, LABOR_REGULATION, REVOKE. All legislation persists until explicitly revoked via LEGISLATE(REVOKE); revocation carries its own legitimacy cost/gain.
 
 **AUDIT**: Internal apparatus review. Detects inefficiency, corruption, infiltration. Three depths: ROUTINE (1 tick, gross issues), THOROUGH (4 ticks, moderate infiltration), DEEP (12 ticks, sophisticated infiltration, temporarily reduces operational capacity).
 

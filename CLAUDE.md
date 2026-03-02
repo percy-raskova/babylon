@@ -705,6 +705,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol. No new database tables. ClassSystemDefines persisted in `defines.yaml`. (038-unified-class-system)
 - Python 3.12+ + Pydantic 2.x (frozen models, discriminated unions), NetworkX 3.x (GraphProtocol via NetworkXAdapter), XGI 0.10 (hypergraph community memberships) (039-state-apparatus-ai)
 - In-memory via GraphProtocol. No new database tables. State apparatus AI state persists via WorldState serialization. AttentionThread and FactionBalance stored as graph node attributes or context persistent data. (039-state-apparatus-ai)
+- Python 3.12+ + Pydantic 2.x (frozen models, validators), NetworkX 3.x (GraphProtocol), XGI 0.10 (community embeddedness queries) (040-institution-base-model)
+- In-memory via GraphProtocol. No new database tables. Institution state persists via WorldState serialization (`_node_type="institution"`). (040-institution-base-model)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

@@ -4,6 +4,8 @@
 
 import { create } from "zustand";
 
+export type BottomTab = "timeseries" | "events" | "graph";
+
 interface UIState {
   /** Currently selected node (entity/org/institution) ID. */
   selectedNodeId: string | null;
@@ -17,14 +19,14 @@ interface UIState {
   /** Bottom panel collapsed state. */
   bottomPanelOpen: boolean;
   /** Active bottom tab. */
-  bottomTab: "timeseries" | "events" | "graph";
+  bottomTab: BottomTab;
 
   setSelectedNode: (id: string | null) => void;
   setSelectedHex: (id: string | null) => void;
   setHoveredNode: (id: string | null) => void;
   toggleRightPanel: () => void;
   toggleBottomPanel: () => void;
-  setBottomTab: (tab: "timeseries" | "events" | "graph") => void;
+  setBottomTab: (tab: BottomTab) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({

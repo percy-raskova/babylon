@@ -1,14 +1,14 @@
 /**
  * Root application component.
  *
- * Manages auth state and routes between Login, GameList, and GameView.
+ * Manages auth state and routes between Login, GameList, and GameShell.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { get, post } from "@/api/client";
 import { LoginPage } from "@/components/LoginPage";
 import { GameList } from "@/components/GameList";
-import { GameView } from "@/components/GameView";
+import { GameShell } from "@/components/layout/GameShell";
 import type { AuthState } from "@/types/game";
 
 type View = { page: "login" } | { page: "games" } | { page: "game"; id: string };
@@ -57,9 +57,21 @@ export default function App() {
     );
   }
 
+  // GameShell is a full-viewport layout with its own TopBar (includes nav + logout)
+  if (view.page === "game" && auth?.is_authenticated) {
+    return (
+      <GameShell
+        gameId={view.id}
+        username={auth.username ?? ""}
+        onBack={handleBackToGames}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
-      {auth?.is_authenticated && (
+      {auth?.is_authenticated && view.page === "games" && (
         <nav className="flex shrink-0 items-center justify-between border-b border-soot bg-void px-6 py-3">
           <span className="text-base font-bold tracking-[4px] text-gold">
             BABYLON
@@ -78,9 +90,6 @@ export default function App() {
 
       {view.page === "login" && <LoginPage onLogin={handleLogin} />}
       {view.page === "games" && <GameList onSelectGame={handleSelectGame} />}
-      {view.page === "game" && (
-        <GameView gameId={view.id} onBack={handleBackToGames} />
-      )}
     </div>
   );
 }

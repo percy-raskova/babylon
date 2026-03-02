@@ -1,5 +1,9 @@
 #cloud-config
 users:
+  - default
+  - name: root
+    ssh_authorized_keys:
+      - ${ssh_public_key}
   - name: deploy
     groups: sudo
     shell: /bin/bash
@@ -16,7 +20,7 @@ packages:
 write_files:
   - path: /etc/ssh/sshd_config.d/99-hardening.conf
     content: |
-      PermitRootLogin no
+      PermitRootLogin prohibit-password
       PasswordAuthentication no
       PubkeyAuthentication yes
 

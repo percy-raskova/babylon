@@ -699,6 +699,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol. No new database tables. Infrastructure entities stored separately from WorldState.relationships. Natural Earth SQLite (423MB) read-only external data source. FCC broadband data via existing FCCBroadbandLoader. (036-infrastructure-topology)
 - Python 3.12+ + psycopg 3.x + psycopg_pool (bulk simulation writes), Django 5.x (game management ORM), PostGIS (spatial queries on hex geometries), pgvector (semantic search replacing ChromaDB), PyArrow (Parquet export), boto3/s3fs (R2 upload), DuckDB (cross-game analytics over archived Parquet) (037-postgres-runtime-db)
 - PostgreSQL 16+ (runtime state), SQLite (read-only reference `marxist-data-3NF.sqlite`), Cloudflare R2 (archived Parquet files) (037-postgres-runtime-db)
+- Python 3.12+ (existing project stack) + Pydantic 2.x (frozen models, validators), NetworkX 3.x (graph queries), XGI 0.10 (hypergraph memberships) (034-ternary-consciousness)
+- In-memory via GraphProtocol. Postgres schema migration for persistence (r, l, f columns). No new database tables. (034-ternary-consciousness)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

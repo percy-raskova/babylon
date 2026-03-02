@@ -19,6 +19,10 @@ from babylon.economics.lifecycle.cohort_dynamics import (
     CohortDynamicsCalculator,
     DefaultCohortDynamicsCalculator,
 )
+from babylon.economics.lifecycle.dispossession import (
+    DispossessionResult,
+    compute_crisis_dispossession,
+)
 from babylon.economics.lifecycle.dual_circuit import (
     DefaultDualCircuitCalculator,
     DualCircuitCalculator,
@@ -46,6 +50,7 @@ __all__ = [
     # Types
     "ClassMobilityParams",
     "DPDState",
+    "DispossessionResult",
     "InheritanceFlow",
     "LegitimationState",
     # Calculators (Protocol + Default)
@@ -59,4 +64,6 @@ __all__ = [
     "DefaultLegitimationCalculator",
     "ClassMobilityCalculator",
     "DefaultClassMobilityCalculator",
+    # Functions (Feature 038)
+    "compute_crisis_dispossession",
 ]

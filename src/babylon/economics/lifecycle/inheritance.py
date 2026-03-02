@@ -3,17 +3,26 @@
 Models Pareto-distributed intergenerational wealth transfer when D' cohort
 members die. Deducts end-of-life care costs before computing net inheritance.
 
+Feature 038 Extension:
+    Class-aware inheritance scaling differentiates transfer amounts by
+    ClassPosition. LA households transfer home equity, PROLETARIAT near-zero,
+    LUMPENPROLETARIAT zero. Foreclosure severs the inheritance mechanism.
+
 See Also:
     :mod:`babylon.formulas.lifecycle`: compute_pareto_gini pure function.
     ``specs/030-dpd-lifecycle-circuit/spec.md`` FR-007, FR-008, FR-013.
+    ``specs/038-unified-class-system/spec.md`` FR-008, FR-010.
 """
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from babylon.economics.lifecycle.types import DPDState, InheritanceFlow
 from babylon.formulas.lifecycle import compute_pareto_gini
+
+if TYPE_CHECKING:
+    from babylon.economics.melt.types import ClassPosition
 
 
 class InheritanceCalculator(Protocol):
@@ -37,6 +46,29 @@ class InheritanceCalculator(Protocol):
         """
         ...
 
+    def compute_class_aware_inheritance(
+        self,
+        dpd_state: DPDState,
+        class_position: ClassPosition,
+        pareto_alpha: float,
+        care_cost_fraction: float,
+        *,
+        foreclosed: bool = False,
+    ) -> InheritanceFlow | None:
+        """Compute inheritance scaled by class position (FR-008).
+
+        Args:
+            dpd_state: Current population/wealth state.
+            class_position: ClassPosition of the household.
+            pareto_alpha: Pareto shape parameter for wealth distribution.
+            care_cost_fraction: Fraction of wealth consumed by D' care.
+            foreclosed: If True, inheritance mechanism is severed.
+
+        Returns:
+            InheritanceFlow scaled by class position, or None if no deaths.
+        """
+        ...
+
     def apply_dispossession_reduction(
         self,
         dpd_state: DPDState,
@@ -52,6 +84,18 @@ class InheritanceCalculator(Protocol):
             New DPDState with reduced wealth_d_prime (floored at 0).
         """
         ...
+
+
+# Class-position scaling factors for inheritance.
+# BOURGEOISIE gets full estate, LA gets home equity (primary vehicle),
+# PB gets significant capital, PROLETARIAT minimal, LUMPEN zero.
+_CLASS_INHERITANCE_SCALE: dict[str, float] = {
+    "BOURGEOISIE": 1.0,
+    "PETIT_BOURGEOISIE": 0.7,
+    "LABOR_ARISTOCRACY": 0.5,
+    "PROLETARIAT": 0.05,
+    "LUMPENPROLETARIAT": 0.0,
+}
 
 
 class DefaultInheritanceCalculator:
@@ -93,6 +137,52 @@ class DefaultInheritanceCalculator:
             care_consumed=care_consumed,
             net_inheritance=net_inheritance,
             inheritance_gini=inheritance_gini,
+        )
+
+    def compute_class_aware_inheritance(
+        self,
+        dpd_state: DPDState,
+        class_position: ClassPosition,
+        pareto_alpha: float,
+        care_cost_fraction: float,
+        *,
+        foreclosed: bool = False,
+    ) -> InheritanceFlow | None:
+        """Compute inheritance scaled by class position.
+
+        Foreclosure severs the inheritance mechanism entirely (returns zero).
+        Otherwise, the base inheritance is scaled by a class-position factor:
+        BOURGEOISIE=1.0, PB=0.7, LA=0.5, PROLETARIAT=0.05, LUMPEN=0.0.
+        """
+        # Compute base flow first
+        base_flow = self.compute_inheritance_flow(
+            dpd_state=dpd_state,
+            pareto_alpha=pareto_alpha,
+            care_cost_fraction=care_cost_fraction,
+        )
+        if base_flow is None:
+            return None
+
+        # Foreclosure severs the inheritance mechanism
+        if foreclosed:
+            return InheritanceFlow(
+                total_transferred=base_flow.total_transferred,
+                care_consumed=base_flow.total_transferred,
+                net_inheritance=0.0,
+                inheritance_gini=base_flow.inheritance_gini,
+            )
+
+        # Scale by class position
+        scale = _CLASS_INHERITANCE_SCALE.get(class_position.name, 0.0)
+        scaled_net = base_flow.net_inheritance * scale
+        # Care consumed absorbs the rest (class-mediated care/debt burden)
+        scaled_care = base_flow.total_transferred - scaled_net
+
+        return InheritanceFlow(
+            total_transferred=base_flow.total_transferred,
+            care_consumed=scaled_care,
+            net_inheritance=scaled_net,
+            inheritance_gini=base_flow.inheritance_gini,
         )
 
     def apply_dispossession_reduction(

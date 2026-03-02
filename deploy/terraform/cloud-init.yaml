@@ -1,78 +1,24 @@
-# cloud-config
-# Cloud-init configuration for Hetzner VPS
+#cloud-config
+users:
+  - name: deploy
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${ssh_public_key}
 
-hostname: ${hostname}
-manage_etc_hosts: true
-
-# Update packages on first boot
 package_update: true
-package_upgrade: true
-
-# Install essential packages
 packages:
-- curl
-- wget
-- git
-- vim
-- htop
-- ufw
-- fail2ban
-- docker.io
-- docker-compose
+  - python3
+  - python3-apt
 
-# Configure UFW firewall (basic setup)
+# Harden SSH immediately — don't wait for Ansible
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+
 runcmd:
-# Update system
-- apt-get update
-- apt-get upgrade -y
-
-# Configure UFW
-- ufw --force enable
-- ufw default deny incoming
-- ufw default allow outgoing
-- ufw allow ssh
-- ufw allow http
-- ufw allow https
-
-# Configure fail2ban
-- systemctl enable fail2ban
-- systemctl start fail2ban
-
-# Enable and start Docker
-- systemctl enable docker
-- systemctl start docker
-
-# Add Docker group permissions
-- usermod -aG docker root
-
-# Disable password authentication
-- sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-- sed -i 's/^#PasswordAuthentication no/PasswordAuthentication no/' /etc/ssh/sshd_config
-- systemctl restart sshd
-
-# Set timezone
-- timedatectl set-timezone Asia/Jakarta
-
-# Enable automatic security updates
-- apt-get install -y unattended-upgrades
-- dpkg-reconfigure -plow unattended-upgrades
-
-# Configure SSH
-ssh_pwauth: false
-disable_root: false
-
-# System configuration
-timezone: Asia/Jakarta
-locale: en_US.UTF-8
-
-# Final message
-final_message: |
-  Cloud-init completed successfully!
-  Server: ${hostname}
-
-  Docker installed and enabled
-  Firewall configured (UFW)
-  Fail2ban enabled
-  SSH hardened (key-only authentication)
-
-  The system is ready for Ansible configuration.
+  - systemctl restart sshd

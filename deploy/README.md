@@ -35,6 +35,8 @@ ______________________________________________________________________
 
 - [Hetzner Cloud Account](https://www.hetzner.com/cloud)
 - API Token from Hetzner Cloud Console
+- [Cloudflare Account](https://dash.cloudflare.com/) with zone access
+- API Token with DNS, SSL/TLS zone settings, and R2 permissions
 
 ______________________________________________________________________
 
@@ -53,24 +55,34 @@ cd hetzner-vps-provision
 ```bash
 cd terraform
 
-# Create terraform.tfvars
+# Create terraform.tfvars from the committed template
+cp terraform.tfvars.example terraform.tfvars
+
+# Or recreate the file manually with this full example
 cat > terraform.tfvars <<EOF
 # Hetzner API Token
 hcloud_token = "your_hetzner_api_token_here"
 
+# Cloudflare
+cloudflare_api_token = "your_cloudflare_api_token_here"
+cloudflare_account_id = "your_cloudflare_account_id_here"
+cloudflare_zone_id = "your_cloudflare_zone_id_here"
+cloudflare_zone_name = "percypedia.biz"
+cloudflare_record_name = "babylon"
+
 # Project Configuration
-project_name = "my-project"
+project_name = "babylon"
 environment  = "production"
 
 # SSH Configuration
-ssh_key_name         = "terraform-key"
+ssh_key_name         = "babylon-ssh-key"
 ssh_public_key_path  = "~/.ssh/id_ed25519.pub"
 
 # Server Configuration
 server_count    = 1
-server_type     = "cpx21"     # 3 vCPU, 4GB RAM, 80GB disk
-server_image    = "ubuntu-22.04"
-server_location = "nbg1"      # Nuremberg, Germany
+server_type     = "cx32"      # 4 vCPU, 8GB RAM, 80GB disk
+server_image    = "debian-12"
+server_location = "ash"       # Ashburn, Virginia
 
 # Security
 ssh_allowed_ips = ["your_ip_here/32"]  # Replace with your IP

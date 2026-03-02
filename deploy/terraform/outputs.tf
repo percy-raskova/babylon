@@ -127,7 +127,7 @@ output "ansible_inventory_yaml" {
 
 output "summary" {
   description = "Deployment summary"
-  value = <<-EOT
+  value       = <<-EOT
     ========================================
     Hetzner VPS Deployment Summary
     ========================================
@@ -158,4 +158,27 @@ output "summary" {
 
     ========================================
   EOT
+}
+
+# ============================================
+# CLOUDFLARE INFORMATION
+# ============================================
+
+output "domain" {
+  description = "Babylon public domain"
+  value       = "${var.cloudflare_record_name}.${var.cloudflare_zone_name}"
+}
+
+output "cloudflare_dns_record_id" {
+  description = "Cloudflare DNS record identifier"
+  value       = cloudflare_dns_record.babylon.id
+}
+
+output "r2_bucket_names" {
+  description = "Cloudflare R2 bucket names"
+  value = {
+    backups   = cloudflare_r2_bucket.backups.name
+    reference = cloudflare_r2_bucket.reference.name
+    archives  = cloudflare_r2_bucket.archives.name
+  }
 }

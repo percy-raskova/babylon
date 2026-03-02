@@ -10,6 +10,34 @@ variable "hcloud_token" {
   sensitive   = true
 }
 
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token"
+  type        = string
+  sensitive   = true
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID used for R2 resources"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for DNS and zone settings"
+  type        = string
+}
+
+variable "cloudflare_zone_name" {
+  description = "Cloudflare zone name"
+  type        = string
+  default     = "percypedia.biz"
+}
+
+variable "cloudflare_record_name" {
+  description = "Subdomain record for Babylon application"
+  type        = string
+  default     = "babylon"
+}
+
 # ============================================
 # PROJECT CONFIGURATION
 # ============================================
@@ -17,7 +45,7 @@ variable "hcloud_token" {
 variable "project_name" {
   description = "Project name (used for resource naming)"
   type        = string
-  default     = "my-project"
+  default     = "babylon"
 
   validation {
     condition     = can(regex("^[a-z0-9-]+$", var.project_name))
@@ -43,7 +71,7 @@ variable "environment" {
 variable "ssh_key_name" {
   description = "Name for the SSH key in Hetzner"
   type        = string
-  default     = "terraform-key"
+  default     = "babylon-ssh-key"
 }
 
 variable "ssh_public_key_path" {
@@ -59,7 +87,7 @@ variable "ssh_public_key_path" {
 variable "ssh_allowed_ips" {
   description = "List of IPs allowed to SSH (CIDR notation)"
   type        = list(string)
-  default     = ["0.0.0.0/0", "::/0"]  # WARNING: Change this in production!
+  default     = ["0.0.0.0/0", "::/0"] # WARNING: Change this in production!
 }
 
 variable "enable_dokploy_port" {
@@ -101,19 +129,19 @@ variable "server_count" {
 variable "server_type" {
   description = "Hetzner server type (cpx11, cpx21, cpx31, etc.)"
   type        = string
-  default     = "cpx21"  # 3 vCPU, 4GB RAM, 80GB disk
+  default     = "cx32" # 4 vCPU, 8GB RAM, 80GB disk
 }
 
 variable "server_image" {
   description = "Server OS image"
   type        = string
-  default     = "ubuntu-22.04"
+  default     = "debian-12"
 }
 
 variable "server_location" {
   description = "Server location (fsn1, nbg1, hel1, ash, hil)"
   type        = string
-  default     = "nbg1"  # Nuremberg, Germany
+  default     = "ash" # Ashburn, Virginia
 
   validation {
     condition     = contains(["fsn1", "nbg1", "hel1", "ash", "hil"], var.server_location)
@@ -152,7 +180,29 @@ variable "private_subnet_ip_range" {
 variable "network_zone" {
   description = "Network zone (eu-central, us-east, us-west)"
   type        = string
-  default     = "eu-central"
+  default     = "us-east"
+}
+
+variable "cloudflare_ipv4_ranges" {
+  description = "Cloudflare IPv4 ranges for origin firewall allowlisting"
+  type        = list(string)
+  default = [
+    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22",
+    "103.31.4.0/22", "141.101.64.0/18", "108.162.192.0/18",
+    "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22",
+    "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+    "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22"
+  ]
+}
+
+variable "cloudflare_ipv6_ranges" {
+  description = "Cloudflare IPv6 ranges for origin firewall allowlisting"
+  type        = list(string)
+  default = [
+    "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32",
+    "2405:b500::/32", "2405:8100::/32", "2a06:98c0::/29",
+    "2c0f:f248::/32"
+  ]
 }
 
 # ============================================

@@ -2,23 +2,17 @@
 # Provisions VPS servers on Hetzner Cloud with proper configuration
 
 terraform {
-  required_version = ">= 1.0"
-
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"
       version = "~> 1.45"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.0"
+    }
   }
-
-  # Optional: Configure remote state backend
-  # backend "s3" {
-  #   bucket = "my-terraform-state"
-  #   key    = "hetzner-vps/terraform.tfstate"
-  #   region = "us-east-1"
-  # }
 }
-
 provider "hcloud" {
   token = var.hcloud_token
 }
@@ -27,7 +21,7 @@ provider "hcloud" {
 # SSH KEY
 # ============================================
 
-resource "hcloud_ssh_key" "default" {
+resource "hcloud_ssh_key" "babylon" {
   name       = var.ssh_key_name
   public_key = file(var.ssh_public_key_path)
 }
@@ -41,35 +35,41 @@ resource "hcloud_firewall" "default" {
 
   # SSH access
   rule {
-    direction = "in"
-    protocol  = "tcp"
-    port      = "22"
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "22"
     source_ips = var.ssh_allowed_ips
   }
 
-  # HTTP
-  rule {
-    direction = "in"
-    protocol  = "tcp"
-    port      = "80"
-    source_ips = ["0.0.0.0/0", "::/0"]
+  # HTTPS from Cloudflare IPv4 ranges
+  dynamic "rule" {
+    for_each = var.cloudflare_ipv4_ranges
+    content {
+      direction  = "in"
+      protocol   = "tcp"
+      port       = "443"
+      source_ips = [rule.value]
+    }
   }
 
-  # HTTPS
-  rule {
-    direction = "in"
-    protocol  = "tcp"
-    port      = "443"
-    source_ips = ["0.0.0.0/0", "::/0"]
+  # HTTPS from Cloudflare IPv6 ranges
+  dynamic "rule" {
+    for_each = var.cloudflare_ipv6_ranges
+    content {
+      direction  = "in"
+      protocol   = "tcp"
+      port       = "443"
+      source_ips = [rule.value]
+    }
   }
 
   # Dokploy (if applicable)
   dynamic "rule" {
     for_each = var.enable_dokploy_port ? [1] : []
     content {
-      direction = "in"
-      protocol  = "tcp"
-      port      = "3000"
+      direction  = "in"
+      protocol   = "tcp"
+      port       = "3000"
       source_ips = var.dokploy_allowed_ips
     }
   }
@@ -78,9 +78,9 @@ resource "hcloud_firewall" "default" {
   dynamic "rule" {
     for_each = var.custom_tcp_ports
     content {
-      direction = "in"
-      protocol  = "tcp"
-      port      = rule.value.port
+      direction  = "in"
+      protocol   = "tcp"
+      port       = rule.value.port
       source_ips = rule.value.allowed_ips
     }
   }
@@ -108,34 +108,16 @@ resource "hcloud_firewall" "default" {
 }
 
 # ============================================
-# NETWORK (Optional - for private networking)
-# ============================================
-
-resource "hcloud_network" "private" {
-  count    = var.enable_private_network ? 1 : 0
-  name     = "${var.project_name}-network"
-  ip_range = var.private_network_ip_range
-}
-
-resource "hcloud_network_subnet" "private" {
-  count        = var.enable_private_network ? 1 : 0
-  network_id   = hcloud_network.private[0].id
-  type         = "cloud"
-  network_zone = var.network_zone
-  ip_range     = var.private_subnet_ip_range
-}
-
-# ============================================
 # VPS SERVERS
 # ============================================
 
 resource "hcloud_server" "vps" {
-  count       = var.server_count
-  name        = "${var.project_name}-${count.index + 1}"
-  server_type = var.server_type
-  image       = var.server_image
-  location    = var.server_location
-  ssh_keys    = [hcloud_ssh_key.default.id]
+  count        = var.server_count
+  name         = "${var.project_name}-${count.index + 1}"
+  server_type  = var.server_type
+  image        = var.server_image
+  location     = var.server_location
+  ssh_keys     = [hcloud_ssh_key.babylon.id]
   firewall_ids = [hcloud_firewall.default.id]
 
   labels = merge(
@@ -149,7 +131,8 @@ resource "hcloud_server" "vps" {
 
   # User data for initial setup
   user_data = templatefile("${path.module}/cloud-init.yaml", {
-    hostname = "${var.project_name}-${count.index + 1}"
+    hostname       = "${var.project_name}-${count.index + 1}"
+    ssh_public_key = file(var.ssh_public_key_path)
   })
 
   # Attach to private network if enabled
@@ -165,6 +148,24 @@ resource "hcloud_server" "vps" {
   lifecycle {
     prevent_destroy = false
   }
+}
+
+# ============================================
+# NETWORK (Optional - for private networking)
+# ============================================
+
+resource "hcloud_network" "private" {
+  count    = var.enable_private_network ? 1 : 0
+  name     = "${var.project_name}-network"
+  ip_range = var.private_network_ip_range
+}
+
+resource "hcloud_network_subnet" "private" {
+  count        = var.enable_private_network ? 1 : 0
+  network_id   = hcloud_network.private[0].id
+  type         = "cloud"
+  network_zone = var.network_zone
+  ip_range     = var.private_subnet_ip_range
 }
 
 # ============================================

@@ -34,7 +34,10 @@ Detroit Validation Case:
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from babylon.config.defines import ClassSystemDefines
 
 
 class WealthProxyCalculator(Protocol):
@@ -235,24 +238,64 @@ class DefaultWealthProxyCalculator:
         homeownership_data: dict[str, float] | None = None,
         precarity_data: dict[str, dict[str, float]] | None = None,
         equity_factor: float | None = None,
+        class_system_defines: ClassSystemDefines | None = None,
+        reservation_fips: set[str] | None = None,
     ) -> None:
         """Initialize with optional data overrides.
 
         Args:
             homeownership_data: Optional dict mapping FIPS to ownership rates
             precarity_data: Optional dict mapping FIPS to precarity indicators
-            equity_factor: Optional override for equity factor calibration
+            equity_factor: Optional override for equity factor calibration.
+                Takes priority over class_system_defines if both provided.
+            class_system_defines: Optional ClassSystemDefines for equity_factor
+                and trust_land_discount. Falls back to GameDefines defaults.
+            reservation_fips: Optional set of FIPS codes for reservation counties
+                where trust_land_discount applies to homeownership rates.
         """
         self._homeownership = (
             homeownership_data if homeownership_data else self._HOMEOWNERSHIP_BY_FIPS.copy()
         )
         self._precarity = precarity_data if precarity_data else self._PRECARITY_BY_FIPS.copy()
-        self._equity_factor = equity_factor if equity_factor else self.EQUITY_FACTOR
+        self._reservation_fips: set[str] = reservation_fips if reservation_fips else set()
+
+        # Priority: explicit equity_factor > class_system_defines > class constant
+        if equity_factor is not None:
+            self._equity_factor = equity_factor
+        elif class_system_defines is not None:
+            self._equity_factor = class_system_defines.equity_factor
+        else:
+            self._equity_factor = self.EQUITY_FACTOR
+
+        # trust_land_discount from defines (only used for reservation counties)
+        if class_system_defines is not None:
+            self._trust_land_discount = class_system_defines.trust_land_discount
+        else:
+            self._trust_land_discount = 1.0  # No discount by default
+
+    def _effective_homeownership(self, fips: str, raw_rate: float) -> float:
+        """Apply trust_land_discount if FIPS is a reservation county.
+
+        Args:
+            fips: 5-digit FIPS code for county.
+            raw_rate: Raw homeownership rate from data.
+
+        Returns:
+            Effective homeownership rate after any reservation discount.
+        """
+        if fips in self._reservation_fips:
+            return raw_rate * self._trust_land_discount
+        return raw_rate
 
     def estimate_la_share(self, fips: str, year: int) -> float:
         """Estimate Labor Aristocracy share from home ownership proxy.
 
-        Formula: LA_share = homeownership_rate * equity_factor
+        Formula: LA_share = effective_homeownership * equity_factor
+
+        For reservation counties (FIPS in reservation_fips set), homeownership
+        is discounted by trust_land_discount because reservation property
+        operates under a different property regime without appreciation or
+        equity extraction (FR-005).
 
         Args:
             fips: 5-digit FIPS code for county
@@ -267,13 +310,15 @@ class DefaultWealthProxyCalculator:
             # Fall back to national average
             return self.NATIONAL_LA_SHARE
 
-        return homeownership * self._equity_factor
+        effective = self._effective_homeownership(fips, homeownership)
+        return effective * self._equity_factor
 
     def estimate_wealth_percentile(self, fips: str, year: int) -> tuple[float, bool]:
         """Estimate median wealth percentile for county.
 
         Uses home ownership rate to estimate where county's median
-        resident falls in national wealth distribution.
+        resident falls in national wealth distribution. For reservation
+        counties, applies trust_land_discount to homeownership first.
 
         Methodology:
             - Higher homeownership → higher median percentile
@@ -293,9 +338,11 @@ class DefaultWealthProxyCalculator:
             # National median
             return 50.0, True
 
+        effective = self._effective_homeownership(fips, homeownership)
+
         # Scale relative to national rate
         # Higher homeownership → higher wealth percentile
-        ratio = homeownership / self.NATIONAL_HOMEOWNERSHIP
+        ratio = effective / self.NATIONAL_HOMEOWNERSHIP
 
         # Estimate percentile (clamped to [5, 95] for sanity)
         percentile = min(95.0, max(5.0, 50.0 * ratio))

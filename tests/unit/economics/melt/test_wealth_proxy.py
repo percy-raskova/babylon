@@ -1,14 +1,18 @@
-"""Unit tests for DefaultWealthProxyCalculator.estimate_lumpen_share.
+"""Unit tests for DefaultWealthProxyCalculator.
 
 Targeted mutation-killing tests for weighted precarity formula,
-clamping logic, and missing data handling.
+clamping logic, missing data handling, and Feature 038 ClassSystemDefines
+integration (equity_factor + trust_land_discount).
 """
 
 from __future__ import annotations
 
 import pytest
+from tests.constants import ClassSystemDefaults
 
 from babylon.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
+
+CS = ClassSystemDefaults()
 
 
 class TestEstimateLumpenShareMutationKillers:
@@ -410,3 +414,97 @@ class TestGetClassDistributionMutationKillers:
             "lumpenproletariat",
         }
         assert set(result.keys()) == expected_keys
+
+
+class TestClassSystemDefinesIntegration:
+    """T018: WealthProxyCalculator reads equity_factor from ClassSystemDefines (FR-005)."""
+
+    @pytest.mark.unit
+    def test_reads_equity_factor_from_defines(self) -> None:
+        """equity_factor sourced from ClassSystemDefines when provided."""
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines(equity_factor=0.7)
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"00000": 0.80},
+            class_system_defines=defines,
+        )
+        result = calc.estimate_la_share("00000", 2022)
+        assert result == pytest.approx(0.80 * 0.7)
+
+    @pytest.mark.unit
+    def test_explicit_equity_factor_overrides_defines(self) -> None:
+        """Explicit equity_factor parameter takes priority over ClassSystemDefines."""
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines(equity_factor=0.7)
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"00000": 0.80},
+            equity_factor=0.5,
+            class_system_defines=defines,
+        )
+        result = calc.estimate_la_share("00000", 2022)
+        assert result == pytest.approx(0.80 * 0.5)
+
+    @pytest.mark.unit
+    def test_default_reads_from_game_defines(self) -> None:
+        """No explicit equity_factor or defines -> uses GameDefines default (0.6)."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.80})
+        result = calc.estimate_la_share("00000", 2022)
+        assert result == pytest.approx(0.80 * CS.EQUITY_FACTOR)
+
+    @pytest.mark.unit
+    def test_trust_land_discount_on_reservation_county(self) -> None:
+        """Reservation-county homeownership discounted by trust_land_discount."""
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines()
+        # Use a known reservation FIPS
+        reservation_fips = "46102"  # Oglala Lakota County, SD
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={reservation_fips: 0.60},
+            class_system_defines=defines,
+            reservation_fips={reservation_fips},
+        )
+        result = calc.estimate_la_share(reservation_fips, 2022)
+        # Effective homeownership = 0.60 * trust_land_discount (0.5) = 0.30
+        # LA share = 0.30 * equity_factor (0.6) = 0.18
+        expected = 0.60 * CS.TRUST_LAND_DISCOUNT * CS.EQUITY_FACTOR
+        assert result == pytest.approx(expected)
+
+    @pytest.mark.unit
+    def test_non_reservation_county_unaffected(self) -> None:
+        """Non-reservation counties are not affected by trust_land_discount."""
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines()
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"26125": 0.78},
+            class_system_defines=defines,
+            reservation_fips={"46102"},
+        )
+        result = calc.estimate_la_share("26125", 2022)
+        # No discount applied — standard formula
+        expected = 0.78 * CS.EQUITY_FACTOR
+        assert result == pytest.approx(expected)
+
+    @pytest.mark.unit
+    def test_reservation_discount_also_affects_wealth_percentile(self) -> None:
+        """Reservation discount flows through to wealth percentile estimate."""
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines()
+        reservation_fips = "46102"
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={reservation_fips: 0.60},
+            class_system_defines=defines,
+            reservation_fips={reservation_fips},
+        )
+        percentile, is_est = calc.estimate_wealth_percentile(reservation_fips, 2022)
+        # Effective homeownership = 0.60 * 0.5 = 0.30
+        # Ratio = 0.30 / 0.65 = 0.4615...
+        # Percentile = 50 * 0.4615... = 23.08
+        effective_ownership = 0.60 * CS.TRUST_LAND_DISCOUNT
+        expected_percentile = 50.0 * (effective_ownership / 0.65)
+        assert percentile == pytest.approx(expected_percentile)
+        assert is_est is True

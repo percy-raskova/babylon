@@ -13,6 +13,11 @@ See Also:
     :mod:`babylon.ooda.attention`: Attention thread intelligence system.
 """
 
+from babylon.ooda.state_ai.administer_effects import (
+    resolve_audit,
+    resolve_fund,
+    resolve_staff,
+)
 from babylon.ooda.state_ai.co_opt_effects import (
     compute_incorporate_probability,
     resolve_bribe,
@@ -28,10 +33,20 @@ from babylon.ooda.state_ai.faction_dynamics import (
     compute_stability,
     renormalize_faction_balance,
 )
+from babylon.ooda.state_ai.legislate_effects import (
+    consume_legal_framework_effects,
+)
 from babylon.ooda.state_ai.observability import (
     create_observable_action,
     create_territory_observables,
     resolve_counter_intel,
+)
+from babylon.ooda.state_ai.repress_effects import (
+    compute_raid_consciousness_effect,
+    resolve_infiltrate,
+    resolve_liquidate,
+    resolve_prosecute,
+    resolve_raid,
 )
 from babylon.ooda.state_ai.territory_effects import (
     assess_territory_threat,
@@ -51,8 +66,6 @@ from babylon.ooda.state_ai.territory_effects import (
 __all__ = [
     "RuleBasedStateAI",
     "apply_fascist_overrides",
-    "create_observable_action",
-    "create_territory_observables",
     "apply_material_condition_shift",
     "apply_player_action_shift",
     "apply_repression_failure_shift",
@@ -62,17 +75,28 @@ __all__ = [
     "compute_heat_decay",
     "compute_incorporate_probability",
     "compute_propagandize_effect",
+    "compute_raid_consciousness_effect",
     "compute_scorched_earth_legitimacy",
     "compute_stability",
+    "consume_legal_framework_effects",
+    "create_observable_action",
+    "create_territory_observables",
     "renormalize_faction_balance",
+    "resolve_audit",
     "resolve_bribe",
     "resolve_counter_intel",
     "resolve_displace",
     "resolve_divide",
     "resolve_eviction_cascade",
+    "resolve_fund",
+    "resolve_infiltrate",
     "resolve_invest",
+    "resolve_liquidate",
     "resolve_neglect",
     "resolve_propagandize",
+    "resolve_prosecute",
+    "resolve_raid",
     "resolve_scorched_earth",
+    "resolve_staff",
     "resolve_strategic_withdrawal",
 ]

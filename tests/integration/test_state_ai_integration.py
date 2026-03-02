@@ -21,12 +21,24 @@ from babylon.formulas.state_ai import (
     is_fascist_convergence,
 )
 from babylon.models.entities.state_apparatus_ai import FactionBalance
+from babylon.ooda.state_ai.administer_effects import (
+    resolve_fund,
+    resolve_staff,
+)
 from babylon.ooda.state_ai.co_opt_effects import resolve_propagandize
 from babylon.ooda.state_ai.faction_dynamics import (
     apply_material_condition_shift,
     apply_player_action_shift,
     compute_stability,
     renormalize_faction_balance,
+)
+from babylon.ooda.state_ai.legislate_effects import (
+    consume_legal_framework_effects,
+)
+from babylon.ooda.state_ai.repress_effects import (
+    resolve_infiltrate,
+    resolve_prosecute,
+    resolve_raid,
 )
 from babylon.ooda.state_ai.territory_effects import (
     compute_heat_accumulation,
@@ -519,3 +531,179 @@ class TestFullLifecycle52Ticks:
         assert check_fascist_reversion(exit_balance, exit_ci, defines), (
             "Low SS + low CI should qualify for reversion"
         )
+
+
+def _make_apparatus(**overrides: Any) -> dict[str, Any]:
+    """Construct an apparatus dict with sensible defaults."""
+    defaults: dict[str, Any] = {
+        "id": "apparatus_detroit_pd",
+        "violence_capacity": 0.0,
+        "surveillance_capacity": 0.0,
+        "service_delivery": 0.3,
+        "counter_intel_score": 0.0,
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+def _make_org(**overrides: Any) -> dict[str, Any]:
+    """Construct a target organization dict."""
+    defaults: dict[str, Any] = {
+        "id": "org_player_1",
+        "coherence": 0.9,
+        "key_figure_ids": ["fig_a", "fig_b"],
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+def _make_thread_dict(**overrides: Any) -> dict[str, Any]:
+    """Construct an attention thread dict."""
+    defaults: dict[str, Any] = {
+        "thread_id": "thread_001",
+        "intel_completeness": 0.0,
+        "phase": "MONITORING",
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+@pytest.mark.integration
+class TestAdministerRepressPipeline:
+    """10-tick integration: ADMINISTER builds capacity, REPRESS uses it.
+
+    Scenario:
+        - Ticks 1-2: FUND surveillance capacity (0.0 -> 0.1)
+        - Tick 3: STAFF adds 2 threads
+        - Tick 4: INFILTRATE target org
+        - Ticks 5-7: Continued INFILTRATE (thread gains intel)
+        - Tick 8: LEGISLATE EMERGENCY_POWERS
+        - Tick 9: RAID target org (consciousness dialectic)
+        - Tick 10: PROSECUTE captured key figure
+    """
+
+    def test_full_administer_repress_pipeline(self) -> None:
+        """10-tick ADMINISTER -> REPRESS pipeline with budget tracking."""
+        defines = _make_defines(
+            fund_capacity_increment=0.05,
+            staff_max_per_tick=2,
+            thread_pool_max=10,
+            infiltrate_informant_intel_rate=0.1,
+            raid_org_coherence_damage=0.2,
+            raid_ci_radicalization_threshold=0.5,
+            raid_ci_radicalization_boost=0.1,
+            raid_key_figure_capture_base=0.5,
+            prosecute_org_morale_damage=0.1,
+            emergency_powers_thread_multiplier=2.0,
+        )
+
+        apparatus = _make_apparatus()
+        org = _make_org(coherence=0.9)
+        territory = _make_territory(collective_identity=0.6)
+        thread = _make_thread_dict()
+        pool_size = 3
+        budget = 100.0
+        legitimacy = 0.7
+        active_frameworks: list[dict[str, Any]] = []
+        captured_figures: list[str] = []
+
+        # --- Tick 1-2: FUND surveillance capacity ---
+        fund_cost = 8.0
+        max_fund_ticks: int = 2
+        for _ in range(max_fund_ticks):
+            apparatus = resolve_fund(apparatus, "surveillance", defines)
+            budget -= fund_cost
+
+        assert apparatus["surveillance_capacity"] == pytest.approx(0.1)
+        assert budget == pytest.approx(84.0)
+
+        # --- Tick 3: STAFF adds threads ---
+        staff_cost = 5.0
+        apparatus, pool_size = resolve_staff(apparatus, pool_size, 2, defines)
+        budget -= staff_cost
+
+        assert pool_size == 5
+        assert budget == pytest.approx(79.0)
+
+        # --- Ticks 4-7: INFILTRATE target org ---
+        infiltrate_cost = 5.0
+        max_infil_ticks: int = 4
+        for tick in range(max_infil_ticks):
+            thread, _, _ = resolve_infiltrate(
+                org, thread, "INFORMANT", defines, rng_seed=300 + tick, current_tick=tick + 3
+            )
+            budget -= infiltrate_cost
+
+        assert thread["intel_completeness"] == pytest.approx(0.4)
+        assert budget == pytest.approx(59.0)
+
+        # --- Tick 8: LEGISLATE EMERGENCY_POWERS ---
+        legislate_cost = 3.0
+        active_frameworks.append(
+            {
+                "framework_id": "law_ep_001",
+                "law_type": "EMERGENCY_POWERS",
+                "scope": "municipal",
+                "severity": 0.8,
+                "effects": {},
+                "created_tick": 8,
+                "creating_apparatus_id": "apparatus_detroit_pd",
+            }
+        )
+        budget -= legislate_cost
+
+        # Consume legal framework effects
+        baseline_caps: dict[str, Any] = {
+            "thread_pool_max": defines.thread_pool_max,
+            "liquidate_in_core": False,
+            "intel_bonus": 0.0,
+        }
+        effective_caps = consume_legal_framework_effects(active_frameworks, baseline_caps, defines)
+        assert effective_caps["thread_pool_max"] == defines.thread_pool_max * 2
+        assert effective_caps["liquidate_in_core"] is True
+        assert budget == pytest.approx(56.0)
+
+        # --- Tick 9: RAID target org ---
+        raid_cost = 10.0
+        org, territory, captured_figures, raid_legitimacy = resolve_raid(
+            org,
+            territory,
+            "TARGETED",
+            "SWAT",
+            thread["intel_completeness"],
+            org["key_figure_ids"],
+            defines,
+            rng_seed=42,
+        )
+        budget -= raid_cost
+        legitimacy -= raid_legitimacy
+
+        # Coherence damaged
+        assert org["coherence"] < 0.9
+        # Consciousness dialectic: CI was 0.6 (> 0.5), should radicalize
+        assert territory["collective_identity"] > 0.6
+        assert budget == pytest.approx(46.0)
+
+        # --- Tick 10: PROSECUTE captured figure ---
+        prosecute_cost = 7.0
+        if captured_figures:
+            org, prosecution_record, leg_delta = resolve_prosecute(
+                org, captured_figures[0], "CONSPIRACY", defines, rng_seed=42, current_tick=10
+            )
+            budget -= prosecute_cost
+            legitimacy += leg_delta
+            assert isinstance(prosecution_record["convicted"], bool)
+            assert org["coherence"] < 0.9
+        else:
+            # No captures — prosecute org generally
+            org, prosecution_record, leg_delta = resolve_prosecute(
+                org, None, "CONSPIRACY", defines, rng_seed=42, current_tick=10
+            )
+            budget -= prosecute_cost
+            legitimacy += leg_delta
+
+        # --- Final assertions ---
+        assert budget < 100.0, "Budget should be decremented"
+        assert 0.0 < legitimacy < 1.0, f"Legitimacy should be in valid range: {legitimacy}"
+        assert thread["intel_completeness"] > 0.0, "Thread should have gathered intel"
+        assert org["coherence"] < 0.9, "Org coherence should be degraded"

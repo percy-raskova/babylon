@@ -3406,6 +3406,190 @@ class StateApparatusAIDefines(BaseModel):
     )
 
     # -------------------------------------------------------------------------
+    # ADMINISTER Effects (FR-B02)
+    # -------------------------------------------------------------------------
+    fund_capacity_increment: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=0.5,
+        description="[S] Per-FUND capacity increase for target capacity type (FR-B02).",
+    )
+    staff_thread_cost: float = Field(
+        default=3.0,
+        ge=0.0,
+        le=50.0,
+        description="[S] Budget cost per new thread slot from STAFF (FR-B02).",
+    )
+    staff_max_per_tick: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="[S] Maximum threads STAFF can add per tick (FR-B02).",
+    )
+    audit_routine_detection_chance: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="[S] ROUTINE audit depth: P(detect infiltration) (FR-B02).",
+    )
+    audit_thorough_detection_chance: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="[S] THOROUGH audit depth: P(detect infiltration) (FR-B02).",
+    )
+    audit_deep_detection_chance: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="[S] DEEP audit depth: P(detect infiltration) (FR-B02).",
+    )
+
+    # -------------------------------------------------------------------------
+    # REPRESS Effects (FR-B06)
+    # -------------------------------------------------------------------------
+    infiltrate_informant_intel_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=0.5,
+        description="[S] Per-tick intel gain from INFORMANT infiltration (FR-B06).",
+    )
+    infiltrate_provocateur_intel_rate: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=0.5,
+        description="[S] Per-tick intel gain from PROVOCATEUR infiltration (FR-B06).",
+    )
+    infiltrate_mole_intel_rate: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=0.5,
+        description="[S] Per-tick intel gain from MOLE infiltration (FR-B06).",
+    )
+    infiltrate_detection_base_chance: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="[S] Base chance of infiltration detection per tick (FR-B06).",
+    )
+    raid_ci_radicalization_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="[S] CI above which RAID radicalizes instead of suppresses (FR-B06).",
+    )
+    raid_ci_radicalization_boost: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=0.5,
+        description="[S] CI increase when RAID radicalizes high-CI territory (FR-B06).",
+    )
+    raid_ci_suppression_rate: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=0.5,
+        description="[S] CI decrease when RAID suppresses low-CI territory (FR-B06).",
+    )
+    raid_org_coherence_damage: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="[S] Coherence reduction per RAID action (FR-B06).",
+    )
+    raid_key_figure_capture_base: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="[S] Base capture probability per known key figure (FR-B06).",
+    )
+    raid_force_multiplier_swat: float = Field(
+        default=1.5,
+        ge=1.0,
+        le=5.0,
+        description="[S] SWAT force multiplier for RAID operations (FR-B06).",
+    )
+    raid_force_multiplier_military: float = Field(
+        default=2.5,
+        ge=1.0,
+        le=10.0,
+        description="[S] MILITARY force multiplier for RAID operations (FR-B06).",
+    )
+    prosecute_org_morale_damage: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=0.5,
+        description="[S] Org coherence hit from prosecution proceedings (FR-B06).",
+    )
+    prosecute_key_figure_removal_chance: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="[S] P(conviction removes key figure) (FR-B06).",
+    )
+    prosecute_terrorism_charge_multiplier: float = Field(
+        default=1.5,
+        ge=1.0,
+        le=5.0,
+        description="[S] Terrorism charges multiply all prosecution effects (FR-B06).",
+    )
+    prosecute_legitimacy_boost_success: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=0.1,
+        description="[S] Legitimacy gained on successful conviction (FR-B06).",
+    )
+    liquidate_singleton_collapse_chance: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="[S] P(org collapses if singleton leader liquidated) (FR-B06).",
+    )
+    liquidate_core_legitimacy_cost: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=0.5,
+        description="[S] Legitimacy cost of LIQUIDATE in core territory (FR-B06).",
+    )
+    liquidate_periphery_legitimacy_cost: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=0.5,
+        description="[S] Legitimacy cost of LIQUIDATE in periphery territory (FR-B06).",
+    )
+    liquidate_deniability_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="[S] Deniability above which LIQUIDATE legitimacy cost halved (FR-B06).",
+    )
+    liquidate_coherence_damage: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="[S] Fixed coherence reduction from leadership liquidation (FR-B06).",
+    )
+
+    # -------------------------------------------------------------------------
+    # LEGISLATE Consumption (FR-B09)
+    # -------------------------------------------------------------------------
+    emergency_powers_thread_multiplier: float = Field(
+        default=2.0,
+        ge=1.0,
+        le=5.0,
+        description="[S] Thread pool multiplier under EMERGENCY_POWERS (FR-B09).",
+    )
+    emergency_powers_liquidate_in_core: bool = Field(
+        default=True,
+        description="[S] EMERGENCY_POWERS enables LIQUIDATE in core territories (FR-B09).",
+    )
+    surveillance_expansion_intel_bonus: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=0.5,
+        description="[S] Per-tick intel bonus from SURVEILLANCE_EXPANSION legislation (FR-B09).",
+    )
+
+    # -------------------------------------------------------------------------
     # Debug (Phase 9)
     # -------------------------------------------------------------------------
     god_mode_enabled: bool = Field(

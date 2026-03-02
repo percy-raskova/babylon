@@ -117,9 +117,9 @@ ______________________________________________________________________
 - **FR-002**: System MUST classify institutions by Althusserian apparatus type: RSA subtypes (Executive, Military, Police, Judicial, Carceral), ISA subtypes (Educational, Religious, Family, Legal, Political, Communications, Cultural), and Economic subtypes (Productive, Financial, Extractive).
 - **FR-003**: System MUST assign each institution a social function from a defined set (EMPLOYMENT, EDUCATION, WORSHIP, POLICING, HEALTHCARE, CARE, ADJUDICATION, COMMUNICATION, LEGISLATION, INCARCERATION, MILITARY_DEFENSE, FINANCIAL_INTERMEDIATION).
 - **FR-004**: System MUST track class inscription (BOURGEOIS, PROLETARIAN, CONTESTED) separately from Organization class_character, with inscription changing only through sustained struggle on coefficient timescale (alpha-smoothed).
-- **FR-005**: System MUST maintain internal balance of forces between three ruling-class fractions (Liberal-Technocratic, Revanchist-Fascist, Institutionalist-Bonapartist) with weights summing to 1.0 and a computed hegemonic fraction.
+- **FR-005**: System MUST maintain internal balance of forces between three ruling-class fractions (Liberal-Technocratic, Revanchist-Fascist, Institutionalist-Bonapartist) with weights summing to 1.0 and a computed hegemonic fraction. A minimal pure function for updating balance given crisis_intensity, legitimacy, and external_threat inputs MUST be provided, but per-tick system integration is deferred to Phase 4.
 - **FR-006**: System MUST compute internal_contestation as a measure of how actively factional warfare is occurring within the institution (high = active warfare, low = settled hegemony).
-- **FR-007**: System MUST define structural selectivity as action cost modifiers for Organizations housed within the institution (e.g., university: EDUCATE=0.7 cheaper, REPRESS=2.0 more expensive).
+- **FR-007**: System MUST define structural selectivity as action cost modifiers for Organizations housed within the institution (e.g., university: EDUCATE=0.7 cheaper, REPRESS=2.0 more expensive). Default modifiers per ApparatusType MUST be loaded from a data file (JSON/TOML) following the Paradox Pattern. Individual institutions MAY override specific values.
 - **FR-008**: System MUST track material infrastructure: budget, fixed assets (Territory IDs), legal authorities, and personnel capacity.
 - **FR-009**: System MUST track institutional persistence attributes: formalization_level, succession_protocol, institutional_inertia, and legitimacy.
 - **FR-010**: System MUST support housing multiple Organizations within a single institution, including Organizations with conflicting factional alignments.
@@ -128,9 +128,10 @@ ______________________________________________________________________
 - **FR-013**: System MUST support querying an institution's housed Organizations, territory footprint, and community embeddedness (which community hyperedges the institution participates in).
 - **FR-014**: System MUST compute how the hegemonic fraction modulates housed Organizations' OODA profiles (Liberal favors ASSIMILATE, Revanchist favors REPRESS, Bonapartist favors self-preservation).
 - **FR-015**: System MUST support an optional D-P-D' lifecycle phase assignment (D=youth/dependent, P=productive/adult, D'=elder/dependent) or None for non-phase-specific institutions.
-- **FR-016**: System MUST ensure that destroying all housed Organizations degrades but does not destroy the institution — the institution persists and can spawn replacement Organizations via reproduction mechanisms.
+- **FR-016**: System MUST ensure that destroying all housed Organizations degrades but does not destroy the institution — the institution persists and can spawn replacement Organizations via reproduction mechanisms. Each institution stores a spawning blueprint defining the org_type, default class_character, and base attributes for replacement Organizations. Spawned organizations inherit from the blueprint, modified by the institution's current state (e.g., hegemonic fraction, budget).
 - **FR-017**: System MUST deprecate and replace the existing institution.schema.json with the new Institution model.
 - **FR-018**: System MUST deprecate Organization.is_institution field (from Feature 030) in favor of separate Institution entities.
+- **FR-019**: Institution functions that cause state changes (balance updates, reproduction triggers) MUST return event objects as data (e.g., FactionShiftEvent, ReproductionEvent). The institution module MUST NOT depend on EventBus directly; calling code is responsible for emission.
 
 ### Key Entities
 
@@ -144,6 +145,9 @@ ______________________________________________________________________
 - **ReproductionMechanism**: The self-perpetuation capacity of an institution — what makes it an institution rather than an organization. Tracks recruitment pipeline, training program, succession protocol, budget independence, and legal self-perpetuation.
 - **StructuralSelectivity**: Action cost modifiers that shape what Organizations can do within the institution. Maps action types to float multipliers (< 1.0 = cheaper/easier, > 1.0 = more expensive/harder).
 - **LifecyclePhase**: Optional D-P-D' assignment. D = controls ideological transmission (schools, childcare), P = where surplus extraction occurs (workplaces, unions), D' = the legitimation bargain (elder care, pensions).
+- **SpawningBlueprint**: Template stored by the institution defining how replacement Organizations are created. Specifies org_type, default class_character, and base attributes. Used by reproduction mechanisms to generate new Organizations when housed ones are destroyed.
+- **FactionShiftEvent**: Returned when update_internal_balance changes the hegemonic fraction. Contains institution_id, old_fraction, new_fraction, and updated weights.
+- **ReproductionEvent**: Returned when an institution spawns a replacement Organization. Contains institution_id, spawned_org_type, and blueprint used.
 
 ## Success Criteria *(mandatory)*
 
@@ -159,6 +163,15 @@ ______________________________________________________________________
 - **SC-008**: An institution with full reproduction mechanisms (all True, high budget_independence) computes reproduction_capacity > 0.8, while one with no mechanisms computes < 0.2.
 - **SC-009**: Hegemonic fraction modulates housed Organization OODA: LIBERAL hegemony produces ASSIMILATE preference, REVANCHIST produces REPRESS preference, BONAPARTIST produces self-preservation behavior.
 - **SC-010**: All existing Organization tests continue to pass after the Institution layer is introduced — the new layer augments, does not break, existing functionality.
+
+## Clarifications
+
+### Session 2026-03-02
+
+- Q: Does Phase 1 include a balance update function or only the static model? → A: Minimal update function — a pure function `update_internal_balance(institution, crisis, legitimacy, threat) -> InternalBalanceOfForces` is included. No per-tick system integration. Phase 4 integrates it into the tick loop.
+- Q: How does an institution determine a replacement Organization's type and initial attributes? → A: Blueprint-based — Institution stores a spawning blueprint (org_type, default class_character, base attributes). Spawned org inherits from blueprint, modified by current institutional state.
+- Q: Should default structural selectivity modifiers be loaded from a data file? → A: Yes, data file defaults — a JSON/TOML file defines default action modifiers per ApparatusType following the Paradox Pattern. Individual institutions can override specific values.
+- Q: Should institution state changes emit events through the existing EventBus? → A: Event return values — Institution functions return event objects (e.g., FactionShiftEvent, ReproductionEvent) as data. Calling code is responsible for emitting through EventBus. No EventBus dependency in the institution module.
 
 ## Scope
 

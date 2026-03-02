@@ -10,7 +10,7 @@ import { TopBar } from "@/components/layout/TopBar";
 import { RightPanel } from "@/components/layout/RightPanel";
 import { BottomPanel } from "@/components/layout/BottomPanel";
 import { DeckGLMap } from "@/components/map/DeckGLMap";
-import { ActionPanel } from "@/components/ActionPanel";
+import { ActionComposer } from "@/components/action/ActionComposer";
 import { Inspector } from "@/components/inspector/Inspector";
 import { TickResults } from "@/components/TickResults";
 import { TimeSeries } from "@/components/charts/TimeSeries";
@@ -26,7 +26,7 @@ interface GameShellProps {
 }
 
 export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps) {
-  const { snapshot, available, loading, error, submitAction, resolveTick } = useGameState(gameId);
+  const { snapshot, loading, error, submitAction, resolveTick } = useGameState(gameId);
   const [results, setResults] = useState<ActionResultData[] | null>(null);
   const [resolving, setResolving] = useState(false);
   const bottomTab = useUIStore((s) => s.bottomTab);
@@ -90,9 +90,9 @@ export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps
 
         {/* Right sidebar */}
         <RightPanel>
-          <div className="max-h-[280px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
-            <ActionPanel
-              actions={available}
+          <div className="max-h-[360px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
+            <ActionComposer
+              snapshot={snapshot}
               onSubmit={submitAction}
               onResolve={handleResolve}
               resolving={resolving}

@@ -176,3 +176,18 @@ export interface AuthState {
 
 /** Map layer type for hex visualization. */
 export type MapLayer = "heat" | "consciousness" | "wealth" | "rent" | "biocapacity" | "population";
+
+/** The 9 constitutional verbs from Article V. */
+export type PlayerVerb =
+  | "educate"
+  | "reproduce"
+  | "investigate"
+  | "attack"
+  | "mobilize"
+  | "campaign"
+  | "aid"
+  | "move"
+  | "negotiate";
+
+/** Verb category groupings for the 3x3 grid. */
+export type VerbCategory = "build" | "project" | "manage";

@@ -3,6 +3,7 @@
  */
 
 import { create } from "zustand";
+import type { PlayerVerb } from "@/types/game";
 
 export type BottomTab = "timeseries" | "events" | "graph";
 
@@ -21,12 +22,21 @@ interface UIState {
   /** Active bottom tab. */
   bottomTab: BottomTab;
 
+  /** Action composition — pending turn before submission. */
+  pendingVerb: PlayerVerb | null;
+  pendingOrgId: string | null;
+  pendingTargetId: string | null;
+  pendingParams: Record<string, unknown>;
+
   setSelectedNode: (id: string | null) => void;
   setSelectedHex: (id: string | null) => void;
   setHoveredNode: (id: string | null) => void;
   toggleRightPanel: () => void;
   toggleBottomPanel: () => void;
   setBottomTab: (tab: BottomTab) => void;
+  setPendingAction: (verb: PlayerVerb, orgId: string) => void;
+  setPendingTarget: (targetId: string | null) => void;
+  clearPendingAction: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -36,6 +46,10 @@ export const useUIStore = create<UIState>((set) => ({
   rightPanelOpen: true,
   bottomPanelOpen: true,
   bottomTab: "timeseries",
+  pendingVerb: null,
+  pendingOrgId: null,
+  pendingTargetId: null,
+  pendingParams: {},
 
   setSelectedNode: (id) => set({ selectedNodeId: id }),
   setSelectedHex: (id) => set({ selectedHexId: id }),
@@ -43,4 +57,9 @@ export const useUIStore = create<UIState>((set) => ({
   toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
   toggleBottomPanel: () => set((s) => ({ bottomPanelOpen: !s.bottomPanelOpen })),
   setBottomTab: (tab) => set({ bottomTab: tab }),
+  setPendingAction: (verb, orgId) =>
+    set({ pendingVerb: verb, pendingOrgId: orgId, pendingTargetId: null, pendingParams: {} }),
+  setPendingTarget: (targetId) => set({ pendingTargetId: targetId }),
+  clearPendingAction: () =>
+    set({ pendingVerb: null, pendingOrgId: null, pendingTargetId: null, pendingParams: {} }),
 }));

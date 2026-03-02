@@ -165,8 +165,9 @@ ______________________________________________________________________
 - [ ] T062 [US4] Implement STRATEGIC_WITHDRAWAL action resolution: remove all state apparatus PRESENCE edges (preserve non-state PRESENCE), accelerated infrastructure degradation, set state_investment to 0.0, increase V_reproduction, optionally recover budget fraction when asset_extraction=True in `src/babylon/ooda/state_ai/territory_effects.py`
 - [ ] T063 [US4] Implement SCORCHED_EARTH action resolution: set infrastructure_quality to neglect_quality_floor or below (immediate destruction), compute legitimacy_cost proportional to territory visibility (CORE=extreme, PERIPHERY=minimal), destroy community infrastructure, remove state PRESENCE edges, spike V_reproduction in `src/babylon/ooda/state_ai/territory_effects.py`
 - [ ] T064 [US4] Write unit tests for territory effect calculations (property_value_proxy increments, exponential decay math, population fraction removal, adjacency-based relocation) in `tests/unit/state_ai/test_territory_effects.py`
+- [ ] T083 [US4] Implement NEGOTIATE resolution mechanic (FR-B11): when state selects WITHDRAW or CO_OPT, optionally enter negotiation phase evaluating concession cost vs continued repression cost; produce BRIBE/GRANT offers (CO_OPT path) or TACTICAL_RETREAT terms (WITHDRAW path); NEGOTIATE is not a standalone verb but a resolution modifier on existing verbs in `src/babylon/ooda/state_ai/decision.py`
 
-**Checkpoint**: INVEST, NEGLECT, DISPLACE, STRATEGIC_WITHDRAWAL, and SCORCHED_EARTH all produce measurable territory changes. Gentrification circuit (INVEST→DISPLACE) is functional. US4 acceptance scenarios pass.
+**Checkpoint**: INVEST, NEGLECT, DISPLACE, STRATEGIC_WITHDRAWAL, SCORCHED_EARTH, and NEGOTIATE all produce measurable territory changes. Gentrification circuit (INVEST→DISPLACE) is functional. US4 acceptance scenarios pass.
 
 ______________________________________________________________________
 
@@ -224,6 +225,16 @@ ______________________________________________________________________
 - [ ] T080 [P] Add LegalFramework persistence: LEGISLATE creates framework entities stored in context.persistent_data, REVOKE removes them, framework effects consumed by relevant verb resolution functions in `src/babylon/ooda/state_ai/decision.py`
 - [ ] T081 Run mypy strict mode on all new modules (`src/babylon/ooda/state_ai/`, `src/babylon/ooda/attention/`, `src/babylon/models/entities/state_apparatus_ai.py`, `src/babylon/models/entities/attention_thread.py`) and fix any type violations
 - [ ] T082 Validate quickstart.md test scenarios against implementation: verify code examples compile and described workflows produce expected results
+- [ ] T084 [P] Implement player observability layer (FR-D11): surface state behavior through indirect signals — observable verb selections emitted as EventBus events with public-facing metadata (verb type, territory affected, visible intensity), territory-level effects visible via graph attributes (property_value_proxy, infrastructure_quality, heat_level). Player COUNTER_INTEL action reveals deeper internals (faction weights, thread targets) proportional to intelligence success in `src/babylon/ooda/state_ai/observability.py`
+
+______________________________________________________________________
+
+## Deferred Requirements
+
+The following requirements are explicitly deferred from this feature with documented rationale:
+
+- **FR-D10** (Per-org-type AI for Business, CivilSocietyOrg, PoliticalFaction): **Deferred** — Feature 039 focuses exclusively on StateApparatus AI. Non-state org-type AI decision functions (Business employ/lobby, CivilSocietyOrg tendency-based, PoliticalFaction strategy-based) are a separate feature scope that depends on this feature's NPCDecisionStrategy protocol (T024) being stable. Recommend: Feature 040 or later.
+- **FR-E05** (D-P-D' territory infrastructure): **Deferred** — Schools (D-phase ideological transmission), workplaces (P-phase), and elder care (D'-phase) as territory-bound infrastructure entities require a lifecycle data model, initialization data (Detroit school/workplace locations), and integration with the consciousness system that exceeds this feature's scope. Territory-level aggregate effects (consciousness geography in T068, recruitment presence in T067) provide a functional approximation. Recommend: Feature 041 or later.
 
 ______________________________________________________________________
 

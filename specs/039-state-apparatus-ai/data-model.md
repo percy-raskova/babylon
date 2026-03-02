@@ -69,7 +69,9 @@ classDiagram
     }
 
     class FactionBalance {
-        +dict~StateFaction,float~ faction_weights
+        +float finance_capital
+        +float security_state
+        +float settler_populist
         +float stability
         +float legitimacy
         +dominant_faction() StateFaction
@@ -165,7 +167,7 @@ classDiagram
 
 **Location**: `src/babylon/models/enums.py`
 
-**Relationships**: Referenced by `FactionBalance.faction_weights`, `StateAction.faction_alignment`, `StateApparatus.factional_alignment`
+**Relationships**: Referenced by `FactionBalance` (flat weight fields), `StateAction.faction_alignment`, `StateApparatus.factional_alignment`
 
 | Value | String | Material Base | Strategic Preference |
 |-------|--------|---------------|---------------------|
@@ -285,7 +287,7 @@ class StateActionType(StrEnum):
     SCORCHED_EARTH = "scorched_earth"
 ```
 
-**Design Decision (R-005)**: Single flat enum with hierarchical validation in `StateAction` model rather than separate `StateVerb` + `StateSubVerb` enums. This keeps Pydantic serialization clean and allows `startswith()`-style grouping when needed. The parent-child constraint is enforced by the `StateAction` model validator, not the enum itself.
+**Design Decision (R-005)**: Single flat enum with simple naming and hierarchical validation in `StateAction` model rather than separate `StateVerb` + `StateSubVerb` enums. This keeps Pydantic serialization clean. The parent-child constraint is enforced by the `VERB_CHILDREN` mapping and the `StateAction` model validator, not the enum itself.
 
 #### Valid Parent-Child Mapping
 
@@ -443,15 +445,19 @@ class SurveillanceMethod(StrEnum):
 
 | Field | Type | Constraints | Default | Description |
 |-------|------|-------------|---------|-------------|
-| `faction_weights` | `dict[StateFaction, float]` | Sum to 1.0 (tolerance +/-0.01), all values in [0,1], exactly 3 entries | required | Weight per faction |
+| `finance_capital` | `float` | `[0.0, 1.0]` | required | Weight of Finance-Capital faction |
+| `security_state` | `float` | `[0.0, 1.0]` | required | Weight of Security-State faction |
+| `settler_populist` | `float` | `[0.0, 1.0]` | required | Weight of Settler-Populist faction |
 | `stability` | `Probability` | `[0.0, 1.0]` | required | How stable the current balance is |
 | `legitimacy` | `Probability` | `[0.0, 1.0]` | required | Overall state legitimacy |
+
+**Constraints**: `finance_capital + security_state + settler_populist` must sum to 1.0 (tolerance +/-0.01).
 
 **Computed Fields**:
 
 | Field | Type | Derivation |
 |-------|------|-----------|
-| `dominant_faction` | `StateFaction` | `max(faction_weights, key=faction_weights.get)` |
+| `dominant_faction` | `StateFaction` | Faction with highest weight among the three flat fields |
 
 ```python
 class FactionBalance(BaseModel):
@@ -462,7 +468,8 @@ class FactionBalance(BaseModel):
     material conditions (FR-C05). Fascist convergence is detected
     when specific threshold conditions hold (FR-C06).
 
-    Primitive state: faction_weights, stability, legitimacy (stored).
+    Primitive state: finance_capital, security_state, settler_populist,
+    stability, legitimacy (stored).
     Derived state: dominant_faction (computed). Constitution II.2.
 
     Reference: FR-C02, R-003.
@@ -470,8 +477,14 @@ class FactionBalance(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    faction_weights: dict[StateFaction, float] = Field(
-        description="Weight per faction, must sum to 1.0",
+    finance_capital: float = Field(
+        description="Weight of Finance-Capital faction [0.0, 1.0]",
+    )
+    security_state: float = Field(
+        description="Weight of Security-State faction [0.0, 1.0]",
+    )
+    settler_populist: float = Field(
+        description="Weight of Settler-Populist faction [0.0, 1.0]",
     )
     stability: Probability = Field(
         description="How stable the current balance is [0=turbulent, 1=settled]",
@@ -484,23 +497,17 @@ class FactionBalance(BaseModel):
     @property
     def dominant_faction(self) -> StateFaction:
         """Faction with highest weight."""
-        return max(self.faction_weights, key=self.faction_weights.get)
+        weights = {
+            StateFaction.FINANCE_CAPITAL: self.finance_capital,
+            StateFaction.SECURITY_STATE: self.security_state,
+            StateFaction.SETTLER_POPULIST: self.settler_populist,
+        }
+        return max(weights, key=weights.get)
 
     @model_validator(mode="after")
-    def _validate_weights(self) -> Self:
-        """Validate faction weights: exactly 3, all non-negative, sum to 1.0."""
-        if len(self.faction_weights) != 3:
-            msg = f"Expected 3 factions, got {len(self.faction_weights)}"
-            raise ValueError(msg)
-        for faction in StateFaction:
-            if faction not in self.faction_weights:
-                msg = f"Missing faction: {faction}"
-                raise ValueError(msg)
-        for faction, weight in self.faction_weights.items():
-            if weight < 0.0 or weight > 1.0:
-                msg = f"Weight for {faction} must be in [0, 1], got {weight}"
-                raise ValueError(msg)
-        total = sum(self.faction_weights.values())
+    def _weights_sum_to_one(self) -> Self:
+        """Validate faction weights sum to 1.0."""
+        total = self.finance_capital + self.security_state + self.settler_populist
         if not (0.99 <= total <= 1.01):
             msg = f"Faction weights must sum to 1.0, got {total}"
             raise ValueError(msg)
@@ -511,11 +518,9 @@ class FactionBalance(BaseModel):
 
 ```python
 FactionBalance(
-    faction_weights={
-        StateFaction.FINANCE_CAPITAL: 0.45,   # Post-crisis, asserting control over recovery
-        StateFaction.SECURITY_STATE: 0.30,    # Heightened post-9/11, budget-constrained
-        StateFaction.SETTLER_POPULIST: 0.25,  # Tea Party rising, not yet dominant
-    },
+    finance_capital=0.45,    # Post-crisis, asserting control over recovery
+    security_state=0.30,     # Heightened post-9/11, budget-constrained
+    settler_populist=0.25,   # Tea Party rising, not yet dominant
     stability=0.6,
     legitimacy=0.5,
 )
@@ -640,7 +645,7 @@ class StateBudget(BaseModel):
 | Federal transfers | Configurable parameter for sub-federal apparatus | Security-State draws federal funding |
 | Imperial rent pool | Imperial rent calculation (existing economic subsystem) | Settler-Populist claims rent distribution |
 
-**Allocation Computation**: Each tick, `allocation = dot_product(FactionBalance.faction_weights, StateApparatusAIDefines.faction_verb_preferences)`. This produces a 6-element allocation vector over top-level verbs scaled by total revenue.
+**Allocation Computation**: Each tick, the faction weights `(finance_capital, security_state, settler_populist)` are dot-producted with `StateApparatusAIDefines.faction_verb_preferences` to produce a 6-element allocation vector over top-level verbs scaled by total revenue.
 
 **State Transitions**:
 - Each `StateAction` execution deducts `budget_cost` from `available`

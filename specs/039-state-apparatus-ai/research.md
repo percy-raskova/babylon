@@ -18,14 +18,17 @@
 - The existing `_NPC_PRIORITIES` dict (`npc_stub.py:20-47`) maps `OrgType -> list[ActionType]`. The state apparatus entries (SURVEIL, REPRESS, INFILTRATE) are Feature 032 stubs that will be replaced by the state AI decision function. Non-state org types continue using `ActionType` unchanged.
 - The OODA system's `select_npc_actions()` (`src/babylon/ooda/npc_stub.py:50`) returns `list[Action]` where `Action.action_type` is `ActionType`. The state AI will return `StateAction` with `StateAction.verb` as `StateActionType`. This type distinction is structural.
 
-**Enum structure**: Two enums: `StateVerb` (6 values: ADMINISTER, DEVELOP, RESEARCH, CO_OPT, REPRESS, WITHDRAW) and `StateSubVerb` (~24 values: FUND, STAFF, LEGISLATE, AUDIT, INVEST, REZONE, etc.). `StateActionType` is a flat enum with two-level naming (`ADMINISTER_FUND`, `DEVELOP_INVEST`, `REPRESS_SURVEIL`, etc.) that encodes the hierarchy in the value name. This enables verb-category budget allocation via prefix matching (`action.name.startswith("DEVELOP_")`) without maintaining a separate mapping table.
+**Enum structure**: A single flat `StateActionType` enum containing both top-level verbs (6 values: ADMINISTER, DEVELOP, RESEARCH, CO_OPT, REPRESS, WITHDRAW) and sub-verbs (~24 values: FUND, STAFF, LEGISLATE, AUDIT, INVEST, REZONE, etc.) with simple naming. An explicit `VERB_CHILDREN` mapping dict (`parent → frozenset[children]`) encodes the hierarchy and is the source of truth for parent-child validation in the `StateAction` model.
+
+**Phase 1 refinement**: The initial design proposed prefix naming (`ADMINISTER_FUND`, `DEVELOP_INVEST`) with `startswith()`-based grouping. This was replaced in data-model.md with simple naming + `VERB_CHILDREN` mapping, which is more robust (no string parsing), avoids duplicating hierarchy information, and keeps enum values clean.
 
 **Alternatives Considered**:
 - (a) Extend `ActionType` with state values: Rejected because it weakens type safety. A function accepting `ActionType` would silently accept LIQUIDATE as a player action. The asymmetry between player and state actions is fundamental to the game design, not incidental. Mixing them into one enum creates type confusion and bloats the priority tables.
 - (b) Union type `PlayerAction | StateAction`: Rejected because the resource profiles are structurally different (CL/SL vs budget/thread/legitimacy). A union obscures this distinction. The two types should never appear in the same typed collection.
-- (c) Nested enum (top-level verb enum + sub-verb enum per verb): Rejected because Pydantic serialization of nested enums is awkward. Flat enum with prefix convention is simpler and equally expressive.
+- (c) Nested enum (top-level verb enum + sub-verb enum per verb): Rejected because Pydantic serialization of nested enums is awkward. Flat enum with explicit mapping is simpler and equally expressive.
+- (d) Prefix naming (`ADMINISTER_FUND`): Replaced by simple naming + VERB_CHILDREN mapping. Prefix convention duplicates hierarchy in both enum names and mapping. Simple names with explicit mapping are cleaner.
 
-**Code Location**: `src/babylon/models/enums.py` (new `StateVerb`, `StateSubVerb`, `StateActionType` enums), `src/babylon/ooda/types.py` (new `StateAction` model).
+**Code Location**: `src/babylon/models/enums.py` (new `StateActionType` enum), `src/babylon/models/entities/state_apparatus_ai.py` (VERB_CHILDREN mapping, `StateAction` model).
 
 ---
 
@@ -84,8 +87,8 @@ Shift deltas are clamped per tick to prevent oscillation (max delta per faction 
 - Thread pool size is derived from the sum of `surveillance_capacity` across all StateApparatus nodes (`OrganizationDefines.surveillance_capacity_default` at `defines.py:2018`). FUND and STAFF actions that increase `surveillance_capacity` grow the pool. Detroit 2010 baseline: ~5-8 total threads.
 
 **Edge types**: New `EdgeType` values:
-- `SURVEILS`: AttentionThread -> target (Organization, Territory, or Community). Carries `surveillance_method`.
-- `OPERATED_BY`: AttentionThread -> StateApparatus. Thread capacity accounting.
+- `TARGETS`: AttentionThread -> target (Organization, Territory, or Community). Carries `surveillance_method`.
+- `OWNED_BY`: AttentionThread -> StateApparatus. Thread capacity accounting.
 
 **Alternatives Considered**:
 - (a) Store as attributes on target nodes (e.g., `org_node["threads"] = [...]`): Rejected because one target can have multiple threads from different apparatuses, threads have rich state that does not flatten into node attributes, and reverse queries ("which apparatus owns this thread?") require graph edges.

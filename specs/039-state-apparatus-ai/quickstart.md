@@ -26,7 +26,7 @@ Three ruling-class coalitions with distinct material bases and verb preferences:
 
 ### Verbs
 
-Six top-level verbs with ~24 sub-verbs, encoded as a flat `StateActionType` enum with prefix convention (`DEVELOP_INVEST`, `REPRESS_RAID`, etc.):
+Six top-level verbs with ~24 sub-verbs, encoded as a flat `StateActionType` enum with simple naming and an explicit `VERB_CHILDREN` mapping for hierarchy validation:
 
 | Verb | Sub-verbs | Target Layer | Strategic Mode |
 |------|-----------|-------------|----------------|

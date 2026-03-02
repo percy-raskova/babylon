@@ -28,6 +28,11 @@ from babylon.ooda.state_ai.faction_dynamics import (
     compute_stability,
     renormalize_faction_balance,
 )
+from babylon.ooda.state_ai.observability import (
+    create_observable_action,
+    create_territory_observables,
+    resolve_counter_intel,
+)
 from babylon.ooda.state_ai.territory_effects import (
     assess_territory_threat,
     check_recruit_effectiveness,
@@ -46,6 +51,8 @@ from babylon.ooda.state_ai.territory_effects import (
 __all__ = [
     "RuleBasedStateAI",
     "apply_fascist_overrides",
+    "create_observable_action",
+    "create_territory_observables",
     "apply_material_condition_shift",
     "apply_player_action_shift",
     "apply_repression_failure_shift",
@@ -59,6 +66,7 @@ __all__ = [
     "compute_stability",
     "renormalize_faction_balance",
     "resolve_bribe",
+    "resolve_counter_intel",
     "resolve_displace",
     "resolve_divide",
     "resolve_eviction_cascade",

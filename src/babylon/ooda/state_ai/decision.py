@@ -14,6 +14,7 @@ See Also:
 from __future__ import annotations
 
 import random
+from typing import Any
 
 from babylon.config.defines import StateApparatusAIDefines
 from babylon.models.entities.state_apparatus_ai import (
@@ -429,6 +430,60 @@ class RuleBasedStateAI:
                 remaining_budget -= candidate.budget_cost
 
         return selected
+
+    def get_debug_state(
+        self,
+        defines: StateApparatusAIDefines,
+        faction_balance: FactionBalance | None = None,
+        budget: StateBudget | None = None,
+        last_actions: list[StateAction] | None = None,
+    ) -> dict[str, Any] | None:
+        """Expose all state internals when God Mode is enabled.
+
+        Args:
+            defines: State AI configuration with ``god_mode_enabled``.
+            faction_balance: Current faction balance (if available).
+            budget: Current budget state (if available).
+            last_actions: Most recent actions taken (if available).
+
+        Returns:
+            Dict of all state internals if god_mode_enabled, else None.
+        """
+        if not defines.god_mode_enabled:
+            return None
+
+        debug: dict[str, Any] = {"god_mode": True}
+
+        if faction_balance is not None:
+            debug["faction_balance"] = {
+                "finance_capital": faction_balance.finance_capital,
+                "security_state": faction_balance.security_state,
+                "settler_populist": faction_balance.settler_populist,
+                "stability": faction_balance.stability,
+                "legitimacy": faction_balance.legitimacy,
+                "dominant_faction": str(faction_balance.dominant_faction),
+            }
+
+        if budget is not None:
+            debug["budget"] = {
+                "revenue": budget.revenue,
+                "available": budget.available,
+                "allocated": dict(budget.allocated),
+            }
+
+        if last_actions is not None:
+            debug["last_actions"] = [
+                {
+                    "verb": str(a.verb),
+                    "sub_verb": str(a.sub_verb),
+                    "target_id": a.target_id,
+                    "budget_cost": a.budget_cost,
+                    "legitimacy_cost": a.legitimacy_cost,
+                }
+                for a in last_actions
+            ]
+
+        return debug
 
 
 __all__ = [

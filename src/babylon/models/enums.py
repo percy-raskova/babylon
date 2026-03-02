@@ -90,6 +90,7 @@ class EdgeType(StrEnum):
         ADJACENCY: Territory -> Territory spatial connectivity (Sprint 3.5.1)
         TRANSACTIONAL: Service-for-support exchange (org-community, Feature 032)
         SOLIDARISTIC: Deep mutual commitment (org-community, Feature 032)
+        ANTAGONISTIC: Manufactured conflict between orgs (Feature 039)
     """
 
     EXPLOITATION = "exploitation"
@@ -110,6 +111,7 @@ class EdgeType(StrEnum):
     # OODA Loop System (Feature 032)
     TRANSACTIONAL = "transactional"  # Organization → Community (service-for-support exchange)
     SOLIDARISTIC = "solidaristic"  # Organization → Community (deep mutual commitment)
+    ANTAGONISTIC = "antagonistic"  # Manufactured conflict between orgs (Feature 039)
     # State Apparatus AI (Feature 039)
     TARGETS = "targets"  # AttentionThread → target entity
     OWNED_BY = "owned_by"  # AttentionThread → StateApparatus

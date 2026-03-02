@@ -3348,6 +3348,64 @@ class StateApparatusAIDefines(BaseModel):
     )
 
     # -------------------------------------------------------------------------
+    # Spatial Dynamics (FR-E01 through FR-E07)
+    # -------------------------------------------------------------------------
+    heat_decay_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="[S] Per-tick heat decay when no PRESENCE edges active.",
+    )
+    recruit_no_presence_penalty: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description="[S] Effectiveness penalty for recruiting without territorial PRESENCE (0.9 = 90% reduction).",
+    )
+    eviction_scatter_ci_loss: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description="[S] CI loss in neighboring territories receiving scattered population.",
+    )
+
+    # -------------------------------------------------------------------------
+    # CO-OPT Effects (FR-B05)
+    # -------------------------------------------------------------------------
+    propagandize_base_delta: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=0.5,
+        description="[S] Base CI reduction per PROPAGANDIZE application (FR-B05).",
+    )
+    incorporate_base_attractiveness: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="[S] Base offer attractiveness for INCORPORATE (FR-B05).",
+    )
+    bribe_consciousness_shift: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=0.5,
+        description="[S] Revolutionary tendency reduction per BRIBE (FR-B05).",
+    )
+    bribe_liberal_increase: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=0.5,
+        description="[S] Liberal tendency increase per BRIBE (FR-B05).",
+    )
+    divide_requires_prior_surveil: bool = Field(
+        default=True,
+        description="[S] Whether DIVIDE requires prior SURVEIL intelligence.",
+    )
+    incorporate_requires_prior_surveil: bool = Field(
+        default=True,
+        description="[S] Whether INCORPORATE requires prior SURVEIL intelligence.",
+    )
+
+    # -------------------------------------------------------------------------
     # Debug (Phase 9)
     # -------------------------------------------------------------------------
     god_mode_enabled: bool = Field(

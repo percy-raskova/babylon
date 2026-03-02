@@ -318,11 +318,172 @@ def compute_scorched_earth_legitimacy(
     return defines.scorched_earth_legitimacy_periphery
 
 
+# -------------------------------------------------------------------------
+# Heat decay (T066)
+# -------------------------------------------------------------------------
+
+
+def compute_heat_decay(
+    current_heat: float,
+    has_presence: bool,
+    defines: StateApparatusAIDefines,
+) -> float:
+    """Decay heat when no PRESENCE edges remain.
+
+    When an organization loses all PRESENCE edges in a territory,
+    heat decays by heat_decay_rate per tick. If PRESENCE exists,
+    no decay occurs (heat is driven by accumulation instead).
+
+    Args:
+        current_heat: Current heat level on the territory [0.0, 1.0].
+        has_presence: Whether any PRESENCE edges exist in this territory.
+        defines: State AI configuration with ``heat_decay_rate``.
+
+    Returns:
+        Updated heat value, bounded to [0.0, 1.0].
+    """
+    if has_presence:
+        return current_heat
+    new_heat = current_heat - defines.heat_decay_rate
+    return max(0.0, min(1.0, new_heat))
+
+
+# -------------------------------------------------------------------------
+# Territorial PRESENCE requirement for RECRUIT (T067)
+# -------------------------------------------------------------------------
+
+
+def check_recruit_effectiveness(
+    has_presence: bool,
+    base_effectiveness: float,
+    defines: StateApparatusAIDefines,
+) -> float:
+    """Compute recruitment effectiveness based on territorial PRESENCE.
+
+    Organizations without PRESENCE in a territory have severely
+    reduced recruitment effectiveness (recruit_no_presence_penalty).
+
+    Args:
+        has_presence: Whether the recruiting org has PRESENCE in the territory.
+        base_effectiveness: Base recruitment effectiveness [0.0, 1.0].
+        defines: State AI configuration with ``recruit_no_presence_penalty``.
+
+    Returns:
+        Effective recruitment rate, penalized if no PRESENCE.
+    """
+    if has_presence:
+        return base_effectiveness
+    penalty = defines.recruit_no_presence_penalty
+    return base_effectiveness * (1.0 - penalty)
+
+
+# -------------------------------------------------------------------------
+# Consciousness geography — territory threat assessment (T068)
+# -------------------------------------------------------------------------
+
+
+def assess_territory_threat(
+    territory_ci: float,
+    territory_heat: float,
+    defines: StateApparatusAIDefines,
+) -> float:
+    """Assess state threat level for a specific territory.
+
+    Threat = weighted combination of local collective_identity and heat.
+    Territories with high CI AND high heat are priority targets for
+    state intervention. This enables consciousness geography --- the state
+    sees threat at territory granularity, not org-level.
+
+    Args:
+        territory_ci: Local collective_identity [0.0, 1.0].
+        territory_heat: Current heat level [0.0, 1.0].
+        defines: State AI configuration with ``heat_escalation_threshold``.
+
+    Returns:
+        Threat score in [0.0, 1.0]. Higher = more threatening to state.
+    """
+    # Weight CI and heat equally, with bonus for heat above threshold
+    ci_component = territory_ci * 0.5
+    heat_component = territory_heat * 0.5
+
+    # Bonus threat for heat exceeding escalation threshold
+    if territory_heat > defines.heat_escalation_threshold:
+        overshoot = territory_heat - defines.heat_escalation_threshold
+        heat_component += overshoot * 0.3
+
+    return max(0.0, min(1.0, ci_component + heat_component))
+
+
+# -------------------------------------------------------------------------
+# Eviction cascade — DISPLACE scatter effects (T069)
+# -------------------------------------------------------------------------
+
+
+def resolve_eviction_cascade(
+    source_territory: dict[str, Any],
+    neighbor_territories: list[dict[str, Any]],
+    displaced_count: int,
+    defines: StateApparatusAIDefines,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Resolve eviction cascade from DISPLACE action.
+
+    Scattered population is distributed across neighboring territories.
+    Each receiving territory gains population but loses collective_identity
+    (organized community is scattered, diluting consciousness).
+    Community infrastructure in the source territory is severed.
+
+    Args:
+        source_territory: Dict of territory that was displaced.
+        neighbor_territories: List of neighboring territory dicts.
+        displaced_count: Number of people displaced (from resolve_displace).
+        defines: State AI configuration with ``eviction_scatter_ci_loss``.
+
+    Returns:
+        Tuple of (updated_source, list_of_updated_neighbors).
+    """
+    updated_source = dict(source_territory)
+
+    # Sever community infrastructure in source (TENANCY edges broken)
+    old_ciq: float = updated_source.get("community_infrastructure_quality", 0.0)
+    updated_source["community_infrastructure_quality"] = max(
+        0.0, old_ciq - defines.displace_community_infra_reduction
+    )
+
+    if not neighbor_territories or displaced_count <= 0:
+        return updated_source, []
+
+    # Distribute displaced population evenly across neighbors
+    per_neighbor = displaced_count // len(neighbor_territories)
+    remainder = displaced_count % len(neighbor_territories)
+
+    updated_neighbors: list[dict[str, Any]] = []
+    max_neighbors = len(neighbor_territories)
+    for idx in range(max_neighbors):
+        neighbor = dict(neighbor_territories[idx])
+        # Allocate population (first neighbor gets remainder)
+        allocation = per_neighbor + (1 if idx < remainder else 0)
+        old_pop: int = neighbor.get("population", 0)
+        neighbor["population"] = old_pop + allocation
+
+        # CI dilution: scattered arrivals reduce local consciousness
+        old_ci: float = neighbor.get("collective_identity", 0.0)
+        new_ci = max(0.0, old_ci - defines.eviction_scatter_ci_loss)
+        neighbor["collective_identity"] = new_ci
+
+        updated_neighbors.append(neighbor)
+
+    return updated_source, updated_neighbors
+
+
 __all__ = [
+    "assess_territory_threat",
+    "check_recruit_effectiveness",
     "compute_heat_accumulation",
+    "compute_heat_decay",
     "compute_propagandize_effect",
     "compute_scorched_earth_legitimacy",
     "resolve_displace",
+    "resolve_eviction_cascade",
     "resolve_invest",
     "resolve_neglect",
     "resolve_scorched_earth",

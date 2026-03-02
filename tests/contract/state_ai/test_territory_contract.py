@@ -21,9 +21,13 @@ import pytest
 
 from babylon.config.defines import StateApparatusAIDefines
 from babylon.ooda.state_ai.territory_effects import (
+    assess_territory_threat,
+    check_recruit_effectiveness,
     compute_heat_accumulation,
+    compute_heat_decay,
     compute_propagandize_effect,
     resolve_displace,
+    resolve_eviction_cascade,
     resolve_invest,
     resolve_neglect,
     resolve_scorched_earth,
@@ -559,3 +563,129 @@ class TestPropagandizeEffect:
         # Effect cannot exceed the current CI (would make CI negative)
         assert effect <= 0.05, f"Effect ({effect}) should not exceed current CI (0.05)"
         assert effect >= 0.0, f"Effect ({effect}) should be non-negative"
+
+
+# ===========================================================================
+# BC-TE-006b: Heat Decay When PRESENCE Removed
+# ===========================================================================
+
+
+class TestHeatDecay:
+    """Contract: Heat decays predictably when PRESENCE edges are removed."""
+
+    def test_heat_decays_without_presence(self) -> None:
+        """Heat decreases each tick when no PRESENCE exists."""
+        defines = _make_defines()
+        heat = 0.5
+        max_ticks: int = 4
+        for _tick in range(max_ticks):
+            heat = compute_heat_decay(heat, has_presence=False, defines=defines)
+        assert heat < 0.5, f"Heat should decay without PRESENCE, got {heat}"
+
+    def test_heat_stable_with_presence(self) -> None:
+        """Heat does not decay when PRESENCE edges exist."""
+        defines = _make_defines()
+        heat = 0.5
+        result = compute_heat_decay(heat, has_presence=True, defines=defines)
+        assert result == 0.5, f"Heat should be stable with PRESENCE, got {result}"
+
+    def test_heat_decay_bounded_at_zero(self) -> None:
+        """Heat never goes below 0.0 during decay."""
+        defines = _make_defines()
+        heat = 0.01
+        max_ticks: int = 10
+        for _tick in range(max_ticks):
+            heat = compute_heat_decay(heat, has_presence=False, defines=defines)
+        assert heat >= 0.0, f"Heat should not go below 0.0, got {heat}"
+
+
+# ===========================================================================
+# BC-US5-001: Territorial PRESENCE Required for Recruitment
+# ===========================================================================
+
+
+class TestRecruitPresenceRequirement:
+    """Contract: PRESENCE is required for effective recruitment."""
+
+    def test_no_presence_severely_reduces_effectiveness(self) -> None:
+        """Without PRESENCE, recruitment effectiveness is severely reduced."""
+        defines = _make_defines()
+        full = check_recruit_effectiveness(
+            has_presence=True, base_effectiveness=1.0, defines=defines
+        )
+        reduced = check_recruit_effectiveness(
+            has_presence=False, base_effectiveness=1.0, defines=defines
+        )
+        assert reduced < full * 0.5, (
+            f"No-PRESENCE recruitment ({reduced}) should be < 50% of with-PRESENCE ({full})"
+        )
+
+    def test_with_presence_full_effectiveness(self) -> None:
+        """With PRESENCE, recruitment effectiveness is unpenalized."""
+        defines = _make_defines()
+        result = check_recruit_effectiveness(
+            has_presence=True, base_effectiveness=0.8, defines=defines
+        )
+        assert result == pytest.approx(0.8)
+
+
+# ===========================================================================
+# BC-US5-002: Consciousness Geography
+# ===========================================================================
+
+
+class TestConsciousnessGeography:
+    """Contract: CI varies spatially, state sees threat at territory level."""
+
+    def test_high_ci_high_heat_is_highest_threat(self) -> None:
+        """Territory with high CI AND high heat is highest priority."""
+        defines = _make_defines()
+        high_threat = assess_territory_threat(territory_ci=0.8, territory_heat=0.9, defines=defines)
+        low_threat = assess_territory_threat(territory_ci=0.2, territory_heat=0.1, defines=defines)
+        assert high_threat > low_threat
+
+    def test_threat_bounded_zero_to_one(self) -> None:
+        """Threat score stays within [0.0, 1.0]."""
+        defines = _make_defines()
+        threat = assess_territory_threat(territory_ci=1.0, territory_heat=1.0, defines=defines)
+        assert 0.0 <= threat <= 1.0
+
+
+# ===========================================================================
+# BC-US5-003: Eviction Cascade
+# ===========================================================================
+
+
+class TestEvictionCascade:
+    """Contract: DISPLACE scatters population, reduces neighbor CI."""
+
+    def test_displaced_population_distributed_to_neighbors(self) -> None:
+        """Displaced population is distributed across neighboring territories."""
+        defines = _make_defines()
+        source = _make_territory(population=0)
+        neighbors = [_make_territory(population=500), _make_territory(population=500)]
+        _, updated_neighbors = resolve_eviction_cascade(
+            source, neighbors, displaced_count=100, defines=defines
+        )
+        total_received = sum(n["population"] - 500 for n in updated_neighbors)
+        assert total_received == 100
+
+    def test_neighbor_ci_decreases_from_scatter(self) -> None:
+        """Neighboring territories lose CI when receiving scattered population."""
+        defines = _make_defines()
+        source = _make_territory()
+        neighbors = [_make_territory(collective_identity=0.6)]
+        _, updated_neighbors = resolve_eviction_cascade(
+            source, neighbors, displaced_count=50, defines=defines
+        )
+        assert updated_neighbors[0]["collective_identity"] < 0.6
+
+    def test_empty_displacement_no_effect_on_neighbors(self) -> None:
+        """Zero displaced count produces no changes to neighbors."""
+        defines = _make_defines()
+        source = _make_territory()
+        neighbors = [_make_territory(population=500, collective_identity=0.6)]
+        _, updated_neighbors = resolve_eviction_cascade(
+            source, neighbors, displaced_count=0, defines=defines
+        )
+        assert len(updated_neighbors) == 0

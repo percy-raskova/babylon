@@ -18,10 +18,14 @@ import pytest
 
 from babylon.config.defines import StateApparatusAIDefines
 from babylon.ooda.state_ai.territory_effects import (
+    assess_territory_threat,
+    check_recruit_effectiveness,
     compute_heat_accumulation,
+    compute_heat_decay,
     compute_propagandize_effect,
     compute_scorched_earth_legitimacy,
     resolve_displace,
+    resolve_eviction_cascade,
     resolve_invest,
     resolve_neglect,
     resolve_scorched_earth,
@@ -742,3 +746,191 @@ class TestComputeScorchedEarthLegitimacy:
 
         assert compute_scorched_earth_legitimacy("CORE", defines) == pytest.approx(0.5)
         assert compute_scorched_earth_legitimacy("PERIPHERY", defines) == pytest.approx(0.01)
+
+
+# ===========================================================================
+# compute_heat_decay tests
+# ===========================================================================
+
+
+class TestComputeHeatDecay:
+    """Unit tests for compute_heat_decay."""
+
+    def test_no_presence_decays_heat(self) -> None:
+        defines = _make_defines()
+        result = compute_heat_decay(0.5, has_presence=False, defines=defines)
+        assert result == pytest.approx(0.5 - defines.heat_decay_rate)
+
+    def test_with_presence_no_decay(self) -> None:
+        defines = _make_defines()
+        result = compute_heat_decay(0.5, has_presence=True, defines=defines)
+        assert result == pytest.approx(0.5)
+
+    def test_decay_bounded_at_zero(self) -> None:
+        defines = _make_defines()
+        result = compute_heat_decay(0.01, has_presence=False, defines=defines)
+        assert result == 0.0
+
+    def test_custom_decay_rate(self) -> None:
+        defines = _make_defines(heat_decay_rate=0.2)
+        result = compute_heat_decay(0.5, has_presence=False, defines=defines)
+        assert result == pytest.approx(0.3)
+
+    def test_zero_heat_stays_zero(self) -> None:
+        defines = _make_defines()
+        result = compute_heat_decay(0.0, has_presence=False, defines=defines)
+        assert result == 0.0
+
+    def test_full_heat_decays(self) -> None:
+        defines = _make_defines()
+        result = compute_heat_decay(1.0, has_presence=False, defines=defines)
+        assert result == pytest.approx(1.0 - defines.heat_decay_rate)
+
+
+# ===========================================================================
+# check_recruit_effectiveness tests
+# ===========================================================================
+
+
+class TestCheckRecruitEffectiveness:
+    """Unit tests for check_recruit_effectiveness."""
+
+    def test_with_presence_full_effectiveness(self) -> None:
+        defines = _make_defines()
+        result = check_recruit_effectiveness(True, 0.8, defines)
+        assert result == pytest.approx(0.8)
+
+    def test_no_presence_severely_penalized(self) -> None:
+        defines = _make_defines(recruit_no_presence_penalty=0.9)
+        result = check_recruit_effectiveness(False, 1.0, defines)
+        assert result == pytest.approx(0.1)
+
+    def test_zero_base_effectiveness_unchanged(self) -> None:
+        defines = _make_defines()
+        result = check_recruit_effectiveness(False, 0.0, defines)
+        assert result == pytest.approx(0.0)
+
+    def test_no_penalty_configured(self) -> None:
+        defines = _make_defines(recruit_no_presence_penalty=0.0)
+        result = check_recruit_effectiveness(False, 0.5, defines)
+        assert result == pytest.approx(0.5)
+
+    def test_full_penalty_configured(self) -> None:
+        defines = _make_defines(recruit_no_presence_penalty=1.0)
+        result = check_recruit_effectiveness(False, 1.0, defines)
+        assert result == pytest.approx(0.0)
+
+
+# ===========================================================================
+# assess_territory_threat tests
+# ===========================================================================
+
+
+class TestAssessTerritoryThreat:
+    """Unit tests for assess_territory_threat."""
+
+    def test_zero_ci_zero_heat(self) -> None:
+        defines = _make_defines()
+        result = assess_territory_threat(0.0, 0.0, defines)
+        assert result == pytest.approx(0.0)
+
+    def test_high_ci_high_heat(self) -> None:
+        defines = _make_defines()
+        result = assess_territory_threat(0.8, 0.9, defines)
+        assert result > 0.5
+
+    def test_heat_above_escalation_gets_bonus(self) -> None:
+        defines = _make_defines(heat_escalation_threshold=0.6)
+        below = assess_territory_threat(0.5, 0.5, defines)
+        above = assess_territory_threat(0.5, 0.7, defines)
+        # Same CI, heat above threshold should produce higher threat
+        assert above > below
+
+    def test_bounded_zero_to_one(self) -> None:
+        defines = _make_defines()
+        result = assess_territory_threat(1.0, 1.0, defines)
+        assert 0.0 <= result <= 1.0
+
+    def test_ci_only_contributes_half(self) -> None:
+        defines = _make_defines()
+        result = assess_territory_threat(1.0, 0.0, defines)
+        assert result == pytest.approx(0.5)
+
+    def test_heat_only_contributes_half(self) -> None:
+        defines = _make_defines()
+        result = assess_territory_threat(0.0, 1.0, defines)
+        # Heat=1.0 > threshold=0.6, so bonus applies too
+        assert result >= 0.5
+
+
+# ===========================================================================
+# resolve_eviction_cascade tests
+# ===========================================================================
+
+
+class TestResolveEvictionCascade:
+    """Unit tests for resolve_eviction_cascade."""
+
+    def test_population_distributed_evenly(self) -> None:
+        defines = _make_defines()
+        source = _make_territory(population=0)
+        neighbors = [_make_territory(population=100), _make_territory(population=100)]
+        _, updated = resolve_eviction_cascade(source, neighbors, 100, defines)
+        assert updated[0]["population"] == 150
+        assert updated[1]["population"] == 150
+
+    def test_remainder_goes_to_first_neighbors(self) -> None:
+        defines = _make_defines()
+        source = _make_territory(population=0)
+        neighbors = [
+            _make_territory(population=0),
+            _make_territory(population=0),
+            _make_territory(population=0),
+        ]
+        _, updated = resolve_eviction_cascade(source, neighbors, 10, defines)
+        # 10 / 3 = 3 each, remainder 1 to first neighbor
+        assert updated[0]["population"] == 4
+        assert updated[1]["population"] == 3
+        assert updated[2]["population"] == 3
+
+    def test_neighbor_ci_reduced(self) -> None:
+        defines = _make_defines(eviction_scatter_ci_loss=0.1)
+        source = _make_territory()
+        neighbors = [_make_territory(collective_identity=0.5)]
+        _, updated = resolve_eviction_cascade(source, neighbors, 50, defines)
+        assert updated[0]["collective_identity"] == pytest.approx(0.4)
+
+    def test_ci_bounded_at_zero(self) -> None:
+        defines = _make_defines(eviction_scatter_ci_loss=0.5)
+        source = _make_territory()
+        neighbors = [_make_territory(collective_identity=0.1)]
+        _, updated = resolve_eviction_cascade(source, neighbors, 50, defines)
+        assert updated[0]["collective_identity"] == 0.0
+
+    def test_no_neighbors_returns_empty(self) -> None:
+        defines = _make_defines()
+        source = _make_territory()
+        updated_source, updated_neighbors = resolve_eviction_cascade(source, [], 100, defines)
+        assert len(updated_neighbors) == 0
+
+    def test_zero_displaced_returns_empty_neighbors(self) -> None:
+        defines = _make_defines()
+        source = _make_territory()
+        neighbors = [_make_territory()]
+        _, updated_neighbors = resolve_eviction_cascade(source, neighbors, 0, defines)
+        assert len(updated_neighbors) == 0
+
+    def test_source_community_infra_reduced(self) -> None:
+        defines = _make_defines(displace_community_infra_reduction=0.3)
+        source = _make_territory(community_infrastructure_quality=0.5)
+        neighbors = [_make_territory()]
+        updated_source, _ = resolve_eviction_cascade(source, neighbors, 50, defines)
+        assert updated_source["community_infrastructure_quality"] == pytest.approx(0.2)
+
+    def test_does_not_mutate_inputs(self) -> None:
+        defines = _make_defines()
+        source = _make_territory(population=100)
+        neighbor = _make_territory(population=200)
+        original_pop = neighbor["population"]
+        _ = resolve_eviction_cascade(source, [neighbor], 50, defines)
+        assert neighbor["population"] == original_pop

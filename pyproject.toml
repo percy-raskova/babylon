@@ -67,6 +67,10 @@ duckdb = "^1.4.4"
 pgvector = "^0.3"
 ansible-dev-tools = "^26.2.0"
 uuid = "^1.30"
+django = ">=5.0,<6.0"
+djangorestframework = ">=3.15"
+django-cors-headers = ">=4.0"
+gunicorn = ">=21.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
@@ -101,6 +105,9 @@ types-docutils = "^0.22.3.20251115"
 types-tqdm = "^4.67.0.20250809"
 vulture = "^2.14"
 hypothesis = "^6.149.0"
+pytest-django = "^4.8"
+django-stubs = {version = ">=5.0", extras = ["compatible-mypy"]}
+djangorestframework-stubs = {version = ">=3.15", extras = ["compatible-mypy"]}
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -113,6 +120,7 @@ sphinxcontrib-mermaid = "^1.2"
 [tool.pytest.ini_options]
 pythonpath = [
     "src",
+    "web",
 ]
 testpaths = [
     "tests",
@@ -174,10 +182,12 @@ line-length = 100
 target-version = "py312"
 src = [
     "src",
+    "web",
 ]
 exclude = [
     "assets/music/",
     "specs/",
+    "web/frontend/",
 ]
 
 [tool.ruff.lint]
@@ -210,6 +220,9 @@ known-first-party = [
     "ARG001",
     "ARG002",
 ]
+"web/**" = [
+    "ARG001",
+]
 "tools/**" = [
     "C901",
 ]
@@ -221,7 +234,7 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src"
+mypy_path = "src:web"
 explicit_package_bases = true
 warn_return_any = true
 warn_unused_configs = true
@@ -241,6 +254,7 @@ exclude = [
 ]
 plugins = [
     "pydantic.mypy",
+    "mypy_django_plugin.main",
 ]
 
 [[tool.mypy.overrides]]
@@ -250,8 +264,13 @@ module = [
     "h3.*",
     "tomli",
     "pgvector.*",
+    "gunicorn.*",
+    "corsheaders.*",
 ]
 ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "babylon_web.settings.development"
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

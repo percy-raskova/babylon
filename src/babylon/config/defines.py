@@ -3001,6 +3001,123 @@ class InfrastructureDefines(BaseModel):
         return getattr(self, key, 0.0)
 
 
+class ClassSystemDefines(BaseModel):
+    """Unified class system coefficients (Feature 038).
+
+    Centralizes all tunable coefficients for the unified class system:
+    filtration parameters, home ownership proxy, and the 5x5 class-pair
+    solidarity matrix.
+
+    Args:
+        trust_land_discount: Fed SCF / BIA discount on effective wealth for
+            FIRST_NATIONS trust land property. 0.5 = 50% reduction.
+        documentation_exclusion_factor: Discount on effective wealth for
+            UNDOCUMENTED households. 0.6 = 40% reduction.
+        equity_factor: Fraction of homeowners with meaningful equity.
+            Calibrated: 65% ownership * 0.6 = 39% ~ 40% LA share.
+        base_class_solidarity: Symmetric 5x5 class-pair base solidarity
+            matrix (15 unique values in upper triangle including diagonal).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    trust_land_discount: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fed SCF / BIA: discount on effective wealth for FIRST_NATIONS "
+            "trust land property. 0.5 = 50% reduction in effective wealth percentile."
+        ),
+    )
+    documentation_exclusion_factor: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Game design: discount on effective wealth for UNDOCUMENTED households. "
+            "0.6 = 40% reduction. Reflects structural exclusion from formal "
+            "property/banking/labor protections."
+        ),
+    )
+    equity_factor: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fed SCF: fraction of homeowners with meaningful equity. "
+            "Calibrated: 65% ownership * 0.6 = 39% ~ 40% LA share."
+        ),
+    )
+    base_class_solidarity: dict[str, dict[str, float]] = Field(
+        default_factory=lambda: {
+            "BOURGEOISIE": {
+                "BOURGEOISIE": 0.70,
+                "PETIT_BOURGEOISIE": 0.30,
+                "LABOR_ARISTOCRACY": 0.10,
+                "PROLETARIAT": 0.00,
+                "LUMPENPROLETARIAT": 0.00,
+            },
+            "PETIT_BOURGEOISIE": {
+                "PETIT_BOURGEOISIE": 0.50,
+                "LABOR_ARISTOCRACY": 0.40,
+                "PROLETARIAT": 0.15,
+                "LUMPENPROLETARIAT": 0.05,
+            },
+            "LABOR_ARISTOCRACY": {
+                "LABOR_ARISTOCRACY": 0.60,
+                "PROLETARIAT": 0.30,
+                "LUMPENPROLETARIAT": 0.10,
+            },
+            "PROLETARIAT": {
+                "PROLETARIAT": 0.80,
+                "LUMPENPROLETARIAT": 0.50,
+            },
+            "LUMPENPROLETARIAT": {
+                "LUMPENPROLETARIAT": 0.60,
+            },
+        },
+        description=(
+            "Game design: symmetric 5x5 class-pair base solidarity matrix. "
+            "15 unique values (upper triangle including diagonal). "
+            "Class proximity yields higher base solidarity."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_solidarity_matrix(self) -> ClassSystemDefines:
+        """Ensure all matrix entries are in [0.0, 1.0]."""
+        for outer_key, inner_dict in self.base_class_solidarity.items():
+            for inner_key, value in inner_dict.items():
+                if not 0.0 <= value <= 1.0:
+                    msg = (
+                        f"base_class_solidarity[{outer_key!r}][{inner_key!r}] = {value} "
+                        f"is outside [0.0, 1.0]"
+                    )
+                    raise ValueError(msg)
+        return self
+
+    def get_base_solidarity(self, class_a: str, class_b: str) -> float:
+        """Symmetric lookup into the class-pair solidarity matrix.
+
+        Args:
+            class_a: ClassPosition name (e.g. "PROLETARIAT").
+            class_b: ClassPosition name (e.g. "LABOR_ARISTOCRACY").
+
+        Returns:
+            Base solidarity value, or 0.0 for unknown pairs.
+        """
+        if class_a in self.base_class_solidarity:
+            inner = self.base_class_solidarity[class_a]
+            if class_b in inner:
+                return inner[class_b]
+        if class_b in self.base_class_solidarity:
+            inner = self.base_class_solidarity[class_b]
+            if class_a in inner:
+                return inner[class_a]
+        return 0.0
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -3037,6 +3154,7 @@ class GameDefines(BaseModel):
     - edge_transition: Edge mode transition thresholds (Feature 002)
     - organization: Organization system coefficients (Feature 031)
     - ooda: OODA loop system coefficients (Feature 032)
+    - class_system: Unified class system coefficients (Feature 038)
     - bifurcation: Bifurcation topology analysis coefficients (Feature 033)
     - infra_terrain: Terrain classification and biocapacity coefficients (Feature 036)
     - infrastructure: Infrastructure capacity and internet coefficients (Feature 036)
@@ -3086,6 +3204,8 @@ class GameDefines(BaseModel):
     # Infrastructure Topology Layer (Feature 036)
     infra_terrain: InfraTerrainDefines = Field(default_factory=InfraTerrainDefines)
     infrastructure: InfrastructureDefines = Field(default_factory=InfrastructureDefines)
+    # Unified Class System (Feature 038)
+    class_system: ClassSystemDefines = Field(default_factory=ClassSystemDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -3203,6 +3323,7 @@ class GameDefines(BaseModel):
             bifurcation=BifurcationDefines(**data.get("bifurcation", {})),
             infra_terrain=InfraTerrainDefines(**data.get("infra_terrain", {})),
             infrastructure=InfrastructureDefines(**data.get("infrastructure", {})),
+            class_system=ClassSystemDefines(**data.get("class_system", {})),
         )
 
     @classmethod

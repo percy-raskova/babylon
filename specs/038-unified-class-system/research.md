@@ -221,3 +221,23 @@ class RentDifferentialCalculator(Protocol):
 | FR-010 (Crisis Dispossession) | `DispossessionDefines` in GameDefines | Extend — add community-specific dispossession rate modifiers |
 
 **DRY Assessment**: 5 of 7 core requirements can reuse existing code. 2 require new modules. 0 require rewriting existing code.
+
+---
+
+## R-011: WealthProxyCalculator Equity Factor Source
+
+**Context**: FR-005 requires `equity_factor` in GameDefines (per FR-011). The existing `DefaultWealthProxyCalculator` has `EQUITY_FACTOR = 0.6` as a hardcoded module constant. This creates duplication with `ClassSystemDefines.equity_factor` and violates both FR-011 ("all coefficients in GameDefines, not hardcoded") and constitution III.1 (No Magic Constants).
+
+**Decision**: Update `DefaultWealthProxyCalculator` to accept `equity_factor` from `ClassSystemDefines` via constructor injection, removing the hardcoded constant. Also enable `trust_land_discount` application to reservation-county home ownership rates.
+
+**Rationale**:
+- FR-011 explicitly requires all tunable parameters in GameDefines
+- Constitution III.1 requires all numbers trace to data sources or GameDefines
+- The hardcoded `EQUITY_FACTOR = 0.6` duplicates `ClassSystemDefines.equity_factor`
+- Constructor injection follows the existing DI pattern (Protocol + Default impl)
+- Reservation-county LA proxy modification requires `trust_land_discount` from `ClassSystemDefines`
+- `wealth_proxy.py` moves from UNCHANGED to EXTENDED (~10 lines modified)
+
+**Alternatives Rejected**:
+- Leave hardcoded and document as tech debt: Violates FR-011 and III.1, creates silent duplication risk
+- Remove equity_factor from ClassSystemDefines: Would leave the parameter undiscoverable and non-tunable

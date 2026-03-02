@@ -21,3 +21,4 @@
     - celery
     - memcached
     - nginx
+    - backup

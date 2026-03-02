@@ -11,7 +11,7 @@ Reconcile two class determination frameworks (accounting criterion + wealth perc
 
 **Language/Version**: Python 3.12+
 **Primary Dependencies**: Pydantic 2.x (frozen models, validators), NetworkX 3.x (GraphProtocol), XGI 0.10 (hypergraph memberships — existing via Features 022/029)
-**Storage**: In-memory via GraphProtocol. No new database tables. ClassSystemDefines persisted in `defines.yaml`.
+**Storage**: In-memory via GraphProtocol. No new database tables. ClassSystemDefines loaded via GameDefines (pyproject.toml `[tool.babylon]` or YAML loader).
 **Testing**: pytest with TDD (Red-Green-Refactor). Markers: `@pytest.mark.math` (pure formulas), `@pytest.mark.unit` (default).
 **Target Platform**: Linux server (simulation engine)
 **Project Type**: Single Python package (`src/babylon/`)
@@ -78,7 +78,7 @@ src/babylon/
 │       ├── filtration.py             # NEW — FiltrationResult, apply_filtration() (~120 lines)
 │       ├── unified_classifier.py     # NEW — UnifiedClassifier protocol + default (~200 lines)
 │       ├── rent_differential.py      # NEW — RentDifferentialCalculator + result (~180 lines)
-│       ├── wealth_proxy.py           # UNCHANGED — LA share proxy
+│       ├── wealth_proxy.py           # EXTENDED — accept equity_factor from ClassSystemDefines (~10 lines)
 │       ├── types.py                  # UNCHANGED — ClassPosition, PrecarityStatus
 │       └── __init__.py               # +exports for new modules
 ├── formulas/
@@ -91,17 +91,28 @@ src/babylon/
 
 tests/
 ├── unit/
+│   ├── config/
+│   │   └── test_class_system_defines.py   # NEW — solidarity matrix tests (~10 tests)
+│   ├── economics/
+│   │   ├── lifecycle/
+│   │   │   └── test_class_inheritance.py  # NEW — class-differentiated inheritance (~15 tests)
+│   │   └── melt/
+│   │       ├── test_filtration.py         # NEW — ~30 tests
+│   │       ├── test_unified_classifier.py # NEW — ~25 tests
+│   │       ├── test_rent_differential.py  # NEW — ~20 tests
+│   │       ├── test_wealth_proxy.py       # EXTENDED — FR-005 equity_factor + trust_land tests
+│   │       └── test_fractal_consistency.py # NEW — fractal zoom validation (~5 tests)
+│   └── formulas/
+│       └── test_community.py              # EXTENDED — solidarity potential with matrix (~10 tests)
+├── integration/
 │   └── economics/
-│       └── melt/
-│           ├── test_filtration.py         # NEW — ~30 tests
-│           ├── test_unified_classifier.py # NEW — ~25 tests
-│           └── test_rent_differential.py  # NEW — ~20 tests
+│       └── test_class_system_integration.py # NEW — SC-001/002/004 stubs (skip pending data)
 └── constants.py                           # +ClassSystem test constant group
 ```
 
-**Structure Decision**: Single Python package. All new code in `economics/melt/` (classification subsystem) and `config/defines.py` (coefficients). No new packages or directories outside existing structure. Three new modules, two extended files.
+**Structure Decision**: Single Python package. All new code in `economics/melt/` (classification subsystem) and `config/defines.py` (coefficients). No new packages or directories outside existing structure. Three new modules, three extended files (defines.py, wealth_proxy.py, community.py).
 
-**Estimated New Code**: ~580 lines production, ~800 lines test. Zero lines of existing code deleted or rewritten.
+**Estimated New Code**: ~600 lines production, ~900 lines test. ~10 lines modified in existing `wealth_proxy.py` (R-011: equity_factor from ClassSystemDefines).
 
 ## Key Design Decisions
 
@@ -117,6 +128,7 @@ tests/
 | R-008 | Two integration points: CommunitySystem + EventType | research.md |
 | R-009 | All filtration defaults verified against spec and code | research.md |
 | R-010 | 5 of 7 requirements reuse existing code — 0 rewrites needed | research.md |
+| R-011 | WealthProxyCalculator reads equity_factor from ClassSystemDefines (not hardcoded) | research.md |
 
 ## Dependency Map
 

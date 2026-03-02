@@ -35,6 +35,21 @@ trusted SSL certificates with [Let's Encrypt][lets-encrypt].
 
 This project requires **Python 3.12 or 3.13**. Earlier versions of Python are no longer supported.
 
+## Ansible Collections
+
+This deploy stack requires the following Ansible Galaxy collections:
+
+- `ansible.posix`
+- `community.rabbitmq`
+- `community.general`
+- `community.postgresql`
+
+Install them before running playbooks:
+
+```
+ansible-galaxy collection install ansible.posix community.rabbitmq community.general community.postgresql
+```
+
 ## Getting Started
 
 A quick way to get started is with Vagrant.

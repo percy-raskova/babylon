@@ -126,6 +126,12 @@ ssl_key: |
   MoqV6aeRY/7uwLiviaIUJg==
   -----END PRIVATE KEY-----
 
+r2_access_key_id: REPLACE_WITH_R2_ACCESS_KEY_ID
+r2_secret_access_key: REPLACE_WITH_R2_SECRET_ACCESS_KEY
+r2_endpoint: https://REPLACE_WITH_CF_ACCOUNT_ID.r2.cloudflarestorage.com
+r2_backup_bucket: babylon-backups
+rclone_remote_name: r2
+
 firewall_ssh_allowed_ipv4:
   - 0.0.0.0/0
 

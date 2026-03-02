@@ -159,7 +159,7 @@ A simulation researcher classifies households that hold community hyperedge memb
 4. **Given** a household with 65th percentile wealth and DISABLED membership, **When** classifying with filtration, **Then** effective wealth is discounted by the reproduction_cost_modifier from the DISABLED CommunityState, potentially shifting from LA to PROLETARIAT.
 5. **Given** a household with multiple community memberships (INDIGENOUS + DISABLED), **When** classifying with filtration, **Then** both filtrations apply and the most restrictive effective position is used.
 6. **Given** a household with SETTLER membership and no other filtration-triggering memberships, **When** classifying with filtration, **Then** the classification is identical to the unfiltered baseline (SETTLER is the default operating condition of the property system).
-7. **Given** county-level ACS home ownership data for Wayne County (26163), **When** the home ownership LA proxy is computed with equity_factor ~ 0.6, **Then** the resulting LA share is lower than the raw home ownership rate.
+7. *(FR-005)* **Given** county-level ACS home ownership data for Wayne County (26163), **When** the home ownership LA proxy is computed with equity_factor from ClassSystemDefines (~0.6), **Then** the resulting LA share is lower than the raw home ownership rate.
 
 ______________________________________________________________________
 
@@ -281,7 +281,7 @@ ______________________________________________________________________
 - **FiltrationPredicate**: Community-type-specific modifier that adjusts classification inputs. Each community type (INDIGENOUS, INCARCERATED, UNDOCUMENTED, DISABLED) defines its own predicate with specific parameters.
 - **SolidarityPotential**: Derived quantity between household-pairs incorporating class proximity, community overlap, and rent differential. Feeds bifurcation analysis.
 - **RentDifferential**: Nation-specific Phi_hour computed from ACS earnings gaps within same NAICS codes at county level. Measures differential imperial rent distribution.
-- **CalibrationLog**: Record of disagreements between accounting criterion and wealth percentile classifications. Contains household ID, tick, both classifications, and magnitude of disagreement.
+- **CalibrationLog**: Record of disagreements between accounting criterion and wealth percentile classifications. Contains household ID, tick, both classifications, and magnitude of disagreement. Implemented as `CALIBRATION_DISAGREEMENT` event payloads on the event bus (see research.md R-006), not as a standalone persistence model.
 
 ---
 

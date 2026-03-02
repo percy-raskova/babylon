@@ -24,33 +24,93 @@ export type GameStatus = "active" | "paused" | "completed" | "abandoned";
 export interface GameSnapshot {
   tick: number;
   session_id: string;
-  nodes: Record<string, NodeState>;
+  entities: EntityState[];
+  territories: TerritoryState[];
+  organizations: OrgState[];
+  institutions: InstitutionState[];
   edges: EdgeState[];
-  organizations: Record<string, OrgState>;
+  economy: Record<string, unknown>;
   events: GameEvent[];
 }
 
-export interface NodeState {
+/** Social class entity with full visualization fields. */
+export interface EntityState {
   id: string;
-  node_type: string;
-  [key: string]: unknown;
+  name: string;
+  role: string;
+  wealth: number;
+  consciousness: number;
+  national_identity: number;
+  agitation: number;
+  organization: number;
+  repression: number;
+  p_acquiescence: number;
+  p_revolution: number;
+  subsistence: number;
+  population: number;
+  inequality: number;
+  active: boolean;
 }
 
-export interface EdgeState {
-  source: string;
-  target: string;
-  edge_type: string;
-  weight: number;
+/** Territory with full visualization fields. */
+export interface TerritoryState {
+  id: string;
+  name: string;
+  h3_index: string | null;
+  heat: number;
+  sector_type: string;
+  territory_type: string;
+  profile: string;
+  rent_level: number;
+  population: number;
+  under_eviction: boolean;
+  biocapacity: number;
+  host_id: string | null;
+  occupant_id: string | null;
 }
 
+/** Organization with full visualization fields. */
 export interface OrgState {
   id: string;
   name: string;
   org_type: string;
-  resources: number;
-  [key: string]: unknown;
+  class_character: string;
+  cohesion: number;
+  cadre_level: number;
+  budget: number;
+  heat: number;
+  territory_ids: string[];
+  consciousness_tendency: string;
 }
 
+/** Institution with full visualization fields. */
+export interface InstitutionState {
+  id: string;
+  name: string;
+  apparatus_type: string;
+  social_function: string;
+  class_inscription: string;
+  legitimacy: number;
+  budget: number;
+  housed_org_ids: string[];
+  territory_ids: string[];
+  hegemonic_fraction: string;
+  liberal_technocratic: number;
+  revanchist_fascist: number;
+  institutionalist_bonapartist: number;
+}
+
+/** Relationship edge. */
+export interface EdgeState {
+  source_id: string;
+  target_id: string;
+  edge_type: string;
+  value_flow: number;
+  tension: number;
+  solidarity_strength: number;
+}
+
+/** Simulation event. */
 export interface GameEvent {
   type: string;
   tick: number;
@@ -113,3 +173,12 @@ export interface AuthState {
   id?: number;
   username?: string;
 }
+
+/** Map layer type for hex visualization. */
+export type MapLayer =
+  | "heat"
+  | "consciousness"
+  | "wealth"
+  | "rent"
+  | "biocapacity"
+  | "population";

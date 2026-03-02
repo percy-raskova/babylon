@@ -33,42 +33,53 @@ export function GameView({ gameId, onBack }: GameViewProps) {
   }
 
   return (
-    <div style={styles.container}>
+    <div className="flex h-[calc(100vh-49px)] flex-col overflow-hidden px-4 pb-4">
       {/* Top bar */}
-      <div style={styles.topBar}>
-        <button onClick={onBack} style={styles.backButton}>
+      <div className="mb-3 flex shrink-0 items-center justify-between border-b border-wet-concrete py-3">
+        <button
+          onClick={onBack}
+          className="rounded-md border border-wet-concrete px-4 py-2 text-sm text-silver hover:border-silver"
+        >
           &larr; Games
         </button>
-        <div style={styles.tickInfo}>
+        <div className="flex items-baseline gap-2">
           {snapshot && (
             <>
-              <span style={styles.tickLabel}>Tick</span>
-              <span style={styles.tickValue}>{snapshot.tick}</span>
+              <span className="text-[13px] uppercase tracking-wider text-ash">
+                Tick
+              </span>
+              <span className="font-mono text-[28px] font-bold text-gold">
+                {snapshot.tick}
+              </span>
             </>
           )}
         </div>
-        <div style={styles.gameId}>{gameId.slice(0, 8)}...</div>
+        <div className="font-mono text-xs text-ash">{gameId.slice(0, 8)}...</div>
       </div>
 
-      {error && <p style={styles.error}>{error}</p>}
+      {error && (
+        <p className="mb-2 shrink-0 text-[13px] text-crimson">{error}</p>
+      )}
 
       {loading && !snapshot ? (
-        <div style={styles.loading}>Loading game state...</div>
+        <div className="flex flex-1 items-center justify-center text-silver">
+          Loading game state...
+        </div>
       ) : snapshot ? (
-        <div style={styles.layout}>
+        <div className="grid flex-1 grid-cols-[1fr_360px] gap-3 overflow-hidden">
           {/* Left column: Map + Time Series */}
-          <div style={styles.leftCol}>
-            <div style={styles.mapPanel}>
+          <div className="flex flex-col gap-3 overflow-hidden">
+            <div className="flex-[2] overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
               <HexMap snapshot={snapshot} />
             </div>
-            <div style={styles.timePanel}>
+            <div className="flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
               <TimeSeriesPanel snapshot={snapshot} />
             </div>
           </div>
 
           {/* Right column: Actions + Orgs + Results */}
-          <div style={styles.rightCol}>
-            <div style={styles.actionPanelWrap}>
+          <div className="flex flex-col gap-3 overflow-hidden">
+            <div className="max-h-[280px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
               <ActionPanel
                 actions={available}
                 onSubmit={submitAction}
@@ -76,150 +87,21 @@ export function GameView({ gameId, onBack }: GameViewProps) {
                 resolving={resolving}
               />
             </div>
-            <div style={styles.orgPanelWrap}>
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
               <OrgDashboard snapshot={snapshot} />
             </div>
             {results && results.length > 0 && (
-              <div style={styles.resultsPanelWrap}>
-                <TickResults
-                  results={results}
-                  tick={snapshot.tick}
-                />
+              <div className="max-h-[300px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
+                <TickResults results={results} tick={snapshot.tick} />
               </div>
             )}
           </div>
         </div>
       ) : (
-        <div style={styles.loading}>No state available</div>
+        <div className="flex flex-1 items-center justify-center text-silver">
+          No state available
+        </div>
       )}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    padding: "0 16px 16px",
-    height: "calc(100vh - 49px)",
-    display: "flex",
-    flexDirection: "column" as const,
-    overflow: "hidden",
-  },
-  topBar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px 0",
-    borderBottom: "1px solid #2a2a3a",
-    marginBottom: "12px",
-    flexShrink: 0,
-  },
-  backButton: {
-    background: "none",
-    border: "1px solid #2a2a3a",
-    borderRadius: "6px",
-    color: "#888",
-    padding: "8px 16px",
-    cursor: "pointer",
-    fontSize: "14px",
-  },
-  tickInfo: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: "8px",
-  },
-  tickLabel: {
-    color: "#666",
-    fontSize: "13px",
-    textTransform: "uppercase" as const,
-    letterSpacing: "1px",
-  },
-  tickValue: {
-    color: "#c8a860",
-    fontSize: "28px",
-    fontWeight: 700,
-    fontFamily: "monospace",
-  },
-  gameId: {
-    color: "#444",
-    fontSize: "12px",
-    fontFamily: "monospace",
-  },
-  error: {
-    color: "#e04040",
-    fontSize: "13px",
-    margin: "0 0 8px",
-    flexShrink: 0,
-  },
-  loading: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flex: 1,
-    color: "#666",
-    fontSize: "16px",
-  },
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "1fr 360px",
-    gap: "12px",
-    flex: 1,
-    overflow: "hidden",
-  },
-  leftCol: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "12px",
-    overflow: "hidden",
-  },
-  mapPanel: {
-    background: "#141420",
-    border: "1px solid #2a2a3a",
-    borderRadius: "8px",
-    padding: "12px",
-    flex: 2,
-    overflow: "hidden",
-    minHeight: 0,
-  },
-  timePanel: {
-    background: "#141420",
-    border: "1px solid #2a2a3a",
-    borderRadius: "8px",
-    padding: "12px",
-    flex: 1,
-    overflow: "hidden",
-    minHeight: 0,
-  },
-  rightCol: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "12px",
-    overflow: "hidden",
-  },
-  actionPanelWrap: {
-    background: "#141420",
-    border: "1px solid #2a2a3a",
-    borderRadius: "8px",
-    padding: "12px",
-    flexShrink: 0,
-    maxHeight: "280px",
-    overflow: "auto",
-  },
-  orgPanelWrap: {
-    background: "#141420",
-    border: "1px solid #2a2a3a",
-    borderRadius: "8px",
-    padding: "12px",
-    flex: 1,
-    overflow: "hidden",
-    minHeight: 0,
-  },
-  resultsPanelWrap: {
-    background: "#141420",
-    border: "1px solid #2a2a3a",
-    borderRadius: "8px",
-    padding: "12px",
-    flexShrink: 0,
-    maxHeight: "300px",
-    overflow: "auto",
-  },
-};

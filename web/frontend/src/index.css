@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* ================================================================
+   Constitution VII — Babylon Design System
+   ================================================================ */
+
+@theme {
+  /* Core palette */
+  --color-void: #0a0a0f;
+  --color-blood-void: #1a0a1a;
+  --color-dark-metal: #141420;
+  --color-soot: #1a1a2a;
+  --color-wet-concrete: #2a2a3a;
+  --color-ash: #444;
+  --color-silver: #888;
+  --color-bone: #e0e0e0;
+
+  /* Accent colors */
+  --color-gold: #c8a860;
+  --color-crimson: #e04040;
+
+  /* Data visualization */
+  --color-data-green: #40c040;
+  --color-phosphor-red: #e06060;
+  --color-royal-blue: #80b0e0;
+  --color-grow-purple: #a070d0;
+  --color-warning-amber: #e0a030;
+
+  /* Typography */
+  --font-mono: "Roboto Mono", "Fira Code", ui-monospace, monospace;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* ================================================================
+   Base layer — global resets and defaults
+   ================================================================ */
+
+@layer base {
+  html {
+    @apply bg-void text-bone antialiased;
+    font-family: var(--font-sans);
+  }
+
+  body {
+    @apply m-0 min-h-screen;
+  }
+
+  /* Scrollbar styling for dark theme */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-void;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-wet-concrete rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ash;
+  }
+}

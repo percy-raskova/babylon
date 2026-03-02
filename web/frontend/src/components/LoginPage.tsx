@@ -41,18 +41,22 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>BABYLON</h1>
-        <p style={styles.subtitle}>The Fall of America</p>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-void to-blood-void">
+      <div className="w-full max-w-[400px] rounded-xl border border-wet-concrete bg-dark-metal p-12 text-center">
+        <h1 className="mb-1 text-[32px] font-bold tracking-[6px] text-gold">
+          BABYLON
+        </h1>
+        <p className="mb-8 text-sm uppercase tracking-[2px] text-ash">
+          The Fall of America
+        </p>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
             type="text"
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            style={styles.input}
+            className="rounded-lg border border-wet-concrete bg-void px-4 py-3 text-sm text-bone outline-none focus:border-gold"
             autoComplete="username"
             required
           />
@@ -61,15 +65,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={styles.input}
+            className="rounded-lg border border-wet-concrete bg-void px-4 py-3 text-sm text-bone outline-none focus:border-gold"
             autoComplete="current-password"
             required
           />
-          {error && <p style={styles.error}>{error}</p>}
+          {error && <p className="m-0 text-[13px] text-crimson">{error}</p>}
           <button
             type="submit"
             disabled={submitting}
-            style={styles.button}
+            className="mt-2 rounded-lg bg-gold px-3 py-3 text-sm font-semibold uppercase tracking-wider text-void hover:brightness-110 disabled:opacity-50"
           >
             {submitting ? "Logging in..." : "Log In"}
           </button>
@@ -78,68 +82,3 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: "100vh",
-    background: "linear-gradient(135deg, #0a0a0f 0%, #1a0a1a 100%)",
-  },
-  card: {
-    background: "#141420",
-    border: "1px solid #2a2a3a",
-    borderRadius: "12px",
-    padding: "48px 40px",
-    width: "100%",
-    maxWidth: "400px",
-    textAlign: "center" as const,
-  },
-  title: {
-    fontSize: "32px",
-    fontWeight: 700,
-    color: "#c8a860",
-    letterSpacing: "6px",
-    marginBottom: "4px",
-  },
-  subtitle: {
-    fontSize: "14px",
-    color: "#666",
-    letterSpacing: "2px",
-    marginBottom: "32px",
-    textTransform: "uppercase" as const,
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "16px",
-  },
-  input: {
-    background: "#0e0e18",
-    border: "1px solid #2a2a3a",
-    borderRadius: "8px",
-    padding: "12px 16px",
-    color: "#e0e0e0",
-    fontSize: "14px",
-    outline: "none",
-  },
-  error: {
-    color: "#e04040",
-    fontSize: "13px",
-    margin: 0,
-  },
-  button: {
-    background: "#c8a860",
-    color: "#0a0a0f",
-    border: "none",
-    borderRadius: "8px",
-    padding: "12px",
-    fontSize: "14px",
-    fontWeight: 600,
-    cursor: "pointer",
-    letterSpacing: "1px",
-    textTransform: "uppercase" as const,
-    marginTop: "8px",
-  },
-};

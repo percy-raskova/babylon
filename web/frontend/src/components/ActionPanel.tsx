@@ -50,25 +50,31 @@ export function ActionPanel({
   );
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h3 style={styles.title}>Actions</h3>
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex shrink-0 items-center justify-between">
+        <h3 className="m-0 text-sm font-semibold uppercase tracking-wider text-gold">
+          Actions
+        </h3>
         <button
           onClick={onResolve}
           disabled={resolving}
-          style={styles.resolveButton}
+          className="rounded-md bg-gold px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-void hover:brightness-110 disabled:opacity-50"
         >
           {resolving ? "Resolving..." : "Resolve Tick"}
         </button>
       </div>
 
       {actions.length === 0 ? (
-        <p style={styles.empty}>No actions available this tick</p>
+        <p className="py-6 text-center text-sm text-ash">
+          No actions available this tick
+        </p>
       ) : (
-        <div style={styles.groups}>
+        <div className="flex flex-1 flex-col gap-3 overflow-auto">
           {Object.entries(grouped).map(([orgId, orgActions]) => (
-            <div key={orgId} style={styles.group}>
-              <div style={styles.orgHeader}>{orgId}</div>
+            <div key={orgId} className="flex flex-col gap-1">
+              <div className="py-1 text-[13px] font-semibold text-royal-blue">
+                {orgId}
+              </div>
               {orgActions.map((action, i) => {
                 const key = `${action.org_id}-${action.verb}`;
                 return (
@@ -76,16 +82,18 @@ export function ActionPanel({
                     key={`${key}-${i}`}
                     onClick={() => handleSubmit(action)}
                     disabled={submitting === key}
-                    style={styles.actionRow}
+                    className="flex w-full items-center justify-between rounded border border-wet-concrete bg-void px-3 py-2 text-left text-[13px] text-bone hover:border-silver disabled:opacity-50"
                   >
-                    <span style={styles.verb}>{action.verb}</span>
+                    <span className="text-xs font-medium uppercase tracking-wider text-gold">
+                      {action.verb}
+                    </span>
                     {action.action_type && (
-                      <span style={styles.actionType}>
+                      <span className="text-xs text-ash">
                         {action.action_type}
                       </span>
                     )}
                     {action.cost !== undefined && (
-                      <span style={styles.cost}>
+                      <span className="font-mono text-xs text-phosphor-red">
                         {action.cost.toFixed(1)}
                       </span>
                     )}
@@ -99,92 +107,3 @@ export function ActionPanel({
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    flexDirection: "column" as const,
-    height: "100%",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "12px",
-    flexShrink: 0,
-  },
-  title: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#c8a860",
-    textTransform: "uppercase" as const,
-    letterSpacing: "1px",
-    margin: 0,
-  },
-  resolveButton: {
-    background: "#c8a860",
-    color: "#0a0a0f",
-    border: "none",
-    borderRadius: "6px",
-    padding: "6px 16px",
-    fontSize: "12px",
-    fontWeight: 600,
-    cursor: "pointer",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-  },
-  empty: {
-    color: "#666",
-    fontSize: "14px",
-    textAlign: "center" as const,
-    padding: "24px",
-  },
-  groups: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "12px",
-    overflow: "auto",
-    flex: 1,
-  },
-  group: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "4px",
-  },
-  orgHeader: {
-    fontSize: "13px",
-    fontWeight: 600,
-    color: "#80b0e0",
-    padding: "4px 0",
-  },
-  actionRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    background: "#0e0e18",
-    border: "1px solid #2a2a3a",
-    borderRadius: "4px",
-    padding: "8px 12px",
-    cursor: "pointer",
-    color: "#e0e0e0",
-    fontSize: "13px",
-    width: "100%",
-    textAlign: "left" as const,
-  },
-  verb: {
-    color: "#c8a860",
-    fontWeight: 500,
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-    fontSize: "12px",
-  },
-  actionType: {
-    color: "#888",
-    fontSize: "12px",
-  },
-  cost: {
-    color: "#e06060",
-    fontSize: "12px",
-    fontFamily: "monospace",
-  },
-};

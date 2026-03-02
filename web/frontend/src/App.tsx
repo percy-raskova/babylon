@@ -18,7 +18,6 @@ export default function App() {
   const [view, setView] = useState<View>({ page: "login" });
   const [checking, setChecking] = useState(true);
 
-  // Check auth status on mount
   useEffect(() => {
     async function checkAuth() {
       const res = await get<AuthState>("/accounts/whoami/");
@@ -51,25 +50,32 @@ export default function App() {
   }, []);
 
   if (checking) {
-    return <div style={styles.loading}>Loading...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center text-silver">
+        Loading...
+      </div>
+    );
   }
 
   return (
-    <div style={styles.app}>
-      {/* Top navigation bar when authenticated */}
+    <div className="flex min-h-screen flex-col">
       {auth?.is_authenticated && (
-        <nav style={styles.nav}>
-          <span style={styles.brand}>BABYLON</span>
-          <div style={styles.navRight}>
-            <span style={styles.username}>{auth.username}</span>
-            <button onClick={handleLogout} style={styles.logoutButton}>
+        <nav className="flex shrink-0 items-center justify-between border-b border-soot bg-void px-6 py-3">
+          <span className="text-base font-bold tracking-[4px] text-gold">
+            BABYLON
+          </span>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-silver">{auth.username}</span>
+            <button
+              onClick={handleLogout}
+              className="rounded-md border border-wet-concrete px-3.5 py-1.5 text-[13px] text-silver hover:border-silver"
+            >
               Logout
             </button>
           </div>
         </nav>
       )}
 
-      {/* Route to active view */}
       {view.page === "login" && <LoginPage onLogin={handleLogin} />}
       {view.page === "games" && <GameList onSelectGame={handleSelectGame} />}
       {view.page === "game" && (
@@ -78,52 +84,3 @@ export default function App() {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  app: {
-    minHeight: "100vh",
-    display: "flex",
-    flexDirection: "column" as const,
-  },
-  loading: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: "100vh",
-    color: "#666",
-    fontSize: "16px",
-  },
-  nav: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px 24px",
-    borderBottom: "1px solid #1a1a2a",
-    background: "#0e0e18",
-    flexShrink: 0,
-  },
-  brand: {
-    color: "#c8a860",
-    fontSize: "16px",
-    fontWeight: 700,
-    letterSpacing: "4px",
-  },
-  navRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: "16px",
-  },
-  username: {
-    color: "#888",
-    fontSize: "14px",
-  },
-  logoutButton: {
-    background: "none",
-    border: "1px solid #2a2a3a",
-    borderRadius: "6px",
-    color: "#888",
-    padding: "6px 14px",
-    cursor: "pointer",
-    fontSize: "13px",
-  },
-};

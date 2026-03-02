@@ -14,45 +14,55 @@ interface TickResultsProps {
 export function TickResults({ results, tick }: TickResultsProps) {
   if (results.length === 0) {
     return (
-      <div style={styles.container}>
-        <h3 style={styles.title}>Tick {tick} Results</h3>
-        <p style={styles.empty}>No results for this tick</p>
+      <div className="flex h-full flex-col">
+        <h3 className="mb-3 shrink-0 text-sm font-semibold uppercase tracking-wider text-gold">
+          Tick {tick} Results
+        </h3>
+        <p className="text-center text-sm text-ash">
+          No results for this tick
+        </p>
       </div>
     );
   }
 
   return (
-    <div style={styles.container}>
-      <h3 style={styles.title}>Tick {tick} Results</h3>
-      <div style={styles.list}>
+    <div className="flex h-full flex-col">
+      <h3 className="mb-3 shrink-0 text-sm font-semibold uppercase tracking-wider text-gold">
+        Tick {tick} Results
+      </h3>
+      <div className="flex flex-1 flex-col gap-2 overflow-auto">
         {results.map((result, i) => (
           <div
             key={`${result.org_id}-${result.action_type}-${i}`}
-            style={{
-              ...styles.resultCard,
-              borderLeftColor: result.success ? "#40c040" : "#e04040",
-            }}
+            className={`rounded border border-wet-concrete bg-void px-3.5 py-2.5 ${
+              result.success
+                ? "border-l-[3px] border-l-data-green"
+                : "border-l-[3px] border-l-phosphor-red"
+            }`}
           >
-            <div style={styles.resultHeader}>
-              <span style={styles.orgId}>{result.org_id}</span>
+            <div className="mb-1.5 flex justify-between">
+              <span className="text-[13px] font-semibold text-royal-blue">
+                {result.org_id}
+              </span>
               <span
-                style={{
-                  ...styles.outcome,
-                  color: result.success ? "#40c040" : "#e04040",
-                }}
+                className={`text-[11px] font-bold tracking-wider ${
+                  result.success ? "text-data-green" : "text-phosphor-red"
+                }`}
               >
                 {result.success ? "SUCCESS" : "FAILED"}
               </span>
             </div>
-            <div style={styles.actionInfo}>
-              <span style={styles.actionType}>{result.action_type}</span>
+            <div className="mb-2 flex gap-2 text-[13px]">
+              <span className="text-xs uppercase tracking-wider text-gold">
+                {result.action_type}
+              </span>
               {result.target_id && (
-                <span style={styles.target}>
+                <span className="text-xs text-ash">
                   &rarr; {result.target_id}
                 </span>
               )}
             </div>
-            <div style={styles.metrics}>
+            <div className="flex flex-wrap gap-2">
               <MetricPill
                 label="Initiative"
                 value={result.initiative_score}
@@ -93,102 +103,18 @@ function MetricPill({
     ? `${value >= 0 ? "+" : ""}${value.toFixed(2)}`
     : value.toFixed(2);
 
-  const color =
+  const colorClass =
     signed && value !== 0
       ? value > 0
-        ? "#60c060"
-        : "#e06060"
-      : "#aaa";
+        ? "text-data-green"
+        : "text-phosphor-red"
+      : "text-silver";
 
   return (
-    <span style={{ ...pillStyles.pill, color }}>
-      <span style={pillStyles.label}>{label}</span> {display}
+    <span
+      className={`rounded bg-[#141420] px-1.5 py-0.5 font-mono text-[11px] ${colorClass}`}
+    >
+      <span className="mr-1 text-ash">{label}</span> {display}
     </span>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    flexDirection: "column" as const,
-    height: "100%",
-  },
-  title: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#c8a860",
-    textTransform: "uppercase" as const,
-    letterSpacing: "1px",
-    marginBottom: "12px",
-    flexShrink: 0,
-  },
-  empty: {
-    color: "#666",
-    fontSize: "14px",
-    textAlign: "center" as const,
-  },
-  list: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "8px",
-    overflow: "auto",
-    flex: 1,
-  },
-  resultCard: {
-    background: "#0e0e18",
-    border: "1px solid #2a2a3a",
-    borderLeft: "3px solid",
-    borderRadius: "4px",
-    padding: "10px 14px",
-  },
-  resultHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginBottom: "6px",
-  },
-  orgId: {
-    fontWeight: 600,
-    color: "#80b0e0",
-    fontSize: "13px",
-  },
-  outcome: {
-    fontSize: "11px",
-    fontWeight: 700,
-    letterSpacing: "1px",
-  },
-  actionInfo: {
-    display: "flex",
-    gap: "8px",
-    marginBottom: "8px",
-    fontSize: "13px",
-  },
-  actionType: {
-    color: "#c8a860",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-    fontSize: "12px",
-  },
-  target: {
-    color: "#888",
-    fontSize: "12px",
-  },
-  metrics: {
-    display: "flex",
-    flexWrap: "wrap" as const,
-    gap: "8px",
-  },
-};
-
-const pillStyles: Record<string, React.CSSProperties> = {
-  pill: {
-    fontSize: "11px",
-    fontFamily: "monospace",
-    background: "#141420",
-    borderRadius: "3px",
-    padding: "2px 6px",
-  },
-  label: {
-    color: "#666",
-    marginRight: "4px",
-  },
-};

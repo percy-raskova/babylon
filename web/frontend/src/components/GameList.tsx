@@ -48,50 +48,51 @@ export function GameList({ onSelectGame }: GameListProps) {
   }
 
   if (loading) {
-    return <div style={styles.loading}>Loading games...</div>;
+    return (
+      <div className="p-16 text-center text-silver">Loading games...</div>
+    );
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h2 style={styles.title}>Your Games</h2>
+    <div className="mx-auto max-w-3xl px-6 py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-semibold text-bone">Your Games</h2>
         <button
           onClick={handleCreate}
           disabled={creating}
-          style={styles.createButton}
+          className="rounded-lg bg-gold px-5 py-2.5 text-sm font-semibold text-void hover:brightness-110 disabled:opacity-50"
         >
           {creating ? "Creating..." : "+ New Game"}
         </button>
       </div>
 
-      {error && <p style={styles.error}>{error}</p>}
+      {error && <p className="mb-4 text-[13px] text-crimson">{error}</p>}
 
       {games.length === 0 ? (
-        <p style={styles.empty}>No games yet. Create one to begin.</p>
+        <p className="py-12 text-center text-[15px] text-ash">
+          No games yet. Create one to begin.
+        </p>
       ) : (
-        <div style={styles.list}>
+        <div className="flex flex-col gap-3">
           {games.map((game) => (
             <button
               key={game.id}
               onClick={() => onSelectGame(game.id)}
-              style={styles.gameCard}
+              className="w-full rounded-lg border border-wet-concrete bg-dark-metal px-5 py-4 text-left text-sm text-bone hover:border-gold"
             >
-              <div style={styles.gameHeader}>
-                <span style={styles.scenario}>{game.scenario}</span>
+              <div className="mb-2 flex justify-between">
+                <span className="text-base font-semibold">{game.scenario}</span>
                 <span
-                  style={{
-                    ...styles.status,
-                    color: game.status === "active" ? "#40c040" : "#888",
-                  }}
+                  className={`text-[13px] uppercase tracking-wider ${
+                    game.status === "active" ? "text-data-green" : "text-silver"
+                  }`}
                 >
                   {game.status}
                 </span>
               </div>
-              <div style={styles.gameMeta}>
+              <div className="flex justify-between text-[13px] text-silver">
                 <span>Tick {game.current_tick}</span>
-                <span style={styles.gameId}>
-                  {game.id.slice(0, 8)}...
-                </span>
+                <span className="font-mono">{game.id.slice(0, 8)}...</span>
               </div>
             </button>
           ))}
@@ -100,87 +101,3 @@ export function GameList({ onSelectGame }: GameListProps) {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    maxWidth: "800px",
-    margin: "0 auto",
-    padding: "32px 24px",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "24px",
-  },
-  title: {
-    fontSize: "24px",
-    fontWeight: 600,
-    color: "#e0e0e0",
-  },
-  createButton: {
-    background: "#c8a860",
-    color: "#0a0a0f",
-    border: "none",
-    borderRadius: "8px",
-    padding: "10px 20px",
-    fontSize: "14px",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  loading: {
-    textAlign: "center" as const,
-    padding: "64px",
-    color: "#888",
-  },
-  error: {
-    color: "#e04040",
-    fontSize: "13px",
-    marginBottom: "16px",
-  },
-  empty: {
-    textAlign: "center" as const,
-    color: "#666",
-    padding: "48px",
-    fontSize: "15px",
-  },
-  list: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "12px",
-  },
-  gameCard: {
-    background: "#141420",
-    border: "1px solid #2a2a3a",
-    borderRadius: "8px",
-    padding: "16px 20px",
-    cursor: "pointer",
-    textAlign: "left" as const,
-    color: "#e0e0e0",
-    fontSize: "14px",
-    width: "100%",
-  },
-  gameHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginBottom: "8px",
-  },
-  scenario: {
-    fontWeight: 600,
-    fontSize: "16px",
-  },
-  status: {
-    fontSize: "13px",
-    textTransform: "uppercase" as const,
-    letterSpacing: "1px",
-  },
-  gameMeta: {
-    display: "flex",
-    justifyContent: "space-between",
-    color: "#888",
-    fontSize: "13px",
-  },
-  gameId: {
-    fontFamily: "monospace",
-  },
-};

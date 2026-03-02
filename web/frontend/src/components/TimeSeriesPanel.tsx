@@ -1,7 +1,7 @@
 /**
  * Time series panel component.
  *
- * Tracks and displays key metrics over ticks using Recharts.
+ * Tracks and displays key metrics over ticks using SVG sparklines.
  * Accumulates snapshots in memory to build time series.
  */
 
@@ -29,28 +29,23 @@ interface TimeSeriesPanelProps {
 
 /** Extract aggregate metrics from a snapshot. */
 function extractMetrics(snap: GameSnapshot): TickDataPoint {
-  const nodes = Object.values(snap.nodes);
-  const territories = nodes.filter((n) => n.node_type === "territory");
+  const territories = snap.territories;
+  const entities = snap.entities;
 
   const avgHeat =
     territories.length > 0
-      ? territories.reduce((s, t) => s + Number(t["heat"] ?? 0), 0) /
-        territories.length
+      ? territories.reduce((s, t) => s + t.heat, 0) / territories.length
       : 0;
 
   const avgConsciousness =
-    nodes.length > 0
-      ? nodes.reduce((s, n) => s + Number(n["consciousness"] ?? 0), 0) /
-        nodes.length
+    entities.length > 0
+      ? entities.reduce((s, e) => s + e.consciousness, 0) / entities.length
       : 0;
 
-  const totalWealth = nodes.reduce(
-    (s, n) => s + Number(n["wealth"] ?? 0),
-    0,
-  );
+  const totalWealth = entities.reduce((s, e) => s + e.wealth, 0);
 
-  const orgCount = Object.keys(snap.organizations ?? {}).length;
-  const eventCount = (snap.events ?? []).length;
+  const orgCount = snap.organizations.length;
+  const eventCount = snap.events.length;
 
   return {
     tick: snap.tick,
@@ -65,7 +60,6 @@ function extractMetrics(snap: GameSnapshot): TickDataPoint {
 export function TimeSeriesPanel({ snapshot }: TimeSeriesPanelProps) {
   const historyRef = useRef<TickDataPoint[]>([]);
 
-  // Append new data points (deduplicated by tick)
   useEffect(() => {
     const metrics = extractMetrics(snapshot);
     const existing = historyRef.current;
@@ -80,7 +74,6 @@ export function TimeSeriesPanel({ snapshot }: TimeSeriesPanelProps) {
   const history = historyRef.current;
   const latest = history[history.length - 1];
 
-  // Simple sparkline rendering (Recharts integration deferred to npm install)
   const sparklines = useMemo(() => {
     return TRACKED_METRICS.map((metric) => {
       const values = history.map((d) => d[metric] ?? 0);
@@ -97,28 +90,33 @@ export function TimeSeriesPanel({ snapshot }: TimeSeriesPanelProps) {
   }, [history]);
 
   return (
-    <div style={styles.container}>
-      <h3 style={styles.title}>Time Series</h3>
-      <div style={styles.grid}>
+    <div className="flex h-full flex-col">
+      <h3 className="mb-3 shrink-0 text-sm font-semibold uppercase tracking-wider text-gold">
+        Time Series
+      </h3>
+      <div className="grid flex-1 grid-cols-2 gap-2 overflow-auto">
         {sparklines.map(({ metric, points, latest: val }) => (
-          <div key={metric} style={styles.card}>
-            <div style={styles.cardHeader}>
-              <span style={styles.metricName}>
+          <div
+            key={metric}
+            className="rounded-md border border-wet-concrete bg-void px-2.5 py-2"
+          >
+            <div className="mb-1 flex items-baseline justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-ash">
                 {metric.replace(/_/g, " ")}
               </span>
-              <span style={styles.metricValue}>
+              <span className="font-mono text-sm font-semibold text-bone">
                 {typeof val === "number" ? val.toFixed(2) : val}
               </span>
             </div>
             <svg
               viewBox="0 0 200 40"
-              style={styles.sparkline}
+              className="h-[30px] w-full"
               preserveAspectRatio="none"
             >
               <polyline
                 points={points}
                 fill="none"
-                stroke="#c8a860"
+                stroke="var(--color-gold)"
                 strokeWidth="1.5"
               />
             </svg>
@@ -126,69 +124,10 @@ export function TimeSeriesPanel({ snapshot }: TimeSeriesPanelProps) {
         ))}
       </div>
       {latest && (
-        <div style={styles.footer}>
+        <div className="shrink-0 py-2 text-center text-[11px] text-soot">
           {history.length} ticks recorded
         </div>
       )}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    flexDirection: "column" as const,
-    height: "100%",
-  },
-  title: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#c8a860",
-    textTransform: "uppercase" as const,
-    letterSpacing: "1px",
-    marginBottom: "12px",
-    flexShrink: 0,
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "8px",
-    overflow: "auto",
-    flex: 1,
-  },
-  card: {
-    background: "#0e0e18",
-    border: "1px solid #2a2a3a",
-    borderRadius: "6px",
-    padding: "8px 10px",
-  },
-  cardHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: "4px",
-  },
-  metricName: {
-    fontSize: "10px",
-    color: "#666",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-  },
-  metricValue: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#e0e0e0",
-    fontFamily: "monospace",
-  },
-  sparkline: {
-    width: "100%",
-    height: "30px",
-  },
-  footer: {
-    fontSize: "11px",
-    color: "#444",
-    textAlign: "center" as const,
-    padding: "8px 0",
-    flexShrink: 0,
-  },
-};

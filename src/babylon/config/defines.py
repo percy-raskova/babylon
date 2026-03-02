@@ -3280,6 +3280,72 @@ class StateApparatusAIDefines(BaseModel):
         le=1.0,
         description="[S] Population fraction displaced per DISPLACE action.",
     )
+    neglect_quality_floor: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="[S] Hard lower bound on infrastructure_quality under NEGLECT (TE-02).",
+    )
+    consciousness_resistance_factor: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="[S] How much collective_identity resists PROPAGANDIZE (TE-07).",
+    )
+    high_profile_heat_rate: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="[S] Heat per HIGH_PROFILE PRESENCE edge per tick (TE-06).",
+    )
+    low_profile_heat_rate: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description="[S] Heat per LOW_PROFILE PRESENCE edge per tick (TE-06).",
+    )
+    heat_escalation_threshold: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="[S] Heat level at which territory becomes priority target (TE-06).",
+    )
+    scorched_earth_legitimacy_core: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description="[S] Legitimacy cost for SCORCHED_EARTH in CORE territory (TE-05).",
+    )
+    scorched_earth_legitimacy_periphery: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=1.0,
+        description="[S] Legitimacy cost for SCORCHED_EARTH in PERIPHERY territory (TE-05).",
+    )
+    strategic_withdrawal_decay_multiplier: float = Field(
+        default=2.0,
+        ge=1.0,
+        le=10.0,
+        description="[S] Accelerated NEGLECT factor for STRATEGIC_WITHDRAWAL (TE-04).",
+    )
+    strategic_withdrawal_asset_recovery: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="[S] Fraction of state_investment recovered when asset_extraction=True (TE-04).",
+    )
+    displace_ci_reduction: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="[S] Collective identity reduction per DISPLACE action (TE-03).",
+    )
+    displace_community_infra_reduction: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="[S] Community infrastructure quality reduction per DISPLACE (TE-03).",
+    )
 
     # -------------------------------------------------------------------------
     # Debug (Phase 9)

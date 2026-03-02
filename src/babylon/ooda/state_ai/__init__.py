@@ -22,6 +22,16 @@ from babylon.ooda.state_ai.faction_dynamics import (
     compute_stability,
     renormalize_faction_balance,
 )
+from babylon.ooda.state_ai.territory_effects import (
+    compute_heat_accumulation,
+    compute_propagandize_effect,
+    compute_scorched_earth_legitimacy,
+    resolve_displace,
+    resolve_invest,
+    resolve_neglect,
+    resolve_scorched_earth,
+    resolve_strategic_withdrawal,
+)
 
 __all__ = [
     "RuleBasedStateAI",
@@ -29,6 +39,14 @@ __all__ = [
     "apply_material_condition_shift",
     "apply_player_action_shift",
     "apply_repression_failure_shift",
+    "compute_heat_accumulation",
+    "compute_propagandize_effect",
+    "compute_scorched_earth_legitimacy",
     "compute_stability",
     "renormalize_faction_balance",
+    "resolve_displace",
+    "resolve_invest",
+    "resolve_neglect",
+    "resolve_scorched_earth",
+    "resolve_strategic_withdrawal",
 ]

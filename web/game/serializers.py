@@ -41,37 +41,85 @@ class SubmitActionSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class EntitySerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a social class entity."""
+    """Serialize a social class entity with full visualization fields."""
 
     id = serializers.CharField()
     name = serializers.CharField()
     role = serializers.CharField()
     wealth = serializers.FloatField()
+    consciousness = serializers.FloatField()
+    national_identity = serializers.FloatField()
+    agitation = serializers.FloatField()
+    organization = serializers.FloatField()
+    repression = serializers.FloatField()
+    p_acquiescence = serializers.FloatField()
+    p_revolution = serializers.FloatField()
+    subsistence = serializers.FloatField()
+    population = serializers.IntegerField()
+    inequality = serializers.FloatField()
+    active = serializers.BooleanField()
 
 
 class TerritorySerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a territory."""
+    """Serialize a territory with full visualization fields."""
 
     id = serializers.CharField()
     name = serializers.CharField()
+    h3_index = serializers.CharField(allow_null=True)
     heat = serializers.FloatField()
     sector_type = serializers.CharField()
+    territory_type = serializers.CharField()
+    profile = serializers.CharField()
+    rent_level = serializers.FloatField()
+    population = serializers.IntegerField()
+    under_eviction = serializers.BooleanField()
+    biocapacity = serializers.FloatField()
+    host_id = serializers.CharField(allow_null=True)
+    occupant_id = serializers.CharField(allow_null=True)
 
 
 class OrganizationSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize an organization."""
+    """Serialize an organization with full visualization fields."""
 
     id = serializers.CharField()
     name = serializers.CharField()
     org_type = serializers.CharField()
+    class_character = serializers.CharField()
+    cohesion = serializers.FloatField()
+    cadre_level = serializers.FloatField()
+    budget = serializers.FloatField()
+    heat = serializers.FloatField()
+    territory_ids = serializers.ListField(child=serializers.CharField())
+    consciousness_tendency = serializers.CharField()
 
 
 class InstitutionSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize an institution."""
+    """Serialize an institution with full visualization fields."""
 
     id = serializers.CharField()
     name = serializers.CharField()
     apparatus_type = serializers.CharField()
+    social_function = serializers.CharField()
+    class_inscription = serializers.CharField()
+    legitimacy = serializers.FloatField()
+    budget = serializers.FloatField()
+    housed_org_ids = serializers.ListField(child=serializers.CharField())
+    territory_ids = serializers.ListField(child=serializers.CharField())
+    hegemonic_fraction = serializers.CharField()
+    liberal_technocratic = serializers.FloatField()
+    revanchist_fascist = serializers.FloatField()
+    institutionalist_bonapartist = serializers.FloatField()
+
+
+class EdgeSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize a relationship edge."""
+
+    source_id = serializers.CharField()
+    target_id = serializers.CharField()
+    edge_type = serializers.CharField()
+    value_flow = serializers.FloatField()
+    tension = serializers.FloatField()
+    solidarity_strength = serializers.FloatField()
 
 
 class EventSerializer(serializers.Serializer[dict[str, Any]]):
@@ -91,6 +139,7 @@ class GameSnapshotSerializer(serializers.Serializer[dict[str, Any]]):
     territories = TerritorySerializer(many=True)
     organizations = OrganizationSerializer(many=True)
     institutions = InstitutionSerializer(many=True)
+    edges = EdgeSerializer(many=True)
     economy = serializers.DictField()
     events = EventSerializer(many=True)
 

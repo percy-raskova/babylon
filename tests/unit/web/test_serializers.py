@@ -6,6 +6,7 @@ import pytest
 
 from game.serializers import (
     CreateGameSerializer,
+    EdgeSerializer,
     EntitySerializer,
     GameSnapshotSerializer,
     SubmitActionSerializer,
@@ -80,7 +81,23 @@ class TestEntitySerializer:
 
     def test_serializes_entity(self) -> None:
         s = EntitySerializer(
-            data={"id": "class_1", "name": "Proletariat", "role": "WORKER", "wealth": 10.0}
+            data={
+                "id": "class_1",
+                "name": "Proletariat",
+                "role": "WORKER",
+                "wealth": 10.0,
+                "consciousness": 0.5,
+                "national_identity": 0.3,
+                "agitation": 0.0,
+                "organization": 0.1,
+                "repression": 0.5,
+                "p_acquiescence": 0.7,
+                "p_revolution": 0.2,
+                "subsistence": 5.0,
+                "population": 1000,
+                "inequality": 0.4,
+                "active": True,
+            }
         )
         assert s.is_valid(), s.errors
 
@@ -94,8 +111,35 @@ class TestTerritorySerializer:
             data={
                 "id": "t_detroit",
                 "name": "Detroit",
+                "h3_index": None,
                 "heat": 0.3,
                 "sector_type": "INDUSTRIAL",
+                "territory_type": "CORE",
+                "profile": "LOW_PROFILE",
+                "rent_level": 1.0,
+                "population": 500,
+                "under_eviction": False,
+                "biocapacity": 100.0,
+                "host_id": None,
+                "occupant_id": None,
+            }
+        )
+        assert s.is_valid(), s.errors
+
+
+@pytest.mark.unit
+class TestEdgeSerializer:
+    """Validate EdgeSerializer output format."""
+
+    def test_serializes_edge(self) -> None:
+        s = EdgeSerializer(
+            data={
+                "source_id": "C001",
+                "target_id": "C002",
+                "edge_type": "EXPLOITATION",
+                "value_flow": 5.0,
+                "tension": 0.3,
+                "solidarity_strength": 0.0,
             }
         )
         assert s.is_valid(), s.errors
@@ -114,6 +158,7 @@ class TestGameSnapshotSerializer:
                 "territories": [],
                 "organizations": [],
                 "institutions": [],
+                "edges": [],
                 "economy": {},
                 "events": [],
             }

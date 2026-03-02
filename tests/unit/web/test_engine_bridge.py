@@ -142,6 +142,7 @@ class TestEngineBridgeResolveTick:
         mock_new_state.institutions = {}
         mock_new_state.economy = MagicMock()
         mock_new_state.economy.model_dump.return_value = {}
+        mock_new_state.relationships = []
         mock_new_state.events = []
         mock_new_state.to_graph.return_value = _make_minimal_graph()
         mock_step.return_value = mock_new_state
@@ -170,6 +171,7 @@ class TestEngineBridgeResolveTick:
         mock_new_state.institutions = {}
         mock_new_state.economy = MagicMock()
         mock_new_state.economy.model_dump.return_value = {}
+        mock_new_state.relationships = []
         mock_new_state.events = []
         mock_new_state.to_graph.return_value = _make_minimal_graph()
         mock_step.return_value = mock_new_state
@@ -201,6 +203,7 @@ class TestEngineBridgeSnapshot:
             "territories",
             "organizations",
             "institutions",
+            "edges",
             "economy",
             "events",
         }
@@ -269,6 +272,7 @@ class TestStateToSnapshot:
         mock_state.territories = {}
         mock_state.organizations = {}
         mock_state.institutions = {}
+        mock_state.relationships = []
         mock_state.economy = MagicMock()
         mock_state.economy.model_dump.return_value = {}
         mock_state.events = []
@@ -281,4 +285,5 @@ class TestStateToSnapshot:
         assert result["territories"] == []
         assert result["organizations"] == []
         assert result["institutions"] == []
+        assert result["edges"] == []
         assert result["events"] == []

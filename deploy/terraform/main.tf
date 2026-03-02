@@ -22,8 +22,13 @@ provider "hcloud" {
 # ============================================
 
 resource "hcloud_ssh_key" "babylon" {
+  count      = var.existing_ssh_key_id == null ? 1 : 0
   name       = var.ssh_key_name
   public_key = file(var.ssh_public_key_path)
+}
+
+locals {
+  hcloud_ssh_key_id = var.existing_ssh_key_id != null ? var.existing_ssh_key_id : hcloud_ssh_key.babylon[0].id
 }
 
 # ============================================
@@ -117,7 +122,7 @@ resource "hcloud_server" "vps" {
   server_type  = var.server_type
   image        = var.server_image
   location     = var.server_location
-  ssh_keys     = [hcloud_ssh_key.babylon.id]
+  ssh_keys     = [local.hcloud_ssh_key_id]
   firewall_ids = [hcloud_firewall.default.id]
 
   labels = merge(

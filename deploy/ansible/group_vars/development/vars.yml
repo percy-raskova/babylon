@@ -117,17 +117,18 @@ ssl_key: |
   MoqV6aeRY/7uwLiviaIUJg==
   -----END PRIVATE KEY-----
 
-r2_access_key_id: REPLACE_WITH_R2_ACCESS_KEY_ID
-r2_secret_access_key: REPLACE_WITH_R2_SECRET_ACCESS_KEY
-r2_endpoint: https://REPLACE_WITH_CF_ACCOUNT_ID.r2.cloudflarestorage.com
+r2_access_key_id: "{{ lookup('ansible.builtin.env', 'R2_ACCESS_KEY_ID') }}"
+r2_secret_access_key: "{{ lookup('ansible.builtin.env', 'R2_SECRET_ACCESS_KEY') }}"
+r2_account_id: "{{ lookup('ansible.builtin.env', 'R2_ACCOUNT_ID') }}"
+r2_endpoint: "https://{{ r2_account_id }}.r2.cloudflarestorage.com"
 r2_backup_bucket: babylon-backups
 rclone_remote_name: r2
 
 firewall_ssh_allowed_ipv4:
-  - 0.0.0.0/0
+  - 203.0.113.10/32
 
 firewall_ssh_allowed_ipv6:
-  - ::/0
+  - 2001:db8::10/128
 
 cloudflare_authenticated_origin_pull_ca_url: https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem
 nginx_use_cloudflare_origin_pull: true

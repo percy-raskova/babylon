@@ -20,30 +20,35 @@ resource "cloudflare_dns_record" "babylon" {
 # ============================================
 
 resource "cloudflare_zone_setting" "ssl" {
+  count      = var.enable_cloudflare_zone_settings ? 1 : 0
   zone_id    = var.cloudflare_zone_id
   setting_id = "ssl"
   value      = "strict"
 }
 
 resource "cloudflare_zone_setting" "always_use_https" {
+  count      = var.enable_cloudflare_zone_settings ? 1 : 0
   zone_id    = var.cloudflare_zone_id
   setting_id = "always_use_https"
   value      = "on"
 }
 
 resource "cloudflare_zone_setting" "min_tls_version" {
+  count      = var.enable_cloudflare_zone_settings ? 1 : 0
   zone_id    = var.cloudflare_zone_id
   setting_id = "min_tls_version"
   value      = "1.2"
 }
 
 resource "cloudflare_zone_setting" "tls_1_3" {
+  count      = var.enable_cloudflare_zone_settings ? 1 : 0
   zone_id    = var.cloudflare_zone_id
   setting_id = "tls_1_3"
   value      = "on"
 }
 
 resource "cloudflare_zone_setting" "automatic_https_rewrites" {
+  count      = var.enable_cloudflare_zone_settings ? 1 : 0
   zone_id    = var.cloudflare_zone_id
   setting_id = "automatic_https_rewrites"
   value      = "on"
@@ -54,6 +59,7 @@ resource "cloudflare_zone_setting" "automatic_https_rewrites" {
 # ============================================
 
 resource "cloudflare_ruleset" "cache" {
+  count       = var.enable_cloudflare_rulesets ? 1 : 0
   zone_id     = var.cloudflare_zone_id
   name        = "Babylon cache rules"
   description = "Cache static assets, bypass API"
@@ -91,6 +97,7 @@ resource "cloudflare_ruleset" "cache" {
 }
 
 resource "cloudflare_ruleset" "rate_limit" {
+  count       = var.enable_cloudflare_rulesets ? 1 : 0
   zone_id     = var.cloudflare_zone_id
   name        = "Babylon API rate limiting"
   description = "Prevent API abuse"

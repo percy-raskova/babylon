@@ -38,6 +38,18 @@ variable "cloudflare_record_name" {
   default     = "babylon"
 }
 
+variable "enable_cloudflare_zone_settings" {
+  description = "Manage Cloudflare zone settings (ssl, tls, https rewrites)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_cloudflare_rulesets" {
+  description = "Manage Cloudflare rulesets (cache and rate limiting)"
+  type        = bool
+  default     = true
+}
+
 # ============================================
 # PROJECT CONFIGURATION
 # ============================================
@@ -78,6 +90,12 @@ variable "ssh_public_key_path" {
   description = "Path to SSH public key file"
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
+}
+
+variable "existing_ssh_key_id" {
+  description = "Existing Hetzner SSH key ID to reuse (skip creating a new key when provided)"
+  type        = number
+  default     = null
 }
 
 # ============================================
@@ -129,7 +147,7 @@ variable "server_count" {
 variable "server_type" {
   description = "Hetzner server type (cpx11, cpx21, cpx31, etc.)"
   type        = string
-  default     = "cx32" # 4 vCPU, 8GB RAM, 80GB disk
+  default     = "cpx21" # 3 vCPU, 4GB RAM, 80GB NVMe
 }
 
 variable "server_image" {

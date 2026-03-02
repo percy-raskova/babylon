@@ -50,6 +50,58 @@ Install them before running playbooks:
 ansible-galaxy collection install ansible.posix community.rabbitmq community.general community.postgresql
 ```
 
+## Cloudflare Origin + Backups
+
+This deploy stack is configured for Cloudflare-proxied traffic with origin lockdown:
+
+- Nginx can enforce Cloudflare Authenticated Origin Pulls.
+- nftables allows HTTPS ingress only from Cloudflare IP ranges.
+- PostgreSQL backups are compressed and uploaded to Cloudflare R2.
+
+### Required environment variables (R2)
+
+Export these variables before running playbooks that include the `backup` role:
+
+```
+export R2_ACCESS_KEY_ID="<your-r2-access-key-id>"
+export R2_SECRET_ACCESS_KEY="<your-r2-secret-access-key>"
+export R2_ACCOUNT_ID="<your-cloudflare-account-id>"
+```
+
+### Backup smoke check
+
+Run a one-off backup and verify that today's object is present in `daily/`:
+
+```
+ansible-playbook -i development playbooks/backup-smoke.yml
+```
+
+### Restore runbook (PostgreSQL)
+
+1. List available backups:
+
+```
+rclone lsf r2:babylon-backups/daily/
+```
+
+2. Download a backup object:
+
+```
+rclone copy r2:babylon-backups/daily/babylon-YYYY-MM-DD.sql.zst /tmp/
+```
+
+3. Restore into PostgreSQL:
+
+```
+zstd -dc /tmp/babylon-YYYY-MM-DD.sql.zst | sudo -u postgres psql <database_name>
+```
+
+4. Validate restore:
+
+```
+sudo -u postgres psql -d <database_name> -c "SELECT now();"
+```
+
 ## Getting Started
 
 A quick way to get started is with Vagrant.

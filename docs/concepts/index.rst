@@ -119,6 +119,20 @@ infiltration resistance mechanics. The dialectical field topology framework
 formalizes Mao's *On Contradiction* as computable field operations on the
 simulation graph.
 
+State Apparatus AI (Feature 039)
+---------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   state-apparatus-ai
+
+Why the state is modeled as a three-faction coalition (Finance-Capital,
+Security-State, Settler-Populist) rather than a unitary actor, how the
+escalation ladder creates legible gameplay, the observation gap and
+intelligence asymmetry, fascist convergence as a near-absorbing phase
+transition, and the consciousness dialectic in territory effects.
+
 State Repression
 ----------------
 

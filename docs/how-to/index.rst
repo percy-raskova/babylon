@@ -28,6 +28,20 @@ Guides for extending and customizing the simulation mechanics.
    Load, modify, and analyze ``GameDefines`` parameters. Includes parameter
    sweeps and sensitivity analysis workflows.
 
+State Apparatus AI (Feature 039)
+---------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   state-apparatus-ai
+
+**Work with the State Apparatus AI**
+   Add new sub-verbs, tune faction dynamics, adjust the REPRESS pipeline,
+   use god mode for debugging, integrate with state AI events, read
+   player-visible state information, add faction shift triggers, and
+   run the 52-tick integration test.
+
 Debugging & Analysis
 --------------------
 

@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.1.0"
-  updated: "2026-02-27"
-  last_sprint: "028-constants-remediation-sweep (Complete)"
+  version: "2.2.0"
+  updated: "2026-03-02"
+  last_sprint: "039-state-apparatus-ai (Complete)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -201,7 +201,7 @@ epoch_status:
         "2.8": { name: "LODES & Freight", sub_epoch: "2B", spec: "ai-docs/epochs/epoch2/lodes-freight-flows.yaml" }
         "2.9": { name: "Ideological Cartography", sub_epoch: "2C", spec: "ai-docs/epochs/epoch2/ideological-geography.yaml" }
         "2.10": { name: "Doctrine System", sub_epoch: "2B", spec: "ai-docs/doctrine-tree.yaml" }
-        "2.11": { name: "The Panopticon", sub_epoch: "2C", spec: "ai-docs/state-attention-economy.yaml" }
+        "2.11": { name: "The Panopticon", sub_epoch: "2C", spec: "ai-docs/state-attention-economy.yaml", status: "SUPERSEDED by Feature 039 (state-apparatus-ai)" }
         "2.12": { name: "Epistemic Horizon", sub_epoch: "2C", spec: "ai-docs/fog-of-war.yaml" }
         "2.13": { name: "Multiple Scenarios", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
 
@@ -1873,6 +1873,48 @@ tech_debt:
         - "@pytest.mark.integration - Full engine integration"
         - "@pytest.mark.red_phase - TDD RED (trajectory test pending GREEN)"
       note: "Scenario tests verify theoretical outcomes, not implementation correctness"
+
+  feature_039_state_apparatus_ai:
+    status: "COMPLETE"
+    date: "2026-03-02"
+    branch: "039-state-apparatus-ai"
+    spec: "specs/039-state-apparatus-ai/"
+    description: "State apparatus AI — three-faction coalition enemy with 6 verbs, 25 sub-verbs, attention threads, and Sparrow intelligence"
+    source_loc: 3407
+    test_count: 499
+    test_loc: 8795
+    phases_completed: 10
+    tasks_completed: 104
+    commits: 10
+    source_modules:
+      - "src/babylon/ooda/state_ai/ (11 modules, decision engine + effect resolution)"
+      - "src/babylon/ooda/attention/ (4 modules, intelligence gathering)"
+      - "src/babylon/models/entities/state_apparatus_ai.py (FactionBalance, StateBudget, StateAction, LegalFramework)"
+      - "src/babylon/models/entities/attention_thread.py (AttentionThread, SparrowAnalysis)"
+      - "src/babylon/formulas/state_ai.py (faction shift, fascist convergence)"
+      - "src/babylon/config/defines.py (StateApparatusAIDefines, 65+ parameters)"
+    test_modules:
+      - "tests/unit/state_ai/ (17 files)"
+      - "tests/contract/state_ai/ (8 files)"
+      - "tests/integration/test_state_ai_integration.py (52-tick lifecycle test)"
+    user_stories_complete:
+      - "US1: Faction-weighted verb selection"
+      - "US2: Attention thread intelligence"
+      - "US3: Faction balance dynamics"
+      - "US4: Territory effects (DEVELOP/WITHDRAW)"
+      - "US5: Spatial dynamics (PRESENCE, heat)"
+      - "US6: CO-OPT effects (PROPAGANDIZE/INCORPORATE/DIVIDE/BRIBE)"
+    deferred_requirements:
+      - "FR-D10: Per-org-type AI (Feature 040+)"
+      - "FR-E05: D-P-D' territory infrastructure (Feature 041+)"
+    known_gaps:
+      - "6 EventType members declared but not yet emitted by any system"
+      - "NPCDecisionStrategy protocol signature differs from RuleBasedStateAI.select_action()"
+      - "FactionBalance stored as graph node attributes, not in persistent_data"
+    documentation:
+      - "docs/reference/state-apparatus-ai.rst"
+      - "docs/concepts/state-apparatus-ai.rst"
+      - "docs/how-to/state-apparatus-ai.rst"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

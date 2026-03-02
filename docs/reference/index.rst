@@ -156,6 +156,20 @@ Configuration
 Configuration system documentation, environment variables, GameDefines
 parameter tables, and the 20-Year Entropy Standard for parameter tuning.
 
+State Apparatus AI (Feature 039)
+---------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   state-apparatus-ai
+
+Entity models (FactionBalance, StateBudget, StateAction, LegalFramework,
+AttentionThread, SparrowAnalysis), enums (StateFaction, StateActionType,
+ThreadPhase, SurveillanceMethod), decision engine (RuleBasedStateAI),
+effect resolution (territory, CO-OPT, REPRESS, ADMINISTER, LEGISLATE),
+attention/intelligence modules, formulas, and 65+ configuration parameters.
+
 Topology System
 ---------------
 

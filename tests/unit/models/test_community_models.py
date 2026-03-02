@@ -675,25 +675,25 @@ class TestConsciousnessDefaults:
         assert cc.dominant_tendency == ConsciousnessTendency.LIBERAL
         assert cc.collective_identity == pytest.approx(0.4, abs=1e-4)
 
-    def test_youth_high_contestation(self) -> None:
-        """YOUTH has high contestation (0.5) despite low CI (0.2)."""
+    def test_youth_contestation_from_entropy(self) -> None:
+        """YOUTH contestation is Shannon entropy of (0.2, 0.6, 0.2)."""
         from babylon.models.entities.community import CONSCIOUSNESS_DEFAULTS
         from babylon.models.enums import ConsciousnessTendency
 
         cc = CONSCIOUSNESS_DEFAULTS[CommunityType.YOUTH]
         assert cc.dominant_tendency == ConsciousnessTendency.LIBERAL
         assert cc.collective_identity == pytest.approx(0.2, abs=1e-4)
-        assert cc.ideological_contestation == pytest.approx(0.5, abs=1e-4)
+        assert cc.ideological_contestation == pytest.approx(0.8650, abs=1e-3)
 
-    def test_adult_low_contestation(self) -> None:
-        """ADULT has low contestation (0.1) — most settled lifecycle phase."""
+    def test_adult_contestation_from_entropy(self) -> None:
+        """ADULT contestation is Shannon entropy of (0.1, 0.675, 0.225)."""
         from babylon.models.entities.community import CONSCIOUSNESS_DEFAULTS
         from babylon.models.enums import ConsciousnessTendency
 
         cc = CONSCIOUSNESS_DEFAULTS[CommunityType.ADULT]
         assert cc.dominant_tendency == ConsciousnessTendency.LIBERAL
         assert cc.collective_identity == pytest.approx(0.1, abs=1e-4)
-        assert cc.ideological_contestation == pytest.approx(0.1, abs=1e-4)
+        assert cc.ideological_contestation == pytest.approx(0.7566, abs=1e-3)
 
 
 @pytest.mark.unit

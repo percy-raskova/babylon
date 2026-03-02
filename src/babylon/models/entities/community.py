@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from babylon.models.entities.consciousness import TernaryConsciousness
 from babylon.models.enums import (
     CommunityType,
-    ConsciousnessTendency,
     HyperedgeCategory,
     LegalStatus,
     MembershipRole,
@@ -230,110 +230,93 @@ def shared_marginalized_communities(
     return shared & MARGINALIZED_COMMUNITIES
 
 
-# === Feature 029: Community Consciousness Model (US3) ===
-
-
-class CommunityConsciousness(BaseModel):
-    """The ideological dimension of a community hyperedge.
-
-    Args:
-        collective_identity: Oppositional consciousness [0, 1].
-        dominant_tendency: Prevailing ideological direction.
-        ideological_contestation: Active debate between tendencies [0, 1].
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    collective_identity: Probability = Field(
-        default=Probability(0.3),
-        description="Oppositional consciousness [0, 1]",
-    )
-    dominant_tendency: ConsciousnessTendency = Field(
-        default=ConsciousnessTendency.LIBERAL,
-        description="Prevailing ideological direction",
-    )
-    ideological_contestation: Probability = Field(
-        default=Probability(0.2),
-        description="Active debate between tendencies [0, 1]",
-    )
+# === Feature 029 → 034: Community Consciousness Model ===
+# CommunityConsciousness is now a type alias for TernaryConsciousness.
+# Legacy construction kwargs (collective_identity, dominant_tendency,
+# ideological_contestation) are handled by TernaryConsciousness's
+# model_validator(mode="before"). All existing code continues to work.
+CommunityConsciousness = TernaryConsciousness
 
 
 # SYNTHETIC starting values for all 14 community types.
 # Detroit test case, circa 2010. Values are placeholders for calibration.
+# Migrated from scalar (CI, tendency, contestation) to native ternary (r, l, f).
+# ideological_contestation is now computed as Shannon entropy of (r, l, f).
+# See specs/034-ternary-consciousness/data-model.md §CONSCIOUSNESS_DEFAULTS Migration.
 CONSCIOUSNESS_DEFAULTS: dict[CommunityType, CommunityConsciousness] = {
     # Contradiction pairs — hegemonic
     CommunityType.SETTLER: CommunityConsciousness(
-        collective_identity=Probability(0.4),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.3),
+        r=Probability(0.4),
+        l=Probability(0.45),
+        f=Probability(0.15),  # noqa: E741
     ),
     CommunityType.PATRIARCHAL: CommunityConsciousness(
-        collective_identity=Probability(0.3),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.2),
+        r=Probability(0.3),
+        l=Probability(0.525),
+        f=Probability(0.175),  # noqa: E741
     ),
     # Contradiction pairs — marginalized
     CommunityType.NEW_AFRIKAN: CommunityConsciousness(
-        collective_identity=Probability(0.5),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.4),
+        r=Probability(0.5),
+        l=Probability(0.5),
+        f=Probability(0.0),  # noqa: E741
     ),
     CommunityType.FIRST_NATIONS: CommunityConsciousness(
-        collective_identity=Probability(0.6),
-        dominant_tendency=ConsciousnessTendency.REVOLUTIONARY,
-        ideological_contestation=Probability(0.3),
+        r=Probability(0.6),
+        l=Probability(0.24),
+        f=Probability(0.16),  # noqa: E741
     ),
     CommunityType.CHICANO: CommunityConsciousness(
-        collective_identity=Probability(0.4),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.3),
+        r=Probability(0.4),
+        l=Probability(0.45),
+        f=Probability(0.15),  # noqa: E741
     ),
     CommunityType.WOMEN: CommunityConsciousness(
-        collective_identity=Probability(0.3),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.3),
+        r=Probability(0.3),
+        l=Probability(0.525),
+        f=Probability(0.175),  # noqa: E741
     ),
     CommunityType.TRANS: CommunityConsciousness(
-        collective_identity=Probability(0.5),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.4),
+        r=Probability(0.5),
+        l=Probability(0.5),
+        f=Probability(0.0),  # noqa: E741
     ),
     # Institutional exclusion
     CommunityType.DISABLED: CommunityConsciousness(
-        collective_identity=Probability(0.3),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.2),
+        r=Probability(0.3),
+        l=Probability(0.525),
+        f=Probability(0.175),  # noqa: E741
     ),
     CommunityType.QUEER: CommunityConsciousness(
-        collective_identity=Probability(0.4),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.4),
+        r=Probability(0.4),
+        l=Probability(0.45),
+        f=Probability(0.15),  # noqa: E741
     ),
     CommunityType.UNDOCUMENTED: CommunityConsciousness(
-        collective_identity=Probability(0.5),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.3),
+        r=Probability(0.5),
+        l=Probability(0.5),
+        f=Probability(0.0),  # noqa: E741
     ),
     CommunityType.INCARCERATED: CommunityConsciousness(
-        collective_identity=Probability(0.6),
-        dominant_tendency=ConsciousnessTendency.REVOLUTIONARY,
-        ideological_contestation=Probability(0.3),
+        r=Probability(0.6),
+        l=Probability(0.24),
+        f=Probability(0.16),  # noqa: E741
     ),
     # Lifecycle phases
     CommunityType.YOUTH: CommunityConsciousness(
-        collective_identity=Probability(0.2),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.5),
+        r=Probability(0.2),
+        l=Probability(0.6),
+        f=Probability(0.2),  # noqa: E741
     ),
     CommunityType.ADULT: CommunityConsciousness(
-        collective_identity=Probability(0.1),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.1),
+        r=Probability(0.1),
+        l=Probability(0.675),
+        f=Probability(0.225),  # noqa: E741
     ),
     CommunityType.ELDER: CommunityConsciousness(
-        collective_identity=Probability(0.3),
-        dominant_tendency=ConsciousnessTendency.LIBERAL,
-        ideological_contestation=Probability(0.2),
+        r=Probability(0.3),
+        l=Probability(0.525),
+        f=Probability(0.175),  # noqa: E741
     ),
 }
 

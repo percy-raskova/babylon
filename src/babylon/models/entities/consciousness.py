@@ -97,6 +97,7 @@ class TernaryConsciousness(BaseModel):
 
         has_r = "r" in data
         has_ci = "collective_identity" in data
+        has_legacy = has_ci or "ideological_contestation" in data or "dominant_tendency" in data
 
         if has_r:
             # Native path — strip any computed field leftovers from roundtrip
@@ -109,9 +110,9 @@ class TernaryConsciousness(BaseModel):
                 data.pop(key, None)
             return data
 
-        if has_ci:
+        if has_legacy:
             # Legacy path — convert old kwargs to ternary
-            ci = float(data.pop("collective_identity"))
+            ci = float(data.pop("collective_identity", 0.3))
             tendency_raw = data.pop("dominant_tendency", ConsciousnessTendency.LIBERAL)
             contestation_raw = data.pop("ideological_contestation", 0.2)
 
@@ -122,6 +123,14 @@ class TernaryConsciousness(BaseModel):
                 tendency = tendency_raw
 
             contestation = float(contestation_raw)
+
+            # Validate legacy fields match old Probability constraints
+            if not 0.0 <= ci <= 1.0:
+                msg = f"collective_identity must be in [0, 1], got {ci}"
+                raise ValueError(msg)
+            if not 0.0 <= contestation <= 1.0:
+                msg = f"ideological_contestation must be in [0, 1], got {contestation}"
+                raise ValueError(msg)
 
             r, l_val, f_val = _derive_ternary_from_legacy(ci, tendency)
             data["r"] = r

@@ -44,6 +44,16 @@ from babylon.models.entities.event_template import (
     Resolution,
     TemplateEffect,
 )
+from babylon.models.entities.institution import (
+    BonapartistModeEvent,
+    FactionShiftEvent,
+    Institution,
+    InstitutionOrgRelation,
+    InternalBalanceOfForces,
+    ReproductionEvent,
+    ReproductionMechanism,
+    SpawningBlueprint,
+)
 from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
@@ -144,4 +154,13 @@ __all__ = [
     "TOP_LEVEL_VERBS",
     "ALL_SUB_VERBS",
     "get_parent_verb",
+    # Institution Base Model (Feature 040)
+    "Institution",
+    "InternalBalanceOfForces",
+    "ReproductionMechanism",
+    "SpawningBlueprint",
+    "InstitutionOrgRelation",
+    "FactionShiftEvent",
+    "ReproductionEvent",
+    "BonapartistModeEvent",
 ]

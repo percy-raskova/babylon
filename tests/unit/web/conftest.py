@@ -2,6 +2,12 @@
 
 Uses SQLite in-memory for fast unit tests.
 Integration tests in tests/integration/web/ use PostgreSQL.
+
+Unmanaged models (managed=False) are temporarily set to managed=True
+so Django creates the tables in the test SQLite database.
+Note: pytest-django configures Django via ``django_settings_module`` in
+pyproject.toml before conftest loads. The fallback ``settings.configure()``
+block only runs when pytest-django is not available.
 """
 
 from __future__ import annotations
@@ -9,7 +15,7 @@ from __future__ import annotations
 import django
 from django.conf import settings
 
-# Configure Django settings before any test imports
+# Fallback: configure Django if pytest-django hasn't already done so
 if not settings.configured:
     settings.configure(
         **{
@@ -77,3 +83,10 @@ if not settings.configured:
         }
     )
     django.setup()
+
+# Override managed=False models to managed=True for test DB creation.
+# This runs regardless of how Django was configured (pytest-django or fallback).
+from game.models import ActionResult, GameSession, PlayerAction
+
+for _model in (GameSession, PlayerAction, ActionResult):
+    _model._meta.managed = True  # type: ignore[misc]

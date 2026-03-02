@@ -6,7 +6,9 @@ with Feature 037's ``postgres_schema.py`` DDL.
 
 from __future__ import annotations
 
+import ast
 import uuid
+from pathlib import Path
 
 import pytest
 from django.db import models
@@ -14,13 +16,41 @@ from django.db import models
 from accounts.models import PlayerProfile
 from game.models import ActionResult, GameSession, PlayerAction
 
+# Path to models.py source for AST-based managed=False verification.
+# conftest overrides _meta.managed at runtime for SQLite test DB creation,
+# so we verify the source declaration instead of the runtime value.
+_MODELS_SOURCE = Path(__file__).resolve().parent.parent.parent.parent / "web" / "game" / "models.py"
+
+
+def _source_declares_managed_false(source_path: Path, class_name: str) -> bool:
+    """Check if a Django model class declares managed=False in its Meta class via AST."""
+    tree = ast.parse(source_path.read_text())
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        for inner in node.body:
+            if isinstance(inner, ast.ClassDef) and inner.name == "Meta":
+                for stmt in inner.body:
+                    if (
+                        isinstance(stmt, ast.Assign)
+                        and len(stmt.targets) == 1
+                        and isinstance(stmt.targets[0], ast.Name)
+                        and stmt.targets[0].id == "managed"
+                        and isinstance(stmt.value, ast.Constant)
+                        and stmt.value.value is False
+                    ):
+                        return True
+    return False
+
 
 @pytest.mark.unit
 class TestGameSessionMeta:
     """Verify GameSession model metadata matches postgres_schema.py DDL."""
 
-    def test_managed_is_false(self) -> None:
-        assert GameSession._meta.managed is False
+    def test_managed_is_false_in_source(self) -> None:
+        # conftest overrides _meta.managed=True for SQLite test DB creation,
+        # so verify the source declaration via AST inspection.
+        assert _source_declares_managed_false(_MODELS_SOURCE, "GameSession")
 
     def test_db_table(self) -> None:
         assert GameSession._meta.db_table == "game_session"
@@ -95,8 +125,8 @@ class TestGameSessionMeta:
 class TestPlayerActionMeta:
     """Verify PlayerAction model metadata matches game_turn DDL."""
 
-    def test_managed_is_false(self) -> None:
-        assert PlayerAction._meta.managed is False
+    def test_managed_is_false_in_source(self) -> None:
+        assert _source_declares_managed_false(_MODELS_SOURCE, "PlayerAction")
 
     def test_db_table(self) -> None:
         assert PlayerAction._meta.db_table == "game_turn"
@@ -171,8 +201,8 @@ class TestPlayerActionMeta:
 class TestActionResultMeta:
     """Verify ActionResult model metadata matches action_result DDL."""
 
-    def test_managed_is_false(self) -> None:
-        assert ActionResult._meta.managed is False
+    def test_managed_is_false_in_source(self) -> None:
+        assert _source_declares_managed_false(_MODELS_SOURCE, "ActionResult")
 
     def test_db_table(self) -> None:
         assert ActionResult._meta.db_table == "action_result"

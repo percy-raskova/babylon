@@ -26,7 +26,7 @@ from babylon.models.entities.community import (
     CommunityState,
     ContradictionAxis,
 )
-from babylon.models.entities.consciousness import OrgContribution
+from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS, OrgContribution
 from babylon.models.enums import CommunityType, ConsciousnessTendency, HyperedgeCategory
 
 logger = logging.getLogger(__name__)
@@ -431,10 +431,12 @@ def _compute_consciousness_from_orgs(
 
         # Only recompute if we have org data; otherwise keep existing
         if org_landscape:
+            floor_entry = SUBSTRATE_FLOOR_DEFAULTS.get(comm_type)
+            floor_value = float(floor_entry.floor_value) if floor_entry else 0.0
             new_consciousness = compute_ternary_consciousness(
                 community_type=comm_type,
                 org_landscape=org_landscape,
-                substrate_floor=0.0,  # Phase 5 will wire SUBSTRATE_FLOOR_DEFAULTS
+                substrate_floor=floor_value,
             )
             community_states[comm_type] = state.model_copy(
                 update={"consciousness": new_consciousness},

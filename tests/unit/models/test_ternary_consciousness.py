@@ -428,3 +428,78 @@ class TestProvenanceLevel:
         assert ProvenanceLevel.MEDIUM.value == "medium"
         assert ProvenanceLevel.LOW.value == "low"
         assert ProvenanceLevel.SYNTHETIC.value == "synthetic"
+
+
+@pytest.mark.unit
+class TestSubstrateFloorDefaults:
+    """Test SUBSTRATE_FLOOR_DEFAULTS coverage and values."""
+
+    def test_all_community_types_covered(self) -> None:
+        """Every CommunityType has a SUBSTRATE_FLOOR_DEFAULTS entry."""
+        from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS
+        from babylon.models.enums import CommunityType
+
+        for ct in CommunityType:
+            assert ct in SUBSTRATE_FLOOR_DEFAULTS, f"Missing floor for {ct}"
+
+    def test_incarcerated_highest_floor(self) -> None:
+        """INCARCERATED has the highest substrate floor (0.18)."""
+        from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS
+        from babylon.models.enums import CommunityType
+
+        incarcerated = SUBSTRATE_FLOOR_DEFAULTS[CommunityType.INCARCERATED]
+        assert incarcerated.floor_value == pytest.approx(0.18, abs=1e-4)
+
+        for ct, sf in SUBSTRATE_FLOOR_DEFAULTS.items():
+            assert float(sf.floor_value) <= float(incarcerated.floor_value) + 1e-6, (
+                f"{ct} floor ({sf.floor_value}) exceeds INCARCERATED ({incarcerated.floor_value})"
+            )
+
+    def test_new_afrikan_floor(self) -> None:
+        """NEW_AFRIKAN has floor_value=0.12 with MEDIUM confidence."""
+        from babylon.models.entities.consciousness import (
+            SUBSTRATE_FLOOR_DEFAULTS,
+            ProvenanceLevel,
+        )
+        from babylon.models.enums import CommunityType
+
+        na = SUBSTRATE_FLOOR_DEFAULTS[CommunityType.NEW_AFRIKAN]
+        assert na.floor_value == pytest.approx(0.12, abs=1e-4)
+        assert na.confidence == ProvenanceLevel.MEDIUM
+
+    def test_hegemonic_types_zero_floor(self) -> None:
+        """SETTLER and PATRIARCHAL have zero substrate floor."""
+        from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS
+        from babylon.models.enums import CommunityType
+
+        for ct in (CommunityType.SETTLER, CommunityType.PATRIARCHAL):
+            sf = SUBSTRATE_FLOOR_DEFAULTS[ct]
+            assert sf.floor_value == pytest.approx(0.0, abs=1e-6), f"{ct} should have zero floor"
+
+    def test_lifecycle_types_low_floor(self) -> None:
+        """YOUTH and ADULT have zero floor; ELDER has small floor."""
+        from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS
+        from babylon.models.enums import CommunityType
+
+        assert SUBSTRATE_FLOOR_DEFAULTS[CommunityType.YOUTH].floor_value == pytest.approx(
+            0.0, abs=1e-6
+        )
+        assert SUBSTRATE_FLOOR_DEFAULTS[CommunityType.ADULT].floor_value == pytest.approx(
+            0.0, abs=1e-6
+        )
+        assert float(SUBSTRATE_FLOOR_DEFAULTS[CommunityType.ELDER].floor_value) > 0.0
+
+    def test_all_floors_in_valid_range(self) -> None:
+        """All floor_values are in [0, 1]."""
+        from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS
+
+        for ct, sf in SUBSTRATE_FLOOR_DEFAULTS.items():
+            assert 0.0 <= float(sf.floor_value) <= 1.0, f"{ct} floor {sf.floor_value} out of range"
+
+    def test_provenance_metadata_present(self) -> None:
+        """All entries have non-empty computation_method and data_sources."""
+        from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS
+
+        for ct, sf in SUBSTRATE_FLOOR_DEFAULTS.items():
+            assert sf.computation_method, f"{ct} missing computation_method"
+            assert len(sf.data_sources) > 0, f"{ct} missing data_sources"

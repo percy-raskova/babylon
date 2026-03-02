@@ -353,9 +353,111 @@ class OrgContribution(BaseModel):
     )
 
 
+SUBSTRATE_FLOOR_DEFAULTS: dict[CommunityType, SubstrateFloor] = {
+    CommunityType.NEW_AFRIKAN: SubstrateFloor(
+        community_type=CommunityType.NEW_AFRIKAN,
+        floor_value=Probability(0.12),
+        confidence=ProvenanceLevel.MEDIUM,
+        data_sources=["Vera incarceration rates", "Chetty mobility atlas"],
+        computation_method="midpoint of incarceration + mobility proxy range",
+    ),
+    CommunityType.FIRST_NATIONS: SubstrateFloor(
+        community_type=CommunityType.FIRST_NATIONS,
+        floor_value=Probability(0.12),
+        confidence=ProvenanceLevel.MEDIUM,
+        data_sources=["Vera incarceration rates", "Chetty mobility atlas"],
+        computation_method="midpoint of incarceration + mobility proxy range",
+    ),
+    CommunityType.INCARCERATED: SubstrateFloor(
+        community_type=CommunityType.INCARCERATED,
+        floor_value=Probability(0.18),
+        confidence=ProvenanceLevel.MEDIUM,
+        data_sources=["Vera incarceration rates"],
+        computation_method="incarceration density proxy midpoint",
+    ),
+    CommunityType.CHICANO: SubstrateFloor(
+        community_type=CommunityType.CHICANO,
+        floor_value=Probability(0.08),
+        confidence=ProvenanceLevel.LOW,
+        data_sources=["Chetty mobility atlas"],
+        computation_method="mobility proxy estimate",
+    ),
+    CommunityType.WOMEN: SubstrateFloor(
+        community_type=CommunityType.WOMEN,
+        floor_value=Probability(0.04),
+        confidence=ProvenanceLevel.LOW,
+        data_sources=["estimated"],
+        computation_method="estimated from related community data",
+    ),
+    CommunityType.TRANS: SubstrateFloor(
+        community_type=CommunityType.TRANS,
+        floor_value=Probability(0.06),
+        confidence=ProvenanceLevel.LOW,
+        data_sources=["estimated"],
+        computation_method="estimated from related community data",
+    ),
+    CommunityType.DISABLED: SubstrateFloor(
+        community_type=CommunityType.DISABLED,
+        floor_value=Probability(0.03),
+        confidence=ProvenanceLevel.LOW,
+        data_sources=["estimated"],
+        computation_method="estimated from related community data",
+    ),
+    CommunityType.QUEER: SubstrateFloor(
+        community_type=CommunityType.QUEER,
+        floor_value=Probability(0.04),
+        confidence=ProvenanceLevel.LOW,
+        data_sources=["estimated"],
+        computation_method="estimated from related community data",
+    ),
+    CommunityType.UNDOCUMENTED: SubstrateFloor(
+        community_type=CommunityType.UNDOCUMENTED,
+        floor_value=Probability(0.10),
+        confidence=ProvenanceLevel.LOW,
+        data_sources=["estimated"],
+        computation_method="estimated from related community data",
+    ),
+    CommunityType.SETTLER: SubstrateFloor(
+        community_type=CommunityType.SETTLER,
+        floor_value=Probability(0.0),
+        confidence=ProvenanceLevel.HIGH,
+        data_sources=["structural (hegemonic default)"],
+        computation_method="hegemonic default: no substrate revolutionary consciousness",
+    ),
+    CommunityType.PATRIARCHAL: SubstrateFloor(
+        community_type=CommunityType.PATRIARCHAL,
+        floor_value=Probability(0.0),
+        confidence=ProvenanceLevel.HIGH,
+        data_sources=["structural (hegemonic default)"],
+        computation_method="hegemonic default: no substrate revolutionary consciousness",
+    ),
+    CommunityType.YOUTH: SubstrateFloor(
+        community_type=CommunityType.YOUTH,
+        floor_value=Probability(0.0),
+        confidence=ProvenanceLevel.HIGH,
+        data_sources=["structural (lifecycle phase)"],
+        computation_method="lifecycle phase: no accumulated substrate",
+    ),
+    CommunityType.ADULT: SubstrateFloor(
+        community_type=CommunityType.ADULT,
+        floor_value=Probability(0.0),
+        confidence=ProvenanceLevel.HIGH,
+        data_sources=["structural (lifecycle phase)"],
+        computation_method="lifecycle phase: no accumulated substrate",
+    ),
+    CommunityType.ELDER: SubstrateFloor(
+        community_type=CommunityType.ELDER,
+        floor_value=Probability(0.02),
+        confidence=ProvenanceLevel.LOW,
+        data_sources=["estimated (generational memory)"],
+        computation_method="estimated from generational memory transmission",
+    ),
+}
+
 __all__ = [
     "OrgContribution",
     "ProvenanceLevel",
+    "SUBSTRATE_FLOOR_DEFAULTS",
     "SubstrateFloor",
     "TernaryConsciousness",
 ]

@@ -76,10 +76,7 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
   const territories = snapshot.territories;
   const colorScale = useMemo(() => getColorScale(activeLayer), [activeLayer]);
 
-  const hasH3 = useMemo(
-    () => territories.some((t) => t.h3_index != null),
-    [territories],
-  );
+  const hasH3 = useMemo(() => territories.some((t) => t.h3_index != null), [territories]);
 
   const getColor = useCallback(
     (t: TerritoryState): RGBAColor => {
@@ -177,13 +174,7 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
       </div>
 
       {/* Hover tooltip */}
-      {hoverInfo && (
-        <HexTooltip
-          territory={hoverInfo.territory}
-          x={hoverInfo.x}
-          y={hoverInfo.y}
-        />
-      )}
+      {hoverInfo && <HexTooltip territory={hoverInfo.territory} x={hoverInfo.x} y={hoverInfo.y} />}
     </div>
   );
 }

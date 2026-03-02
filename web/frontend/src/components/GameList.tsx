@@ -4,7 +4,7 @@
  * Shows the player's games and allows creating new ones.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { get, post } from "@/api/client";
 import type { GameSummary, CreateGameParams } from "@/types/game";
 
@@ -18,20 +18,23 @@ export function GameList({ onSelectGame }: GameListProps) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchGames = useCallback(async () => {
-    setLoading(true);
-    const res = await get<GameSummary[]>("/api/games/");
-    if (res.status === "ok") {
-      setGames(res.data);
-    } else {
-      setError(res.message ?? "Failed to load games");
-    }
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
+    let cancelled = false;
+    async function fetchGames() {
+      const res = await get<GameSummary[]>("/api/games/");
+      if (cancelled) return;
+      if (res.status === "ok") {
+        setGames(res.data);
+      } else {
+        setError(res.message ?? "Failed to load games");
+      }
+      setLoading(false);
+    }
     void fetchGames();
-  }, [fetchGames]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleCreate() {
     setCreating(true);
@@ -48,9 +51,7 @@ export function GameList({ onSelectGame }: GameListProps) {
   }
 
   if (loading) {
-    return (
-      <div className="p-16 text-center text-silver">Loading games...</div>
-    );
+    return <div className="p-16 text-center text-silver">Loading games...</div>;
   }
 
   return (
@@ -69,9 +70,7 @@ export function GameList({ onSelectGame }: GameListProps) {
       {error && <p className="mb-4 text-[13px] text-crimson">{error}</p>}
 
       {games.length === 0 ? (
-        <p className="py-12 text-center text-[15px] text-ash">
-          No games yet. Create one to begin.
-        </p>
+        <p className="py-12 text-center text-[15px] text-ash">No games yet. Create one to begin.</p>
       ) : (
         <div className="flex flex-col gap-3">
           {games.map((game) => (

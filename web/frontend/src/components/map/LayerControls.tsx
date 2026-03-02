@@ -24,17 +24,13 @@ export function LayerControls() {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="text-[10px] uppercase tracking-wider text-ash">
-        Layer:
-      </span>
+      <span className="text-[10px] uppercase tracking-wider text-ash">Layer:</span>
       {LAYERS.map((layer) => (
         <button
           key={layer.id}
           onClick={() => setActiveLayer(layer.id)}
           className={`rounded px-2 py-0.5 text-[11px] ${
-            activeLayer === layer.id
-              ? "bg-dark-metal text-gold"
-              : "text-ash hover:text-silver"
+            activeLayer === layer.id ? "bg-dark-metal text-gold" : "text-ash hover:text-silver"
           }`}
         >
           {layer.label}

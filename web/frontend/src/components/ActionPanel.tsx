@@ -15,12 +15,7 @@ interface ActionPanelProps {
   resolving: boolean;
 }
 
-export function ActionPanel({
-  actions,
-  onSubmit,
-  onResolve,
-  resolving,
-}: ActionPanelProps) {
+export function ActionPanel({ actions, onSubmit, onResolve, resolving }: ActionPanelProps) {
   const [submitting, setSubmitting] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
@@ -52,9 +47,7 @@ export function ActionPanel({
   return (
     <div className="flex h-full flex-col">
       <div className="mb-3 flex shrink-0 items-center justify-between">
-        <h3 className="m-0 text-sm font-semibold uppercase tracking-wider text-gold">
-          Actions
-        </h3>
+        <h3 className="m-0 text-sm font-semibold uppercase tracking-wider text-gold">Actions</h3>
         <button
           onClick={onResolve}
           disabled={resolving}
@@ -65,16 +58,12 @@ export function ActionPanel({
       </div>
 
       {actions.length === 0 ? (
-        <p className="py-6 text-center text-sm text-ash">
-          No actions available this tick
-        </p>
+        <p className="py-6 text-center text-sm text-ash">No actions available this tick</p>
       ) : (
         <div className="flex flex-1 flex-col gap-3 overflow-auto">
           {Object.entries(grouped).map(([orgId, orgActions]) => (
             <div key={orgId} className="flex flex-col gap-1">
-              <div className="py-1 text-[13px] font-semibold text-royal-blue">
-                {orgId}
-              </div>
+              <div className="py-1 text-[13px] font-semibold text-royal-blue">{orgId}</div>
               {orgActions.map((action, i) => {
                 const key = `${action.org_id}-${action.verb}`;
                 return (
@@ -88,9 +77,7 @@ export function ActionPanel({
                       {action.verb}
                     </span>
                     {action.action_type && (
-                      <span className="text-xs text-ash">
-                        {action.action_type}
-                      </span>
+                      <span className="text-xs text-ash">{action.action_type}</span>
                     )}
                     {action.cost !== undefined && (
                       <span className="font-mono text-xs text-phosphor-red">

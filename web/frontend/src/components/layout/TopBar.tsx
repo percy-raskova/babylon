@@ -34,21 +34,15 @@ export function TopBar({
         >
           &larr; Games
         </button>
-        <span className="font-mono text-xs text-ash">
-          {gameId.slice(0, 8)}...
-        </span>
+        <span className="font-mono text-xs text-ash">{gameId.slice(0, 8)}...</span>
       </div>
 
       {/* Center: tick + indicators */}
       <div className="flex items-center gap-6">
         {snapshot && (
           <div className="flex items-baseline gap-2">
-            <span className="text-[11px] uppercase tracking-wider text-ash">
-              Tick
-            </span>
-            <span className="font-mono text-2xl font-bold text-gold">
-              {snapshot.tick}
-            </span>
+            <span className="text-[11px] uppercase tracking-wider text-ash">Tick</span>
+            <span className="font-mono text-2xl font-bold text-gold">{snapshot.tick}</span>
           </div>
         )}
         {snapshot && <PersistentIndicators snapshot={snapshot} />}

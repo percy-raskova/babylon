@@ -30,9 +30,7 @@ export function OrgDashboard({ snapshot, onSelectOrg }: OrgDashboardProps) {
       </h3>
 
       {orgs.length === 0 ? (
-        <p className="text-center text-sm text-ash">
-          No organizations in this game
-        </p>
+        <p className="text-center text-sm text-ash">No organizations in this game</p>
       ) : (
         <div className="flex flex-1 flex-col gap-2 overflow-auto">
           {orgs.map((org) => (
@@ -40,15 +38,11 @@ export function OrgDashboard({ snapshot, onSelectOrg }: OrgDashboardProps) {
               key={org.id}
               onClick={() => handleSelect(org.id)}
               className={`w-full rounded-md border bg-void px-3.5 py-2.5 text-left text-[13px] text-bone ${
-                selectedOrg === org.id
-                  ? "border-gold"
-                  : "border-wet-concrete hover:border-silver"
+                selectedOrg === org.id ? "border-gold" : "border-wet-concrete hover:border-silver"
               }`}
             >
               <div className="mb-1.5 flex justify-between">
-                <span className="font-semibold text-royal-blue">
-                  {org.name}
-                </span>
+                <span className="font-semibold text-royal-blue">{org.name}</span>
                 <span className="text-[11px] uppercase tracking-wider text-ash">
                   {org.org_type}
                 </span>
@@ -71,23 +65,12 @@ export function OrgDashboard({ snapshot, onSelectOrg }: OrgDashboardProps) {
   );
 }
 
-function OrgStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  const display =
-    typeof value === "number" ? value.toFixed(1) : value;
+function OrgStat({ label, value }: { label: string; value: number | string }) {
+  const display = typeof value === "number" ? value.toFixed(1) : value;
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wider text-ash">
-        {label}
-      </span>
-      <span className="font-mono text-sm font-semibold text-bone">
-        {display}
-      </span>
+      <span className="text-[10px] uppercase tracking-wider text-ash">{label}</span>
+      <span className="font-mono text-sm font-semibold text-bone">{display}</span>
     </div>
   );
 }

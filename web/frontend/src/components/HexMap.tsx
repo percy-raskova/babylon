@@ -96,9 +96,7 @@ export function HexMap({ snapshot, onSelectNode }: HexMapProps) {
     <div className="relative flex h-full flex-col">
       {/* Layer controls */}
       <div className="flex shrink-0 items-center gap-2 py-2">
-        <span className="text-xs uppercase tracking-wider text-ash">
-          Color by:
-        </span>
+        <span className="text-xs uppercase tracking-wider text-ash">Color by:</span>
         {Object.keys(COLOR_SCALES).map((m) => (
           <button
             key={m}
@@ -123,9 +121,7 @@ export function HexMap({ snapshot, onSelectNode }: HexMapProps) {
             onMouseEnter={() => setHoveredId(territory.id)}
             onMouseLeave={() => setHoveredId(null)}
             className={`flex aspect-square min-h-[60px] items-center justify-center rounded-md transition-[border] duration-150 ${
-              hoveredId === territory.id
-                ? "border-2 border-gold"
-                : "border border-soot"
+              hoveredId === territory.id ? "border-2 border-gold" : "border border-soot"
             }`}
             style={{ background: getColor(territory) }}
             title={`${territory.name}: ${metric}=${getMetricValue(territory, metric).toFixed(2)}`}

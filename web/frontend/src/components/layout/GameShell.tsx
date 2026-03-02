@@ -23,14 +23,8 @@ interface GameShellProps {
   onLogout: () => void;
 }
 
-export function GameShell({
-  gameId,
-  username,
-  onBack,
-  onLogout,
-}: GameShellProps) {
-  const { snapshot, available, loading, error, submitAction, resolveTick } =
-    useGameState(gameId);
+export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps) {
+  const { snapshot, available, loading, error, submitAction, resolveTick } = useGameState(gameId);
   const [results, setResults] = useState<ActionResultData[] | null>(null);
   const [resolving, setResolving] = useState(false);
   const bottomTab = useUIStore((s) => s.bottomTab);
@@ -71,9 +65,7 @@ export function GameShell({
         onLogout={onLogout}
       />
 
-      {error && (
-        <p className="shrink-0 px-4 py-1 text-[13px] text-crimson">{error}</p>
-      )}
+      {error && <p className="shrink-0 px-4 py-1 text-[13px] text-crimson">{error}</p>}
 
       {/* Main area: map + right panel */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -88,9 +80,7 @@ export function GameShell({
 
           {/* Bottom panel */}
           <BottomPanel>
-            {bottomTab === "timeseries" && (
-              <TimeSeriesPanel snapshot={snapshot} />
-            )}
+            {bottomTab === "timeseries" && <TimeSeriesPanel snapshot={snapshot} />}
             {bottomTab === "events" && (
               <div className="flex h-full items-center justify-center text-sm text-ash">
                 Event log — Phase 6

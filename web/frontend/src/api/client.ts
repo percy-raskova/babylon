@@ -13,10 +13,7 @@ function getCsrfToken(): string {
 }
 
 /** Base fetch wrapper with CSRF and credentials. */
-async function request<T>(
-  url: string,
-  options: RequestInit = {},
-): Promise<ApiResponse<T>> {
+async function request<T>(url: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-CSRFToken": getCsrfToken(),
@@ -48,10 +45,7 @@ export async function get<T>(url: string): Promise<ApiResponse<T>> {
 }
 
 /** POST request with JSON body. */
-export async function post<T>(
-  url: string,
-  data?: unknown,
-): Promise<ApiResponse<T>> {
+export async function post<T>(url: string, data?: unknown): Promise<ApiResponse<T>> {
   return request<T>(url, {
     method: "POST",
     body: data !== undefined ? JSON.stringify(data) : undefined,

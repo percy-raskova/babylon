@@ -45,9 +45,7 @@ export function BottomPanel({ children }: BottomPanelProps) {
               if (!open) toggle();
             }}
             className={`rounded px-3 py-1 text-xs font-medium ${
-              activeTab === tab.id
-                ? "bg-dark-metal text-gold"
-                : "text-ash hover:text-silver"
+              activeTab === tab.id ? "bg-dark-metal text-gold" : "text-ash hover:text-silver"
             }`}
           >
             {tab.label}
@@ -56,9 +54,7 @@ export function BottomPanel({ children }: BottomPanelProps) {
       </div>
 
       {/* Content */}
-      {open && (
-        <div className="flex-1 overflow-hidden px-3 pb-3">{children}</div>
-      )}
+      {open && <div className="flex-1 overflow-hidden px-3 pb-3">{children}</div>}
     </div>
   );
 }

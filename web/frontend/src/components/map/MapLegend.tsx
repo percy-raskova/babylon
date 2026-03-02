@@ -21,17 +21,11 @@ export function MapLegend() {
       <span className="text-[10px] text-ash">0</span>
       <div className="flex h-3 w-32 overflow-hidden rounded-sm">
         {stops.map((stop, i) => (
-          <div
-            key={i}
-            className="flex-1"
-            style={{ backgroundColor: stop.color }}
-          />
+          <div key={i} className="flex-1" style={{ backgroundColor: stop.color }} />
         ))}
       </div>
       <span className="text-[10px] text-ash">1</span>
-      <span className="text-[10px] uppercase tracking-wider text-ash">
-        {activeLayer}
-      </span>
+      <span className="text-[10px] uppercase tracking-wider text-ash">{activeLayer}</span>
     </div>
   );
 }

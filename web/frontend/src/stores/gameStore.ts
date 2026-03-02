@@ -27,14 +27,10 @@ function extractSummary(snap: GameSnapshot): TickSummary {
   const entities = snap.entities;
 
   const avgHeat =
-    territories.length > 0
-      ? territories.reduce((s, t) => s + t.heat, 0) / territories.length
-      : 0;
+    territories.length > 0 ? territories.reduce((s, t) => s + t.heat, 0) / territories.length : 0;
 
   const avgConsciousness =
-    entities.length > 0
-      ? entities.reduce((s, e) => s + e.consciousness, 0) / entities.length
-      : 0;
+    entities.length > 0 ? entities.reduce((s, e) => s + e.consciousness, 0) / entities.length : 0;
 
   const totalWealth = entities.reduce((s, e) => s + e.wealth, 0);
 
@@ -110,18 +106,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   resolveTick: async (gameId) => {
-    const res = await apiPost<Record<string, unknown>>(
-      `/api/games/${gameId}/resolve/`,
-    );
+    const res = await apiPost<Record<string, unknown>>(`/api/games/${gameId}/resolve/`);
     if (res.status !== "ok") {
       set({ error: res.message ?? "Failed to resolve tick" });
       return null;
     }
     await get().fetchState(gameId);
     const tick = res.tick ?? 0;
-    const resultsRes = await apiGet<ActionResultData[]>(
-      `/api/games/${gameId}/results/${tick}/`,
-    );
+    const resultsRes = await apiGet<ActionResultData[]>(`/api/games/${gameId}/results/${tick}/`);
     return resultsRes.status === "ok" ? resultsRes.data : null;
   },
 

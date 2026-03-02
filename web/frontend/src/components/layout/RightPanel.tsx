@@ -26,11 +26,7 @@ export function RightPanel({ children }: RightPanelProps) {
       >
         {open ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
-      {open && (
-        <div className="flex flex-1 flex-col gap-3 overflow-hidden p-3">
-          {children}
-        </div>
-      )}
+      {open && <div className="flex flex-1 flex-col gap-3 overflow-hidden p-3">{children}</div>}
     </div>
   );
 }

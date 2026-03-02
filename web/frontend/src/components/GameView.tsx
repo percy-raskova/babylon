@@ -20,8 +20,7 @@ interface GameViewProps {
 }
 
 export function GameView({ gameId, onBack }: GameViewProps) {
-  const { snapshot, available, loading, error, submitAction, resolveTick } =
-    useGameState(gameId);
+  const { snapshot, available, loading, error, submitAction, resolveTick } = useGameState(gameId);
   const [results, setResults] = useState<ActionResultData[] | null>(null);
   const [resolving, setResolving] = useState(false);
 
@@ -45,27 +44,29 @@ export function GameView({ gameId, onBack }: GameViewProps) {
         <div className="flex items-baseline gap-2">
           {snapshot && (
             <>
-              <span className="text-[13px] uppercase tracking-wider text-ash">
-                Tick
-              </span>
-              <span className="font-mono text-[28px] font-bold text-gold">
-                {snapshot.tick}
-              </span>
+              <span className="text-[13px] uppercase tracking-wider text-ash">Tick</span>
+              <span className="font-mono text-[28px] font-bold text-gold">{snapshot.tick}</span>
             </>
           )}
         </div>
         <div className="font-mono text-xs text-ash">{gameId.slice(0, 8)}...</div>
       </div>
 
-      {error && (
-        <p className="mb-2 shrink-0 text-[13px] text-crimson">{error}</p>
-      )}
+      {error && <p className="mb-2 shrink-0 text-[13px] text-crimson">{error}</p>}
 
-      {loading && !snapshot ? (
+      {loading && !snapshot && (
         <div className="flex flex-1 items-center justify-center text-silver">
           Loading game state...
         </div>
-      ) : snapshot ? (
+      )}
+
+      {!loading && !snapshot && (
+        <div className="flex flex-1 items-center justify-center text-silver">
+          No state available
+        </div>
+      )}
+
+      {snapshot && (
         <div className="grid flex-1 grid-cols-[1fr_360px] gap-3 overflow-hidden">
           {/* Left column: Map + Time Series */}
           <div className="flex flex-col gap-3 overflow-hidden">
@@ -96,10 +97,6 @@ export function GameView({ gameId, onBack }: GameViewProps) {
               </div>
             )}
           </div>
-        </div>
-      ) : (
-        <div className="flex flex-1 items-center justify-center text-silver">
-          No state available
         </div>
       )}
     </div>

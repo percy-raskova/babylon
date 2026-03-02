@@ -175,10 +175,4 @@ export interface AuthState {
 }
 
 /** Map layer type for hex visualization. */
-export type MapLayer =
-  | "heat"
-  | "consciousness"
-  | "wealth"
-  | "rent"
-  | "biocapacity"
-  | "population";
+export type MapLayer = "heat" | "consciousness" | "wealth" | "rent" | "biocapacity" | "population";

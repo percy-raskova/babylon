@@ -16,9 +16,7 @@ export function HexTooltip({ territory, x, y }: HexTooltipProps) {
       className="pointer-events-none absolute z-50 min-w-[200px] rounded-md border border-wet-concrete bg-dark-metal p-3 text-xs shadow-lg"
       style={{ left: x + 12, top: y + 12 }}
     >
-      <div className="mb-2 text-sm font-semibold text-bone">
-        {territory.name}
-      </div>
+      <div className="mb-2 text-sm font-semibold text-bone">{territory.name}</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         <Stat label="Heat" value={territory.heat.toFixed(2)} />
         <Stat label="Rent" value={territory.rent_level.toFixed(2)} />

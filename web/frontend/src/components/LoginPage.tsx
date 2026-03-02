@@ -23,10 +23,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError(null);
     setSubmitting(true);
 
-    const res = await postForm<{ username: string }>(
-      "/accounts/login/",
-      { username, password },
-    );
+    const res = await postForm<{ username: string }>("/accounts/login/", { username, password });
 
     setSubmitting(false);
 
@@ -43,12 +40,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-void to-blood-void">
       <div className="w-full max-w-[400px] rounded-xl border border-wet-concrete bg-dark-metal p-12 text-center">
-        <h1 className="mb-1 text-[32px] font-bold tracking-[6px] text-gold">
-          BABYLON
-        </h1>
-        <p className="mb-8 text-sm uppercase tracking-[2px] text-ash">
-          The Fall of America
-        </p>
+        <h1 className="mb-1 text-[32px] font-bold tracking-[6px] text-gold">BABYLON</h1>
+        <p className="mb-8 text-sm uppercase tracking-[2px] text-ash">The Fall of America</p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input

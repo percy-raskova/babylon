@@ -51,9 +51,7 @@ export default function App() {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-silver">
-        Loading...
-      </div>
+      <div className="flex min-h-screen items-center justify-center text-silver">Loading...</div>
     );
   }
 
@@ -73,9 +71,7 @@ export default function App() {
     <div className="flex min-h-screen flex-col">
       {auth?.is_authenticated && view.page === "games" && (
         <nav className="flex shrink-0 items-center justify-between border-b border-soot bg-void px-6 py-3">
-          <span className="text-base font-bold tracking-[4px] text-gold">
-            BABYLON
-          </span>
+          <span className="text-base font-bold tracking-[4px] text-gold">BABYLON</span>
           <div className="flex items-center gap-4">
             <span className="text-sm text-silver">{auth.username}</span>
             <button

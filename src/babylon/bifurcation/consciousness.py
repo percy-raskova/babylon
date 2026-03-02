@@ -21,6 +21,7 @@ from typing import Any
 import networkx as nx
 import xgi  # type: ignore[import-untyped]
 
+from babylon.bifurcation.types import WeightedSolidarityResult
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
     MARGINALIZED_COMMUNITIES,
@@ -111,12 +112,16 @@ def consciousness_weighted_solidarity(
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
     defines: BifurcationDefines,
-) -> float:
+) -> WeightedSolidarityResult:
     """Weight a solidarity edge by consciousness of connected agents' communities.
 
     For each agent, finds their marginalized community memberships via the
     hypergraph, computes mean CI, then weights the edge's solidarity_strength
     by sigmoid(min(source_ci, target_ci)).
+
+    Edges where the effective CI (min of both endpoints) falls below the
+    crisis-fragile threshold (0.3) are marked as crisis-fragile — these
+    represent assimilated solidarity that collapses under crisis (FR-008).
 
     Args:
         source_id: Source agent node ID.
@@ -127,9 +132,11 @@ def consciousness_weighted_solidarity(
         defines: Configurable parameters (sigmoid midpoint/steepness).
 
     Returns:
-        Weighted solidarity value. Near-zero for assimilated communities,
-        near-full for oppositional consciousness.
+        WeightedSolidarityResult with weight and crisis_fragile flag.
     """
+    # Crisis-fragile threshold: r < 0.3 maps to the sigmoid midpoint region
+    _CRISIS_FRAGILE_THRESHOLD = 0.3
+
     # Get solidarity_strength from the edge
     edge_data = graph.edges.get((source_id, target_id), {})
     solidarity_strength: float = edge_data.get("solidarity_strength", 0.0)
@@ -148,7 +155,10 @@ def consciousness_weighted_solidarity(
         steepness=defines.consciousness_sigmoid_steepness,
     )
 
-    return solidarity_strength * sigmoid_weight
+    weight = solidarity_strength * sigmoid_weight
+    crisis_fragile = effective_ci < _CRISIS_FRAGILE_THRESHOLD
+
+    return WeightedSolidarityResult(weight=weight, crisis_fragile=crisis_fragile)
 
 
 __all__ = [

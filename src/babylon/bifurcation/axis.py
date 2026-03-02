@@ -197,7 +197,7 @@ def compute_axis_tendency(
         # SOLIDARITY edges: check for cross-axis solidarity
         if edge_type == EdgeType.SOLIDARITY:
             if crosses_contradiction_axis(src, tgt, axis, agent_memberships):
-                weighted = consciousness_weighted_solidarity(
+                ws_result = consciousness_weighted_solidarity(
                     source_id=src,
                     target_id=tgt,
                     graph=graph,
@@ -205,7 +205,7 @@ def compute_axis_tendency(
                     community_states=community_states,
                     defines=defines,
                 )
-                cross_solidarity_weighted += weighted
+                cross_solidarity_weighted += ws_result.weight
                 cross_edge_count += 1
 
         # Antagonistic edges: classify direction

@@ -87,6 +87,24 @@ class SolidarityCeiling(BaseModel):
     geographically_proximate: bool
 
 
+class WeightedSolidarityResult(BaseModel):
+    """Result of consciousness-weighted solidarity computation (Feature 034).
+
+    Extends the original float return with a crisis-fragile marker:
+    solidarity edges where both endpoints have r < crisis_fragile_threshold
+    are marked as crisis-fragile (assimilation trap indicator).
+
+    Args:
+        weight: Consciousness-weighted solidarity value [0, 1].
+        crisis_fragile: True if effective CI < crisis-fragile threshold.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    weight: float = Field(ge=0.0)
+    crisis_fragile: bool = False
+
+
 class BifurcationResult(BaseModel):
     """Complete output of a single bifurcation analysis computation.
 
@@ -113,6 +131,8 @@ class BifurcationResult(BaseModel):
         equivalence_class_distribution: Class size to count.
         critical_singletons: Articulation point node IDs.
         critical_cutsets: Minimal disconnecting edge sets.
+        mean_assimilation_ratio_marginalized: Mean f/(l+f) across marginalized.
+        crisis_fragile_edge_count: Solidarity edges marked crisis-fragile.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -137,6 +157,8 @@ class BifurcationResult(BaseModel):
     equivalence_class_distribution: dict[int, int]
     critical_singletons: list[str]
     critical_cutsets: list[frozenset[str]]
+    mean_assimilation_ratio_marginalized: float = Field(default=0.0, ge=0.0, le=1.0)
+    crisis_fragile_edge_count: int = Field(default=0, ge=0)
 
 
 class BifurcationSnapshot(BaseModel):

@@ -125,7 +125,7 @@ def _extract_filtered_solidarity_subgraph(
         if src not in filtered.nodes or tgt not in filtered.nodes:
             continue
 
-        weighted = consciousness_weighted_solidarity(
+        ws_result = consciousness_weighted_solidarity(
             source_id=src,
             target_id=tgt,
             graph=graph,
@@ -133,7 +133,7 @@ def _extract_filtered_solidarity_subgraph(
             community_states=community_states,
             defines=defines,
         )
-        if weighted >= defines.consciousness_filter_threshold:
+        if ws_result.weight >= defines.consciousness_filter_threshold:
             filtered.add_edge(src, tgt)
 
     return filtered
@@ -185,13 +185,38 @@ def _compute_dominant_tendency_distribution(
     return {k: v / total for k, v in tendency_counts.items()}
 
 
+def _compute_mean_assimilation_ratio_marginalized(
+    community_states: dict[CommunityType, CommunityState],
+) -> float:
+    """Compute mean assimilation_ratio across marginalized communities.
+
+    Assimilation ratio = f / (l + f): how much of non-revolutionary
+    consciousness is fascist. High values indicate fascist-vulnerable
+    communities.
+
+    Args:
+        community_states: Community consciousness data.
+
+    Returns:
+        Mean assimilation_ratio for marginalized communities, 0.0 if none.
+    """
+    ratios: list[float] = []
+    for comm_type, state in community_states.items():
+        if comm_type in MARGINALIZED_COMMUNITIES:
+            ratios.append(float(state.consciousness.assimilation_ratio))
+
+    if not ratios:
+        return 0.0
+    return sum(ratios) / len(ratios)
+
+
 def _compute_edge_counts(
     graph: nx.DiGraph,  # type: ignore[type-arg]
     agent_memberships: dict[str, set[CommunityType]],
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
     defines: BifurcationDefines,
-) -> tuple[int, int, float]:
+) -> tuple[int, int, float, int]:
     """Count cross-line and within-line solidarity edges, sum weighted cross.
 
     Args:
@@ -202,11 +227,13 @@ def _compute_edge_counts(
         defines: Bifurcation parameters.
 
     Returns:
-        Tuple of (cross_count, within_count, weighted_cross_total).
+        Tuple of (cross_count, within_count, weighted_cross_total,
+        crisis_fragile_count).
     """
     cross_count = 0
     within_count = 0
     weighted_cross_total = 0.0
+    crisis_fragile_count = 0
 
     max_edges = graph.number_of_edges()
     for idx, (src, tgt, edge_data) in enumerate(graph.edges(data=True)):
@@ -232,7 +259,7 @@ def _compute_edge_counts(
 
         if crosses_any:
             cross_count += 1
-            weighted = consciousness_weighted_solidarity(
+            ws_result = consciousness_weighted_solidarity(
                 source_id=src,
                 target_id=tgt,
                 graph=graph,
@@ -240,11 +267,13 @@ def _compute_edge_counts(
                 community_states=community_states,
                 defines=defines,
             )
-            weighted_cross_total += weighted
+            weighted_cross_total += ws_result.weight
+            if ws_result.crisis_fragile:
+                crisis_fragile_count += 1
         else:
             within_count += 1
 
-    return cross_count, within_count, weighted_cross_total
+    return cross_count, within_count, weighted_cross_total, crisis_fragile_count
 
 
 def _compute_legitimation_index(graph: nx.DiGraph) -> float:  # type: ignore[type-arg]
@@ -425,7 +454,7 @@ def bifurcation_tendency(
             active_axis_tendency[axis.id] = axis_result.tendency_ratio
 
     # 2. Edge counts and weighted cross-line solidarity
-    cross_count, within_count, weighted_cross = _compute_edge_counts(
+    cross_count, within_count, weighted_cross, crisis_fragile_count = _compute_edge_counts(
         graph, agent_memberships, H, community_states, defines
     )
 
@@ -453,6 +482,9 @@ def bifurcation_tendency(
 
     # 6. Dominant tendency distribution
     tendency_dist = _compute_dominant_tendency_distribution(community_states)
+
+    # 6b. Mean assimilation ratio for marginalized communities (Feature 034)
+    mean_assimilation = _compute_mean_assimilation_ratio_marginalized(community_states)
 
     # 7. Topological resilience — raw solidarity subgraph
     raw_subgraph = _extract_raw_solidarity_subgraph(graph)
@@ -496,6 +528,8 @@ def bifurcation_tendency(
         equivalence_class_distribution=equivalence,
         critical_singletons=singletons,
         critical_cutsets=cutsets,
+        mean_assimilation_ratio_marginalized=mean_assimilation,
+        crisis_fragile_edge_count=crisis_fragile_count,
     )
 
 

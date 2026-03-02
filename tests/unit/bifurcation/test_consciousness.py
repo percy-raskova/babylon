@@ -221,8 +221,8 @@ class TestConsciousnessWeightedSolidarity:
 
         # solidarity_strength=0.9, sigmoid(min(0.8, 0.8))~0.982
         # weight = 0.9 * 0.982 ~ 0.884
-        assert result > 0.8
-        assert result <= 1.0
+        assert result.weight > 0.8
+        assert result.weight <= 1.0
 
     @pytest.mark.unit
     def test_low_ci_edge_near_zero_weight(self) -> None:
@@ -262,7 +262,7 @@ class TestConsciousnessWeightedSolidarity:
 
         # solidarity_strength=0.8, sigmoid(min(0.1, 0.1))~0.047
         # weight = 0.8 * 0.047 ~ 0.038
-        assert result < 0.05
+        assert result.weight < 0.05
 
     @pytest.mark.unit
     def test_no_marginalized_communities_near_zero(self) -> None:
@@ -307,7 +307,7 @@ class TestConsciousnessWeightedSolidarity:
 
         # No marginalized communities => CI=0 => sigmoid(0)~0.018
         # weight = 0.7 * 0.018 ~ 0.013
-        assert result < 0.05
+        assert result.weight < 0.05
 
     @pytest.mark.unit
     def test_multi_community_agent_uses_mean_ci(self) -> None:
@@ -354,7 +354,7 @@ class TestConsciousnessWeightedSolidarity:
         # sigmoid(0.6, midpoint=0.4, steepness=10) = 1/(1+exp(-10*(0.6-0.4)))
         #   = 1/(1+exp(-2)) ~ 0.881
         # weight = 0.8 * 0.881 ~ 0.705
-        assert 0.6 < result < 0.8
+        assert 0.6 < result.weight < 0.8
 
     @pytest.mark.unit
     def test_asymmetric_ci_uses_min(self) -> None:
@@ -397,7 +397,7 @@ class TestConsciousnessWeightedSolidarity:
         # min(0.9, 0.15) = 0.15
         # sigmoid(0.15, 0.4, 10) = 1/(1+exp(-10*(0.15-0.4))) = 1/(1+exp(2.5)) ~ 0.076
         # weight = 1.0 * 0.076 ~ 0.076
-        assert result < 0.1
+        assert result.weight < 0.1
 
     @pytest.mark.unit
     def test_solidarity_strength_scales_result(self) -> None:
@@ -452,7 +452,7 @@ class TestConsciousnessWeightedSolidarity:
         )
 
         # Higher solidarity_strength => higher weighted result
-        assert result_high > result_low
+        assert result_high.weight > result_low.weight
         # Ratio should be approximately 0.9/0.3 = 3x
-        ratio = result_high / result_low
+        ratio = result_high.weight / result_low.weight
         assert 2.5 < ratio < 3.5

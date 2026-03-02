@@ -11,6 +11,13 @@ all:
       private_ip: ${server.private_ip}
 %{ endif ~}
 %{ endfor ~}
+  children:
+    webservers:
+      hosts:
+%{ for server in servers ~}
+        ${server.name}: {}
+%{ endfor ~}
   vars:
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
     ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_private_key_file: '${ssh_private_key_path}'

@@ -98,6 +98,7 @@ output "ssh_commands" {
 output "ansible_inventory_ini" {
   description = "Ansible inventory in INI format"
   value = templatefile("${path.module}/templates/inventory.ini.tpl", {
+    ssh_private_key_path = pathexpand(trimsuffix(var.ssh_public_key_path, ".pub"))
     servers = [
       for server in hcloud_server.vps : {
         name       = server.name
@@ -111,6 +112,7 @@ output "ansible_inventory_ini" {
 output "ansible_inventory_yaml" {
   description = "Ansible inventory in YAML format"
   value = templatefile("${path.module}/templates/inventory.yml.tpl", {
+    ssh_private_key_path = pathexpand(trimsuffix(var.ssh_public_key_path, ".pub"))
     servers = [
       for server in hcloud_server.vps : {
         name       = server.name

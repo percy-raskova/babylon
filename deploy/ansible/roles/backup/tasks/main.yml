@@ -1,5 +1,20 @@
 ---
 
+- name: Validate R2 backup credentials
+  ansible.builtin.assert:
+    that:
+      - r2_access_key_id is string
+      - r2_access_key_id | length > 0
+      - r2_secret_access_key is string
+      - r2_secret_access_key | length > 0
+      - r2_account_id is string
+      - r2_account_id | length > 0
+      - r2_endpoint is string
+      - r2_endpoint | length > 0
+    fail_msg: >-
+      Cloudflare R2 credentials are missing. Export R2_ACCESS_KEY_ID,
+      R2_SECRET_ACCESS_KEY, and R2_ACCOUNT_ID before running this playbook.
+
 - name: Install rclone and zstd
   ansible.builtin.apt:
     name:

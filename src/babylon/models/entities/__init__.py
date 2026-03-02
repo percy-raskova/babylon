@@ -18,6 +18,7 @@ Finance models (Political Economy of Liquidity - Epoch 1):
 All models use Pydantic v2 with Sprint 1 constrained types.
 """
 
+from babylon.models.entities.attention_thread import AttentionThread, SparrowAnalysis
 from babylon.models.entities.consciousness import (
     OrgContribution,
     ProvenanceLevel,
@@ -63,6 +64,16 @@ from babylon.models.entities.social_class import (
     MaterialConditionsComponent,
     SocialClass,
     SurvivalComponent,
+)
+from babylon.models.entities.state_apparatus_ai import (
+    ALL_SUB_VERBS,
+    TOP_LEVEL_VERBS,
+    VERB_CHILDREN,
+    FactionBalance,
+    LegalFramework,
+    StateAction,
+    StateBudget,
+    get_parent_verb,
 )
 from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
@@ -122,4 +133,15 @@ __all__ = [
     "SubstrateFloor",
     "ProvenanceLevel",
     "OrgContribution",
+    # State Apparatus AI (Feature 039)
+    "FactionBalance",
+    "StateBudget",
+    "StateAction",
+    "LegalFramework",
+    "AttentionThread",
+    "SparrowAnalysis",
+    "VERB_CHILDREN",
+    "TOP_LEVEL_VERBS",
+    "ALL_SUB_VERBS",
+    "get_parent_verb",
 ]

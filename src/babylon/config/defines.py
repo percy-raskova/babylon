@@ -3118,6 +3118,178 @@ class ClassSystemDefines(BaseModel):
         return 0.0
 
 
+class StateApparatusAIDefines(BaseModel):
+    """State Apparatus AI coefficients (Feature 039).
+
+    Configures the state-as-adversary system: faction dynamics,
+    fascist convergence detection, attention thread management,
+    budget allocation, escalation ladder, and territory effect parameters.
+
+    All thresholds are [S] SYNTHETIC unless otherwise noted.
+
+    See Also:
+        ``specs/039-state-apparatus-ai/spec.md``: Full specification.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # -------------------------------------------------------------------------
+    # Faction Dynamics (FR-C01 through FR-C08, R-003)
+    # -------------------------------------------------------------------------
+    max_faction_shift_per_tick: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=0.2,
+        description="[S] Maximum per-faction weight change per tick (R-003).",
+    )
+    minimum_effect_floor: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=0.1,
+        description="[S] Minimum detectable faction/territory effect (SC-010).",
+    )
+    heat_to_ss_coefficient: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="[S] Heat-to-Security-State shift rate per tick.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Fascist Convergence (FR-C06, FR-C07, R-008)
+    # -------------------------------------------------------------------------
+    fascist_security_threshold: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="[S] Security-State weight threshold for convergence entry.",
+    )
+    fascist_settler_ci_threshold: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="[S] Settler collective_identity threshold for convergence entry.",
+    )
+    fascist_finance_ceiling: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="[S] Finance-Capital weight ceiling for convergence entry.",
+    )
+    convergence_confirmation_ticks: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="[S] Consecutive ticks required to confirm convergence.",
+    )
+    reversion_ss_threshold: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="[S] Security-State threshold for fascist reversion (FR-C07).",
+    )
+    reversion_ci_threshold: float = Field(
+        default=0.30,
+        ge=0.0,
+        le=1.0,
+        description="[S] Settler CI threshold for fascist reversion (FR-C07).",
+    )
+
+    # -------------------------------------------------------------------------
+    # Attention Threads (FR-A01 through FR-A08)
+    # -------------------------------------------------------------------------
+    thread_pool_base: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        description="[S] Base thread pool size before surveillance_capacity scaling.",
+    )
+    thread_pool_max: int = Field(
+        default=8,
+        ge=1,
+        le=100,
+        description="[S] Maximum thread pool size.",
+    )
+    thread_escalation_thresholds: dict[str, float] = Field(
+        default={
+            "dormant_to_monitoring": 0.1,
+            "monitoring_to_active": 0.4,
+            "active_to_disruption": 0.7,
+        },
+        description="[S] Intel completeness thresholds for phase transitions.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Budget (FR-D05, R-004)
+    # -------------------------------------------------------------------------
+    detroit_2010_annual_budget: float = Field(
+        default=100.0,
+        ge=0.0,
+        description="[S] Scaled annual budget for Detroit 2010 scenario.",
+    )
+    actions_per_tick: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        description="[S] Maximum state actions per tick (FR-D05).",
+    )
+
+    # -------------------------------------------------------------------------
+    # Escalation Ladder (FR-D06)
+    # -------------------------------------------------------------------------
+    escalation_ladder: list[str] = Field(
+        default=[
+            "propagandize",
+            "bribe",
+            "incorporate",
+            "surveil_state",
+            "divide",
+            "infiltrate_state",
+            "invest",
+            "rezone",
+            "fund",
+            "legislate",
+            "raid",
+            "prosecute",
+            "displace",
+            "strategic_withdrawal",
+            "liquidate",
+            "scorched_earth",
+        ],
+        description="[S] Ordered escalation from low-cost to high-cost verbs.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Territory Effects (FR-E01 through FR-E05)
+    # -------------------------------------------------------------------------
+    develop_infrastructure_boost: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="[S] Infrastructure boost per INVEST action.",
+    )
+    neglect_infrastructure_decay: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="[S] Infrastructure decay per NEGLECT action.",
+    )
+    displace_population_fraction: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="[S] Population fraction displaced per DISPLACE action.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Debug (Phase 9)
+    # -------------------------------------------------------------------------
+    god_mode_enabled: bool = Field(
+        default=False,
+        description="When True, state AI decisions are exposed to player.",
+    )
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -3206,6 +3378,8 @@ class GameDefines(BaseModel):
     infrastructure: InfrastructureDefines = Field(default_factory=InfrastructureDefines)
     # Unified Class System (Feature 038)
     class_system: ClassSystemDefines = Field(default_factory=ClassSystemDefines)
+    # State Apparatus AI (Feature 039)
+    state_ai: StateApparatusAIDefines = Field(default_factory=StateApparatusAIDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure

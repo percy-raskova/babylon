@@ -240,8 +240,8 @@ class TestNewEdgeTypeValues:
 
     @pytest.mark.math
     def test_total_edge_type_count(self) -> None:
-        """EdgeType should have 16 values (9 existing + 5 org + 2 OODA)."""
-        assert len(EdgeType) == 16
+        """EdgeType should have 19 values (9 existing + 5 org + 2 OODA + 3 state AI)."""
+        assert len(EdgeType) == 19
 
 
 class TestConsciousnessTendencyReuse:

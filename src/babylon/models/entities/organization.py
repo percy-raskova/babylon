@@ -21,6 +21,7 @@ from babylon.models.enums import (
     LegalStanding,
     OrgType,
     ServiceType,
+    StateFaction,
 )
 from babylon.models.types import Coefficient, Currency, Probability
 
@@ -244,6 +245,11 @@ class StateApparatus(Organization):
     intel_methodology: IntelMethodology = Field(
         default_factory=IntelMethodology,
         description="Intelligence capabilities (Sparrow-grounded)",
+    )
+    # State Apparatus AI (Feature 039)
+    factional_alignment: StateFaction = Field(
+        default=StateFaction.SECURITY_STATE,
+        description="Dominant faction alignment of this apparatus (Feature 039)",
     )
 
 

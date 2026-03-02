@@ -1177,6 +1177,65 @@ class MarxReproductionExamples:
 
 
 @dataclass(frozen=True)
+class StateAIDefaults:
+    """State Apparatus AI test constants (Feature 039).
+
+    Source: specs/039-state-apparatus-ai/data-model.md
+    Provides Detroit 2010 faction weights, budget baselines, fascist
+    convergence thresholds, thread parameters, and effect floors.
+    """
+
+    # -------------------------------------------------------------------------
+    # Detroit 2010 Faction Weights (Assumption A-006, SYNTHETIC)
+    # -------------------------------------------------------------------------
+    DETROIT_FC_WEIGHT: float = 0.45  # Finance-Capital: post-crisis recovery
+    DETROIT_SS_WEIGHT: float = 0.30  # Security-State: post-9/11, constrained
+    DETROIT_SP_WEIGHT: float = 0.25  # Settler-Populist: Tea Party rising
+    DETROIT_STABILITY: float = 0.6
+    DETROIT_LEGITIMACY: float = 0.5
+
+    # -------------------------------------------------------------------------
+    # Budget (R-004, scaled for game units)
+    # -------------------------------------------------------------------------
+    DETROIT_ANNUAL_BUDGET: float = 100.0  # Scaled game units
+    IMPERIAL_RENT_POOL: float = 50.0
+
+    # -------------------------------------------------------------------------
+    # Fascist Convergence Thresholds (FR-C06, R-008)
+    # -------------------------------------------------------------------------
+    FASCIST_SS_THRESHOLD: float = 0.4
+    FASCIST_SETTLER_CI_THRESHOLD: float = 0.6
+    FASCIST_FC_CEILING: float = 0.25
+    CONVERGENCE_CONFIRMATION_TICKS: int = 2
+
+    # -------------------------------------------------------------------------
+    # Fascist Reversion Thresholds (FR-C07)
+    # -------------------------------------------------------------------------
+    REVERSION_SS_THRESHOLD: float = 0.25
+    REVERSION_CI_THRESHOLD: float = 0.30
+
+    # -------------------------------------------------------------------------
+    # Faction Shift Parameters (R-003)
+    # -------------------------------------------------------------------------
+    MAX_FACTION_SHIFT_PER_TICK: float = 0.05
+    MINIMUM_EFFECT_FLOOR: float = 0.02
+
+    # -------------------------------------------------------------------------
+    # Thread Parameters (FR-A01, FR-A08)
+    # -------------------------------------------------------------------------
+    THREAD_POOL_MIN: int = 5
+    THREAD_POOL_MAX: int = 8
+    ESCALATION_DORMANT_TO_MONITORING: float = 0.1
+    ESCALATION_MONITORING_TO_ACTIVE: float = 0.4
+    ESCALATION_ACTIVE_TO_DISRUPTION: float = 0.7
+
+    # -------------------------------------------------------------------------
+    # Actions Per Tick (FR-D05)
+    # -------------------------------------------------------------------------
+    ACTIONS_PER_TICK_DEFAULT: int = 1
+
+
+@dataclass(frozen=True)
 class Thresholds:
     __test__ = False  # Prevent pytest collection
     """Namespace for all test constants.
@@ -1263,6 +1322,9 @@ class Thresholds:
 
     # Tensor primitive test constants (Spec 011)
     Tensor: type[TensorDefaults] = TensorDefaults
+
+    # State Apparatus AI test constants (Feature 039)
+    StateAI: type[StateAIDefaults] = StateAIDefaults
 
     # Marxian theory validation constants (Capital Volume 2)
     MarxReproduction: type[MarxReproductionExamples] = MarxReproductionExamples

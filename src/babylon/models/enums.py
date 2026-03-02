@@ -29,6 +29,10 @@ Enums defined:
 - JunctionType: Point infrastructure at mesh vertices (Feature 036)
 - LocalityClass: Distance classification for nonlocal edges (Feature 036)
 - InternetResponseMode: State internet control modes (Feature 036)
+- StateFaction: Ruling-class factions within the state (Feature 039)
+- StateActionType: State verb taxonomy for AI decision-making (Feature 039)
+- ThreadPhase: Attention thread intelligence phase (Feature 039)
+- SurveillanceMethod: Intelligence collection methods (Feature 039)
 """
 
 from enum import StrEnum
@@ -106,6 +110,10 @@ class EdgeType(StrEnum):
     # OODA Loop System (Feature 032)
     TRANSACTIONAL = "transactional"  # Organization → Community (service-for-support exchange)
     SOLIDARISTIC = "solidaristic"  # Organization → Community (deep mutual commitment)
+    # State Apparatus AI (Feature 039)
+    TARGETS = "targets"  # AttentionThread → target entity
+    OWNED_BY = "owned_by"  # AttentionThread → StateApparatus
+    JURISDICTION = "jurisdiction"  # LegalFramework → Territory
 
 
 def resolve_edge_type(raw: str | EdgeType | None) -> EdgeType | None:
@@ -258,6 +266,13 @@ class EventType(StrEnum):
     BIFURCATION_TENDENCY_CHANGE = "bifurcation_tendency_change"  # Overall tendency shifted
     # Unified Class System (Feature 038)
     CALIBRATION_DISAGREEMENT = "calibration_disagreement"  # Accounting vs wealth criteria disagree
+    # State Apparatus AI (Feature 039)
+    STATE_ACTION_EXECUTED = "state_action_executed"  # Any state AI verb executed
+    FASCIST_CONVERGENCE = "fascist_convergence"  # Three-pillar fascist conditions met
+    FACTION_SHIFT = "faction_shift"  # FactionBalance weights changed
+    THREAD_ESCALATION = "thread_escalation"  # AttentionThread phase advanced
+    LEGAL_FRAMEWORK_ENACTED = "legal_framework_enacted"  # LEGISLATE created new law
+    LEGAL_FRAMEWORK_REVOKED = "legal_framework_revoked"  # REVOKE removed a law
 
 
 class LegitimationClassification(StrEnum):
@@ -966,6 +981,142 @@ class LocalityClass(StrEnum):
     LOCAL = "local"
     SEMI_LOCAL = "semi_local"
     NONLOCAL = "nonlocal"
+
+
+class StateFaction(StrEnum):
+    """Ruling-class factions within the state coalition (Feature 039).
+
+    Each faction has a distinct material base and strategic verb preferences.
+    The factional balance at any moment determines the state's objective
+    function and verb selection.
+
+    Values:
+        FINANCE_CAPITAL: Material base in extraction efficiency and profit rate.
+            Prefers CO_OPT, DEVELOP. Tolerates organizing unless it threatens
+            accumulation.
+        SECURITY_STATE: Material base in repressive apparatus. Prefers REPRESS,
+            ADMINISTER. Institutional incentive to maintain threat perception.
+        SETTLER_POPULIST: Material base in imperial rent distribution to settler
+            nation. Provides mass base for fascism when imperial rent contracts.
+
+    Reference: FR-C01, Constitution I.4 (George Jackson Bifurcation).
+    """
+
+    FINANCE_CAPITAL = "finance_capital"
+    SECURITY_STATE = "security_state"
+    SETTLER_POPULIST = "settler_populist"
+
+
+class StateActionType(StrEnum):
+    """State verb taxonomy for apparatus AI decision-making (Feature 039).
+
+    Six top-level verbs with ~24 sub-verbs. These are SEPARATE from
+    the player ActionType enum (Feature 032). The type system enforces
+    asymmetry: the state cannot EDUCATE or STRIKE; the player cannot
+    LEGISLATE or DISPLACE.
+
+    Reference: FR-B01 through FR-B11, Constitution V (Action Vocabulary).
+
+    Values:
+        ADMINISTER: Internal capacity management.
+        DEVELOP: Reshape the material base.
+        RESEARCH: Expand capability space.
+        CO_OPT: Absorb, neutralize, divide.
+        REPRESS: Direct state violence.
+        WITHDRAW: Concede, reposition, destroy.
+    """
+
+    # Top-level verbs
+    ADMINISTER = "administer"
+    DEVELOP = "develop"
+    RESEARCH = "research"
+    CO_OPT = "co_opt"
+    REPRESS = "repress"
+    WITHDRAW = "withdraw"
+
+    # ADMINISTER sub-verbs
+    FUND = "fund"
+    STAFF = "staff"
+    LEGISLATE = "legislate"
+    AUDIT = "audit"
+    REVOKE = "revoke"
+
+    # DEVELOP sub-verbs
+    INVEST = "invest"
+    REZONE = "rezone"
+    DISPLACE = "displace"
+    NEGLECT = "neglect"
+
+    # RESEARCH sub-verbs
+    PURSUE_TECH = "pursue_tech"
+    DEPLOY_TECH = "deploy_tech"
+
+    # CO_OPT sub-verbs
+    BRIBE = "bribe"
+    PROPAGANDIZE = "propagandize"
+    INCORPORATE = "incorporate"
+    DIVIDE = "divide"
+
+    # REPRESS sub-verbs
+    SURVEIL = "surveil_state"
+    INFILTRATE = "infiltrate_state"
+    RAID = "raid"
+    PROSECUTE = "prosecute"
+    LIQUIDATE = "liquidate"
+
+    # WITHDRAW sub-verbs
+    STRATEGIC_WITHDRAWAL = "strategic_withdrawal"
+    TACTICAL_RETREAT = "tactical_retreat"
+    SCORCHED_EARTH = "scorched_earth"
+
+
+class ThreadPhase(StrEnum):
+    """Attention thread intelligence phase (Feature 039).
+
+    Threads progress through discrete phases as intel_completeness
+    grows. Phase transitions are quantitative-to-qualitative changes
+    (Constitution I.7) driven by intel_completeness thresholds
+    configured in StateApparatusAIDefines.
+
+    Values:
+        DORMANT: Thread exists but not actively resourced.
+        MONITORING: Passive intelligence gathering. Low resource cost.
+        ACTIVE_INVESTIGATION: Dedicated analysis. Sparrow analysis available.
+        DISRUPTION: Active operations against target. Highest resource cost.
+
+    Reference: FR-A08, R-002.
+    """
+
+    DORMANT = "dormant"
+    MONITORING = "monitoring"
+    ACTIVE_INVESTIGATION = "active_investigation"
+    DISRUPTION = "disruption"
+
+
+class SurveillanceMethod(StrEnum):
+    """Intelligence collection methods for attention threads (Feature 039).
+
+    Each method reveals specific graph structures while missing others.
+    No single method reveals the full picture (Sparrow's intelligence
+    mosaic). Players can exploit method-specific blind spots (e.g.,
+    cash economy defeats FINANCIAL surveillance, face-to-face meetings
+    defeat SIGNALS).
+
+    Reference: FR-A06, R-007.
+
+    Values:
+        SIGNALS: Communication metadata (phone, email, encrypted messaging).
+        FINANCIAL: Bank records, transaction monitoring, asset tracing.
+        SOCIAL_MEDIA: Public-facing digital footprint analysis.
+        INFORMANT: Human intelligence via recruited insiders.
+        PHYSICAL: Direct observation, tailing, stakeouts.
+    """
+
+    SIGNALS = "signals"
+    FINANCIAL = "financial"
+    SOCIAL_MEDIA = "social_media"
+    INFORMANT = "informant"
+    PHYSICAL = "physical"
 
 
 class InternetResponseMode(StrEnum):

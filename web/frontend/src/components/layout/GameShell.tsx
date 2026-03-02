@@ -14,6 +14,7 @@ import { ActionPanel } from "@/components/ActionPanel";
 import { OrgDashboard } from "@/components/OrgDashboard";
 import { TickResults } from "@/components/TickResults";
 import { TimeSeries } from "@/components/charts/TimeSeries";
+import { GraphView } from "@/components/graph/GraphView";
 import type { ActionResultData } from "@/types/game";
 
 interface GameShellProps {
@@ -86,11 +87,7 @@ export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps
                 Event log — Phase 6
               </div>
             )}
-            {bottomTab === "graph" && (
-              <div className="flex h-full items-center justify-center text-sm text-ash">
-                Network graph — Phase 5
-              </div>
-            )}
+            {bottomTab === "graph" && <GraphView snapshot={snapshot} />}
           </BottomPanel>
         </div>
 

@@ -701,6 +701,8 @@ ADR0XX_descriptive_name:
 - PostgreSQL 16+ (runtime state), SQLite (read-only reference `marxist-data-3NF.sqlite`), Cloudflare R2 (archived Parquet files) (037-postgres-runtime-db)
 - Python 3.12+ (existing project stack) + Pydantic 2.x (frozen models, validators), NetworkX 3.x (graph queries), XGI 0.10 (hypergraph memberships) (034-ternary-consciousness)
 - In-memory via GraphProtocol. Postgres schema migration for persistence (r, l, f columns). No new database tables. (034-ternary-consciousness)
+- Python 3.12+ + Pydantic 2.x (frozen models, validators), NetworkX 3.x (GraphProtocol), XGI 0.10 (hypergraph memberships — existing via Features 022/029) (038-unified-class-system)
+- In-memory via GraphProtocol. No new database tables. ClassSystemDefines persisted in `defines.yaml`. (038-unified-class-system)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

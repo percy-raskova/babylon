@@ -9,7 +9,7 @@ import { useUIStore } from "@/stores/uiStore";
 import { TopBar } from "@/components/layout/TopBar";
 import { RightPanel } from "@/components/layout/RightPanel";
 import { BottomPanel } from "@/components/layout/BottomPanel";
-import { HexMap } from "@/components/HexMap";
+import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { ActionPanel } from "@/components/ActionPanel";
 import { OrgDashboard } from "@/components/OrgDashboard";
 import { TickResults } from "@/components/TickResults";
@@ -81,8 +81,8 @@ export function GameShell({
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Map */}
           <div className="flex-1 overflow-hidden p-3">
-            <div className="h-full rounded-lg border border-wet-concrete bg-dark-metal p-3">
-              <HexMap snapshot={snapshot} />
+            <div className="h-full rounded-lg border border-wet-concrete bg-dark-metal">
+              <DeckGLMap snapshot={snapshot} />
             </div>
           </div>
 

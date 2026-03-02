@@ -11,12 +11,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.2.10",
+    "@deck.gl/geo-layers": "^9.2.10",
+    "@deck.gl/layers": "^9.2.10",
+    "@deck.gl/react": "^9.2.10",
     "@tailwindcss/vite": "^4.2.1",
     "clsx": "^2.1.1",
     "h3-js": "^4.2.0",
     "lucide-react": "^0.576.0",
+    "maplibre-gl": "^5.19.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-map-gl": "^8.1.0",
     "react-router-dom": "^7.0.0",
     "recharts": "^2.15.0",
     "tailwind-merge": "^3.5.0",

@@ -260,3 +260,105 @@ class TestClassifyDualCriteria:
         )
         # Wealth class should match direct classification
         assert result.wealth_class == ClassPosition.LABOR_ARISTOCRACY
+
+
+class TestClassifyWithFiltrationPath:
+    """T017: classify_with_filtration WITH filtration memberships."""
+
+    @staticmethod
+    def _make_membership(community_type: object, agent_id: str = "test-agent") -> object:
+        from babylon.models.entities.community import CommunityMembership
+
+        return CommunityMembership(agent_id=agent_id, community_type=community_type)
+
+    @staticmethod
+    def _make_community_state(
+        community_type: object,
+        reproduction_cost_modifier: float = 1.0,
+    ) -> object:
+        from babylon.models.entities.community import CommunityState
+
+        return CommunityState(
+            community_type=community_type,
+            reproduction_cost_modifier=reproduction_cost_modifier,
+        )
+
+    @pytest.mark.unit
+    def test_first_nations_shifts_to_proletariat(self) -> None:
+        """60th percentile + FIRST_NATIONS -> PROLETARIAT (60*0.5=30th)."""
+        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.models.enums import CommunityType
+
+        classifier = DefaultUnifiedClassifier()
+        membership = self._make_membership(CommunityType.FIRST_NATIONS)
+        result = classifier.classify_with_filtration(
+            CS.WEALTH_FIRST_NATIONS,
+            PrecarityStatus.STABLE,
+            memberships=[membership],
+        )
+        assert result == ClassPosition.PROLETARIAT
+
+    @pytest.mark.unit
+    def test_incarcerated_shifts_to_lumpen(self) -> None:
+        """45th + INCARCERATED -> LUMPEN (precarity EXCLUDED, below 50th)."""
+        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.models.enums import CommunityType
+
+        classifier = DefaultUnifiedClassifier()
+        membership = self._make_membership(CommunityType.INCARCERATED)
+        result = classifier.classify_with_filtration(
+            CS.WEALTH_INCARCERATED,
+            PrecarityStatus.STABLE,
+            memberships=[membership],
+        )
+        assert result == ClassPosition.LUMPENPROLETARIAT
+
+    @pytest.mark.unit
+    def test_undocumented_shifts_classification(self) -> None:
+        """55th + UNDOCUMENTED -> shifted downward (55*0.6=33rd)."""
+        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.models.enums import CommunityType
+
+        classifier = DefaultUnifiedClassifier()
+        membership = self._make_membership(CommunityType.UNDOCUMENTED)
+        result = classifier.classify_with_filtration(
+            CS.WEALTH_UNDOCUMENTED,
+            PrecarityStatus.STABLE,
+            memberships=[membership],
+        )
+        # 55 * 0.6 = 33rd percentile + PRECARIOUS floor -> PROLETARIAT
+        assert result == ClassPosition.PROLETARIAT
+
+    @pytest.mark.unit
+    def test_disabled_shifts_classification(self) -> None:
+        """65th + DISABLED (modifier=1.3) -> shifted (65/1.3=50th)."""
+        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.models.enums import CommunityType
+
+        classifier = DefaultUnifiedClassifier()
+        membership = self._make_membership(CommunityType.DISABLED)
+        state = self._make_community_state(
+            CommunityType.DISABLED,
+            reproduction_cost_modifier=CS.REPRODUCTION_COST_MODIFIER,
+        )
+        result = classifier.classify_with_filtration(
+            CS.WEALTH_DISABLED,
+            PrecarityStatus.STABLE,
+            memberships=[membership],
+            community_states={CommunityType.DISABLED.value: state},
+        )
+        # 65 / 1.3 = 50.0 -> exactly at LA threshold -> LA
+        assert result == ClassPosition.LABOR_ARISTOCRACY
+
+    @pytest.mark.unit
+    def test_no_memberships_unchanged(self) -> None:
+        """No memberships -> same as base classifier."""
+        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+
+        classifier = DefaultUnifiedClassifier()
+        result = classifier.classify_with_filtration(
+            CS.WEALTH_LA,
+            PrecarityStatus.STABLE,
+            memberships=None,
+        )
+        assert result == ClassPosition.LABOR_ARISTOCRACY

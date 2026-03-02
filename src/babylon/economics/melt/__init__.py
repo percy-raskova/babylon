@@ -75,6 +75,10 @@ from babylon.economics.melt.class_position import (
     ClassPositionClassifier,
     DefaultClassPositionClassifier,
 )
+from babylon.economics.melt.filtration import (
+    FiltrationResult,
+    apply_filtration,
+)
 from babylon.economics.melt.imperial_rent import (
     DefaultImperialRentCalculator,
     ImperialRentCalculator,
@@ -118,4 +122,7 @@ __all__ = [
     "DefaultUnifiedClassifier",
     # Result types (Feature 038)
     "DualCriteriaResult",
+    "FiltrationResult",
+    # Functions (Feature 038)
+    "apply_filtration",
 ]

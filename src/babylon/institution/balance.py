@@ -24,6 +24,7 @@ def update_internal_balance(
     alpha: float = 0.05,
     bonapartist_threshold: float = 0.4,
     bonapartist_exclusion_threshold: float = 0.35,
+    institution_id: str = "unknown",
 ) -> tuple[InternalBalanceOfForces, list[FactionShiftEvent | BonapartistModeEvent]]:
     """Update factional balance under crisis conditions.
 
@@ -40,6 +41,7 @@ def update_internal_balance(
         alpha: Smoothing rate (from InstitutionDefines).
         bonapartist_threshold: BONAPARTIST weight for mode trigger.
         bonapartist_exclusion_threshold: Other fractions must be below this.
+        institution_id: ID of the institution (for event attribution).
 
     Returns:
         Tuple of (new_balance, events_list). Events may include
@@ -93,7 +95,7 @@ def update_internal_balance(
     if old_fraction != new_fraction:
         events.append(
             FactionShiftEvent(
-                institution_id="",  # Caller sets this
+                institution_id=institution_id,
                 old_fraction=old_fraction,
                 new_fraction=new_fraction,
                 weights={
@@ -112,7 +114,7 @@ def update_internal_balance(
     ):
         events.append(
             BonapartistModeEvent(
-                institution_id="",  # Caller sets this
+                institution_id=institution_id,
                 bonapartist_weight=new_balance.institutionalist_bonapartist,
             )
         )

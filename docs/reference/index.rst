@@ -40,6 +40,7 @@ Mathematical Formulas
    class-dynamics
    economics-pipeline
    volume-i-production
+   unified-class-system
 
 All simulation formulas: imperial rent, survival calculus, consciousness
 drift, solidarity transmission, dynamic balance, class wealth dynamics ODEs,

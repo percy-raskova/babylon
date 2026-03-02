@@ -374,3 +374,5 @@ See Also
 - :doc:`/concepts/volume-i-theory` — Volume I production dynamics
 - :doc:`/concepts/reproductive-labor` — Reproductive labor and
   Department III
+- :doc:`/concepts/unified-class-system` — Community filtration,
+  dual-criteria validation, and class-pair solidarity

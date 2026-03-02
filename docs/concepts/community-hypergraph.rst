@@ -161,3 +161,5 @@ See Also
 - :doc:`topology` -- NetworkX graph model and solidarity networks
 - :doc:`george-jackson-model` -- Bifurcation and solidarity routing
 - :doc:`imperial-rent` -- Rent differential and labor aristocracy
+- :doc:`unified-class-system` -- Filtration predicates and
+  class-pair solidarity matrix

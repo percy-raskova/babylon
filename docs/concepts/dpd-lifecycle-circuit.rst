@@ -236,3 +236,5 @@ See Also
 - :doc:`survival-calculus` -- P(S|A) and P(S|R) survival probabilities
 - :doc:`reproductive-labor` -- Department III gamma visibility and shadow subsidies
 - :doc:`imperial-rent` -- Imperial rent extraction framework
+- :doc:`unified-class-system` -- Class-aware inheritance scaling
+  and crisis dispossession

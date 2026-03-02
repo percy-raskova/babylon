@@ -50,6 +50,7 @@ Economic Theory
    survival-calculus
    reproductive-labor
    dpd-lifecycle-circuit
+   unified-class-system
 
 The mathematical foundations: the Marxian value tensor, the economics
 pipeline (capital stock, MELT, throughput, visibility, class dynamics),

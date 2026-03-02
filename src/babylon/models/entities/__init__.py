@@ -18,6 +18,12 @@ Finance models (Political Economy of Liquidity - Epoch 1):
 All models use Pydantic v2 with Sprint 1 constrained types.
 """
 
+from babylon.models.entities.consciousness import (
+    OrgContribution,
+    ProvenanceLevel,
+    SubstrateFloor,
+    TernaryConsciousness,
+)
 from babylon.models.entities.contradiction import (
     Contradiction,
     ContradictionState,
@@ -111,4 +117,9 @@ __all__ = [
     "OrganizationType",
     "IntelMethodology",
     "KeyFigure",
+    # Ternary Consciousness (Feature 034)
+    "TernaryConsciousness",
+    "SubstrateFloor",
+    "ProvenanceLevel",
+    "OrgContribution",
 ]

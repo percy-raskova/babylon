@@ -41,6 +41,12 @@ from babylon.models.entities.community import (
     CommunityState,
     ContradictionAxis,
 )
+from babylon.models.entities.consciousness import (
+    OrgContribution,
+    ProvenanceLevel,
+    SubstrateFloor,
+    TernaryConsciousness,
+)
 
 # Entity Registry (single source of truth for entity IDs)
 from babylon.models.entity_registry import (
@@ -191,4 +197,9 @@ __all__ = [
     "ConsciousnessTendency",
     "CommunityConsciousness",
     "ContradictionAxis",
+    # Ternary Consciousness (Feature 034)
+    "TernaryConsciousness",
+    "SubstrateFloor",
+    "ProvenanceLevel",
+    "OrgContribution",
 ]

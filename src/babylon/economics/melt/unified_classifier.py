@@ -232,8 +232,87 @@ class DefaultUnifiedClassifier:
         )
 
 
+class FractalConsistencyResult(BaseModel):
+    """Result of fractal consistency validation across county resolutions.
+
+    Validates that the same ClassPosition enum and classification logic
+    works at both metro and sub-county zoom levels (FR-009).
+
+    Args:
+        is_consistent: True if fractal pattern holds across all counties.
+        proletariat_lumpen_share: PROLETARIAT+LUMPEN share per county.
+        class_positions_present: Set of ClassPositions present per county.
+        metro_distribution: Population-weighted metro-level distribution.
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    is_consistent: bool
+    proletariat_lumpen_share: dict[str, float]
+    class_positions_present: dict[str, set[ClassPosition]]
+    metro_distribution: dict[ClassPosition, float]
+
+
+def validate_fractal_consistency(
+    county_distributions: dict[str, dict[ClassPosition, float]],
+) -> FractalConsistencyResult:
+    """Validate fractal consistency across county-level class distributions.
+
+    Checks that each county has all five class positions represented and
+    that distributions sum to approximately 1.0. Computes metro-level
+    aggregate as equal-weighted average across counties.
+
+    Args:
+        county_distributions: Per-county class position distributions
+            mapping FIPS -> {ClassPosition -> population fraction}.
+
+    Returns:
+        FractalConsistencyResult with consistency status and metrics.
+    """
+    is_consistent = True
+    proletariat_lumpen_share: dict[str, float] = {}
+    class_positions_present: dict[str, set[ClassPosition]] = {}
+
+    for fips, dist in county_distributions.items():
+        # Check distribution sums to ~1.0
+        total = sum(dist.values())
+        if abs(total - 1.0) > 0.01:
+            is_consistent = False
+
+        # Record which class positions are present
+        present = {cp for cp, share in dist.items() if share > 0.0}
+        class_positions_present[fips] = present
+
+        # Check all five positions present
+        if len(present) < 5:
+            is_consistent = False
+
+        # Compute proletariat + lumpen share
+        prol_lumpen = dist.get(ClassPosition.PROLETARIAT, 0.0) + dist.get(
+            ClassPosition.LUMPENPROLETARIAT, 0.0
+        )
+        proletariat_lumpen_share[fips] = prol_lumpen
+
+    # Compute metro aggregate (equal-weighted average)
+    metro_distribution: dict[ClassPosition, float] = {}
+    n_counties = len(county_distributions)
+    if n_counties > 0:
+        for cp in ClassPosition:
+            total_share = sum(dist.get(cp, 0.0) for dist in county_distributions.values())
+            metro_distribution[cp] = total_share / n_counties
+
+    return FractalConsistencyResult(
+        is_consistent=is_consistent,
+        proletariat_lumpen_share=proletariat_lumpen_share,
+        class_positions_present=class_positions_present,
+        metro_distribution=metro_distribution,
+    )
+
+
 __all__ = [
     "DefaultUnifiedClassifier",
     "DualCriteriaResult",
+    "FractalConsistencyResult",
     "UnifiedClassifier",
+    "validate_fractal_consistency",
 ]

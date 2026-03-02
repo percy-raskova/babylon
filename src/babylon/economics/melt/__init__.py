@@ -97,7 +97,9 @@ from babylon.economics.melt.types import SUBPROLETARIAT, ClassPosition, Precarit
 from babylon.economics.melt.unified_classifier import (
     DefaultUnifiedClassifier,
     DualCriteriaResult,
+    FractalConsistencyResult,
     UnifiedClassifier,
+    validate_fractal_consistency,
 )
 from babylon.economics.melt.wealth_proxy import (
     DefaultWealthProxyCalculator,
@@ -132,6 +134,8 @@ __all__ = [
     "RentDifferentialResult",
     # Protocols (Feature 038)
     "RentDifferentialCalculator",
+    "FractalConsistencyResult",
     # Functions (Feature 038)
     "apply_filtration",
+    "validate_fractal_consistency",
 ]

@@ -82,4 +82,74 @@ def calculate_faction_shift(
     )
 
 
-__all__ = ["calculate_faction_shift"]
+def is_fascist_convergence(
+    balance: FactionBalance,
+    settler_ci: float,
+    consecutive_ticks: int,
+    defines: StateApparatusAIDefines,
+) -> bool:
+    """Detect fascist convergence using the three-pillar model.
+
+    All three conditions must hold simultaneously for at least
+    ``convergence_confirmation_ticks`` consecutive ticks:
+
+    1. Security-State dominance: SS > fascist_security_threshold (0.4)
+    2. Settler-Populist mass base: settler CI > fascist_settler_ci_threshold (0.6)
+    3. Finance-Capital acquiescence: FC < fascist_finance_ceiling (0.25)
+
+    Args:
+        balance: Current FactionBalance.
+        settler_ci: Settler collective identity level [0.0, 1.0].
+        consecutive_ticks: Number of consecutive ticks conditions have held.
+        defines: State AI configuration with fascist thresholds.
+
+    Returns:
+        True if fascist convergence is confirmed.
+    """
+    # Strict inequalities — values exactly at thresholds do not qualify
+    ss_pillar = balance.security_state > defines.fascist_security_threshold
+    ci_pillar = settler_ci > defines.fascist_settler_ci_threshold
+    fc_pillar = balance.finance_capital < defines.fascist_finance_ceiling
+
+    if not (ss_pillar and ci_pillar and fc_pillar):
+        return False
+
+    # Confirmation window: conditions must hold for enough consecutive ticks
+    return consecutive_ticks >= defines.convergence_confirmation_ticks
+
+
+def check_fascist_reversion(
+    balance: FactionBalance,
+    settler_ci: float,
+    defines: StateApparatusAIDefines,
+) -> bool:
+    """Check whether conditions are met to exit fascist mode.
+
+    Fascist mode is a near-absorbing state with asymmetric exit thresholds
+    that are substantially harder to reach than entry thresholds:
+
+    - Entry: SS > 0.4, settler CI > 0.6, FC < 0.25
+    - Exit:  SS < 0.25 AND settler CI < 0.30
+
+    Both exit conditions must hold simultaneously.
+
+    Args:
+        balance: Current FactionBalance.
+        settler_ci: Settler collective identity level [0.0, 1.0].
+        defines: State AI configuration with reversion thresholds.
+
+    Returns:
+        True if fascist mode should be exited (reversion achieved).
+    """
+    # Strict inequalities — values exactly at thresholds do not qualify
+    ss_below = balance.security_state < defines.reversion_ss_threshold
+    ci_below = settler_ci < defines.reversion_ci_threshold
+
+    return ss_below and ci_below
+
+
+__all__ = [
+    "calculate_faction_shift",
+    "check_fascist_reversion",
+    "is_fascist_convergence",
+]

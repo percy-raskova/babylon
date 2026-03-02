@@ -12,3 +12,23 @@ See Also:
     ``specs/039-state-apparatus-ai/spec.md``: Full specification.
     :mod:`babylon.ooda.attention`: Attention thread intelligence system.
 """
+
+from babylon.ooda.state_ai.decision import RuleBasedStateAI
+from babylon.ooda.state_ai.faction_dynamics import (
+    apply_fascist_overrides,
+    apply_material_condition_shift,
+    apply_player_action_shift,
+    apply_repression_failure_shift,
+    compute_stability,
+    renormalize_faction_balance,
+)
+
+__all__ = [
+    "RuleBasedStateAI",
+    "apply_fascist_overrides",
+    "apply_material_condition_shift",
+    "apply_player_action_shift",
+    "apply_repression_failure_shift",
+    "compute_stability",
+    "renormalize_faction_balance",
+]

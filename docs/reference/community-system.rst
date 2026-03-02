@@ -177,34 +177,53 @@ MembershipRole
 Models
 ------
 
-CommunityConsciousness
-~~~~~~~~~~~~~~~~~~~~~~
+CommunityConsciousness (TernaryConsciousness)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Frozen Pydantic model. Ideological dimension of a community hyperedge
-(Feature 029).
+``CommunityConsciousness`` is a type alias for
+:class:`~babylon.models.entities.consciousness.TernaryConsciousness`
+(Feature 034). The consciousness model is a 2-simplex where
+``r + l + f = 1.0``.
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 20 15 35
+   :widths: 25 15 15 45
 
    * - Field
      - Type
      - Default
      - Description
-   * - ``collective_identity``
+   * - ``r``
      - Probability
      - 0.3
-     - Oppositional consciousness [0, 1]
-   * - ``dominant_tendency``
-     - ConsciousnessTendency
-     - LIBERAL
-     - Prevailing ideological direction
-   * - ``ideological_contestation``
+     - Revolutionary consciousness [0, 1]
+   * - ``l``
      - Probability
-     - 0.2
-     - Active debate between tendencies [0, 1]
+     - 0.6
+     - Liberal consciousness [0, 1]
+   * - ``f``
+     - Probability
+     - 0.1
+     - Fascist consciousness [0, 1]
+   * - ``contestation_stored``
+     - float | None
+     - None
+     - Legacy contestation value (None = use Shannon entropy)
 
-Defined in :py:class:`~babylon.models.entities.community.CommunityConsciousness`.
+**Computed properties** (backward-compatible with the old scalar model):
+
+- ``collective_identity`` — equals ``r``
+- ``dominant_tendency`` — argmax of ``(r, l, f)`` (ties favor liberal)
+- ``ideological_contestation`` — ``contestation_stored`` if set,
+  otherwise normalized Shannon entropy of ``(r, l, f)``
+- ``assimilation_ratio`` — ``f / (l + f)``
+
+Supports three construction paths: native ``(r, l, f)``, legacy
+``(collective_identity, dominant_tendency, ideological_contestation)``,
+and default. See :doc:`/reference/ternary-consciousness` for full details.
+
+Defined in :py:mod:`babylon.models.entities.consciousness` (primary),
+aliased in :py:mod:`babylon.models.entities.community`.
 
 ContradictionAxis
 ~~~~~~~~~~~~~~~~~
@@ -385,73 +404,13 @@ externalization. Exclusive, not permeable.
 Default Consciousness Values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**CONSCIOUSNESS_DEFAULTS** — Starting values for all 14 community types.
-Synthetic data for Detroit 2010 test case.
+**CONSCIOUSNESS_DEFAULTS** — Starting ternary ``(r, l, f)`` values for
+all 14 community types. Synthetic data for Detroit 2010 test case.
+Contestation is now derived as Shannon entropy of the distribution.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 20 20 20 20
-
-   * - Community
-     - Collective Identity
-     - Tendency
-     - Contestation
-   * - SETTLER
-     - 0.4
-     - LIBERAL
-     - 0.3
-   * - PATRIARCHAL
-     - 0.3
-     - LIBERAL
-     - 0.2
-   * - NEW_AFRIKAN
-     - 0.5
-     - LIBERAL
-     - 0.4
-   * - FIRST_NATIONS
-     - 0.6
-     - REVOLUTIONARY
-     - 0.3
-   * - CHICANO
-     - 0.4
-     - LIBERAL
-     - 0.3
-   * - WOMEN
-     - 0.3
-     - LIBERAL
-     - 0.3
-   * - TRANS
-     - 0.5
-     - LIBERAL
-     - 0.4
-   * - DISABLED
-     - 0.3
-     - LIBERAL
-     - 0.2
-   * - QUEER
-     - 0.4
-     - LIBERAL
-     - 0.4
-   * - UNDOCUMENTED
-     - 0.5
-     - LIBERAL
-     - 0.3
-   * - INCARCERATED
-     - 0.6
-     - REVOLUTIONARY
-     - 0.3
-   * - YOUTH
-     - 0.2
-     - LIBERAL
-     - 0.5
-   * - ADULT
-     - 0.1
-     - LIBERAL
-     - 0.1
-   * - ELDER
-     - 0.3
-     - LIBERAL
-     - 0.2
+See :ref:`consciousness-defaults-table` in the
+:doc:`/reference/ternary-consciousness` for the complete table with all
+14 rows.
 
 Infiltration Constants
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -698,6 +657,8 @@ See Also
 --------
 
 - :doc:`/concepts/consciousness-taxonomy` -- Taxonomy theory and consciousness model
+- :doc:`/concepts/ternary-consciousness` -- Why consciousness is modeled as a ternary simplex
+- :doc:`/reference/ternary-consciousness` -- Ternary consciousness API reference
 - :doc:`/concepts/community-hypergraph` -- Why hyperedges, not pairwise edges
 - :doc:`/concepts/george-jackson-model` -- Bifurcation and consciousness tendencies
 - :doc:`/reference/formulas` -- All simulation formulas

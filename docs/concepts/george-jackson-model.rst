@@ -282,6 +282,17 @@ weighting them by the consciousness of the connected communities will
 misclassify the Democratic Party coalition as a revolutionary formation.
 The consciousness sigmoid reveals what raw edge density conceals.
 
+Feature 034 makes the assimilation trap concretely detectable. Solidarity
+edges where both endpoints have revolutionary consciousness ``r < 0.3``
+are marked **crisis-fragile** — they represent assimilated solidarity that
+would collapse when material conditions demand sacrifice. The
+:class:`~babylon.bifurcation.types.BifurcationResult` tracks
+``mean_assimilation_ratio_marginalized`` (mean ``f / (l + f)`` across
+marginalized communities) and ``crisis_fragile_edge_count`` (how many
+solidarity edges carry this marker). A high ratio of crisis-fragile to
+total solidarity edges signals the assimilation trap quantitatively.
+See :doc:`/concepts/ternary-consciousness` for the full ternary model.
+
 Why the Sigmoid of Collective Identity
 ---------------------------------------
 

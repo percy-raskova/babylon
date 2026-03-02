@@ -643,6 +643,12 @@ One instance per analysis call.
    * - ``critical_cutsets``
      - ``list[frozenset[str]]``
      - Minimum edge cuts on filtered subgraph (bounded by max_cutset_size=3)
+   * - ``mean_assimilation_ratio_marginalized``
+     - ``float``
+     - Mean ``f / (l + f)`` across marginalized communities [0, 1]. Default: 0.0. (Feature 034)
+   * - ``crisis_fragile_edge_count``
+     - ``int``
+     - Solidarity edges where effective CI < 0.3 (crisis-fragile). Default: 0. (Feature 034)
 
 BifurcationSnapshot
 ~~~~~~~~~~~~~~~~~~~
@@ -825,6 +831,29 @@ consciousness_sigmoid
    :returns: Transformed value [0, 1]. Near-zero below midpoint, near-one above.
    :rtype: float
 
+WeightedSolidarityResult
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Result of consciousness-weighted solidarity computation (Feature 034).
+Extends the original float return with a crisis-fragile marker.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Field
+     - Type
+     - Description
+   * - ``weight``
+     - ``float``
+     - Consciousness-weighted solidarity value (>= 0)
+   * - ``crisis_fragile``
+     - ``bool``
+     - ``True`` if effective CI < crisis-fragile threshold (0.3). Default: ``False``.
+
+Defined in :py:class:`~babylon.bifurcation.types.WeightedSolidarityResult`.
+See :doc:`/reference/ternary-consciousness` for full details.
+
 consciousness_weighted_solidarity
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -834,6 +863,9 @@ consciousness_weighted_solidarity
 
    For each agent, finds marginalized community memberships via the hypergraph,
    computes mean CI, then weights the edge by ``sigmoid(min(source_ci, target_ci))``.
+
+   Edges where the effective CI (min of both endpoints) falls below the
+   crisis-fragile threshold (0.3) are marked as crisis-fragile (Feature 034).
 
    :param source_id: Source agent node ID
    :type source_id: str
@@ -847,8 +879,8 @@ consciousness_weighted_solidarity
    :type community_states: dict[CommunityType, CommunityState]
    :param defines: Configurable parameters (sigmoid midpoint/steepness)
    :type defines: BifurcationDefines
-   :returns: Weighted solidarity value
-   :rtype: float
+   :returns: Weighted solidarity with crisis-fragile flag
+   :rtype: WeightedSolidarityResult
 
 crosses_contradiction_axis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

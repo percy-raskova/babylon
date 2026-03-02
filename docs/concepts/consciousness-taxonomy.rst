@@ -128,131 +128,140 @@ functions operate on them:
 Community Consciousness
 -----------------------
 
-Each community carries a ``CommunityConsciousness`` model representing
-its ideological dimension — the distinction between *class-in-itself*
-(objective structural position) and *class-for-itself* (subjective
-collective awareness of that position).
+Each community carries a ``CommunityConsciousness`` model (type alias for
+:class:`~babylon.models.entities.consciousness.TernaryConsciousness`)
+representing its ideological dimension — the distinction between
+*class-in-itself* (objective structural position) and *class-for-itself*
+(subjective collective awareness of that position).
 
-Three fields capture this:
+Feature 034 replaces the original three independent scalar fields with
+a **2-simplex model** where ``r + l + f = 1.0``. Three components
+capture the share of consciousness devoted to each direction:
 
-**collective_identity** — Oppositional consciousness [0, 1]. How
-strongly the community identifies *as* a collective with shared
-interests distinct from the dominant order. Low values: atomized
-individuals who happen to share a trait. High values: coherent
-political subject.
+- **r** (revolutionary) — Oppositional consciousness. How strongly the
+  community identifies *as* a collective with shared interests distinct
+  from the dominant order. Equivalent to the old ``collective_identity``.
+- **l** (liberal) — Seeks inclusion in existing institutions without
+  transforming them. The default when no organizations are active.
+- **f** (fascist) — Collaboration with hegemonic order for individual
+  escape. Shrinks the marginalized definition, excludes the most marginal.
 
-**dominant_tendency** — The prevailing direction of collective
-consciousness. One of three ``ConsciousnessTendency`` values:
+The simplex constraint means these are shares of a single whole: increasing
+one component necessarily decreases the others. The old scalar fields
+become computed properties:
 
-.. list-table:: Consciousness Tendencies
-   :header-rows: 1
-   :widths: 20 80
+- ``collective_identity`` = ``r``
+- ``dominant_tendency`` = argmax of ``(r, l, f)`` (ties favor liberal)
+- ``ideological_contestation`` = normalized Shannon entropy ``H(r, l, f) / log(3)``
+- ``assimilation_ratio`` = ``f / (l + f)`` (position along liberal-fascist base)
 
-   * - Tendency
-     - Description
-   * - ``LIBERAL``
-     - Seeks inclusion in existing institutions without transforming them.
-       Organizational vehicle: liberal CSOs, Democratic Party.
-   * - ``FASCIST``
-     - Collaboration with hegemonic order for individual escape. Strategy:
-       shrink the marginalized definition, exclude the most marginal.
-   * - ``REVOLUTIONARY``
-     - Oppositional collective identity, independent power. The contradiction
-       is material, not a misunderstanding.
-
-These map to George Jackson's analysis of the three directions
+These three tendencies map to George Jackson's analysis of the directions
 consciousness can take under repression. See
-:doc:`george-jackson-model` for the theoretical foundation.
-
-**ideological_contestation** — Active debate between tendencies [0, 1].
-High contestation means the community is a site of struggle between
-competing directions. Low contestation means the dominant tendency is
-unchallenged (whether through genuine consensus or suppression of
-dissent).
+:doc:`george-jackson-model` for the theoretical foundation, and
+:doc:`ternary-consciousness` for the full explanation of the simplex model
+and organizational landscape derivation.
 
 Default Consciousness Values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``CONSCIOUSNESS_DEFAULTS`` provides starting values for all 14 community
-types. These are SYNTHETIC values for a Detroit 2010 test case — placeholders
-for future calibration against historical data.
+types as native ternary ``(r, l, f)`` coordinates. These are SYNTHETIC
+values for a Detroit 2010 test case — placeholders for future calibration
+against historical data. The ``ideological_contestation`` is now computed
+as Shannon entropy of the distribution rather than stored independently.
 
 .. list-table:: CONSCIOUSNESS_DEFAULTS (Detroit 2010, Synthetic)
    :header-rows: 1
-   :widths: 20 20 20 20
+   :widths: 20 12 12 12 22
 
    * - Community
-     - Collective Identity
+     - r
+     - l
+     - f
      - Dominant Tendency
-     - Contestation
    * - SETTLER
-     - 0.4
+     - 0.40
+     - 0.45
+     - 0.15
      - LIBERAL
-     - 0.3
    * - PATRIARCHAL
-     - 0.3
+     - 0.30
+     - 0.525
+     - 0.175
      - LIBERAL
-     - 0.2
    * - NEW_AFRIKAN
-     - 0.5
+     - 0.50
+     - 0.50
+     - 0.0
      - LIBERAL
-     - 0.4
    * - FIRST_NATIONS
-     - 0.6
+     - 0.60
+     - 0.24
+     - 0.16
      - REVOLUTIONARY
-     - 0.3
    * - CHICANO
-     - 0.4
+     - 0.40
+     - 0.45
+     - 0.15
      - LIBERAL
-     - 0.3
    * - WOMEN
-     - 0.3
+     - 0.30
+     - 0.525
+     - 0.175
      - LIBERAL
-     - 0.3
    * - TRANS
-     - 0.5
+     - 0.50
+     - 0.50
+     - 0.0
      - LIBERAL
-     - 0.4
    * - DISABLED
-     - 0.3
+     - 0.30
+     - 0.525
+     - 0.175
      - LIBERAL
-     - 0.2
    * - QUEER
-     - 0.4
+     - 0.40
+     - 0.45
+     - 0.15
      - LIBERAL
-     - 0.4
    * - UNDOCUMENTED
-     - 0.5
+     - 0.50
+     - 0.50
+     - 0.0
      - LIBERAL
-     - 0.3
    * - INCARCERATED
-     - 0.6
+     - 0.60
+     - 0.24
+     - 0.16
      - REVOLUTIONARY
-     - 0.3
    * - YOUTH
-     - 0.2
+     - 0.20
+     - 0.60
+     - 0.20
      - LIBERAL
-     - 0.5
    * - ADULT
-     - 0.1
+     - 0.10
+     - 0.675
+     - 0.225
      - LIBERAL
-     - 0.1
    * - ELDER
-     - 0.3
+     - 0.30
+     - 0.525
+     - 0.175
      - LIBERAL
-     - 0.2
 
 Notable patterns:
 
-- **FIRST_NATIONS and INCARCERATED** default to REVOLUTIONARY tendency.
+- **FIRST_NATIONS and INCARCERATED** have the highest ``r`` (0.6) and are
+  the only communities with REVOLUTIONARY dominant tendency.
   First Nations communities have maintained oppositional identity through
   centuries of settler colonialism. The incarcerated population, stripped
   of all pretense of inclusion, develops revolutionary consciousness
   through material experience of the carceral state (Jackson's insight).
-- **YOUTH** has the highest contestation (0.5) — the site of ideological
-  struggle over the next generation's direction.
-- **ADULT** has the lowest collective identity (0.1) and contestation (0.1)
-  — fully integrated into the labor market, atomized.
+- **NEW_AFRIKAN, TRANS, and UNDOCUMENTED** have ``f = 0.0`` — no fascist
+  component, split evenly between revolutionary and liberal.
+- **ADULT** has the lowest ``r`` (0.1) — fully integrated into the labor
+  market, atomized by liberal hegemony.
 
 Infiltration Resistance
 -----------------------
@@ -332,8 +341,11 @@ actually bridge depends on the membership composition at runtime.
 See Also
 --------
 
+- :doc:`ternary-consciousness` — Why consciousness is modeled as a ternary simplex
 - :doc:`community-hypergraph` — Why hyperedges, not pairwise edges
 - :doc:`george-jackson-model` — Bifurcation and consciousness tendencies
+- :doc:`/reference/ternary-consciousness` — API reference for ternary consciousness types
 - :doc:`/reference/community-system` — Complete API reference
+- :py:mod:`babylon.models.entities.consciousness` — TernaryConsciousness source module
 - :py:mod:`babylon.models.entities.community` — Source models and constants
 - :py:mod:`babylon.models.enums` — CommunityType, HyperedgeCategory, ConsciousnessTendency

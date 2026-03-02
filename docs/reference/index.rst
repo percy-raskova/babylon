@@ -75,6 +75,7 @@ Simulation Systems
 
    systems
    community-system
+   ternary-consciousness
    lifecycle-system
    circulation-system
    demographics

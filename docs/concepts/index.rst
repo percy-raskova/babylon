@@ -100,6 +100,7 @@ Consciousness & Organization
    george-jackson-model
    community-hypergraph
    consciousness-taxonomy
+   ternary-consciousness
    dialectical-field-theory
    percolation-theory
    topology

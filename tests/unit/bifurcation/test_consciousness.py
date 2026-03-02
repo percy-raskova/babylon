@@ -456,3 +456,99 @@ class TestConsciousnessWeightedSolidarity:
         # Ratio should be approximately 0.9/0.3 = 3x
         ratio = result_high.weight / result_low.weight
         assert 2.5 < ratio < 3.5
+
+
+# =============================================================================
+# anisotropic_observation_error (FR-009)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestAnisotropicObservationError:
+    """FR-009: State intelligence observes l/f better than r."""
+
+    def test_returns_valid_ternary(self) -> None:
+        """Observed consciousness is a valid simplex point."""
+        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.models.entities.consciousness import TernaryConsciousness
+
+        tc = TernaryConsciousness(r=0.5, l=0.3, f=0.2)
+        observed = anisotropic_observation_error(tc, rng_seed=42)
+
+        assert isinstance(observed, TernaryConsciousness)
+        # Simplex constraint: validator enforces this, but verify explicitly
+        assert abs(float(observed.r) + float(observed.l) + float(observed.f) - 1.0) < 1e-4
+
+    def test_r_has_higher_error_than_lf_ratio(self) -> None:
+        """Over many samples, r deviation > l/f ratio deviation (anisotropic)."""
+        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.models.entities.consciousness import TernaryConsciousness
+
+        tc = TernaryConsciousness(r=0.4, l=0.35, f=0.25)
+        true_lf_ratio = float(tc.f) / (float(tc.l) + float(tc.f))
+
+        r_deviations: list[float] = []
+        lf_ratio_deviations: list[float] = []
+        max_samples = 200
+
+        for seed in range(max_samples):
+            obs = anisotropic_observation_error(tc, rng_seed=seed)
+            r_deviations.append(abs(float(obs.r) - float(tc.r)))
+            obs_lf_ratio = float(obs.f) / (float(obs.l) + float(obs.f))
+            lf_ratio_deviations.append(abs(obs_lf_ratio - true_lf_ratio))
+
+        mean_r_dev = sum(r_deviations) / len(r_deviations)
+        mean_lf_dev = sum(lf_ratio_deviations) / len(lf_ratio_deviations)
+
+        # r should have higher average deviation than l/f ratio
+        assert mean_r_dev > mean_lf_dev
+
+    def test_deterministic_with_seed(self) -> None:
+        """Same seed produces same observed consciousness."""
+        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.models.entities.consciousness import TernaryConsciousness
+
+        tc = TernaryConsciousness(r=0.3, l=0.5, f=0.2)
+        obs1 = anisotropic_observation_error(tc, rng_seed=99)
+        obs2 = anisotropic_observation_error(tc, rng_seed=99)
+
+        assert float(obs1.r) == float(obs2.r)
+        assert float(obs1.l) == float(obs2.l)
+        assert float(obs1.f) == float(obs2.f)
+
+    def test_different_seeds_produce_different_results(self) -> None:
+        """Different seeds produce different observations."""
+        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.models.entities.consciousness import TernaryConsciousness
+
+        tc = TernaryConsciousness(r=0.4, l=0.35, f=0.25)
+        obs1 = anisotropic_observation_error(tc, rng_seed=1)
+        obs2 = anisotropic_observation_error(tc, rng_seed=2)
+
+        # At least one component should differ
+        differs = (
+            float(obs1.r) != float(obs2.r)
+            or float(obs1.l) != float(obs2.l)
+            or float(obs1.f) != float(obs2.f)
+        )
+        assert differs
+
+    def test_observation_stays_in_bounds(self) -> None:
+        """Observed components stay in [0, 1] even for extreme inputs."""
+        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.models.entities.consciousness import TernaryConsciousness
+
+        # Near-corner cases
+        extreme_cases = [
+            TernaryConsciousness(r=0.95, l=0.03, f=0.02),
+            TernaryConsciousness(r=0.02, l=0.95, f=0.03),
+            TernaryConsciousness(r=0.02, l=0.03, f=0.95),
+        ]
+
+        max_seeds = 50
+        for tc in extreme_cases:
+            for seed in range(max_seeds):
+                obs = anisotropic_observation_error(tc, rng_seed=seed)
+                assert 0.0 <= float(obs.r) <= 1.0
+                assert 0.0 <= float(obs.l) <= 1.0
+                assert 0.0 <= float(obs.f) <= 1.0

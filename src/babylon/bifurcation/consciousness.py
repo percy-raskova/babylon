@@ -16,6 +16,7 @@ See Also:
 from __future__ import annotations
 
 import math
+import random
 from typing import Any
 
 import networkx as nx
@@ -27,7 +28,9 @@ from babylon.models.entities.community import (
     MARGINALIZED_COMMUNITIES,
     CommunityState,
 )
+from babylon.models.entities.consciousness import TernaryConsciousness
 from babylon.models.enums import CommunityType
+from babylon.models.types import Probability
 
 # Overflow clamp bound (matches survival_calculus.py line 40)
 _EXPONENT_CLAMP = 500
@@ -161,7 +164,69 @@ def consciousness_weighted_solidarity(
     return WeightedSolidarityResult(weight=weight, crisis_fragile=crisis_fragile)
 
 
+# ─── Anisotropic Observation Error (FR-009) ──────────────────────────
+
+# Noise standard deviations for state intelligence estimates.
+# r has ~3x higher observation error than l/f ratio.
+_R_NOISE_STDDEV = 0.06
+_LF_NOISE_STDDEV = 0.02
+
+
+def anisotropic_observation_error(
+    true_consciousness: TernaryConsciousness,
+    *,
+    rng_seed: int | None = None,
+    r_noise_stddev: float = _R_NOISE_STDDEV,
+    lf_noise_stddev: float = _LF_NOISE_STDDEV,
+) -> TernaryConsciousness:
+    """Apply anisotropic noise to a consciousness position (FR-009).
+
+    The state observes the l/f split (voting, discourse, media) more
+    accurately than the r component (revolutionary consciousness is
+    hidden from surveillance). This produces a noisy estimate where
+    r has ~3x higher observation error than the l/f ratio.
+
+    Args:
+        true_consciousness: Actual community consciousness position.
+        rng_seed: Seed for reproducible noise (None = system entropy).
+        r_noise_stddev: Gaussian noise std for r component.
+        lf_noise_stddev: Gaussian noise std for l/f ratio.
+
+    Returns:
+        Observed TernaryConsciousness with anisotropic noise applied,
+        clamped to valid simplex point.
+    """
+    rng = random.Random(rng_seed)
+
+    true_r = float(true_consciousness.r)
+    true_l = float(true_consciousness.l)
+    true_f = float(true_consciousness.f)
+
+    # 1. Perturb r with higher noise
+    observed_r = true_r + rng.gauss(0.0, r_noise_stddev)
+    observed_r = max(0.0, min(1.0, observed_r))
+
+    # 2. Perturb l/f ratio with lower noise
+    lf_sum = true_l + true_f
+    true_lf_ratio = 0.5 if lf_sum < 1e-6 else true_f / lf_sum
+
+    observed_lf_ratio = true_lf_ratio + rng.gauss(0.0, lf_noise_stddev)
+    observed_lf_ratio = max(0.0, min(1.0, observed_lf_ratio))
+
+    # 3. Reconstruct observed l, f from remaining budget and perturbed ratio
+    remaining = max(0.0, 1.0 - observed_r)
+    observed_f = remaining * observed_lf_ratio
+    observed_l = remaining * (1.0 - observed_lf_ratio)
+
+    return TernaryConsciousness(
+        r=Probability(observed_r),
+        l=Probability(observed_l),
+        f=Probability(observed_f),
+    )
+
+
 __all__ = [
+    "anisotropic_observation_error",
     "consciousness_sigmoid",
     "consciousness_weighted_solidarity",
 ]

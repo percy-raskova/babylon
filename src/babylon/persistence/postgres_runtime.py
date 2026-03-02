@@ -314,9 +314,10 @@ class PostgresRuntime:
                             (session_id, tick, community_type, category, heat, cohesion,
                              infrastructure, visibility, legal_status,
                              reproduction_cost_modifier, rent_access_modifier,
+                             r, l, f,
                              collective_identity, dominant_tendency,
                              ideological_contestation, infiltration_resistance)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (session_id, tick, community_type) DO UPDATE SET
                             category = EXCLUDED.category,
                             heat = EXCLUDED.heat,
@@ -326,6 +327,9 @@ class PostgresRuntime:
                             legal_status = EXCLUDED.legal_status,
                             reproduction_cost_modifier = EXCLUDED.reproduction_cost_modifier,
                             rent_access_modifier = EXCLUDED.rent_access_modifier,
+                            r = EXCLUDED.r,
+                            l = EXCLUDED.l,
+                            f = EXCLUDED.f,
                             collective_identity = EXCLUDED.collective_identity,
                             dominant_tendency = EXCLUDED.dominant_tendency,
                             ideological_contestation = EXCLUDED.ideological_contestation,
@@ -343,6 +347,9 @@ class PostgresRuntime:
                         state.get("legal_status", "LEGAL"),
                         state.get("reproduction_cost_modifier", 1.0),
                         state.get("rent_access_modifier", 1.0),
+                        state.get("r", 0.3),
+                        state.get("l", 0.6),
+                        state.get("f", 0.1),
                         state.get("collective_identity", 0.0),
                         state.get("dominant_tendency", "NEUTRAL"),
                         state.get("ideological_contestation", 0.0),

@@ -1,12 +1,15 @@
-"""Unit tests for community formulas (Feature 022).
+"""Unit tests for community formulas (Feature 022 + Feature 038).
 
 TDD RED phase tests for solidarity_potential, threat_score,
 infrastructure_decay, and solidarity_amplification formulas.
+
+Feature 038 adds class-pair matrix integration tests (T029).
 """
 
 from __future__ import annotations
 
 import pytest
+from tests.constants import ClassSystemDefaults
 
 from babylon.formulas.community import (
     calculate_infrastructure_decay,
@@ -14,6 +17,8 @@ from babylon.formulas.community import (
     calculate_solidarity_potential,
     calculate_threat_score,
 )
+
+CS = ClassSystemDefaults()
 
 
 @pytest.mark.unit
@@ -142,3 +147,129 @@ class TestSolidarityAmplification:
         """Verify docstring example."""
         result = calculate_solidarity_amplification(0.5, [(0.8, 0.6, 0.7, 0.4)])
         assert result == pytest.approx(0.567, abs=0.001)
+
+
+@pytest.mark.unit
+@pytest.mark.math
+class TestSolidarityPotentialWithMatrix:
+    """T029: Solidarity potential with class-pair matrix values (Feature 038).
+
+    Tests verify behavioral contracts BC-011 through BC-014.
+    """
+
+    def test_negative_output_permitted(self) -> None:
+        """BC-011: Negative output when rent gap dominates zero base solidarity.
+
+        BOURGEOISIE-PROLETARIAT pair (base=0.0) with rent gap.
+        """
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines()
+        base = defines.get_base_solidarity("BOURGEOISIE", "PROLETARIAT")
+        assert base == 0.0  # Antagonistic pair
+        result = calculate_solidarity_potential(
+            base_solidarity=base,
+            shared_count=0,
+            rent_a=5.0,
+            rent_b=0.0,
+            rent_penalty=0.05,
+        )
+        assert result < 0.0, "Rent gap should push antagonistic pair below zero"
+
+    def test_monotonic_community_overlap(self) -> None:
+        """BC-012: More shared communities -> higher solidarity potential.
+
+        For a given class pair, adding shared communities always increases potential.
+        """
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines()
+        base = defines.get_base_solidarity("PROLETARIAT", "PROLETARIAT")
+
+        results = []
+        for shared_count in range(5):
+            result = calculate_solidarity_potential(
+                base_solidarity=base,
+                shared_count=shared_count,
+                rent_a=0.0,
+                rent_b=0.0,
+            )
+            results.append(result)
+
+        for i in range(1, len(results)):
+            assert results[i] > results[i - 1], (
+                f"Monotonicity violated: shared={i} ({results[i]}) "
+                f"<= shared={i - 1} ({results[i - 1]})"
+            )
+
+    def test_monotonic_rent_differential(self) -> None:
+        """BC-013: Larger rent gap -> lower solidarity potential.
+
+        For a given class pair, increasing rent differential always decreases potential.
+        """
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines()
+        base = defines.get_base_solidarity("LABOR_ARISTOCRACY", "PROLETARIAT")
+
+        results = []
+        for rent_gap_times_10 in range(5):
+            rent_gap = rent_gap_times_10 * 1.0
+            result = calculate_solidarity_potential(
+                base_solidarity=base,
+                shared_count=1,
+                rent_a=rent_gap,
+                rent_b=0.0,
+            )
+            results.append(result)
+
+        for i in range(1, len(results)):
+            assert results[i] < results[i - 1], (
+                f"Monotonicity violated: gap={i} ({results[i]}) >= gap={i - 1} ({results[i - 1]})"
+            )
+
+    def test_zero_overlap_baseline(self) -> None:
+        """BC-014: Zero shared communities and zero rent -> pure class-pair value.
+
+        This is the baseline: solidarity potential equals base_solidarity from matrix.
+        """
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines()
+
+        test_pairs = [
+            ("PROLETARIAT", "PROLETARIAT"),
+            ("BOURGEOISIE", "PROLETARIAT"),
+            ("LABOR_ARISTOCRACY", "PROLETARIAT"),
+            ("PROLETARIAT", "LUMPENPROLETARIAT"),
+        ]
+        for class_a, class_b in test_pairs:
+            base = defines.get_base_solidarity(class_a, class_b)
+            result = calculate_solidarity_potential(
+                base_solidarity=base,
+                shared_count=0,
+                rent_a=0.0,
+                rent_b=0.0,
+            )
+            assert result == pytest.approx(base), (
+                f"Zero-overlap baseline for {class_a}-{class_b}: expected {base}, got {result}"
+            )
+
+    def test_proletariat_higher_than_bourg_proletariat(self) -> None:
+        """Same conditions: PROL-PROL solidarity > BOURG-PROL solidarity."""
+        from babylon.config.defines import ClassSystemDefines
+
+        defines = ClassSystemDefines()
+        prol_prol = calculate_solidarity_potential(
+            base_solidarity=defines.get_base_solidarity("PROLETARIAT", "PROLETARIAT"),
+            shared_count=1,
+            rent_a=0.0,
+            rent_b=0.0,
+        )
+        bourg_prol = calculate_solidarity_potential(
+            base_solidarity=defines.get_base_solidarity("BOURGEOISIE", "PROLETARIAT"),
+            shared_count=1,
+            rent_a=0.0,
+            rent_b=0.0,
+        )
+        assert prol_prol > bourg_prol

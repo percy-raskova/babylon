@@ -27,7 +27,19 @@ from babylon.models.entities.community import (
     ContradictionAxis,
 )
 from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS, OrgContribution
-from babylon.models.enums import CommunityType, ConsciousnessTendency, HyperedgeCategory
+from babylon.models.enums import CommunityType, ConsciousnessTendency, HyperedgeCategory, SocialRole
+
+# Map SocialRole → ClassPosition name for solidarity matrix lookup (Feature 038)
+_ROLE_TO_CLASS_POSITION: dict[str, str] = {
+    SocialRole.CORE_BOURGEOISIE: "BOURGEOISIE",
+    SocialRole.COMPRADOR_BOURGEOISIE: "BOURGEOISIE",
+    SocialRole.PETTY_BOURGEOISIE: "PETIT_BOURGEOISIE",
+    SocialRole.LABOR_ARISTOCRACY: "LABOR_ARISTOCRACY",
+    SocialRole.PERIPHERY_PROLETARIAT: "PROLETARIAT",
+    SocialRole.INTERNAL_PROLETARIAT: "PROLETARIAT",
+    SocialRole.CARCERAL_ENFORCER: "PROLETARIAT",
+    SocialRole.LUMPENPROLETARIAT: "LUMPENPROLETARIAT",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -485,6 +497,26 @@ def _build_shared_data(
     return shared_data
 
 
+def _get_class_position_name(graph: Any, node_id: str) -> str:
+    """Get ClassPosition name for an agent from its SocialRole.
+
+    Maps SocialRole (8 roles) to ClassPosition (5 classes) for
+    solidarity matrix lookup. Falls back to "PROLETARIAT" if unknown.
+
+    Args:
+        graph: Graph protocol instance.
+        node_id: Agent node ID.
+
+    Returns:
+        ClassPosition name string (e.g. "PROLETARIAT").
+    """
+    node = graph.get_node(node_id)
+    if node is None:
+        return "PROLETARIAT"
+    role = node.attributes.get("role", "")
+    return _ROLE_TO_CLASS_POSITION.get(str(role), "PROLETARIAT")
+
+
 def _amplify_solidarity_edges(
     graph: Any,
     hypergraph: Any,
@@ -492,10 +524,18 @@ def _amplify_solidarity_edges(
     community_states: dict[CommunityType, CommunityState],
     services: Any,
 ) -> None:
-    """Amplify solidarity_strength on SOLIDARITY edges via community overlap."""
+    """Amplify solidarity_strength on SOLIDARITY edges via community overlap.
+
+    Feature 038: Uses class-pair solidarity matrix from ClassSystemDefines
+    to determine base_solidarity for solidarity potential computation.
+    The matrix replaces the flat constant from Feature 022.
+    """
     from babylon.models.enums import EdgeType
 
     calculate_amplification = services.formulas.get("solidarity_amplification")
+
+    # Feature 038: Get class-pair solidarity matrix from defines
+    class_system_defines = services.defines.class_system
 
     for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY):
         src_mem = agent_memberships.get(edge.source_id, [])
@@ -507,17 +547,25 @@ def _amplify_solidarity_edges(
         if not shared:
             continue
 
+        # Feature 038: Use class-pair matrix for base solidarity
+        src_class = _get_class_position_name(graph, edge.source_id)
+        tgt_class = _get_class_position_name(graph, edge.target_id)
+        class_pair_solidarity = class_system_defines.get_base_solidarity(src_class, tgt_class)
+
         shared_data = _build_shared_data(shared, src_mem, tgt_mem, community_states)
-        base_strength = edge.attributes.get("solidarity_strength", 0.0)
+        # Use class-pair base solidarity instead of flat edge strength
+        base_strength = edge.attributes.get("solidarity_strength", class_pair_solidarity)
         amplified = calculate_amplification(
             base_strength=base_strength,
             shared_communities=shared_data,
         )
+        # Store class-pair solidarity on edge for downstream systems
         graph.update_edge(
             edge.source_id,
             edge.target_id,
             EdgeType.SOLIDARITY,
             solidarity_strength=amplified,
+            class_pair_solidarity=class_pair_solidarity,
         )
 
 

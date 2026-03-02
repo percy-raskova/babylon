@@ -10,6 +10,7 @@
 	"settings": {
 		"yaml.schemas": {
 			"https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible-lint-config.json": "file:///home/user/projects/game/babylon/deploy/ansible/.ansible-lint"
-		}
+		},
+		"ansible.python.interpreterPath": "/home/user/projects/game/babylon/.venv/bin/python"
 	}
 }

@@ -44,6 +44,9 @@ from babylon.formulas.community import (
     compute_community_cost_modifier,
 )
 
+# Re-export Consciousness Computation (Feature 034)
+from babylon.formulas.consciousness import compute_ternary_consciousness
+
 # Re-export Curvature formulas (Feature 002 - Dialectical Field Topology)
 from babylon.formulas.curvature import compute_ollivier_ricci
 
@@ -162,6 +165,8 @@ __all__ = [
     "invert_wealth_to_population",
     # Curvature (Dialectical Field Topology)
     "compute_ollivier_ricci",
+    # Consciousness Computation (Feature 034)
+    "compute_ternary_consciousness",
     # Community Layer (Feature 022)
     "calculate_solidarity_potential",
     "calculate_threat_score",

@@ -12,41 +12,29 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
-from babylon.models.enums import ActionType, ConsciousnessTendency, EdgeType, EventType
+from babylon.models.enums import ActionType, EdgeType, EventType
 from babylon.ooda.layer3 import process_layer3
 from babylon.ooda.types import Action, ActionResult
-from babylon.organizations.types import ConsciousnessDelta
 
 
 def _make_result(
     action_type: ActionType,
     target_id: str = "comm_1",
     org_id: str = "org_1",
-    ci_delta: float | None = None,
-    tendency: ConsciousnessTendency = ConsciousnessTendency.REVOLUTIONARY,
     direct_effects: dict[str, Any] | None = None,
     events: list[str] | None = None,
 ) -> ActionResult:
-    """Create an ActionResult with optional consciousness delta."""
+    """Create an ActionResult for layer3 testing."""
     action = Action(
         org_id=org_id,
         action_type=action_type,
         target_id=target_id,
     )
 
-    consciousness_delta = None
-    if ci_delta is not None:
-        consciousness_delta = ConsciousnessDelta(
-            collective_identity_delta=ci_delta,
-            tendency_pressure=tendency,
-            tendency_magnitude=abs(ci_delta),
-            source_org_id=org_id,
-        )
-
     return ActionResult(
         action=action,
         success=True,
-        consciousness_delta=consciousness_delta,
+        consciousness_delta=None,
         direct_effects=direct_effects or {},
         events_generated=events or [EventType.ORGANIZATIONAL_ACTION.value],
     )
@@ -73,90 +61,35 @@ def _make_community_graph(
     return graph
 
 
-class TestConsciousnessAggregation:
-    """Consciousness deltas aggregate across multiple org actions."""
+class TestDerivedConsciousness:
+    """Feature 034: consciousness and contestation are derived quantities."""
 
-    def test_single_delta_updates_ci(self) -> None:
-        """Single org's CI delta updates community collective_identity."""
+    def test_consciousness_not_directly_mutated(self) -> None:
+        """process_layer3 does not directly mutate collective_identity."""
         graph = _make_community_graph(ci=0.3)
-        results = [_make_result(ActionType.EDUCATE, ci_delta=0.02)]
+        results = [_make_result(ActionType.EDUCATE)]
 
         summary = process_layer3(results, graph, OODADefines())
 
-        new_ci = graph.nodes["comm_1"]["collective_identity"]
-        assert new_ci == pytest.approx(0.32)
-        assert "consciousness" in summary
+        # CI unchanged — consciousness is now derived from org landscape
+        assert graph.nodes["comm_1"]["collective_identity"] == pytest.approx(0.3)
+        assert summary["consciousness"] == 0
 
-    def test_multiple_deltas_aggregate(self) -> None:
-        """Multiple orgs' CI deltas sum before application."""
-        graph = _make_community_graph(ci=0.3)
-        results = [
-            _make_result(ActionType.EDUCATE, ci_delta=0.02, org_id="org_1"),
-            _make_result(ActionType.EDUCATE, ci_delta=0.01, org_id="org_2"),
-        ]
-
-        process_layer3(results, graph, OODADefines())
-
-        new_ci = graph.nodes["comm_1"]["collective_identity"]
-        assert new_ci == pytest.approx(0.33)
-
-    def test_ci_clamped_at_one(self) -> None:
-        """CI never exceeds 1.0 after aggregation."""
-        graph = _make_community_graph(ci=0.95)
-        results = [_make_result(ActionType.EDUCATE, ci_delta=0.1)]
-
-        process_layer3(results, graph, OODADefines())
-
-        new_ci = graph.nodes["comm_1"]["collective_identity"]
-        assert new_ci == pytest.approx(1.0)
-
-    def test_ci_clamped_at_zero(self) -> None:
-        """CI never goes below 0.0 after aggregation."""
-        graph = _make_community_graph(ci=0.05)
+    def test_contestation_not_directly_mutated(self) -> None:
+        """process_layer3 does not directly mutate ideological_contestation."""
+        graph = _make_community_graph(contestation=0.2)
         results = [
             _make_result(
-                ActionType.EDUCATE,
-                ci_delta=-0.1,
-                tendency=ConsciousnessTendency.LIBERAL,
+                ActionType.AGITATE,
+                direct_effects={"contestation_delta": 0.05},
             )
         ]
 
-        process_layer3(results, graph, OODADefines())
+        summary = process_layer3(results, graph, OODADefines())
 
-        new_ci = graph.nodes["comm_1"]["collective_identity"]
-        assert new_ci == pytest.approx(0.0)
-
-    def test_no_ci_delta_no_change(self) -> None:
-        """Actions without CI delta don't change collective_identity."""
-        graph = _make_community_graph(ci=0.3)
-        results = [_make_result(ActionType.AGITATE, ci_delta=None)]
-
-        process_layer3(results, graph, OODADefines())
-
-        new_ci = graph.nodes["comm_1"]["collective_identity"]
-        assert new_ci == pytest.approx(0.3)
-
-    def test_multiple_communities_independent(self) -> None:
-        """CI updates are independent across communities."""
-        graph = _make_community_graph("comm_1", ci=0.3)
-        graph.add_node(
-            "comm_2",
-            _node_type="community",
-            id="comm_2",
-            collective_identity=0.5,
-            heat=0.0,
-            infrastructure=0.5,
-            ideological_contestation=0.2,
-        )
-        results = [
-            _make_result(ActionType.EDUCATE, target_id="comm_1", ci_delta=0.02),
-            _make_result(ActionType.EDUCATE, target_id="comm_2", ci_delta=0.05),
-        ]
-
-        process_layer3(results, graph, OODADefines())
-
-        assert graph.nodes["comm_1"]["collective_identity"] == pytest.approx(0.32)
-        assert graph.nodes["comm_2"]["collective_identity"] == pytest.approx(0.55)
+        # Contestation unchanged — now Shannon entropy of (r, l, f)
+        assert graph.nodes["comm_1"]["ideological_contestation"] == pytest.approx(0.2)
+        assert summary["contestation_updates"] == 0
 
 
 class TestHeatPropagation:
@@ -168,7 +101,6 @@ class TestHeatPropagation:
         results = [
             _make_result(
                 ActionType.REPRESS,
-                ci_delta=0.03,
                 direct_effects={"backfire": True},
                 events=[EventType.STATE_REPRESSION.value],
             )
@@ -185,7 +117,6 @@ class TestHeatPropagation:
         results = [
             _make_result(
                 ActionType.SURVEIL,
-                ci_delta=0.01,
                 direct_effects={"backfire": True},
                 events=[EventType.STATE_SURVEILLANCE.value],
             )
@@ -202,7 +133,6 @@ class TestHeatPropagation:
         results = [
             _make_result(
                 ActionType.REPRESS,
-                ci_delta=0.03,
                 direct_effects={"backfire": True},
                 events=[EventType.STATE_REPRESSION.value],
             )
@@ -276,62 +206,3 @@ class TestInfrastructureEffects:
 
         new_infra = graph.nodes["comm_1"]["infrastructure"]
         assert 0.0 <= new_infra <= 1.0
-
-
-class TestContestationPropagation:
-    """AGITATE stacks contestation delta."""
-
-    def test_agitate_increases_contestation(self) -> None:
-        """AGITATE action increases target community ideological_contestation."""
-        defines = OODADefines()
-        graph = _make_community_graph(contestation=0.2)
-        results = [
-            _make_result(
-                ActionType.AGITATE,
-                direct_effects={"contestation_delta": defines.agitation_contestation_delta},
-            )
-        ]
-
-        process_layer3(results, graph, defines)
-
-        new_contest = graph.nodes["comm_1"]["ideological_contestation"]
-        assert new_contest == pytest.approx(0.2 + defines.agitation_contestation_delta)
-
-    def test_multiple_agitate_stack(self) -> None:
-        """Multiple AGITATE actions stack contestation."""
-        defines = OODADefines()
-        graph = _make_community_graph(contestation=0.2)
-        results = [
-            _make_result(
-                ActionType.AGITATE,
-                org_id="org_1",
-                direct_effects={"contestation_delta": defines.agitation_contestation_delta},
-            ),
-            _make_result(
-                ActionType.AGITATE,
-                org_id="org_2",
-                direct_effects={"contestation_delta": defines.agitation_contestation_delta},
-            ),
-        ]
-
-        process_layer3(results, graph, defines)
-
-        new_contest = graph.nodes["comm_1"]["ideological_contestation"]
-        expected = 0.2 + 2 * defines.agitation_contestation_delta
-        assert new_contest == pytest.approx(expected)
-
-    def test_contestation_clamped_at_one(self) -> None:
-        """Contestation never exceeds 1.0."""
-        defines = OODADefines()
-        graph = _make_community_graph(contestation=0.95)
-        results = [
-            _make_result(
-                ActionType.AGITATE,
-                direct_effects={"contestation_delta": defines.agitation_contestation_delta},
-            )
-        ]
-
-        process_layer3(results, graph, defines)
-
-        new_contest = graph.nodes["comm_1"]["ideological_contestation"]
-        assert new_contest <= 1.0

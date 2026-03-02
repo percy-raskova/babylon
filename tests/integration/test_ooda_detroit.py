@@ -394,15 +394,13 @@ class TestLayerIntegration:
         edge_data = graph.edges["rev_workers", "comm_detroit"]
         assert edge_data["edge_type"] == EdgeType.SOLIDARISTIC.value
 
-    def test_consciousness_aggregation(self) -> None:
-        """Multiple org consciousness deltas aggregate on community."""
+    def test_consciousness_not_mutated_by_layer3(self) -> None:
+        """Feature 034: layer3 no longer directly mutates consciousness."""
         graph = _build_detroit_graph()
 
         from babylon.ooda.layer3 import process_layer3
         from babylon.ooda.types import Action, ActionResult
-        from babylon.organizations.types import ConsciousnessDelta
 
-        # Two orgs contribute consciousness deltas
         results = [
             ActionResult(
                 action=Action(
@@ -411,35 +409,15 @@ class TestLayerIntegration:
                     target_id="comm_detroit",
                 ),
                 success=True,
-                consciousness_delta=ConsciousnessDelta(
-                    collective_identity_delta=0.02,
-                    tendency_pressure=ConsciousnessTendency.REVOLUTIONARY,
-                    tendency_magnitude=0.02,
-                    source_org_id="rev_workers",
-                ),
-                events_generated=["organizational_action"],
-            ),
-            ActionResult(
-                action=Action(
-                    org_id="first_baptist",
-                    action_type=ActionType.EDUCATE,
-                    target_id="comm_detroit",
-                ),
-                success=True,
-                consciousness_delta=ConsciousnessDelta(
-                    collective_identity_delta=0.01,
-                    tendency_pressure=ConsciousnessTendency.LIBERAL,
-                    tendency_magnitude=0.01,
-                    source_org_id="first_baptist",
-                ),
+                consciousness_delta=None,
                 events_generated=["organizational_action"],
             ),
         ]
 
         initial_ci = float(graph.nodes["comm_detroit"]["collective_identity"])
-        process_layer3(results, graph, OODADefines())
+        summary = process_layer3(results, graph, OODADefines())
         final_ci = float(graph.nodes["comm_detroit"]["collective_identity"])
 
-        # CI should have changed from aggregated effects
-        assert final_ci != initial_ci
-        assert 0.0 <= final_ci <= 1.0
+        # CI unchanged — consciousness is now derived from org landscape
+        assert final_ci == initial_ci
+        assert summary["consciousness"] == 0

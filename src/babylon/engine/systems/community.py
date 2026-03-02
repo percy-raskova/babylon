@@ -26,7 +26,8 @@ from babylon.models.entities.community import (
     CommunityState,
     ContradictionAxis,
 )
-from babylon.models.enums import CommunityType, HyperedgeCategory
+from babylon.models.entities.consciousness import OrgContribution
+from babylon.models.enums import CommunityType, ConsciousnessTendency, HyperedgeCategory
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +318,12 @@ class CommunitySystem:
         if not all_memberships:
             return
 
+        _compute_consciousness_from_orgs(
+            graph,
+            agent_memberships,
+            community_states,
+        )
+
         hypergraph = build_community_hypergraph(all_memberships, community_states)
 
         _amplify_solidarity_edges(
@@ -342,6 +349,96 @@ class CommunitySystem:
             agent_memberships,
             services,
         )
+
+
+def _compute_consciousness_from_orgs(
+    graph: Any,
+    agent_memberships: dict[str, list[CommunityMembership]],
+    community_states: dict[CommunityType, CommunityState],
+) -> None:
+    """Compute ternary consciousness for each community from org landscape.
+
+    For each community:
+    1. Find organizations whose members overlap with the community.
+    2. Compute each org's density within the community.
+    3. Call compute_ternary_consciousness() to derive (r, l, f).
+    4. Update CommunityState with new consciousness.
+
+    Modifies community_states dict in place.
+    """
+    from babylon.formulas.consciousness import compute_ternary_consciousness
+    from babylon.models.enums import EdgeType
+
+    # Build community → member agent set
+    community_agents: dict[CommunityType, set[str]] = {}
+    for agent_id, memberships in agent_memberships.items():
+        for mem in memberships:
+            if mem.community_type not in community_agents:
+                community_agents[mem.community_type] = set()
+            community_agents[mem.community_type].add(agent_id)
+
+    # Collect org data from graph
+    org_data: list[tuple[str, set[str], ConsciousnessTendency, float, float]] = []
+    max_orgs = 500
+    org_count = 0
+    for node in graph.query_nodes(node_type="organization"):
+        attrs = node.attributes
+        tendency_raw = attrs.get("consciousness_tendency")
+        if tendency_raw is None:
+            continue
+        if isinstance(tendency_raw, str):
+            tendency = ConsciousnessTendency(tendency_raw)
+        else:
+            tendency = tendency_raw
+
+        cadre = float(attrs.get("cadre_level", 0.0))
+        cohesion = float(attrs.get("cohesion", 0.0))
+
+        # Find org's member agents via MEMBERSHIP edges
+        member_agents: set[str] = set()
+        for edge in graph.query_edges(source_id=node.id, edge_type=EdgeType.MEMBERSHIP):
+            member_agents.add(edge.target_id)
+
+        if member_agents:
+            org_data.append((node.id, member_agents, tendency, cadre, cohesion))
+
+        org_count += 1
+        if org_count >= max_orgs:
+            break
+
+    # Compute consciousness for each community
+    for comm_type, state in list(community_states.items()):
+        agents_in_comm = community_agents.get(comm_type, set())
+        if not agents_in_comm:
+            continue
+
+        comm_size = len(agents_in_comm)
+        org_landscape: list[OrgContribution] = []
+
+        for _org_id, org_members, tendency, cadre, cohesion in org_data:
+            overlap = len(org_members & agents_in_comm)
+            if overlap == 0:
+                continue
+            density = overlap / comm_size
+            org_landscape.append(
+                OrgContribution(
+                    tendency=tendency,
+                    membership_density=density,
+                    cadre_level=cadre,
+                    cohesion=cohesion,
+                ),
+            )
+
+        # Only recompute if we have org data; otherwise keep existing
+        if org_landscape:
+            new_consciousness = compute_ternary_consciousness(
+                community_type=comm_type,
+                org_landscape=org_landscape,
+                substrate_floor=0.0,  # Phase 5 will wire SUBSTRATE_FLOOR_DEFAULTS
+            )
+            community_states[comm_type] = state.model_copy(
+                update={"consciousness": new_consciousness},
+            )
 
 
 def _collect_memberships(

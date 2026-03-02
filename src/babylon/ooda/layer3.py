@@ -14,8 +14,6 @@ from typing import TYPE_CHECKING, Any
 from babylon.config.defines import OODADefines
 from babylon.models.enums import ActionType, EdgeType
 from babylon.ooda.types import ActionResult
-from babylon.organizations.consciousness import aggregate_consciousness_effects
-from babylon.organizations.types import ConsciousnessDelta
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -45,53 +43,15 @@ def process_layer3(
     """
     summary: dict[str, Any] = {}
 
-    summary["consciousness"] = _propagate_consciousness(action_results, graph)
+    # Feature 034: consciousness and contestation are now derived quantities
+    # computed from org landscape in CommunitySystem, not direct writes.
+    summary["consciousness"] = 0
     summary["heat_updates"] = _propagate_heat(action_results, graph, defines)
     summary["edge_transitions"] = _propagate_edge_transitions(action_results, graph)
     summary["infrastructure_updates"] = _propagate_infrastructure(action_results, graph, defines)
-    summary["contestation_updates"] = _propagate_contestation(action_results, graph)
+    summary["contestation_updates"] = 0
 
     return summary
-
-
-def _propagate_consciousness(
-    results: list[ActionResult],
-    graph: nx.DiGraph[str],
-) -> int:
-    """Aggregate consciousness deltas per community and update CI.
-
-    Args:
-        results: Action results with optional consciousness_delta.
-        graph: World graph (mutated).
-
-    Returns:
-        Number of communities updated.
-    """
-    # Group deltas by target community
-    community_deltas: dict[str, list[ConsciousnessDelta]] = {}
-    max_results = 1000
-    for idx, result in enumerate(results):
-        if result.consciousness_delta is not None:
-            target = result.action.target_id
-            if target not in community_deltas:
-                community_deltas[target] = []
-            community_deltas[target].append(result.consciousness_delta)
-        if idx >= max_results:
-            break
-
-    # Apply aggregated effects
-    updates = 0
-    for community_id, deltas in community_deltas.items():
-        node_data = graph.nodes.get(community_id)
-        if node_data is None:
-            continue
-
-        current_ci = float(node_data.get("collective_identity", 0.0))
-        aggregated = aggregate_consciousness_effects(deltas, current_ci)
-        graph.nodes[community_id]["collective_identity"] = aggregated.new_ci
-        updates += 1
-
-    return updates
 
 
 def _propagate_heat(
@@ -218,53 +178,6 @@ def _propagate_infrastructure(
 
         if idx >= max_results:
             break
-
-    return updates
-
-
-def _propagate_contestation(
-    results: list[ActionResult],
-    graph: nx.DiGraph[str],
-) -> int:
-    """Stack contestation from AGITATE actions.
-
-    Args:
-        results: Action results with contestation_delta in direct_effects.
-        graph: World graph (mutated).
-
-    Returns:
-        Number of contestation updates.
-    """
-    # Aggregate contestation deltas per community
-    community_contestation: dict[str, float] = {}
-    max_results = 1000
-    for idx, result in enumerate(results):
-        if result.action.action_type != ActionType.AGITATE:
-            if idx >= max_results:
-                break
-            continue
-
-        effects = result.direct_effects or {}
-        delta = float(effects.get("contestation_delta", 0.0))
-        if delta != 0.0:
-            target = result.action.target_id
-            community_contestation[target] = community_contestation.get(target, 0.0) + delta
-
-        if idx >= max_results:
-            break
-
-    # Apply
-    updates = 0
-    for community_id, total_delta in community_contestation.items():
-        node_data = graph.nodes.get(community_id)
-        if node_data is None:
-            continue
-
-        current = float(node_data.get("ideological_contestation", 0.0))
-        graph.nodes[community_id]["ideological_contestation"] = max(
-            0.0, min(1.0, current + total_delta)
-        )
-        updates += 1
 
     return updates
 

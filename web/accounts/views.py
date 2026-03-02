@@ -5,10 +5,16 @@ No self-registration — admin creates accounts for beta testers.
 
 from __future__ import annotations
 
+import logging
+
 from django.contrib.auth import authenticate, login, logout
 from django.http import HttpRequest, HttpResponseBase, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_POST
+
+from game.log_handler import log_game_event
+
+logger = logging.getLogger(__name__)
 
 
 def login_page(request: HttpRequest) -> HttpResponseBase:
@@ -26,7 +32,20 @@ def _handle_login(request: HttpRequest) -> JsonResponse:
     user = authenticate(request, username=username, password=password)
     if user is not None:
         login(request, user)
+        logger.info("User logged in: %s (id=%s)", user.username, user.pk)
+        log_game_event(
+            category="auth_login",
+            message=f"User logged in: {user.username}",
+            user_id=user.pk,
+            correlation_id=getattr(request, "correlation_id", None),
+        )
         return JsonResponse({"status": "ok", "data": {"username": getattr(user, "username", "")}})
+    logger.warning("Failed login attempt for username=%s", username)
+    log_game_event(
+        category="auth_fail",
+        message=f"Failed login attempt: {username}",
+        correlation_id=getattr(request, "correlation_id", None),
+    )
     return JsonResponse(
         {"status": "error", "message": "Invalid credentials"},
         status=401,
@@ -36,7 +55,15 @@ def _handle_login(request: HttpRequest) -> JsonResponse:
 @require_POST
 def logout_view(request: HttpRequest) -> JsonResponse:
     """Log the user out and return confirmation."""
+    user_id = request.user.pk if request.user.is_authenticated else None
     logout(request)
+    logger.info("User logged out: id=%s", user_id)
+    log_game_event(
+        category="auth_logout",
+        message="User logged out",
+        user_id=user_id,
+        correlation_id=getattr(request, "correlation_id", None),
+    )
     return JsonResponse({"status": "ok", "data": {"message": "Logged out"}})
 
 

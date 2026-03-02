@@ -5,6 +5,9 @@
  */
 
 import type { ApiResponse } from "@/types/game";
+import { getCorrelationId, createLogger } from "@/utils/logger";
+
+const log = createLogger("ApiClient");
 
 /** Extract the CSRF token from the cookie jar. */
 function getCsrfToken(): string {
@@ -17,6 +20,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<ApiRe
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-CSRFToken": getCsrfToken(),
+    "X-Request-ID": getCorrelationId(),
     ...(options.headers as Record<string, string> | undefined),
   };
 
@@ -29,11 +33,16 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<ApiRe
   const body: ApiResponse<T> = await response.json();
 
   if (!response.ok && body.status !== "error") {
+    log.warn("HTTP error", { url, status: response.status });
     return {
       status: "error",
       data: body.data,
       message: `HTTP ${response.status}`,
     };
+  }
+
+  if (body.status === "error") {
+    log.warn("API error", { url, message: body.message });
   }
 
   return body;

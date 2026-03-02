@@ -4,6 +4,9 @@
 
 import { create } from "zustand";
 import { get as apiGet, post as apiPost } from "@/api/client";
+import { createLogger } from "@/utils/logger";
+
+const log = createLogger("GameStore");
 import type {
   GameSnapshot,
   AvailableAction,
@@ -72,6 +75,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   fetchState: async (gameId) => {
     set({ loading: true, error: null });
+    log.debug("Fetching game state", { gameId });
 
     const [stateRes, actionsRes] = await Promise.all([
       apiGet<GameSnapshot>(`/api/games/${gameId}/state/`),
@@ -98,19 +102,24 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   submitAction: async (gameId, params) => {
+    log.info("Submitting action", { gameId, params });
     const res = await apiPost(`/api/games/${gameId}/actions/`, params);
     if (res.status !== "ok") {
+      log.error("Action submission failed", { gameId, message: res.message });
       set({ error: res.message ?? "Failed to submit action" });
     }
     await get().fetchState(gameId);
   },
 
   resolveTick: async (gameId) => {
+    log.info("Resolving tick", { gameId });
     const res = await apiPost<Record<string, unknown>>(`/api/games/${gameId}/resolve/`);
     if (res.status !== "ok") {
+      log.error("Tick resolution failed", { gameId, message: res.message });
       set({ error: res.message ?? "Failed to resolve tick" });
       return null;
     }
+    log.info("Tick resolved", { gameId, newTick: res.tick });
     await get().fetchState(gameId);
     const tick = res.tick ?? 0;
     const resultsRes = await apiGet<ActionResultData[]>(`/api/games/${gameId}/results/${tick}/`);

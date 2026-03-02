@@ -9,6 +9,7 @@ per-process. In tests, patch ``game.api._bridge_instance``.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
@@ -20,6 +21,7 @@ from rest_framework.request import Request
 
 from game.models import ActionResult, GameSession, PlayerAction
 
+from .log_handler import log_game_event
 from .serializers import (
     ActionResultSerializer,
     CreateGameSerializer,
@@ -28,6 +30,8 @@ from .serializers import (
     SubmitActionSerializer,
 )
 from .tick_resolver import resolve_game_tick
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------- #
 # Bridge singleton (lazily initialized)
@@ -126,6 +130,11 @@ def game_list(request: Request) -> JsonResponse:
     # POST: Create a new game
     create_serializer = CreateGameSerializer(data=request.data)
     if not create_serializer.is_valid():
+        logger.warning(
+            "Invalid create game request from user=%s: %s",
+            request.user.id,
+            create_serializer.errors,
+        )
         return _error(str(create_serializer.errors))
 
     bridge = _get_bridge()
@@ -135,6 +144,19 @@ def game_list(request: Request) -> JsonResponse:
         defines=create_serializer.validated_data.get("defines"),
         rng_seed=create_serializer.validated_data.get("rng_seed", 0),
         player_id=request.user.id,
+    )
+    logger.info(
+        "Game created session=%s scenario=%s user=%s",
+        session_id,
+        create_serializer.validated_data["scenario"],
+        request.user.id,
+    )
+    log_game_event(
+        category="game_create",
+        message=f"Game created: scenario={create_serializer.validated_data['scenario']}",
+        session_id=session_id,
+        user_id=request.user.id,
+        correlation_id=getattr(request, "correlation_id", None),
     )
     return _envelope(
         {"session_id": str(session_id)},
@@ -262,6 +284,7 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
     # POST: Submit action
     serializer = SubmitActionSerializer(data=request.data)
     if not serializer.is_valid():
+        logger.warning("Invalid action submission session=%s: %s", game_id, serializer.errors)
         return _error(str(serializer.errors))
 
     bridge = _get_bridge()
@@ -274,6 +297,26 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
         target_id=serializer.validated_data.get("target_id"),
         target_community=serializer.validated_data.get("target_community"),
         params_json=serializer.validated_data.get("params_json"),
+    )
+    logger.info(
+        "Action submitted session=%s tick=%d org=%s verb=%s turn_id=%d",
+        session.id,
+        session.current_tick,
+        serializer.validated_data["org_id"],
+        serializer.validated_data["verb"],
+        turn_id,
+    )
+    log_game_event(
+        category="action_submit",
+        message=f"Action: {serializer.validated_data['verb']} by {serializer.validated_data['org_id']}",
+        session_id=session.id,
+        user_id=request.user.id,
+        tick=session.current_tick,
+        details={
+            "org_id": serializer.validated_data["org_id"],
+            "verb": serializer.validated_data["verb"],
+        },
+        correlation_id=getattr(request, "correlation_id", None),
     )
     return _envelope(
         {"turn_id": turn_id},
@@ -294,12 +337,22 @@ def resolve_tick(request: Request, game_id: str) -> JsonResponse:
         return _error(f"Cannot resolve tick for game in '{session.status}' status")
 
     bridge = _get_bridge()
+    logger.info("Resolving tick session=%s current_tick=%d", session.id, session.current_tick)
     snapshot = resolve_game_tick(bridge, uuid.UUID(str(session.id)))
 
     # Update session tick
     new_tick = snapshot.get("tick", session.current_tick + 1)
     GameSession.objects.filter(id=session.id).update(current_tick=new_tick)
 
+    logger.info("Tick resolved session=%s new_tick=%d", session.id, new_tick)
+    log_game_event(
+        category="tick_resolve",
+        message=f"Tick resolved: {session.current_tick} -> {new_tick}",
+        session_id=session.id,
+        user_id=request.user.id,
+        tick=new_tick,
+        correlation_id=getattr(request, "correlation_id", None),
+    )
     return _envelope(
         snapshot,
         tick=new_tick,

@@ -51,6 +51,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "babylon_web.middleware.RequestLoggingMiddleware",
 ]
 
 ROOT_URLCONF = "babylon_web.urls"
@@ -133,3 +134,106 @@ REST_FRAMEWORK = {
 # Misc
 # --------------------------------------------------------------------------- #
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --------------------------------------------------------------------------- #
+# Logging — structured JSON output for all layers
+# --------------------------------------------------------------------------- #
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {
+            "()": "babylon_web.log_formatter.WebJSONFormatter",
+        },
+        "console": {
+            "format": "[{asctime}] {levelname:<8} {name}: {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "filters": {
+        "require_debug_false": {
+            "()": "django.utils.log.RequireDebugFalse",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+            "level": "INFO",
+        },
+        "file_json": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "web.jsonl"),
+            "maxBytes": 10_000_000,  # 10 MB
+            "backupCount": 5,
+            "formatter": "json",
+            "level": "DEBUG",
+        },
+        "error_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "web_errors.jsonl"),
+            "maxBytes": 5_000_000,  # 5 MB
+            "backupCount": 10,
+            "formatter": "json",
+            "level": "ERROR",
+        },
+    },
+    "loggers": {
+        # Django internals
+        "django": {
+            "handlers": ["console", "file_json"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console", "file_json", "error_file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["file_json"],
+            "level": os.environ.get("DJANGO_DB_LOG_LEVEL", "WARNING"),
+            "propagate": False,
+        },
+        # Application loggers
+        "babylon_web": {
+            "handlers": ["console", "file_json", "error_file"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "babylon_web.request": {
+            "handlers": ["console", "file_json"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "game": {
+            "handlers": ["console", "file_json", "error_file"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "game.engine_bridge": {
+            "handlers": ["console", "file_json", "error_file"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "accounts": {
+            "handlers": ["console", "file_json"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Babylon engine (when called via bridge)
+        "babylon": {
+            "handlers": ["file_json"],
+            "level": os.environ.get("ENGINE_LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
+    },
+    "root": {
+        "handlers": ["console", "file_json"],
+        "level": "WARNING",
+    },
+}

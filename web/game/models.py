@@ -78,6 +78,47 @@ class PlayerAction(models.Model):
         return f"PlayerAction({self.session_id}, tick={self.tick}, {self.org_id}:{self.verb})"
 
 
+class GameEventLog(models.Model):
+    """Audit log for significant game events, stored in PostgreSQL.
+
+    Unlike ``game_session`` and ``game_turn`` (managed=False, owned by
+    Feature 037), this table is managed by Django migrations. It captures
+    API-level events (game creation, tick resolution, errors) for
+    operational visibility and debugging.
+    """
+
+    class EventCategory(models.TextChoices):
+        GAME_CREATE = "game_create", "Game Created"
+        GAME_PAUSE = "game_pause", "Game Paused"
+        GAME_RESUME = "game_resume", "Game Resumed"
+        TICK_RESOLVE = "tick_resolve", "Tick Resolved"
+        ACTION_SUBMIT = "action_submit", "Action Submitted"
+        ENGINE_ERROR = "engine_error", "Engine Error"
+        AUTH_LOGIN = "auth_login", "User Login"
+        AUTH_LOGOUT = "auth_logout", "User Logout"
+        AUTH_FAIL = "auth_fail", "Login Failed"
+
+    id = models.BigAutoField(primary_key=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    category = models.CharField(max_length=32, choices=EventCategory.choices, db_index=True)
+    session_id = models.UUIDField(null=True, blank=True, db_index=True)
+    user_id = models.IntegerField(null=True, blank=True, db_index=True)
+    tick = models.IntegerField(null=True, blank=True)
+    message = models.TextField()
+    details = models.JSONField(null=True, blank=True)
+    correlation_id = models.CharField(max_length=64, null=True, blank=True)
+
+    class Meta:
+        db_table = "game_event_log"
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["session_id", "tick"], name="idx_event_session_tick"),
+        ]
+
+    def __str__(self) -> str:
+        return f"GameEventLog({self.category}, {self.timestamp})"
+
+
 class ActionResult(models.Model):
     """Wraps the ``action_result`` table (Feature 037).
 

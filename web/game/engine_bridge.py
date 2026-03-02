@@ -11,6 +11,7 @@ JSON-serializable, suitable for DRF serializer consumption.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -23,6 +24,8 @@ from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.persistence.protocols import RuntimePersistence
 
+logger = logging.getLogger(__name__)
+
 
 class EngineBridge:
     """Translates between Django request/response and simulation engine.
@@ -33,6 +36,7 @@ class EngineBridge:
 
     def __init__(self, persistence: RuntimePersistence) -> None:
         self._persistence = persistence
+        logger.info("EngineBridge initialized with %s", type(persistence).__name__)
 
     # ------------------------------------------------------------------ #
     # Game lifecycle
@@ -70,6 +74,7 @@ class EngineBridge:
             rng_seed=rng_seed,
             player_id=player_id,
         )
+        logger.info("Created game session=%s scenario=%s seed=%d", session_id, scenario, rng_seed)
         return session_id
 
     # ------------------------------------------------------------------ #
@@ -139,11 +144,20 @@ class EngineBridge:
         sim_config = SimulationConfig()
 
         # Step the engine
+        logger.debug("Stepping engine session=%s tick=%d", session_id, state.tick)
         new_state = step(
             state,
             sim_config,
             persistent_context=persistent_context,
             defines=game_defines,
+        )
+        logger.info(
+            "Engine step complete session=%s tick=%d->%d entities=%d events=%d",
+            session_id,
+            state.tick,
+            new_state.tick,
+            len(new_state.entities),
+            len(new_state.events),
         )
 
         # Persist the new tick

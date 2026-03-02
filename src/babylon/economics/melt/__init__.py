@@ -88,6 +88,11 @@ from babylon.economics.melt.melt_calculator import (
     MELTCalculator,
 )
 from babylon.economics.melt.parameters import NationalParameters
+from babylon.economics.melt.rent_differential import (
+    DefaultRentDifferentialCalculator,
+    RentDifferentialCalculator,
+    RentDifferentialResult,
+)
 from babylon.economics.melt.types import SUBPROLETARIAT, ClassPosition, PrecarityStatus
 from babylon.economics.melt.unified_classifier import (
     DefaultUnifiedClassifier,
@@ -118,11 +123,15 @@ __all__ = [
     "DefaultBasketVisibilityCalculator",
     "DefaultClassPositionClassifier",
     "DefaultImperialRentCalculator",
+    "DefaultRentDifferentialCalculator",
     "DefaultWealthProxyCalculator",
     "DefaultUnifiedClassifier",
     # Result types (Feature 038)
     "DualCriteriaResult",
     "FiltrationResult",
+    "RentDifferentialResult",
+    # Protocols (Feature 038)
+    "RentDifferentialCalculator",
     # Functions (Feature 038)
     "apply_filtration",
 ]

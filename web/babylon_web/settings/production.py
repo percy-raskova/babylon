@@ -21,6 +21,16 @@ SECURE_HSTS_PRELOAD = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
+# Cloudflare terminates TLS — Django sees HTTP internally.
+# Without this, CSRF middleware rejects all POSTs as insecure.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+CSRF_TRUSTED_ORIGINS = [
+    f"https://{host.strip()}"
+    for host in os.environ.get("ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
+
 # Unix socket for Postgres (Cloudflare deployment)
 DATABASES["default"]["HOST"] = os.environ.get(  # noqa: F405
     "POSTGRES_HOST",

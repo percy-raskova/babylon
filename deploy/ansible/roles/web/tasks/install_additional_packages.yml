@@ -14,4 +14,21 @@
       - libcurl4-gnutls-dev
       - gnutls-dev
       - libpq-dev
+      - libgdal-dev
+      - gdal-bin
+      - libgeos-dev
+      - libproj-dev
       - "{{ virtualenv_python_version + '-dev' }}"
+
+- name: Install pipx
+  ansible.builtin.pip:
+    name: pipx
+    extra_args: --break-system-packages
+  when: use_poetry | default(false) | bool
+
+- name: Install Poetry via pipx
+  ansible.builtin.command:
+    cmd: pipx install poetry
+  args:
+    creates: /root/.local/bin/poetry
+  when: use_poetry | default(false) | bool

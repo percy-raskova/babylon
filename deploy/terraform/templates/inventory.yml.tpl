@@ -17,6 +17,11 @@ all:
 %{ for server in servers ~}
         ${server.name}: {}
 %{ endfor ~}
+    dbservers:
+      hosts:
+%{ for server in servers ~}
+        ${server.name}: {}
+%{ endfor ~}
   vars:
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
     ansible_python_interpreter: /usr/bin/python3

@@ -20,8 +20,10 @@
     update_cache: "{{ update_apt_cache }}"
     state: present
     name:
-      - postgresql
-      - postgresql-contrib
+      - "postgresql-{{ postgresql_version | default(17) }}"
+      - "postgresql-contrib-{{ postgresql_version | default(17) }}"
+      - "postgresql-{{ postgresql_version | default(17) }}-postgis-3"
+      - "postgresql-{{ postgresql_version | default(17) }}-pgvector"
       - "{{ base_python_package }}-psycopg2"
   tags: packages
 
@@ -30,10 +32,6 @@
     name: postgresql
     state: started
     enabled: true
-    # TODO: This is likely due to a bug in Ansible.
-    # Remove this line in the future.
-    # See https://github.com/ansible/ansible/issues/75005
-    use: sysvinit
 
 - name: Ensure database is created
   become: true
@@ -82,3 +80,30 @@
   community.postgresql.postgresql_user: name={{ db_user }}
                    role_attr_flags=NOSUPERUSER,NOCREATEDB
                    state=present
+
+- name: Create PostGIS extension
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_ext:
+    name: postgis
+    db: "{{ db_name }}"
+
+- name: Create pgvector extension
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_ext:
+    name: vector
+    db: "{{ db_name }}"
+
+- name: Tune PostgreSQL for 8GB RAM
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_set:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+  loop:
+    - { name: shared_buffers, value: "2GB" }
+    - { name: effective_cache_size, value: "6GB" }
+    - { name: work_mem, value: "16MB" }
+    - { name: maintenance_work_mem, value: "512MB" }
+  notify: Restart postgresql

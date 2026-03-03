@@ -57,7 +57,7 @@ dokploy_allowed_ips = ["0.0.0.0/0"]
 # ============================================
 server_count    = 1      # Number of VPS servers
 server_type     = "cx32" # Target: 4 vCPU, 8GB RAM, 80GB disk
-server_image    = "debian-12"
+server_image    = "debian-13"
 server_location = "ash"
 
 # Optional: Server labels

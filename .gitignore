@@ -90,3 +90,11 @@ infra/TOM_en_gdpr.pdf
 .gitignore
 infra/DPA_en_gdpr.pdf
 deploy/ansible-setup-guide.md
+
+# Deployment secrets (NEVER commit)
+deploy/terraform/terraform.tfvars
+deploy/terraform/.terraform/
+deploy/terraform/*.tfstate
+deploy/terraform/*.tfstate.backup
+deploy/ansible/.vault_pass
+deploy/ansible/production_inventory.yml

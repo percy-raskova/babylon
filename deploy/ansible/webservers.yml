@@ -14,9 +14,6 @@
   roles:
     - base
     - firewall
-    - rabbitmq
     - web
-    - celery
-    - memcached
     - nginx
     - backup

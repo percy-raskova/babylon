@@ -21,6 +21,14 @@ export const handlers = [
     }),
   ),
 
+  http.get("/accounts/login/", () =>
+    HttpResponse.text("<html><body>login</body></html>", {
+      headers: {
+        "Content-Type": "text/html",
+      },
+    }),
+  ),
+
   http.post("/accounts/logout/", () => HttpResponse.json({ status: "ok", data: null })),
 
   // Game list

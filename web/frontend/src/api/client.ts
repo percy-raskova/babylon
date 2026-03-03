@@ -15,6 +15,18 @@ function getCsrfToken(): string {
   return match?.[1] ?? "";
 }
 
+/** Ensure Django has issued a CSRF cookie before unsafe requests. */
+async function ensureCsrfCookie(): Promise<void> {
+  if (getCsrfToken()) {
+    return;
+  }
+
+  await fetch("/accounts/login/", {
+    method: "GET",
+    credentials: "include",
+  });
+}
+
 /** Base fetch wrapper with CSRF and credentials. */
 async function request<T>(url: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
   const headers: Record<string, string> = {
@@ -24,13 +36,33 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<ApiRe
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-    credentials: "include",
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+  } catch (error) {
+    log.warn("Network error", { url, error });
+    return {
+      status: "error",
+      data: null as T,
+      message: "Network error",
+    };
+  }
 
-  const body: ApiResponse<T> = await response.json();
+  let body: ApiResponse<T>;
+  try {
+    body = (await response.json()) as ApiResponse<T>;
+  } catch (error) {
+    log.warn("Non-JSON response", { url, status: response.status, error });
+    return {
+      status: "error",
+      data: null as T,
+      message: !response.ok ? `HTTP ${response.status}` : "Invalid server response",
+    };
+  }
 
   if (!response.ok && body.status !== "error") {
     log.warn("HTTP error", { url, status: response.status });
@@ -66,6 +98,8 @@ export async function postForm<T>(
   url: string,
   data: Record<string, string>,
 ): Promise<ApiResponse<T>> {
+  await ensureCsrfCookie();
+
   const formBody = new URLSearchParams(data).toString();
   const response = await fetch(url, {
     method: "POST",

@@ -59,6 +59,23 @@ describe("App", () => {
     expect(screen.getByText("alice")).toBeInTheDocument();
   });
 
+  it("falls back to login page when auth bootstrap fails", async () => {
+    server.use(
+      http.get("/accounts/whoami/", () =>
+        HttpResponse.text("<html>error</html>", {
+          status: 502,
+          headers: { "Content-Type": "text/html" },
+        }),
+      ),
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
+    });
+  });
+
   it("navigates from login to game list on successful login", async () => {
     const user = userEvent.setup();
     server.use(

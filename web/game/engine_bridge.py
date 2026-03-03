@@ -18,6 +18,11 @@ from uuid import UUID
 import networkx as nx
 
 from babylon.config.defines import GameDefines
+from babylon.engine.scenarios import (
+    create_imperial_circuit_scenario,
+    create_labor_aristocracy_scenario,
+    create_two_node_scenario,
+)
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
 from babylon.models.world_state import WorldState
@@ -74,6 +79,17 @@ class EngineBridge:
             rng_seed=rng_seed,
             player_id=player_id,
         )
+
+        # Seed initial world graph for tick 0 so snapshot/state endpoints
+        # have material data immediately after game creation.
+        initial_state = _build_initial_state_for_scenario(scenario)
+        self._persistence.persist_tick(
+            tick=initial_state.tick,
+            graph=initial_state.to_graph(),
+            events=[event.model_dump() for event in initial_state.events] or None,
+            session_id=session_id,
+        )
+
         logger.info("Created game session=%s scenario=%s seed=%d", session_id, scenario, rng_seed)
         return session_id
 
@@ -94,6 +110,27 @@ class EngineBridge:
             Tuple of (WorldState, nx.DiGraph) at the requested tick.
         """
         graph = self._persistence.hydrate_graph(tick=tick, session_id=session_id)
+
+        # Backward-compatible bootstrap: if a legacy/new session has no persisted
+        # tick-0 graph yet, seed it from the stored scenario and retry hydrate.
+        if tick is None and _is_unseeded_graph(graph):
+            session_getter = getattr(self._persistence, "get_session", None)
+            if callable(session_getter):
+                session_row = session_getter(session_id)
+                scenario = (
+                    str(session_row.get("scenario", "default"))
+                    if isinstance(session_row, dict)
+                    else "default"
+                )
+                seeded_state = _build_initial_state_for_scenario(scenario)
+                self._persistence.persist_tick(
+                    tick=seeded_state.tick,
+                    graph=seeded_state.to_graph(),
+                    events=[event.model_dump() for event in seeded_state.events] or None,
+                    session_id=session_id,
+                )
+                graph = self._persistence.hydrate_graph(tick=tick, session_id=session_id)
+
         # Determine the tick from the graph metadata
         resolved_tick = tick if tick is not None else _graph_tick(graph)
         world_state = WorldState.from_graph(graph, tick=resolved_tick)
@@ -294,6 +331,36 @@ class EngineBridge:
 def _graph_tick(graph: nx.DiGraph[str]) -> int:
     """Extract the tick from graph-level metadata, defaulting to 0."""
     return int(graph.graph.get("tick", 0))
+
+
+def _build_initial_state_for_scenario(scenario: str) -> WorldState:
+    """Construct initial WorldState for a supported scenario identifier.
+
+    Args:
+        scenario: Scenario name from API request.
+
+    Returns:
+        Seeded WorldState at tick 0.
+    """
+    normalized = scenario.strip().lower()
+    if normalized in {"default", "imperial_circuit"}:
+        state, _config, _defines = create_imperial_circuit_scenario()
+        return state
+    if normalized == "two_node":
+        state, _config, _defines = create_two_node_scenario()
+        return state
+    if normalized == "labor_aristocracy":
+        state, _config, _defines = create_labor_aristocracy_scenario()
+        return state
+
+    logger.warning("Unknown scenario '%s', falling back to imperial_circuit", scenario)
+    state, _config, _defines = create_imperial_circuit_scenario()
+    return state
+
+
+def _is_unseeded_graph(graph: nx.DiGraph[str]) -> bool:
+    """Return True when a hydrated graph has no persisted simulation content."""
+    return graph.number_of_nodes() == 0 and graph.number_of_edges() == 0
 
 
 def _enum_val(obj: object) -> str:

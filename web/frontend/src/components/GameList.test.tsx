@@ -112,4 +112,22 @@ describe("GameList", () => {
       expect(screen.getByText("Server unavailable")).toBeInTheDocument();
     });
   });
+
+  it("shows error and exits loading on non-JSON fetch failure", async () => {
+    server.use(
+      http.get("/api/games/", () =>
+        HttpResponse.text("<html>bad gateway</html>", {
+          status: 502,
+          headers: { "Content-Type": "text/html" },
+        }),
+      ),
+    );
+
+    render(<GameList onSelectGame={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("HTTP 502")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Loading games...")).not.toBeInTheDocument();
+  });
 });

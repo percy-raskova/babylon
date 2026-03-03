@@ -20,12 +20,15 @@ export default function App() {
 
   useEffect(() => {
     async function checkAuth() {
-      const res = await get<AuthState>("/accounts/whoami/");
-      if (res.status === "ok" && res.data.is_authenticated) {
-        setAuth(res.data);
-        setView({ page: "games" });
+      try {
+        const res = await get<AuthState>("/accounts/whoami/");
+        if (res.status === "ok" && res.data.is_authenticated) {
+          setAuth(res.data);
+          setView({ page: "games" });
+        }
+      } finally {
+        setChecking(false);
       }
-      setChecking(false);
     }
     void checkAuth();
   }, []);

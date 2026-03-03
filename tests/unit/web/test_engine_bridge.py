@@ -13,16 +13,17 @@ from unittest.mock import MagicMock, patch
 import networkx as nx
 import pytest
 
-from game.engine_bridge import EngineBridge, _state_to_snapshot
+from game.engine_bridge import EngineBridge, _build_initial_state_for_scenario, _state_to_snapshot
 
 
 def _make_mock_persistence() -> MagicMock:
     """Create a mock RuntimePersistence with standard method signatures."""
     mock = MagicMock()
     mock.create_session.return_value = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-    mock.hydrate_graph.return_value = _make_minimal_graph()
+    mock.hydrate_graph.return_value = _build_initial_state_for_scenario("default").to_graph()
     mock.persist_tick.return_value = None
     mock.get_metadata.return_value = None
+    mock.get_session.return_value = {"scenario": "default"}
     mock.mark_turns_resolved.return_value = 0
     mock.submit_turn.return_value = 42
     mock.get_pending_turns.return_value = []
@@ -89,6 +90,32 @@ class TestEngineBridgeCreateGame:
         # game_defines_json should be a dict (serialized GameDefines)
         assert isinstance(call_kwargs.kwargs["game_defines_json"], dict)
 
+    def test_create_game_persists_initial_tick_state(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        bridge.create_game(scenario="default", rng_seed=42)
+
+        assert mock_persistence.persist_tick.called
+        persist_kwargs = mock_persistence.persist_tick.call_args.kwargs
+        assert persist_kwargs["tick"] == 0
+        assert persist_kwargs["session_id"] == uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        persisted_graph = persist_kwargs["graph"]
+        assert isinstance(persisted_graph, nx.DiGraph)
+        assert len(persisted_graph.nodes) > 0
+
+
+@pytest.mark.unit
+class TestScenarioBootstrap:
+    """Verify scenario bootstrap selection for initial game state."""
+
+    def test_unknown_scenario_falls_back_to_default_state(self) -> None:
+        state = _build_initial_state_for_scenario("not-a-real-scenario")
+
+        assert state.tick == 0
+        assert len(state.territories) > 0
+        assert len(state.entities) > 0
+
 
 @pytest.mark.unit
 class TestEngineBridgeHydrate:
@@ -121,6 +148,20 @@ class TestEngineBridgeHydrate:
 
         assert state.tick == 0
         assert isinstance(graph, nx.DiGraph)
+
+    def test_hydrate_bootstraps_when_graph_unseeded(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        empty_graph: nx.DiGraph[str] = nx.DiGraph()
+        seeded_graph = _build_initial_state_for_scenario("default").to_graph()
+        mock_persistence.hydrate_graph.side_effect = [empty_graph, seeded_graph]
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        _state, _graph = bridge.hydrate_state(sid)
+
+        assert mock_persistence.persist_tick.called
+        assert mock_persistence.hydrate_graph.call_count == 2
 
 
 @pytest.mark.unit

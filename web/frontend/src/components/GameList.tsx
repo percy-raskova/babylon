@@ -28,7 +28,9 @@ export function GameList({ onSelectGame }: GameListProps) {
       } else {
         setError(res.message ?? "Failed to load games");
       }
-      setLoading(false);
+      if (!cancelled) {
+        setLoading(false);
+      }
     }
     void fetchGames();
     return () => {

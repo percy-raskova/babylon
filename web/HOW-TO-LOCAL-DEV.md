@@ -60,6 +60,20 @@ poetry run python manage.py createsuperuser
 poetry run python manage.py runserver 8000
 ```
 
+When `createsuperuser` prompts for username, press Enter to accept the
+default shown (for example, `user` on your machine). Babylon auth is
+username-based (`username` + `password`), not email-based.
+
+Example interactive input:
+
+```text
+Username (leave blank to use 'user'): [press Enter]
+Email address: user@localhost
+Password: ********
+Password (again): ********
+Superuser created successfully.
+```
+
 The `manage.py` defaults to `babylon_web.settings.development`, which enables
 `DEBUG=True` and CORS headers for the Vite dev server on port 5173.
 
@@ -267,6 +281,29 @@ missing. Install `libgdal-dev` and `libgeos-dev` on Debian/Ubuntu, then
 `changeOrigin: true` setting in `vite.config.ts` handles this. If you see CSRF
 errors, ensure you are accessing the app through `localhost:5173`, not
 `localhost:8000` directly.
+
+**`createdb` / `psql` fails with `FATAL: role "user" does not exist`**: This
+happens when PostgreSQL tries to authenticate as your Linux username (`user`),
+but that DB role does not exist. Use the `postgres` superuser to create/fix the
+application role and verify login over TCP:
+
+```bash
+# Check service is up
+pg_isready
+
+# Use postgres superuser for admin commands
+sudo -u postgres psql -c "ALTER ROLE babylon WITH LOGIN PASSWORD 'babylon';"
+
+# Ensure DB and PostGIS exist (note: EXTENSION spelling matters)
+sudo -u postgres psql -tAc "SELECT datname FROM pg_database WHERE datname='babylon';"
+sudo -u postgres psql -d babylon -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+
+# Verify app credentials (uses password auth, not peer auth)
+PGPASSWORD=babylon psql -h localhost -U babylon -d babylon -c "SELECT current_user, current_database();"
+```
+
+If `sudo -u postgres ...` prompts for your password, enter your Linux account
+password.
 
 **"relation does not exist" errors**: Run `poetry run python manage.py migrate`
 from the `web/` directory. The `game_session`, `game_turn`, and `action_result`

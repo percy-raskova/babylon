@@ -172,5 +172,20 @@ describe("API client", () => {
       expect(res.status).toBe("error");
       expect(res.message).toBe("Something went wrong");
     });
+
+    it("maps non-JSON responses to error status", async () => {
+      server.use(
+        http.get("/api/non-json/", () =>
+          HttpResponse.text("<html>not json</html>", {
+            status: 500,
+            headers: { "Content-Type": "text/html" },
+          }),
+        ),
+      );
+
+      const res = await get("/api/non-json/");
+      expect(res.status).toBe("error");
+      expect(res.message).toBe("HTTP 500");
+    });
   });
 });

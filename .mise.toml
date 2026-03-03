@@ -12,6 +12,7 @@
 #   docs:*        - Documentation building
 #   mutate:*      - Mutation testing
 #   midi:*        - Music generation
+#   web:*         - Web app local development (Django + Vite)
 
 [tools]
 python = "3.12"
@@ -496,3 +497,56 @@ poetry run python tools/necropolis_viewer.py \
   --years ${usage_years} \
   --interval ${usage_interval}
 """
+
+# =============================================================================
+# WEB APP (Namespaced)
+# =============================================================================
+
+[tasks."web:backend"]
+description = "Start Django dev server on port 8000"
+dir = "web"
+raw = true
+run = "poetry run python manage.py runserver 8000"
+
+[tasks."web:frontend"]
+description = "Start Vite dev server on port 5173"
+dir = "web/frontend"
+raw = true
+run = "npm run dev"
+
+[tasks."web:dev"]
+description = "Start Django + Vite together (Ctrl+C kills both)"
+raw = true
+run = """
+cleanup() { kill 0; }
+trap cleanup EXIT INT TERM
+cd web && poetry run python manage.py runserver 8000 &
+cd web/frontend && npm run dev
+"""
+
+[tasks."web:install"]
+description = "Install Python + Node dependencies for the web app"
+run = """
+(cd web && poetry install)
+(cd web/frontend && npm install)
+"""
+
+[tasks."web:migrate"]
+description = "Run Django database migrations"
+dir = "web"
+run = "poetry run python manage.py migrate"
+
+[tasks."web:test"]
+description = "Run frontend tests (Vitest)"
+dir = "web/frontend"
+run = "npm run test"
+
+[tasks."web:check"]
+description = "Run frontend quality checks (tsc + eslint + prettier + vitest)"
+dir = "web/frontend"
+run = "npm run check"
+
+[tasks."web:build"]
+description = "Build frontend for production"
+dir = "web/frontend"
+run = "npm run build"

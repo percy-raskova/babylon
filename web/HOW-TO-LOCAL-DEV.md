@@ -16,6 +16,25 @@ Ensure you have:
 The Django backend uses the `django.contrib.gis.db.backends.postgis` engine, so
 plain PostgreSQL without PostGIS will not work.
 
+## Quick Start (Mise)
+
+If you have [Mise](https://mise.jdx.dev/) installed and the database already set
+up, you can run everything from the project root:
+
+| Command                 | What it does                                                   |
+| ----------------------- | -------------------------------------------------------------- |
+| `mise run web:install`  | Install Python + Node dependencies                             |
+| `mise run web:migrate`  | Run Django database migrations                                 |
+| `mise run web:dev`      | Start Django + Vite together (Ctrl+C kills both)               |
+| `mise run web:backend`  | Start Django dev server only (port 8000)                       |
+| `mise run web:frontend` | Start Vite dev server only (port 5173)                         |
+| `mise run web:test`     | Run frontend tests (Vitest)                                    |
+| `mise run web:check`    | Run frontend quality checks (tsc + eslint + prettier + vitest) |
+| `mise run web:build`    | Build frontend for production                                  |
+
+For first-time database setup and superuser creation, see the detailed steps
+below.
+
 ## Set Up the Database
 
 Create the database and enable PostGIS:

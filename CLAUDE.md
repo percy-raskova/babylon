@@ -168,6 +168,16 @@ mise run docs:strict                              # Build with warnings as error
 # UI
 mise run ui                                       # Launch DearPyGui Synopticon dashboard
 
+# Web App (web:* namespace)
+mise run web:dev                                  # Start Django + Vite together (Ctrl+C kills both)
+mise run web:backend                              # Django dev server (port 8000)
+mise run web:frontend                             # Vite dev server (port 5173)
+mise run web:install                              # Install Python + Node deps
+mise run web:migrate                              # Django database migrations
+mise run web:test                                 # Frontend tests (Vitest)
+mise run web:check                                # Frontend quality (tsc + eslint + prettier + vitest)
+mise run web:build                                # Production frontend build
+
 # Direct pytest (for specific tests)
 poetry run pytest tests/unit/test_foo.py::test_specific    # Single test
 poetry run pytest -k "test_name_pattern"                   # Pattern matching

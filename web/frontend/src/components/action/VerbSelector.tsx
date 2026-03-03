@@ -105,7 +105,10 @@ export function VerbSelector({
       {/* Verb cells — iterate row-first across columns */}
       {[0, 1, 2].map((row) =>
         VERB_GRID.map((col) => {
-          const def = col.verbs[row]!;
+          const def = col.verbs[row];
+          if (!def) {
+            return null;
+          }
           const cost = verbCosts?.[def.verb];
           const overBudget = cost !== undefined && availableAP !== undefined && cost > availableAP;
           const isSelected = selectedVerb === def.verb;

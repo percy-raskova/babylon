@@ -88,11 +88,14 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
 
   const layers = useMemo(() => {
     if (hasH3) {
+      const h3Territories = territories.filter(
+        (t): t is TerritoryState & { h3_index: string } => t.h3_index != null,
+      );
       return [
-        new H3HexagonLayer<TerritoryState>({
+        new H3HexagonLayer<TerritoryState & { h3_index: string }>({
           id: "h3-hexagons",
-          data: territories.filter((t) => t.h3_index != null),
-          getHexagon: (t: TerritoryState) => t.h3_index!,
+          data: h3Territories,
+          getHexagon: (t) => t.h3_index,
           getFillColor: getColor,
           getElevation: 0,
           extruded: false,

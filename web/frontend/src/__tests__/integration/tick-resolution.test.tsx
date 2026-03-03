@@ -47,7 +47,12 @@ describe("tick resolution flow", () => {
 
     // Click resolve — TopBar and ActionComposer both have "Resolve Tick"
     const resolveButtons = screen.getAllByText("Resolve Tick");
-    await user.click(resolveButtons[0]!);
+    const firstResolveButton = resolveButtons[0];
+    expect(firstResolveButton).toBeDefined();
+    if (!firstResolveButton) {
+      throw new Error("Resolve Tick button not found");
+    }
+    await user.click(firstResolveButton);
 
     // Results should appear - TickResults shows org_id and action_type
     await waitFor(() => {

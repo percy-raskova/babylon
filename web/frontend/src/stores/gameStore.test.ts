@@ -46,10 +46,19 @@ describe("useGameStore", () => {
     await useGameStore.getState().fetchState("game-001");
 
     const state = useGameStore.getState();
-    expect(state.snapshot).not.toBeNull();
-    expect(state.snapshot!.tick).toBe(1);
+    const snapshot = state.snapshot;
+    expect(snapshot).not.toBeNull();
+    if (!snapshot) {
+      throw new Error("Snapshot missing");
+    }
+    expect(snapshot.tick).toBe(1);
     expect(state.tickSummaries).toHaveLength(1);
-    expect(state.tickSummaries[0]!.tick).toBe(1);
+    const firstSummary = state.tickSummaries[0];
+    expect(firstSummary).toBeDefined();
+    if (!firstSummary) {
+      throw new Error("Tick summary missing");
+    }
+    expect(firstSummary.tick).toBe(1);
     expect(state.loading).toBe(false);
     expect(state.error).toBeNull();
   });
@@ -59,7 +68,12 @@ describe("useGameStore", () => {
 
     const state = useGameStore.getState();
     expect(state.available).toHaveLength(2);
-    expect(state.available[0]!.verb).toBe("educate");
+    const firstAvailable = state.available[0];
+    expect(firstAvailable).toBeDefined();
+    if (!firstAvailable) {
+      throw new Error("Available action missing");
+    }
+    expect(firstAvailable.verb).toBe("educate");
   });
 
   it("fetchState does not duplicate tick summaries for same tick", async () => {
@@ -84,7 +98,12 @@ describe("useGameStore", () => {
 
     await useGameStore.getState().fetchState("game-001");
     expect(useGameStore.getState().tickSummaries).toHaveLength(2);
-    expect(useGameStore.getState().tickSummaries[1]!.tick).toBe(2);
+    const secondSummary = useGameStore.getState().tickSummaries[1];
+    expect(secondSummary).toBeDefined();
+    if (!secondSummary) {
+      throw new Error("Second tick summary missing");
+    }
+    expect(secondSummary.tick).toBe(2);
   });
 
   it("fetchState sets error on API error", async () => {
@@ -145,8 +164,16 @@ describe("useGameStore", () => {
     const results = await useGameStore.getState().resolveTick("game-001");
 
     expect(results).not.toBeNull();
+    if (!results) {
+      throw new Error("Tick results missing");
+    }
     expect(results).toHaveLength(1);
-    expect(results![0]!.org_id).toBe("org-workers-union");
+    const firstResult = results[0];
+    expect(firstResult).toBeDefined();
+    if (!firstResult) {
+      throw new Error("First tick result missing");
+    }
+    expect(firstResult.org_id).toBe("org-workers-union");
   });
 
   it("resolveTick returns null on error", async () => {
@@ -183,7 +210,11 @@ describe("useGameStore", () => {
     it("calculates correct aggregations", async () => {
       await useGameStore.getState().fetchState("game-001");
 
-      const summary = useGameStore.getState().tickSummaries[0]!;
+      const summary = useGameStore.getState().tickSummaries[0];
+      expect(summary).toBeDefined();
+      if (!summary) {
+        throw new Error("Summary missing");
+      }
       // avgHeat: (0.4 + 0.1) / 2 = 0.25
       expect(summary.avgHeat).toBeCloseTo(0.25, 2);
       // avgConsciousness: (0.3 + 0.1) / 2 = 0.2

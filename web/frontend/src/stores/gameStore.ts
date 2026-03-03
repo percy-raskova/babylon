@@ -86,7 +86,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const snap = stateRes.data;
       const summaries = get().tickSummaries;
       const summary = extractSummary(snap);
-      const lastTick = summaries.length > 0 ? summaries[summaries.length - 1]!.tick : -1;
+      const lastTick = summaries[summaries.length - 1]?.tick ?? -1;
       const newSummaries = summary.tick !== lastTick ? [...summaries, summary] : summaries;
 
       set({ snapshot: snap, tickSummaries: newSummaries });

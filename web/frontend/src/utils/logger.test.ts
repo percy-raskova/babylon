@@ -60,7 +60,12 @@ describe("logger", () => {
       const spy = vi.spyOn(console, "info").mockImplementation(() => {});
       const log = createLogger("TestCorrelation");
       log.info("test");
-      const entry = spy.mock.calls[0]![2];
+      const firstCall = spy.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      if (!firstCall) {
+        throw new Error("Expected logger call");
+      }
+      const entry = firstCall[2];
       expect(entry.correlationId).toBeTruthy();
       expect(typeof entry.correlationId).toBe("string");
     });

@@ -49,7 +49,12 @@ describe("buildGraph", () => {
     // EXPLOITATION edge: proletariat -> bourgeoisie
     const edges = graph.edges("entity-proletariat", "entity-bourgeoisie");
     expect(edges.length).toBeGreaterThan(0);
-    const edgeAttrs = graph.getEdgeAttributes(edges[0]!);
+    const firstEdge = edges[0];
+    expect(firstEdge).toBeDefined();
+    if (!firstEdge) {
+      throw new Error("Expected at least one edge");
+    }
+    const edgeAttrs = graph.getEdgeAttributes(firstEdge);
     expect(edgeAttrs.edgeType).toBe("EXPLOITATION");
   });
 
@@ -112,7 +117,12 @@ describe("buildGraph", () => {
     const graph = buildGraph(snap);
 
     const exploitEdges = graph.edges("entity-proletariat", "entity-bourgeoisie");
-    const edgeColor = graph.getEdgeAttribute(exploitEdges[0]!, "color");
+    const firstExploitEdge = exploitEdges[0];
+    expect(firstExploitEdge).toBeDefined();
+    if (!firstExploitEdge) {
+      throw new Error("Expected exploitation edge");
+    }
+    const edgeColor = graph.getEdgeAttribute(firstExploitEdge, "color");
     expect(edgeColor).toBe("#e63946"); // EXPLOITATION -> crimson
   });
 });

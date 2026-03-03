@@ -22,6 +22,17 @@ interface ActionComposerProps {
   resolving: boolean;
 }
 
+function shouldShowPreview(
+  pendingVerb: PlayerVerb | null,
+  pendingOrgId: string | null,
+  pendingTargetId: string | null,
+): boolean {
+  if (!pendingVerb || !pendingOrgId) {
+    return false;
+  }
+  return SELF_TARGETED.has(pendingVerb) || Boolean(pendingTargetId);
+}
+
 export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: ActionComposerProps) {
   const pendingVerb = useUIStore((s) => s.pendingVerb);
   const pendingOrgId = useUIStore((s) => s.pendingOrgId);
@@ -32,7 +43,7 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
 
   const [submitting, setSubmitting] = useState(false);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(
-    snapshot.organizations.length > 0 ? snapshot.organizations[0]!.id : null,
+    snapshot.organizations[0]?.id ?? null,
   );
 
   const selectedOrg: OrgState | undefined = snapshot.organizations.find(
@@ -58,6 +69,8 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
     clearPending();
     setSubmitting(false);
   }, [pendingVerb, pendingOrgId, pendingTargetId, onSubmit, clearPending]);
+
+  const showPreview = shouldShowPreview(pendingVerb, pendingOrgId, pendingTargetId);
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -131,10 +144,10 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
       )}
 
       {/* Action preview + submit */}
-      {pendingVerb && pendingOrgId && (SELF_TARGETED.has(pendingVerb) || pendingTargetId) && (
+      {showPreview && (
         <ActionPreview
-          verb={pendingVerb}
-          orgId={pendingOrgId}
+          verb={pendingVerb as PlayerVerb}
+          orgId={pendingOrgId as string}
           targetId={pendingTargetId}
           submitting={submitting}
           onSubmit={handleSubmit}

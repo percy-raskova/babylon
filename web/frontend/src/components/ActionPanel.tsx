@@ -22,10 +22,13 @@ export function ActionPanel({ actions, onSubmit, onResolve, resolving }: ActionP
     const groups: Record<string, AvailableAction[]> = {};
     for (const action of actions) {
       const key = action.org_id;
-      if (!groups[key]) {
+      if (!(key in groups)) {
         groups[key] = [];
       }
-      groups[key]!.push(action);
+      const group = groups[key];
+      if (group) {
+        group.push(action);
+      }
     }
     return groups;
   }, [actions]);

@@ -9,7 +9,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { GameSnapshot, TerritoryState, MapLayer } from "@/types/game";
 
 /** Color scales for different metrics. */
-const COLOR_SCALES: Record<string, (v: number) => string> = {
+const COLOR_SCALES: Record<MapLayer, (v: number) => string> = {
   heat: (v) => {
     const r = Math.round(40 + v * 200);
     const g = Math.round(40 - v * 30);
@@ -81,7 +81,7 @@ export function HexMap({ snapshot, onSelectNode }: HexMapProps) {
     (territory: TerritoryState) => {
       const value = getMetricValue(territory, metric);
       const clamped = Math.max(0, Math.min(1, value));
-      const scale = COLOR_SCALES[metric] ?? COLOR_SCALES["heat"]!;
+      const scale = COLOR_SCALES[metric];
       return scale(clamped);
     },
     [metric],

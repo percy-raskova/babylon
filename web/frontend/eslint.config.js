@@ -51,9 +51,27 @@ export default tseslint.config(
     },
   },
 
+  // Test file overrides
+  {
+    files: ["src/**/*.test.{ts,tsx}", "src/test/**/*.{ts,tsx}"],
+    rules: {
+      // Tests often import screen but use it implicitly via queries
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      // Tests may have longer setup functions
+      "sonarjs/cognitive-complexity": ["error", 25],
+      // Allow empty callbacks in mock implementations (e.g. vi.spyOn().mockImplementation(() => {}))
+      "@typescript-eslint/no-empty-function": "off",
+      // Test credentials are not real secrets
+      "sonarjs/no-hardcoded-passwords": "off",
+    },
+  },
+
   // Ignore build output and config files
   {
-    ignores: ["dist/", "node_modules/", "*.config.js", "*.config.ts"],
+    ignores: ["dist/", "node_modules/", "*.config.js", "*.config.ts", "e2e/"],
   },
 
   // Prettier must be last to override formatting rules

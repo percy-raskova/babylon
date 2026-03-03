@@ -129,6 +129,7 @@ norecursedirs = [
     "mutants",
     ".mutmut-cache",
     "html",
+    ".hypothesis",
 ]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"

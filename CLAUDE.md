@@ -169,9 +169,12 @@ mise run docs:strict                              # Build with warnings as error
 mise run ui                                       # Launch DearPyGui Synopticon dashboard
 
 # Web App (web:* namespace)
-mise run web:dev                                  # Start Django + Vite together (Ctrl+C kills both)
-mise run web:backend                              # Django dev server (port 8000)
-mise run web:frontend                             # Vite dev server (port 5173)
+mise run web:dev                                  # Start Django + Vite as background daemons
+mise run web:stop                                 # Graceful shutdown (SIGTERM → SIGKILL after 5s)
+mise run web:status                               # Show server running/stopped status
+mise run web:logs                                 # Tail both server log files
+mise run web:backend                              # Django in foreground (port 8000)
+mise run web:frontend                             # Vite in foreground (port 5173)
 mise run web:install                              # Install Python + Node deps
 mise run web:migrate                              # Django database migrations
 mise run web:test                                 # Frontend tests (Vitest)

@@ -500,29 +500,108 @@ poetry run python tools/necropolis_viewer.py \
 
 # =============================================================================
 # WEB APP (Namespaced)
+# PID files and logs stored in .web-pids/ (git-ignored)
 # =============================================================================
 
 [tasks."web:backend"]
-description = "Start Django dev server on port 8000"
+description = "Start Django dev server in foreground (port 8000)"
 dir = "web"
 raw = true
 run = "poetry run python manage.py runserver 8000"
 
 [tasks."web:frontend"]
-description = "Start Vite dev server on port 5173"
+description = "Start Vite dev server in foreground (port 5173)"
 dir = "web/frontend"
 raw = true
 run = "npm run dev"
 
 [tasks."web:dev"]
-description = "Start Django + Vite together (Ctrl+C kills both)"
-raw = true
+description = "Start Django + Vite as background daemons"
 run = """
-cleanup() { kill 0; }
-trap cleanup EXIT INT TERM
-cd web && poetry run python manage.py runserver 8000 &
-cd web/frontend && npm run dev
+mkdir -p .web-pids
+
+if [ -f .web-pids/django.pid ] && kill -0 "$(cat .web-pids/django.pid)" 2>/dev/null; then
+  echo "Django already running (PID $(cat .web-pids/django.pid))"
+else
+  nohup bash -c 'cd web && exec poetry run python manage.py runserver 8000' \
+    > .web-pids/django.log 2>&1 &
+  echo $! > .web-pids/django.pid
+  echo "Django started (PID $!) — log: .web-pids/django.log"
+fi
+
+if [ -f .web-pids/vite.pid ] && kill -0 "$(cat .web-pids/vite.pid)" 2>/dev/null; then
+  echo "Vite already running (PID $(cat .web-pids/vite.pid))"
+else
+  nohup bash -c 'cd web/frontend && exec npx vite' \
+    > .web-pids/vite.log 2>&1 &
+  echo $! > .web-pids/vite.pid
+  echo "Vite started (PID $!) — log: .web-pids/vite.log"
+fi
+
+echo ""
+echo "  Django: http://localhost:8000"
+echo "  Vite:   http://localhost:5173"
+echo ""
+echo "  mise run web:status  — check status"
+echo "  mise run web:logs    — tail logs"
+echo "  mise run web:stop    — graceful shutdown"
 """
+
+[tasks."web:stop"]
+description = "Gracefully stop Django + Vite dev servers"
+run = """
+graceful_stop() {
+  name=$1
+  pidfile=".web-pids/${name}.pid"
+  if [ ! -f "$pidfile" ]; then
+    echo "${name}: no PID file"
+    return 0
+  fi
+  pid=$(cat "$pidfile")
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "${name}: not running (stale PID ${pid})"
+    rm -f "$pidfile"
+    return 0
+  fi
+  echo "${name}: sending SIGTERM to PID ${pid}..."
+  kill -TERM "$pid" 2>/dev/null || true
+  pkill -TERM -P "$pid" 2>/dev/null || true
+  i=0
+  while [ "$i" -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    i=$((i + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "${name}: still alive after 5s, sending SIGKILL..."
+    kill -KILL "$pid" 2>/dev/null || true
+    pkill -KILL -P "$pid" 2>/dev/null || true
+  fi
+  rm -f "$pidfile"
+  echo "${name}: stopped"
+}
+
+graceful_stop django
+graceful_stop vite
+"""
+
+[tasks."web:status"]
+description = "Show status of Django + Vite dev servers"
+run = """
+for name in django vite; do
+  pidfile=".web-pids/${name}.pid"
+  if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+    echo "${name}: running (PID $(cat "$pidfile"))"
+  else
+    echo "${name}: stopped"
+    rm -f "$pidfile" 2>/dev/null || true
+  fi
+done
+"""
+
+[tasks."web:logs"]
+description = "Tail Django + Vite dev server logs"
+raw = true
+run = "tail -f .web-pids/django.log .web-pids/vite.log"
 
 [tasks."web:install"]
 description = "Install Python + Node dependencies for the web app"

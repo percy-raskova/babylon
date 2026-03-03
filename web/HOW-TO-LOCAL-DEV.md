@@ -25,9 +25,12 @@ up, you can run everything from the project root:
 | ----------------------- | -------------------------------------------------------------- |
 | `mise run web:install`  | Install Python + Node dependencies                             |
 | `mise run web:migrate`  | Run Django database migrations                                 |
-| `mise run web:dev`      | Start Django + Vite together (Ctrl+C kills both)               |
-| `mise run web:backend`  | Start Django dev server only (port 8000)                       |
-| `mise run web:frontend` | Start Vite dev server only (port 5173)                         |
+| `mise run web:dev`      | Start Django + Vite as background daemons                      |
+| `mise run web:stop`     | Gracefully stop both servers (SIGTERM, then SIGKILL after 5s)  |
+| `mise run web:status`   | Show running/stopped status for each server                    |
+| `mise run web:logs`     | Tail both server log files                                     |
+| `mise run web:backend`  | Start Django in foreground (port 8000)                         |
+| `mise run web:frontend` | Start Vite in foreground (port 5173)                           |
 | `mise run web:test`     | Run frontend tests (Vitest)                                    |
 | `mise run web:check`    | Run frontend quality checks (tsc + eslint + prettier + vitest) |
 | `mise run web:build`    | Build frontend for production                                  |

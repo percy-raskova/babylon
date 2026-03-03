@@ -22,7 +22,7 @@ from babylon.models.entity_registry import (
     LABOR_ARISTOCRACY_ID,
     PERIPHERY_WORKER_ID,
 )
-from babylon.models.enums import EdgeType, SectorType, SocialRole
+from babylon.models.enums import EdgeType, SectorType, SocialRole, TerritoryType
 from babylon.models.scenario import ScenarioConfig
 from babylon.models.world_state import WorldState
 
@@ -526,6 +526,287 @@ def create_imperial_circuit_scenario(
     )
 
     return state, config, defines
+
+
+# =============================================================================
+# US CONUS SCENARIO: Full Hexagonal Coverage
+# =============================================================================
+
+# Major US metro centroids: (lat, lon, population)
+_METRO_CENTROIDS: list[tuple[str, float, float, int]] = [
+    ("New York", 40.71, -74.01, 8_300_000),
+    ("Los Angeles", 34.05, -118.24, 3_900_000),
+    ("Chicago", 41.88, -87.63, 2_700_000),
+    ("Houston", 29.76, -95.37, 2_300_000),
+    ("Phoenix", 33.45, -112.07, 1_600_000),
+    ("Philadelphia", 39.95, -75.17, 1_600_000),
+    ("San Antonio", 29.42, -98.49, 1_500_000),
+    ("San Diego", 32.72, -117.16, 1_400_000),
+    ("Dallas", 32.78, -96.80, 1_300_000),
+    ("San Jose", 37.34, -121.89, 1_000_000),
+    ("Austin", 30.27, -97.74, 980_000),
+    ("Jacksonville", 30.33, -81.66, 950_000),
+    ("San Francisco", 37.77, -122.42, 870_000),
+    ("Seattle", 47.61, -122.33, 750_000),
+    ("Denver", 39.74, -104.99, 720_000),
+    ("Washington DC", 38.91, -77.04, 700_000),
+    ("Nashville", 36.16, -86.78, 690_000),
+    ("Atlanta", 33.75, -84.39, 500_000),
+    ("Detroit", 42.33, -83.05, 640_000),
+    ("Miami", 25.76, -80.19, 440_000),
+]
+
+# Named CONUS regions by lat/lon bucket
+_REGIONS: list[tuple[str, float, float, float, float]] = [
+    # (name, lat_min, lat_max, lon_min, lon_max)
+    ("Pacific Northwest", 42.0, 50.0, -125.0, -116.0),
+    ("California", 32.0, 42.0, -125.0, -114.0),
+    ("Mountain West", 37.0, 50.0, -116.0, -104.0),
+    ("Southwest", 31.0, 37.0, -114.0, -104.0),
+    ("Great Plains", 37.0, 50.0, -104.0, -95.0),
+    ("Texas Gulf", 25.0, 37.0, -104.0, -93.0),
+    ("Upper Midwest", 42.0, 50.0, -95.0, -82.0),
+    ("Heartland", 36.0, 42.0, -95.0, -82.0),
+    ("Deep South", 29.0, 36.0, -93.0, -82.0),
+    ("Southeast", 25.0, 36.0, -82.0, -75.0),
+    ("Mid-Atlantic", 36.0, 42.0, -82.0, -73.0),
+    ("Northeast", 42.0, 50.0, -82.0, -66.0),
+]
+
+
+def _get_region_name(lat: float, lon: float) -> str:
+    """Classify a lat/lon into a named CONUS region.
+
+    Args:
+        lat: Latitude in degrees.
+        lon: Longitude in degrees.
+
+    Returns:
+        Region name string.
+    """
+    for name, lat_min, lat_max, lon_min, lon_max in _REGIONS:
+        if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
+            return name
+    return "Frontier"
+
+
+def _compute_metro_influence(lat: float, lon: float) -> float:
+    """Compute population estimate via Gaussian-weighted metro proximity.
+
+    Each metro contributes population inversely proportional to distance
+    squared (Gaussian kernel with sigma=2.0 degrees ~ 200km).
+
+    Args:
+        lat: Hex centroid latitude.
+        lon: Hex centroid longitude.
+
+    Returns:
+        Estimated population as a float (unscaled metro influence sum).
+    """
+    import math
+
+    sigma = 2.0  # degrees (~200km effective radius)
+    total = 0.0
+    for _name, m_lat, m_lon, m_pop in _METRO_CENTROIDS:
+        d2 = (lat - m_lat) ** 2 + (lon - m_lon) ** 2
+        weight = math.exp(-d2 / (2.0 * sigma**2))
+        total += weight * m_pop
+    return total
+
+
+def _classify_hex(
+    lat: float,
+    lon: float,
+    metro_influence: float,
+) -> tuple[SectorType, TerritoryType, float, float]:
+    """Derive sector type, territory type, rent level, and biocapacity from geography.
+
+    Args:
+        lat: Hex centroid latitude.
+        lon: Hex centroid longitude.
+        metro_influence: Pre-computed metro influence score.
+
+    Returns:
+        Tuple of (sector_type, territory_type, rent_level, biocapacity).
+    """
+    # Sector type: metro-proximate hexes are commercial/residential
+    if metro_influence > 500_000:
+        sector = SectorType.COMMERCIAL
+    elif metro_influence > 100_000:
+        sector = SectorType.RESIDENTIAL
+    elif metro_influence > 20_000:
+        sector = SectorType.INDUSTRIAL
+    else:
+        # Rural/agricultural — map to INDUSTRIAL (closest available enum)
+        sector = SectorType.INDUSTRIAL
+
+    # Territory type: metro = CORE, rural/border = PERIPHERY
+    territory_type = TerritoryType.CORE if metro_influence > 50_000 else TerritoryType.PERIPHERY
+
+    # Rent level: proportional to metro influence (log-scaled, 0.5-10.0)
+    import math
+
+    rent = min(10.0, max(0.5, math.log1p(metro_influence / 100_000)))
+
+    # Biocapacity: higher in agricultural heartland (Great Plains, Midwest)
+    # Lower in arid Southwest and dense urban areas
+    # Base from latitude/longitude position
+    is_heartland = 35.0 <= lat <= 48.0 and -104.0 <= lon <= -82.0
+    is_arid = lat < 37.0 and lon < -104.0
+    if is_heartland:
+        biocap = 150.0
+    elif is_arid:
+        biocap = 40.0
+    else:
+        biocap = 100.0
+    # Dense urban areas have reduced biocapacity
+    if metro_influence > 500_000:
+        biocap *= 0.3
+
+    return sector, territory_type, rent, biocap
+
+
+def _create_us_territories() -> dict[str, Territory]:
+    """Generate ~1100 H3 resolution-3 Territory objects covering CONUS.
+
+    Returns:
+        Dict mapping H3 cell ID to Territory.
+    """
+    import h3
+
+    # CONUS bounding polygon (rectangular approximation)
+    polygon = h3.LatLngPoly([(24.5, -124.7), (49.4, -124.7), (49.4, -66.9), (24.5, -66.9)])
+    cells = h3.polygon_to_cells(polygon, 3)
+
+    territories: dict[str, Territory] = {}
+    for cell in cells:
+        lat, lon = h3.cell_to_latlng(cell)
+        metro_inf = _compute_metro_influence(lat, lon)
+        sector, t_type, rent, biocap = _classify_hex(lat, lon, metro_inf)
+        region = _get_region_name(lat, lon)
+        pop = max(100, int(metro_inf / 10))  # Scale down to per-hex population
+
+        territories[cell] = Territory(
+            id=cell,
+            h3_index=cell,
+            name=f"{region} {sector.value.title()}",
+            sector_type=sector,
+            territory_type=t_type,
+            population=pop,
+            rent_level=rent,
+            biocapacity=biocap,
+            max_biocapacity=biocap,
+            heat=0.0,
+        )
+    return territories
+
+
+def create_us_scenario(
+    extraction_efficiency: float = 0.8,
+    repression_level: float = 0.5,
+    solidarity_strength: float = 0.0,
+) -> tuple[WorldState, SimulationConfig, GameDefines]:
+    """Create a full CONUS hex scenario with ~1100 H3 territories.
+
+    Generates H3 resolution-3 hexagonal tiles covering the continental US.
+    Each hex has geographic-derived economic properties (population, rent,
+    biocapacity, sector type) computed from proximity to 20 metro centroids.
+
+    Reuses the standard 6-class imperial circuit entities (4 active + 2 dormant)
+    and 5 core relationship edges, adding TENANCY edges connecting classes to
+    territory clusters based on class role.
+
+    Args:
+        extraction_efficiency: Alpha in imperial rent formula (default 0.8).
+        repression_level: Base repression level (default 0.5).
+        solidarity_strength: Initial solidarity P_w->C_w (default 0.0).
+
+    Returns:
+        Tuple of (WorldState, SimulationConfig, GameDefines).
+    """
+    # Generate territories
+    territories = _create_us_territories()
+    territory_ids = list(territories.keys())
+
+    # Reuse the 6 social classes from the imperial circuit scenario
+    state, config, defines = create_imperial_circuit_scenario(
+        extraction_efficiency=extraction_efficiency,
+        repression_level=repression_level,
+        solidarity_strength=solidarity_strength,
+    )
+
+    # Build TENANCY edges connecting classes to territory subsets
+    tenancy_edges = _assign_tenancy_edges(territories, territory_ids)
+
+    # Combine all relationships: original edges (minus old T001/T002 tenancies) + new
+    core_relationships = [r for r in state.relationships if r.edge_type != EdgeType.TENANCY]
+
+    return (
+        WorldState(
+            tick=0,
+            entities=state.entities,
+            territories=territories,
+            relationships=[*core_relationships, *tenancy_edges],
+            event_log=[],
+        ),
+        config,
+        defines,
+    )
+
+
+def _assign_tenancy_edges(
+    territories: dict[str, Territory],
+    territory_ids: list[str],
+) -> list[Relationship]:
+    """Create TENANCY edges connecting social classes to territory clusters.
+
+    Assignment logic by class role:
+    - Core Bourgeoisie: top 5% highest-rent hexes (financial centers)
+    - Labor Aristocracy: next 20% highest-rent (suburban residential)
+    - Periphery Worker: industrial/low-rent hexes (bottom 50%)
+    - Comprador: mid-tier commercial hexes (10-30th percentile by rent)
+
+    Args:
+        territories: Full territory dict.
+        territory_ids: Ordered list of territory IDs.
+
+    Returns:
+        List of TENANCY Relationship edges.
+    """
+    # Sort by rent to partition into class zones
+    sorted_ids = sorted(territory_ids, key=lambda tid: territories[tid].rent_level, reverse=True)
+    n = len(sorted_ids)
+
+    # Partition into class zones by rent percentile
+    bourgeois_ids = sorted_ids[: max(1, n // 20)]  # top 5%
+    aristocracy_ids = sorted_ids[n // 20 : n // 5]  # 5-20%
+    comprador_ids = sorted_ids[n // 5 : 3 * n // 10]  # 20-30%
+    worker_ids = sorted_ids[n // 2 :]  # bottom 50%
+
+    edges: list[Relationship] = []
+
+    # Each class gets TENANCY edges to its assigned territories
+    _class_zones = [
+        (CORE_BOURGEOISIE_ID, bourgeois_ids, "Core bourgeoisie financial zone"),
+        (LABOR_ARISTOCRACY_ID, aristocracy_ids, "Labor aristocracy suburban zone"),
+        (COMPRADOR_ID, comprador_ids, "Comprador commercial zone"),
+        (PERIPHERY_WORKER_ID, worker_ids, "Periphery worker industrial zone"),
+    ]
+
+    for class_id, zone_ids, description in _class_zones:
+        for tid in zone_ids:
+            edges.append(
+                Relationship(
+                    source_id=class_id,
+                    target_id=tid,
+                    edge_type=EdgeType.TENANCY,
+                    description=description,
+                    value_flow=0.0,
+                    tension=0.0,
+                )
+            )
+
+    return edges
 
 
 # =============================================================================

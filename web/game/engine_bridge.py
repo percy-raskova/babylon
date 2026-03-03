@@ -22,6 +22,7 @@ from babylon.engine.scenarios import (
     create_imperial_circuit_scenario,
     create_labor_aristocracy_scenario,
     create_two_node_scenario,
+    create_us_scenario,
 )
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
@@ -343,7 +344,10 @@ def _build_initial_state_for_scenario(scenario: str) -> WorldState:
         Seeded WorldState at tick 0.
     """
     normalized = scenario.strip().lower()
-    if normalized in {"default", "imperial_circuit"}:
+    if normalized in {"default", "us"}:
+        state, _config, _defines = create_us_scenario()
+        return state
+    if normalized == "imperial_circuit":
         state, _config, _defines = create_imperial_circuit_scenario()
         return state
     if normalized == "two_node":
@@ -353,8 +357,8 @@ def _build_initial_state_for_scenario(scenario: str) -> WorldState:
         state, _config, _defines = create_labor_aristocracy_scenario()
         return state
 
-    logger.warning("Unknown scenario '%s', falling back to imperial_circuit", scenario)
-    state, _config, _defines = create_imperial_circuit_scenario()
+    logger.warning("Unknown scenario '%s', falling back to us", scenario)
+    state, _config, _defines = create_us_scenario()
     return state
 
 

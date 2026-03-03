@@ -720,6 +720,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol. No new database tables. State apparatus AI state persists via WorldState serialization. AttentionThread and FactionBalance stored as graph node attributes or context persistent data. (039-state-apparatus-ai)
 - Python 3.12+ + Pydantic 2.x (frozen models, validators), NetworkX 3.x (GraphProtocol), XGI 0.10 (community embeddedness queries) (040-institution-base-model)
 - In-memory via GraphProtocol. No new database tables. Institution state persists via WorldState serialization (`_node_type="institution"`). (040-institution-base-model)
+- Python 3.12+ (backend), TypeScript 5.x (frontend) + Django 5.x, Pydantic 2.x, NetworkX 3.x, psycopg 3.x, React 19, Zustand 5, Vite 6, deck.gl 9, react-router-dom 7 (installed, unused) (041-mvp-nationwide-sim)
+- PostgreSQL 16+ (runtime state via `postgres_runtime.py`), SQLite (reference data) (041-mvp-nationwide-sim)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

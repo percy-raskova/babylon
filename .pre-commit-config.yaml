@@ -149,6 +149,14 @@ repos:
         pass_filenames: false
         files: ^web/frontend/src/.*\.(ts|tsx|css)$
 
+      - id: frontend-vitest
+        name: vitest (frontend tests)
+        entry: bash -c 'cd web/frontend && npx vitest run'
+        language: system
+        pass_filenames: false
+        files: ^web/frontend/src/.*\.(ts|tsx)$
+        stages: [pre-push]
+
   # ==========================================================================
   # COMMITIZEN - Conventional Commits
   # ==========================================================================

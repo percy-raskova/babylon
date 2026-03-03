@@ -398,7 +398,7 @@ class TestHydrateGraph:
         graph = runtime.hydrate_graph(tick=0, session_id=session_id)
 
         assert "worker_1" in graph.nodes
-        assert graph.nodes["worker_1"]["type"] == "SocialClass"
+        assert graph.nodes["worker_1"]["_node_type"] == "SocialClass"
         assert graph.nodes["worker_1"]["wealth"] == 50.0
         assert graph.nodes["worker_1"]["organization"] == 0.5
 
@@ -430,7 +430,6 @@ class TestHydrateGraph:
 
         assert graph.has_edge("a", "b")
         edge_data = graph.edges["a", "b"]
-        assert edge_data["type"] == "EXPLOITATION"
         assert edge_data["edge_type"] == "EXPLOITATION"
         assert edge_data["value_flow"] == 100.0
 
@@ -483,7 +482,7 @@ class TestHydrateGraph:
         graph = runtime.hydrate_graph(tick=0, session_id=session_id)
 
         assert "a" in graph.nodes
-        assert graph.nodes["a"]["type"] == "SocialClass"
+        assert graph.nodes["a"]["_node_type"] == "SocialClass"
 
     def test_jsonb_round_trip_fidelity(
         self,

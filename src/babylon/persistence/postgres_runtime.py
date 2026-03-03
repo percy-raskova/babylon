@@ -152,7 +152,7 @@ class PostgresRuntime:
             )
             for row in cur.fetchall():
                 attrs = row["attributes"] if isinstance(row["attributes"], dict) else {}
-                attrs["type"] = row["node_type"]
+                attrs["_node_type"] = row["node_type"]
                 graph.add_node(row["node_id"], **attrs)
 
             # Load edges
@@ -163,7 +163,6 @@ class PostgresRuntime:
             )
             for row in cur.fetchall():
                 attrs = row["attributes"] if isinstance(row["attributes"], dict) else {}
-                attrs["type"] = row["edge_type"]
                 attrs["edge_type"] = row["edge_type"]
                 graph.add_edge(row["source_id"], row["target_id"], **attrs)
 

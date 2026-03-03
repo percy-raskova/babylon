@@ -313,7 +313,7 @@ class WorldState(BaseModel):
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
             # Create a copy without _node_type for model construction
-            node_data = {k: v for k, v in data.items() if k != "_node_type"}
+            node_data = {k: v for k, v in data.items() if k not in ("_node_type", "type")}
 
             if node_type == "territory":
                 # Reconstruct Territory

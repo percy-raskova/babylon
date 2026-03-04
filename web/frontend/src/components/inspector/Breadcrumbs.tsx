@@ -52,7 +52,7 @@ export function Breadcrumbs() {
       </button>
       {breadcrumbs.map((crumb, i) => (
         <span key={crumb.entityId ?? i} className="flex items-center gap-1">
-          <span className="text-[10px] text-wet-concrete">/</span>
+          <span className="text-[10px] text-ash">/</span>
           {i < breadcrumbs.length - 1 ? (
             <button
               onClick={() => handleCrumbClick(i)}

@@ -153,13 +153,13 @@ function TimeSeriesChart({
             <XAxis
               dataKey="tick"
               ticks={ticks}
-              tick={{ fontSize: 9, fill: "#606070" }}
+              tick={{ fontSize: 9, fill: "#787878" }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               domain={chart.yDomain ?? ["auto", "auto"]}
-              tick={{ fontSize: 9, fill: "#444" }}
+              tick={{ fontSize: 9, fill: "#787878" }}
               axisLine={false}
               tickLine={false}
               width={30}

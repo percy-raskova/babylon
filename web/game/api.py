@@ -165,6 +165,39 @@ def game_list(request: Request) -> JsonResponse:
     )
 
 
+# ---------------------------------------------------------------------- #
+# Scenario catalog
+# ---------------------------------------------------------------------- #
+
+SCENARIO_CATALOG: list[dict[str, Any]] = [
+    {
+        "key": "us_nationwide",
+        "name": "United States — Nationwide",
+        "description": "Full CONUS simulation with ~1,100 H3 territories",
+        "territory_count": 1100,
+    },
+    {
+        "key": "imperial_circuit",
+        "name": "Imperial Circuit",
+        "description": "6-class imperial circuit with core/periphery dynamics",
+        "territory_count": 2,
+    },
+    {
+        "key": "two_node",
+        "name": "Two-Node Dialectic",
+        "description": "Minimal scenario: one worker, one owner, one territory",
+        "territory_count": 1,
+    },
+]
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def scenario_list(request: Request) -> JsonResponse:
+    """GET /api/scenarios/ — List available game scenarios."""
+    return _envelope(SCENARIO_CATALOG)
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def game_detail(request: Request, game_id: str) -> JsonResponse:

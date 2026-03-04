@@ -136,13 +136,13 @@ ______________________________________________________________________
 
 ### Tests (Red Phase)
 
-- [ ] T033 [P] [US5] Write test for scenario list endpoint in `web/game/tests/test_api.py` — test `GET /api/scenarios/` returns at least 2 scenarios with key, name, description, territory_count
+- [x] T033 [P] [US5] Write test for scenario list endpoint in `web/game/tests/test_api.py` — test `GET /api/scenarios/` returns at least 2 scenarios with key, name, description, territory_count
 
 ### Implementation (Green Phase)
 
-- [ ] T034 [US5] Add scenario list endpoint in `web/game/api.py` — `GET /api/scenarios/` that queries available scenario factory functions from `babylon.engine.scenarios` and returns metadata (key, name, description, approximate territory count) (FR-013)
-- [ ] T035 [US5] Accept scenario parameter in game creation in `web/game/api.py` — modify `POST /api/games/` to accept optional `scenario` field in request body, pass to `engine_bridge.create_game()`, default to `us_nationwide`
-- [ ] T036 [US5] Add scenario selector to game creation UI in `web/frontend/src/components/GameList.tsx` — fetch `GET /api/scenarios/` on mount, display scenario cards/dropdown in the "New Game" flow, send selected scenario key with create request
+- [x] T034 [US5] Add scenario list endpoint in `web/game/api.py` — `GET /api/scenarios/` that queries available scenario factory functions from `babylon.engine.scenarios` and returns metadata (key, name, description, approximate territory count) (FR-013)
+- [x] T035 [US5] Accept scenario parameter in game creation in `web/game/api.py` — modify `POST /api/games/` to accept optional `scenario` field in request body, pass to `engine_bridge.create_game()`, default to `us_nationwide`
+- [x] T036 [US5] Add scenario selector to game creation UI in `web/frontend/src/components/GameList.tsx` — fetch `GET /api/scenarios/` on mount, display scenario cards/dropdown in the "New Game" flow, send selected scenario key with create request
 
 **Checkpoint**: Create a game with the small scenario, verify fewer territories. Create with nationwide, verify ~1,100 territories. Commit with `feat(scenarios): scenario selection for game creation (FR-013)`.
 

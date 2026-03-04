@@ -1,12 +1,20 @@
 /**
  * Game list component.
  *
- * Shows the player's games and allows creating new ones.
+ * Shows the player's games and allows creating new ones with scenario selection.
  */
 
 import { useEffect, useState } from "react";
 import { get, post } from "@/api/client";
 import type { GameSummary, CreateGameParams } from "@/types/game";
+
+/** Scenario metadata from GET /api/scenarios/. */
+interface ScenarioInfo {
+  key: string;
+  name: string;
+  description: string;
+  territory_count: number;
+}
 
 interface GameListProps {
   onSelectGame: (gameId: string) => void;
@@ -14,25 +22,36 @@ interface GameListProps {
 
 export function GameList({ onSelectGame }: GameListProps) {
   const [games, setGames] = useState<GameSummary[]>([]);
+  const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
+  const [selectedScenario, setSelectedScenario] = useState<string>("us_nationwide");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    async function fetchGames() {
-      const res = await get<GameSummary[]>("/api/games/");
+    async function fetchData() {
+      const [gamesRes, scenariosRes] = await Promise.all([
+        get<GameSummary[]>("/api/games/"),
+        get<ScenarioInfo[]>("/api/scenarios/"),
+      ]);
       if (cancelled) return;
-      if (res.status === "ok") {
-        setGames(res.data);
+      if (gamesRes.status === "ok") {
+        setGames(gamesRes.data);
       } else {
-        setError(res.message ?? "Failed to load games");
+        setError(gamesRes.message ?? "Failed to load games");
+      }
+      if (scenariosRes.status === "ok") {
+        setScenarios(scenariosRes.data);
+        if (scenariosRes.data.length > 0 && scenariosRes.data[0]) {
+          setSelectedScenario(scenariosRes.data[0].key);
+        }
       }
       if (!cancelled) {
         setLoading(false);
       }
     }
-    void fetchGames();
+    void fetchData();
     return () => {
       cancelled = true;
     };
@@ -41,7 +60,7 @@ export function GameList({ onSelectGame }: GameListProps) {
   async function handleCreate() {
     setCreating(true);
     setError(null);
-    const params: CreateGameParams = { scenario: "default" };
+    const params: CreateGameParams = { scenario: selectedScenario };
     const res = await post<{ session_id: string }>("/api/games/", params);
     setCreating(false);
 
@@ -56,18 +75,41 @@ export function GameList({ onSelectGame }: GameListProps) {
     return <div className="p-16 text-center text-silver">Loading games...</div>;
   }
 
+  const selectedInfo = scenarios.find((s) => s.key === selectedScenario);
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-bone">Your Games</h2>
-        <button
-          onClick={handleCreate}
-          disabled={creating}
-          className="rounded-lg bg-gold px-5 py-2.5 text-sm font-semibold text-void hover:brightness-110 disabled:opacity-50"
-        >
-          {creating ? "Creating..." : "+ New Game"}
-        </button>
+        <div className="flex items-center gap-3">
+          {scenarios.length > 1 && (
+            <select
+              value={selectedScenario}
+              onChange={(e) => setSelectedScenario(e.target.value)}
+              className="rounded border border-soot bg-void px-2 py-2 text-[12px] text-bone focus:border-gold focus:outline-none"
+            >
+              {scenarios.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="rounded-lg bg-gold px-5 py-2.5 text-sm font-semibold text-void hover:brightness-110 disabled:opacity-50"
+          >
+            {creating ? "Creating..." : "+ New Game"}
+          </button>
+        </div>
       </div>
+
+      {selectedInfo && (
+        <p className="mb-4 text-[12px] text-ash">
+          {selectedInfo.description} ({selectedInfo.territory_count} territories)
+        </p>
+      )}
 
       {error && <p className="mb-4 text-[13px] text-crimson">{error}</p>}
 

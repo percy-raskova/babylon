@@ -12,9 +12,13 @@ import { makeGameSummary } from "@/test/fixtures";
 
 describe("GameList", () => {
   it("shows loading state initially", () => {
-    // Use a delayed handler so loading state persists
+    // Use delayed handlers so loading state persists
     server.use(
       http.get("/api/games/", async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        return HttpResponse.json({ status: "ok", data: [] });
+      }),
+      http.get("/api/scenarios/", async () => {
         await new Promise((r) => setTimeout(r, 200));
         return HttpResponse.json({ status: "ok", data: [] });
       }),
@@ -121,6 +125,7 @@ describe("GameList", () => {
           headers: { "Content-Type": "text/html" },
         }),
       ),
+      http.get("/api/scenarios/", () => HttpResponse.json({ status: "ok", data: [] })),
     );
 
     render(<GameList onSelectGame={vi.fn()} />);

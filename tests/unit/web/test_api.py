@@ -280,3 +280,57 @@ class TestIdempotencyGuard:
         assert response.status_code in (400, 409)
         data = json.loads(response.content)
         assert data["status"] == "error"
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestScenarioList:
+    """T033: Verify GET /api/scenarios/ returns scenario catalog."""
+
+    def test_scenario_list_url(self) -> None:
+        url = reverse("game:scenario-list")
+        assert url == "/api/scenarios/"
+
+    def test_scenario_list_returns_scenarios(self) -> None:
+        from django.contrib.auth.models import User
+        from django.test import Client
+
+        User.objects.create_user(username="scenuser", password="scenpass123")  # type: ignore[no-untyped-call]
+        client = Client()
+        client.login(username="scenuser", password="scenpass123")
+
+        response = client.get("/api/scenarios/")
+        assert response.status_code == 200
+        data = json.loads(response.content)
+        assert data["status"] == "ok"
+        scenarios = data["data"]
+        assert len(scenarios) >= 2
+
+        # Each scenario has required metadata fields
+        for scenario in scenarios:
+            assert "key" in scenario
+            assert "name" in scenario
+            assert "description" in scenario
+            assert "territory_count" in scenario
+
+    def test_scenario_list_contains_us_nationwide(self) -> None:
+        from django.contrib.auth.models import User
+        from django.test import Client
+
+        User.objects.create_user(username="scenuser2", password="scenpass123")  # type: ignore[no-untyped-call]
+        client = Client()
+        client.login(username="scenuser2", password="scenpass123")
+
+        response = client.get("/api/scenarios/")
+        data = json.loads(response.content)
+        scenarios = data["data"]
+        keys = [s["key"] for s in scenarios]
+        assert "us_nationwide" in keys
+
+    def test_scenario_list_unauthenticated_returns_403(self) -> None:
+        factory = RequestFactory()
+        request = factory.get("/api/scenarios/")
+        from game.api import scenario_list
+
+        response = scenario_list(request)
+        assert response.status_code == 403

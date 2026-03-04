@@ -31,6 +31,27 @@ export const handlers = [
 
   http.post("/accounts/logout/", () => HttpResponse.json({ status: "ok", data: null })),
 
+  // Scenario catalog
+  http.get("/api/scenarios/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: [
+        {
+          key: "us_nationwide",
+          name: "United States — Nationwide",
+          description: "Full CONUS simulation",
+          territory_count: 1100,
+        },
+        {
+          key: "two_node",
+          name: "Two-Node Dialectic",
+          description: "Minimal scenario",
+          territory_count: 1,
+        },
+      ],
+    }),
+  ),
+
   // Game list
   http.get("/api/games/", () =>
     HttpResponse.json({

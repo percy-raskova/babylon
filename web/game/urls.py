@@ -12,6 +12,8 @@ from . import api
 app_name = "game"
 
 urlpatterns: list[URLPattern] = [
+    # Scenario catalog
+    path("scenarios/", api.scenario_list, name="scenario-list"),
     # Game lifecycle
     path("games/", api.game_list, name="game-list"),
     path("games/<str:game_id>/", api.game_detail, name="game-detail"),

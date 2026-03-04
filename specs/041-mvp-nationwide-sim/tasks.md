@@ -152,13 +152,13 @@ ______________________________________________________________________
 
 **Purpose**: Complete test coverage requirements and verify all success criteria
 
-- [ ] T037 Verify all existing engine tests pass with `mise run test:unit` — ensure zero regressions (SC-005)
-- [ ] T038 [P] Verify all existing frontend tests pass with `mise run web:check` — ensure zero regressions (SC-005)
-- [ ] T039 [P] Verify `npm run build` succeeds in `web/frontend/` — confirm no TypeScript errors remain (SC-007)
-- [ ] T040 Count Django backend tests and fill gaps in `web/game/tests/` — ensure at least 20 tests exist covering game creation, action submission, tick resolution, validation errors, idempotency, action results, endgame, and scenario selection (SC-006)
-- [ ] T041 Update Playwright E2E tests in `web/frontend/e2e/` — update `auth.spec.ts`, `game-loop.spec.ts`, `navigation.spec.ts` to run against live server covering login, game creation, action submission, tick resolution, and result verification (SC-008)
-- [ ] T042 Run full integration smoke test — create game, submit 3 actions across 3 ticks, verify ActionResults, play to tick 10 within 15 minutes (SC-001, SC-002)
-- [ ] T043 Update `ai-docs/state.yaml` with new test counts and feature status
+- [x] T037 Verify all existing engine tests pass with `mise run test:unit` — ensure zero regressions (SC-005)
+- [x] T038 [P] Verify all existing frontend tests pass with `mise run web:check` — ensure zero regressions (SC-005)
+- [x] T039 [P] Verify `npm run build` succeeds in `web/frontend/` — confirm no TypeScript errors remain (SC-007)
+- [x] T040 Count Django backend tests and fill gaps in `web/game/tests/` — ensure at least 20 tests exist covering game creation, action submission, tick resolution, validation errors, idempotency, action results, endgame, and scenario selection (SC-006)
+- [x] T041 Update Playwright E2E tests in `web/frontend/e2e/` — update `auth.spec.ts`, `game-loop.spec.ts`, `navigation.spec.ts` to run against live server covering login, game creation, action submission, tick resolution, and result verification (SC-008)
+- [x] T042 Run full integration smoke test — create game, submit 3 actions across 3 ticks, verify ActionResults, play to tick 10 within 15 minutes (SC-001, SC-002)
+- [x] T043 Update `ai-docs/state.yaml` with new test counts and feature status
 
 **Checkpoint**: All 8 success criteria verified. Commit with `feat(041): MVP nationwide simulation complete — all success criteria met`.
 

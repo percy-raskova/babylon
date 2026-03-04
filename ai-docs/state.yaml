@@ -1709,8 +1709,8 @@ current_focus:
   milestone_date: "2026-01-01"
   milestone_document: "ai-docs/epoch1-mvp-complete.md"
   next_milestone: "Slice 1.5: Dashboard wire-up (visualization only - mechanics complete)"
-  test_count: 7570
-  test_count_note: "Updated 2026-02-27 - Feature 028 constants remediation sweep complete"
+  test_count: 7853
+  test_count_note: "Updated 2026-03-03 - Feature 041 MVP nationwide simulation (7609 engine + 219 frontend + 23 django + 2 integration)"
 
   constants_remediation_sweep:
     status: "COMPLETE"
@@ -1915,6 +1915,52 @@ tech_debt:
       - "docs/reference/state-apparatus-ai.rst"
       - "docs/concepts/state-apparatus-ai.rst"
       - "docs/how-to/state-apparatus-ai.rst"
+
+  feature_041_mvp_nationwide_sim:
+    status: "COMPLETE"
+    date: "2026-03-03"
+    branch: "041-mvp-nationwide-sim"
+    spec: "specs/041-mvp-nationwide-sim/"
+    description: "MVP web-playable nationwide simulation — Django+React frontend with full game loop"
+    test_counts:
+      engine_unit: 7609
+      frontend_vitest: 219
+      django_backend: 23
+      e2e_playwright: 13
+    phases_completed: 8
+    tasks_completed: 43
+    commits: 8
+    user_stories:
+      - "US1: Play a complete game session (action submission, tick resolution, endgame)"
+      - "US2: Understand simulation state (hex map, inspector, time series)"
+      - "US3: Make strategic decisions (org filtering, verb tooltips, action results)"
+      - "US4: Resume games across sessions (React Router URL-based navigation)"
+      - "US5: Choose scenarios (scenario catalog API + selector dropdown)"
+    key_files:
+      backend:
+        - "web/game/api.py (12 DRF views — game lifecycle, state, actions, scenarios)"
+        - "web/game/engine_bridge.py (EngineBridge — action injection, result persistence, endgame)"
+        - "web/game/tick_resolver.py (atomic tick resolution with idempotency guard)"
+        - "web/game/urls.py (11 URL patterns under /api/)"
+      frontend:
+        - "web/frontend/src/App.tsx (React Router navigation with auth guards)"
+        - "web/frontend/src/components/layout/GameShell.tsx (3-panel game UI)"
+        - "web/frontend/src/components/action/ActionComposer.tsx (org-filtered action submission)"
+        - "web/frontend/src/components/GameList.tsx (scenario-aware game list)"
+        - "web/frontend/src/components/layout/EndgameOverlay.tsx (endgame notification)"
+      tests:
+        - "tests/unit/web/test_api.py (23 tests)"
+        - "tests/unit/web/test_engine_bridge.py (24 tests)"
+        - "web/frontend/e2e/ (3 spec files, 13 tests)"
+    success_criteria_met:
+      - "SC-001: Game session from tick 0 to endgame"
+      - "SC-002: 3+ actions submitted and resolved across 3 ticks"
+      - "SC-003: Session persisted and resumable via URL"
+      - "SC-004: Endgame notification triggered"
+      - "SC-005: Zero regressions (7609 engine tests pass)"
+      - "SC-006: 23+ Django backend tests (target: 20)"
+      - "SC-007: npm run build succeeds (zero TS errors)"
+      - "SC-008: E2E tests cover login, game creation, actions, resolution"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

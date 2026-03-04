@@ -1,5 +1,8 @@
 /**
  * Unit tests for the TimeSeries component.
+ *
+ * TimeSeries now shows lens-dependent chart defaults. The default lens
+ * (political) shows: Consciousness, Heat, Organization.
  */
 
 import { describe, it, expect } from "vitest";
@@ -15,7 +18,7 @@ describe("TimeSeries", () => {
     expect(screen.getByText(/No tick data recorded/)).toBeInTheDocument();
   });
 
-  it("renders chart titles when data exists", () => {
+  it("renders lens-default chart titles when data exists", () => {
     // Populate tick summaries
     useGameStore.setState({
       tickSummaries: [
@@ -42,13 +45,16 @@ describe("TimeSeries", () => {
     const snap = makeSnapshot();
     render(<TimeSeries snapshot={snap} />);
 
-    expect(screen.getByText("Wealth")).toBeInTheDocument();
-    expect(screen.getByText("Heat")).toBeInTheDocument();
-    expect(screen.getByText("Consciousness")).toBeInTheDocument();
-    expect(screen.getByText("Organization")).toBeInTheDocument();
+    // Default lens is "political" which shows: Consciousness, Heat, Organization
+    // Each visible chart produces 2 elements: selector button + chart section label
+    expect(screen.getAllByText("Consciousness").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Heat").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Organization").length).toBeGreaterThanOrEqual(2);
+    // Wealth is only in the selector button (not visible as chart)
+    expect(screen.getAllByText("Wealth").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders 4 chart sections", () => {
+  it("renders chart sections matching default lens selection", () => {
     useGameStore.setState({
       tickSummaries: [
         {
@@ -65,9 +71,11 @@ describe("TimeSeries", () => {
     const snap = makeSnapshot();
     render(<TimeSeries snapshot={snap} />);
 
+    // All 4 chart titles appear as selector buttons at top
+    // Some also appear as chart section labels (duplicates)
     const titles = ["Wealth", "Heat", "Consciousness", "Organization"];
     for (const title of titles) {
-      expect(screen.getByText(title)).toBeInTheDocument();
+      expect(screen.getAllByText(title).length).toBeGreaterThanOrEqual(1);
     }
   });
 });

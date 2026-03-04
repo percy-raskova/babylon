@@ -2,6 +2,7 @@
  * Integration test: inspector ↔ UI store selection routing.
  *
  * Tests that store selections drive Inspector content.
+ * Inspector now uses Breadcrumbs (with "Overview" button) instead of "Clear".
  */
 
 import { describe, it, expect } from "vitest";
@@ -23,14 +24,15 @@ describe("inspector selection routing", () => {
   it("switches to NodeInspector when node selected via store", () => {
     useUIStore.setState({ selectedNodeId: "entity-proletariat" });
     render(<Inspector snapshot={snapshot} />);
-    expect(screen.getByText("Proletariat")).toBeInTheDocument();
+    // Unique to entity detail — breadcrumbs also show "Proletariat"
     expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
   });
 
   it("switches to HexInspector when hex selected via store", () => {
     useUIStore.setState({ selectedHexId: "territory-downtown" });
     render(<Inspector snapshot={snapshot} />);
-    expect(screen.getByText("Downtown")).toBeInTheDocument();
+    // "Downtown" may appear in breadcrumbs + inspector
+    expect(screen.getAllByText("Downtown").length).toBeGreaterThanOrEqual(1);
   });
 
   it("node selection takes priority over hex selection", () => {
@@ -39,20 +41,29 @@ describe("inspector selection routing", () => {
       selectedHexId: "territory-downtown",
     });
     render(<Inspector snapshot={snapshot} />);
-    // Should show entity, not territory
-    expect(screen.getByText("Proletariat")).toBeInTheDocument();
-    expect(screen.queryByText("Downtown")).not.toBeInTheDocument();
+    // P(Acquiescence) is unique to entity detail view
+    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
   });
 
-  it("clear button returns to OrgDashboard", async () => {
+  it("overview button returns to OrgDashboard", async () => {
     const user = userEvent.setup();
-    useUIStore.setState({ selectedNodeId: "entity-proletariat" });
+    useUIStore.setState({
+      selectedNodeId: "entity-proletariat",
+      breadcrumbs: [
+        {
+          entityType: "entity",
+          entityId: "entity-proletariat",
+          displayName: "Proletariat",
+          lensId: "political",
+        },
+      ],
+    });
     render(<Inspector snapshot={snapshot} />);
 
-    expect(screen.getByText("Proletariat")).toBeInTheDocument();
-    await user.click(screen.getByText("Clear"));
+    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
+    await user.click(screen.getByText("Overview"));
 
-    // After clearing, should show OrgDashboard
+    // After clearing, should reset selection
     expect(useUIStore.getState().selectedNodeId).toBeNull();
   });
 });

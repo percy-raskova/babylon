@@ -54,9 +54,10 @@ describe("NodeInspector", () => {
       expect(screen.getByText("Cadre Level")).toBeInTheDocument();
     });
 
-    it("shows territory IDs", () => {
+    it("shows territories as clickable rows with resolved names", () => {
       render(<NodeInspector snapshot={snapshot} nodeId="org-workers-union" />);
-      expect(screen.getByText("territory-downtown")).toBeInTheDocument();
+      // Territories now show resolved name instead of raw ID
+      expect(screen.getByText("Downtown")).toBeInTheDocument();
     });
   });
 
@@ -74,9 +75,10 @@ describe("NodeInspector", () => {
       expect(screen.getByText("Institutionalist-Bonapartist")).toBeInTheDocument();
     });
 
-    it("shows housed organizations", () => {
+    it("shows housed organizations by name", () => {
       render(<NodeInspector snapshot={snapshot} nodeId="inst-city-hall" />);
-      expect(screen.getByText("org-workers-union")).toBeInTheDocument();
+      // Housed orgs now display resolved name instead of raw ID
+      expect(screen.getByText("Workers Union")).toBeInTheDocument();
     });
   });
 

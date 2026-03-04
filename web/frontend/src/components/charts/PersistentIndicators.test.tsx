@@ -1,5 +1,9 @@
 /**
  * Unit tests for the PersistentIndicators component.
+ *
+ * PersistentIndicators renders pinned indicators from uiStore using
+ * IndicatorChip. Default pinned: avg_consciousness, avg_heat,
+ * avg_organization, imperial_rent.
  */
 
 import { describe, it, expect } from "vitest";
@@ -8,24 +12,15 @@ import { PersistentIndicators } from "./PersistentIndicators";
 import { makeSnapshot } from "@/test/fixtures";
 
 describe("PersistentIndicators", () => {
-  it("renders 4 indicator labels", () => {
+  it("renders default pinned indicator labels", () => {
     const snap = makeSnapshot();
     render(<PersistentIndicators snapshot={snap} />);
 
-    expect(screen.getByText("Heat")).toBeInTheDocument();
-    expect(screen.getByText("Consciousness")).toBeInTheDocument();
-    expect(screen.getByText("Orgs")).toBeInTheDocument();
-    expect(screen.getByText("Solidarity")).toBeInTheDocument();
-  });
-
-  it("shows correct org count", () => {
-    const snap = makeSnapshot(); // 1 org in default fixture
-    render(<PersistentIndicators snapshot={snap} />);
-    // Both Orgs (1) and Solidarity (1) show "1", so use getAllByText
-    const ones = screen.getAllByText("1");
-    expect(ones.length).toBeGreaterThanOrEqual(1);
-    // Verify the Orgs indicator specifically: find label, then sibling value
-    expect(screen.getByText("Orgs")).toBeInTheDocument();
+    // Default pinned: avg_consciousness, avg_heat, avg_organization, imperial_rent
+    expect(screen.getByText("Avg Consciousness")).toBeInTheDocument();
+    expect(screen.getByText("Avg Heat")).toBeInTheDocument();
+    expect(screen.getByText("Avg Organization")).toBeInTheDocument();
+    expect(screen.getByText("Imperial Rent")).toBeInTheDocument();
   });
 
   it("computes average heat correctly", () => {
@@ -40,10 +35,16 @@ describe("PersistentIndicators", () => {
     expect(screen.getByText("0.20")).toBeInTheDocument();
   });
 
-  it("counts solidarity edges", () => {
-    const snap = makeSnapshot(); // 1 edge with solidarity_strength > 0
+  it("shows imperial rent value", () => {
+    const snap = makeSnapshot(); // economy.imperial_rent = 50
     render(<PersistentIndicators snapshot={snap} />);
-    // 1 solidarity edge (the TENANCY edge has solidarity_strength 0.6)
-    expect(screen.getAllByText("1")).toHaveLength(2); // org count=1, solidarity=1
+    expect(screen.getByText("$50.0")).toBeInTheDocument();
+  });
+
+  it("shows avg organization value", () => {
+    const snap = makeSnapshot();
+    render(<PersistentIndicators snapshot={snap} />);
+    // Both entities have organization 0.15 -> avg = 0.15
+    expect(screen.getByText("0.15")).toBeInTheDocument();
   });
 });

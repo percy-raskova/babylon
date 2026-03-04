@@ -25,8 +25,8 @@ describe("store ↔ component sync", () => {
     });
     rerender(<Inspector snapshot={snapshot} />);
 
-    // Now shows entity detail
-    expect(screen.getByText("Proletariat")).toBeInTheDocument();
+    // Now shows entity detail — "Proletariat" in both breadcrumbs + detail
+    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
 
     // Clear selection
     act(() => {

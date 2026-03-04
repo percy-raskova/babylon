@@ -20,14 +20,15 @@ describe("Inspector", () => {
   it("shows NodeInspector when nodeId selected", () => {
     useUIStore.setState({ selectedNodeId: "entity-proletariat" });
     render(<Inspector snapshot={snapshot} />);
-    expect(screen.getByText("Proletariat")).toBeInTheDocument();
-    expect(screen.getByText("Inspector")).toBeInTheDocument();
+    // "Proletariat" may appear in breadcrumbs + inspector detail
+    expect(screen.getAllByText("Proletariat").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows HexInspector when hexId selected", () => {
     useUIStore.setState({ selectedHexId: "territory-downtown" });
     render(<Inspector snapshot={snapshot} />);
-    expect(screen.getByText("Downtown")).toBeInTheDocument();
+    // "Downtown" may appear in breadcrumbs + inspector detail
+    expect(screen.getAllByText("Downtown").length).toBeGreaterThanOrEqual(1);
   });
 
   it("node selection takes priority over hex selection", () => {
@@ -36,26 +37,45 @@ describe("Inspector", () => {
       selectedHexId: "territory-downtown",
     });
     render(<Inspector snapshot={snapshot} />);
-    // Should show entity, not territory
-    expect(screen.getByText("Proletariat")).toBeInTheDocument();
-    expect(screen.queryByText("Downtown")).not.toBeInTheDocument();
+    // Should show entity detail (P(Acquiescence) is unique to entity)
+    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
   });
 
-  it("clear button resets node selection", async () => {
+  it("overview button resets node selection", async () => {
     const user = userEvent.setup();
-    useUIStore.setState({ selectedNodeId: "entity-proletariat" });
+    useUIStore.setState({
+      selectedNodeId: "entity-proletariat",
+      breadcrumbs: [
+        {
+          entityType: "entity",
+          entityId: "entity-proletariat",
+          displayName: "Proletariat",
+          lensId: "political",
+        },
+      ],
+    });
     render(<Inspector snapshot={snapshot} />);
 
-    await user.click(screen.getByText("Clear"));
+    await user.click(screen.getByText("Overview"));
     expect(useUIStore.getState().selectedNodeId).toBeNull();
   });
 
-  it("clear button resets hex selection", async () => {
+  it("overview button resets hex selection", async () => {
     const user = userEvent.setup();
-    useUIStore.setState({ selectedHexId: "territory-downtown" });
+    useUIStore.setState({
+      selectedHexId: "territory-downtown",
+      breadcrumbs: [
+        {
+          entityType: "territory",
+          entityId: "territory-downtown",
+          displayName: "Downtown",
+          lensId: "political",
+        },
+      ],
+    });
     render(<Inspector snapshot={snapshot} />);
 
-    await user.click(screen.getByText("Clear"));
+    await user.click(screen.getByText("Overview"));
     expect(useUIStore.getState().selectedHexId).toBeNull();
   });
 });

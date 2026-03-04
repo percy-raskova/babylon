@@ -26,11 +26,31 @@ from babylon.engine.scenarios import (
 )
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
+from babylon.models.enums import ActionType
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.persistence.protocols import RuntimePersistence
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------- #
+# Verb-to-ActionType mapping (9 canonical player verbs → engine ActionType)
+# See: specs/041-mvp-nationwide-sim/research.md §2
+# ---------------------------------------------------------------------- #
+
+VERB_TO_ACTION_TYPE: dict[str, ActionType] = {
+    "educate": ActionType.EDUCATE,
+    "reproduce": ActionType.RECRUIT,
+    "investigate": ActionType.MAP_NETWORK,
+    "attack": ActionType.ATTACK_INFRASTRUCTURE,
+    "mobilize": ActionType.PROTEST,
+    "campaign": ActionType.PROPAGANDIZE,
+    "aid": ActionType.PROVIDE_SERVICE,
+    "move": ActionType.ORGANIZE,
+    "negotiate": ActionType.PROPOSE_ALLIANCE,
+}
+
+CANONICAL_VERBS: frozenset[str] = frozenset(VERB_TO_ACTION_TYPE.keys())
 
 
 class EngineBridge:
@@ -503,3 +523,46 @@ def _mark_resolved_safe(persistence: RuntimePersistence, session_id: UUID, tick:
     mark_fn = getattr(persistence, "mark_turns_resolved", None)
     if mark_fn is not None:
         mark_fn(session_id=session_id, tick=tick)
+
+
+# ---------------------------------------------------------------------- #
+# Persistence initialization (called from apps.py to preserve boundary)
+# ---------------------------------------------------------------------- #
+
+# Module-level pool reference to keep the connection pool alive
+_pool: Any = None
+
+
+def init_persistence(db_config: dict[str, Any]) -> RuntimePersistence:
+    """Create a PostgresRuntime persistence layer from Django DB settings.
+
+    This function encapsulates all engine/persistence imports so that
+    ``apps.py`` never imports from ``babylon.*`` directly.
+
+    Args:
+        db_config: Django DATABASES["default"] dict with HOST, PORT, etc.
+
+    Returns:
+        A RuntimePersistence instance backed by PostgreSQL.
+    """
+    global _pool  # noqa: PLW0603
+
+    from psycopg_pool import ConnectionPool
+
+    from babylon.persistence.postgres_runtime import PostgresRuntime
+
+    host = str(db_config.get("HOST", "localhost"))
+    port = str(db_config.get("PORT", "5432"))
+    name = str(db_config.get("NAME", "babylon"))
+    user = str(db_config.get("USER", "babylon"))
+    password = str(db_config.get("PASSWORD", "babylon"))
+    conninfo = f"host={host} port={port} dbname={name} user={user} password={password}"
+
+    _pool = ConnectionPool(conninfo=conninfo, min_size=1, max_size=4, timeout=10)
+    persistence = PostgresRuntime(_pool)
+    try:
+        persistence.init_schema()
+    except Exception as exc:
+        logger.warning("PostgreSQL schema init had non-fatal error: %s", exc)
+
+    return persistence

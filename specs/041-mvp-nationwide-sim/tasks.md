@@ -19,9 +19,9 @@ ______________________________________________________________________
 
 **Purpose**: Create Django test infrastructure that all user story tests depend on
 
-- [ ] T001 Create Django test package with conftest fixtures in `web/game/tests/__init__.py` and `web/game/tests/conftest.py` — fixtures for authenticated client, game session factory, engine bridge mock
-- [ ] T002 [P] Create verb mapping constant `VERB_TO_ACTION_TYPE` in `web/game/engine_bridge.py` — static dict mapping 9 UI verbs to ActionType enum values per research.md mapping table
-- [ ] T003 [P] Create canonical verb set constant `CANONICAL_VERBS` in `web/game/engine_bridge.py` — frozenset of the 9 valid player verbs for validation
+- [x] T001 Create Django test package with conftest fixtures in `web/game/tests/__init__.py` and `web/game/tests/conftest.py` — fixtures for authenticated client, game session factory, engine bridge mock
+- [x] T002 [P] Create verb mapping constant `VERB_TO_ACTION_TYPE` in `web/game/engine_bridge.py` — static dict mapping 9 UI verbs to ActionType enum values per research.md mapping table
+- [x] T003 [P] Create canonical verb set constant `CANONICAL_VERBS` in `web/game/engine_bridge.py` — frozenset of the 9 valid player verbs for validation
 
 ______________________________________________________________________
 
@@ -33,14 +33,14 @@ ______________________________________________________________________
 
 ### Tests (Red Phase)
 
-- [ ] T004 [P] Write test for import boundary compliance in `web/game/tests/test_import_boundary.py` — verify `web/game/apps.py` does not import from `babylon.*` directly (mirrors existing `tests/unit/web/test_import_boundary.py` pattern)
-- [ ] T005 [P] Write test for GameEventLog migration in `web/game/tests/test_migrations.py` — verify `game_event_log` table exists after migrations run
+- [x] T004 [P] Write test for import boundary compliance in `web/game/tests/test_import_boundary.py` — verify `web/game/apps.py` does not import from `babylon.*` directly (mirrors existing `tests/unit/web/test_import_boundary.py` pattern)
+- [x] T005 [P] Write test for GameEventLog migration in `web/game/tests/test_migrations.py` — verify `game_event_log` table exists after migrations run
 
 ### Implementation (Green Phase)
 
-- [ ] T006 Fix import boundary violation in `web/game/apps.py` — move `PostgresRuntime` initialization into `web/game/engine_bridge.py` as a bridge function (e.g., `init_persistence()`), have `apps.py` call only bridge functions (FR-008)
-- [ ] T007 [P] Create Django migration for GameEventLog in `web/game/migrations/` — run `python manage.py makemigrations game` from `web/` directory, verify migration applies cleanly (FR-009)
-- [ ] T008 [P] Fix TypeScript error in `web/frontend/src/components/HexMap.tsx` — add null/undefined guard at the possibly-undefined invocation, verify with `cd web/frontend && npx tsc --noEmit` (FR-010)
+- [x] T006 Fix import boundary violation in `web/game/apps.py` — move `PostgresRuntime` initialization into `web/game/engine_bridge.py` as a bridge function (e.g., `init_persistence()`), have `apps.py` call only bridge functions (FR-008)
+- [x] T007 [P] Create Django migration for GameEventLog in `web/game/migrations/` — run `python manage.py makemigrations game` from `web/` directory, verify migration applies cleanly (FR-009)
+- [x] T008 [P] Fix TypeScript error in `web/frontend/src/components/HexMap.tsx` — add null/undefined guard at the possibly-undefined invocation, verify with `cd web/frontend && npx tsc --noEmit` (FR-010)
 
 **Checkpoint**: Import boundary test passes, `npm run build` succeeds, migration applies. Commit with `fix: resolve 3 blocking defects (import boundary, migration, TS error)`.
 

@@ -18,14 +18,7 @@ describe("action submission flow", () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
-    render(
-      <ActionComposer
-        snapshot={snapshot}
-        onSubmit={onSubmit}
-        onResolve={vi.fn()}
-        resolving={false}
-      />,
-    );
+    render(<ActionComposer snapshot={snapshot} onSubmit={onSubmit} resolving={false} />);
 
     // Step 1: Org is auto-selected (only 1 org). Select verb "Educate"
     await user.click(screen.getByText("Educate"));
@@ -60,14 +53,7 @@ describe("action submission flow", () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
-    render(
-      <ActionComposer
-        snapshot={snapshot}
-        onSubmit={onSubmit}
-        onResolve={vi.fn()}
-        resolving={false}
-      />,
-    );
+    render(<ActionComposer snapshot={snapshot} onSubmit={onSubmit} resolving={false} />);
 
     // Select "Reproduce" which is SELF_TARGETED
     await user.click(screen.getByText("Reproduce"));
@@ -81,14 +67,7 @@ describe("action submission flow", () => {
   it("cancel clears pending action in UI store", async () => {
     const user = userEvent.setup();
 
-    render(
-      <ActionComposer
-        snapshot={snapshot}
-        onSubmit={vi.fn()}
-        onResolve={vi.fn()}
-        resolving={false}
-      />,
-    );
+    render(<ActionComposer snapshot={snapshot} onSubmit={vi.fn()} resolving={false} />);
 
     // Select Reproduce (self-targeted) to get to preview
     await user.click(screen.getByText("Reproduce"));
@@ -106,14 +85,7 @@ describe("action submission flow", () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
-    render(
-      <ActionComposer
-        snapshot={snapshot}
-        onSubmit={onSubmit}
-        onResolve={vi.fn()}
-        resolving={false}
-      />,
-    );
+    render(<ActionComposer snapshot={snapshot} onSubmit={onSubmit} resolving={false} />);
 
     // Select Reproduce → preview → submit
     await user.click(screen.getByText("Reproduce"));

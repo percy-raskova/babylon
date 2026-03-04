@@ -18,7 +18,6 @@ const SELF_TARGETED = new Set<PlayerVerb>(["reproduce"]);
 interface ActionComposerProps {
   snapshot: GameSnapshot;
   onSubmit: (params: SubmitActionParams) => Promise<void>;
-  onResolve: () => Promise<void>;
   resolving: boolean;
 }
 
@@ -33,7 +32,7 @@ function shouldShowPreview(
   return SELF_TARGETED.has(pendingVerb) || Boolean(pendingTargetId);
 }
 
-export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: ActionComposerProps) {
+export function ActionComposer({ snapshot, onSubmit, resolving }: ActionComposerProps) {
   const pendingVerb = useUIStore((s) => s.pendingVerb);
   const pendingOrgId = useUIStore((s) => s.pendingOrgId);
   const pendingTargetId = useUIStore((s) => s.pendingTargetId);
@@ -87,17 +86,10 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
         </div>
       )}
 
-      {/* Header + Resolve */}
-      <div className="flex shrink-0 items-center justify-between">
-        <h3 className="m-0 text-sm font-semibold uppercase tracking-wider text-gold">Actions</h3>
-        <button
-          onClick={onResolve}
-          disabled={resolving}
-          className="rounded-md bg-gold px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-void hover:brightness-110 disabled:opacity-50"
-        >
-          {resolving ? "Resolving..." : "Resolve Tick"}
-        </button>
-      </div>
+      {/* Header */}
+      <h3 className="m-0 shrink-0 text-sm font-semibold uppercase tracking-wider text-gold">
+        Actions
+      </h3>
 
       {/* Org selector */}
       {playerOrgs.length > 1 && (

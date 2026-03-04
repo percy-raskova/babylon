@@ -136,12 +136,7 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
         {/* Right sidebar */}
         <RightPanel>
           <div className="max-h-[360px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
-            <ActionComposer
-              snapshot={snapshot}
-              onSubmit={submitAction}
-              onResolve={handleResolve}
-              resolving={resolving}
-            />
+            <ActionComposer snapshot={snapshot} onSubmit={submitAction} resolving={resolving} />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
             <Inspector snapshot={snapshot} />

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -37,6 +38,17 @@ logger = logging.getLogger(__name__)
 
 # Maximum rows per executemany batch
 _BATCH_SIZE = 1000
+
+
+def _json_default(obj: object) -> str:
+    """Fallback serializer for ``json.dumps`` — handles datetime/date/UUID."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, date):
+        return obj.isoformat()
+    if isinstance(obj, UUID):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 class PostgresRuntime:
@@ -1135,7 +1147,7 @@ class PostgresRuntime:
                         e.get("type", "UNKNOWN"),
                         e.get("entity_id"),
                         e.get("community_type"),
-                        json.dumps(e),
+                        json.dumps(e, default=_json_default),
                     )
                     for e in events
                 ],

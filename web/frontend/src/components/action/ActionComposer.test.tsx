@@ -13,14 +13,12 @@ describe("ActionComposer", () => {
   const defaultProps = {
     snapshot: makeSnapshot(),
     onSubmit: vi.fn().mockResolvedValue(undefined),
-    onResolve: vi.fn().mockResolvedValue(undefined),
     resolving: false,
   };
 
-  it("renders header and resolve button", () => {
+  it("renders actions header", () => {
     render(<ActionComposer {...defaultProps} />);
     expect(screen.getByText("Actions")).toBeInTheDocument();
-    expect(screen.getByText("Resolve Tick")).toBeInTheDocument();
   });
 
   it("shows verb grid when org is selected", () => {
@@ -106,8 +104,8 @@ describe("ActionComposer", () => {
     expect(state.pendingOrgId).toBeNull();
   });
 
-  it("resolve button disabled when resolving", () => {
+  it("shows blocking overlay when resolving", () => {
     render(<ActionComposer {...defaultProps} resolving={true} />);
-    expect(screen.getByText("Resolving...")).toBeDisabled();
+    expect(screen.getByText("Resolving tick...")).toBeInTheDocument();
   });
 });

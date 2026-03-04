@@ -181,6 +181,11 @@ class EngineBridge:
     ) -> dict[str, Any]:
         """Advance the simulation one tick: hydrate → step → persist → snapshot.
 
+        Reads pending player actions, injects them into the engine via
+        ``persistent_context["player_actions"]``, captures pre-step state
+        for delta computation, runs the engine step, persists ActionResult
+        rows, and checks for endgame conditions.
+
         Args:
             session_id: The game session UUID.
             persistent_context: Optional cross-tick context dict.
@@ -200,6 +205,39 @@ class EngineBridge:
             game_defines = GameDefines()
 
         sim_config = SimulationConfig()
+
+        # T014: Read pending player actions and format for engine injection
+        pending = self.get_pending_actions(session_id, state.tick)
+        if persistent_context is None:
+            persistent_context = {}
+
+        if pending:
+            player_actions: dict[str, list[dict[str, Any]]] = {}
+            for action in pending:
+                org_id = action["org_id"]
+                verb = action.get("verb", "")
+                action_type_enum = VERB_TO_ACTION_TYPE.get(verb)
+                action_type_val = action_type_enum.value if action_type_enum else verb
+
+                player_actions.setdefault(org_id, []).append(
+                    {
+                        "action_type": action_type_val,
+                        "target_id": action.get("target_id", org_id),
+                        "org_id": org_id,
+                        "action_point_cost": 1,
+                    }
+                )
+            persistent_context["player_actions"] = player_actions
+
+        # T015: Snapshot pre-step state for delta computation
+        pre_step: dict[str, dict[str, float]] = {}
+        for action in pending:
+            tid = action.get("target_id")
+            if tid and tid in graph.nodes:
+                pre_step[tid] = {
+                    "consciousness": float(graph.nodes[tid].get("class_consciousness", 0.0)),
+                    "heat": float(graph.nodes[tid].get("heat", 0.0)),
+                }
 
         # Step the engine
         logger.debug("Stepping engine session=%s tick=%d", session_id, state.tick)
@@ -228,10 +266,59 @@ class EngineBridge:
             session_id=session_id,
         )
 
+        # T016: Persist ActionResult records with computed deltas
+        for action in pending:
+            tid = action.get("target_id")
+            pre = pre_step.get(tid or "", {})
+            post_consciousness = 0.0
+            post_heat = 0.0
+            if tid and tid in new_graph.nodes:
+                post_consciousness = float(new_graph.nodes[tid].get("class_consciousness", 0.0))
+                post_heat = float(new_graph.nodes[tid].get("heat", 0.0))
+
+            verb = action.get("verb", "")
+            action_type_enum = VERB_TO_ACTION_TYPE.get(verb)
+            action_type_val = action_type_enum.value if action_type_enum else verb
+
+            result_data = {
+                "session_id": session_id,
+                "tick": new_state.tick,
+                "org_id": action["org_id"],
+                "action_type": action_type_val,
+                "target_id": tid,
+                "target_community": action.get("target_community"),
+                "initiative_score": 0.0,
+                "action_cost": 1.0,
+                "success": True,
+                "consciousness_delta": post_consciousness - pre.get("consciousness", 0.0),
+                "heat_delta": post_heat - pre.get("heat", 0.0),
+                "details": None,
+            }
+            _persist_action_result(self._persistence, result_data)
+
+        # T019: Check for endgame conditions in events
+        snapshot = _state_to_snapshot(new_state, session_id)
+        endgame_types = {"REVOLUTIONARY_VICTORY", "ECOLOGICAL_COLLAPSE", "FASCIST_CONSOLIDATION"}
+        for event in new_state.events:
+            event_type = (
+                event.event_type.value
+                if hasattr(event.event_type, "value")
+                else str(event.event_type)
+            )
+            if event_type in endgame_types:
+                snapshot["endgame"] = {
+                    "outcome": event_type,
+                    "tick": new_state.tick,
+                    "summary": event.data.get("summary", "")
+                    if hasattr(event, "data") and isinstance(event.data, dict)
+                    else "",
+                }
+                break
+
         # Mark submitted turns as resolved
         _mark_resolved_safe(self._persistence, session_id, state.tick)
 
-        return _state_to_snapshot(new_state, session_id)
+        return snapshot
 
     # ------------------------------------------------------------------ #
     # Action management
@@ -523,6 +610,29 @@ def _mark_resolved_safe(persistence: RuntimePersistence, session_id: UUID, tick:
     mark_fn = getattr(persistence, "mark_turns_resolved", None)
     if mark_fn is not None:
         mark_fn(session_id=session_id, tick=tick)
+
+
+def _persist_action_result(persistence: RuntimePersistence, result_data: dict[str, Any]) -> None:
+    """Write an ActionResult record via persistence layer or Django ORM.
+
+    Tries ``persist_action_result()`` on the persistence layer first.
+    Falls back to Django ORM ``ActionResult.objects.create()`` if unavailable.
+
+    Args:
+        persistence: The RuntimePersistence instance.
+        result_data: Dict with ActionResult fields.
+    """
+    persist_fn = getattr(persistence, "persist_action_result", None)
+    if persist_fn is not None:
+        persist_fn(**result_data)
+    else:
+        # Fallback: use Django ORM
+        try:
+            from game.models import ActionResult
+
+            ActionResult.objects.create(**result_data)
+        except Exception as exc:
+            logger.warning("Failed to persist action result: %s", exc)
 
 
 # ---------------------------------------------------------------------- #

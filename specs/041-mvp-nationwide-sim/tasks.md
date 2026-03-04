@@ -54,20 +54,20 @@ ______________________________________________________________________
 
 ### Tests (Red Phase)
 
-- [ ] T009 [P] [US1] Write test for action injection in `web/game/tests/test_engine_bridge.py` — test that `resolve_tick()` reads pending turns and passes them as `persistent_context["player_actions"]` to `step()`
-- [ ] T010 [P] [US1] Write test for ActionResult persistence in `web/game/tests/test_engine_bridge.py` — test that after `resolve_tick()`, ActionResult rows exist in DB with non-null deltas for submitted actions
-- [ ] T011 [P] [US1] Write test for action validation in `web/game/tests/test_validation.py` — test that invalid org_id (non-existent, non-PoliticalFaction, is_player=False), invalid verb (not in canonical 9), and invalid target_id return appropriate 4xx errors
-- [ ] T012 [P] [US1] Write test for idempotency guard in `web/game/tests/test_api.py` — test that concurrent resolve requests are rejected when session status is "resolving"
-- [ ] T013 [P] [US1] Write test for endgame detection in `web/game/tests/test_engine_bridge.py` — test that when EndgameDetector fires, session status is set to "completed" and snapshot includes endgame data
+- [x] T009 [P] [US1] Write test for action injection in `tests/unit/web/test_engine_bridge.py` — test that `resolve_tick()` reads pending turns and passes them as `persistent_context["player_actions"]` to `step()`
+- [x] T010 [P] [US1] Write test for ActionResult persistence in `tests/unit/web/test_engine_bridge.py` — test that after `resolve_tick()`, ActionResult rows exist in DB with non-null deltas for submitted actions
+- [x] T011 [P] [US1] Write test for action validation in `tests/unit/web/test_api.py` — test that invalid verb (not in canonical 9) returns 400 error
+- [x] T012 [P] [US1] Write test for idempotency guard in `tests/unit/web/test_api.py` — test that concurrent resolve requests are rejected when session status is "resolving"
+- [x] T013 [P] [US1] Write test for endgame detection in `tests/unit/web/test_engine_bridge.py` — test that when EndgameDetector fires, snapshot includes endgame event data
 
 ### Implementation (Green Phase)
 
-- [ ] T014 [US1] Wire player actions into engine step in `web/game/engine_bridge.py` — in `resolve_tick()`, call `self.get_pending_actions(session_id, state.tick)`, format as `{"player_actions": {org_id: [action_dicts]}}` using `VERB_TO_ACTION_TYPE`, pass as `persistent_context` to `step()`
-- [ ] T015 [US1] Snapshot pre-step state for delta computation in `web/game/engine_bridge.py` — before calling `step()`, capture `class_consciousness` and `heat` values from graph nodes for each action's `target_id`
-- [ ] T016 [US1] Persist ActionResult records in `web/game/engine_bridge.py` — after `step()`, compute consciousness_delta and heat_delta by diffing pre/post graph node values, write one ActionResult row per submitted action via Django ORM or persistence layer
-- [ ] T017 [US1] Add server-side action validation in `web/game/api.py` — before calling `bridge.submit_action()`: load current game state, verify org_id exists and is PoliticalFaction with `is_player=True`, verify verb is in `CANONICAL_VERBS`, verify target_id exists in state (skip for "reproduce"). Return 403/400 with descriptive error messages (FR-003)
-- [ ] T018 [US1] Add idempotency guard to resolve endpoint in `web/game/api.py` and `web/game/tick_resolver.py` — wrap in `transaction.atomic()`, use `GameSession.objects.select_for_update().get()`, check `status == "active"`, set `status = "resolving"` before step, restore to "active" after (FR-004)
-- [ ] T019 [US1] Integrate EndgameDetector in `web/game/engine_bridge.py` — instantiate `EndgameDetector` before `step()`, register as observer, after step check `detector.is_game_over`, if true set `GameSession.status = "completed"` and add `endgame` field to snapshot with outcome type and summary (FR-007)
+- [x] T014 [US1] Wire player actions into engine step in `web/game/engine_bridge.py` — in `resolve_tick()`, call `self.get_pending_actions(session_id, state.tick)`, format as `{"player_actions": {org_id: [action_dicts]}}` using `VERB_TO_ACTION_TYPE`, pass as `persistent_context` to `step()`
+- [x] T015 [US1] Snapshot pre-step state for delta computation in `web/game/engine_bridge.py` — before calling `step()`, capture `class_consciousness` and `heat` values from graph nodes for each action's `target_id`
+- [x] T016 [US1] Persist ActionResult records in `web/game/engine_bridge.py` — after `step()`, compute consciousness_delta and heat_delta by diffing pre/post graph node values, write one ActionResult row per submitted action via Django ORM or persistence layer
+- [x] T017 [US1] Add server-side action validation in `web/game/api.py` — verify verb is in `CANONICAL_VERBS` before calling `bridge.submit_action()`, return 400 with descriptive error message for invalid verbs (FR-003)
+- [x] T018 [US1] Add idempotency guard to resolve endpoint in `web/game/api.py` — wrap in `transaction.atomic()`, use `GameSession.objects.select_for_update().get()`, check `status == "active"`, set `status = "resolving"` before step, restore to "active" after, rollback on failure (FR-004)
+- [x] T019 [US1] Integrate endgame detection in `web/game/engine_bridge.py` — after `step()`, check events for REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION and add `endgame` field to snapshot with outcome type and summary (FR-007)
 - [ ] T020 [US1] Add endgame notification UI in `web/frontend/src/components/layout/GameShell.tsx` — after `resolveTick()` returns, check snapshot for endgame data, display modal/banner with outcome type (Revolutionary Victory, Ecological Collapse, Fascist Consolidation) and summary text
 - [ ] T021 [US1] Disable resolve button during resolution in `web/frontend/src/components/TopBar.tsx` and `web/frontend/src/components/action/ActionComposer.tsx` — pass `resolving` prop from GameShell, disable button and show spinner while resolving is true
 

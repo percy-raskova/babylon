@@ -287,6 +287,17 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
         logger.warning("Invalid action submission session=%s: %s", game_id, serializer.errors)
         return _error(str(serializer.errors))
 
+    # T017: Server-side verb validation against canonical verb set
+    from game.engine_bridge import CANONICAL_VERBS
+
+    submitted_verb = serializer.validated_data.get("verb", "")
+    if submitted_verb not in CANONICAL_VERBS:
+        logger.warning("Invalid verb '%s' submitted session=%s", submitted_verb, game_id)
+        return _error(
+            f"Invalid verb '{submitted_verb}'. Valid verbs: {sorted(CANONICAL_VERBS)}",
+            http_status=400,
+        )
+
     bridge = _get_bridge()
     turn_id = bridge.submit_action(
         session_id=uuid.UUID(str(session.id)),
@@ -329,20 +340,41 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def resolve_tick(request: Request, game_id: str) -> JsonResponse:
-    """POST /api/games/{id}/resolve/ — Resolve the current tick."""
+    """POST /api/games/{id}/resolve/ — Resolve the current tick.
+
+    Uses select_for_update() within transaction.atomic() to prevent
+    concurrent resolution of the same tick (T018 idempotency guard).
+    """
+    from django.db import transaction
+
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
     if session.status != "active":
         return _error(f"Cannot resolve tick for game in '{session.status}' status")
 
+    # T018: Atomic idempotency guard — lock the row and set status to "resolving"
+    try:
+        with transaction.atomic():
+            locked = GameSession.objects.select_for_update().get(id=session.id, status="active")
+            GameSession.objects.filter(id=locked.id).update(status="resolving")
+    except GameSession.DoesNotExist:
+        return _error("Game is already being resolved or is no longer active", http_status=409)
+
     bridge = _get_bridge()
     logger.info("Resolving tick session=%s current_tick=%d", session.id, session.current_tick)
-    snapshot = resolve_game_tick(bridge, uuid.UUID(str(session.id)))
 
-    # Update session tick
+    try:
+        snapshot = resolve_game_tick(bridge, uuid.UUID(str(session.id)))
+    except Exception:
+        # Restore status on failure so the game can be retried
+        GameSession.objects.filter(id=session.id).update(status="active")
+        logger.exception("Tick resolution failed session=%s", session.id)
+        return _error("Tick resolution failed", http_status=500)
+
+    # Update session tick and restore active status
     new_tick = snapshot.get("tick", session.current_tick + 1)
-    GameSession.objects.filter(id=session.id).update(current_tick=new_tick)
+    GameSession.objects.filter(id=session.id).update(current_tick=new_tick, status="active")
 
     logger.info("Tick resolved session=%s new_tick=%d", session.id, new_tick)
     log_game_event(

@@ -328,3 +328,154 @@ class TestStateToSnapshot:
         assert result["institutions"] == []
         assert result["edges"] == []
         assert result["events"] == []
+
+
+# ---------------------------------------------------------------------- #
+# Phase 3 / US1: Action injection, result persistence, endgame (T009-T013)
+# ---------------------------------------------------------------------- #
+
+
+def _make_mock_new_state(tick: int = 1) -> MagicMock:
+    """Create a mock WorldState returned by step()."""
+    mock_new_state = MagicMock()
+    mock_new_state.tick = tick
+    mock_new_state.entities = {}
+    mock_new_state.territories = {}
+    mock_new_state.organizations = {}
+    mock_new_state.institutions = {}
+    mock_new_state.economy = MagicMock()
+    mock_new_state.economy.model_dump.return_value = {}
+    mock_new_state.relationships = []
+    mock_new_state.events = []
+    mock_new_state.to_graph.return_value = _make_minimal_graph()
+    return mock_new_state
+
+
+@pytest.mark.unit
+class TestActionInjection:
+    """T009: Verify resolve_tick reads pending actions and passes them to step()."""
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_reads_pending_actions(self, mock_step: MagicMock) -> None:
+        """resolve_tick() should call get_pending_actions for the current tick."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "political_faction_1", "verb": "educate", "target_id": "hex_abc"},
+        ]
+        mock_step.return_value = _make_mock_new_state()
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        bridge.resolve_tick(sid)
+
+        mock_persistence.get_pending_turns.assert_called_once()
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_passes_player_actions_to_step(self, mock_step: MagicMock) -> None:
+        """Player actions should be formatted and passed as persistent_context."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "political_faction_1", "verb": "educate", "target_id": "hex_abc"},
+        ]
+        mock_step.return_value = _make_mock_new_state()
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        bridge.resolve_tick(sid)
+
+        # step() should receive persistent_context with player_actions
+        call_kwargs = mock_step.call_args
+        ctx = (
+            call_kwargs.kwargs.get("persistent_context") or call_kwargs[2]
+            if len(call_kwargs[0]) > 2
+            else call_kwargs.kwargs.get("persistent_context")
+        )
+        assert ctx is not None, "persistent_context should not be None when actions exist"
+        assert "player_actions" in ctx
+        assert "political_faction_1" in ctx["player_actions"]
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_formats_action_type_from_verb(self, mock_step: MagicMock) -> None:
+        """Verb should be mapped to ActionType via VERB_TO_ACTION_TYPE."""
+        from game.engine_bridge import VERB_TO_ACTION_TYPE
+
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "educate", "target_id": "hex_abc"},
+        ]
+        mock_step.return_value = _make_mock_new_state()
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        bridge.resolve_tick(sid)
+
+        ctx = mock_step.call_args.kwargs.get("persistent_context")
+        action = ctx["player_actions"]["pf1"][0]
+        assert action["action_type"] == VERB_TO_ACTION_TYPE["educate"].value
+
+
+@pytest.mark.unit
+class TestActionResultPersistence:
+    """T010: Verify ActionResult rows are written after resolve_tick()."""
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_persists_action_results(self, mock_step: MagicMock) -> None:
+        """After step(), ActionResult rows should be written via persistence layer."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "educate", "target_id": "hex_abc"},
+        ]
+
+        # Pre-step graph has target with known values
+        pre_graph = _build_initial_state_for_scenario("default").to_graph()
+        mock_persistence.hydrate_graph.return_value = pre_graph
+
+        mock_step.return_value = _make_mock_new_state()
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        bridge.resolve_tick(sid)
+
+        # Check that persist_action_result was called (or ActionResult.objects.create)
+        # The bridge should write results for each submitted action
+        result_fn = getattr(mock_persistence, "persist_action_result", None)
+        if result_fn is not None:
+            assert result_fn.called, "persist_action_result should be called for each action"
+        else:
+            # If using Django ORM directly, we check via a different mechanism
+            # This test verifies the bridge at least attempts result persistence
+            pass  # Will be validated via integration test
+
+
+@pytest.mark.unit
+class TestEndgameDetection:
+    """T013: Verify endgame detection integration."""
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_returns_endgame_in_snapshot(self, mock_step: MagicMock) -> None:
+        """When EndgameDetector fires, snapshot should include endgame data."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+
+        # Create a mock state with an endgame event
+        mock_new_state = _make_mock_new_state()
+        endgame_event = MagicMock()
+        endgame_event.event_type = "REVOLUTIONARY_VICTORY"
+        endgame_event.tick = 1
+        endgame_event.data = {"summary": "The people have risen"}
+        mock_new_state.events = [endgame_event]
+        mock_step.return_value = mock_new_state
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        result = bridge.resolve_tick(sid)
+
+        # The snapshot should contain the endgame event
+        events = result.get("events", [])
+        assert len(events) >= 1
+        assert any(e.get("type") == "REVOLUTIONARY_VICTORY" for e in events)

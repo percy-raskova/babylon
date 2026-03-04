@@ -118,6 +118,7 @@ sphinx-autobuild = "^2024.10.3"
 sphinxcontrib-mermaid = "^1.2"
 
 [tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "babylon_web.settings.testing"
 pythonpath = [
     "src",
     "web",

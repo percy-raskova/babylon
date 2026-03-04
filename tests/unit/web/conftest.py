@@ -13,6 +13,7 @@ block only runs when pytest-django is not available.
 from __future__ import annotations
 
 import django
+import pytest
 from django.conf import settings
 
 # Fallback: configure Django if pytest-django hasn't already done so
@@ -90,3 +91,62 @@ from game.models import ActionResult, GameSession, PlayerAction
 
 for _model in (GameSession, PlayerAction, ActionResult):
     _model._meta.managed = True  # type: ignore[misc]
+
+_UNMANAGED_TABLE_SQL = [
+    """CREATE TABLE IF NOT EXISTS game_session (
+        id CHAR(32) PRIMARY KEY,
+        player_id INTEGER,
+        scenario VARCHAR(64) NOT NULL,
+        current_tick INTEGER NOT NULL DEFAULT 0,
+        status VARCHAR(16) NOT NULL DEFAULT 'active',
+        config_json TEXT NOT NULL DEFAULT '{}',
+        game_defines_json TEXT NOT NULL DEFAULT '{}',
+        trace_level VARCHAR(8) NOT NULL DEFAULT 'NONE',
+        rng_seed BIGINT NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS game_turn (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id CHAR(32) NOT NULL REFERENCES game_session(id),
+        tick INTEGER NOT NULL,
+        org_id VARCHAR(64) NOT NULL,
+        verb VARCHAR(16) NOT NULL,
+        action_type VARCHAR(32),
+        target_id VARCHAR(64),
+        target_community VARCHAR(32),
+        params_json TEXT,
+        submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        resolved BOOLEAN NOT NULL DEFAULT 0,
+        UNIQUE(session_id, tick, org_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS action_result (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id CHAR(32) NOT NULL REFERENCES game_session(id),
+        tick INTEGER NOT NULL,
+        org_id VARCHAR(64) NOT NULL,
+        action_type VARCHAR(32) NOT NULL,
+        target_id VARCHAR(64),
+        target_community VARCHAR(32),
+        initiative_score REAL NOT NULL,
+        action_cost REAL NOT NULL,
+        success BOOLEAN NOT NULL,
+        consciousness_delta REAL,
+        heat_delta REAL,
+        details TEXT
+    )""",
+]
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _create_unmanaged_tables(django_db_setup: None, django_db_blocker: object) -> None:  # type: ignore[type-arg]
+    """Create tables for unmanaged models (managed=False) in the test DB.
+
+    Django migrations skip ``managed=False`` models, so we create them
+    with raw SQL to match the schema in ``postgres_schema.py``.
+    """
+    from django.db import connection
+
+    with django_db_blocker.unblock(), connection.cursor() as cursor:  # type: ignore[union-attr]
+        for sql in _UNMANAGED_TABLE_SQL:
+            cursor.execute(sql)

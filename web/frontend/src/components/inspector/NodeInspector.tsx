@@ -1,8 +1,10 @@
 /**
  * Node inspector — shows detailed attributes for an entity, organization,
  * or institution selected in the graph or map.
+ * Clickable territory rows for drill-down into territory detail.
  */
 
+import { useUIStore } from "@/stores/uiStore";
 import type { EntityState, OrgState, InstitutionState, GameSnapshot } from "@/types/game";
 
 interface NodeInspectorProps {
@@ -15,10 +17,10 @@ export function NodeInspector({ snapshot, nodeId }: NodeInspectorProps) {
   if (entity) return <EntityDetail entity={entity} />;
 
   const org = snapshot.organizations.find((o) => o.id === nodeId);
-  if (org) return <OrgDetail org={org} />;
+  if (org) return <OrgDetail org={org} snapshot={snapshot} />;
 
   const inst = snapshot.institutions.find((i) => i.id === nodeId);
-  if (inst) return <InstitutionDetail inst={inst} />;
+  if (inst) return <InstitutionDetail inst={inst} snapshot={snapshot} />;
 
   return <p className="text-sm text-ash">Unknown node: {nodeId}</p>;
 }
@@ -102,7 +104,23 @@ function EntityDetail({ entity }: { entity: EntityState }) {
   );
 }
 
-function OrgDetail({ org }: { org: OrgState }) {
+function OrgDetail({ org, snapshot }: { org: OrgState; snapshot: GameSnapshot }) {
+  const setSelectedHex = useUIStore((s) => s.setSelectedHex);
+  const setSelectedNode = useUIStore((s) => s.setSelectedNode);
+
+  // Resolve territory names from IDs
+  const territories = org.territory_ids
+    .map((tid) => snapshot.territories.find((t) => t.id === tid))
+    .filter((t): t is NonNullable<typeof t> => t !== undefined);
+
+  // Find key figures (entities in same territories)
+  const keyFigures = snapshot.entities.filter((e) =>
+    org.territory_ids.some((tid) => {
+      const terr = snapshot.territories.find((t) => t.id === tid);
+      return terr && (terr.host_id === e.id || terr.occupant_id === e.id);
+    }),
+  );
+
   return (
     <div className="flex flex-col gap-0.5">
       <div className="mb-1 flex items-center justify-between">
@@ -124,17 +142,40 @@ function OrgDetail({ org }: { org: OrgState }) {
       <Stat label="Heat" value={org.heat} color="text-crimson" />
       <Bar value={org.heat} color="#e63946" />
 
-      {org.territory_ids.length > 0 && (
+      {territories.length > 0 && (
         <>
-          <SectionHeader label="Territories" />
-          <div className="flex flex-wrap gap-1">
-            {org.territory_ids.map((tid) => (
-              <span
-                key={tid}
-                className="rounded bg-soot px-1.5 py-0.5 text-[10px] font-mono text-ash"
+          <SectionHeader label={`Territories (${territories.length})`} />
+          <div className="flex flex-col gap-0.5">
+            {territories.map((terr) => (
+              <button
+                key={terr.id}
+                onClick={() => {
+                  setSelectedNode(null);
+                  setSelectedHex(terr.id);
+                }}
+                className="flex w-full items-center justify-between rounded px-1 py-1 text-[11px] text-left transition-colors hover:bg-soot/50"
               >
-                {tid}
-              </span>
+                <span className="font-semibold text-gold">{terr.name}</span>
+                <span className="font-mono text-ash">{terr.heat.toFixed(2)} heat</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {keyFigures.length > 0 && (
+        <>
+          <SectionHeader label="Key Figures" />
+          <div className="flex flex-col gap-0.5">
+            {keyFigures.slice(0, 5).map((entity) => (
+              <button
+                key={entity.id}
+                onClick={() => setSelectedNode(entity.id)}
+                className="flex w-full items-center justify-between rounded px-1 py-1 text-[11px] text-left transition-colors hover:bg-soot/50"
+              >
+                <span className="font-semibold text-royal-blue">{entity.name}</span>
+                <RoleBadge role={entity.role} />
+              </button>
             ))}
           </div>
         </>
@@ -143,7 +184,14 @@ function OrgDetail({ org }: { org: OrgState }) {
   );
 }
 
-function InstitutionDetail({ inst }: { inst: InstitutionState }) {
+function InstitutionDetail({ inst, snapshot }: { inst: InstitutionState; snapshot: GameSnapshot }) {
+  const setSelectedNode = useUIStore((s) => s.setSelectedNode);
+
+  // Resolve housed org names
+  const housedOrgs = inst.housed_org_ids
+    .map((oid) => snapshot.organizations.find((o) => o.id === oid))
+    .filter((o): o is NonNullable<typeof o> => o !== undefined);
+
   return (
     <div className="flex flex-col gap-0.5">
       <div className="mb-1 flex items-center justify-between">
@@ -179,17 +227,21 @@ function InstitutionDetail({ inst }: { inst: InstitutionState }) {
       />
       <Bar value={inst.institutionalist_bonapartist} color="#d4a843" />
 
-      {inst.housed_org_ids.length > 0 && (
+      {housedOrgs.length > 0 && (
         <>
-          <SectionHeader label="Housed Organizations" />
-          <div className="flex flex-wrap gap-1">
-            {inst.housed_org_ids.map((oid) => (
-              <span
-                key={oid}
-                className="rounded bg-grow-purple/20 px-1.5 py-0.5 text-[10px] font-mono text-grow-purple"
+          <SectionHeader label={`Housed Organizations (${housedOrgs.length})`} />
+          <div className="flex flex-col gap-0.5">
+            {housedOrgs.map((org) => (
+              <button
+                key={org.id}
+                onClick={() => setSelectedNode(org.id)}
+                className="flex w-full items-center justify-between rounded px-1 py-1 text-[11px] text-left transition-colors hover:bg-soot/50"
               >
-                {oid}
-              </span>
+                <span className="font-semibold text-grow-purple">{org.name}</span>
+                <span className="rounded bg-soot px-1.5 py-0.5 text-[9px] text-ash">
+                  {org.org_type}
+                </span>
+              </button>
             ))}
           </div>
         </>

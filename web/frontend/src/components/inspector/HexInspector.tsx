@@ -1,7 +1,9 @@
 /**
  * Hex inspector — shows detailed territory attributes for a selected hex.
+ * Clickable org rows for drill-down into organization detail.
  */
 
+import { useUIStore } from "@/stores/uiStore";
 import type { TerritoryState, GameSnapshot } from "@/types/game";
 
 interface HexInspectorProps {
@@ -68,15 +70,24 @@ function TerritoryDetail({
   territory: TerritoryState;
   snapshot: GameSnapshot;
 }) {
+  const setSelectedNode = useUIStore((s) => s.setSelectedNode);
   const host = territory.host_id ? snapshot.entities.find((e) => e.id === territory.host_id) : null;
   const occupant = territory.occupant_id
     ? snapshot.entities.find((e) => e.id === territory.occupant_id)
     : null;
 
+  // Find orgs present in this territory
+  const presentOrgs = snapshot.organizations.filter((o) => o.territory_ids.includes(territory.id));
+
   // Find edges connected to this territory
   const connectedEdges = snapshot.edges.filter(
     (e) => e.source_id === territory.id || e.target_id === territory.id,
   );
+
+  // Recent events affecting this territory
+  const territoryEvents = snapshot.events
+    .filter((e) => e.data.territory_id === territory.id)
+    .slice(-5);
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -107,8 +118,61 @@ function TerritoryDetail({
       {(host || occupant) && (
         <>
           <SectionHeader label="Occupants" />
-          {host && <Stat label="Host" value={host.name} color="text-royal-blue" />}
-          {occupant && <Stat label="Occupant" value={occupant.name} color="text-royal-blue" />}
+          {host && (
+            <button
+              onClick={() => setSelectedNode(host.id)}
+              className="flex w-full justify-between py-0.5 text-[12px] text-left transition-colors hover:text-gold"
+            >
+              <span className="text-ash">Host</span>
+              <span className="font-mono font-semibold text-royal-blue">{host.name}</span>
+            </button>
+          )}
+          {occupant && (
+            <button
+              onClick={() => setSelectedNode(occupant.id)}
+              className="flex w-full justify-between py-0.5 text-[12px] text-left transition-colors hover:text-gold"
+            >
+              <span className="text-ash">Occupant</span>
+              <span className="font-mono font-semibold text-royal-blue">{occupant.name}</span>
+            </button>
+          )}
+        </>
+      )}
+
+      {presentOrgs.length > 0 && (
+        <>
+          <SectionHeader label={`Organizations (${presentOrgs.length})`} />
+          <div className="flex flex-col gap-0.5">
+            {presentOrgs.map((org) => (
+              <button
+                key={org.id}
+                onClick={() => setSelectedNode(org.id)}
+                className="flex w-full items-center justify-between rounded px-1 py-1 text-[11px] text-left transition-colors hover:bg-soot/50"
+              >
+                <span className="font-semibold text-grow-purple">{org.name}</span>
+                <span className="rounded bg-soot px-1.5 py-0.5 text-[9px] text-ash">
+                  {org.org_type}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {territoryEvents.length > 0 && (
+        <>
+          <SectionHeader label="Recent Events" />
+          <div className="flex flex-col gap-0.5">
+            {territoryEvents.map((evt, i) => (
+              <div
+                key={`${evt.tick}-${evt.type}-${i}`}
+                className="flex items-center justify-between text-[10px]"
+              >
+                <span className="text-ash">T{evt.tick}</span>
+                <span className="font-semibold text-gold">{evt.type}</span>
+              </div>
+            ))}
+          </div>
         </>
       )}
 

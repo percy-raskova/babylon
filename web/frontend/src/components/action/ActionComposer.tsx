@@ -72,7 +72,21 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
   const showPreview = shouldShowPreview(pendingVerb, pendingOrgId, pendingTargetId);
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div
+      className={`relative flex h-full flex-col gap-3 ${resolving ? "pointer-events-none" : ""}`}
+    >
+      {/* Resolution blocking overlay */}
+      {resolving && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded bg-void/70">
+          <div className="flex flex-col items-center gap-2">
+            <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gold">
+              Resolving tick...
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Header + Resolve */}
       <div className="flex shrink-0 items-center justify-between">
         <h3 className="m-0 text-sm font-semibold uppercase tracking-wider text-gold">Actions</h3>

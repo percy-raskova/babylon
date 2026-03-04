@@ -1,45 +1,42 @@
 /**
  * Event log — scrolling color-coded feed of simulation events.
  *
- * Displays events from the current snapshot plus accumulated events
- * from the game store's tick history.
+ * Supports two modes:
+ * 1. Raw event feed (events tab) — all events from current snapshot
+ * 2. Notification groups (notifications tab) — classified and grouped events from uiStore
  */
 
 import { useRef, useEffect } from "react";
-import type { GameEvent, GameSnapshot } from "@/types/game";
+import { useUIStore } from "@/stores/uiStore";
 import { useGameStore } from "@/stores/gameStore";
+import type { GameEvent, GameSnapshot, NotificationGroup } from "@/types/game";
 
 interface EventLogProps {
   snapshot: GameSnapshot;
+  /** When true, shows notification groups from uiStore instead of raw events. */
+  grouped?: boolean;
 }
 
 /** Color mapping for event types. */
 const EVENT_COLORS: Record<string, string> = {
-  // Economic
   EXTRACTION: "text-crimson",
   IMPERIAL_RENT: "text-crimson",
   WAGES_PAID: "text-data-green",
   VALUE_TRANSFER: "text-gold",
-  // Consciousness / solidarity
   CONSCIOUSNESS_SHIFT: "text-gold",
   SOLIDARITY_FORMED: "text-royal-blue",
   SOLIDARITY_BROKEN: "text-phosphor-red",
   BIFURCATION: "text-warning-amber",
-  // Struggle
   UPRISING: "text-crimson",
   EXCESSIVE_FORCE: "text-phosphor-red",
   RUPTURE: "text-crimson",
-  // Territory
   EVICTION: "text-phosphor-red",
   HEAT_SPIKE: "text-warning-amber",
-  // Organization
   ORG_FORMED: "text-grow-purple",
   ORG_DISSOLVED: "text-ash",
   ACTION_RESULT: "text-royal-blue",
-  // Institution
   FACTION_SHIFT: "text-silver",
   BONAPARTIST_MODE: "text-gold",
-  // Phase transitions
   PHASE_TRANSITION: "text-gold",
   PERCOLATION: "text-data-green",
 };
@@ -55,19 +52,66 @@ const EVENT_ICONS: Record<string, string> = {
   BONAPARTIST_MODE: "**",
 };
 
-export function EventLog({ snapshot }: EventLogProps) {
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "border-l-crimson bg-crimson/5",
+  important: "border-l-warning-amber bg-warning-amber/5",
+  informational: "border-l-soot",
+};
+
+export function EventLog({ snapshot, grouped = false }: EventLogProps) {
   const tickSummaries = useGameStore((s) => s.tickSummaries);
+  const notificationGroups = useUIStore((s) => s.notificationGroupsForTick);
+  const notifications = useUIStore((s) => s.notifications);
+  const markAllEventsRead = useUIStore((s) => s.markAllEventsRead);
+  const setSelectedHex = useUIStore((s) => s.setSelectedHex);
+  const setSelectedNode = useUIStore((s) => s.setSelectedNode);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new events
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [snapshot.events.length, tickSummaries.length]);
+  }, [snapshot.events.length, tickSummaries.length, notifications.length]);
 
+  // Grouped notification mode
+  if (grouped) {
+    const unread = notifications.filter((e) => !e.read).length;
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        {unread > 0 && (
+          <div className="flex shrink-0 items-center justify-between border-b border-soot px-2 py-1">
+            <span className="text-[10px] text-ash">{unread} unread</span>
+            <button
+              onClick={markAllEventsRead}
+              className="text-[10px] text-gold transition-colors hover:text-bone"
+            >
+              Mark all read
+            </button>
+          </div>
+        )}
+        <div ref={scrollRef} className="flex-1 overflow-auto">
+          {notificationGroups.length === 0 && (
+            <div className="flex h-full items-center justify-center text-sm text-ash">
+              No notifications this tick
+            </div>
+          )}
+          {notificationGroups.map((group, i) => (
+            <NotificationGroupRow
+              key={`${group.eventType}-${group.severity}-${i}`}
+              group={group}
+              onNavigate={(type, id) => {
+                if (type === "territory") setSelectedHex(id);
+                else setSelectedNode(id);
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Raw event feed mode
   const events = snapshot.events;
-
   if (events.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-ash">
@@ -85,11 +129,40 @@ export function EventLog({ snapshot }: EventLogProps) {
   );
 }
 
+function NotificationGroupRow({
+  group,
+  onNavigate,
+}: {
+  group: NotificationGroup;
+  onNavigate: (type: string, id: string) => void;
+}) {
+  const severityClass = SEVERITY_COLORS[group.severity] ?? "";
+  const rep = group.representativeEvent;
+  const hasLink = rep.linkedEntityId && rep.linkedEntityType;
+
+  return (
+    <div className={`flex items-center justify-between border-l-2 px-2 py-1.5 ${severityClass}`}>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[11px] font-semibold text-bone">{group.summary}</span>
+        {group.count > 1 && (
+          <span className="text-[9px] text-ash">{group.count} events grouped</span>
+        )}
+      </div>
+      {hasLink && (
+        <button
+          onClick={() => onNavigate(rep.linkedEntityType as string, rep.linkedEntityId as string)}
+          className="rounded px-2 py-0.5 text-[9px] text-gold transition-colors hover:bg-soot"
+        >
+          View
+        </button>
+      )}
+    </div>
+  );
+}
+
 function EventRow({ event }: { event: GameEvent }) {
   const color = EVENT_COLORS[event.type] ?? "text-ash";
   const icon = EVENT_ICONS[event.type] ?? "--";
-
-  // Build a concise message from event data
   const message = formatEventMessage(event);
 
   return (
@@ -102,12 +175,10 @@ function EventRow({ event }: { event: GameEvent }) {
   );
 }
 
-/** Format event data into a human-readable summary string. */
 function formatEventMessage(event: GameEvent): string {
   const d = event.data;
   const parts: string[] = [];
 
-  // Common fields across event types
   if (typeof d.source === "string") parts.push(`from:${d.source}`);
   if (typeof d.target === "string") parts.push(`to:${d.target}`);
   if (typeof d.source_id === "string") parts.push(`from:${d.source_id}`);

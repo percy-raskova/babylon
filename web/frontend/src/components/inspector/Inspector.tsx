@@ -1,12 +1,14 @@
 /**
  * Inspector — routes to NodeInspector or HexInspector based on the
  * current UI store selection. Falls back to the OrgDashboard list
- * when nothing is selected.
+ * when nothing is selected. Renders Breadcrumbs for drill-down navigation.
  */
 
+import { useEffect, useRef } from "react";
 import { useUIStore } from "@/stores/uiStore";
 import { NodeInspector } from "@/components/inspector/NodeInspector";
 import { HexInspector } from "@/components/inspector/HexInspector";
+import { Breadcrumbs } from "@/components/inspector/Breadcrumbs";
 import { OrgDashboard } from "@/components/OrgDashboard";
 import type { GameSnapshot } from "@/types/game";
 
@@ -17,44 +19,71 @@ interface InspectorProps {
 export function Inspector({ snapshot }: InspectorProps) {
   const selectedNodeId = useUIStore((s) => s.selectedNodeId);
   const selectedHexId = useUIStore((s) => s.selectedHexId);
-  const clearNode = useUIStore((s) => s.setSelectedNode);
-  const clearHex = useUIStore((s) => s.setSelectedHex);
+  const pushBreadcrumb = useUIStore((s) => s.pushBreadcrumb);
+  const activeLens = useUIStore((s) => s.activeLens);
+  const prevHexRef = useRef<string | null>(null);
+  const prevNodeRef = useRef<string | null>(null);
 
-  // Node selection takes priority over hex selection
-  if (selectedNodeId) {
-    return (
-      <div className="flex h-full flex-col overflow-auto">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">Inspector</h3>
-          <button
-            onClick={() => clearNode(null)}
-            className="rounded px-2 py-0.5 text-[10px] text-ash hover:bg-soot hover:text-silver"
-          >
-            Clear
-          </button>
+  // Push breadcrumbs when selection changes
+  useEffect(() => {
+    if (selectedHexId && selectedHexId !== prevHexRef.current) {
+      const territory = snapshot.territories.find((t) => t.id === selectedHexId);
+      if (territory) {
+        pushBreadcrumb({
+          entityType: "territory",
+          entityId: selectedHexId,
+          displayName: territory.name,
+          lensId: activeLens,
+        });
+      }
+    }
+    prevHexRef.current = selectedHexId;
+  }, [selectedHexId, snapshot.territories, pushBreadcrumb, activeLens]);
+
+  useEffect(() => {
+    if (selectedNodeId && selectedNodeId !== prevNodeRef.current) {
+      const entity = snapshot.entities.find((e) => e.id === selectedNodeId);
+      const org = snapshot.organizations.find((o) => o.id === selectedNodeId);
+      const inst = snapshot.institutions.find((i) => i.id === selectedNodeId);
+      const found = entity ?? org ?? inst;
+      if (found) {
+        let entityType: "entity" | "organization" | "institution" = "institution";
+        if (entity) entityType = "entity";
+        else if (org) entityType = "organization";
+        pushBreadcrumb({
+          entityType,
+          entityId: selectedNodeId,
+          displayName: found.name,
+          lensId: activeLens,
+        });
+      }
+    }
+    prevNodeRef.current = selectedNodeId;
+  }, [
+    selectedNodeId,
+    snapshot.entities,
+    snapshot.organizations,
+    snapshot.institutions,
+    pushBreadcrumb,
+    activeLens,
+  ]);
+
+  const hasSelection = selectedNodeId || selectedHexId;
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <Breadcrumbs />
+      {!hasSelection && <OrgDashboard snapshot={snapshot} />}
+      {selectedNodeId && (
+        <div className="flex-1 overflow-auto">
+          <NodeInspector snapshot={snapshot} nodeId={selectedNodeId} />
         </div>
-        <NodeInspector snapshot={snapshot} nodeId={selectedNodeId} />
-      </div>
-    );
-  }
-
-  if (selectedHexId) {
-    return (
-      <div className="flex h-full flex-col overflow-auto">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">Inspector</h3>
-          <button
-            onClick={() => clearHex(null)}
-            className="rounded px-2 py-0.5 text-[10px] text-ash hover:bg-soot hover:text-silver"
-          >
-            Clear
-          </button>
+      )}
+      {!selectedNodeId && selectedHexId && (
+        <div className="flex-1 overflow-auto">
+          <HexInspector snapshot={snapshot} hexId={selectedHexId} />
         </div>
-        <HexInspector snapshot={snapshot} hexId={selectedHexId} />
-      </div>
-    );
-  }
-
-  // Default: show org list (as before)
-  return <OrgDashboard snapshot={snapshot} />;
+      )}
+    </div>
+  );
 }

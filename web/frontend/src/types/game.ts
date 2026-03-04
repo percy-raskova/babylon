@@ -20,6 +20,13 @@ export interface GameSummary {
 
 export type GameStatus = "active" | "paused" | "completed" | "abandoned";
 
+/** Endgame outcome from tick resolution. */
+export interface EndgameData {
+  outcome: "REVOLUTIONARY_VICTORY" | "ECOLOGICAL_COLLAPSE" | "FASCIST_CONSOLIDATION";
+  tick: number;
+  summary: string;
+}
+
 /** Full game state snapshot (from GET /api/games/{id}/state/). */
 export interface GameSnapshot {
   tick: number;
@@ -31,6 +38,7 @@ export interface GameSnapshot {
   edges: EdgeState[];
   economy: Record<string, unknown>;
   events: GameEvent[];
+  endgame?: EndgameData;
 }
 
 /** Social class entity with full visualization fields. */

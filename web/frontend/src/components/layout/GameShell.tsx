@@ -16,7 +16,9 @@ import { TickResults } from "@/components/TickResults";
 import { TimeSeries } from "@/components/charts/TimeSeries";
 import { GraphView } from "@/components/graph/GraphView";
 import { EventLog } from "@/components/events/EventLog";
-import type { ActionResultData } from "@/types/game";
+import { EndgameOverlay } from "@/components/layout/EndgameOverlay";
+import { detectEndgame } from "@/utils/endgame";
+import type { ActionResultData, EndgameData } from "@/types/game";
 
 interface GameShellProps {
   gameId: string;
@@ -29,6 +31,7 @@ export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps
   const { snapshot, loading, error, submitAction, resolveTick } = useGameState(gameId);
   const [results, setResults] = useState<ActionResultData[] | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [endgame, setEndgame] = useState<EndgameData | null>(null);
   const bottomTab = useUIStore((s) => s.bottomTab);
 
   async function handleResolve() {
@@ -36,6 +39,9 @@ export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps
     const tickResults = await resolveTick();
     setResults(tickResults);
     setResolving(false);
+
+    const detected = detectEndgame(snapshot);
+    if (detected) setEndgame(detected);
   }
 
   if (loading && !snapshot) {
@@ -56,6 +62,11 @@ export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-void">
+      {/* Endgame notification overlay */}
+      {endgame && (
+        <EndgameOverlay endgame={endgame} onDismiss={() => setEndgame(null)} onBack={onBack} />
+      )}
+
       {/* Top bar */}
       <TopBar
         snapshot={snapshot}

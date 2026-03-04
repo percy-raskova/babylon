@@ -83,9 +83,9 @@ ______________________________________________________________________
 
 ### Implementation
 
-- [ ] T022 [US2] Verify territory inspector renders real data in `web/frontend/src/components/Inspector.tsx` — manually test that clicking a hex shows heat, sector type, operational profile, rent level, biocapacity, population. If any fields are missing from the snapshot, add them to `_serialize_territory()` in `web/game/engine_bridge.py`
-- [ ] T023 [US2] Verify entity inspector renders survival probabilities in `web/frontend/src/components/Inspector.tsx` — confirm P(Acquiescence), P(Revolution), wealth, consciousness, organization, agitation display correctly. If any fields are missing, add them to `_serialize_entity()` in `web/game/engine_bridge.py`
-- [ ] T024 [US2] Verify time series charts accumulate across ticks in `web/frontend/src/components/TimeSeries.tsx` — confirm `tickSummaries` in `gameStore.ts` appends new data points after each resolve, and Recharts displays multi-tick trends
+- [x] T022 [US2] Verify territory inspector renders real data in `web/frontend/src/components/Inspector.tsx` — manually test that clicking a hex shows heat, sector type, operational profile, rent level, biocapacity, population. If any fields are missing from the snapshot, add them to `_serialize_territory()` in `web/game/engine_bridge.py`
+- [x] T023 [US2] Verify entity inspector renders survival probabilities in `web/frontend/src/components/Inspector.tsx` — confirm P(Acquiescence), P(Revolution), wealth, consciousness, organization, agitation display correctly. If any fields are missing, add them to `_serialize_entity()` in `web/game/engine_bridge.py`
+- [x] T024 [US2] Verify time series charts accumulate across ticks in `web/frontend/src/components/TimeSeries.tsx` — confirm `tickSummaries` in `gameStore.ts` appends new data points after each resolve, and Recharts displays multi-tick trends
 
 **Checkpoint**: All inspector views show meaningful, changing data across ticks. Commit with `feat(inspectors): verify state visibility for territories and entities (US2)`.
 
@@ -99,9 +99,9 @@ ______________________________________________________________________
 
 ### Implementation
 
-- [ ] T025 [US3] Filter org list to player-controlled factions in `web/frontend/src/components/action/ActionComposer.tsx` — filter the organizations list from snapshot to only show orgs where `org_type === "POLITICAL_FACTION"` and `is_player === true`
-- [ ] T026 [P] [US3] Enhance verb tooltips in `web/frontend/src/components/action/VerbSelector.tsx` — add HTML `title` attributes to each verb button using the existing `description` field from `VERB_GRID`, ensuring hover tooltips appear (FR-012)
-- [ ] T027 [US3] Verify action results display deltas in `web/frontend/src/components/TickResults.tsx` — confirm that after Phase 3 ActionResult persistence, the `MetricPill` components show signed consciousness_delta and heat_delta values with green/red coloring
+- [x] T025 [US3] Filter org list to player-controlled factions in `web/frontend/src/components/action/ActionComposer.tsx` — filter the organizations list from snapshot to only show orgs where `org_type === "POLITICAL_FACTION"` and `is_player === true`
+- [x] T026 [P] [US3] Enhance verb tooltips in `web/frontend/src/components/action/VerbSelector.tsx` — add HTML `title` attributes to each verb button using the existing `description` field from `VERB_GRID`, ensuring hover tooltips appear (FR-012)
+- [x] T027 [US3] Verify action results display deltas in `web/frontend/src/components/TickResults.tsx` — confirm that after Phase 3 ActionResult persistence, the `MetricPill` components show signed consciousness_delta and heat_delta values with green/red coloring
 
 **Checkpoint**: Only player-controlled orgs appear in action composer. Verb tooltips visible on hover. Action results show per-action deltas. Commit with `feat(strategy): org filtering, verb tooltips, and result deltas (US3, FR-012)`.
 

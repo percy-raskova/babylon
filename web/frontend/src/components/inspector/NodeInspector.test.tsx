@@ -44,7 +44,7 @@ describe("NodeInspector", () => {
     it("shows org name and type", () => {
       render(<NodeInspector snapshot={snapshot} nodeId="org-workers-union" />);
       expect(screen.getByText("Workers Union")).toBeInTheDocument();
-      expect(screen.getByText("union")).toBeInTheDocument();
+      expect(screen.getByText("POLITICAL_FACTION")).toBeInTheDocument();
     });
 
     it("shows capacity metrics", () => {

@@ -117,6 +117,7 @@ export function VerbSelector({
             <button
               key={def.verb}
               onClick={() => onSelect(def.verb)}
+              title={def.description}
               className={`flex flex-col rounded border px-2 py-1.5 text-left transition-colors ${
                 isSelected
                   ? `${CATEGORY_BORDER[def.category]} bg-dark-metal`

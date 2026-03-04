@@ -42,13 +42,12 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
   const clearPending = useUIStore((s) => s.clearPendingAction);
 
   const [submitting, setSubmitting] = useState(false);
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(
-    snapshot.organizations[0]?.id ?? null,
-  );
+  /** Only player-controllable orgs (political factions) appear in the action composer. */
+  const playerOrgs = snapshot.organizations.filter((o) => o.org_type === "POLITICAL_FACTION");
 
-  const selectedOrg: OrgState | undefined = snapshot.organizations.find(
-    (o) => o.id === selectedOrgId,
-  );
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(playerOrgs[0]?.id ?? null);
+
+  const selectedOrg: OrgState | undefined = playerOrgs.find((o) => o.id === selectedOrgId);
 
   const handleVerbSelect = useCallback(
     (verb: PlayerVerb) => {
@@ -87,7 +86,7 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
       </div>
 
       {/* Org selector */}
-      {snapshot.organizations.length > 1 && (
+      {playerOrgs.length > 1 && (
         <div className="shrink-0">
           <label className="mb-1 block text-[9px] uppercase tracking-widest text-ash">
             Acting Organization
@@ -100,7 +99,7 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
             }}
             className="w-full rounded border border-soot bg-void px-2 py-1.5 text-[12px] text-bone focus:border-gold focus:outline-none"
           >
-            {snapshot.organizations.map((org) => (
+            {playerOrgs.map((org) => (
               <option key={org.id} value={org.id}>
                 {org.name} ({org.org_type})
               </option>
@@ -156,7 +155,7 @@ export function ActionComposer({ snapshot, onSubmit, onResolve, resolving }: Act
       )}
 
       {/* Empty state */}
-      {!selectedOrgId && snapshot.organizations.length === 0 && (
+      {!selectedOrgId && playerOrgs.length === 0 && (
         <p className="py-6 text-center text-sm text-ash">No organizations available this tick</p>
       )}
     </div>

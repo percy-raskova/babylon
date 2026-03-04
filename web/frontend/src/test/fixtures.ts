@@ -60,7 +60,7 @@ export function makeOrg(overrides?: Partial<OrgState>): OrgState {
   return {
     id: "org-workers-union",
     name: "Workers Union",
-    org_type: "union",
+    org_type: "POLITICAL_FACTION",
     class_character: "proletariat",
     cohesion: 0.75,
     cadre_level: 2,

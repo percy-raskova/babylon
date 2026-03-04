@@ -124,10 +124,25 @@ afterEach(() => {
     pendingOrgId: null,
     pendingTargetId: null,
     pendingParams: {},
+    // Feature 042 resets
+    activeLens: "political" as const,
+    breadcrumbs: [],
+    notifications: [],
+    unreadCount: 0,
+    notificationGroupsForTick: [],
+    rightPanelWidth: 360,
+    bottomPanelHeight: 260,
+    pinnedIndicators: [
+      "avg_consciousness",
+      "avg_heat",
+      "avg_organization",
+      "imperial_rent",
+    ] as const,
   });
   useMapStore.setState({
     activeLayer: "heat" as const,
     layerOpacity: 0.8,
     showEdges: false,
+    lensOverride: false,
   });
 });

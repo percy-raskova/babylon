@@ -14,6 +14,7 @@ import type {
   ActionResultData,
   GameSummary,
   AvailableAction,
+  ActionPreviewResult,
 } from "@/types/game";
 
 export function makeEntity(overrides?: Partial<EntityState>): EntityState {
@@ -190,6 +191,18 @@ export function makeAvailableAction(overrides?: Partial<AvailableAction>): Avail
     verb: "educate",
     targets: ["entity-proletariat", "entity-bourgeoisie"],
     cost: 3,
+    ...overrides,
+  };
+}
+
+export function makeActionPreview(overrides?: Partial<ActionPreviewResult>): ActionPreviewResult {
+  return {
+    estimated_consciousness_delta: 0.05,
+    estimated_heat_delta: 0.02,
+    action_point_cost: 3.0,
+    success_probability: 0.75,
+    affected_territory_ids: ["territory-downtown"],
+    warnings: [],
     ...overrides,
   };
 }

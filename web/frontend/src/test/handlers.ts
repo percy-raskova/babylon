@@ -3,7 +3,13 @@
  */
 
 import { http, HttpResponse } from "msw";
-import { makeSnapshot, makeAvailableAction, makeGameSummary, makeActionResult } from "./fixtures";
+import {
+  makeSnapshot,
+  makeAvailableAction,
+  makeGameSummary,
+  makeActionResult,
+  makeActionPreview,
+} from "./fixtures";
 
 export const handlers = [
   // Auth endpoints
@@ -92,6 +98,14 @@ export const handlers = [
         makeAvailableAction(),
         makeAvailableAction({ verb: "attack", targets: ["entity-bourgeoisie"], cost: 5 }),
       ],
+    }),
+  ),
+
+  // Action preview
+  http.post("/api/games/:id/actions/preview/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: makeActionPreview(),
     }),
   ),
 

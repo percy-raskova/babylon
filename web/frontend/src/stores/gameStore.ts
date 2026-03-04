@@ -5,6 +5,8 @@
 import { create } from "zustand";
 import { get as apiGet, post as apiPost } from "@/api/client";
 import { createLogger } from "@/utils/logger";
+import { classifyEvents } from "@/lib/eventClassifier";
+import { useUIStore } from "./uiStore";
 
 const log = createLogger("GameStore");
 import type {
@@ -46,6 +48,15 @@ function extractSummary(snap: GameSnapshot): TickSummary {
     eventCount: snap.events.length,
     edgeCount: snap.edges.length,
   };
+}
+
+/**
+ * Classify and accumulate events from a snapshot into the UI notification buffer.
+ */
+function accumulateEvents(snap: GameSnapshot): void {
+  if (snap.events.length === 0) return;
+  const classified = classifyEvents(snap.events);
+  useUIStore.getState().addEvents(classified);
 }
 
 interface GameState {
@@ -90,6 +101,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const newSummaries = summary.tick !== lastTick ? [...summaries, summary] : summaries;
 
       set({ snapshot: snap, tickSummaries: newSummaries });
+
+      // Accumulate events into notification buffer (only for new ticks)
+      if (summary.tick !== lastTick) {
+        accumulateEvents(snap);
+      }
     } else {
       set({ error: stateRes.message ?? "Failed to load game state" });
     }

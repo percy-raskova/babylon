@@ -415,6 +415,116 @@ class EngineBridge:
         )
         return result
 
+    def preview_action(
+        self,
+        session_id: UUID,
+        org_id: str,
+        verb: str,
+        target_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Compute estimated effects of a proposed action without mutating state.
+
+        Uses the current graph state to estimate consciousness delta, heat delta,
+        action cost, and success probability. Read-only — no state changes.
+
+        Args:
+            session_id: The game session UUID.
+            org_id: ID of the acting organization.
+            verb: One of the 9 canonical player verbs.
+            target_id: Optional target territory or entity ID.
+
+        Returns:
+            Dict with estimated deltas, cost, probability, and warnings.
+        """
+        state, graph = self.hydrate_state(session_id)
+        warnings: list[str] = []
+        affected_territory_ids: list[str] = []
+
+        # Resolve action type from verb
+        action_type_enum = VERB_TO_ACTION_TYPE.get(verb)
+        action_cost = 1.0  # Default AP cost
+
+        # Check if org exists
+        if org_id not in graph.nodes:
+            return {
+                "estimated_consciousness_delta": 0.0,
+                "estimated_heat_delta": 0.0,
+                "action_point_cost": action_cost,
+                "success_probability": 0.0,
+                "affected_territory_ids": [],
+                "warnings": [f"Organization '{org_id}' not found"],
+            }
+
+        org_data = graph.nodes[org_id]
+        org_budget = float(org_data.get("budget", 0.0))
+        org_heat = float(org_data.get("heat", 0.0))
+        org_cohesion = float(org_data.get("cohesion", 0.5))
+
+        # Budget warning
+        if org_budget < action_cost:
+            warnings.append("Insufficient budget for this action")
+
+        # Heat warning
+        if org_heat > 0.7:
+            warnings.append("Organization heat is already elevated")
+
+        # Estimate effects based on target
+        estimated_consciousness_delta = 0.0
+        estimated_heat_delta = 0.0
+        success_probability = 0.5
+
+        resolved_target = target_id or org_id
+        if resolved_target in graph.nodes:
+            target_data = graph.nodes[resolved_target]
+
+            # Check if target is under eviction
+            if target_data.get("under_eviction", False):
+                warnings.append("Target territory is under eviction")
+
+            # Estimate based on verb category
+            if verb in {"educate", "campaign"}:
+                # Consciousness-raising actions
+                estimated_consciousness_delta = 0.05 * org_cohesion
+                estimated_heat_delta = 0.01
+                success_probability = min(0.9, 0.4 + org_cohesion * 0.5)
+            elif verb in {"attack", "mobilize"}:
+                # Aggressive actions — high heat, variable consciousness
+                estimated_consciousness_delta = 0.02
+                estimated_heat_delta = 0.08 * org_cohesion
+                success_probability = min(0.8, 0.3 + org_cohesion * 0.4)
+            elif verb in {"aid", "reproduce"}:
+                # Organizational building
+                estimated_consciousness_delta = 0.01
+                estimated_heat_delta = -0.01
+                success_probability = min(0.95, 0.5 + org_cohesion * 0.4)
+            elif verb in {"investigate", "negotiate", "move"}:
+                # Lower-impact actions
+                estimated_consciousness_delta = 0.0
+                estimated_heat_delta = 0.0
+                success_probability = min(0.9, 0.6 + org_cohesion * 0.3)
+
+            # Collect affected territories
+            territory_ids = org_data.get("territory_ids", [])
+            if isinstance(territory_ids, (list, tuple)):
+                affected_territory_ids = list(territory_ids)
+            if target_id and target_id not in affected_territory_ids:
+                affected_territory_ids.append(target_id)
+        else:
+            warnings.append(f"Target '{resolved_target}' not found in current state")
+
+        # Apply action type modifier if available
+        if action_type_enum is not None:
+            action_cost = 1.0  # Could vary by type in future
+
+        return {
+            "estimated_consciousness_delta": round(estimated_consciousness_delta, 4),
+            "estimated_heat_delta": round(estimated_heat_delta, 4),
+            "action_point_cost": action_cost,
+            "success_probability": round(success_probability, 4),
+            "affected_territory_ids": affected_territory_ids,
+            "warnings": warnings,
+        }
+
     def get_pending_actions(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
         """Return unresolved player actions for a tick.
 

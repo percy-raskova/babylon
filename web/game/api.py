@@ -287,6 +287,44 @@ def actions_available(request: Request, game_id: str) -> JsonResponse:
     )
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def actions_preview(request: Request, game_id: str) -> JsonResponse:
+    """POST /api/games/{id}/actions/preview/ — Preview estimated action effects.
+
+    Read-only estimation. Does not modify game state.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    serializer = SubmitActionSerializer(data=request.data)
+    if not serializer.is_valid():
+        return _error(str(serializer.errors))
+
+    org_id = serializer.validated_data["org_id"]
+    verb = serializer.validated_data["verb"]
+    target_id = serializer.validated_data.get("target_id")
+
+    from game.engine_bridge import CANONICAL_VERBS
+
+    if verb not in CANONICAL_VERBS:
+        return _error(f"Invalid verb '{verb}'. Valid verbs: {sorted(CANONICAL_VERBS)}")
+
+    bridge = _get_bridge()
+    preview = bridge.preview_action(
+        session_id=uuid.UUID(str(session.id)),
+        org_id=org_id,
+        verb=verb,
+        target_id=target_id,
+    )
+    return _envelope(
+        preview,
+        tick=session.current_tick,
+        session_id=str(session.id),
+    )
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def actions_list(request: Request, game_id: str) -> JsonResponse:

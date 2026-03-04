@@ -27,6 +27,11 @@ urlpatterns: list[URLPattern] = [
         api.actions_available,
         name="actions-available",
     ),
+    path(
+        "games/<str:game_id>/actions/preview/",
+        api.actions_preview,
+        name="actions-preview",
+    ),
     path("games/<str:game_id>/actions/", api.actions_list, name="actions-list"),
     path("games/<str:game_id>/resolve/", api.resolve_tick, name="resolve-tick"),
     # Results

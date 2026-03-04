@@ -199,3 +199,114 @@ export type PlayerVerb =
 
 /** Verb category groupings for the 3x3 grid. */
 export type VerbCategory = "build" | "project" | "manage";
+
+// ---------------------------------------------------------------------------
+// Feature 042 — Game UI Overhaul types
+// ---------------------------------------------------------------------------
+
+/** Analytical perspective that recontextualizes the entire UI. */
+export type LensId = "economic" | "political" | "social" | "strategic";
+
+/** Lens definition specifying which UI elements to emphasize. */
+export interface LensDefinition {
+  id: LensId;
+  name: string;
+  icon: string;
+  primaryLayer: MapLayer;
+  emphasizedIndicators: IndicatorId[];
+  inspectorPriority: string[];
+  defaultChartMetrics: string[];
+  description: string;
+}
+
+/** Severity tier for event classification. */
+export type EventSeverity = "critical" | "important" | "informational";
+
+/** Classified game event with UI-specific metadata. */
+export interface ClassifiedEvent {
+  id: string;
+  event: GameEvent;
+  severity: EventSeverity;
+  tick: number;
+  read: boolean;
+  linkedEntityId: string | null;
+  linkedEntityType: "territory" | "organization" | "entity" | "institution" | null;
+}
+
+/** Grouped notification for display. */
+export interface NotificationGroup {
+  severity: EventSeverity;
+  eventType: string;
+  count: number;
+  events: ClassifiedEvent[];
+  summary: string;
+  representativeEvent: ClassifiedEvent;
+}
+
+/** Single entry in the drill-down navigation stack. */
+export interface BreadcrumbEntry {
+  entityType: "overview" | "territory" | "organization" | "entity" | "institution";
+  entityId: string | null;
+  displayName: string;
+  lensId: LensId;
+}
+
+/** Identifier for a trackable simulation metric. */
+export type IndicatorId =
+  | "imperial_rent"
+  | "avg_consciousness"
+  | "avg_heat"
+  | "avg_organization"
+  | "total_wealth"
+  | "total_population"
+  | "org_count"
+  | "edge_count"
+  | "eviction_rate"
+  | "biocapacity_avg"
+  | "p_revolution_max"
+  | "p_acquiescence_min"
+  | "repression_avg"
+  | "agitation_avg"
+  | "inequality_avg"
+  | "solidarity_edges";
+
+/** Threshold configuration for urgency coloring. */
+export interface IndicatorThresholds {
+  warning: number;
+  critical: number;
+  /** True when low values are critical (e.g., organization strength). */
+  invert: boolean;
+}
+
+/** Indicator definition for the top bar. */
+export interface IndicatorDefinition {
+  id: IndicatorId;
+  label: string;
+  unit: string;
+  format: "decimal" | "percent" | "integer" | "currency";
+  thresholds: IndicatorThresholds;
+  compute: (snapshot: GameSnapshot) => number;
+}
+
+/** Persisted UI preferences (localStorage). */
+export interface UIPreferences {
+  version: number;
+  rightPanelWidth: number;
+  rightPanelOpen: boolean;
+  bottomPanelHeight: number;
+  bottomPanelOpen: boolean;
+  bottomTab: "timeseries" | "events" | "graph" | "notifications";
+  activeLens: LensId;
+  pinnedIndicators: IndicatorId[];
+  graphEdgeFilter: string | null;
+}
+
+/** Server response for action preview. */
+export interface ActionPreviewResult {
+  estimated_consciousness_delta: number;
+  estimated_heat_delta: number;
+  action_point_cost: number;
+  success_probability: number;
+  affected_territory_ids: string[];
+  warnings: string[];
+}

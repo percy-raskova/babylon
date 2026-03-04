@@ -1,0 +1,162 @@
+# Action Preview API Contract
+# The only new backend endpoint required for Feature 042
+
+openapi: "3.1.0"
+info:
+  title: Babylon Game API — Action Preview Extension
+  version: "1.0.0"
+  description: |
+    Single new endpoint added to the existing game API for action effect estimation.
+    All other Feature 042 changes are frontend-only.
+
+paths:
+  /api/games/{game_id}/actions/preview/:
+    post:
+      summary: Preview estimated effects of a proposed action
+      description: |
+        Computes estimated effects of a proposed action without persisting any
+        state changes. Returns estimated consciousness delta, heat delta, cost,
+        and success probability. This endpoint is read-only with respect to game
+        state — it uses the current graph state to compute estimates but does not
+        modify it.
+      operationId: previewAction
+      tags:
+        - Actions
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - org_id
+                - verb
+              properties:
+                org_id:
+                  type: string
+                  description: ID of the acting organization
+                verb:
+                  type: string
+                  enum:
+                    - educate
+                    - reproduce
+                    - investigate
+                    - attack
+                    - mobilize
+                    - campaign
+                    - aid
+                    - move
+                    - negotiate
+                  description: One of the 9 canonical player verbs
+                action_type:
+                  type: string
+                  nullable: true
+                  description: Optional ActionType enum value
+                target_id:
+                  type: string
+                  nullable: true
+                  description: Target territory or entity ID
+                target_community:
+                  type: string
+                  nullable: true
+                  description: Optional target community type
+      responses:
+        "200":
+          description: Preview computed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  tick:
+                    type: integer
+                  session_id:
+                    type: string
+                    format: uuid
+                  data:
+                    type: object
+                    properties:
+                      estimated_consciousness_delta:
+                        type: number
+                        format: float
+                        description: |
+                          Estimated change in consciousness for the target
+                          territory or entity. Positive = increase.
+                      estimated_heat_delta:
+                        type: number
+                        format: float
+                        description: |
+                          Estimated change in heat for the target territory.
+                          Positive = increase (more state attention).
+                      action_point_cost:
+                        type: number
+                        format: float
+                        description: |
+                          Resource cost to the acting organization.
+                      success_probability:
+                        type: number
+                        format: float
+                        minimum: 0.0
+                        maximum: 1.0
+                        description: |
+                          Estimated probability of action success based on
+                          current organization strength, target resistance,
+                          and environmental factors.
+                      affected_territory_ids:
+                        type: array
+                        items:
+                          type: string
+                        description: |
+                          Territory IDs that would be affected by this action.
+                      warnings:
+                        type: array
+                        items:
+                          type: string
+                        description: |
+                          Human-readable warnings about the proposed action.
+                          E.g., "Target territory is under eviction",
+                          "Organization heat is already elevated".
+        "400":
+          description: Invalid request (missing required fields, invalid verb)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  message:
+                    type: string
+        "404":
+          description: Game or organization not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  message:
+                    type: string
+      security:
+        - sessionAuth: []
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+      description: Django session authentication

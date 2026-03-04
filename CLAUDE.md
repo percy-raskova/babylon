@@ -722,6 +722,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol. No new database tables. Institution state persists via WorldState serialization (`_node_type="institution"`). (040-institution-base-model)
 - Python 3.12+ (backend), TypeScript 5.x (frontend) + Django 5.x, Pydantic 2.x, NetworkX 3.x, psycopg 3.x, React 19, Zustand 5, Vite 6, deck.gl 9, react-router-dom 7 (installed, unused) (041-mvp-nationwide-sim)
 - PostgreSQL 16+ (runtime state via `postgres_runtime.py`), SQLite (reference data) (041-mvp-nationwide-sim)
+- TypeScript 5.7 (frontend), Python 3.12+ (backend — minimal changes) + React 19, Zustand 5, deck.gl 9, MapLibre GL 5, Recharts 2, Sigma.js 3, Tailwind CSS v4, Vite 6, lucide-react, react-router-dom 7 (042-game-ui-overhaul)
+- PostgreSQL 16+ (runtime state via Django), localStorage (UI preferences) (042-game-ui-overhaul)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

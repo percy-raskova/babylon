@@ -1,13 +1,48 @@
 /**
- * Unit tests for the root App component.
+ * Unit tests for the root App component with React Router.
  */
 
 import { describe, it, expect } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import App from "./App";
 import { server } from "@/test/server";
 import { http, HttpResponse } from "msw";
+
+/** Render App inside a MemoryRouter at a given URL. */
+function renderAt(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <App />
+    </MemoryRouter>,
+  );
+}
+
+/** MSW handler: unauthenticated user. */
+function mockUnauthenticated() {
+  server.use(
+    http.get("/accounts/whoami/", () =>
+      HttpResponse.json({
+        status: "ok",
+        data: { is_authenticated: false, username: null },
+      }),
+    ),
+  );
+}
+
+/** MSW handler: authenticated user. */
+function mockAuthenticated(username = "alice") {
+  server.use(
+    http.get("/accounts/whoami/", () =>
+      HttpResponse.json({
+        status: "ok",
+        data: { is_authenticated: true, username },
+      }),
+    ),
+    http.get("/api/games/", () => HttpResponse.json({ status: "ok", data: [] })),
+  );
+}
 
 describe("App", () => {
   it("shows loading state while checking auth", () => {
@@ -20,20 +55,13 @@ describe("App", () => {
         });
       }),
     );
-    render(<App />);
+    renderAt("/login");
     expect(screen.getByText("Loading...")).toBeInTheDocument();
   });
 
   it("shows login page when not authenticated", async () => {
-    server.use(
-      http.get("/accounts/whoami/", () =>
-        HttpResponse.json({
-          status: "ok",
-          data: { is_authenticated: false, username: null },
-        }),
-      ),
-    );
-    render(<App />);
+    mockUnauthenticated();
+    renderAt("/login");
 
     await waitFor(() => {
       expect(screen.getByText("BABYLON")).toBeInTheDocument();
@@ -42,16 +70,8 @@ describe("App", () => {
   });
 
   it("shows game list when authenticated", async () => {
-    server.use(
-      http.get("/accounts/whoami/", () =>
-        HttpResponse.json({
-          status: "ok",
-          data: { is_authenticated: true, username: "alice" },
-        }),
-      ),
-      http.get("/api/games/", () => HttpResponse.json({ status: "ok", data: [] })),
-    );
-    render(<App />);
+    mockAuthenticated("alice");
+    renderAt("/games");
 
     await waitFor(() => {
       expect(screen.getByText("Your Games")).toBeInTheDocument();
@@ -69,7 +89,7 @@ describe("App", () => {
       ),
     );
 
-    render(<App />);
+    renderAt("/login");
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
@@ -93,7 +113,7 @@ describe("App", () => {
       ),
       http.get("/api/games/", () => HttpResponse.json({ status: "ok", data: [] })),
     );
-    render(<App />);
+    renderAt("/login");
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
@@ -105,6 +125,83 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Your Games")).toBeInTheDocument();
+    });
+  });
+
+  describe("route rendering (T028)", () => {
+    it("/login renders login page for unauthenticated user", async () => {
+      mockUnauthenticated();
+      renderAt("/login");
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
+      });
+    });
+
+    it("/games redirects to /login when not authenticated", async () => {
+      mockUnauthenticated();
+      renderAt("/games");
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
+      });
+    });
+
+    it("/games/:id redirects to /login when not authenticated", async () => {
+      mockUnauthenticated();
+      renderAt("/games/test-game-123");
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
+      });
+    });
+
+    it("/games renders game list for authenticated user", async () => {
+      mockAuthenticated("carol");
+      renderAt("/games");
+
+      await waitFor(() => {
+        expect(screen.getByText("Your Games")).toBeInTheDocument();
+      });
+      expect(screen.getByText("carol")).toBeInTheDocument();
+    });
+
+    it("/games/:id renders game shell for authenticated user", async () => {
+      mockAuthenticated("dave");
+      server.use(
+        http.get("/api/games/game-42/state/", () =>
+          HttpResponse.json({
+            status: "ok",
+            data: {
+              tick: 1,
+              session_id: "game-42",
+              entities: [],
+              territories: [],
+              organizations: [],
+              institutions: [],
+              edges: [],
+              economy: {},
+              events: [],
+            },
+          }),
+        ),
+      );
+      renderAt("/games/game-42");
+
+      // TopBar displays gameId.slice(0,8) + "..." and "Tick" label
+      await waitFor(() => {
+        expect(screen.getByText("Tick")).toBeInTheDocument();
+      });
+      expect(screen.getByText("dave")).toBeInTheDocument();
+    });
+
+    it("unknown route redirects based on auth state", async () => {
+      mockAuthenticated();
+      renderAt("/unknown-path");
+
+      await waitFor(() => {
+        expect(screen.getByText("Your Games")).toBeInTheDocument();
+      });
     });
   });
 });

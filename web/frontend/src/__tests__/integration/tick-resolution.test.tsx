@@ -7,6 +7,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { GameShell } from "@/components/layout/GameShell";
 import { useGameStore } from "@/stores/gameStore";
 import { makeSnapshot, makeActionResult } from "@/test/fixtures";
@@ -35,15 +36,27 @@ vi.mock("@/hooks/useGameState", () => ({
   },
 }));
 
+/** Render GameShell inside a MemoryRouter with route param. */
+function renderShell() {
+  return render(
+    <MemoryRouter initialEntries={["/games/game-001"]}>
+      <Routes>
+        <Route
+          path="/games/:id"
+          element={<GameShell username="testplayer" onBack={vi.fn()} onLogout={vi.fn()} />}
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe("tick resolution flow", () => {
   it("clicking Resolve Tick shows results", async () => {
     const user = userEvent.setup();
     const snapshot = makeSnapshot({ tick: 3 });
     useGameStore.setState({ snapshot, loading: false });
 
-    render(
-      <GameShell gameId="game-001" username="testplayer" onBack={vi.fn()} onLogout={vi.fn()} />,
-    );
+    renderShell();
 
     // Click resolve — TopBar and ActionComposer both have "Resolve Tick"
     const resolveButtons = screen.getAllByText("Resolve Tick");
@@ -64,9 +77,7 @@ describe("tick resolution flow", () => {
   it("tick counter reflects snapshot tick value", () => {
     useGameStore.setState({ snapshot: makeSnapshot({ tick: 7 }), loading: false });
 
-    render(
-      <GameShell gameId="game-001" username="testplayer" onBack={vi.fn()} onLogout={vi.fn()} />,
-    );
+    renderShell();
 
     // The tick counter has "7" in the bold text-2xl element
     const tickElements = screen.getAllByText("7");
@@ -81,9 +92,7 @@ describe("tick resolution flow", () => {
       loading: false,
     });
 
-    render(
-      <GameShell gameId="game-001" username="testplayer" onBack={vi.fn()} onLogout={vi.fn()} />,
-    );
+    renderShell();
 
     expect(screen.getByText("Network timeout")).toBeInTheDocument();
   });

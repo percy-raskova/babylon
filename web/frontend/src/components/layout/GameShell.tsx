@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import { useParams } from "react-router";
 import { useGameState } from "@/hooks/useGameState";
 import { useUIStore } from "@/stores/uiStore";
 import { TopBar } from "@/components/layout/TopBar";
@@ -21,13 +22,13 @@ import { detectEndgame } from "@/utils/endgame";
 import type { ActionResultData, EndgameData } from "@/types/game";
 
 interface GameShellProps {
-  gameId: string;
   username: string;
   onBack: () => void;
   onLogout: () => void;
 }
 
-export function GameShell({ gameId, username, onBack, onLogout }: GameShellProps) {
+export function GameShell({ username, onBack, onLogout }: GameShellProps) {
+  const { id: gameId = "" } = useParams<{ id: string }>();
   const { snapshot, loading, error, submitAction, resolveTick } = useGameState(gameId);
   const [results, setResults] = useState<ActionResultData[] | null>(null);
   const [resolving, setResolving] = useState(false);

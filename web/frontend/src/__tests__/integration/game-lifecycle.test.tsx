@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import App from "@/App";
 import { server } from "@/test/server";
 import { http, HttpResponse } from "msw";
@@ -38,7 +39,11 @@ describe("game lifecycle", () => {
       ),
     );
 
-    render(<App />);
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <App />
+      </MemoryRouter>,
+    );
 
     // Should see login page
     await waitFor(() => {
@@ -76,7 +81,11 @@ describe("game lifecycle", () => {
       ),
     );
 
-    render(<App />);
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <App />
+      </MemoryRouter>,
+    );
 
     // Wait for game list
     await waitFor(() => {
@@ -107,7 +116,11 @@ describe("game lifecycle", () => {
       http.post("/accounts/logout/", () => HttpResponse.json({ status: "ok", data: null })),
     );
 
-    render(<App />);
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <App />
+      </MemoryRouter>,
+    );
 
     // Wait for game list with nav bar
     await waitFor(() => {

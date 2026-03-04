@@ -115,14 +115,14 @@ ______________________________________________________________________
 
 ### Tests (Red Phase)
 
-- [ ] T028 [P] [US4] Write frontend test for route rendering in `web/frontend/src/App.test.tsx` — test that `/login`, `/games`, and `/games/:id` routes render the correct components
+- [x] T028 [P] [US4] Write frontend test for route rendering in `web/frontend/src/App.test.tsx` — test that `/login`, `/games`, and `/games/:id` routes render the correct components
 
 ### Implementation (Green Phase)
 
-- [ ] T029 [US4] Replace View state machine with React Router in `web/frontend/src/App.tsx` — wrap app in `BrowserRouter`, define `Routes`: `/login` → `LoginPage`, `/games` → `GameList`, `/games/:id` → `GameShell`. Use `Navigate` for redirects. Preserve `checkAuth` logic via route guards (FR-011)
-- [ ] T030 [US4] Update navigation handlers in `web/frontend/src/App.tsx` — replace `setView()` calls with `useNavigate()` hooks: `handleLogin` → `navigate("/games")`, `handleSelectGame(id)` → `navigate("/games/${id}")`, `handleBackToGames` → `navigate("/games")`, `handleLogout` → `navigate("/login")`
-- [ ] T031 [US4] Update GameShell to read game ID from URL in `web/frontend/src/components/layout/GameShell.tsx` — use `useParams()` to get `id` instead of receiving it as a prop, pass to `useGameState(id)`
-- [ ] T032 [US4] Update Vite proxy for client-side routing in `web/frontend/vite.config.ts` — ensure the dev server returns `index.html` for all non-API routes (SPA fallback) so direct URL access works
+- [x] T029 [US4] Replace View state machine with React Router in `web/frontend/src/App.tsx` — wrap app in `BrowserRouter`, define `Routes`: `/login` → `LoginPage`, `/games` → `GameList`, `/games/:id` → `GameShell`. Use `Navigate` for redirects. Preserve `checkAuth` logic via route guards (FR-011)
+- [x] T030 [US4] Update navigation handlers in `web/frontend/src/App.tsx` — replace `setView()` calls with `useNavigate()` hooks: `handleLogin` → `navigate("/games")`, `handleSelectGame(id)` → `navigate("/games/${id}")`, `handleBackToGames` → `navigate("/games")`, `handleLogout` → `navigate("/login")`
+- [x] T031 [US4] Update GameShell to read game ID from URL in `web/frontend/src/components/layout/GameShell.tsx` — use `useParams()` to get `id` instead of receiving it as a prop, pass to `useGameState(id)`
+- [x] T032 [US4] Update Vite proxy for client-side routing in `web/frontend/vite.config.ts` — ensure the dev server returns `index.html` for all non-API routes (SPA fallback) so direct URL access works
 
 **Checkpoint**: Navigate to `/games/{id}` directly, page loads at correct tick. Browser refresh preserves state. Back button works. Commit with `feat(routing): URL-based navigation with react-router-dom (FR-011)`.
 

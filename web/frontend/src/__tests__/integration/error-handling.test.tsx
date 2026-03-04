@@ -7,6 +7,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { LoginPage } from "@/components/LoginPage";
 import { GameList } from "@/components/GameList";
 import { GameShell } from "@/components/layout/GameShell";
@@ -105,7 +106,16 @@ describe("error handling", () => {
       error: "Connection lost",
     });
 
-    render(<GameShell gameId="game-001" username="player" onBack={vi.fn()} onLogout={vi.fn()} />);
+    render(
+      <MemoryRouter initialEntries={["/games/game-001"]}>
+        <Routes>
+          <Route
+            path="/games/:id"
+            element={<GameShell username="player" onBack={vi.fn()} onLogout={vi.fn()} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
 
     expect(screen.getByText("Connection lost")).toBeInTheDocument();
   });

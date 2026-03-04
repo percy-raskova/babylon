@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { GameShell } from "./GameShell";
 import { useGameStore } from "@/stores/gameStore";
 import { makeSnapshot } from "@/test/fixtures";
@@ -26,29 +27,42 @@ vi.mock("@/hooks/useGameState", () => ({
   },
 }));
 
-describe("GameShell", () => {
-  const defaultProps = {
-    gameId: "game-001",
-    username: "testplayer",
-    onBack: vi.fn(),
-    onLogout: vi.fn(),
-  };
+/** Render GameShell inside a MemoryRouter with route param. */
+function renderShell(props?: Partial<{ username: string }>) {
+  return render(
+    <MemoryRouter initialEntries={["/games/game-001"]}>
+      <Routes>
+        <Route
+          path="/games/:id"
+          element={
+            <GameShell
+              username={props?.username ?? "testplayer"}
+              onBack={vi.fn()}
+              onLogout={vi.fn()}
+            />
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
 
+describe("GameShell", () => {
   it("shows loading state when no snapshot", () => {
     useGameStore.setState({ loading: true, snapshot: null });
-    render(<GameShell {...defaultProps} />);
+    renderShell();
     expect(screen.getByText("Loading game state...")).toBeInTheDocument();
   });
 
   it("shows no state available when not loading and no snapshot", () => {
     useGameStore.setState({ loading: false, snapshot: null });
-    render(<GameShell {...defaultProps} />);
+    renderShell();
     expect(screen.getByText("No state available")).toBeInTheDocument();
   });
 
   it("renders map and panels when snapshot is available", () => {
     useGameStore.setState({ snapshot: makeSnapshot(), loading: false });
-    render(<GameShell {...defaultProps} />);
+    renderShell();
 
     // TopBar elements
     expect(screen.getByText("testplayer")).toBeInTheDocument();
@@ -58,13 +72,13 @@ describe("GameShell", () => {
 
   it("shows error message", () => {
     useGameStore.setState({ snapshot: makeSnapshot(), error: "Something broke" });
-    render(<GameShell {...defaultProps} />);
+    renderShell();
     expect(screen.getByText("Something broke")).toBeInTheDocument();
   });
 
   it("renders TopBar with tick counter", () => {
     useGameStore.setState({ snapshot: makeSnapshot() });
-    render(<GameShell {...defaultProps} />);
+    renderShell();
     expect(screen.getByText("Tick")).toBeInTheDocument();
   });
 });

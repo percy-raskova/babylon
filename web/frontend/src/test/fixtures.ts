@@ -193,3 +193,105 @@ export function makeAvailableAction(overrides?: Partial<AvailableAction>): Avail
     ...overrides,
   };
 }
+
+/** Wayne County scenario fixture with vanguard resources and traps. */
+export function makeWayneCountySnapshot(overrides?: Partial<GameSnapshot>): GameSnapshot {
+  return makeSnapshot({
+    session_id: "wayne-county-001",
+    entities: [
+      makeEntity({
+        id: "C001",
+        name: "Detroit Proletariat",
+        role: "internal_proletariat",
+        wealth: 0.15,
+        consciousness: 0.1,
+        national_identity: 0.2,
+        organization: 0.05,
+        repression: 0.7,
+        population: 640_000,
+      }),
+      makeEntity({
+        id: "C002",
+        name: "Suburban Petty Bourgeoisie",
+        role: "labor_aristocracy",
+        wealth: 0.65,
+        consciousness: 0.05,
+        national_identity: 0.6,
+        organization: 0.3,
+        repression: 0.1,
+        population: 800_000,
+      }),
+      makeEntity({
+        id: "C003",
+        name: "Wayne County Bourgeoisie",
+        role: "core_bourgeoisie",
+        wealth: 0.9,
+        consciousness: 0.01,
+        national_identity: 0.8,
+        organization: 0.8,
+        repression: 0.05,
+        population: 50_000,
+      }),
+      makeEntity({
+        id: "C004",
+        name: "Dearborn Industrial Workers",
+        role: "periphery_proletariat",
+        wealth: 0.35,
+        consciousness: 0.15,
+        national_identity: 0.3,
+        organization: 0.15,
+        repression: 0.4,
+        population: 300_000,
+      }),
+    ],
+    organizations: [
+      makeOrg({
+        id: "ORG001",
+        name: "Wayne County Organizing Committee",
+        org_type: "civil_society",
+        class_character: "proletarian",
+        cohesion: 0.5,
+        cadre_level: 0.1,
+        budget: 100.0,
+        heat: 0.0,
+        territory_ids: [],
+        consciousness_tendency: "revolutionary",
+        vanguard: {
+          cadre_labor: 1.0,
+          sympathizer_labor: 4.0,
+          reputation: 0.0,
+          budget: 100.0,
+          heat: 0.0,
+          max_cadre_labor: 1.0,
+          max_sympathizer_labor: 5.0,
+        },
+      }),
+    ],
+    traps: {
+      liberal: {
+        trap_type: "liberal",
+        severity: "none",
+        score: 0,
+        indicators: [],
+        ticks_at_moderate: 0,
+      },
+      ultra_left: {
+        trap_type: "ultra_left",
+        severity: "none",
+        score: 0,
+        indicators: [],
+        ticks_at_moderate: 0,
+      },
+      rightist: {
+        trap_type: "rightist",
+        severity: "none",
+        score: 0,
+        indicators: [],
+        ticks_at_moderate: 0,
+      },
+      active_trap: null,
+      game_over_trap: null,
+    },
+    ...overrides,
+  });
+}

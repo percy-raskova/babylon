@@ -5,13 +5,15 @@
  * TickResults, and TimeSeriesPanel.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useGameState } from "@/hooks/useGameState";
-import { HexMap } from "@/components/HexMap";
+import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { ActionPanel } from "@/components/ActionPanel";
 import { OrgDashboard } from "@/components/OrgDashboard";
+import { ResourcePanel } from "@/components/ResourcePanel";
 import { TickResults } from "@/components/TickResults";
 import { TimeSeriesPanel } from "@/components/TimeSeriesPanel";
+import { TrapIndicator } from "@/components/TrapIndicator";
 import type { ActionResultData } from "@/types/game";
 
 interface GameViewProps {
@@ -23,6 +25,18 @@ export function GameView({ gameId, onBack }: GameViewProps) {
   const { snapshot, available, loading, error, submitAction, resolveTick } = useGameState(gameId);
   const [results, setResults] = useState<ActionResultData[] | null>(null);
   const [resolving, setResolving] = useState(false);
+
+  // Find the player org (civil_society with proletarian class character)
+  const playerOrg = useMemo(() => {
+    if (!snapshot) return null;
+    return (
+      snapshot.organizations.find(
+        (o) => o.class_character === "proletarian" && o.org_type === "civil_society",
+      ) ??
+      snapshot.organizations[0] ??
+      null
+    );
+  }, [snapshot]);
 
   async function handleResolve() {
     setResolving(true);
@@ -67,37 +81,45 @@ export function GameView({ gameId, onBack }: GameViewProps) {
       )}
 
       {snapshot && (
-        <div className="grid flex-1 grid-cols-[1fr_360px] gap-3 overflow-hidden">
-          {/* Left column: Map + Time Series */}
-          <div className="flex flex-col gap-3 overflow-hidden">
-            <div className="flex-[2] overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
-              <HexMap snapshot={snapshot} />
-            </div>
-            <div className="flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
-              <TimeSeriesPanel snapshot={snapshot} />
-            </div>
+        <>
+          {/* Resource bar */}
+          <div className="mb-3 shrink-0">
+            <ResourcePanel playerOrg={playerOrg} />
           </div>
-
-          {/* Right column: Actions + Orgs + Results */}
-          <div className="flex flex-col gap-3 overflow-hidden">
-            <div className="max-h-[280px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
-              <ActionPanel
-                actions={available}
-                onSubmit={submitAction}
-                onResolve={handleResolve}
-                resolving={resolving}
-              />
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
-              <OrgDashboard snapshot={snapshot} />
-            </div>
-            {results && results.length > 0 && (
-              <div className="max-h-[300px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
-                <TickResults results={results} tick={snapshot.tick} />
+          {/* Trap warnings */}
+          <TrapIndicator traps={snapshot.traps} />
+          <div className="grid flex-1 grid-cols-[1fr_360px] gap-3 overflow-hidden">
+            {/* Left column: Map + Time Series */}
+            <div className="flex flex-col gap-3 overflow-hidden">
+              <div className="flex-[2] overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
+                <DeckGLMap snapshot={snapshot} />
               </div>
-            )}
+              <div className="flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
+                <TimeSeriesPanel snapshot={snapshot} />
+              </div>
+            </div>
+
+            {/* Right column: Actions + Orgs + Results */}
+            <div className="flex flex-col gap-3 overflow-hidden">
+              <div className="max-h-[280px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
+                <ActionPanel
+                  actions={available}
+                  onSubmit={submitAction}
+                  onResolve={handleResolve}
+                  resolving={resolving}
+                />
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
+                <OrgDashboard snapshot={snapshot} />
+              </div>
+              {results && results.length > 0 && (
+                <div className="max-h-[300px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
+                  <TickResults results={results} tick={snapshot.tick} />
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

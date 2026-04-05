@@ -39,6 +39,26 @@ export interface GameSnapshot {
   economy: Record<string, unknown>;
   events: GameEvent[];
   endgame?: EndgameData;
+  /** Trap detection results (Wayne County scenario). */
+  traps?: TrapDetectionResult;
+}
+
+/** Trap detection output from the engine. */
+export interface TrapDetectionResult {
+  liberal: TrapStatus;
+  ultra_left: TrapStatus;
+  rightist: TrapStatus;
+  active_trap: "liberal" | "ultra_left" | "rightist" | null;
+  game_over_trap: "liberal" | "ultra_left" | "rightist" | null;
+}
+
+/** Status of a single trap detector. */
+export interface TrapStatus {
+  trap_type: "liberal" | "ultra_left" | "rightist";
+  severity: "none" | "mild" | "moderate" | "severe";
+  score: number;
+  indicators: string[];
+  ticks_at_moderate: number;
 }
 
 /** Social class entity with full visualization fields. */
@@ -89,6 +109,19 @@ export interface OrgState {
   heat: number;
   territory_ids: string[];
   consciousness_tendency: string;
+  /** Computed vanguard economy resources (player orgs only). */
+  vanguard?: VanguardResources;
+}
+
+/** Vanguard Economy resource snapshot for player organizations. */
+export interface VanguardResources {
+  cadre_labor: number;
+  sympathizer_labor: number;
+  reputation: number;
+  budget: number;
+  heat: number;
+  max_cadre_labor: number;
+  max_sympathizer_labor: number;
 }
 
 /** Institution with full visualization fields. */

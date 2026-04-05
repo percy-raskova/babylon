@@ -7,6 +7,10 @@
 .aider*
 .continue*
 
+# Node
+node_modules
+.node
+
 # Environment Variables & Secrets
 .env
 *.env
@@ -41,8 +45,6 @@ chromadb/
 .pytest_cache/
 .ruff_cache/
 .venv/
-
-
 .coverage
 
 # Hypothesis property-based testing cache
@@ -90,3 +92,6 @@ coverage.json
 assets/images/ff-template.zip
 assets/images/templates.zip
 deploy/ansible-setup-guide.md
+
+# Frontend stuff
+web/frontend/dist/assets

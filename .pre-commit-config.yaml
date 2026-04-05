@@ -220,7 +220,8 @@ repos:
         exclude: |
           (?x)^(
             \.specify/.*|
-            specs/.*
+            specs/.*|
+            \.agents/.*
           )$
 
   - repo: https://github.com/hukkin/mdformat
@@ -249,5 +250,6 @@ repos:
             \.claude/.*|
             \.github/project/.*|
             docs/concepts/vibe-coding/.*|
-            src/babylon/data/corpus/.*
+            src/babylon/data/corpus/.*|
+            \.agents/.*
           )$

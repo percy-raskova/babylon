@@ -53,3 +53,8 @@ data/census/
 
 # Thoughts
 thoughts/
+
+# Agent workflows and data
+.agents/
+.claude/
+antigravity-babylon/

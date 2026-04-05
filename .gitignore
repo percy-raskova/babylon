@@ -90,3 +90,8 @@ coverage.json
 assets/images/ff-template.zip
 assets/images/templates.zip
 deploy/ansible-setup-guide.md
+
+# node
+.node
+.pgdata
+node_modules

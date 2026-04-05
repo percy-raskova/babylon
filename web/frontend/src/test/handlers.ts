@@ -1,9 +1,25 @@
 /**
- * MSW request handlers — mock all Django API endpoints.
+ * MSW request handlers — stateful mock of the Django API endpoints and Babylon engine.
  */
 
 import { http, HttpResponse } from "msw";
-import { makeSnapshot, makeAvailableAction, makeGameSummary, makeActionResult } from "./fixtures";
+import {
+  makeWayneCountySnapshot,
+  makeAvailableAction,
+  makeGameSummary,
+  makeActionResult,
+} from "./fixtures";
+import { GameSnapshot } from "../types/game";
+
+// In-memory state machine for the mock game loop
+let mockState: GameSnapshot = makeWayneCountySnapshot();
+let queuedActions: { verb: string; targets?: string[] }[] = [];
+
+// Reset state function for testing
+export const resetMockState = () => {
+  mockState = makeWayneCountySnapshot();
+  queuedActions = [];
+};
 
 export const handlers = [
   // Auth endpoints
@@ -37,16 +53,16 @@ export const handlers = [
       status: "ok",
       data: [
         {
+          key: "wayne_county",
+          name: "Wayne County Organizer",
+          description: "Organize in Wayne County, Michigan.",
+          territory_count: 81,
+        },
+        {
           key: "us_nationwide",
           name: "United States — Nationwide",
           description: "Full CONUS simulation",
           territory_count: 1100,
-        },
-        {
-          key: "two_node",
-          name: "Two-Node Dialectic",
-          description: "Minimal scenario",
-          territory_count: 1,
         },
       ],
     }),
@@ -57,11 +73,10 @@ export const handlers = [
     HttpResponse.json({
       status: "ok",
       data: [
-        makeGameSummary(),
         makeGameSummary({
-          id: "game-002",
-          scenario: "detroit",
-          current_tick: 12,
+          id: "wayne-county-001",
+          scenario: "wayne_county",
+          current_tick: mockState.tick,
           status: "active",
         }),
       ],
@@ -69,18 +84,19 @@ export const handlers = [
   ),
 
   // Create game
-  http.post("/api/games/", () =>
-    HttpResponse.json({
+  http.post("/api/games/", () => {
+    resetMockState(); // Reset for a new game
+    return HttpResponse.json({
       status: "ok",
-      data: { session_id: "new-game-001" },
-    }),
-  ),
+      data: { session_id: "wayne-county-001" },
+    });
+  }),
 
   // Game state
   http.get("/api/games/:id/state/", () =>
     HttpResponse.json({
       status: "ok",
-      data: makeSnapshot(),
+      data: mockState,
     }),
   ),
 
@@ -89,28 +105,95 @@ export const handlers = [
     HttpResponse.json({
       status: "ok",
       data: [
-        makeAvailableAction(),
-        makeAvailableAction({ verb: "attack", targets: ["entity-bourgeoisie"], cost: 5 }),
+        makeAvailableAction({ verb: "educate", targets: ["C001", "C004"], cost: 0 }),
+        makeAvailableAction({ verb: "attack", targets: ["C003"], cost: 0 }),
+        makeAvailableAction({ verb: "mobilize", targets: ["C001"], cost: 0 }),
       ],
     }),
   ),
 
   // Submit action
-  http.post("/api/games/:id/actions/", () =>
-    HttpResponse.json({
+  http.post("/api/games/:id/actions/", async ({ request }) => {
+    const data = (await request.json()) as { verb: string; targets?: string[] };
+    const verb = data.verb;
+
+    // Affordability Check Contract
+    let canAfford = true;
+    let reason = "";
+
+    const playerOrg = mockState.organizations[0]; // Assuming Wayne County Player Org is first
+    if (playerOrg && playerOrg.vanguard) {
+      if (verb === "attack") {
+        if (playerOrg.vanguard.cadre_labor < 2) {
+          canAfford = false;
+          reason = "Insufficient Cadre Labor (need 2)";
+        }
+      } else if (verb === "educate") {
+        if (playerOrg.vanguard.budget < 50) {
+          canAfford = false;
+          reason = "Insufficient Budget (need $50)";
+        }
+      }
+    }
+
+    if (!canAfford) {
+      return HttpResponse.json(
+        {
+          status: "error",
+          message: reason,
+        },
+        { status: 400 },
+      );
+    }
+
+    // Deduct cost and queue action
+    if (playerOrg && playerOrg.vanguard) {
+      if (verb === "attack") playerOrg.vanguard.cadre_labor -= 2;
+      if (verb === "educate") playerOrg.vanguard.budget -= 50;
+    }
+
+    queuedActions.push(data);
+
+    return HttpResponse.json({
       status: "ok",
-      data: { id: 1, status: "pending" },
-    }),
-  ),
+      data: { id: queuedActions.length, status: "pending" },
+    });
+  }),
 
   // Resolve tick
-  http.post("/api/games/:id/resolve/", () =>
-    HttpResponse.json({
+  http.post("/api/games/:id/resolve/", () => {
+    mockState.tick += 1;
+
+    // Simulate Trap Escalation Contract
+    if (mockState.traps) {
+      const attackCount = queuedActions.filter((a) => a.verb === "attack").length;
+      const educateCount = queuedActions.filter((a) => a.verb === "educate").length;
+
+      if (attackCount > 0) {
+        mockState.traps.ultra_left.score += 0.3 * attackCount;
+        if (mockState.traps.ultra_left.score >= 0.5) {
+          mockState.traps.ultra_left.severity = "moderate";
+          mockState.traps.active_trap = "ultra_left";
+        }
+      }
+
+      if (educateCount > 0) {
+        mockState.traps.liberal.score += 0.3 * educateCount;
+        if (mockState.traps.liberal.score >= 0.5) {
+          mockState.traps.liberal.severity = "moderate";
+          mockState.traps.active_trap = "liberal";
+        }
+      }
+    }
+
+    queuedActions = []; // Flush actions
+
+    return HttpResponse.json({
       status: "ok",
       data: { resolved: true },
-      tick: 2,
-    }),
-  ),
+      tick: mockState.tick,
+    });
+  }),
 
   // Action results
   http.get("/api/games/:id/results/:tick/", () =>

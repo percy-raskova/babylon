@@ -41,8 +41,10 @@ export function ActionComposer({ snapshot, onSubmit, resolving }: ActionComposer
   const clearPending = useUIStore((s) => s.clearPendingAction);
 
   const [submitting, setSubmitting] = useState(false);
-  /** Only player-controllable orgs (political factions) appear in the action composer. */
-  const playerOrgs = snapshot.organizations.filter((o) => o.org_type === "POLITICAL_FACTION");
+  /** Player-controllable orgs: political factions OR proletarian civil society (Wayne County). */
+  const playerOrgs = snapshot.organizations.filter(
+    (o) => o.org_type === "POLITICAL_FACTION" || o.class_character === "proletarian",
+  );
 
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(playerOrgs[0]?.id ?? null);
 

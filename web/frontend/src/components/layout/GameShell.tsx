@@ -3,7 +3,7 @@
  * collapsible right sidebar, and collapsible bottom panel.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "react-router";
 import { useGameState } from "@/hooks/useGameState";
 import { useUIStore } from "@/stores/uiStore";
@@ -15,6 +15,8 @@ import { usePersistentUI } from "@/hooks/usePersistentUI";
 import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { ActionComposer } from "@/components/action/ActionComposer";
 import { Inspector } from "@/components/inspector/Inspector";
+import { ResourcePanel } from "@/components/ResourcePanel";
+import { TrapIndicator } from "@/components/TrapIndicator";
 import { TickResults } from "@/components/TickResults";
 import { TimeSeries } from "@/components/charts/TimeSeries";
 import { GraphView } from "@/components/graph/GraphView";
@@ -42,6 +44,18 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
   const clearBreadcrumbs = useUIStore((s) => s.clearBreadcrumbs);
   const setSelectedHex = useUIStore((s) => s.setSelectedHex);
   const setSelectedNode = useUIStore((s) => s.setSelectedNode);
+
+  // Find the player org for the resource panel
+  const playerOrg = useMemo(() => {
+    if (!snapshot) return null;
+    return (
+      snapshot.organizations.find(
+        (o) => o.class_character === "proletarian" && o.org_type === "civil_society",
+      ) ??
+      snapshot.organizations[0] ??
+      null
+    );
+  }, [snapshot]);
 
   // Escape key clears selection and breadcrumbs
   const handleEscape = useCallback(
@@ -104,7 +118,17 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
         onLogout={onLogout}
       />
 
-      {error && <p className="shrink-0 px-4 py-1 text-[13px] text-crimson">{error}</p>}
+      {error && <p className="shrink-0 px-4 py-1 text-[13px] text-crimson" data-testid="error-banner">{error}</p>}
+
+      {/* Vanguard economy resource bar */}
+      <div className="shrink-0 px-3">
+        <ResourcePanel playerOrg={playerOrg} />
+      </div>
+
+      {/* Trap deviation warnings */}
+      <div className="shrink-0 px-3">
+        <TrapIndicator traps={snapshot.traps} />
+      </div>
 
       {/* Main area: map + right panel */}
       <div className="flex min-h-0 flex-1 overflow-hidden">

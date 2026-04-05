@@ -123,6 +123,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (res.status !== "ok") {
       log.error("Action submission failed", { gameId, message: res.message });
       set({ error: res.message ?? "Failed to submit action" });
+      return; // Don't re-fetch — error would be cleared
     }
     await get().fetchState(gameId);
   },

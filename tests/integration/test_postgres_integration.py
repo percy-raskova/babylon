@@ -27,9 +27,14 @@ def runtime(pg_pool) -> PostgresRuntime:
 
 
 @pytest.fixture
-def session_id() -> uuid.UUID:
+def session_id(runtime: PostgresRuntime) -> uuid.UUID:
     """Unique session ID for each test."""
-    return uuid.uuid4()
+    return runtime.create_session(
+        scenario="test_integration",
+        config_json={},
+        game_defines_json={},
+        rng_seed=42,
+    )
 
 
 def build_large_graph(num_nodes: int = 1000) -> nx.DiGraph[str]:
@@ -88,8 +93,12 @@ class TestSessionIsolation:
 
     def test_sessions_are_isolated(self, runtime: PostgresRuntime) -> None:
         """Data persisted in one session should not appear in another."""
-        session_a = uuid.uuid4()
-        session_b = uuid.uuid4()
+        session_a = runtime.create_session(
+            scenario="test_A", config_json={}, game_defines_json={}, rng_seed=1
+        )
+        session_b = runtime.create_session(
+            scenario="test_B", config_json={}, game_defines_json={}, rng_seed=2
+        )
 
         graph_a = build_large_graph(5)
         # B gets slightly different attributes to ensure isolation
@@ -130,7 +139,12 @@ class TestConcurrentSessions:
 
     def test_interleaved_ticks(self, runtime: PostgresRuntime) -> None:
         """Verify multiple sessions can persist interleaved ticks without issue."""
-        sessions = [uuid.uuid4() for _ in range(3)]
+        sessions = [
+            runtime.create_session(
+                scenario=f"test_conc_{i}", config_json={}, game_defines_json={}, rng_seed=i
+            )
+            for i in range(3)
+        ]
         graph = build_large_graph(5)
 
         for tick in range(1, 4):

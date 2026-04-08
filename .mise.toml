@@ -337,6 +337,31 @@ description = "Initialize SQLite database schema"
 run = "poetry run python tools/init_db.py"
 
 # =============================================================================
+# DATABASE (Namespaced)
+# Isolated Postgres instance via Docker to avoid OS daemon collisions
+# =============================================================================
+
+[tasks."db:up"]
+description = "Spin up a new isolated Postgres container for testing on port 5433"
+run = "docker run --name babylon-pg-isolated -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test -e POSTGRES_DB=babylon_test -p 5433:5432 -d postgres:15"
+
+[tasks."db:start"]
+description = "Start the existing isolated Postgres container"
+run = "docker start babylon-pg-isolated"
+
+[tasks."db:stop"]
+description = "Stop the isolated Postgres container (maintains data)"
+run = "docker stop babylon-pg-isolated"
+
+[tasks."db:down"]
+description = "Stop and permanently remove the isolated Postgres container (destroys data)"
+run = "docker stop babylon-pg-isolated && docker rm babylon-pg-isolated"
+
+[tasks."db:query"]
+description = "Run psql directly against the isolated test database"
+run = "PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test"
+
+# =============================================================================
 # DOCUMENTATION (Namespaced)
 # =============================================================================
 

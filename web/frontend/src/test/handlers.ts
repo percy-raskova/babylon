@@ -1,74 +1,25 @@
 /**
- * MSW request handlers — stateful mock server simulating the Wayne County game loop.
- *
- * This mock server:
- * - Returns Wayne County snapshot data with vanguard resources and traps
- * - Processes action affordability checks (rejects unaffordable actions)
- * - Deducts resources on successful actions
- * - Resolves ticks and escalates trap scores based on action patterns
- * - Exports resetMockState() for test cleanup
+ * MSW request handlers — stateful mock of the Django API endpoints and Babylon engine.
  */
 
 import { http, HttpResponse } from "msw";
-import type { GameSnapshot } from "@/types/game";
 import {
   makeWayneCountySnapshot,
+  makeAvailableAction,
   makeGameSummary,
   makeActionResult,
-  makeActionPreview,
-  makeAvailableAction,
 } from "./fixtures";
+import { GameSnapshot } from "../types/game";
 
-// ---------------------------------------------------------------------------
-// Stateful mock game state
-// ---------------------------------------------------------------------------
-
+// In-memory state machine for the mock game loop
 let mockState: GameSnapshot = makeWayneCountySnapshot();
-let actionHistory: { verb: string; org_id: string }[] = [];
+let queuedActions: { verb: string; targets?: string[] }[] = [];
 
-/** Reset mock state to initial Wayne County conditions. */
-export function resetMockState(): void {
+// Reset state function for testing
+export const resetMockState = () => {
   mockState = makeWayneCountySnapshot();
-  actionHistory = [];
-}
-
-// ---------------------------------------------------------------------------
-// Affordability rules
-// ---------------------------------------------------------------------------
-
-interface CostRule {
-  check: (state: GameSnapshot) => boolean;
-  deduct: (state: GameSnapshot) => void;
-  reason: string;
-}
-
-const VERB_COSTS: Record<string, CostRule> = {
-  educate: {
-    check: (s) => (s.organizations[0]?.vanguard?.budget ?? 0) >= 50,
-    deduct: (s) => {
-      if (s.organizations[0]?.vanguard) s.organizations[0].vanguard.budget -= 50;
-    },
-    reason: "Insufficient Budget (need $50)",
-  },
-  attack: {
-    check: (s) => (s.organizations[0]?.vanguard?.cadre_labor ?? 0) >= 2,
-    deduct: (s) => {
-      if (s.organizations[0]?.vanguard) s.organizations[0].vanguard.cadre_labor -= 2;
-    },
-    reason: "Insufficient Cadre Labor (need 2)",
-  },
-  mobilize: {
-    check: (s) => (s.organizations[0]?.vanguard?.sympathizer_labor ?? 0) >= 2,
-    deduct: (s) => {
-      if (s.organizations[0]?.vanguard) s.organizations[0].vanguard.sympathizer_labor -= 2;
-    },
-    reason: "Insufficient Sympathizer Labor (need 2)",
-  },
+  queuedActions = [];
 };
-
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
 
 export const handlers = [
   // Auth endpoints
@@ -104,14 +55,14 @@ export const handlers = [
         {
           key: "wayne_county",
           name: "Wayne County Organizer",
-          description: "Detroit tri-county area",
-          territory_count: 1500,
+          description: "Organize in Wayne County, Michigan.",
+          territory_count: 81,
         },
         {
-          key: "two_node",
-          name: "Two-Node Dialectic",
-          description: "Minimal scenario",
-          territory_count: 1,
+          key: "us_nationwide",
+          name: "United States — Nationwide",
+          description: "Full CONUS simulation",
+          territory_count: 1100,
         },
       ],
     }),
@@ -122,11 +73,10 @@ export const handlers = [
     HttpResponse.json({
       status: "ok",
       data: [
-        makeGameSummary(),
         makeGameSummary({
-          id: "game-002",
-          scenario: "detroit",
-          current_tick: 12,
+          id: "wayne-county-001",
+          scenario: "wayne_county",
+          current_tick: mockState.tick,
           status: "active",
         }),
       ],
@@ -134,14 +84,15 @@ export const handlers = [
   ),
 
   // Create game
-  http.post("/api/games/", () =>
-    HttpResponse.json({
+  http.post("/api/games/", () => {
+    resetMockState(); // Reset for a new game
+    return HttpResponse.json({
       status: "ok",
       data: { session_id: "wayne-county-001" },
-    }),
-  ),
+    });
+  }),
 
-  // Game state — returns current stateful snapshot
+  // Game state
   http.get("/api/games/:id/state/", () =>
     HttpResponse.json({
       status: "ok",
@@ -149,97 +100,93 @@ export const handlers = [
     }),
   ),
 
-  // Available actions — 3 verbs for Wayne County
+  // Available actions
   http.get("/api/games/:id/actions/available/", () =>
     HttpResponse.json({
       status: "ok",
       data: [
-        makeAvailableAction({ org_id: "ORG001", verb: "educate", cost: 50 }),
-        makeAvailableAction({ org_id: "ORG001", verb: "attack", cost: 2 }),
-        makeAvailableAction({ org_id: "ORG001", verb: "mobilize", cost: 2 }),
+        makeAvailableAction({ verb: "educate", targets: ["C001", "C004"], cost: 0 }),
+        makeAvailableAction({ verb: "attack", targets: ["C003"], cost: 0 }),
+        makeAvailableAction({ verb: "mobilize", targets: ["C001"], cost: 0 }),
       ],
     }),
   ),
 
-  // Action preview
-  http.post("/api/games/:id/actions/preview/", () =>
-    HttpResponse.json({
-      status: "ok",
-      data: makeActionPreview(),
-    }),
-  ),
-
-  // Submit action — stateful affordability check
+  // Submit action
   http.post("/api/games/:id/actions/", async ({ request }) => {
-    const body = (await request.json()) as { verb: string; org_id: string };
-    const rule = VERB_COSTS[body.verb];
+    const data = (await request.json()) as { verb: string; targets?: string[] };
+    const verb = data.verb;
 
-    if (rule && !rule.check(mockState)) {
+    // Affordability Check Contract
+    let canAfford = true;
+    let reason = "";
+
+    const playerOrg = mockState.organizations[0]; // Assuming Wayne County Player Org is first
+    if (playerOrg && playerOrg.vanguard) {
+      if (verb === "attack") {
+        if (playerOrg.vanguard.cadre_labor < 2) {
+          canAfford = false;
+          reason = "Insufficient Cadre Labor (need 2)";
+        }
+      } else if (verb === "educate") {
+        if (playerOrg.vanguard.budget < 50) {
+          canAfford = false;
+          reason = "Insufficient Budget (need $50)";
+        }
+      }
+    }
+
+    if (!canAfford) {
       return HttpResponse.json(
         {
           status: "error",
-          message: rule.reason,
+          message: reason,
         },
         { status: 400 },
       );
     }
 
-    // Deduct resources
-    if (rule) {
-      rule.deduct(mockState);
+    // Deduct cost and queue action
+    if (playerOrg && playerOrg.vanguard) {
+      if (verb === "attack") playerOrg.vanguard.cadre_labor -= 2;
+      if (verb === "educate") playerOrg.vanguard.budget -= 50;
     }
 
-    // Track action for trap escalation
-    actionHistory.push({ verb: body.verb, org_id: body.org_id });
+    queuedActions.push(data);
 
     return HttpResponse.json({
       status: "ok",
-      data: { id: actionHistory.length, status: "pending" },
+      data: { id: queuedActions.length, status: "pending" },
     });
   }),
 
-  // Resolve tick — advance tick & escalate traps
+  // Resolve tick
   http.post("/api/games/:id/resolve/", () => {
-    mockState = { ...mockState, tick: mockState.tick + 1 };
+    mockState.tick += 1;
 
-    // Escalate traps based on action patterns
+    // Simulate Trap Escalation Contract
     if (mockState.traps) {
-      const educateCount = actionHistory.filter((a) => a.verb === "educate").length;
-      const attackCount = actionHistory.filter((a) => a.verb === "attack").length;
+      const attackCount = queuedActions.filter((a) => a.verb === "attack").length;
+      const educateCount = queuedActions.filter((a) => a.verb === "educate").length;
 
-      const newTraps = { ...mockState.traps };
-
-      // Liberal score increases with educate-heavy patterns
-      if (educateCount > 0) {
-        const newScore = (newTraps.liberal.score as number) + educateCount * 0.3;
-        newTraps.liberal = {
-          ...newTraps.liberal,
-          score: Math.min(1.0, newScore),
-          severity: newScore > 0.5 ? "moderate" : "mild",
-        };
-      }
-
-      // Ultra-left score increases with attack-heavy patterns
       if (attackCount > 0) {
-        const newScore = (newTraps.ultra_left.score as number) + attackCount * 0.3;
-        newTraps.ultra_left = {
-          ...newTraps.ultra_left,
-          score: Math.min(1.0, newScore),
-          severity: newScore > 0.5 ? "moderate" : "mild",
-        };
+        mockState.traps.ultra_left.score += 0.3 * attackCount;
+        if (mockState.traps.ultra_left.score >= 0.5) {
+          mockState.traps.ultra_left.severity = "moderate";
+          mockState.traps.active_trap = "ultra_left";
+        }
       }
 
-      // Determine active trap (highest non-none severity)
-      const highest = [newTraps.liberal, newTraps.ultra_left, newTraps.rightist]
-        .filter((t) => t.severity !== "none")
-        .sort((a, b) => (b.score as number) - (a.score as number))[0];
-
-      newTraps.active_trap = highest ? (highest.trap_type as string) : null;
-      mockState = { ...mockState, traps: newTraps };
+      if (educateCount > 0) {
+        mockState.traps.liberal.score += 0.3 * educateCount;
+        if (mockState.traps.liberal.score >= 0.5) {
+          mockState.traps.liberal.severity = "moderate";
+          mockState.traps.active_trap = "liberal";
+        }
+      }
     }
 
-    // Clear action history for next tick
-    actionHistory = [];
+    queuedActions = []; // Flush actions
 
     return HttpResponse.json({
       status: "ok",

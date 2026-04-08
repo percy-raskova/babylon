@@ -24,14 +24,26 @@ from babylon.engine.scenarios import (
     create_two_node_scenario,
     create_us_scenario,
 )
+from babylon.engine.scenarios_wayne_county import create_wayne_county_scenario
 from babylon.engine.simulation_engine import step
+from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import ActionType
+from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.persistence.protocols import RuntimePersistence
 
 logger = logging.getLogger(__name__)
+
+# Per-session action history for trap detection (in-memory, not persisted).
+# Maps session_id -> list of recent action dicts (capped at 50).
+_session_action_history: dict[UUID, list[dict[str, Any]]] = {}
+
+# Per-session trap state for severity persistence across ticks.
+_session_trap_state: dict[UUID, TrapDetectionResult] = {}
+
+_ACTION_HISTORY_CAP = 50
 
 # ---------------------------------------------------------------------- #
 # Verb-to-ActionType mapping (9 canonical player verbs → engine ActionType)
@@ -459,6 +471,10 @@ class EngineBridge:
     ) -> int:
         """Submit a player action for the given tick.
 
+        Performs affordability checks using VanguardResources before
+        persisting the action. Raises ValueError if the org cannot
+        afford the action.
+
         Args:
             session_id: The game session UUID.
             tick: The tick this action applies to.
@@ -471,7 +487,32 @@ class EngineBridge:
 
         Returns:
             The integer turn ID from the database.
+
+        Raises:
+            ValueError: If the org cannot afford the action.
         """
+        # Affordability check: compute vanguard resources and verify
+        state, _graph = self.hydrate_state(session_id)
+        org = state.organizations.get(org_id)
+        if org is not None:
+            resources = VanguardResources.from_organization(
+                cadre_level=float(org.cadre_level),
+                cohesion=float(org.cohesion),
+                budget=float(org.budget),
+                heat=float(org.heat),
+                territory_count=len(org.territory_ids),
+            )
+            can_afford, reason = check_can_afford(resources, verb)
+            if not can_afford:
+                msg = f"Cannot afford '{verb}': {reason}"
+                raise ValueError(msg)
+
+        # Record in action history for trap detection
+        history = _session_action_history.setdefault(session_id, [])
+        history.append({"verb": verb, "org_id": org_id, "target_id": target_id, "tick": tick})
+        if len(history) > _ACTION_HISTORY_CAP:
+            _session_action_history[session_id] = history[-_ACTION_HISTORY_CAP:]
+
         result: int = self._persistence.submit_turn(  # type: ignore[attr-defined]
             session_id=session_id,
             tick=tick,
@@ -642,6 +683,9 @@ def _build_initial_state_for_scenario(scenario: str) -> WorldState:
     if normalized == "labor_aristocracy":
         state, _config, _defines = create_labor_aristocracy_scenario()
         return state
+    if normalized in {"wayne_county", "wayne", "detroit"}:
+        state, _config, _defines = create_wayne_county_scenario()
+        return state
 
     logger.warning("Unknown scenario '%s', falling back to us", scenario)
     state, _config, _defines = create_us_scenario()
@@ -700,8 +744,12 @@ def _serialize_territory(t: Any) -> dict[str, Any]:
 
 
 def _serialize_organization(o: Any) -> dict[str, Any]:
-    """Serialize an Organization with all visualization-relevant fields."""
-    return {
+    """Serialize an Organization with all visualization-relevant fields.
+
+    For player organizations (civil_society with proletarian class character),
+    computes and attaches VanguardResources as the 'vanguard' field.
+    """
+    result: dict[str, Any] = {
         "id": o.id,
         "name": o.name,
         "org_type": _enum_val(o.org_type),
@@ -712,7 +760,24 @@ def _serialize_organization(o: Any) -> dict[str, Any]:
         "heat": float(o.heat),
         "territory_ids": list(o.territory_ids),
         "consciousness_tendency": _enum_val(o.consciousness_tendency),
+        "vanguard": None,
     }
+
+    # Compute vanguard resources for player orgs
+    is_player_org = (
+        _enum_val(o.class_character) == "proletarian" and _enum_val(o.org_type) == "civil_society"
+    )
+    if is_player_org:
+        vanguard = VanguardResources.from_organization(
+            cadre_level=float(o.cadre_level),
+            cohesion=float(o.cohesion),
+            budget=float(o.budget),
+            heat=float(o.heat),
+            territory_count=len(o.territory_ids),
+        )
+        result["vanguard"] = vanguard.model_dump()
+
+    return result
 
 
 def _serialize_institution(inst: Any) -> dict[str, Any]:
@@ -750,6 +815,8 @@ def _serialize_edge(rel: Any) -> dict[str, Any]:
 def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
     """Convert a WorldState to a JSON-serializable dict for API responses.
 
+    Includes VanguardResources on player orgs and TrapDetection results.
+
     Args:
         state: The WorldState to serialize.
         session_id: The session UUID to include.
@@ -771,7 +838,10 @@ def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
         for e in state.events
     ]
 
-    return {
+    # Compute trap detection for the session
+    traps_dict = _compute_traps(state, session_id)
+
+    snapshot: dict[str, Any] = {
         "session_id": str(session_id),
         "tick": state.tick,
         "entities": entities,
@@ -782,6 +852,71 @@ def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
         "economy": state.economy.model_dump() if state.economy else {},
         "events": events_list,
     }
+
+    if traps_dict is not None:
+        snapshot["traps"] = traps_dict
+
+    return snapshot
+
+
+def _compute_traps(state: WorldState, session_id: UUID) -> dict[str, Any] | None:
+    """Run trap detection for a session, computing scores from action history.
+
+    Returns None if no player org is found (non-Wayne County scenarios).
+    """
+    # Find the player org
+    player_org = None
+    for org in state.organizations.values():
+        if (
+            _enum_val(org.class_character) == "proletarian"
+            and _enum_val(org.org_type) == "civil_society"
+        ):
+            player_org = org
+            break
+
+    if player_org is None:
+        return None
+
+    # Compute derived values for trap detection
+    history = _session_action_history.get(session_id, [])
+    consciousness_avg = sum(
+        float(e.ideology.class_consciousness) for e in state.entities.values()
+    ) / max(len(state.entities), 1)
+
+    resources = VanguardResources.from_organization(
+        cadre_level=float(player_org.cadre_level),
+        cohesion=float(player_org.cohesion),
+        budget=float(player_org.budget),
+        heat=float(player_org.heat),
+        territory_count=len(player_org.territory_ids),
+    )
+
+    # Count entities trending fascist (national_identity > 0.6)
+    fascist_count = sum(
+        1 for e in state.entities.values() if float(e.ideology.national_identity) > 0.6
+    )
+
+    previous_result = _session_trap_state.get(session_id)
+
+    result = detect_traps(
+        action_history=history,
+        org_budget=float(player_org.budget),
+        org_cadre=float(player_org.cadre_level),
+        org_cohesion=float(player_org.cohesion),
+        org_heat=float(player_org.heat),
+        sympathizer_labor=float(resources.sympathizer_labor),
+        territory_count=len(player_org.territory_ids),
+        consciousness_avg=consciousness_avg,
+        tick=state.tick,
+        fascist_entities=fascist_count,
+        total_entities=len(state.entities),
+        previous_result=previous_result,
+    )
+
+    # Persist trap state for next tick
+    _session_trap_state[session_id] = result
+
+    return result.model_dump()
 
 
 def _mark_resolved_safe(persistence: RuntimePersistence, session_id: UUID, tick: int) -> None:

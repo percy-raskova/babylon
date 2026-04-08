@@ -171,6 +171,16 @@ def game_list(request: Request) -> JsonResponse:
 
 SCENARIO_CATALOG: list[dict[str, Any]] = [
     {
+        "key": "wayne_county",
+        "name": "Wayne County Organizer",
+        "description": (
+            "Organize in Wayne County, Michigan. 81 H3 hexes covering Detroit, "
+            "Dearborn, Downriver, and the suburbs. 4 social classes, 1 player org. "
+            "52-tick (1-year) game arc."
+        ),
+        "territory_count": 81,
+    },
+    {
         "key": "us_nationwide",
         "name": "United States — Nationwide",
         "description": "Full CONUS simulation with ~1,100 H3 territories",
@@ -393,16 +403,20 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
         )
 
     bridge = _get_bridge()
-    turn_id = bridge.submit_action(
-        session_id=uuid.UUID(str(session.id)),
-        tick=session.current_tick,
-        org_id=serializer.validated_data["org_id"],
-        verb=serializer.validated_data["verb"],
-        action_type=serializer.validated_data.get("action_type"),
-        target_id=serializer.validated_data.get("target_id"),
-        target_community=serializer.validated_data.get("target_community"),
-        params_json=serializer.validated_data.get("params_json"),
-    )
+    try:
+        turn_id = bridge.submit_action(
+            session_id=uuid.UUID(str(session.id)),
+            tick=session.current_tick,
+            org_id=serializer.validated_data["org_id"],
+            verb=serializer.validated_data["verb"],
+            action_type=serializer.validated_data.get("action_type"),
+            target_id=serializer.validated_data.get("target_id"),
+            target_community=serializer.validated_data.get("target_community"),
+            params_json=serializer.validated_data.get("params_json"),
+        )
+    except ValueError as exc:
+        logger.info("Action rejected (affordability) session=%s: %s", game_id, exc)
+        return _error(str(exc), http_status=400)
     logger.info(
         "Action submitted session=%s tick=%d org=%s verb=%s turn_id=%d",
         session.id,

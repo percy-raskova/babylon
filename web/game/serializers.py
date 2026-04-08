@@ -78,6 +78,18 @@ class TerritorySerializer(serializers.Serializer[dict[str, Any]]):
     occupant_id = serializers.CharField(allow_null=True)
 
 
+class VanguardResourcesSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize vanguard economy resources for player organizations."""
+
+    cadre_labor = serializers.FloatField()
+    sympathizer_labor = serializers.FloatField()
+    reputation = serializers.FloatField()
+    budget = serializers.FloatField()
+    heat = serializers.FloatField()
+    max_cadre_labor = serializers.FloatField()
+    max_sympathizer_labor = serializers.FloatField()
+
+
 class OrganizationSerializer(serializers.Serializer[dict[str, Any]]):
     """Serialize an organization with full visualization fields."""
 
@@ -91,6 +103,7 @@ class OrganizationSerializer(serializers.Serializer[dict[str, Any]]):
     heat = serializers.FloatField()
     territory_ids = serializers.ListField(child=serializers.CharField())
     consciousness_tendency = serializers.CharField()
+    vanguard = VanguardResourcesSerializer(required=False, allow_null=True)
 
 
 class InstitutionSerializer(serializers.Serializer[dict[str, Any]]):
@@ -130,6 +143,26 @@ class EventSerializer(serializers.Serializer[dict[str, Any]]):
     data = serializers.DictField(required=False, default=dict)  # type: ignore[assignment]
 
 
+class TrapStatusSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize a single trap detector status."""
+
+    trap_type = serializers.CharField()
+    severity = serializers.CharField()
+    score = serializers.FloatField()
+    indicators = serializers.ListField(child=serializers.CharField())
+    ticks_at_moderate = serializers.IntegerField()
+
+
+class TrapDetectionResultSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize the full trap detection result."""
+
+    liberal = TrapStatusSerializer()
+    ultra_left = TrapStatusSerializer()
+    rightist = TrapStatusSerializer()
+    active_trap = serializers.CharField(allow_null=True)
+    game_over_trap = serializers.CharField(allow_null=True)
+
+
 class GameSnapshotSerializer(serializers.Serializer[dict[str, Any]]):
     """Serialize a full game state snapshot."""
 
@@ -142,6 +175,7 @@ class GameSnapshotSerializer(serializers.Serializer[dict[str, Any]]):
     edges = EdgeSerializer(many=True)
     economy = serializers.DictField()
     events = EventSerializer(many=True)
+    traps = TrapDetectionResultSerializer(required=False, allow_null=True)
 
 
 class GameSessionListSerializer(serializers.Serializer[dict[str, Any]]):

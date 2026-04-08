@@ -170,6 +170,75 @@ class EngineBridge:
         state, _graph = self.hydrate_state(session_id)
         return _state_to_snapshot(state, session_id)
 
+    def get_map_snapshot(self, session_id: UUID, tick: int | None = None) -> dict[str, Any]:
+        """Return a GeoJSON FeatureCollection of hex states for a given tick.
+
+        Args:
+            session_id: The game session UUID.
+            tick: The tick to query data for. If None, uses current tick.
+
+        Returns:
+            GeoJSON dict matching the HexMap frontend contract.
+        """
+        import h3
+
+        from game.models import GameSession, HexState
+
+        try:
+            session = GameSession.objects.get(id=session_id)
+        except GameSession.DoesNotExist:
+            return {"type": "FeatureCollection", "metadata": {}, "features": []}
+
+        target_tick = tick if tick is not None else session.current_tick
+
+        hex_states = HexState.objects.filter(game=session, tick=target_tick)
+
+        features = []
+        for state in hex_states:
+            boundary = h3.cell_to_boundary(state.h3_index)
+            # GeoJSON expects [lng, lat] format
+            coordinates = [[lng, lat] for lat, lng in boundary]
+            # Close the polygon
+            coordinates.append(coordinates[0])
+
+            feature = {
+                "type": "Feature",
+                "id": state.h3_index,
+                "geometry": {"type": "Polygon", "coordinates": [coordinates]},
+                "properties": {
+                    "h3_index": state.h3_index,
+                    "county_fips": state.county_fips,
+                    "county_name": state.county_name,
+                    "profit_rate": state.profit_rate,
+                    "exploitation_rate": state.exploitation_rate,
+                    "occ": state.occ,
+                    "imperial_rent": state.imperial_rent,
+                    "heat": state.heat,
+                    "org_presence": state.org_presence,
+                    "dominant_class": state.dominant_class,
+                    "population": state.population,
+                },
+            }
+            features.append(feature)
+
+        return {
+            "type": "FeatureCollection",
+            "metadata": {
+                "tick": target_tick,
+                "scenario": session.scenario,
+                "h3_resolution": 7,
+                "available_metrics": [
+                    "profit_rate",
+                    "exploitation_rate",
+                    "occ",
+                    "imperial_rent",
+                    "heat",
+                    "org_presence",
+                ],
+            },
+            "features": features,
+        }
+
     # ------------------------------------------------------------------ #
     # Tick resolution
     # ------------------------------------------------------------------ #

@@ -149,3 +149,39 @@ class ActionResult(models.Model):
 
     def __str__(self) -> str:
         return f"ActionResult({self.session_id}, tick={self.tick}, {self.org_id})"
+
+
+class HexState(models.Model):
+    """Wraps the ``sim.hex_states`` table for the HexMap component."""
+
+    id = models.AutoField(primary_key=True)
+    game = models.ForeignKey(
+        GameSession,
+        on_delete=models.CASCADE,
+        db_column="game_id",
+    )
+    tick = models.IntegerField()
+    h3_index = models.CharField(max_length=20)
+    county_fips = models.CharField(max_length=5)
+    county_name = models.CharField(max_length=50)
+    profit_rate = models.FloatField(null=True, blank=True)
+    exploitation_rate = models.FloatField(null=True, blank=True)
+    occ = models.FloatField(null=True, blank=True)
+    imperial_rent = models.FloatField(null=True, blank=True)
+    heat = models.FloatField(null=True, blank=True)
+    org_presence = models.IntegerField(default=0)
+    dominant_class = models.CharField(max_length=30, null=True, blank=True)
+    population = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = '"sim"."hex_states"'
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "tick", "h3_index"],
+                name="unique_game_tick_h3",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"HexState({self.game_id}, tick={self.tick}, {self.h3_index})"

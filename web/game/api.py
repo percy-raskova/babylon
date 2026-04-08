@@ -265,6 +265,29 @@ def game_state(request: Request, game_id: str) -> JsonResponse:
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_map(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/map/ — Hex map state snapshot."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    try:
+        tick_query = request.query_params.get("tick")
+        tick = int(tick_query) if tick_query is not None else None
+    except ValueError:
+        return _error("Invalid tick parameter", http_status=400)
+
+    bridge = _get_bridge()
+    snapshot = bridge.get_map_snapshot(uuid.UUID(str(session.id)), tick=tick)
+    return _envelope(
+        snapshot,
+        tick=snapshot.get("metadata", {}).get("tick", session.current_tick),
+        session_id=str(session.id),
+    )
+
+
 # ---------------------------------------------------------------------- #
 # Action endpoints
 # ---------------------------------------------------------------------- #

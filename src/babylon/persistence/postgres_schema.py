@@ -1,12 +1,13 @@
 """PostgreSQL schema DDL for simulation runtime state (Feature 037).
 
-Defines 19 tables across 6 layers:
+Defines 21 tables across 7 layers:
 
 1. Game Management (3): game_session, game_turn, action_result
 2. Simulation State (10): node_state, edge_state, graph_metadata,
    community_state, community_membership, contradiction_field,
    edge_curvature, simulation_event, tick_log, tick_summary
 3. Spatial (3): hex_cell, hex_state, hex_terrain_state
+3b. R8 Reference (2): hex_r8_reference, hex_r8_linear_features_reference
 4. Infrastructure (1): infrastructure_link_state
 5. Trace (1): trace_log (UNLOGGED, partitioned by session_id)
 6. Semantic (1): document_chunk (pgvector)
@@ -293,6 +294,35 @@ CREATE TABLE IF NOT EXISTS hex_terrain_state (
 )
 """
 
+# ─── Layer 3b: R8 Geographic Substrate (Reference Data) ────────────
+
+HEX_R8_REFERENCE_DDL = """
+CREATE TABLE IF NOT EXISTS hex_r8_reference (
+    h3_index        VARCHAR(17) PRIMARY KEY,
+    parent_h3       VARCHAR(15) NOT NULL REFERENCES hex_cell(h3_index),
+    county_fips     VARCHAR(5) NOT NULL,
+    terrain_type    VARCHAR(16) NOT NULL DEFAULT 'LAND',
+    water_fraction  FLOAT NOT NULL DEFAULT 0.0,
+    elevation_m     FLOAT,
+    has_water_service BOOLEAN NOT NULL DEFAULT TRUE,
+    has_sewer       BOOLEAN NOT NULL DEFAULT TRUE,
+    has_electric    BOOLEAN NOT NULL DEFAULT TRUE,
+    has_gas         BOOLEAN NOT NULL DEFAULT TRUE,
+    has_broadband   BOOLEAN NOT NULL DEFAULT TRUE
+)
+"""
+
+HEX_R8_LINEAR_FEATURES_REFERENCE_DDL = """
+CREATE TABLE IF NOT EXISTS hex_r8_linear_features_reference (
+    id              BIGSERIAL PRIMARY KEY,
+    h3_index        VARCHAR(17) NOT NULL REFERENCES hex_r8_reference(h3_index),
+    feature_type    VARCHAR(32) NOT NULL,
+    feature_name    VARCHAR(128),
+    source_dataset  VARCHAR(64) NOT NULL,
+    source_feature_id VARCHAR(64)
+)
+"""
+
 # ─── Layer 4: Infrastructure ────────────────────────────────────────
 
 INFRASTRUCTURE_LINK_STATE_DDL = """
@@ -422,6 +452,14 @@ INDEXES_DDL: list[str] = [
         "ON document_chunk USING hnsw (embedding vector_cosine_ops)"
     ),
     "CREATE INDEX IF NOT EXISTS idx_document_chunk_session ON document_chunk(session_id)",
+    # R8 Reference
+    "CREATE INDEX IF NOT EXISTS idx_r8_ref_parent ON hex_r8_reference(parent_h3)",
+    "CREATE INDEX IF NOT EXISTS idx_r8_ref_county ON hex_r8_reference(county_fips)",
+    ("CREATE INDEX IF NOT EXISTS idx_r8_linear_h3 ON hex_r8_linear_features_reference(h3_index)"),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_r8_linear_type "
+        "ON hex_r8_linear_features_reference(feature_type)"
+    ),
 ]
 
 # ─── Aggregated DDL list ────────────────────────────────────────────
@@ -447,6 +485,9 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     HEX_CELL_DDL,
     HEX_STATE_DDL,
     HEX_TERRAIN_STATE_DDL,
+    # Layer 3b: R8 Geographic Substrate (Reference Data)
+    HEX_R8_REFERENCE_DDL,
+    HEX_R8_LINEAR_FEATURES_REFERENCE_DDL,
     # Layer 4: Infrastructure
     INFRASTRUCTURE_LINK_STATE_DDL,
     # Layer 5: Trace

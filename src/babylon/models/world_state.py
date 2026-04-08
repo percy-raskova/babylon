@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from babylon.models.entities.contradiction import ContradictionFrame
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.institution import (
     Institution,
@@ -131,6 +132,11 @@ class WorldState(BaseModel):
         description="Financial state for each sovereign entity (Epoch 1: The Ledger)",
     )
 
+    contradiction_frames: dict[str, ContradictionFrame] = Field(
+        default_factory=dict,
+        description="Map of scope ID to active ContradictionFrame (Feature: Fractal Contradictions)",
+    )
+
     # Organization Base Model (Feature 031)
     organizations: dict[str, OrganizationType] = Field(
         default_factory=dict,
@@ -187,6 +193,11 @@ class WorldState(BaseModel):
         # Store state finances in graph metadata (Epoch 1: The Ledger)
         G.graph["state_finances"] = {
             state_id: finance.model_dump() for state_id, finance in self.state_finances.items()
+        }
+
+        # Store contradiction frames in graph metadata
+        G.graph["contradiction_frames"] = {
+            scope: frame.model_dump() for scope, frame in self.contradiction_frames.items()
         }
 
         # Store events in graph metadata for lossless round-trip (Sprint 1.X D2)
@@ -265,6 +276,12 @@ class WorldState(BaseModel):
         # Falls back to empty dict if not present (backward compatibility)
         sf_data = G.graph.get("state_finances", {})
         state_finances = {state_id: StateFinance(**data) for state_id, data in sf_data.items()}
+
+        # Reconstruct contradiction frames
+        cf_data = G.graph.get("contradiction_frames", {})
+        contradiction_frames = {
+            scope: ContradictionFrame(**data) for scope, data in cf_data.items()
+        }
 
         # Reconstruct events from graph metadata (Sprint 1.X D2: Lossless Round-Trip)
         # Only use graph metadata if events parameter was not explicitly provided
@@ -403,6 +420,7 @@ class WorldState(BaseModel):
             events=events or [],
             economy=economy,
             state_finances=state_finances,
+            contradiction_frames=contradiction_frames,
             organizations=organizations,
             key_figures=key_figures_dict,
             institutions=institutions_dict,

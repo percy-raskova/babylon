@@ -136,6 +136,20 @@ def resolve_edge_type(raw: str | EdgeType | None) -> EdgeType | None:
     return raw
 
 
+class ContradictionAxis(StrEnum):
+    """Main axes of structural contradiction (Constitutional Framework).
+
+    Moving away from hardcoded models towards a dynamic Maoist contradiction
+    framework. Defines the principal and secondary axes at a given scale.
+    """
+
+    NATIONAL = "national"
+    CLASS = "class"
+    GENDER = "gender"
+    IMPERIAL = "imperial"
+    ECOLOGICAL = "ecological"
+
+
 class IntensityLevel(StrEnum):
     """Intensity scale for contradictions and tensions.
 

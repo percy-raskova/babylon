@@ -20,8 +20,23 @@ from babylon.config.defines import BifurcationDefines
 from babylon.engine.bifurcation_monitor import BifurcationMonitor
 from babylon.engine.community_state_store import InMemoryCommunityStateStore
 from babylon.models.entities.community import CommunityState
-from babylon.models.enums import CommunityType, ConsciousnessTendency, EdgeType, EventType
+from babylon.models.entities.contradiction import Contradiction
+from babylon.models.enums import (
+    CommunityType,
+    ConsciousnessTendency,
+    ContradictionAxis,
+    EdgeType,
+    EventType,
+)
 from babylon.models.events import BifurcationTendencyEvent
+
+colonial_contradiction = Contradiction(
+    id="colonial",
+    axis=ContradictionAxis.IMPERIAL,
+    aspect_a=CommunityType.SETTLER,
+    aspect_b=CommunityType.NEW_AFRIKAN,
+    intensity=0.5,
+)
 
 pytestmark = pytest.mark.topology
 
@@ -74,6 +89,7 @@ class TestBifurcationMonitorRecording:
             graph=data["graph"],
             H=H,
             agent_memberships=agents,
+            contradictions=[colonial_contradiction],
             tick=0,
         )
 
@@ -107,6 +123,7 @@ class TestBifurcationMonitorRecording:
                 graph=data["graph"],
                 H=H,
                 agent_memberships=agents,
+                contradictions=[colonial_contradiction],
                 tick=tick,
             )
 
@@ -142,6 +159,7 @@ class TestBifurcationMonitorEvents:
             graph=data["graph"],
             H=H,
             agent_memberships=agents,
+            contradictions=[colonial_contradiction],
             tick=0,
         )
 
@@ -174,6 +192,7 @@ class TestBifurcationMonitorEvents:
                 graph=data["graph"],
                 H=H,
                 agent_memberships=agents,
+                contradictions=[colonial_contradiction],
                 tick=tick,
             )
 
@@ -206,6 +225,7 @@ class TestBifurcationMonitorEvents:
             graph=data["graph"],
             H=H_low,
             agent_memberships=agents_fascist,
+            contradictions=[colonial_contradiction],
             tick=0,
         )
 
@@ -243,6 +263,7 @@ class TestBifurcationMonitorEvents:
             graph=data_rev["graph"],
             H=H_high,
             agent_memberships=agents_rev,
+            contradictions=[colonial_contradiction],
             tick=1,
         )
 
@@ -278,6 +299,7 @@ class TestBifurcationMonitorEvents:
             graph=data["graph"],
             H=H,
             agent_memberships=agents,
+            contradictions=[colonial_contradiction],
             tick=0,
         )
 
@@ -294,6 +316,7 @@ class TestBifurcationMonitorEvents:
             graph=empty_graph,
             H=empty_H,
             agent_memberships=empty_memberships,
+            contradictions=[colonial_contradiction],
             tick=1,
         )
 

@@ -16,10 +16,19 @@ import xgi  # type: ignore[import-untyped]
 from babylon.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import CommunityState
-from babylon.models.enums import CommunityType, ConsciousnessTendency, EdgeType
+from babylon.models.entities.contradiction import Contradiction
+from babylon.models.enums import CommunityType, ConsciousnessTendency, ContradictionAxis, EdgeType
 from babylon.models.types import Probability
 
 from .conftest import build_test_hypergraph, make_community_state
+
+colonial_contradiction = Contradiction(
+    id="colonial",
+    axis=ContradictionAxis.IMPERIAL,
+    aspect_a=CommunityType.SETTLER,
+    aspect_b=CommunityType.NEW_AFRIKAN,
+    intensity=0.5,
+)
 
 
 def _build_solidarity_scenario(
@@ -230,6 +239,7 @@ class TestBifurcationResultAssimilationRatio:
         result = bifurcation_tendency(
             graph=graph,
             H=H,
+            contradictions=[colonial_contradiction],
             community_states=community_states,
             agent_memberships=agent_memberships,
             defines=defines,
@@ -268,6 +278,7 @@ class TestBifurcationResultAssimilationRatio:
         result = bifurcation_tendency(
             graph=graph,
             H=H,
+            contradictions=[colonial_contradiction],
             community_states=community_states,
             agent_memberships=agent_memberships,
             defines=defines,
@@ -288,6 +299,7 @@ class TestBifurcationResultAssimilationRatio:
         result = bifurcation_tendency(
             graph=graph,
             H=H,
+            contradictions=[colonial_contradiction],
             community_states=community_states,
             agent_memberships=agent_memberships,
             defines=defines,

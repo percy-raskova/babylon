@@ -468,6 +468,23 @@ class TensionDefines(BaseModel):
         le=1.0,
         description="Game design: rate at which tension accumulates from wealth gaps.",
     )
+    aspect_flip_threshold: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="Threshold of aspect_balance to trigger an aspect flip.",
+    )
+    antagonistic_intensity_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Intensity threshold where a contradiction becomes antagonistic.",
+    )
+    resolution_intensity_threshold: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Maximum intensity indicating rupture/resolution.",
+    )
 
 
 class ConsciousnessDefines(BaseModel):

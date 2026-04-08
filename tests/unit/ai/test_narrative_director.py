@@ -228,7 +228,10 @@ class TestNarrativeDirectorEvents:
         )
 
         with caplog.at_level(logging.INFO):
+            print(f"DEBUG: Events in new_state: {new_state.events}")
             director.on_tick(previous_state, new_state)
+            print(f"DEBUG: log records: {caplog.records}")
+            print(f"DEBUG: logs text:\n{caplog.text}")
 
         # Check that the formatted event is logged
         assert "SURPLUS_EXTRACTION" in caplog.text

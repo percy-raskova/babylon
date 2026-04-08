@@ -27,8 +27,7 @@ from babylon.models.entities.consciousness import (
 )
 from babylon.models.entities.contradiction import (
     Contradiction,
-    ContradictionState,
-    ResolutionOutcome,
+    ContradictionFrame,
 )
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.effect import Effect
@@ -101,8 +100,7 @@ __all__ = [
     # Effect
     "Effect",
     # Contradiction
-    "ContradictionState",
-    "ResolutionOutcome",
+    "ContradictionFrame",
     "Contradiction",
     # Trigger
     "Trigger",

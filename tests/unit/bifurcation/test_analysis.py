@@ -21,7 +21,24 @@ from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
     CommunityState,
 )
-from babylon.models.enums import CommunityType, ConsciousnessTendency, EdgeType
+from babylon.models.entities.contradiction import Contradiction
+from babylon.models.enums import CommunityType, ConsciousnessTendency, ContradictionAxis, EdgeType
+
+colonial_contradiction = Contradiction(
+    id="colonial",
+    axis=ContradictionAxis.IMPERIAL,
+    aspect_a=CommunityType.SETTLER,
+    aspect_b=CommunityType.NEW_AFRIKAN,
+    intensity=0.5,
+)
+
+patriarchal_contradiction = Contradiction(
+    id="patriarchal",
+    axis=ContradictionAxis.GENDER,
+    aspect_a=CommunityType.PATRIARCHAL,
+    aspect_b=CommunityType.WOMEN,
+    intensity=0.5,
+)
 
 pytestmark = pytest.mark.topology
 
@@ -118,7 +135,14 @@ class TestAssimilationTrap:
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
 
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         # Core assertion: must be fascist despite high edge density
         assert result.overall_tendency == "fascist"
@@ -145,7 +169,14 @@ class TestAssimilationTrap:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert result.consciousness_weighted_cross_solidarity < 0.05
 
@@ -219,7 +250,14 @@ class TestRevolutionaryClassification:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert result.overall_tendency == "revolutionary"
         assert result.consciousness_weighted_cross_solidarity > 0.5
@@ -258,7 +296,14 @@ class TestRevolutionaryClassification:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert result.per_axis_tendency["colonial"] > 1.0
 
@@ -294,7 +339,14 @@ class TestIndeterminateClassification:
         }
 
         graph, H, memberships = _build_analysis_scenario(agents2, states2, edges2)
-        result = bifurcation_tendency(graph, H, states2, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states2,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         # With balanced forces, result should be indeterminate
         assert result.overall_tendency in ("indeterminate", "fascist", "revolutionary")
@@ -321,7 +373,14 @@ class TestDegenerateCases:
         states: dict[CommunityType, CommunityState] = {}
         memberships: dict[str, set[CommunityType]] = {}
 
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert result.overall_tendency == "indeterminate"
         assert result.cross_line_solidarity_count == 0
@@ -349,7 +408,14 @@ class TestDegenerateCases:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert result.overall_tendency == "fascist"
         assert result.cross_line_solidarity_count == 0
@@ -365,7 +431,14 @@ class TestDegenerateCases:
         states: dict[CommunityType, CommunityState] = {}
         memberships: dict[str, set[CommunityType]] = {}
 
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert result.overall_tendency == "indeterminate"
 
@@ -386,7 +459,14 @@ class TestDegenerateCases:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         # No cross-axis edges possible
         assert result.cross_line_solidarity_count == 0
@@ -419,7 +499,14 @@ class TestTopologyMetrics:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         # Two nodes connected → 1 component, 0 cycles
         assert result.raw_beta_0 >= 1
@@ -446,7 +533,14 @@ class TestTopologyMetrics:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert 0.0 <= result.resilience_under_targeted_purge <= 1.0
 
@@ -468,7 +562,14 @@ class TestTopologyMetrics:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert isinstance(result.equivalence_class_distribution, dict)
 
@@ -504,7 +605,14 @@ class TestBridgeAndLegitimation:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert result.community_bridge_count >= 1
         assert result.bridge_potential_weighted > 0.0
@@ -537,7 +645,14 @@ class TestBridgeAndLegitimation:
         graph, H, memberships = _build_analysis_scenario(
             agents, states, edges, territories=territories
         )
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         assert result.legitimation_index == pytest.approx(0.3, abs=0.01)
 
@@ -574,7 +689,14 @@ class TestDominantTendencyDistribution:
         edges: list[tuple[str, str, EdgeType, float]] = []
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         total = sum(result.dominant_tendency_distribution.values())
         if total > 0:
@@ -607,7 +729,14 @@ class TestResultModelConstraints:
         ]
 
         graph, H, memberships = _build_analysis_scenario(agents, states, edges)
-        result = bifurcation_tendency(graph, H, states, memberships, bifurcation_defines)
+        result = bifurcation_tendency(
+            graph,
+            H,
+            states,
+            [colonial_contradiction, patriarchal_contradiction],
+            memberships,
+            bifurcation_defines,
+        )
 
         with pytest.raises(ValidationError):
             result.overall_tendency = "fascist"  # type: ignore[misc]

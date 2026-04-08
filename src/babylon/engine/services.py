@@ -96,6 +96,9 @@ class ServiceContainer:
     inventory_data_source: Any = field(default=None)
     depreciation_data_source: Any = field(default=None)
 
+    # Hex spatial substrate (Feature 026 - optional, default None)
+    hex_grid: Any = field(default=None)
+
     # Persistence layer (Feature 037 - optional, default None)
     persistence: Any = field(default=None)
     tracer: Any = field(default=None)
@@ -120,6 +123,7 @@ class ServiceContainer:
         defines: GameDefines | None = None,
         metrics: MetricsCollectorProtocol | None = None,
         *,
+        hex_grid: Any = None,
         persistence: Any = None,
         tracer: Any = None,
         reserve_army_data_source: Any = None,
@@ -187,6 +191,7 @@ class ServiceContainer:
             formulas=FormulaRegistry.default(),
             defines=defines if defines is not None else GameDefines(),
             metrics=metrics,
+            hex_grid=hex_grid,
             persistence=persistence,
             tracer=tracer,
             reserve_army_data_source=reserve_army_data_source,

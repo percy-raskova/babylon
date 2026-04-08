@@ -241,6 +241,45 @@ class TickDynamicsSystem:
         # Write to graph
         write_tick_state_to_graph(graph, new_state)
 
+        # Step 9: Write hex substrate state to graph (Feature 026)
+        # Aggregates R7 economic substrate → R6 territory nodes
+        self._write_hex_substrate(graph, services)
+
+    def _write_hex_substrate(
+        self,
+        graph: GraphProtocol,
+        services: ServiceContainer,
+    ) -> None:
+        """Step 9: Write hex substrate economic state to graph territory nodes.
+
+        Aggregates R7 hex economic data to R6 resolution and writes
+        ``hex_``-prefixed attributes to territory nodes. This enables
+        organizational dynamics and player verbs to consume spatialized
+        economic metrics.
+
+        No-op if ``services.hex_grid`` is None.
+
+        Args:
+            graph: Mutable GraphProtocol (already wrapped).
+            services: ServiceContainer with optional hex_grid.
+        """
+        hex_grid = getattr(services, "hex_grid", None)
+        if hex_grid is None:
+            return
+
+        from babylon.economics.substrate.hex_graph_bridge import (
+            aggregate_r7_to_r6,
+            write_hex_state_to_graph,
+        )
+        from babylon.economics.substrate.types import HexGrid
+
+        if not isinstance(hex_grid, HexGrid):
+            logger.warning("TickDynamicsSystem: hex_grid is not a HexGrid instance, skipping")
+            return
+
+        r6_states = aggregate_r7_to_r6(hex_grid)
+        write_hex_state_to_graph(graph, r6_states)
+
     def _determine_year(
         self, tick: int, graph: nx.DiGraph[str] | GraphProtocol | None = None
     ) -> int:

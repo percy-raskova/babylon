@@ -1985,3 +1985,140 @@ class TestComputeCountyStates:
         )
 
         assert result[WAYNE_FIPS].crisis_state.phase == CrisisPhase.DEEP
+
+
+# =============================================================================
+# _write_hex_substrate — hex-to-graph bridge integration
+# =============================================================================
+
+
+class TestWriteHexSubstrate:
+    """Tests for Step 9: hex substrate → graph bridge.
+
+    Verifies that when a HexGrid is available on ServiceContainer,
+    the tick pipeline writes hex_* attributes to territory nodes.
+    """
+
+    def test_no_hex_grid_is_noop(self) -> None:
+        """Pipeline completes without error when hex_grid is None."""
+        system = TickDynamicsSystem()
+        services = _make_services()  # hex_grid=None by default
+        graph = _make_graph_with_state()
+        context = TickContext(tick=52)
+
+        system.step(graph, services, context)
+
+        # No hex_ attributes on territory node
+        node_data = graph.nodes[WAYNE_FIPS]
+        hex_attrs = [k for k in node_data if k.startswith("hex_")]
+        assert hex_attrs == []
+
+    def test_hex_grid_writes_hex_attributes(self) -> None:
+        """When hex_grid is provided, hex_ attributes appear on territory nodes."""
+
+        from babylon.economics.substrate.types import HexEconomicState
+
+        system = TickDynamicsSystem()
+
+        # Build a HexGrid where the R6 parent matches WAYNE_FIPS territory ID
+        # The mock uses "86<fips>ffffff" as R6 parent, but our graph uses WAYNE_FIPS
+        # as the territory node ID. We need to align them.
+        hex_ids = ["872830828ffffff", "872830829ffffff", "87283082affffff"]
+        hexes = {}
+        for i, h3_id in enumerate(hex_ids):
+            hexes[h3_id] = HexEconomicState(
+                h3_index=h3_id,
+                county_fips=WAYNE_FIPS,
+                constant_capital=100.0 + i * 10,
+                variable_capital=80.0 + i * 5,
+                surplus_value=40.0 + i * 3,
+                employment=1000.0 + i * 100,
+                dept_shares=(0.20, 0.35, 0.25, 0.20),
+            )
+
+        from babylon.economics.substrate.types import HexGrid
+
+        # Use WAYNE_FIPS as the R6 parent so it matches the territory node ID
+        grid = HexGrid(
+            hexes=hexes,
+            county_hex_ids={WAYNE_FIPS: frozenset(hex_ids)},
+            res6_parents=dict.fromkeys(hex_ids, WAYNE_FIPS),
+            res5_parents=dict.fromkeys(hex_ids, f"85{WAYNE_FIPS}fffffff"),
+            res6_children={WAYNE_FIPS: frozenset(hex_ids)},
+            res5_children={f"85{WAYNE_FIPS}fffffff": frozenset(hex_ids)},
+        )
+
+        services = _make_services(hex_grid=grid)
+        graph = _make_graph_with_state()
+        context = TickContext(tick=52)
+
+        system.step(graph, services, context)
+
+        # hex_ attributes should be on the territory node
+        node_data = graph.nodes[WAYNE_FIPS]
+        assert "hex_total_capital" in node_data
+        assert "hex_profit_rate" in node_data
+        assert "hex_employment" in node_data
+        assert "hex_exploitation_rate" in node_data
+        assert "hex_organic_composition" in node_data
+
+        # Verify conservation: hex total capital equals c+v+s of all children
+        expected_total = sum(
+            h.constant_capital + h.variable_capital + h.surplus_value for h in hexes.values()
+        )
+        assert node_data["hex_total_capital"] == pytest.approx(expected_total)
+
+    def test_hex_and_tick_attributes_coexist(self) -> None:
+        """Both hex_ and tick_ attributes present on same territory node."""
+        from babylon.economics.substrate.types import HexEconomicState, HexGrid
+
+        system = TickDynamicsSystem()
+
+        hex_ids = ["872830828ffffff"]
+        hexes = {
+            hex_ids[0]: HexEconomicState(
+                h3_index=hex_ids[0],
+                county_fips=WAYNE_FIPS,
+                constant_capital=100.0,
+                variable_capital=80.0,
+                surplus_value=40.0,
+                employment=1000.0,
+                dept_shares=(0.25, 0.25, 0.25, 0.25),
+            ),
+        }
+        grid = HexGrid(
+            hexes=hexes,
+            county_hex_ids={WAYNE_FIPS: frozenset(hex_ids)},
+            res6_parents={hex_ids[0]: WAYNE_FIPS},
+            res5_parents={hex_ids[0]: f"85{WAYNE_FIPS}fffffff"},
+            res6_children={WAYNE_FIPS: frozenset(hex_ids)},
+            res5_children={f"85{WAYNE_FIPS}fffffff": frozenset(hex_ids)},
+        )
+
+        services = _make_services(hex_grid=grid)
+        graph = _make_graph_with_state()
+        context = TickContext(tick=52)
+
+        system.step(graph, services, context)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        # tick_ attributes from county-level pipeline
+        assert "tick_capital_stock" in node_data
+        assert "tick_profit_rate" in node_data or "tick_median_wage" in node_data
+        # hex_ attributes from substrate bridge
+        assert "hex_total_capital" in node_data
+        assert "hex_profit_rate" in node_data
+
+    def test_invalid_hex_grid_type_is_noop(self) -> None:
+        """Non-HexGrid object for hex_grid logs warning, no crash."""
+        system = TickDynamicsSystem()
+        services = _make_services(hex_grid="not_a_hex_grid")
+        graph = _make_graph_with_state()
+        context = TickContext(tick=52)
+
+        # Should not crash — just log a warning and skip
+        system.step(graph, services, context)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        hex_attrs = [k for k in node_data if k.startswith("hex_")]
+        assert hex_attrs == []

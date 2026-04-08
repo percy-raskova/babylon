@@ -10,14 +10,15 @@ from __future__ import annotations
 
 import networkx as nx
 import pytest
-from tests.unit.bifurcation.conftest import (
-    assign_communities_to_graph,
-    build_ceiling_test_graph,
-)
 
 from babylon.bifurcation.ceiling import compute_solidarity_ceiling
 from babylon.config.defines import BifurcationDefines
 from babylon.models.enums import CommunityType, EdgeType
+
+from .factories import (
+    assign_communities_to_graph,
+    build_ceiling_test_graph,
+)
 
 
 class TestSolidarityCeilingWageGap:

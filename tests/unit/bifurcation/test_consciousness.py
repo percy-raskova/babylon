@@ -13,17 +13,18 @@ import math
 
 import networkx as nx
 import pytest
-from tests.unit.bifurcation.conftest import (
-    assign_communities_to_graph,
-    build_test_hypergraph,
-    make_community_state,
-)
 
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
     CommunityState,
 )
 from babylon.models.enums import CommunityType, EdgeType
+
+from .factories import (
+    assign_communities_to_graph,
+    build_test_hypergraph,
+    make_community_state,
+)
 
 # =============================================================================
 # consciousness_sigmoid

@@ -10,10 +10,6 @@ from __future__ import annotations
 
 import pytest
 import xgi
-from tests.unit.bifurcation.conftest import (
-    build_test_hypergraph,
-    make_community_state,
-)
 
 from babylon.bifurcation.types import BifurcationSnapshot
 from babylon.config.defines import BifurcationDefines
@@ -30,6 +26,11 @@ from babylon.models.enums import (
     EventType,
 )
 from babylon.models.events import BifurcationTendencyEvent
+
+from .factories import (
+    build_test_hypergraph,
+    make_community_state,
+)
 
 colonial_contradiction = Contradiction(
     id="colonial",
@@ -55,7 +56,8 @@ def _build_monitor_graph(
         Dict with 'agents', 'edges' keys suitable for building a test graph.
     """
     import networkx as nx
-    from tests.unit.bifurcation.conftest import assign_communities_to_graph
+
+    from .factories import assign_communities_to_graph
 
     graph: nx.DiGraph = nx.DiGraph()  # type: ignore[type-arg]
     for agent_id in agent_communities:

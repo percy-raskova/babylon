@@ -11,11 +11,6 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 from pydantic import ValidationError
-from tests.unit.bifurcation.conftest import (
-    assign_communities_to_graph,
-    build_test_hypergraph,
-    make_community_state,
-)
 
 from babylon.bifurcation.axis import (
     classify_edge_antagonism,
@@ -28,6 +23,12 @@ from babylon.models.entities.community import (
 )
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, ContradictionType, EdgeMode, EdgeType
+
+from .factories import (
+    assign_communities_to_graph,
+    build_test_hypergraph,
+    make_community_state,
+)
 
 # Dummy contradictions for testing
 colonial_contradiction = Contradiction(

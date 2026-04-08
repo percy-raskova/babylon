@@ -25,7 +25,7 @@ from babylon.models.enums import (
     EdgeType,
 )
 
-from .conftest import (
+from .factories import (
     assign_communities_to_graph,
     build_test_hypergraph,
     make_community_state,

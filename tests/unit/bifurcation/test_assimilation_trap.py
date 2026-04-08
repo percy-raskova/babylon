@@ -12,7 +12,6 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 import xgi  # type: ignore[import-untyped]
-from tests.unit.bifurcation.conftest import build_test_hypergraph, make_community_state
 
 from babylon.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.config.defines import BifurcationDefines
@@ -26,6 +25,8 @@ from babylon.models.enums import (
     EdgeType,
 )
 from babylon.models.types import Probability
+
+from .factories import build_test_hypergraph, make_community_state
 
 colonial_contradiction = Contradiction(
     id="colonial",

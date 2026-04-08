@@ -21,10 +21,6 @@ Test scenarios:
 from __future__ import annotations
 
 import pytest
-from tests.unit.bifurcation.conftest import (
-    build_test_hypergraph,
-    make_community_state,
-)
 
 from babylon.bifurcation.consciousness import consciousness_sigmoid
 from babylon.config.defines import BifurcationDefines
@@ -33,6 +29,11 @@ from babylon.models.entities.community import (
 )
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, ContradictionType, EdgeMode
+
+from .factories import (
+    build_test_hypergraph,
+    make_community_state,
+)
 
 # Dummy contradictions for testing
 colonial_contradiction = Contradiction(

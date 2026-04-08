@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from babylon.models.entities.contradiction import ContradictionFrame
 from babylon.models.entities.economy import GlobalEconomy
+from babylon.models.entities.industry import IndustryHyperedge
 from babylon.models.entities.institution import (
     Institution,
     InstitutionOrgRelation,
@@ -64,6 +65,62 @@ def _reconstruct_institution(node_data: dict[str, Any]) -> Institution:
     if "jurisdiction" in inst_data and isinstance(inst_data["jurisdiction"], list):
         inst_data["jurisdiction"] = frozenset(inst_data["jurisdiction"])
     return Institution(**inst_data)
+
+
+def _reconstruct_territory(node_data: dict[str, Any]) -> Territory:
+    """Reconstruct a Territory from graph node data."""
+    territory_excluded = {
+        "p_acquiescence",
+        "p_revolution",
+        "dpd_state",
+        "dependency_ratio",
+        "legitimation_index",
+        "legitimation_crisis",
+        "legitimation_state",
+        "mobility_params",
+        "adjusted_p_to_d_prime",
+        "transmitted_ideology",
+        "differential_p_to_d_prime",
+    }
+    territory_data = {k: v for k, v in node_data.items() if k not in territory_excluded}
+    sector_type = territory_data.get("sector_type")
+    if isinstance(sector_type, str):
+        territory_data["sector_type"] = SectorType(sector_type)
+    profile = territory_data.get("profile")
+    if isinstance(profile, str):
+        territory_data["profile"] = OperationalProfile(profile)
+    return Territory(**territory_data)
+
+
+def _reconstruct_organization(node_data: dict[str, Any]) -> OrganizationType:
+    """Reconstruct an Organization subtype from graph node data."""
+    # Import subtypes for dispatch
+    from babylon.models.entities.organization import (
+        Business,
+        CivilSocietyOrg,
+        PoliticalFaction,
+        StateApparatus,
+    )
+
+    organization_excluded = {"effective_capacity", "composition_cache"}
+    org_data = {k: v for k, v in node_data.items() if k not in organization_excluded}
+
+    org_type_raw = org_data.get("org_type")
+    if org_type_raw is None:
+        raise KeyError("Organization node missing org_type")
+    org_type_enum = OrgType(org_type_raw) if isinstance(org_type_raw, str) else org_type_raw
+
+    subtype_map: dict[
+        OrgType,
+        type[StateApparatus] | type[Business] | type[PoliticalFaction] | type[CivilSocietyOrg],
+    ] = {
+        OrgType.STATE_APPARATUS: StateApparatus,
+        OrgType.BUSINESS: Business,
+        OrgType.POLITICAL_FACTION: PoliticalFaction,
+        OrgType.CIVIL_SOCIETY: CivilSocietyOrg,
+    }
+    org_cls = subtype_map[org_type_enum]
+    return org_cls(**org_data)
 
 
 class WorldState(BaseModel):
@@ -157,6 +214,12 @@ class WorldState(BaseModel):
         description="Institution-Organization housing relationships (Feature 040)",
     )
 
+    # Industry Hyperedge (Feature: ECONOMIC_SECTOR)
+    industries: dict[str, IndustryHyperedge] = Field(
+        default_factory=dict,
+        description="Map of industry ID to IndustryHyperedge (Feature: ECONOMIC_SECTOR)",
+    )
+
     # =========================================================================
     # NetworkX Conversion
     # =========================================================================
@@ -236,6 +299,10 @@ class WorldState(BaseModel):
                 if org_id in G:
                     G.add_edge(inst_id, org_id, edge_type=EdgeType.HOUSES.value)
 
+        # Add industry nodes with _node_type marker (Feature: ECONOMIC_SECTOR)
+        for ind_id, ind in self.industries.items():
+            G.add_node(ind_id, _node_type="industry", **ind.model_dump())
+
         # Add edges with relationship data
         for rel in self.relationships:
             source, target = rel.edge_tuple
@@ -303,29 +370,10 @@ class WorldState(BaseModel):
         organizations: dict[str, OrganizationType] = {}
         key_figures_dict: dict[str, KeyFigure] = {}
         institutions_dict: dict[str, Institution] = {}
+        industries_dict: dict[str, IndustryHyperedge] = {}
 
         # Computed fields to exclude during reconstruction (Slice 1.4)
         social_class_computed = {"consumption_needs"}
-
-        # Fields that systems may add to graph but Territory doesn't accept
-        # (e.g., SurvivalSystem adds p_acquiescence/p_revolution to all nodes,
-        # LifecycleSystem adds dpd_state/dependency_ratio to territory nodes)
-        territory_excluded = {
-            "p_acquiescence",
-            "p_revolution",
-            "dpd_state",
-            "dependency_ratio",
-            "legitimation_index",
-            "legitimation_crisis",
-            "legitimation_state",
-            "mobility_params",
-            "adjusted_p_to_d_prime",
-            "transmitted_ideology",
-            "differential_p_to_d_prime",
-        }
-
-        # Computed/cached fields to exclude for Organization reconstruction (Feature 031)
-        organization_excluded = {"effective_capacity", "composition_cache"}
 
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
@@ -333,55 +381,15 @@ class WorldState(BaseModel):
             node_data = {k: v for k, v in data.items() if k not in ("_node_type", "type")}
 
             if node_type == "territory":
-                # Reconstruct Territory
-                # Filter out fields that Territory doesn't accept
-                territory_data = {k: v for k, v in node_data.items() if k not in territory_excluded}
-                # Convert enum strings back to enums if needed
-                sector_type = territory_data.get("sector_type")
-                if isinstance(sector_type, str):
-                    territory_data["sector_type"] = SectorType(sector_type)
-                profile = territory_data.get("profile")
-                if isinstance(profile, str):
-                    territory_data["profile"] = OperationalProfile(profile)
-                territories[node_id] = Territory(**territory_data)
+                territories[node_id] = _reconstruct_territory(node_data)
             elif node_type == "organization":
-                # Reconstruct Organization subtype via discriminated union (Feature 031)
-                org_data = {k: v for k, v in node_data.items() if k not in organization_excluded}
-                # Import subtypes for dispatch
-                from babylon.models.entities.organization import (
-                    Business,
-                    CivilSocietyOrg,
-                    PoliticalFaction,
-                    StateApparatus,
-                )
-
-                org_type_raw = org_data.get("org_type")
-                if org_type_raw is None:
-                    msg = f"Organization node {node_id} missing org_type"
-                    raise KeyError(msg)
-                org_type_enum = (
-                    OrgType(org_type_raw) if isinstance(org_type_raw, str) else org_type_raw
-                )
-                subtype_map: dict[
-                    OrgType,
-                    type[StateApparatus]
-                    | type[Business]
-                    | type[PoliticalFaction]
-                    | type[CivilSocietyOrg],
-                ] = {
-                    OrgType.STATE_APPARATUS: StateApparatus,
-                    OrgType.BUSINESS: Business,
-                    OrgType.POLITICAL_FACTION: PoliticalFaction,
-                    OrgType.CIVIL_SOCIETY: CivilSocietyOrg,
-                }
-                org_cls = subtype_map[org_type_enum]
-                organizations[node_id] = org_cls(**org_data)
+                organizations[node_id] = _reconstruct_organization(node_data)
             elif node_type == "key_figure":
-                # Reconstruct KeyFigure (Feature 031)
                 key_figures_dict[node_id] = KeyFigure(**node_data)
             elif node_type == "institution":
-                # Reconstruct Institution (Feature 040)
                 institutions_dict[node_id] = _reconstruct_institution(node_data)
+            elif node_type == "industry":
+                industries_dict[node_id] = IndustryHyperedge(**node_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
                 # Filter out computed fields that shouldn't be passed to constructor
@@ -424,6 +432,7 @@ class WorldState(BaseModel):
             organizations=organizations,
             key_figures=key_figures_dict,
             institutions=institutions_dict,
+            industries=industries_dict,
         )
 
     # =========================================================================

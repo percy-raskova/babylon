@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,6 +28,9 @@ from sqlalchemy.orm import Session
 from babylon.models.snapshots import HexState, TerritoryState
 from babylon.reference.database import get_reference_session
 from babylon.reference.schema import BridgeCountyH3, DimCounty
+
+if TYPE_CHECKING:
+    from babylon.models.entities.industry import IndustryHyperedge
 
 logger = logging.getLogger(__name__)
 
@@ -620,11 +624,118 @@ def hydrate_territories(
     return territories, all_hexes
 
 
+def hydrate_industry_hyperedges(
+    fips_codes: list[str],
+    year: int = 2022,
+) -> dict[str, IndustryHyperedge]:
+    """Hydrate industry hyperedges from SQLite reference database.
+
+    Args:
+        fips_codes: List of 5-digit FIPS codes for counties.
+        year: Data year for QCEW/BEA data (default 2022).
+
+    Returns:
+        Dict mapping industry ID (e.g. ind_62) to IndustryHyperedge.
+    """
+    from pathlib import Path
+
+    from sqlalchemy import func, select
+
+    from babylon.economics.department_mapper import DepartmentMapper
+    from babylon.models.entities.industry import IndustryHyperedge
+    from babylon.reference.database import get_reference_session
+    from babylon.reference.schema import (
+        DimCounty,
+        DimIndustry,
+        DimTime,
+        FactQcewAnnual,
+    )
+
+    economics_path = (
+        Path(__file__).parent.parent.parent / "economics" / "data" / "naics_to_dept.yaml"
+    )
+
+    industries: dict[str, IndustryHyperedge] = {}
+
+    if not fips_codes:
+        return industries
+
+    with get_reference_session() as session:
+        dept_mapper = DepartmentMapper.from_yaml(economics_path)
+
+        # Get relevant counties
+        counties = (
+            session.execute(select(DimCounty).where(DimCounty.fips.in_(fips_codes))).scalars().all()
+        )
+        county_ids = [c.county_id for c in counties]
+        if not county_ids:
+            return industries
+
+        # Get time dimension
+        time_dim = session.execute(
+            select(DimTime).where(DimTime.year == year, DimTime.is_annual.is_(True))
+        ).scalar_one_or_none()
+        if time_dim is None:
+            return industries
+
+        # We will aggregate QCEW at 2-digit NAICS level
+        results = session.execute(
+            select(
+                DimIndustry.naics_code,
+                DimIndustry.industry_title,
+                func.sum(FactQcewAnnual.employment).label("emp"),
+                func.sum(FactQcewAnnual.total_wages_usd).label("wages"),
+            )
+            .join(FactQcewAnnual, FactQcewAnnual.industry_id == DimIndustry.industry_id)
+            .where(
+                FactQcewAnnual.county_id.in_(county_ids),
+                FactQcewAnnual.time_id == time_dim.time_id,
+                DimIndustry.naics_level == 2,
+            )
+            .group_by(DimIndustry.naics_code, DimIndustry.industry_title)
+        ).all()
+
+        for r in results:
+            naics_2digit = r.naics_code
+            title = r.industry_title
+            emp = r.emp or 0
+            wages = float(r.wages or 0.0)
+
+            # Map departments
+            alloc = dept_mapper.get_allocation(naics_2digit)
+            if alloc:
+                weights = alloc.to_dict()
+            else:
+                weights = {"dept_I": 0.0, "dept_IIa": 0.0, "dept_IIb": 0.0, "dept_III": 0.0}
+
+            cv_ratio = dept_mapper.get_sector_cv_ratio(naics_2digit) or 1.0
+            sv_ratio = dept_mapper.get_sector_sv_ratio(naics_2digit) or 1.0
+
+            # approximate occ and profit rate
+            occ = cv_ratio
+            profit_rate = sv_ratio / (cv_ratio + 1.0)
+
+            ind = IndustryHyperedge(
+                naics_2digit=naics_2digit,
+                naics_label=title,
+                department_weights=weights,
+                total_employment=int(emp),
+                total_wages=wages,
+                profit_rate=profit_rate,
+                occ=occ,
+                county_fips=set(fips_codes),
+            )
+            industries[f"ind_{naics_2digit}"] = ind
+
+    return industries
+
+
 __all__ = [
     "CountyInfo",
     "compute_initial_profit_rate",
     "hydrate_class_shares",
     "hydrate_economy_constants",
+    "hydrate_industry_hyperedges",
     "hydrate_reserve_army",
     "hydrate_territories",
     "query_counties",

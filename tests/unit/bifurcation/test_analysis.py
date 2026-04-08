@@ -10,11 +10,6 @@ import networkx as nx
 import pytest
 import xgi
 from pydantic import ValidationError
-from tests.unit.bifurcation.conftest import (
-    assign_communities_to_graph,
-    build_test_hypergraph,
-    make_community_state,
-)
 
 from babylon.bifurcation.analysis import bifurcation_tendency
 from babylon.config.defines import BifurcationDefines
@@ -22,22 +17,40 @@ from babylon.models.entities.community import (
     CommunityState,
 )
 from babylon.models.entities.contradiction import Contradiction
-from babylon.models.enums import CommunityType, ConsciousnessTendency, ContradictionAxis, EdgeType
+from babylon.models.enums import (
+    CommunityType,
+    ConsciousnessTendency,
+    ContradictionType,
+    EdgeMode,
+    EdgeType,
+)
+
+from .conftest import (
+    assign_communities_to_graph,
+    build_test_hypergraph,
+    make_community_state,
+)
 
 colonial_contradiction = Contradiction(
     id="colonial",
-    axis=ContradictionAxis.IMPERIAL,
+    type=ContradictionType.IMPERIAL,
     aspect_a=CommunityType.SETTLER,
     aspect_b=CommunityType.NEW_AFRIKAN,
     intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
 )
 
 patriarchal_contradiction = Contradiction(
     id="patriarchal",
-    axis=ContradictionAxis.GENDER,
+    type=ContradictionType.GENDER,
     aspect_a=CommunityType.PATRIARCHAL,
     aspect_b=CommunityType.WOMEN,
     intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
 )
 
 pytestmark = pytest.mark.topology

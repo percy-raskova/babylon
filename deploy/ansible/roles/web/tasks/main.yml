@@ -17,5 +17,8 @@
 - ansible.builtin.import_tasks: setup_django_app.yml
   tags: deploy
 
+- ansible.builtin.import_tasks: build_frontend.yml
+  tags: frontend
+
 - ansible.builtin.import_tasks: setup_supervisor.yml
   tags: supervisor

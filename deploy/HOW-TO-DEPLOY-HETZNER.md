@@ -16,6 +16,7 @@ Ensure you have:
   - A zone for your domain (e.g., `percypedia.biz`)
   - An API token with DNS edit, SSL/TLS edit, and R2 admin permissions
   - R2 access keys (Access Key ID + Secret Access Key)
+  - An Origin CA certificate and private key for your domain
 - The Babylon repository cloned locally
 
 ## Step 1: Provision the VPS with Terraform
@@ -43,7 +44,7 @@ ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 
 server_count    = 1
 server_type     = "cx32"       # 4 vCPU, 8GB RAM
-server_image    = "debian-12"
+server_image    = "debian-13"  # Ships Python 3.12+ natively
 server_location = "ash"        # Ashburn, Virginia
 
 # IMPORTANT: Replace with your actual public IP
@@ -61,7 +62,7 @@ terraform apply
 After apply completes, generate the Ansible inventory:
 
 ```bash
-terraform output -raw ansible_inventory_yaml > ../ansible/inventory.yml
+terraform output -raw ansible_inventory_yaml > ../ansible/production_inventory.yml
 ```
 
 Verify SSH access:
@@ -74,290 +75,176 @@ ssh root@$(terraform output -raw server_ips_v4 | head -1)
 
 ```bash
 cd ../ansible/
-ansible-galaxy install -r requirements.yml
-```
-
-If `requirements.yml` is empty, install the required collections manually:
-
-```bash
 ansible-galaxy collection install ansible.posix community.general community.postgresql
 ```
 
-## Step 3: Customize Ansible Variables for Babylon
+## Step 3: Create Encrypted Secrets with Ansible Vault
 
-The Ansible roles are forked from `jcalazan/ansible-django-stack` and contain
-placeholder values that need updating. Edit
-`group_vars/development/vars.yml` (or create a `group_vars/production/vars.yml`
-for production).
+All production secrets (database password, Django secret key, SSL certificates,
+R2 credentials) are stored in an AES-256 encrypted vault file. This keeps
+secrets out of plaintext while allowing them to be versioned alongside the
+playbooks.
 
-These are the values you **must** change:
+### Create the vault password file
+
+Choose a strong passphrase and store it in a file that is gitignored:
+
+```bash
+echo "your-strong-vault-passphrase" > .vault_pass
+chmod 600 .vault_pass
+```
+
+### Generate secrets
+
+Generate the Django secret key and database password:
+
+```bash
+python3 -c "import secrets; print('Django secret key:', secrets.token_urlsafe(64))"
+python3 -c "import secrets; print('DB password:', secrets.token_urlsafe(32))"
+```
+
+### Create the Origin CA certificate
+
+In the Cloudflare dashboard:
+
+1. Go to SSL/TLS > Origin Server > Create Certificate
+1. Choose "Generate private key and CSR with Cloudflare"
+1. Add your hostname (e.g., `babylon.percypedia.biz`)
+1. Set validity (15 years recommended)
+1. Copy both the certificate PEM and private key PEM
+
+### Create the vault
+
+```bash
+ansible-vault create group_vars/production/vault.yml --vault-password-file .vault_pass
+```
+
+This opens your `$EDITOR`. Paste the following, replacing placeholders with
+your actual values:
 
 ```yaml
-# ---- Repository ----
-git_repo: https://github.com/percy-raskova/babylon.git  # Your actual repo
-git_branch: main                                          # Or your deploy branch
+vault_django_secret_key: "your-generated-64-char-string"
+vault_db_password: "your-generated-32-char-string"
+vault_r2_access_key_id: "your-r2-access-key-id"
+vault_r2_secret_access_key: "your-r2-secret-access-key"
+vault_r2_account_id: "your-cloudflare-account-id"
+vault_ssl_crt: |
+  -----BEGIN CERTIFICATE-----
+  <paste Cloudflare Origin CA certificate here>
+  -----END CERTIFICATE-----
+vault_ssl_key: |
+  -----BEGIN PRIVATE KEY-----
+  <paste Cloudflare Origin CA private key here>
+  -----END PRIVATE KEY-----
+```
 
-# ---- Project naming ----
-project_name: babylon
-application_name: babylon_web
+Save and close. The file is now encrypted on disk. To verify:
 
-# ---- Python ----
-enable_deadsnakes_ppa: true
-virtualenv_python_version: python3.12
+```bash
+# View contents (requires vault password)
+ansible-vault view group_vars/production/vault.yml --vault-password-file .vault_pass
 
-# ---- Django ----
-django_settings_file: "babylon_web.settings.production"
-django_secret_key: "<generate-a-64-char-random-string>"
+# Edit later
+ansible-vault edit group_vars/production/vault.yml --vault-password-file .vault_pass
+```
 
-# ---- Database ----
-db_user: babylon
-db_name: babylon
-db_password: "<strong-random-password>"
+### How the vault integrates
 
-# ---- Requirements path ----
-# Poetry exports to requirements.txt, or use pyproject.toml directly
-requirements_file: "{{ project_path }}/requirements.txt"
+`group_vars/production/vars.yml` (plaintext, committed) references vault
+values via Jinja2:
 
-# ---- Firewall: SSH whitelist ----
+```yaml
+db_password: "{{ vault_db_password }}"
+django_secret_key: "{{ vault_django_secret_key }}"
+ssl_crt: "{{ vault_ssl_crt }}"
+ssl_key: "{{ vault_ssl_key }}"
+```
+
+Ansible automatically merges both files from `group_vars/production/` and
+resolves the references at playbook runtime.
+
+### Security notes
+
+- `.vault_pass` is gitignored and must never be committed
+- The encrypted `vault.yml` file can optionally be committed (it is AES-256
+  encrypted and useless without the password)
+- `vault.yml.example` shows the required keys without real values
+- Share the vault password with team members via a secure channel (password
+  manager, not email/Slack)
+
+## Step 4: Update Production Variables
+
+Edit `group_vars/production/vars.yml` and replace the firewall placeholder:
+
+```yaml
 firewall_ssh_allowed_ipv4:
-  - YOUR.PUBLIC.IP/32
-
-firewall_ssh_allowed_ipv6:
-  - YOUR:IPV6:ADDRESS/128
-
-# ---- R2 backup credentials (read from env) ----
-r2_access_key_id: "{{ lookup('ansible.builtin.env', 'R2_ACCESS_KEY_ID') }}"
-r2_secret_access_key: "{{ lookup('ansible.builtin.env', 'R2_SECRET_ACCESS_KEY') }}"
-r2_account_id: "{{ lookup('ansible.builtin.env', 'R2_ACCOUNT_ID') }}"
+  - "YOUR.ACTUAL.IP/32"  # Replace with: curl ifconfig.me
 ```
 
-Generate a Django secret key:
+All other variables are pre-configured for Babylon. The key settings:
 
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(64))"
-```
-
-## Step 4: Update Ansible Templates for Babylon
-
-### nginx Template
-
-The nginx template at `roles/nginx/templates/django_default_project.j2`
-references `{{ application_name }}` throughout, so renaming the variable in Step
-3 is sufficient. However, the template needs a new `location` block to serve the
-built React frontend.
-
-Add a block for the frontend static assets before the Django `location /`
-block:
-
-```nginx
-# React frontend (production build)
-location /assets/ {
-    alias {{ project_path }}/web/frontend/dist/assets/;
-    expires 1y;
-    add_header Cache-Control "public, immutable";
-}
-
-location /index.html {
-    alias {{ project_path }}/web/frontend/dist/index.html;
-    add_header Cache-Control "no-cache";
-}
-```
-
-And update the root `location /` to serve `index.html` as the SPA fallback
-**after** the Django proxy:
-
-```nginx
-location / {
-    # Try static files first, then SPA fallback, then Django
-    try_files $uri $uri/ @django;
-}
-
-location @django {
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header Host $host;
-    proxy_redirect off;
-    proxy_pass http://{{ application_name }}_wsgi_server;
-}
-```
-
-Alternatively, you can keep `/api/`, `/accounts/`, `/admin/`, `/health/`, and
-`/static/` routed to Django, and let everything else fall through to
-`index.html`:
-
-```nginx
-location /api/ {
-    proxy_pass http://{{ application_name }}_wsgi_server;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header Host $host;
-}
-
-location /accounts/ {
-    proxy_pass http://{{ application_name }}_wsgi_server;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header Host $host;
-}
-
-location /admin/ {
-    proxy_pass http://{{ application_name }}_wsgi_server;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header Host $host;
-}
-
-location /health/ {
-    proxy_pass http://{{ application_name }}_wsgi_server;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header Host $host;
-}
-
-location /static/ {
-    alias {{ nginx_static_dir }};
-}
-
-# SPA fallback: serve React frontend
-location / {
-    root {{ project_path }}/web/frontend/dist;
-    try_files $uri $uri/ /index.html;
-}
-```
-
-### Gunicorn Start Script
-
-The `roles/web/templates/gunicorn_start.j2` script sets `DJANGO_SETTINGS_MODULE`
-from `{{ django_settings_file }}`. With the variable set to
-`babylon_web.settings.production` in Step 3, this works without further changes.
-
-### virtualenv_postactivate
-
-The `roles/web/templates/virtualenv_postactivate.j2` exports Django environment
-variables into the virtualenv. Verify it includes:
-
-```bash
-export DJANGO_SETTINGS_MODULE="{{ django_settings_file }}"
-export DJANGO_SECRET_KEY="{{ django_secret_key }}"
-export POSTGRES_DB="{{ db_name }}"
-export POSTGRES_USER="{{ db_user }}"
-export POSTGRES_PASSWORD="{{ db_password }}"
-export ALLOWED_HOSTS="{{ nginx_server_name }}"
-```
-
-If these are not present, add them to the `django_environment` dict in your
-`vars.yml`:
-
-```yaml
-django_environment:
-  DJANGO_SETTINGS_MODULE: "{{ django_settings_file }}"
-  DJANGO_SECRET_KEY: "{{ django_secret_key }}"
-  POSTGRES_DB: "{{ db_name }}"
-  POSTGRES_USER: "{{ db_user }}"
-  POSTGRES_PASSWORD: "{{ db_password }}"
-  ALLOWED_HOSTS: "{{ nginx_server_name }}"
-```
+| Variable                           | Value                    | Why                                       |
+| ---------------------------------- | ------------------------ | ----------------------------------------- |
+| `server_image`                     | `debian-13`              | Native Python 3.12+ (no deadsnakes PPA)   |
+| `postgresql_version`               | `17`                     | With PostGIS 3 and pgvector extensions    |
+| `use_poetry`                       | `true`                   | Exports requirements.txt from Poetry lock |
+| `django_project_dir`               | `{{ project_path }}/web` | Django lives in `web/` subdirectory       |
+| `nginx_use_cloudflare_origin_pull` | `true`                   | Rejects non-Cloudflare traffic            |
 
 ## Step 5: Run the Ansible Playbooks
-
-Set R2 credentials in your shell before running Ansible:
-
-```bash
-export R2_ACCESS_KEY_ID="your-r2-access-key"
-export R2_SECRET_ACCESS_KEY="your-r2-secret-key"
-export R2_ACCOUNT_ID="your-cloudflare-account-id"
-```
 
 Test connectivity:
 
 ```bash
-ansible all -i inventory.yml -m ping
+ansible all -i production_inventory.yml -m ping --vault-password-file .vault_pass
 ```
 
 Run the full stack:
 
 ```bash
-# Database server setup (PostgreSQL + PostGIS)
-ansible-playbook -i inventory.yml dbservers.yml
-
-# Web server setup (nginx, gunicorn, Django, firewall, backup)
-ansible-playbook -i inventory.yml webservers.yml
+ansible-playbook -i production_inventory.yml site.yml --vault-password-file .vault_pass
 ```
 
-Or run the combined playbook:
+This runs `dbservers.yml` then `webservers.yml` in sequence:
+
+- **dbservers.yml**: PostgreSQL 17, PostGIS, pgvector, tuning for 8GB RAM
+- **webservers.yml**: base packages, nftables firewall, Django + Poetry,
+  Node.js 22 LTS + React build, nginx, R2 backups
+
+The frontend build runs automatically via `build_frontend.yml` (Node.js 22 LTS,
+`npm ci`, `npm run build`). No manual SSH required.
+
+## Step 6: Create the Django Superuser
+
+This is the one step that requires interactive SSH access:
 
 ```bash
-ansible-playbook -i inventory.yml site.yml
-```
-
-## Step 6: Build and Deploy the Frontend
-
-SSH into the server and build the React frontend:
-
-```bash
-ssh deploy@<server-ip>
-
-cd /webapps/babylon/babylon/web/frontend/
-npm install
-npm run build
-```
-
-If Node.js is not installed on the server, build locally and copy:
-
-```bash
-# On your local machine
-cd web/frontend/
-npm run build
-
-# Copy to server
-scp -r dist/ deploy@<server-ip>:/webapps/babylon/babylon/web/frontend/dist/
-```
-
-Restart nginx to pick up the new static files:
-
-```bash
-ssh deploy@<server-ip> "sudo systemctl reload nginx"
-```
-
-## Step 7: Initialize the Database Schema
-
-The `game_session`, `game_turn`, and `action_result` tables are created by the
-engine's DDL, not Django migrations. On the server:
-
-```bash
-ssh deploy@<server-ip>
-cd /webapps/babylon/
-
-# Activate the virtualenv
+ssh root@<server-ip>
+cd /webapps/babylon_web/
 source bin/activate
-
-# Run Django migrations (creates auth tables, PlayerProfile, GameEventLog)
 cd babylon/web/
-python manage.py migrate
-
-# Create a superuser
 python manage.py createsuperuser
-
-# Initialize engine tables (if not already done by the engine bridge)
-# The engine_bridge.create_game() call handles this automatically on first use
 ```
 
-## Step 8: Verify the Deployment
+## Step 7: Verify the Deployment
 
-### From Your Machine
+### From your machine
 
 ```bash
 # Health check (through Cloudflare)
 curl https://babylon.percypedia.biz/health/
 
-# Direct to origin (if your IP is whitelisted in the firewall)
-curl -k https://<server-ip>/health/
+# CSRF check: login should succeed (POST through Cloudflare proxy)
+# Visit https://babylon.percypedia.biz/accounts/login/ in a browser
+
+# Frontend: React SPA should load
+# Visit https://babylon.percypedia.biz/
 ```
 
-### On the Server
+### On the server
 
 ```bash
-ssh deploy@<server-ip>
+ssh root@<server-ip>
 
 # Check gunicorn
 sudo supervisorctl status
@@ -370,49 +257,53 @@ sudo nginx -t
 sudo systemctl status postgresql
 psql -U babylon -d babylon -c "SELECT 1;"
 
+# Check PostGIS and pgvector extensions
+psql -U babylon -d babylon -c "SELECT PostGIS_Version();"
+psql -U babylon -d babylon -c "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
+
 # Check logs
-tail -f /webapps/babylon/babylon/web/logs/web.jsonl
+tail -f /webapps/babylon_web/logs/gunicorn_supervisor.log
 sudo tail -f /var/log/nginx/access.log
-```
-
-### Verify Backup
-
-```bash
-# Run backup manually
-ansible-playbook -i inventory.yml playbooks/backup-smoke.yml
 ```
 
 ## Network Architecture
 
 ```text
 User Browser
-    │
-    ▼
+    |
+    v
 Cloudflare CDN/WAF (babylon.percypedia.biz)
-    │  SSL termination + re-encryption
-    │  Static cache: /static/* (1 year)
-    │  API bypass: /api/*, /admin/*
-    │  Rate limit: 60 req/min on /api/
-    ▼
+    |  SSL termination + re-encryption
+    |  Authenticated Origin Pull (mutual TLS)
+    |  Rate limit: 60 req/min on /api/
+    v
 Hetzner VPS (nftables: HTTPS only from Cloudflare CIDRs)
-    │
-    ▼
-nginx (TLS 1.2, Cloudflare Authenticated Origin Pull)
-    │
-    ├── /api/, /accounts/, /admin/, /health/ → Gunicorn (Unix socket)
-    │                                              │
-    │                                              ▼
-    │                                         Django (DRF)
-    │                                              │
-    │                                              ▼
-    │                                         PostgreSQL + PostGIS
-    │
-    ├── /static/ → Django collectstatic files
-    │
-    └── / → React SPA (web/frontend/dist/)
+    |
+    v
+nginx (TLS 1.2+, Origin CA cert, DH-2048)
+    |
+    |-- /api/, /accounts/, /admin/, /health/  -->  Gunicorn (Unix socket)
+    |                                                  |
+    |                                                  v
+    |                                             Django (DRF)
+    |                                                  |
+    |                                                  v
+    |                                             PostgreSQL 17
+    |                                             + PostGIS + pgvector
+    |
+    |-- /static/   -->  Django collectstatic files
+    |
+    |-- /assets/   -->  Vite-built React assets (1yr cache, immutable)
+    |
+    '-- /          -->  React SPA fallback (try_files -> index.html)
 ```
 
 ## Troubleshooting
+
+**CSRF errors on login (403 Forbidden)**: Django is not recognizing the HTTPS
+connection through Cloudflare. Verify that `production.py` has
+`SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")` and that the
+nginx template passes `X-Forwarded-Proto https` in proxy headers.
 
 **Ansible fails at "Install PostgreSQL"**: The PostgreSQL APT repo key may have
 changed. SSH into the server and add it manually:
@@ -427,13 +318,21 @@ sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
 ```bash
 sudo supervisorctl status babylon_web
 sudo supervisorctl restart babylon_web
-cat /webapps/babylon/logs/gunicorn_supervisor.log
+cat /webapps/babylon_web/logs/gunicorn_supervisor.log
 ```
 
-**PostGIS extension missing**: Install it on the server:
+**ModuleNotFoundError for babylon engine code**: The PYTHONPATH is not set.
+Verify `gunicorn_start.j2` includes the line:
 
 ```bash
-sudo apt-get install postgresql-16-postgis-3
+export PYTHONPATH="{{ project_path }}:{{ project_path }}/src:$PYTHONPATH"
+```
+
+**PostGIS extension missing**: The Ansible db role installs it automatically,
+but if you need to add it manually:
+
+```bash
+sudo apt-get install postgresql-17-postgis-3
 psql -U postgres -d babylon -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 ```
 
@@ -448,6 +347,13 @@ sudo nft list ruleset | grep 'tcp dport 443'
 is not configured to serve it. Verify:
 
 ```bash
-ls /webapps/babylon/babylon/web/frontend/dist/index.html
+ls /webapps/babylon_web/babylon/web/frontend/dist/index.html
 sudo nginx -t
+```
+
+**Vault password error**: Ensure `.vault_pass` exists and contains the correct
+passphrase:
+
+```bash
+ansible-vault view group_vars/production/vault.yml --vault-password-file .vault_pass
 ```

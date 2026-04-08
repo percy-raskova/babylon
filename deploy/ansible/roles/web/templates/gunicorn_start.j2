@@ -1,7 +1,7 @@
 #!/bin/sh
 
 NAME="{{ application_name }}"
-DJANGODIR="{{ project_path }}"
+DJANGODIR="{{ django_project_dir | default(project_path) }}"
 SOCKFILE={{ virtualenv_path }}/run/gunicorn.sock
 USER={{ gunicorn_user }}
 GROUP={{ gunicorn_group }}
@@ -20,6 +20,9 @@ cd $DJANGODIR
 
 # Set additional environment variables.
 . {{ virtualenv_path }}/bin/postactivate
+
+# Engine code lives at repo root's src/ directory
+export PYTHONPATH="{{ project_path }}:{{ project_path }}/src:$PYTHONPATH"
 
 # Create the run directory if it doesn't exist.
 RUNDIR=$(dirname $SOCKFILE)

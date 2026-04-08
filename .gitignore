@@ -104,3 +104,11 @@ node_modules
 web/frontend/dist/
 dev_harness.png
 test_hang.py
+
+# Deployment secrets (NEVER commit)
+deploy/terraform/terraform.tfvars
+deploy/terraform/.terraform/
+deploy/terraform/*.tfstate
+deploy/terraform/*.tfstate.backup
+deploy/ansible/.vault_pass
+deploy/ansible/production_inventory.yml

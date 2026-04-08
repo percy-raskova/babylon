@@ -286,6 +286,10 @@ class Business(Organization):
         min_length=1,
         description="NAICS sector description",
     )
+    naics_2digit: str | None = Field(
+        default=None,
+        description="The 2-digit NAICS code for ECONOMIC_SECTOR hyperedge linking",
+    )
     employment_count: int = Field(
         default=0,
         ge=0,
@@ -298,6 +302,18 @@ class Business(Organization):
     revenue: Currency = Field(
         default=0.0,
         description="Annual revenue",
+    )
+    constant_capital: Currency = Field(
+        default=0.0,
+        description="Constant capital (c)",
+    )
+    variable_capital: Currency = Field(
+        default=0.0,
+        description="Variable capital (v) - wages",
+    )
+    surplus_value: Currency = Field(
+        default=0.0,
+        description="Surplus value (s)",
     )
 
 

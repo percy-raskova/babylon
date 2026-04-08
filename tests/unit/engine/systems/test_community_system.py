@@ -424,14 +424,16 @@ class TestCommunitiesSpanningAxis:
             communities_spanning_axis,
         )
         from babylon.models.entities.contradiction import Contradiction
-        from babylon.models.enums import ContradictionAxis
+        from babylon.models.enums import ContradictionType, EdgeMode
 
         colonial_contradiction = Contradiction(
             id="colonial",
-            axis=ContradictionAxis.IMPERIAL,
+            type=ContradictionType.IMPERIAL,
             aspect_a=CommunityType.SETTLER,
             aspect_b=CommunityType.NEW_AFRIKAN,
             intensity=0.5,
+            principal_aspect="a",
+            form_of_struggle=EdgeMode.EXTRACTIVE,
         )
 
         memberships = [
@@ -461,14 +463,16 @@ class TestCommunitiesSpanningAxis:
             communities_spanning_axis,
         )
         from babylon.models.entities.contradiction import Contradiction
-        from babylon.models.enums import ContradictionAxis
+        from babylon.models.enums import ContradictionType, EdgeMode
 
         colonial_contradiction = Contradiction(
             id="colonial",
-            axis=ContradictionAxis.IMPERIAL,
+            type=ContradictionType.IMPERIAL,
             aspect_a=CommunityType.SETTLER,
             aspect_b=CommunityType.NEW_AFRIKAN,
             intensity=0.5,
+            principal_aspect="a",
+            form_of_struggle=EdgeMode.EXTRACTIVE,
         )
 
         memberships = [

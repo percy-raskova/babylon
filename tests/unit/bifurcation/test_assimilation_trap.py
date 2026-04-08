@@ -12,22 +12,30 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 import xgi  # type: ignore[import-untyped]
+from tests.unit.bifurcation.conftest import build_test_hypergraph, make_community_state
 
 from babylon.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import CommunityState
 from babylon.models.entities.contradiction import Contradiction
-from babylon.models.enums import CommunityType, ConsciousnessTendency, ContradictionAxis, EdgeType
+from babylon.models.enums import (
+    CommunityType,
+    ConsciousnessTendency,
+    ContradictionType,
+    EdgeMode,
+    EdgeType,
+)
 from babylon.models.types import Probability
-
-from .conftest import build_test_hypergraph, make_community_state
 
 colonial_contradiction = Contradiction(
     id="colonial",
-    axis=ContradictionAxis.IMPERIAL,
+    type=ContradictionType.IMPERIAL,
     aspect_a=CommunityType.SETTLER,
     aspect_b=CommunityType.NEW_AFRIKAN,
     intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
 )
 
 

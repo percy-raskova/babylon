@@ -36,33 +36,26 @@ class TestStarvationChamber:
     If it survives indefinitely, that's a zombie bug.
     """
 
-    @pytest.mark.red_phase  # TDD RED: Test assumptions don't match VitalitySystem
     def test_isolated_entity_eventually_dies(self) -> None:
         """Entity with consumption > production must die eventually.
 
         Starvation Chamber scenario:
         - Single entity with no income (no relationships)
-        - Consumption needs > 0 (s_bio=0.05, s_class=0.05 = 0.10 per tick)
-        - Starting wealth = 10.0 (enough for ~100 ticks at base_subsistence)
+        - Population = 1 (so death triggers, rather than just attrition)
+        - Starting wealth = 0.05 (enough for ~100 ticks at base_subsistence 0.0005)
         - Should be marked inactive (dead) before MAX_TICKS
 
         This is the primary test for Pain Point #6.
-
-        TDD RED PHASE NOTE:
-        Test assumes s_bio+s_class is the burn rate, but VitalitySystem actually uses
-        base_subsistence × population (0.0005 × 10 = 0.005/tick). Additionally, death
-        only triggers for population=1 entities (starvation check). This test needs
-        redesign to align with actual VitalitySystem behavior.
         """
         # Create isolated entity with consumption needs
         prisoner = SocialClass(
             id=TEST_ENTITY_ID,
             name="Prisoner",
             role=SocialRole.INTERNAL_PROLETARIAT,
-            wealth=10.0,  # Starting wealth
+            wealth=0.05,  # Starting wealth for ~100 ticks
             s_bio=0.05,  # Biological consumption
             s_class=0.05,  # Social consumption
-            population=10,
+            population=1,
             inequality=0.0,  # Equal distribution
             active=True,
         )

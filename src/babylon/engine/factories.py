@@ -170,23 +170,29 @@ def create_contradiction_frame(scope: str = "global") -> ContradictionFrame:
     """
     # Import locally to avoid circular dependencies
     from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
-    from babylon.models.enums import CommunityType, ContradictionAxis, SocialRole
+    from babylon.models.enums import CommunityType, ContradictionType, EdgeMode, SocialRole
 
     if scope == "global":
         return ContradictionFrame(
             principal=Contradiction(
                 id="global_imperial_contradiction",
-                axis=ContradictionAxis.IMPERIAL,
+                type=ContradictionType.IMPERIAL,
                 aspect_a=CommunityType.SETTLER,
                 aspect_b=CommunityType.NEW_AFRIKAN,  # Proxy for oppressed nations in default test scenarios
+                principal_aspect="a",
+                identity=0.5,
+                form_of_struggle=EdgeMode.EXTRACTIVE,
                 intensity=0.5,
                 aspect_balance=0.0,
             ),
             secondary=Contradiction(
                 id="global_class_contradiction",
-                axis=ContradictionAxis.CLASS,
+                type=ContradictionType.CLASS,
                 aspect_a=SocialRole.CORE_BOURGEOISIE,
                 aspect_b=SocialRole.PERIPHERY_PROLETARIAT,
+                principal_aspect="a",
+                identity=0.8,
+                form_of_struggle=EdgeMode.EXTRACTIVE,
                 intensity=0.3,
                 aspect_balance=0.0,
             ),
@@ -196,17 +202,23 @@ def create_contradiction_frame(scope: str = "global") -> ContradictionFrame:
     return ContradictionFrame(
         principal=Contradiction(
             id=f"{scope}_principal_contradiction",
-            axis=ContradictionAxis.CLASS,
+            type=ContradictionType.CLASS,
             aspect_a=SocialRole.CORE_BOURGEOISIE,
             aspect_b=SocialRole.PERIPHERY_PROLETARIAT,
+            principal_aspect="a",
+            identity=0.8,
+            form_of_struggle=EdgeMode.EXTRACTIVE,
             intensity=0.1,
             aspect_balance=0.0,
         ),
         secondary=Contradiction(
             id=f"{scope}_secondary_contradiction",
-            axis=ContradictionAxis.NATIONAL,
+            type=ContradictionType.NATIONAL,
             aspect_a=CommunityType.SETTLER,
             aspect_b=CommunityType.NEW_AFRIKAN,
+            principal_aspect="a",
+            identity=0.5,
+            form_of_struggle=EdgeMode.EXTRACTIVE,
             intensity=0.05,
             aspect_balance=0.0,
         ),

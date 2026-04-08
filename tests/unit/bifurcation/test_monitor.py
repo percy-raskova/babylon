@@ -24,7 +24,8 @@ from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import (
     CommunityType,
     ConsciousnessTendency,
-    ContradictionAxis,
+    ContradictionType,
+    EdgeMode,
     EdgeType,
     EventType,
 )
@@ -32,10 +33,13 @@ from babylon.models.events import BifurcationTendencyEvent
 
 colonial_contradiction = Contradiction(
     id="colonial",
-    axis=ContradictionAxis.IMPERIAL,
+    type=ContradictionType.IMPERIAL,
     aspect_a=CommunityType.SETTLER,
     aspect_b=CommunityType.NEW_AFRIKAN,
     intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
 )
 
 pytestmark = pytest.mark.topology

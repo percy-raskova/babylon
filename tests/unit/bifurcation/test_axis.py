@@ -27,23 +27,29 @@ from babylon.models.entities.community import (
     CommunityState,
 )
 from babylon.models.entities.contradiction import Contradiction
-from babylon.models.enums import CommunityType, ContradictionAxis, EdgeType
+from babylon.models.enums import CommunityType, ContradictionType, EdgeMode, EdgeType
 
 # Dummy contradictions for testing
 colonial_contradiction = Contradiction(
     id="colonial",
-    axis=ContradictionAxis.IMPERIAL,
+    type=ContradictionType.IMPERIAL,
     aspect_a=CommunityType.SETTLER,
     aspect_b=CommunityType.NEW_AFRIKAN,
     intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
 )
 
 patriarchal_contradiction = Contradiction(
     id="patriarchal",
-    axis=ContradictionAxis.GENDER,
+    type=ContradictionType.GENDER,
     aspect_a=CommunityType.PATRIARCHAL,
     aspect_b=CommunityType.WOMEN,
     intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
 )
 
 # =============================================================================

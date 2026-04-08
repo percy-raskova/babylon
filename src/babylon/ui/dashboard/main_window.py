@@ -11,8 +11,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt  # type: ignore[import-not-found]
-from PyQt6.QtWidgets import (  # type: ignore[import-not-found]
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
     QMainWindow,
     QSplitter,
     QStatusBar,
@@ -26,7 +26,7 @@ from babylon.ui.dashboard.observer import DashboardObserver
 from babylon.ui.dashboard.theme import QSS_THEME
 
 if TYPE_CHECKING:
-    from PyQt6.QtGui import QCloseEvent  # type: ignore[import-not-found]
+    from PyQt6.QtGui import QCloseEvent
 
     from babylon.models.snapshots import SimulationSnapshot, TerritoryState
     from babylon.protocols import SimulationState
@@ -38,7 +38,7 @@ MIN_WINDOW_WIDTH = 1460
 MIN_WINDOW_HEIGHT = 820
 
 
-class DashboardWindow(QMainWindow):  # type: ignore[misc]
+class DashboardWindow(QMainWindow):
     """Main dashboard window with map and inspector panels.
 
     This window provides the complete God Mode Dashboard interface:
@@ -197,7 +197,7 @@ class DashboardWindow(QMainWindow):  # type: ignore[misc]
         self._update_status(f"Error: {message}")
         logger.error("Connection error: %s", message)
 
-    def closeEvent(self, event: QCloseEvent) -> None:
+    def closeEvent(self, event: QCloseEvent | None) -> None:
         """Handle window close event.
 
         Unregisters observer from simulation (FR-012).

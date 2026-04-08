@@ -5,7 +5,7 @@ contradiction axis (colonial, patriarchal). Cross-line solidarity
 is consciousness-weighted; lateral antagonism uses raw edge weight.
 
 See Also:
-    :class:`babylon.models.entities.community.ContradictionAxis`: Axis definitions.
+    :class:`babylon.models.enums.ContradictionType`: Axis definitions.
     :mod:`babylon.bifurcation.consciousness`: Consciousness weighting functions.
 """
 

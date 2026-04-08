@@ -64,7 +64,7 @@ from babylon.models.entity_registry import (
 from babylon.models.enums import (
     CommunityType,
     ConsciousnessTendency,
-    ContradictionAxis,
+    ContradictionType,
     EdgeType,
     HyperedgeCategory,
     IntensityLevel,
@@ -194,7 +194,7 @@ __all__ = [
     "HyperedgeCategory",
     "ConsciousnessTendency",
     "CommunityConsciousness",
-    "ContradictionAxis",
+    "ContradictionType",
     # Ternary Consciousness (Feature 034)
     "TernaryConsciousness",
     "SubstrateFloor",

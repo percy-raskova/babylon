@@ -12,10 +12,10 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QUrl  # type: ignore[import-not-found]
-from PyQt6.QtWebChannel import QWebChannel  # type: ignore[import-not-found]
-from PyQt6.QtWebEngineWidgets import QWebEngineView  # type: ignore[import-not-found]
-from PyQt6.QtWidgets import QVBoxLayout, QWidget  # type: ignore[import-not-found]
+from PyQt6.QtCore import QUrl
+from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from babylon.ui.dashboard.models import HexDisplayData
 from babylon.ui.dashboard.theme import profit_rate_to_rgb
@@ -33,7 +33,7 @@ DETROIT_LONGITUDE = -83.0458
 DEFAULT_ZOOM = 9
 
 
-class MapViewport(QWidget):  # type: ignore[misc]
+class MapViewport(QWidget):
     """H3 hexagonal map widget using pydeck and QWebEngineView.
 
     This widget renders simulation territories as colored hexagons on a
@@ -97,24 +97,26 @@ class MapViewport(QWidget):  # type: ignore[misc]
 
     def _setup_js_console_logging(self) -> None:
         """Connect JavaScript console messages to Python logger."""
-        from PyQt6.QtWebEngineCore import QWebEnginePage  # type: ignore[import-not-found]
+        from PyQt6.QtWebEngineCore import QWebEnginePage
 
         # Create custom page to capture console messages
         page = self._web_view.page()
 
         def handle_console_message(
             level: QWebEnginePage.JavaScriptConsoleMessageLevel,
-            message: str,
+            message: str | None,
             line: int,
-            _source: str,
+            _source: str | None,
         ) -> None:
             # Only log messages from our Babylon code (prefixed with [Babylon])
-            if "[Babylon]" in message:
-                logger.info("JS: %s", message)
-            elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorLevel:
-                logger.warning("JS Error: %s (line %d)", message, line)
+            if message is not None:
+                if "[Babylon]" in message:
+                    logger.info("JS: %s", message)
+                elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
+                    logger.warning("JS Error: %s (line %d)", message, line)
 
-        page.javaScriptConsoleMessage = handle_console_message
+        if page is not None:
+            page.javaScriptConsoleMessage = handle_console_message  # type: ignore[method-assign, assignment]
 
     def initialize(self, simulation: SimulationState) -> None:
         """Initialize the map with simulation state.
@@ -126,7 +128,7 @@ class MapViewport(QWidget):  # type: ignore[misc]
             simulation: Simulation state to render.
         """
         try:
-            import pydeck as pdk  # type: ignore[import-not-found]
+            import pydeck as pdk  # type: ignore[import-untyped]
         except ImportError as e:
             msg = "pydeck is required for MapViewport. Install with: pip install pydeck"
             raise ImportError(msg) from e
@@ -205,7 +207,9 @@ class MapViewport(QWidget):  # type: ignore[misc]
         update_js = self._generate_update_js(layer_data)
 
         # Execute JavaScript
-        self._web_view.page().runJavaScript(update_js)
+        page = self._web_view.page()
+        if page is not None:
+            page.runJavaScript(update_js)
 
         logger.debug(
             "MapViewport updated colors for %d hexes at tick %d",
@@ -233,7 +237,9 @@ class MapViewport(QWidget):  # type: ignore[misc]
         # Re-render with highlight
         layer_data = self._hex_data_to_pydeck_format(self._hex_data)
         update_js = self._generate_update_js(layer_data)
-        self._web_view.page().runJavaScript(update_js)
+        page = self._web_view.page()
+        if page is not None:
+            page.runJavaScript(update_js)
 
         logger.debug("Highlighted territory: %s", territory_id)
 
@@ -252,7 +258,9 @@ class MapViewport(QWidget):  # type: ignore[misc]
         # Re-render without highlight
         layer_data = self._hex_data_to_pydeck_format(self._hex_data)
         update_js = self._generate_update_js(layer_data)
-        self._web_view.page().runJavaScript(update_js)
+        page = self._web_view.page()
+        if page is not None:
+            page.runJavaScript(update_js)
 
         logger.debug("Cleared territory highlight")
 
@@ -270,7 +278,9 @@ class MapViewport(QWidget):  # type: ignore[misc]
         # Create QWebChannel and register bridge
         self._channel = QWebChannel(self._web_view.page())
         self._channel.registerObject("bridge", bridge)
-        self._web_view.page().setWebChannel(self._channel)
+        page = self._web_view.page()
+        if page is not None:
+            page.setWebChannel(self._channel)
 
         logger.info("HexBridge registered with QWebChannel")
 

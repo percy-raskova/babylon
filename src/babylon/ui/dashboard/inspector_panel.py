@@ -11,8 +11,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt  # type: ignore[import-not-found]
-from PyQt6.QtWidgets import (  # type: ignore[import-not-found]
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QVBoxLayout,
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class InspectorPanel(QFrame):  # type: ignore[misc]
+class InspectorPanel(QFrame):
     """Territory details panel displaying Value Tensor properties.
 
     This panel shows detailed information about the currently selected
@@ -113,8 +113,10 @@ class InspectorPanel(QFrame):  # type: ignore[misc]
         """
         # Clear error styling
         self.setObjectName("inspector")
-        self.style().unpolish(self)
-        self.style().polish(self)
+        style = self.style()
+        if style is not None:
+            style.unpolish(self)
+            style.polish(self)
 
         # Update title
         self._title_label.setText(f"Territory: {territory.territory_id}")
@@ -138,8 +140,10 @@ class InspectorPanel(QFrame):  # type: ignore[misc]
         """Display no selection message."""
         # Clear error styling
         self.setObjectName("inspector")
-        self.style().unpolish(self)
-        self.style().polish(self)
+        style = self.style()
+        if style is not None:
+            style.unpolish(self)
+            style.polish(self)
 
         self._title_label.setText("Territory Inspector")
 
@@ -161,8 +165,10 @@ class InspectorPanel(QFrame):  # type: ignore[misc]
         """
         # Clear error styling
         self.setObjectName("inspector")
-        self.style().unpolish(self)
-        self.style().polish(self)
+        style = self.style()
+        if style is not None:
+            style.unpolish(self)
+            style.polish(self)
 
         self._title_label.setText("Unclaimed Territory")
 
@@ -184,8 +190,10 @@ class InspectorPanel(QFrame):  # type: ignore[misc]
         """
         # Apply error styling (red border via QSS)
         self.setObjectName("inspector_error")
-        self.style().unpolish(self)
-        self.style().polish(self)
+        style = self.style()
+        if style is not None:
+            style.unpolish(self)
+            style.polish(self)
 
         self._title_label.setText("Error")
 

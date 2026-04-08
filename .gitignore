@@ -95,3 +95,12 @@ deploy/ansible-setup-guide.md
 .node
 .pgdata
 node_modules
+
+# Tool Caches
+.pre-commit-cache/
+.playwright-mcp/
+
+# Frontend
+web/frontend/dist/
+dev_harness.png
+test_hang.py

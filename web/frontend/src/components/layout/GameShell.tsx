@@ -118,7 +118,11 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
         onLogout={onLogout}
       />
 
-      {error && <p className="shrink-0 px-4 py-1 text-[13px] text-crimson" data-testid="error-banner">{error}</p>}
+      {error && (
+        <p className="shrink-0 px-4 py-1 text-[13px] text-crimson" data-testid="error-banner">
+          {error}
+        </p>
+      )}
 
       {/* Vanguard economy resource bar */}
       <div className="shrink-0 px-3">

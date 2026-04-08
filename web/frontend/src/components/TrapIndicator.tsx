@@ -66,7 +66,8 @@ export function TrapIndicator({ traps }: TrapIndicatorProps) {
 
   if (!traps || !traps.active_trap) return null;
 
-  const activeTrap = traps[traps.active_trap];
+  const activeTrapKey = traps.active_trap as "liberal" | "ultra_left" | "rightist";
+  const activeTrap = traps[activeTrapKey];
   if (!activeTrap || activeTrap.severity === "none") return null;
 
   if (dismissed === activeTrap.trap_type && activeTrap.severity === "mild") {

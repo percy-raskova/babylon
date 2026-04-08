@@ -84,16 +84,18 @@ describe("Wayne County Frontend Contract", () => {
       // ResourceGauge renders value.toFixed(1) -> "1.0", "4.0"
       // ResourceStat renders budget as `$${v.budget.toFixed(0)}` -> "$100"
       // ResourceStat renders rep as `${(v.reputation * 100).toFixed(0)}%` -> "0%"
-      expect(screen.getByText("1.0")).toBeInTheDocument();  // CL
-      expect(screen.getByText("4.0")).toBeInTheDocument();  // SL
-      expect(screen.getByText("$100")).toBeInTheDocument();  // Budget
+      expect(screen.getByText("1.0")).toBeInTheDocument(); // CL
+      expect(screen.getByText("4.0")).toBeInTheDocument(); // SL
+      expect(screen.getByText("$100")).toBeInTheDocument(); // Budget
     });
 
     it("shows org name and type in resource panel header", () => {
       renderWithWayneCounty();
 
       // Name appears in both ResourcePanel header and ActionComposer org pill
-      expect(screen.getAllByText("Wayne County Organizing Committee").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText("Wayne County Organizing Committee").length,
+      ).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("civil_society").length).toBeGreaterThanOrEqual(1);
     });
 

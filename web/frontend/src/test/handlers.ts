@@ -24,7 +24,7 @@ import {
 // ---------------------------------------------------------------------------
 
 let mockState: GameSnapshot = makeWayneCountySnapshot();
-let actionHistory: Array<{ verb: string; org_id: string }> = [];
+let actionHistory: { verb: string; org_id: string }[] = [];
 
 /** Reset mock state to initial Wayne County conditions. */
 export function resetMockState(): void {

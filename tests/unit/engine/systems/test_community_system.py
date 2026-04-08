@@ -423,7 +423,18 @@ class TestCommunitiesSpanningAxis:
             build_community_hypergraph,
             communities_spanning_axis,
         )
-        from babylon.models.entities.community import COLONIAL_AXIS
+        from babylon.models.entities.contradiction import Contradiction
+        from babylon.models.enums import ContradictionType, EdgeMode
+
+        colonial_contradiction = Contradiction(
+            id="colonial",
+            type=ContradictionType.IMPERIAL,
+            aspect_a=CommunityType.SETTLER,
+            aspect_b=CommunityType.NEW_AFRIKAN,
+            intensity=0.5,
+            principal_aspect="a",
+            form_of_struggle=EdgeMode.EXTRACTIVE,
+        )
 
         memberships = [
             # DISABLED members from hegemonic side (SETTLER)
@@ -441,7 +452,7 @@ class TestCommunitiesSpanningAxis:
         }
 
         H = build_community_hypergraph(memberships, community_states)
-        bridges = communities_spanning_axis(H, COLONIAL_AXIS)
+        bridges = communities_spanning_axis(H, colonial_contradiction)
 
         assert CommunityType.DISABLED in bridges
 
@@ -451,7 +462,18 @@ class TestCommunitiesSpanningAxis:
             build_community_hypergraph,
             communities_spanning_axis,
         )
-        from babylon.models.entities.community import COLONIAL_AXIS
+        from babylon.models.entities.contradiction import Contradiction
+        from babylon.models.enums import ContradictionType, EdgeMode
+
+        colonial_contradiction = Contradiction(
+            id="colonial",
+            type=ContradictionType.IMPERIAL,
+            aspect_a=CommunityType.SETTLER,
+            aspect_b=CommunityType.NEW_AFRIKAN,
+            intensity=0.5,
+            principal_aspect="a",
+            form_of_struggle=EdgeMode.EXTRACTIVE,
+        )
 
         memberships = [
             CommunityMembership(agent_id="na_1", community_type=CommunityType.QUEER),
@@ -465,7 +487,7 @@ class TestCommunitiesSpanningAxis:
         }
 
         H = build_community_hypergraph(memberships, community_states)
-        bridges = communities_spanning_axis(H, COLONIAL_AXIS)
+        bridges = communities_spanning_axis(H, colonial_contradiction)
 
         assert CommunityType.QUEER not in bridges
 

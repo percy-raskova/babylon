@@ -5,7 +5,7 @@ contradiction axis (colonial, patriarchal). Cross-line solidarity
 is consciousness-weighted; lateral antagonism uses raw edge weight.
 
 See Also:
-    :class:`babylon.models.entities.community.ContradictionAxis`: Axis definitions.
+    :class:`babylon.models.enums.ContradictionType`: Axis definitions.
     :mod:`babylon.bifurcation.consciousness`: Consciousness weighting functions.
 """
 
@@ -19,7 +19,8 @@ import xgi  # type: ignore[import-untyped]
 from babylon.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.bifurcation.types import AxisTendency
 from babylon.config.defines import BifurcationDefines
-from babylon.models.entities.community import CommunityState, ContradictionAxis
+from babylon.models.entities.community import CommunityState
+from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, EdgeType
 
 # Antagonistic edge types: value extraction, state violence, market rivalry
@@ -30,14 +31,14 @@ _ANTAGONISTIC_EDGE_TYPES: frozenset[EdgeType] = frozenset(
 
 def _agent_axis_side(
     agent_id: str,
-    axis: ContradictionAxis,
+    contradiction: Contradiction,
     agent_memberships: dict[str, set[CommunityType]],
 ) -> Literal["hegemonic", "marginalized", "none"]:
     """Determine which side of a contradiction axis an agent is on.
 
     Args:
         agent_id: Agent node ID.
-        axis: The contradiction axis to check.
+        contradiction: The contradiction to check.
         agent_memberships: Agent ID to community memberships mapping.
 
     Returns:
@@ -49,8 +50,8 @@ def _agent_axis_side(
     if not communities:
         return "none"
 
-    has_hegemonic = axis.hegemonic in communities
-    marginalized_set = frozenset(axis.marginalized)
+    has_hegemonic = contradiction.aspect_a in communities
+    marginalized_set = frozenset([contradiction.aspect_b])
     has_marginalized = bool(communities & marginalized_set)
 
     # Hegemonic takes precedence if agent has both (exclusive axis)
@@ -64,7 +65,7 @@ def _agent_axis_side(
 def crosses_contradiction_axis(
     source_id: str,
     target_id: str,
-    axis: ContradictionAxis,
+    contradiction: Contradiction,
     agent_memberships: dict[str, set[CommunityType]],
 ) -> bool:
     """Check if an edge crosses the given contradiction axis.
@@ -75,14 +76,14 @@ def crosses_contradiction_axis(
     Args:
         source_id: Source agent node ID.
         target_id: Target agent node ID.
-        axis: The contradiction axis to check.
+        contradiction: The contradiction to check.
         agent_memberships: Agent ID to community memberships mapping.
 
     Returns:
         True if the edge spans hegemonic and marginalized sides.
     """
-    source_side = _agent_axis_side(source_id, axis, agent_memberships)
-    target_side = _agent_axis_side(target_id, axis, agent_memberships)
+    source_side = _agent_axis_side(source_id, contradiction, agent_memberships)
+    target_side = _agent_axis_side(target_id, contradiction, agent_memberships)
 
     if source_side == "none" or target_side == "none":
         return False
@@ -94,7 +95,7 @@ def classify_edge_antagonism(
     source_id: str,
     target_id: str,
     graph: nx.DiGraph,  # type: ignore[type-arg]
-    axis: ContradictionAxis,
+    contradiction: Contradiction,
     agent_memberships: dict[str, set[CommunityType]],
 ) -> Literal["lateral", "upward", "downward", "none"]:
     """Classify the antagonistic direction of an edge along a contradiction axis.
@@ -106,7 +107,7 @@ def classify_edge_antagonism(
         source_id: Source agent node ID.
         target_id: Target agent node ID.
         graph: The simulation DiGraph (for edge attribute access).
-        axis: The contradiction axis to classify against.
+        contradiction: The contradiction to classify against.
         agent_memberships: Agent ID to community memberships mapping.
 
     Returns:
@@ -126,8 +127,8 @@ def classify_edge_antagonism(
         return "none"
 
     # Determine sides
-    source_side = _agent_axis_side(source_id, axis, agent_memberships)
-    target_side = _agent_axis_side(target_id, axis, agent_memberships)
+    source_side = _agent_axis_side(source_id, contradiction, agent_memberships)
+    target_side = _agent_axis_side(target_id, contradiction, agent_memberships)
 
     # Both must be on the axis
     if source_side == "none" or target_side == "none":
@@ -147,7 +148,7 @@ def classify_edge_antagonism(
 def compute_axis_tendency(
     graph: nx.DiGraph,  # type: ignore[type-arg]
     H: xgi.Hypergraph,
-    axis: ContradictionAxis,
+    contradiction: Contradiction,
     community_states: dict[CommunityType, CommunityState],
     agent_memberships: dict[str, set[CommunityType]],
     defines: BifurcationDefines,
@@ -165,7 +166,7 @@ def compute_axis_tendency(
     Args:
         graph: The simulation DiGraph with edge attributes.
         H: XGI hypergraph for community membership lookup.
-        axis: The contradiction axis to analyze.
+        contradiction: The contradiction to analyze.
         community_states: Current community consciousness data.
         agent_memberships: Agent ID to community memberships mapping.
         defines: Configurable parameters (sigmoid, epsilon).
@@ -196,7 +197,7 @@ def compute_axis_tendency(
 
         # SOLIDARITY edges: check for cross-axis solidarity
         if edge_type == EdgeType.SOLIDARITY:
-            if crosses_contradiction_axis(src, tgt, axis, agent_memberships):
+            if crosses_contradiction_axis(src, tgt, contradiction, agent_memberships):
                 ws_result = consciousness_weighted_solidarity(
                     source_id=src,
                     target_id=tgt,
@@ -214,7 +215,7 @@ def compute_axis_tendency(
                 source_id=src,
                 target_id=tgt,
                 graph=graph,
-                axis=axis,
+                contradiction=contradiction,
                 agent_memberships=agent_memberships,
             )
 
@@ -231,7 +232,7 @@ def compute_axis_tendency(
     )
 
     return AxisTendency(
-        axis_id=axis.id,
+        axis_id=contradiction.id,
         cross_solidarity_weighted=cross_solidarity_weighted,
         lateral_antagonism_weighted=lateral_antagonism_weighted,
         tendency_ratio=tendency_ratio,

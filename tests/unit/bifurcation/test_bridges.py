@@ -29,10 +29,34 @@ from tests.unit.bifurcation.conftest import (
 from babylon.bifurcation.consciousness import consciousness_sigmoid
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
-    CONTRADICTION_AXES,
     CommunityState,
 )
-from babylon.models.enums import CommunityType
+from babylon.models.entities.contradiction import Contradiction
+from babylon.models.enums import CommunityType, ContradictionType, EdgeMode
+
+# Dummy contradictions for testing
+colonial_contradiction = Contradiction(
+    id="colonial",
+    type=ContradictionType.IMPERIAL,
+    aspect_a=CommunityType.SETTLER,
+    aspect_b=CommunityType.NEW_AFRIKAN,
+    intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
+)
+
+patriarchal_contradiction = Contradiction(
+    id="patriarchal",
+    type=ContradictionType.GENDER,
+    aspect_a=CommunityType.PATRIARCHAL,
+    aspect_b=CommunityType.WOMEN,
+    intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
+)
+TEST_CONTRADICTIONS = [colonial_contradiction, patriarchal_contradiction]
 
 # =============================================================================
 # Helpers
@@ -90,7 +114,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -123,7 +147,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -159,7 +183,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -195,7 +219,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -224,7 +248,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -253,7 +277,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -284,7 +308,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -331,7 +355,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -369,7 +393,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -405,7 +429,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )
@@ -448,7 +472,7 @@ class TestDetectBridges:
         bridges = detect_bridges(
             H=H,
             community_states=community_states,
-            axes=CONTRADICTION_AXES,
+            contradictions=TEST_CONTRADICTIONS,
             agent_memberships=agent_memberships,
             defines=bifurcation_defines,
         )

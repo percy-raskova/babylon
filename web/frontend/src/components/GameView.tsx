@@ -20,7 +20,8 @@ interface GameViewProps {
 }
 
 export function GameView({ gameId, onBack }: GameViewProps) {
-  const { snapshot, available, loading, error, submitAction, resolveTick } = useGameState(gameId);
+  const { snapshot, mapData, available, loading, error, submitAction, resolveTick } =
+    useGameState(gameId);
   const [results, setResults] = useState<ActionResultData[] | null>(null);
   const [resolving, setResolving] = useState(false);
 
@@ -71,7 +72,7 @@ export function GameView({ gameId, onBack }: GameViewProps) {
           {/* Left column: Map + Time Series */}
           <div className="flex flex-col gap-3 overflow-hidden">
             <div className="flex-[2] overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
-              <HexMap snapshot={snapshot} />
+              <HexMap data={mapData} activeMetric="profit_rate" minVal={0} maxVal={0.5} />
             </div>
             <div className="flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
               <TimeSeriesPanel snapshot={snapshot} />

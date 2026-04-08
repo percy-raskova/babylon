@@ -25,12 +25,11 @@ from babylon.models.config import SimulationConfig
 # Entity Models (migrated from old dataclasses)
 from babylon.models.entities import (
     Contradiction,
-    ContradictionState,
+    ContradictionFrame,
     Effect,
     GlobalEconomy,
     IdeologicalProfile,
     Relationship,
-    ResolutionOutcome,
     SocialClass,
     Trigger,
     TriggerCondition,
@@ -39,7 +38,6 @@ from babylon.models.entities.community import (
     CommunityConsciousness,
     CommunityMembership,
     CommunityState,
-    ContradictionAxis,
 )
 from babylon.models.entities.consciousness import (
     OrgContribution,
@@ -66,6 +64,7 @@ from babylon.models.entity_registry import (
 from babylon.models.enums import (
     CommunityType,
     ConsciousnessTendency,
+    ContradictionType,
     EdgeType,
     HyperedgeCategory,
     IntensityLevel,
@@ -140,8 +139,7 @@ __all__ = [
     "GlobalEconomy",  # Sprint 3.4.4 - Dynamic Balance
     # Other Entities
     "Effect",
-    "ContradictionState",
-    "ResolutionOutcome",
+    "ContradictionFrame",
     "Contradiction",
     "Trigger",
     "TriggerCondition",
@@ -196,7 +194,7 @@ __all__ = [
     "HyperedgeCategory",
     "ConsciousnessTendency",
     "CommunityConsciousness",
-    "ContradictionAxis",
+    "ContradictionType",
     # Ternary Consciousness (Feature 034)
     "TernaryConsciousness",
     "SubstrateFloor",

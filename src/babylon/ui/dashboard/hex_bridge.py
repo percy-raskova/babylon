@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot  # type: ignore[import-not-found]
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from babylon.ui.dashboard.validators import is_valid_h3_index
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HexBridge(QObject):  # type: ignore[misc]
+class HexBridge(QObject):
     """JavaScript-Python bridge for hex click events.
 
     This QObject is registered with QWebChannel and receives click events
@@ -72,7 +72,7 @@ class HexBridge(QObject):  # type: ignore[misc]
         """
         return self._selected_territory_id
 
-    @pyqtSlot(str)  # type: ignore[untyped-decorator]
+    @pyqtSlot(str)
     def on_hex_click(self, h3_index: str) -> None:
         """Handle hex click from JavaScript.
 
@@ -114,7 +114,7 @@ class HexBridge(QObject):  # type: ignore[misc]
             self.unclaimed_hex_clicked.emit(h3_index)
             logger.debug("Unclaimed hex clicked: %s", h3_index)
 
-    @pyqtSlot()  # type: ignore[untyped-decorator]
+    @pyqtSlot()
     def on_background_click(self) -> None:
         """Handle background click from JavaScript.
 

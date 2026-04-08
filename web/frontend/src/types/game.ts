@@ -39,6 +39,7 @@ export interface GameSnapshot {
   economy: Record<string, unknown>;
   events: GameEvent[];
   endgame?: EndgameData;
+  traps?: TrapDetectionResult;
 }
 
 /** Social class entity with full visualization fields. */
@@ -89,6 +90,37 @@ export interface OrgState {
   heat: number;
   territory_ids: string[];
   consciousness_tendency: string;
+  vanguard?: VanguardResources;
+}
+
+/** Vanguard economy resource state for a player org. */
+export interface VanguardResources {
+  cadre_labor: number;
+  max_cadre_labor: number;
+  sympathizer_labor: number;
+  max_sympathizer_labor: number;
+  reputation: number;
+  budget: number;
+  heat: number;
+}
+
+/** Single trap detection state. */
+export interface TrapState {
+  trap_type: string;
+  severity: "none" | "mild" | "moderate" | "severe";
+  score: number;
+  indicators: string[];
+  ticks_at_moderate: number;
+}
+
+/** Aggregated trap detection result for this game tick. */
+export interface TrapDetectionResult {
+  liberal: TrapState;
+  ultra_left: TrapState;
+  rightist: TrapState;
+  active_trap: string | null;
+  game_over_trap: string | null;
+  [key: string]: TrapState | string | null;
 }
 
 /** Institution with full visualization fields. */

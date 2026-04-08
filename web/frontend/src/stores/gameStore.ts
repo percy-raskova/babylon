@@ -59,9 +59,12 @@ function accumulateEvents(snap: GameSnapshot): void {
   useUIStore.getState().addEvents(classified);
 }
 
+import type { FeatureCollection } from "geojson";
+
 interface GameState {
   sessionId: string | null;
   snapshot: GameSnapshot | null;
+  mapData: FeatureCollection | null;
   available: AvailableAction[];
   tickSummaries: TickSummary[];
   loading: boolean;
@@ -77,10 +80,13 @@ interface GameState {
 export const useGameStore = create<GameState>((set, get) => ({
   sessionId: null,
   snapshot: null,
+  mapData: null,
   available: [],
   tickSummaries: [],
   loading: false,
   error: null,
+
+  // (omitting setSession code modification by replacing only the relevant section)
 
   setSession: (id) => set({ sessionId: id }),
 
@@ -88,9 +94,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ loading: true, error: null });
     log.debug("Fetching game state", { gameId });
 
-    const [stateRes, actionsRes] = await Promise.all([
+    const [stateRes, actionsRes, mapRes] = await Promise.all([
       apiGet<GameSnapshot>(`/api/games/${gameId}/state/`),
       apiGet<AvailableAction[]>(`/api/games/${gameId}/actions/available/`),
+      apiGet<FeatureCollection>(`/api/games/${gameId}/map/`),
     ]);
 
     if (stateRes.status === "ok") {
@@ -114,6 +121,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ available: actionsRes.data });
     }
 
+    if (mapRes.status === "ok") {
+      set({ mapData: mapRes.data });
+    }
+
     set({ loading: false });
   },
 
@@ -123,6 +134,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (res.status !== "ok") {
       log.error("Action submission failed", { gameId, message: res.message });
       set({ error: res.message ?? "Failed to submit action" });
+      return; // Don't re-fetch — error would be cleared
     }
     await get().fetchState(gameId);
   },

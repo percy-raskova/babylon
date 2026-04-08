@@ -103,75 +103,6 @@ LIFECYCLE_COMMUNITIES: frozenset[CommunityType] = frozenset(
 )
 
 
-class ContradictionAxis(BaseModel):
-    """A structural axis of contradiction with hegemonic and marginalized sides.
-
-    Args:
-        id: Short identifier for the axis.
-        name: Human-readable axis name.
-        hegemonic: The hegemonic community type on this axis.
-        marginalized: List of marginalized community types on this axis.
-        extraction_mechanism: Description of the material extraction.
-        exclusive: Whether membership is mutually exclusive.
-        permeable: Whether agents can cross the axis boundary.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    id: str
-    name: str
-    hegemonic: CommunityType
-    marginalized: list[CommunityType]
-    extraction_mechanism: str
-    exclusive: bool
-    permeable: bool
-
-
-# === Feature 029: Contradiction Axes (US2) ===
-
-COLONIAL_AXIS = ContradictionAxis(
-    id="colonial",
-    name="Colonial",
-    hegemonic=CommunityType.SETTLER,
-    marginalized=[
-        CommunityType.NEW_AFRIKAN,
-        CommunityType.FIRST_NATIONS,
-        CommunityType.CHICANO,
-    ],
-    extraction_mechanism="Land, imperial rent, carceral labor, property value regimes",
-    exclusive=True,
-    permeable=False,
-)
-
-PATRIARCHAL_AXIS = ContradictionAxis(
-    id="patriarchal",
-    name="Patriarchal",
-    hegemonic=CommunityType.PATRIARCHAL,
-    marginalized=[CommunityType.WOMEN, CommunityType.TRANS],
-    extraction_mechanism="Unwaged reproductive labor, wage gap, care externalization",
-    exclusive=True,
-    permeable=False,
-)
-
-CONTRADICTION_AXES: list[ContradictionAxis] = [COLONIAL_AXIS, PATRIARCHAL_AXIS]
-
-
-def get_contradiction_axis(community: CommunityType) -> ContradictionAxis | None:
-    """Return the contradiction axis a community belongs to, or None.
-
-    Args:
-        community: A CommunityType member.
-
-    Returns:
-        The ContradictionAxis if the community is part of a contradiction pair,
-        None if it is institutional exclusion or lifecycle phase.
-    """
-    for axis in CONTRADICTION_AXES:
-        if community == axis.hegemonic or community in axis.marginalized:
-            return axis
-    return None
-
-
 def is_hegemonic(community: CommunityType) -> bool:
     """Return True if the community is on the hegemonic side of any axis.
 
@@ -194,23 +125,6 @@ def is_marginalized(community: CommunityType) -> bool:
         True if marginalized, False otherwise.
     """
     return community in MARGINALIZED_COMMUNITIES
-
-
-def get_opposing_communities(community: CommunityType) -> list[CommunityType]:
-    """Return the communities on the opposite side of the contradiction axis.
-
-    Args:
-        community: A CommunityType member.
-
-    Returns:
-        List of opposing community types. Empty if not part of a contradiction axis.
-    """
-    axis = get_contradiction_axis(community)
-    if axis is None:
-        return []
-    if community == axis.hegemonic:
-        return list(axis.marginalized)
-    return [axis.hegemonic]
 
 
 def shared_marginalized_communities(

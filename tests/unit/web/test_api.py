@@ -49,6 +49,13 @@ class TestURLRouting:
         )
         assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/state/"
 
+    def test_game_map_url(self) -> None:
+        url = reverse(
+            "game:game-map",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/map/"
+
     def test_actions_available_url(self) -> None:
         url = reverse(
             "game:actions-available",

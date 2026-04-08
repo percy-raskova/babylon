@@ -198,6 +198,7 @@ class Simulation:
         from babylon.engine.hydration.reference import (
             StubBEASource,
             hydrate_economy_constants,
+            hydrate_industry_hyperedges,
             hydrate_reserve_army,
             hydrate_territories,
         )
@@ -301,8 +302,11 @@ class Simulation:
             )
             calculator_overrides.update(vol1_overrides)
 
+        # Hydrate industries
+        industries = hydrate_industry_hyperedges(fips_codes, year)
+
         # Create base WorldState and config
-        state = WorldState()
+        state = WorldState(industries=industries)
         config = SimulationConfig()
 
         # Create simulation instance with tensor registry and calculator overrides

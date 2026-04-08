@@ -136,6 +136,20 @@ def resolve_edge_type(raw: str | EdgeType | None) -> EdgeType | None:
     return raw
 
 
+class ContradictionType(StrEnum):
+    """Main axes of structural contradiction (Constitutional Framework).
+
+    Moving away from hardcoded models towards a dynamic Maoist contradiction
+    framework. Defines the principal and secondary axes at a given scale.
+    """
+
+    NATIONAL = "national"
+    CLASS = "class"
+    GENDER = "gender"
+    IMPERIAL = "imperial"
+    ECOLOGICAL = "ecological"
+
+
 class IntensityLevel(StrEnum):
     """Intensity scale for contradictions and tensions.
 
@@ -579,11 +593,14 @@ class HyperedgeCategory(StrEnum):
             through institutional defaults, not a paired oppressor community.
         LIFECYCLE_PHASE: Temporal positions in D-P-D' intergenerational lifecycle.
             Universal, temporally permeable, defined by relationship to production.
+        ECONOMIC_SECTOR: Industry sectors represented by 2-digit NAICS codes. Used
+            for tracking economic metabolism, business coordination, and profit equalization.
     """
 
     CONTRADICTION_PAIR = "contradiction_pair"
     INSTITUTIONAL_EXCLUSION = "institutional_exclusion"
     LIFECYCLE_PHASE = "lifecycle_phase"
+    ECONOMIC_SECTOR = "economic_sector"
 
 
 class ConsciousnessTendency(StrEnum):

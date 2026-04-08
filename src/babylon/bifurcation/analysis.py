@@ -39,10 +39,10 @@ from babylon.bifurcation.resilience import (
 from babylon.bifurcation.types import BifurcationResult
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
-    CONTRADICTION_AXES,
     MARGINALIZED_COMMUNITIES,
     CommunityState,
 )
+from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, EdgeType
 
 
@@ -215,6 +215,7 @@ def _compute_edge_counts(
     agent_memberships: dict[str, set[CommunityType]],
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
+    contradictions: list[Contradiction],
     defines: BifurcationDefines,
 ) -> tuple[int, int, float, int]:
     """Count cross-line and within-line solidarity edges, sum weighted cross.
@@ -224,6 +225,7 @@ def _compute_edge_counts(
         agent_memberships: Agent community memberships.
         H: Hypergraph for consciousness weighting.
         community_states: Community states for consciousness weighting.
+        contradictions: List of contradictions to test.
         defines: Bifurcation parameters.
 
     Returns:
@@ -252,8 +254,8 @@ def _compute_edge_counts(
 
         # Check if edge crosses any contradiction axis
         crosses_any = False
-        for axis in CONTRADICTION_AXES:
-            if crosses_contradiction_axis(src, tgt, axis, agent_memberships):
+        for contradiction in contradictions:
+            if crosses_contradiction_axis(src, tgt, contradiction, agent_memberships):
                 crosses_any = True
                 break
 
@@ -303,12 +305,14 @@ def _compute_legitimation_index(graph: nx.DiGraph) -> float:  # type: ignore[typ
 
 def _has_cross_axis_antagonism(
     graph: nx.DiGraph,  # type: ignore[type-arg]
+    contradictions: list[Contradiction],
     agent_memberships: dict[str, set[CommunityType]],
 ) -> bool:
     """Check if any antagonistic edge crosses a contradiction axis.
 
     Args:
         graph: Simulation DiGraph.
+        contradictions: List of contradictions to test.
         agent_memberships: Agent community memberships.
 
     Returns:
@@ -325,8 +329,8 @@ def _has_cross_axis_antagonism(
         edge_type = EdgeType(edge_type_raw) if isinstance(edge_type_raw, str) else edge_type_raw
         if edge_type not in antagonistic:
             continue
-        for axis in CONTRADICTION_AXES:
-            if crosses_contradiction_axis(src, tgt, axis, agent_memberships):
+        for contradiction in contradictions:
+            if crosses_contradiction_axis(src, tgt, contradiction, agent_memberships):
                 return True
     return False
 
@@ -398,6 +402,7 @@ def bifurcation_tendency(
     graph: nx.DiGraph,  # type: ignore[type-arg]
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
+    contradictions: list[Contradiction],
     agent_memberships: dict[str, set[CommunityType]],
     defines: BifurcationDefines,
 ) -> BifurcationResult:
@@ -415,6 +420,7 @@ def bifurcation_tendency(
         graph: Simulation DiGraph with social_class and territory nodes.
         H: XGI hypergraph for community membership lookup.
         community_states: Current community consciousness data.
+        contradictions: List of contradictions for this scope.
         agent_memberships: Agent ID to community memberships mapping.
         defines: Configurable parameters for all sub-computations.
 
@@ -432,16 +438,16 @@ def bifurcation_tendency(
     total_upward_count = 0
     has_any_axis_edges = False
 
-    for axis in CONTRADICTION_AXES:
+    for contradiction in contradictions:
         axis_result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=axis,
+            contradiction=contradiction,
             community_states=community_states,
             agent_memberships=agent_memberships,
             defines=defines,
         )
-        per_axis_tendency[axis.id] = axis_result.tendency_ratio
+        per_axis_tendency[contradiction.id] = axis_result.tendency_ratio
         total_lateral_count += axis_result.lateral_edge_count
         total_upward_count += axis_result.upward_edge_count
         axis_edge_total = (
@@ -451,23 +457,23 @@ def bifurcation_tendency(
         )
         if axis_edge_total > 0:
             has_any_axis_edges = True
-            active_axis_tendency[axis.id] = axis_result.tendency_ratio
+            active_axis_tendency[contradiction.id] = axis_result.tendency_ratio
 
     # 2. Edge counts and weighted cross-line solidarity
     cross_count, within_count, weighted_cross, crisis_fragile_count = _compute_edge_counts(
-        graph, agent_memberships, H, community_states, defines
+        graph, agent_memberships, H, community_states, contradictions, defines
     )
 
     # Also check for cross-axis antagonistic edges (downward exploitation
     # is not counted in lateral/upward but signals structure on the axis)
     if not has_any_axis_edges and cross_count == 0:
-        has_any_axis_edges = _has_cross_axis_antagonism(graph, agent_memberships)
+        has_any_axis_edges = _has_cross_axis_antagonism(graph, contradictions, agent_memberships)
 
     # 3. Community bridge detection
     bridges = detect_bridges(
         H=H,
         community_states=community_states,
-        axes=CONTRADICTION_AXES,
+        contradictions=contradictions,
         agent_memberships=agent_memberships,
         defines=defines,
     )

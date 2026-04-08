@@ -1,17 +1,22 @@
-"""Unit tests for SessionRecorder observer.
+"""Unit tests for SessionRecorder observer (Feature 037 migration).
 
-Tests the SessionRecorder's ability to persist simulation state to SQLite
-for replay, debugging, and temporal queries (ADR030).
+Tests the SessionRecorder's ability to persist simulation state via
+the RuntimePersistence protocol for replay, debugging, and temporal
+queries (ADR030 + Feature 037).
 """
 
 from __future__ import annotations
 
-import pytest
+from unittest.mock import MagicMock, PropertyMock
+from uuid import UUID
+
 from tests.factories import DomainFactory
 
 from babylon.engine.observers.session_recorder import SessionRecorder
-from babylon.engine.simdb import SimulationDB
 from babylon.models.config import SimulationConfig
+from babylon.persistence.protocols import RuntimePersistence, TraceCollector, TraceLevel
+
+_TEST_SESSION_ID = UUID("12345678-1234-5678-1234-567812345678")
 
 
 def _create_world_state() -> object:
@@ -31,21 +36,33 @@ def _create_config() -> SimulationConfig:
     return SimulationConfig()
 
 
+def _create_mock_persistence() -> MagicMock:
+    """Create a mock RuntimePersistence backend."""
+    mock = MagicMock(spec=RuntimePersistence)
+    return mock
+
+
 class TestSessionRecorderCreation:
     """Tests for SessionRecorder instantiation."""
 
-    def test_creates_with_database(self) -> None:
-        """Should create recorder with database reference."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            assert recorder._db is db
-            assert recorder._started is False
+    def test_creates_with_persistence(self) -> None:
+        """Should create recorder with persistence reference."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        assert recorder._persistence is mock_persistence
+        assert recorder._started is False
 
-    def test_name_includes_run_id(self) -> None:
-        """name property should include the database run_id."""
-        with SimulationDB(run_id="test_run_123", in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            assert "test_run_123" in recorder.name
+    def test_name_includes_session_id(self) -> None:
+        """name property should include the session_id."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        assert str(_TEST_SESSION_ID) in recorder.name
 
 
 class TestSessionRecorderProtocol:
@@ -53,17 +70,20 @@ class TestSessionRecorderProtocol:
 
     def test_has_required_methods(self) -> None:
         """Should implement all SimulationObserver protocol methods."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            # Check protocol methods exist
-            assert hasattr(recorder, "name")
-            assert hasattr(recorder, "on_simulation_start")
-            assert hasattr(recorder, "on_tick")
-            assert hasattr(recorder, "on_simulation_end")
-            # Check they're callable
-            assert callable(recorder.on_simulation_start)
-            assert callable(recorder.on_tick)
-            assert callable(recorder.on_simulation_end)
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        # Check protocol methods exist
+        assert hasattr(recorder, "name")
+        assert hasattr(recorder, "on_simulation_start")
+        assert hasattr(recorder, "on_tick")
+        assert hasattr(recorder, "on_simulation_end")
+        # Check they're callable
+        assert callable(recorder.on_simulation_start)
+        assert callable(recorder.on_tick)
+        assert callable(recorder.on_simulation_end)
 
 
 class TestOnSimulationStart:
@@ -71,85 +91,108 @@ class TestOnSimulationStart:
 
     def test_sets_started_flag(self) -> None:
         """Should set _started flag when simulation begins."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            state = _create_world_state()
-            config = _create_config()
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        state = _create_world_state()
+        config = _create_config()
 
-            assert recorder._started is False
-            recorder.on_simulation_start(state, config)
-            assert recorder._started is True
+        assert recorder._started is False
+        recorder.on_simulation_start(state, config)
+        assert recorder._started is True
 
     def test_stores_config_metadata(self) -> None:
-        """Should store simulation config as metadata."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            state = _create_world_state()
-            config = _create_config()
+        """Should store simulation config as metadata via persistence."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        state = _create_world_state()
+        config = _create_config()
 
-            recorder.on_simulation_start(state, config)
+        recorder.on_simulation_start(state, config)
 
-            metadata = db.get_metadata("config")
-            assert metadata is not None
-            assert "extraction_efficiency" in metadata  # Config should be serialized
+        # Verify set_metadata was called with "config"
+        config_calls = [
+            c for c in mock_persistence.set_metadata.call_args_list if c[0][0] == "config"
+        ]
+        assert len(config_calls) == 1
+        config_json = config_calls[0][0][1]
+        assert "extraction_efficiency" in config_json
 
     def test_stores_start_tick_metadata(self) -> None:
         """Should store starting tick as metadata."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            state = _create_world_state()
-            config = _create_config()
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        state = _create_world_state()
+        config = _create_config()
 
-            recorder.on_simulation_start(state, config)
+        recorder.on_simulation_start(state, config)
 
-            start_tick = db.get_metadata("start_tick")
-            assert start_tick == str(state.tick)
+        start_tick_calls = [
+            c for c in mock_persistence.set_metadata.call_args_list if c[0][0] == "start_tick"
+        ]
+        assert len(start_tick_calls) == 1
+        assert start_tick_calls[0][0][1] == str(state.tick)
 
     def test_records_initial_state(self) -> None:
-        """Should record initial tick_summary."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            state = _create_world_state()
-            config = _create_config()
+        """Should call persist_tick for initial state."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        state = _create_world_state()
+        config = _create_config()
 
-            recorder.on_simulation_start(state, config)
+        recorder.on_simulation_start(state, config)
 
-            # Check tick_summary was recorded
-            result = db.con.execute(
-                "SELECT tick FROM tick_summary WHERE tick = ?", (state.tick,)
-            ).fetchone()
-            assert result is not None
+        # persist_tick should have been called for the initial state
+        assert mock_persistence.persist_tick.called
+        call_kwargs = mock_persistence.persist_tick.call_args
+        assert call_kwargs.kwargs.get("session_id") == _TEST_SESSION_ID
 
 
 class TestOnTick:
     """Tests for on_tick callback."""
 
-    def test_records_tick_summary(self) -> None:
-        """Should record tick_summary for each tick."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            initial = _create_world_state()
-            config = _create_config()
-            next_state = initial.model_copy(update={"tick": initial.tick + 1})
+    def test_records_tick(self) -> None:
+        """Should call persist_tick for each tick."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        initial = _create_world_state()
+        config = _create_config()
+        next_state = initial.model_copy(update={"tick": initial.tick + 1})
 
-            recorder.on_simulation_start(initial, config)
-            recorder.on_tick(initial, next_state)
+        recorder.on_simulation_start(initial, config)
+        recorder.on_tick(initial, next_state)
 
-            # Check both ticks recorded
-            result = db.con.execute("SELECT COUNT(*) FROM tick_summary").fetchone()
-            assert result is not None
-            assert result[0] == 2
+        # persist_tick should have been called twice (initial + tick)
+        assert mock_persistence.persist_tick.call_count == 2
 
-    def test_warns_if_not_started(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Should log warning if called before start."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            state = _create_world_state()
+    def test_warns_if_not_started(self) -> None:
+        """Should not persist tick if called before start."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        state = _create_world_state()
 
-            # Call on_tick without on_simulation_start
-            recorder.on_tick(state, state)
+        # Call on_tick without on_simulation_start
+        recorder.on_tick(state, state)
 
-            assert "before on_simulation_start" in caplog.text
+        # persist_tick should NOT have been called
+        assert not mock_persistence.persist_tick.called
 
 
 class TestOnSimulationEnd:
@@ -157,64 +200,123 @@ class TestOnSimulationEnd:
 
     def test_stores_end_tick_metadata(self) -> None:
         """Should store ending tick as metadata."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            initial = _create_world_state()
-            config = _create_config()
-            final_state = initial.model_copy(update={"tick": 100})
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        initial = _create_world_state()
+        config = _create_config()
+        final_state = initial.model_copy(update={"tick": 100})
 
-            recorder.on_simulation_start(initial, config)
-            recorder.on_simulation_end(final_state)
+        recorder.on_simulation_start(initial, config)
+        recorder.on_simulation_end(final_state)
 
-            end_tick = db.get_metadata("end_tick")
-            assert end_tick == "100"
+        end_tick_calls = [
+            c for c in mock_persistence.set_metadata.call_args_list if c[0][0] == "end_tick"
+        ]
+        assert len(end_tick_calls) == 1
+        assert end_tick_calls[0][0][1] == "100"
 
     def test_sets_completed_status(self) -> None:
         """Should set status to completed."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            initial = _create_world_state()
-            config = _create_config()
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        initial = _create_world_state()
+        config = _create_config()
 
-            recorder.on_simulation_start(initial, config)
-            assert db.get_metadata("status") == "running"
+        recorder.on_simulation_start(initial, config)
 
-            recorder.on_simulation_end(initial)
-            assert db.get_metadata("status") == "completed"
+        # Check "running" was set
+        running_calls = [
+            c for c in mock_persistence.set_metadata.call_args_list if c[0] == ("status", "running")
+        ]
+        assert len(running_calls) == 1
+
+        recorder.on_simulation_end(initial)
+
+        # Check "completed" was set
+        completed_calls = [
+            c
+            for c in mock_persistence.set_metadata.call_args_list
+            if c[0] == ("status", "completed")
+        ]
+        assert len(completed_calls) == 1
+
+    def test_flushes_tracer_on_end(self) -> None:
+        """Should flush tracer when simulation ends."""
+        mock_persistence = _create_mock_persistence()
+        mock_tracer = MagicMock(spec=TraceCollector)
+        type(mock_tracer).level = PropertyMock(return_value=TraceLevel.DEBUG)
+        type(mock_tracer).buffer_size = PropertyMock(return_value=0)
+
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+            tracer=mock_tracer,
+        )
+        initial = _create_world_state()
+        config = _create_config()
+
+        recorder.on_simulation_start(initial, config)
+        recorder.on_simulation_end(initial)
+
+        assert mock_tracer.flush.called
 
 
-class TestEntityRecording:
-    """Tests for entity state recording."""
+class TestPersistTickDelegation:
+    """Tests for persist_tick delegation to RuntimePersistence."""
 
-    def test_records_entity_states(self) -> None:
-        """Should record entity states to agent_state table."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            state = _create_world_state()
-            config = _create_config()
+    def test_passes_session_id(self) -> None:
+        """persist_tick should receive session_id."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        state = _create_world_state()
+        config = _create_config()
 
-            recorder.on_simulation_start(state, config)
+        recorder.on_simulation_start(state, config)
 
-            # Check entities recorded
-            result = db.con.execute("SELECT COUNT(*) FROM agent_state").fetchone()
-            assert result is not None
-            # Should have at least the entities from minimal world state
-            assert result[0] >= len(state.entities)
+        call_kwargs = mock_persistence.persist_tick.call_args
+        assert call_kwargs.kwargs.get("session_id") == _TEST_SESSION_ID
 
+    def test_passes_graph_from_to_graph(self) -> None:
+        """persist_tick should receive the graph from state.to_graph()."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        state = _create_world_state()
+        config = _create_config()
 
-class TestRelationshipRecording:
-    """Tests for relationship state recording."""
+        recorder.on_simulation_start(state, config)
 
-    def test_records_relationships(self) -> None:
-        """Should record relationships to network_edge table."""
-        with SimulationDB(in_memory=True, attach_reference=False) as db:
-            recorder = SessionRecorder(db)
-            state = _create_world_state()
-            config = _create_config()
+        call_args = mock_persistence.persist_tick.call_args
+        # tick keyword arg
+        assert call_args.kwargs.get("tick") == state.tick
+        # graph keyword arg should be a NetworkX DiGraph
+        import networkx as nx
 
-            recorder.on_simulation_start(state, config)
+        assert isinstance(call_args.kwargs.get("graph"), nx.DiGraph)
 
-            # Check relationships recorded
-            result = db.con.execute("SELECT COUNT(*) FROM network_edge").fetchone()
-            assert result is not None
-            assert result[0] >= len(state.relationships)
+    def test_serializes_events(self) -> None:
+        """persist_tick should receive serialized events."""
+        mock_persistence = _create_mock_persistence()
+        recorder = SessionRecorder(
+            persistence=mock_persistence,
+            session_id=_TEST_SESSION_ID,
+        )
+        state = _create_world_state()
+        config = _create_config()
+
+        recorder.on_simulation_start(state, config)
+
+        call_args = mock_persistence.persist_tick.call_args
+        events = call_args.kwargs.get("events")
+        assert isinstance(events, list)

@@ -26,6 +26,7 @@ import xgi  # type: ignore[import-untyped]
 from babylon.bifurcation.analysis import bifurcation_tendency
 from babylon.bifurcation.types import BifurcationSnapshot
 from babylon.config.defines import BifurcationDefines
+from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType
 from babylon.models.events import BifurcationTendencyEvent, SimulationEvent
 
@@ -71,6 +72,7 @@ class BifurcationMonitor:
         graph: nx.DiGraph,  # type: ignore[type-arg]
         H: xgi.Hypergraph,
         agent_memberships: dict[str, set[CommunityType]],
+        contradictions: list[Contradiction],
         tick: int,
     ) -> None:
         """Run bifurcation analysis and record snapshot.
@@ -79,6 +81,7 @@ class BifurcationMonitor:
             graph: Simulation DiGraph with social_class and territory nodes.
             H: XGI hypergraph for community membership lookup.
             agent_memberships: Agent ID to community memberships mapping.
+            contradictions: List of current contradictions in this scope.
             tick: Current simulation tick.
         """
         community_states = self._store.get_all()
@@ -87,6 +90,7 @@ class BifurcationMonitor:
             graph=graph,
             H=H,
             community_states=community_states,
+            contradictions=contradictions,
             agent_memberships=agent_memberships,
             defines=self._defines,
         )

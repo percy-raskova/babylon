@@ -23,6 +23,7 @@ _mp.set_start_method = _idempotent_set_start_method
 # END MUTMUT PATCH
 # =============================================================================
 
+import logging
 import os
 import random
 import shutil
@@ -76,6 +77,16 @@ def _isolate_random_state() -> Generator[None, None, None]:
         yield
     finally:
         random.setstate(saved_state)
+
+
+@pytest.fixture(autouse=True)
+def enable_logging_propagation() -> Generator[None, None, None]:
+    """Ensure caplog catches babylon logs despite Django settings disabling propagation."""
+    logger = logging.getLogger("babylon")
+    old_propagate = logger.propagate
+    logger.propagate = True
+    yield
+    logger.propagate = old_propagate
 
 
 @pytest.fixture(scope="session")

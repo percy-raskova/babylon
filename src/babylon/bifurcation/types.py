@@ -21,7 +21,7 @@ class AxisTendency(BaseModel):
     """Per-contradiction-axis analysis result.
 
     Args:
-        axis_id: Matches ContradictionAxis.id (e.g. "colonial", "patriarchal").
+        axis_id: Matches Contradiction.id (e.g. "colonial", "patriarchal").
         cross_solidarity_weighted: Sum of consciousness-weighted cross-line solidarity.
         lateral_antagonism_weighted: Sum of antagonistic edge weights on same side.
         tendency_ratio: cross / (lateral + epsilon); >1.0 = solidarity-dominant.
@@ -46,7 +46,7 @@ class BridgeInfo(BaseModel):
 
     Args:
         community_type: Which community (e.g. DISABLED, INCARCERATED).
-        axes_spanned: ContradictionAxis IDs this community bridges.
+        axes_spanned: Contradiction IDs this community bridges.
         collective_identity: Raw CI from CommunityConsciousness.
         sigmoid_ci: Sigmoid-transformed CI (breakage cliff applied).
         infrastructure: Community infrastructure from CommunityState.

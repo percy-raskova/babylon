@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, cast
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal  # type: ignore[import-not-found]
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 if TYPE_CHECKING:
     from babylon.models.config import SimulationConfig
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 THROTTLE_INTERVAL_MS = 33
 
 
-class DashboardObserver(QObject):  # type: ignore[misc]
+class DashboardObserver(QObject):
     """Observer that bridges simulation ticks to UI with throttling.
 
     This observer implements the SimulationObserver protocol and throttles

@@ -24,9 +24,9 @@ from babylon.models.entities.community import (
     ROLE_STRENGTH_WEIGHTS,
     CommunityMembership,
     CommunityState,
-    ContradictionAxis,
 )
 from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS, OrgContribution
+from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, ConsciousnessTendency, HyperedgeCategory, SocialRole
 
 # Map SocialRole → ClassPosition name for solidarity matrix lookup (Feature 038)
@@ -124,7 +124,7 @@ def shared_communities(
 
 def communities_spanning_axis(
     H: xgi.Hypergraph,
-    axis: ContradictionAxis,
+    contradiction: Contradiction,
 ) -> list[CommunityType]:
     """Find institutional exclusion communities that bridge a contradiction axis.
 
@@ -133,13 +133,13 @@ def communities_spanning_axis(
 
     Args:
         H: Community hypergraph.
-        axis: The contradiction axis to check bridging for.
+        contradiction: The contradiction to check bridging for.
 
     Returns:
         List of CommunityType values that bridge the axis.
     """
-    hegemonic_edge_id = axis.hegemonic.value
-    marginalized_edge_ids = [m.value for m in axis.marginalized]
+    hegemonic_edge_id = contradiction.aspect_a
+    marginalized_edge_ids = [contradiction.aspect_b]
 
     # Collect agents on hegemonic side
     hegemonic_agents: set[str] = set()

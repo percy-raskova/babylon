@@ -87,10 +87,12 @@ if not settings.configured:
 
 # Override managed=False models to managed=True for test DB creation.
 # This runs regardless of how Django was configured (pytest-django or fallback).
-from game.models import ActionResult, GameSession, PlayerAction
+from game.models import ActionResult, GameSession, HexState, PlayerAction
 
-for _model in (GameSession, PlayerAction, ActionResult):
+for _model in (GameSession, PlayerAction, ActionResult, HexState):
     _model._meta.managed = True  # type: ignore[misc]
+    if _model.__name__ == "HexState":
+        _model._meta.db_table = "sim_hex_states"
 
 _UNMANAGED_TABLE_SQL = [
     """CREATE TABLE IF NOT EXISTS game_session (
@@ -135,11 +137,28 @@ _UNMANAGED_TABLE_SQL = [
         heat_delta REAL,
         details TEXT
     )""",
+    """CREATE TABLE IF NOT EXISTS sim_hex_states (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_id CHAR(32) NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+        tick INTEGER NOT NULL,
+        h3_index VARCHAR(20) NOT NULL,
+        county_fips VARCHAR(5) NOT NULL,
+        county_name VARCHAR(50) NOT NULL,
+        profit_rate REAL,
+        exploitation_rate REAL,
+        occ REAL,
+        imperial_rent REAL,
+        heat REAL,
+        org_presence INTEGER DEFAULT 0,
+        dominant_class VARCHAR(30),
+        population INTEGER,
+        UNIQUE(game_id, tick, h3_index)
+    )""",
 ]
 
 
 @pytest.fixture(autouse=True, scope="session")
-def _create_unmanaged_tables(django_db_setup: None, django_db_blocker: object) -> None:  # type: ignore[type-arg]
+def _create_unmanaged_tables(django_db_setup: None, django_db_blocker: object) -> None:  # type: ignore[type-arg, unused-ignore]
     """Create tables for unmanaged models (managed=False) in the test DB.
 
     Django migrations skip ``managed=False`` models, so we create them

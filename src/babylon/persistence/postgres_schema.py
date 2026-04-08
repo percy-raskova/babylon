@@ -313,7 +313,7 @@ CREATE TABLE IF NOT EXISTS infrastructure_link_state (
 # ─── Layer 5: Trace Logging ─────────────────────────────────────────
 
 TRACE_LOG_DDL = """
-CREATE UNLOGGED TABLE IF NOT EXISTS trace_log (
+CREATE TABLE IF NOT EXISTS trace_log (
     id              BIGSERIAL,
     session_id      UUID NOT NULL,
     tick            INTEGER NOT NULL,

@@ -47,6 +47,9 @@ from babylon.formulas.community import (
 # Re-export Consciousness Computation (Feature 034)
 from babylon.formulas.consciousness import compute_ternary_consciousness
 
+# Re-export Contradiction formula (Feature 002)
+from babylon.formulas.contradiction import calculate_contradiction_intensity
+
 # Re-export Curvature formulas (Feature 002 - Dialectical Field Topology)
 from babylon.formulas.curvature import compute_ollivier_ricci
 
@@ -163,8 +166,9 @@ __all__ = [
     "calculate_wealth_acceleration",
     "calculate_wealth_flow",
     "invert_wealth_to_population",
-    # Curvature (Dialectical Field Topology)
+    # Curvature & Contradictions (Dialectical Field Topology)
     "compute_ollivier_ricci",
+    "calculate_contradiction_intensity",
     # Consciousness Computation (Feature 034)
     "compute_ternary_consciousness",
     # Community Layer (Feature 022)

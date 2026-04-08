@@ -14,10 +14,15 @@ automatically converted to IdeologicalProfile by the SocialClass validator.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import SocialRole
 from babylon.models.types import Currency, Probability
+
+if TYPE_CHECKING:
+    from babylon.models.entities.contradiction import ContradictionFrame
 
 
 def create_proletariat(
@@ -151,4 +156,70 @@ def create_bourgeoisie(
         effective_wealth=effective_wealth,
         unearned_increment=unearned_increment,
         ppp_multiplier=ppp_multiplier,
+    )
+
+
+def create_contradiction_frame(scope: str = "global") -> ContradictionFrame:
+    """Create a ContradictionFrame for the given simulation scope.
+
+    Args:
+        scope: The scope identifier (e.g., "global", "national").
+
+    Returns:
+        A new ContradictionFrame for the given scope.
+    """
+    # Import locally to avoid circular dependencies
+    from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
+    from babylon.models.enums import CommunityType, ContradictionType, EdgeMode, SocialRole
+
+    if scope == "global":
+        return ContradictionFrame(
+            principal=Contradiction(
+                id="global_imperial_contradiction",
+                type=ContradictionType.IMPERIAL,
+                aspect_a=CommunityType.SETTLER,
+                aspect_b=CommunityType.NEW_AFRIKAN,  # Proxy for oppressed nations in default test scenarios
+                principal_aspect="a",
+                identity=0.5,
+                form_of_struggle=EdgeMode.EXTRACTIVE,
+                intensity=0.5,
+                aspect_balance=0.0,
+            ),
+            secondary=Contradiction(
+                id="global_class_contradiction",
+                type=ContradictionType.CLASS,
+                aspect_a=SocialRole.CORE_BOURGEOISIE,
+                aspect_b=SocialRole.PERIPHERY_PROLETARIAT,
+                principal_aspect="a",
+                identity=0.8,
+                form_of_struggle=EdgeMode.EXTRACTIVE,
+                intensity=0.3,
+                aspect_balance=0.0,
+            ),
+        )
+
+    # Fallback to a default generic frame
+    return ContradictionFrame(
+        principal=Contradiction(
+            id=f"{scope}_principal_contradiction",
+            type=ContradictionType.CLASS,
+            aspect_a=SocialRole.CORE_BOURGEOISIE,
+            aspect_b=SocialRole.PERIPHERY_PROLETARIAT,
+            principal_aspect="a",
+            identity=0.8,
+            form_of_struggle=EdgeMode.EXTRACTIVE,
+            intensity=0.1,
+            aspect_balance=0.0,
+        ),
+        secondary=Contradiction(
+            id=f"{scope}_secondary_contradiction",
+            type=ContradictionType.NATIONAL,
+            aspect_a=CommunityType.SETTLER,
+            aspect_b=CommunityType.NEW_AFRIKAN,
+            principal_aspect="a",
+            identity=0.5,
+            form_of_struggle=EdgeMode.EXTRACTIVE,
+            intensity=0.05,
+            aspect_balance=0.0,
+        ),
     )

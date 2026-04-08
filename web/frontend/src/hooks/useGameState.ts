@@ -14,8 +14,11 @@ import type {
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_COUNT = 1000;
 
+import type { FeatureCollection } from "geojson";
+
 interface UseGameStateResult {
   snapshot: GameSnapshot | null;
+  mapData: FeatureCollection | null;
   available: AvailableAction[];
   loading: boolean;
   error: string | null;
@@ -26,6 +29,7 @@ interface UseGameStateResult {
 
 export function useGameState(gameId: string | null): UseGameStateResult {
   const snapshot = useGameStore((s) => s.snapshot);
+  const mapData = useGameStore((s) => s.mapData);
   const available = useGameStore((s) => s.available);
   const loading = useGameStore((s) => s.loading);
   const error = useGameStore((s) => s.error);
@@ -72,6 +76,7 @@ export function useGameState(gameId: string | null): UseGameStateResult {
 
   return {
     snapshot,
+    mapData,
     available,
     loading,
     error,

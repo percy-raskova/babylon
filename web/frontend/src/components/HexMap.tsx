@@ -1,152 +1,178 @@
-/**
- * Hex map visualization.
- *
- * Renders territory data as colored hex cells in a grid.
- * Hex color encodes a selectable metric (heat, consciousness, wealth).
- */
+import { useState, useMemo, useEffect } from "react";
+import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
+import type { FeatureCollection, Feature, Geometry } from "geojson";
+import { metricToColor } from "../utils/colorScale";
+import "leaflet/dist/leaflet.css";
 
-import { useCallback, useMemo, useState } from "react";
-import type { GameSnapshot, TerritoryState, MapLayer } from "@/types/game";
+// Fix Leaflet CSS issues in React using generic L
+import L from "leaflet";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
-/** Color scales for different metrics. */
-const COLOR_SCALES: Record<MapLayer, (v: number) => string> = {
-  heat: (v) => {
-    const r = Math.round(40 + v * 200);
-    const g = Math.round(40 - v * 30);
-    const b = Math.round(60 - v * 40);
-    return `rgb(${r},${g},${b})`;
-  },
-  consciousness: (v) => {
-    const r = Math.round(40 + v * 60);
-    const g = Math.round(60 + v * 140);
-    const b = Math.round(100 + v * 150);
-    return `rgb(${r},${g},${b})`;
-  },
-  wealth: (v) => {
-    const r = Math.round(50 + v * 150);
-    const g = Math.round(160 + v * 80);
-    const b = Math.round(50 + v * 50);
-    return `rgb(${r},${g},${b})`;
-  },
-  rent: (v) => {
-    const r = Math.round(60 + v * 180);
-    const g = Math.round(40 + v * 40);
-    const b = Math.round(80 + v * 100);
-    return `rgb(${r},${g},${b})`;
-  },
-  biocapacity: (v) => {
-    const r = Math.round(30 + v * 30);
-    const g = Math.round(80 + v * 160);
-    const b = Math.round(40 + v * 60);
-    return `rgb(${r},${g},${b})`;
-  },
-  population: (v) => {
-    const r = Math.round(60 + v * 120);
-    const g = Math.round(60 + v * 100);
-    const b = Math.round(120 + v * 130);
-    return `rgb(${r},${g},${b})`;
-  },
-};
-
-/** Extract the numeric metric value from a territory. */
-function getMetricValue(territory: TerritoryState, metric: MapLayer): number {
-  switch (metric) {
-    case "heat":
-      return territory.heat;
-    case "consciousness":
-      return 0; // Territories don't have consciousness — needs entity overlay
-    case "wealth":
-      return territory.rent_level;
-    case "rent":
-      return territory.rent_level;
-    case "biocapacity":
-      return territory.biocapacity;
-    case "population":
-      return Math.min(territory.population / 1_000_000, 1); // Normalize
-  }
-}
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+});
 
 interface HexMapProps {
-  snapshot: GameSnapshot;
+  /** The new GeoJSON data to render (Step 7/8/9) */
+  data?: FeatureCollection | null;
+  /** Active metric, e.g. 'heat', 'profit_rate'. If omitted, uses local state. */
+  activeMetric?: string;
+  minVal?: number;
+  maxVal?: number;
   onSelectNode?: (nodeId: string) => void;
 }
 
-export function HexMap({ snapshot, onSelectNode }: HexMapProps) {
-  const [metric, setMetric] = useState<MapLayer>("heat");
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+const AVAILABLE_METRICS = [
+  "heat",
+  "profit_rate",
+  "exploitation_rate",
+  "occ",
+  "imperial_rent",
+  "org_presence",
+] as const;
 
-  const territories = snapshot.territories;
+function MapBounds({ data }: { data?: FeatureCollection | null }) {
+  const map = useMap();
+  useEffect(() => {
+    // Zoom to metadata bounds if provided by the backend GeoJSON envelope
+    const b = (
+      data as FeatureCollection & {
+        metadata?: { bounds?: { sw: [number, number]; ne: [number, number] } };
+      }
+    )?.metadata?.bounds;
+    if (b && Array.isArray(b.sw) && Array.isArray(b.ne)) {
+      map.fitBounds(
+        [
+          [b.sw[0], b.sw[1]],
+          [b.ne[0], b.ne[1]],
+        ],
+        { padding: [20, 20] },
+      );
+    }
+  }, [data, map]);
+  return null;
+}
 
-  const getColor = useCallback(
-    (territory: TerritoryState) => {
-      const value = getMetricValue(territory, metric);
-      const clamped = Math.max(0, Math.min(1, value));
-      const scale = COLOR_SCALES[metric];
-      return scale(clamped);
-    },
-    [metric],
-  );
+export function HexMap({
+  data,
+  activeMetric: initialMetric = "heat",
+  minVal = 0,
+  maxVal = 100,
+  onSelectNode,
+}: HexMapProps) {
+  const [metric, setMetric] = useState<string>(initialMetric);
 
-  const hoveredTerritory = useMemo(() => {
-    if (!hoveredId) return null;
-    return territories.find((t) => t.id === hoveredId) ?? null;
-  }, [hoveredId, territories]);
+  // Center roughly over North America
+  const center: [number, number] = [39.8283, -98.5795];
+
+  // Dynamically calculate actual min/max for the current metric viewport
+  const { computedMin, computedMax } = useMemo(() => {
+    if (!data?.features || data.features.length === 0) {
+      return { computedMin: minVal, computedMax: maxVal };
+    }
+    let min = Infinity;
+    let max = -Infinity;
+    data.features.forEach((f) => {
+      const val = f.properties?.[metric];
+      if (typeof val === "number") {
+        if (val < min) min = val;
+        if (val > max) max = val;
+      }
+    });
+
+    if (min === Infinity || max === -Infinity) {
+      return { computedMin: minVal, computedMax: maxVal };
+    }
+
+    // Fallback if data is entirely uniform
+    if (min === max) {
+      return { computedMin: min - 1, computedMax: max + 1 };
+    }
+
+    return { computedMin: min, computedMax: max };
+  }, [data, metric, minVal, maxVal]);
+
+  const styleFeature = (feature?: Feature<Geometry, Record<string, unknown>>) => {
+    if (!feature) return { fillColor: "#808080", weight: 1, fillOpacity: 0.8, color: "#1a1a2a" };
+
+    const value = feature.properties?.[metric];
+    if (typeof value !== "number") {
+      return { fillColor: "#808080", weight: 1, fillOpacity: 0.8, color: "#1a1a2a" };
+    }
+
+    const color = metricToColor(value, computedMin, computedMax, metric);
+    return {
+      fillColor: color,
+      fillOpacity: 0.7, // Allow the dark basemap to show through slightly
+      weight: 1,
+      color: "#1a1a2a", // --color-soot / hex boundaries
+    };
+  };
+
+  // GeoJSON key to force re-render when data or metric changes
+  const geoJsonKey = data ? `${metric}-${data.features?.length || 0}` : `empty-${metric}`;
 
   return (
-    <div className="relative flex h-full flex-col">
-      {/* Layer controls */}
-      <div className="flex shrink-0 items-center gap-2 py-2">
-        <span className="text-xs uppercase tracking-wider text-ash">Color by:</span>
-        {Object.keys(COLOR_SCALES).map((m) => (
+    <div className="relative flex h-full w-full flex-col bg-void">
+      {/* Metric Selector Controls */}
+      <div className="absolute top-2 left-2 z-[1000] flex flex-col gap-1 rounded bg-void/80 p-2 border border-soot backdrop-blur-sm shadow-xl">
+        <span className="text-xs uppercase tracking-wider text-ash mb-1">Color map by:</span>
+        {AVAILABLE_METRICS.map((m) => (
           <button
             key={m}
-            onClick={() => setMetric(m as MapLayer)}
-            className={`rounded border px-2.5 py-1 text-xs ${
+            onClick={() => setMetric(m)}
+            className={`rounded border px-2 py-1 text-left text-[11px] font-mono transition-colors ${
               metric === m
                 ? "border-gold bg-[#1a1a30] text-gold"
-                : "border-wet-concrete bg-void text-ash hover:border-silver"
+                : "border-wet-concrete bg-transparent text-ash hover:border-silver"
             }`}
           >
             {m}
           </button>
         ))}
-      </div>
-
-      {/* Grid-based hex display (deck.gl integration in Phase 3) */}
-      <div className="grid flex-1 grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-1 overflow-auto py-2">
-        {territories.map((territory) => (
-          <button
-            key={territory.id}
-            onClick={() => onSelectNode?.(territory.id)}
-            onMouseEnter={() => setHoveredId(territory.id)}
-            onMouseLeave={() => setHoveredId(null)}
-            className={`flex aspect-square min-h-[60px] items-center justify-center rounded-md transition-[border] duration-150 ${
-              hoveredId === territory.id ? "border-2 border-gold" : "border border-soot"
-            }`}
-            style={{ background: getColor(territory) }}
-            title={`${territory.name}: ${metric}=${getMetricValue(territory, metric).toFixed(2)}`}
-          >
-            <span className="break-all text-center text-[10px] text-white/70">
-              {territory.name.slice(0, 8)}
-            </span>
-          </button>
-        ))}
-        {territories.length === 0 && (
-          <p className="col-span-full py-8 text-center text-sm text-ash">
-            No territory data available
-          </p>
-        )}
-      </div>
-
-      {/* Hover tooltip */}
-      {hoveredTerritory && (
-        <div className="absolute inset-x-2 bottom-2 max-h-[200px] overflow-auto rounded-md border border-wet-concrete bg-dark-metal p-2.5 text-xs text-silver">
-          <strong className="text-bone">{hoveredTerritory.name}</strong>
-          <pre className="mt-1 whitespace-pre-wrap text-[11px] text-ash">
-            {JSON.stringify(hoveredTerritory, null, 2)}
-          </pre>
+        {/* Debug Info Overlay */}
+        <div className="mt-2 text-[9px] font-mono text-ash/60">
+          <div>
+            Range: {computedMin.toFixed(3)} - {computedMax.toFixed(3)}
+          </div>
         </div>
-      )}
+      </div>
+
+      <div className="flex-1 w-full h-full relative z-0">
+        <MapContainer
+          center={center}
+          zoom={4}
+          style={{ height: "100%", width: "100%", backgroundColor: "var(--color-void)" }}
+          zoomControl={true}
+        >
+          <TileLayer
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
+          />
+          <MapBounds data={data} />
+          {data && (
+            <GeoJSON
+              key={geoJsonKey}
+              data={data}
+              style={styleFeature}
+              onEachFeature={(feature, layer) => {
+                layer.on({
+                  click: () => {
+                    if (onSelectNode && feature.properties?.id) {
+                      onSelectNode(feature.properties.id as string);
+                    }
+                  },
+                });
+              }}
+            />
+          )}
+        </MapContainer>
+      </div>
     </div>
   );
 }

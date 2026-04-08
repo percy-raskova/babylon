@@ -10,6 +10,7 @@ import { get, post } from "@/api/client";
 import { LoginPage } from "@/components/LoginPage";
 import { GameList } from "@/components/GameList";
 import { GameShell } from "@/components/layout/GameShell";
+import { DevHarness } from "@/DevHarness";
 import type { AuthState } from "@/types/game";
 
 export default function App() {
@@ -99,6 +100,8 @@ export default function App() {
           )
         }
       />
+
+      <Route path="/dev/hexmap" element={<DevHarness />} />
 
       <Route path="*" element={<Navigate to={isAuthed ? "/games" : "/login"} replace />} />
     </Routes>

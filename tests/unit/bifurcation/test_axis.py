@@ -24,11 +24,33 @@ from babylon.bifurcation.axis import (
 )
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
-    COLONIAL_AXIS,
-    PATRIARCHAL_AXIS,
     CommunityState,
 )
-from babylon.models.enums import CommunityType, EdgeType
+from babylon.models.entities.contradiction import Contradiction
+from babylon.models.enums import CommunityType, ContradictionType, EdgeMode, EdgeType
+
+# Dummy contradictions for testing
+colonial_contradiction = Contradiction(
+    id="colonial",
+    type=ContradictionType.IMPERIAL,
+    aspect_a=CommunityType.SETTLER,
+    aspect_b=CommunityType.NEW_AFRIKAN,
+    intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
+)
+
+patriarchal_contradiction = Contradiction(
+    id="patriarchal",
+    type=ContradictionType.GENDER,
+    aspect_a=CommunityType.PATRIARCHAL,
+    aspect_b=CommunityType.WOMEN,
+    intensity=0.5,
+    principal_aspect="a",
+    identity=0.1,
+    form_of_struggle=EdgeMode.EXTRACTIVE,
+)
 
 # =============================================================================
 # Helper: build directed graph with typed edges
@@ -74,7 +96,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_settler",
             target_id="agent_na",
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result is True
@@ -89,7 +111,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_settler",
             target_id="agent_women",
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result is False
@@ -104,7 +126,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_a",
             target_id="agent_b",
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result is False
@@ -119,7 +141,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_p",
             target_id="agent_w",
-            axis=PATRIARCHAL_AXIS,
+            contradiction=patriarchal_contradiction,
             agent_memberships=memberships,
         )
         assert result is True
@@ -134,7 +156,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_a",
             target_id="agent_b",
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result is False
@@ -148,7 +170,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_a",
             target_id="agent_missing",
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result is False
@@ -163,7 +185,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_multi",
             target_id="agent_na",
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result is True
@@ -178,7 +200,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_na",
             target_id="agent_settler",
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result is True
@@ -193,7 +215,7 @@ class TestCrossesContradictionAxis:
         result = crosses_contradiction_axis(
             source_id="agent_na",
             target_id="agent_fn",
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result is False
@@ -228,7 +250,7 @@ class TestClassifyEdgeAntagonism:
             source_id="bourgeois",
             target_id="worker",
             graph=graph,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result == "downward"
@@ -251,7 +273,7 @@ class TestClassifyEdgeAntagonism:
             source_id="agent_na",
             target_id="agent_settler",
             graph=graph,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result == "upward"
@@ -259,22 +281,22 @@ class TestClassifyEdgeAntagonism:
     @pytest.mark.topology
     def test_competition_both_marginalized_lateral(self) -> None:
         """COMPETITION between two marginalized agents = 'lateral'."""
-        agents = {"agent_na": {"wealth": 20.0}, "agent_fn": {"wealth": 25.0}}
+        agents = {"agent_na": {"wealth": 20.0}, "agent_na2": {"wealth": 25.0}}
         edges: list[tuple[str, str, EdgeType, dict[str, float]]] = [
-            ("agent_na", "agent_fn", EdgeType.COMPETITION, {"weight": 1.0}),
+            ("agent_na", "agent_na2", EdgeType.COMPETITION, {"weight": 1.0}),
         ]
         graph = _build_typed_graph(agents, edges)
 
         memberships: dict[str, set[CommunityType]] = {
             "agent_na": {CommunityType.NEW_AFRIKAN},
-            "agent_fn": {CommunityType.FIRST_NATIONS},
+            "agent_na2": {CommunityType.NEW_AFRIKAN},
         }
 
         result = classify_edge_antagonism(
             source_id="agent_na",
-            target_id="agent_fn",
+            target_id="agent_na2",
             graph=graph,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result == "lateral"
@@ -298,7 +320,7 @@ class TestClassifyEdgeAntagonism:
             source_id="agent_pa",
             target_id="agent_pb",
             graph=graph,
-            axis=PATRIARCHAL_AXIS,
+            contradiction=patriarchal_contradiction,
             agent_memberships=memberships,
         )
         assert result == "lateral"
@@ -322,7 +344,7 @@ class TestClassifyEdgeAntagonism:
             source_id="agent_w",
             target_id="agent_t",
             graph=graph,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result == "none"
@@ -346,7 +368,7 @@ class TestClassifyEdgeAntagonism:
             source_id="agent_s",
             target_id="agent_w",
             graph=graph,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result == "none"
@@ -369,7 +391,7 @@ class TestClassifyEdgeAntagonism:
             source_id="agent_s",
             target_id="agent_na",
             graph=graph,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             agent_memberships=memberships,
         )
         assert result == "none"
@@ -418,7 +440,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,
@@ -466,7 +488,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,
@@ -516,7 +538,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,
@@ -563,7 +585,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,
@@ -608,7 +630,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,
@@ -651,7 +673,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,
@@ -693,7 +715,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,
@@ -723,7 +745,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=COLONIAL_AXIS,
+            contradiction=colonial_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,
@@ -747,27 +769,26 @@ class TestComputeAxisTendency:
         agents = {
             "agent_p": {"wealth": 100.0},
             "agent_w": {"wealth": 30.0},
-            "agent_t": {"wealth": 25.0},
+            "agent_w2": {"wealth": 25.0},
         }
         edges: list[tuple[str, str, EdgeType, dict[str, float]]] = [
             # Cross-axis solidarity on patriarchal axis
             ("agent_p", "agent_w", EdgeType.SOLIDARITY, {"solidarity_strength": 0.7}),
             # Lateral antagonism (both marginalized on patriarchal axis)
-            ("agent_w", "agent_t", EdgeType.COMPETITION, {"weight": 0.5}),
+            ("agent_w", "agent_w2", EdgeType.COMPETITION, {"weight": 0.5}),
         ]
         graph = _build_typed_graph(agents, edges)
 
         memberships: dict[str, set[CommunityType]] = {
             "agent_p": {CommunityType.PATRIARCHAL},
             "agent_w": {CommunityType.WOMEN},
-            "agent_t": {CommunityType.TRANS},
+            "agent_w2": {CommunityType.WOMEN},
         }
         assign_communities_to_graph(graph, memberships)
 
         community_states: dict[CommunityType, CommunityState] = {
             CommunityType.PATRIARCHAL: make_community_state(CommunityType.PATRIARCHAL, ci=0.3),
             CommunityType.WOMEN: make_community_state(CommunityType.WOMEN, ci=0.7),
-            CommunityType.TRANS: make_community_state(CommunityType.TRANS, ci=0.7),
         }
 
         H = build_test_hypergraph(memberships, community_states)
@@ -775,7 +796,7 @@ class TestComputeAxisTendency:
         result = compute_axis_tendency(
             graph=graph,
             H=H,
-            axis=PATRIARCHAL_AXIS,
+            contradiction=patriarchal_contradiction,
             community_states=community_states,
             agent_memberships=memberships,
             defines=bifurcation_defines,

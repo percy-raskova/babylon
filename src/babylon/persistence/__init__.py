@@ -17,6 +17,12 @@ Architecture (ADR030/031/032/033 + Feature 037):
     the RuntimePersistence protocol.
 """
 
+from babylon.persistence.archival import (
+    export_session_to_parquet,
+    purge_session,
+    query_archived_session,
+    upload_to_r2,
+)
 from babylon.persistence.pgvector_store import PgVectorStore
 from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.persistence.protocols import (
@@ -41,4 +47,8 @@ __all__ = [
     "TraceLevel",
     "TraceRecorder",
     "VectorStoreProtocol",
+    "export_session_to_parquet",
+    "purge_session",
+    "query_archived_session",
+    "upload_to_r2",
 ]

@@ -28,25 +28,25 @@ from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
     COMMUNITY_CATEGORY_MAP,
     CommunityState,
-    ContradictionAxis,
 )
+from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, HyperedgeCategory
 
 
 def _community_spans_axis(
     members: frozenset[Any],
-    axis: ContradictionAxis,
+    contradiction: Contradiction,
     agent_memberships: dict[str, set[CommunityType]],
 ) -> bool:
     """Check if a community's members collectively span a contradiction axis.
 
     A community spans an axis if among its hyperedge members:
-    - At least one member belongs to the axis.hegemonic community type
-    - At least one member belongs to any of the axis.marginalized community types
+    - At least one member belongs to the contradiction.aspect_a community type
+    - At least one member belongs to any of the contradiction.aspect_b community types
 
     Args:
         members: Set of agent IDs in this community hyperedge.
-        axis: The contradiction axis to check against.
+        contradiction: The contradiction to check against.
         agent_memberships: Mapping of agent ID to their community memberships.
 
     Returns:
@@ -54,12 +54,12 @@ def _community_spans_axis(
     """
     has_hegemonic = False
     has_marginalized = False
-    marginalized_set = frozenset(axis.marginalized)
+    marginalized_set = frozenset([contradiction.aspect_b])
 
     for agent_id in members:
         agent_id_str = str(agent_id)
         agent_communities = agent_memberships.get(agent_id_str, set())
-        if axis.hegemonic in agent_communities:
+        if contradiction.aspect_a in agent_communities:
             has_hegemonic = True
         if agent_communities & marginalized_set:
             has_marginalized = True
@@ -73,7 +73,7 @@ def _community_spans_axis(
 def detect_bridges(
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
-    axes: list[ContradictionAxis],
+    contradictions: list[Contradiction],
     agent_memberships: dict[str, set[CommunityType]],
     defines: BifurcationDefines,
 ) -> list[BridgeInfo]:
@@ -88,7 +88,7 @@ def detect_bridges(
     Args:
         H: XGI hypergraph with communities as indexed hyperedges.
         community_states: Current community consciousness and infrastructure.
-        axes: Contradiction axes to check spanning against.
+        contradictions: Contradictions to check spanning against.
         agent_memberships: Agent ID to set of CommunityType memberships.
         defines: Configurable parameters (sigmoid midpoint/steepness).
 
@@ -117,9 +117,9 @@ def detect_bridges(
 
         # Check which axes this community spans
         axes_spanned: list[str] = []
-        for axis in axes:
-            if _community_spans_axis(members, axis, agent_memberships):
-                axes_spanned.append(axis.id)
+        for contradiction in contradictions:
+            if _community_spans_axis(members, contradiction, agent_memberships):
+                axes_spanned.append(contradiction.id)
 
         if not axes_spanned:
             continue

@@ -1523,6 +1523,100 @@ class PostgresRuntime:
             self.persist_economic_summary(game_id, tick, economic_summary)
         self.persist_tick_events(game_id, tick, events or [])
 
+    # ─── Spec 037: hex_latest Refresh ────────────────────────────────
+
+    _PHASE1_TERRITORY_BROADCAST = """
+        UPDATE hex_latest hl SET
+            tick                      = ts.tick,
+            profit_rate               = ts.profit_rate,
+            exploitation_rate         = ts.exploitation_rate,
+            occ                       = ts.occ,
+            imperial_rent             = ts.imperial_rent,
+            g33_visibility            = ts.g33_visibility,
+            pop_bourgeoisie           = ts.pop_bourgeoisie,
+            pop_petit_bourgeoisie     = ts.pop_petit_bourgeoisie,
+            pop_labor_aristocracy     = ts.pop_labor_aristocracy,
+            pop_proletariat           = ts.pop_proletariat,
+            pop_lumpenproletariat     = ts.pop_lumpenproletariat,
+            pop_total                 = ts.pop_total,
+            dominant_class            = CASE
+                WHEN ts.pop_proletariat >= GREATEST(
+                    ts.pop_bourgeoisie, ts.pop_labor_aristocracy
+                ) THEN 'proletariat'
+                WHEN ts.pop_bourgeoisie >= ts.pop_labor_aristocracy
+                    THEN 'bourgeoisie'
+                ELSE 'labor_aristocracy'
+            END,
+            faction_finance_capital   = ts.faction_finance_capital,
+            faction_security_state    = ts.faction_security_state,
+            faction_settler_populist  = ts.faction_settler_populist,
+            attributes                = ts.attributes
+        FROM territory_snapshot ts
+        JOIN hex_map hm
+            ON  ts.game_id     = hm.game_id
+            AND ts.county_fips = hm.county_fips
+        WHERE hl.game_id  = ts.game_id
+          AND hl.h3_index = hm.h3_index
+          AND ts.game_id  = %s
+          AND ts.tick     = %s
+    """
+
+    _PHASE2_HEX_ACTIVITY_OVERLAY = """
+        UPDATE hex_latest hl SET
+            heat          = ha.heat_total,
+            heat_delta    = ha.heat_delta,
+            org_ids       = ha.org_ids,
+            org_count     = ha.org_count,
+            actions_taken = ha.actions_taken,
+            was_target    = ha.was_target
+        FROM hex_activity ha
+        WHERE hl.game_id  = ha.game_id
+          AND hl.h3_index = ha.h3_index
+          AND ha.game_id  = %s
+          AND ha.tick     = %s
+    """
+
+    def refresh_hex_latest(
+        self,
+        game_id: UUID,
+        tick: int,
+    ) -> None:
+        """Refresh hex_latest from territory_snapshot + hex_activity.
+
+        Two-phase UPDATE that reconstitutes the denormalized R7 hex cache:
+
+        **Phase 1 — Territory broadcast** (~20ms for 243K US hexes):
+            UPDATE hex_latest from territory_snapshot JOIN hex_map.
+            All hexes in a county receive the same economic values.
+
+        **Phase 2 — Hex event overlay** (~0.5ms for ~5K sparse rows):
+            UPDATE hex_latest from hex_activity for heat, org, and
+            action fields. Only hexes with activity this tick are touched.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number (territory_snapshot and hex_activity must
+                already be written for this tick).
+        """
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            # Phase 1: broadcast county economics → all hexes
+            cur.execute(self._PHASE1_TERRITORY_BROADCAST, (game_id, tick))
+            logger.debug(
+                "hex_latest Phase 1: %d rows updated (game=%s, tick=%d)",
+                cur.rowcount,
+                game_id,
+                tick,
+            )
+
+            # Phase 2: overlay sparse hex events
+            cur.execute(self._PHASE2_HEX_ACTIVITY_OVERLAY, (game_id, tick))
+            logger.debug(
+                "hex_latest Phase 2: %d rows updated (game=%s, tick=%d)",
+                cur.rowcount,
+                game_id,
+                tick,
+            )
+
     # ─── Spec 037: Query Methods ────────────────────────────────────
 
     def query_territory_time_series(

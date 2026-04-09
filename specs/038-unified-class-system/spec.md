@@ -4,7 +4,7 @@
 **Feature Branch**: `038-unified-class-system`
 **Created**: 2026-03-01
 **Status**: Draft
-**Depends On**: `013-melt-basket-visibility`, `026-tri-county-economic-substrate`, `029-community-hyperedge-upgrade`, `030-dpd-lifecycle-circuit`, `031-organization-base-model`
+**Depends On**: `013-melt-basket-visibility`, `026-tri-county-economic-substrate`, `029-community-hyperedge-upgrade`, `030-dpd-lifecycle-circuit`, `031-organization-base-model`, `043-land-ownership-substrate`
 
 ---
 
@@ -36,9 +36,9 @@ Accumulated wealth is the observable trace of the accounting criterion over time
 
 This is the Pareto distribution: the 1%/9%/40%/50% split emerges from wealth data, not parameter tuning. LA = 40% is a consequence of the 50th--90th percentile window, not a chosen constant.
 
-**Level 3 --- County-Level Data Proxy (home ownership):**
+**Level 3 --- Dynamic Land Ownership (spec 043):**
 
-At county resolution, the Fed SCF's national wealth percentiles must be proxied. Home equity is the primary wealth vehicle for the 50th--90th percentile bracket. ACS home ownership rates, corrected by an equity factor calibrated from SCF data (~0.6), produce county-level LA share estimates. Raw home ownership overstates LA share by ~40% because it includes underwater mortgages and minimal-equity ownership.
+At county resolution and below (H3 hex mesh), the static ACS home ownership proxy is replaced by the endogenous Land Ownership Substrate (Feature 043). Home ownership is not a proxy for the Labor Aristocracy; it constitutes the LA mechanism natively. Ownership of `residential_owner_occupied` tenure state combined with an endogenous meaningful equity threshold governs LA classification, superseding the ~0.6 population-level proxy.
 
 ### The Unit of Analysis: Households
 
@@ -159,7 +159,7 @@ A simulation researcher classifies households that hold community hyperedge memb
 4. **Given** a household with 65th percentile wealth and DISABLED membership, **When** classifying with filtration, **Then** effective wealth is discounted by the reproduction_cost_modifier from the DISABLED CommunityState, potentially shifting from LA to PROLETARIAT.
 5. **Given** a household with multiple community memberships (INDIGENOUS + DISABLED), **When** classifying with filtration, **Then** both filtrations apply and the most restrictive effective position is used.
 6. **Given** a household with SETTLER membership and no other filtration-triggering memberships, **When** classifying with filtration, **Then** the classification is identical to the unfiltered baseline (SETTLER is the default operating condition of the property system).
-7. *(FR-005)* **Given** county-level ACS home ownership data for Wayne County (26163), **When** the home ownership LA proxy is computed with equity_factor from ClassSystemDefines (~0.6), **Then** the resulting LA share is lower than the raw home ownership rate.
+7. *(FR-005)* **Given** an endogenous `residential_owner_occupied` tenure state on a hex, **When** an equity test runs using `equity_factor` as a threshold requirement, **Then** only those exceeding the threshold are constituted directly as Labor Aristocracy.
 
 ______________________________________________________________________
 
@@ -258,7 +258,7 @@ ______________________________________________________________________
 
 - **FR-004 (Filtration Override Hierarchy)**: When a household holds multiple community memberships with conflicting filtrations, the system MUST apply the most restrictive (most disadvantaged) result. INDIGENOUS MUST always override SETTLER interpretation of property.
 
-- **FR-005 (Home Ownership LA Proxy)**: System MUST compute county-level LA share proxy from ACS home ownership data using: `LA_share_proxy = home_ownership_rate x equity_factor`. equity_factor is calibrated from SCF data (default ~0.6, tunable). INDIGENOUS trust_land_discount applies to reservation-county home ownership rates.
+- **FR-005 (Dynamic Land Ownership)**: System MUST classify Labor Aristocracy membership strictly through endogenous property relation logic detailed in Feature 043. `equity_factor` serves as an absolute threshold test on equity, not a population-level numeric scaler.
 
 - **FR-006 (Solidarity Potential)**: System MUST compute solidarity potential between agent-pairs using community overlap, base class solidarity, and rent differential penalty. The formula MUST be: `solidarity_potential(A, B) = base_class_solidarity(class_A, class_B) + community_bonus x |communities(A) intersection communities(B)| - rent_differential_penalty x |Phi_A - Phi_B|`. base_class_solidarity is a symmetric 5x5 class-pair matrix (15 unique values) stored in GameDefines; class proximity yields higher base solidarity. Negative output values are permitted and represent active hostility (feeds fascism dynamics in bifurcation analysis). No floor clamp. All coefficients in GameDefines.
 

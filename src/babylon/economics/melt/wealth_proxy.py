@@ -290,6 +290,13 @@ class DefaultWealthProxyCalculator:
     def estimate_la_share(self, fips: str, year: int) -> float:
         """Estimate Labor Aristocracy share from home ownership proxy.
 
+        .. deprecated::
+            This static ACS proxy is superseded by Feature 043's endogenous
+            property-based classification. Use
+            :func:`babylon.economics.substrate.transitions.check_equity_threshold`
+            and :func:`babylon.economics.substrate.transitions.evaluate_class_shares`
+            for dynamic, tenure-driven LA classification.
+
         Formula: LA_share = effective_homeownership * equity_factor
 
         For reservation counties (FIPS in reservation_fips set), homeownership
@@ -304,6 +311,16 @@ class DefaultWealthProxyCalculator:
         Returns:
             Estimated LA share [0, 1], or national average if data unavailable
         """
+        import warnings
+
+        warnings.warn(
+            "estimate_la_share is deprecated. Feature 043 replaces the "
+            "static ACS proxy with endogenous property-based classification "
+            "via check_equity_threshold + evaluate_class_shares. "
+            "See babylon.economics.substrate.transitions.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         homeownership = self.get_homeownership_rate(fips, year)
 
         if homeownership is None:

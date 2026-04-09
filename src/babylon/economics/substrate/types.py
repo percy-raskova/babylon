@@ -81,6 +81,51 @@ class TractWeight(BaseModel):
 
 
 # =============================================================================
+# HEX TENURE COMPOSITION
+# =============================================================================
+
+
+class HexTenureComposition(BaseModel):
+    """Composition of land ownership by tenure type at H3 R7 resolution.
+
+    Each share represents the fraction of land surface area.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    residential_owner_occupied: Annotated[float, Field(ge=0.0)] = Field(
+        description="Constitutes LA households"
+    )
+    residential_rental: Annotated[float, Field(ge=0.0)] = Field(
+        description="Tenants = Proletariat; Landlords = Bourgeoisie/PB"
+    )
+    commercial: Annotated[float, Field(ge=0.0)] = Field(description="Bourgeoisie")
+    industrial: Annotated[float, Field(ge=0.0)] = Field(
+        description="Bourgeoisie (Means of Production)"
+    )
+    public: Annotated[float, Field(ge=0.0)] = Field(description="State-controlled")
+    trust_land: Annotated[float, Field(ge=0.0)] = Field(description="INDIGENOUS filtration")
+    vacant_abandoned: Annotated[float, Field(ge=0.0)] = Field(description="Crisis signature")
+
+    @model_validator(mode="after")
+    def validate_conservation(self) -> HexTenureComposition:
+        """Validate that all tenure shares sum exactly to 1.0."""
+        total = (
+            self.residential_owner_occupied
+            + self.residential_rental
+            + self.commercial
+            + self.industrial
+            + self.public
+            + self.trust_land
+            + self.vacant_abandoned
+        )
+        if abs(total - 1.0) > CONSERVATION_TOLERANCE:
+            msg = f"Tenure shares must sum to 1.0, got {total}"
+            raise ValueError(msg)
+        return self
+
+
+# =============================================================================
 # HEX ECONOMIC STATE
 # =============================================================================
 
@@ -135,6 +180,9 @@ class HexEconomicState(BaseModel):
     )
     profit_rate: float = Field(default=0.0, description="s / (c + v)")
     exploitation_rate: float = Field(default=0.0, description="s / v")
+    tenure_composition: HexTenureComposition | None = Field(
+        default=None, description="Land tenure composition (Feature 043)"
+    )
 
     @field_validator("county_fips")
     @classmethod
@@ -319,6 +367,7 @@ __all__ = [
     "CONSERVATION_TOLERANCE",
     "HexEconomicState",
     "HexGrid",
+    "HexTenureComposition",
     "SubstrateConfig",
     "TRI_COUNTY_FIPS",
     "TractWeight",

@@ -101,6 +101,7 @@ As a theorist, I need capital to flow between hexes seeking higher profit rates,
 2. **Given** resolution 7 hex-level profit rates, **When** aggregation computes resolution 5 metro-wide averages, **Then** the metro-wide average profit rate (r) is a properly weighted average of all constituent resolution 7 hex profit rates.
 3. **Given** 260 simulation ticks (5 years), **When** equalization runs repeatedly, **Then** Wayne County's share of total tri-county capital decreases AND Oakland County's share increases (directional shift), reflecting real-world capital flight dynamics.
 4. **Given** resolution 7 hex data, **When** intermediate resolution 6 aggregation is computed, **Then** resolution 6 values equal the sums of their child resolution 7 hexes within floating-point tolerance, and resolution 5 values equal the sums of their child resolution 6 hexes within floating-point tolerance (hierarchical conservation).
+5. **Given** resolution 7 hexes with defined `HexTenureComposition`, **When** equalization executes, **Then** ground rent is extracted from variable capital and surplus value based on tenure shares and local advantages (Differential Rent).
 
 ______________________________________________________________________
 
@@ -141,7 +142,7 @@ ______________________________________________________________________
 - **FR-007**: System MUST compute the local rate of exploitation (s/v) for each resolution 7 hex based on its allocated economic composition.
 - **FR-008**: System MUST redistribute variable capital (v) from production hexes to residence hexes using LODES origin-destination commute flow data.
 - **FR-009**: System MUST conserve total variable capital (v) during Volume II circulation within floating-point tolerance (abs(diff) < 1e-10; no value created or destroyed in transit).
-- **FR-010**: System MUST compute local profit rates at resolution 7 and enable capital migration toward higher-profit hexes during Volume III equalization.
+- **FR-010**: System MUST compute local profit rates at resolution 7, incorporate ground rent extraction based on `HexTenureComposition` (Feature 043), and enable capital migration toward higher-profit hexes during Volume III equalization.
 - **FR-011**: System MUST aggregate resolution 7 economic values to resolution 6 and resolution 5, preserving sums within floating-point tolerance (abs(diff) < 1e-10) at each level of the hierarchy (hierarchical conservation).
 - **FR-012**: System MUST handle zero-population/zero-employment hexes gracefully, producing zero surplus value without distorting neighboring calculations.
 - **FR-013**: System MUST handle external commute flows (to/from hexes outside the tri-county area) by accounting for them in a boundary flow register without violating conservation.
@@ -150,9 +151,9 @@ ______________________________________________________________________
 
 ### Key Entities
 
-- **H3 Hex (Resolution 7)**: The fundamental spatial unit (~5.16 km²). Each hex holds economic state (c, v, s), demographic weights, and county assignment. ~1,500-2,500 hexes cover the tri-county area.
+- **H3 Hex (Resolution 7)**: The fundamental spatial unit (~5.16 km²). Each hex holds economic state (c, v, s), land tenure composition (Feature 043), demographic weights, and county assignment. ~1,500-2,500 hexes cover the tri-county area.
 - **County**: One of three tri-county entities (Wayne, Oakland, Macomb). Source of macroeconomic totals from QCEW. Contains a set of resolution 7 hexes.
-- **Economic Tensor**: Per-hex economic state vector containing constant capital (c), variable capital (v), surplus value (s), employment, wages, and derived rates (s/v, profit rate).
+- **Economic Tensor**: Per-hex economic state vector containing constant capital (c), variable capital (v), surplus value (s), employment, wages, derived rates (s/v, profit rate), and land tenure composition (`HexTenureComposition`).
 - **Commute Flow**: Origin-destination pair with flow weight, derived from LODES data. Maps workplace hexes to residence hexes for wage redistribution.
 - **Resolution Hierarchy**: Parent-child relationships linking resolution 7 hexes to resolution 6 and resolution 5 parents. Enables multi-scale aggregation with exact conservation.
 - **Boundary Flow Register**: Accounting mechanism for commute flows crossing the tri-county boundary, ensuring conservation without modeling external geography.

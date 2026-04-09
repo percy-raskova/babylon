@@ -1,6 +1,6 @@
 """PostgreSQL schema DDL for simulation runtime state (Feature 037).
 
-Defines 19 tables across 6 layers:
+Defines tables across 10 layers:
 
 1. Game Management (3): game_session, game_turn, action_result
 2. Simulation State (10): node_state, edge_state, graph_metadata,
@@ -10,6 +10,12 @@ Defines 19 tables across 6 layers:
 4. Infrastructure (1): infrastructure_link_state
 5. Trace (1): trace_log (UNLOGGED, partitioned by session_id)
 6. Semantic (1): document_chunk (pgvector)
+7. Game-Journal Domain (2): hex_map, game_defines_snapshot
+8. Game-Journal Snapshots (7): territory_snapshot, org_snapshot,
+   edge_snapshot, community_snapshot, hex_activity,
+   economic_summary, tick_event
+9. Composition Views (5): v_hex_economic, v_hex_mobilize,
+   v_hex_aid, v_hex_heat, v_hex_intel
 
 All tables are Django-ready: snake_case names, ``id`` PKs (BIGSERIAL for
 data tables, UUID for game_session), ``created_at``/``updated_at``
@@ -424,6 +430,479 @@ INDEXES_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_document_chunk_session ON document_chunk(session_id)",
 ]
 
+# ═══════════════════════════════════════════════════════════════════════
+# Spec 037: Game-Journal Schema (append-only, tick-keyed snapshots)
+# ═══════════════════════════════════════════════════════════════════════
+
+# ─── Layer 7: Domain (Static, written once at game init) ────────────
+
+HEX_MAP_DDL = """
+CREATE TABLE IF NOT EXISTS hex_map (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    h3_index      VARCHAR(16) NOT NULL,
+    county_fips   VARCHAR(5) NOT NULL,
+    county_name   VARCHAR(64) NOT NULL,
+    state_fips    VARCHAR(2) NOT NULL,
+    h3_resolution SMALLINT NOT NULL DEFAULT 7,
+    center_lat    DOUBLE PRECISION NOT NULL,
+    center_lng    DOUBLE PRECISION NOT NULL,
+    geom          geometry(Polygon, 4326),
+
+    PRIMARY KEY (game_id, h3_index)
+)
+"""
+
+GAME_DEFINES_SNAPSHOT_DDL = """
+CREATE TABLE IF NOT EXISTS game_defines_snapshot (
+    game_id     UUID PRIMARY KEY REFERENCES game_session(id) ON DELETE CASCADE,
+    defines     JSONB NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
+# ─── Layer 8: Snapshot (per-tick, append-only) ──────────────────────
+
+TERRITORY_SNAPSHOT_DDL = """
+CREATE TABLE IF NOT EXISTS territory_snapshot (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    tick          INTEGER NOT NULL,
+    county_fips   VARCHAR(5) NOT NULL,
+
+    -- ValueTensor4x3: Departments I/IIa/IIb/III × c/v/s
+    c_dept_i      NUMERIC,
+    v_dept_i      NUMERIC,
+    s_dept_i      NUMERIC,
+    c_dept_iia    NUMERIC,
+    v_dept_iia    NUMERIC,
+    s_dept_iia    NUMERIC,
+    c_dept_iib    NUMERIC,
+    v_dept_iib    NUMERIC,
+    s_dept_iib    NUMERIC,
+    c_dept_iii    NUMERIC,
+    v_dept_iii    NUMERIC,
+    s_dept_iii    NUMERIC,
+
+    -- Derived indicators
+    profit_rate        FLOAT,
+    exploitation_rate  FLOAT,
+    occ                FLOAT,
+    imperial_rent      NUMERIC,
+    g33_visibility     FLOAT,
+
+    -- Class distribution (Spec 033)
+    pop_bourgeoisie         INTEGER,
+    pop_petit_bourgeoisie   INTEGER,
+    pop_labor_aristocracy   INTEGER,
+    pop_proletariat         INTEGER,
+    pop_lumpenproletariat   INTEGER,
+    pop_total               INTEGER,
+
+    -- Faction balance
+    faction_finance_capital   FLOAT,
+    faction_security_state    FLOAT,
+    faction_settler_populist  FLOAT,
+
+    -- Aggregate heat
+    heat              FLOAT DEFAULT 0.0,
+
+    -- Full state dump
+    attributes        JSONB NOT NULL,
+
+    PRIMARY KEY (game_id, tick, county_fips),
+    CONSTRAINT ck_territory_tick_positive CHECK (tick >= 0),
+    CONSTRAINT ck_territory_pop_nonneg CHECK (
+        pop_total >= 0 AND pop_bourgeoisie >= 0 AND pop_proletariat >= 0
+    )
+)
+"""
+
+ORG_SNAPSHOT_DDL = """
+CREATE TABLE IF NOT EXISTS org_snapshot (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    tick          INTEGER NOT NULL,
+    org_id        VARCHAR(64) NOT NULL,
+
+    -- Type discrimination
+    org_type      VARCHAR(24) NOT NULL,
+
+    -- Spatial presence
+    home_county   VARCHAR(5),
+    home_hex      VARCHAR(16),
+
+    -- OODA state (Spec 032)
+    ooda_phase         VARCHAR(8),
+    action_points      INTEGER,
+    action_points_max  INTEGER,
+
+    -- Resources
+    cadre_count        INTEGER DEFAULT 0,
+    sympathizer_count  INTEGER DEFAULT 0,
+    cadre_labor        FLOAT DEFAULT 0.0,
+    sympathizer_labor  FLOAT DEFAULT 0.0,
+    material_resources FLOAT DEFAULT 0.0,
+
+    -- Organizational health
+    coherence       FLOAT,
+    reputation      FLOAT,
+    opsec           FLOAT,
+
+    -- Ownership / control
+    owner_type      VARCHAR(16),
+    owner_id        VARCHAR(64),
+
+    -- Full state dump
+    attributes      JSONB NOT NULL,
+
+    PRIMARY KEY (game_id, tick, org_id),
+    CONSTRAINT ck_org_tick_positive CHECK (tick >= 0),
+    CONSTRAINT ck_org_type_valid CHECK (
+        org_type IN ('state_apparatus', 'business', 'political_faction', 'civil_society')
+    )
+)
+"""
+
+EDGE_SNAPSHOT_DDL = """
+CREATE TABLE IF NOT EXISTS edge_snapshot (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    tick          INTEGER NOT NULL,
+    source_id     VARCHAR(64) NOT NULL,
+    target_id     VARCHAR(64) NOT NULL,
+    edge_type     VARCHAR(32) NOT NULL,
+
+    -- Constitutional edge mode
+    edge_mode     VARCHAR(16),
+
+    -- Promoted flow values
+    value_flow        NUMERIC,
+    solidarity        FLOAT,
+    tension           FLOAT,
+
+    -- Full state dump
+    attributes        JSONB NOT NULL,
+
+    PRIMARY KEY (game_id, tick, source_id, target_id, edge_type),
+    CONSTRAINT ck_edge_tick_positive CHECK (tick >= 0),
+    CONSTRAINT ck_edge_mode_valid CHECK (
+        edge_mode IN (
+            'EXTRACTIVE', 'TRANSACTIONAL', 'SOLIDARISTIC',
+            'ANTAGONISTIC', 'CO_OPTIVE'
+        ) OR edge_mode IS NULL
+    )
+)
+"""
+
+COMMUNITY_SNAPSHOT_DDL = """
+CREATE TABLE IF NOT EXISTS community_snapshot (
+    game_id           UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    tick              INTEGER NOT NULL,
+    community_id      VARCHAR(64) NOT NULL,
+
+    -- Community taxonomy (Spec 029)
+    community_type    VARCHAR(32) NOT NULL,
+    hyperedge_category VARCHAR(24) NOT NULL,
+    contradiction_axis VARCHAR(24),
+
+    -- Territory scope
+    county_fips       VARCHAR(5),
+
+    -- Consciousness state
+    collective_identity       FLOAT,
+    ideological_contestation  FLOAT,
+    dominant_tendency         VARCHAR(28),
+
+    -- Material basis
+    reproduction_cost_modifier FLOAT,
+    rent_access_modifier       FLOAT,
+
+    -- Membership count
+    member_count      INTEGER,
+
+    -- Full state dump
+    attributes        JSONB NOT NULL,
+
+    PRIMARY KEY (game_id, tick, community_id),
+    CONSTRAINT ck_community_tick_positive CHECK (tick >= 0),
+    CONSTRAINT ck_tendency_valid CHECK (
+        dominant_tendency IN (
+            'revolutionary', 'assimilationist_liberal', 'assimilationist_fascist'
+        )
+    ),
+    CONSTRAINT ck_category_valid CHECK (
+        hyperedge_category IN (
+            'contradiction_pair', 'institutional_exclusion', 'lifecycle_phase'
+        )
+    )
+)
+"""
+
+HEX_ACTIVITY_DDL = """
+CREATE TABLE IF NOT EXISTS hex_activity (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    tick          INTEGER NOT NULL,
+    h3_index      VARCHAR(16) NOT NULL,
+
+    -- Heat from player/state actions
+    heat_delta    FLOAT DEFAULT 0.0,
+    heat_total    FLOAT DEFAULT 0.0,
+
+    -- Org presence
+    org_ids       VARCHAR(64)[] DEFAULT '{}',
+    org_count     SMALLINT DEFAULT 0,
+
+    -- Action summary
+    actions_taken SMALLINT DEFAULT 0,
+    was_target    BOOLEAN DEFAULT FALSE,
+
+    -- Full details
+    attributes    JSONB,
+
+    PRIMARY KEY (game_id, tick, h3_index)
+)
+"""
+
+ECONOMIC_SUMMARY_DDL = """
+CREATE TABLE IF NOT EXISTS economic_summary (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    tick          INTEGER NOT NULL,
+
+    -- Aggregate economic indicators
+    avg_profit_rate        FLOAT,
+    avg_exploitation_rate  FLOAT,
+    avg_occ                FLOAT,
+    total_imperial_rent    NUMERIC,
+    avg_g33_visibility     FLOAT,
+
+    -- Class totals
+    total_bourgeoisie        INTEGER,
+    total_petit_bourgeoisie  INTEGER,
+    total_labor_aristocracy  INTEGER,
+    total_proletariat        INTEGER,
+    total_lumpenproletariat  INTEGER,
+    total_population         INTEGER,
+
+    -- Aggregate faction balance
+    avg_faction_finance      FLOAT,
+    avg_faction_security     FLOAT,
+    avg_faction_settler      FLOAT,
+
+    -- Game-level indicators
+    total_heat              FLOAT,
+    total_orgs              INTEGER,
+    total_player_orgs       INTEGER,
+    total_solidaristic_edges INTEGER,
+    total_antagonistic_edges INTEGER,
+
+    -- Bifurcation indicators
+    percolation_ratio       FLOAT,
+    fascist_convergence     BOOLEAN DEFAULT FALSE,
+
+    -- Narrative
+    narrative_text          TEXT,
+
+    attributes              JSONB,
+
+    PRIMARY KEY (game_id, tick)
+)
+"""
+
+TICK_EVENT_DDL = """
+CREATE TABLE IF NOT EXISTS tick_event (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    tick          INTEGER NOT NULL,
+    event_id      SERIAL,
+    event_type    VARCHAR(48) NOT NULL,
+    severity      VARCHAR(12),
+    source_id     VARCHAR(64),
+    target_id     VARCHAR(64),
+    county_fips   VARCHAR(5),
+    h3_index      VARCHAR(16),
+
+    -- Human-readable
+    summary       TEXT NOT NULL,
+    detail        JSONB,
+
+    PRIMARY KEY (game_id, tick, event_id)
+)
+"""
+
+# ─── Layer 9: Composition Views ─────────────────────────────────────
+
+V_HEX_ECONOMIC_DDL = """
+CREATE OR REPLACE VIEW v_hex_economic AS
+SELECT
+    h.game_id,
+    h.h3_index,
+    h.center_lat,
+    h.center_lng,
+    h.county_fips,
+    h.county_name,
+    t.tick,
+    t.profit_rate,
+    t.exploitation_rate,
+    t.occ,
+    t.imperial_rent,
+    t.g33_visibility,
+    t.pop_total,
+    t.heat
+FROM hex_map h
+JOIN territory_snapshot t
+    ON h.game_id = t.game_id
+    AND h.county_fips = t.county_fips
+"""
+
+V_HEX_MOBILIZE_DDL = """
+CREATE OR REPLACE VIEW v_hex_mobilize AS
+SELECT
+    h.game_id,
+    h.h3_index,
+    h.center_lat,
+    h.center_lng,
+    h.county_fips,
+    t.tick,
+    t.pop_proletariat + t.pop_lumpenproletariat AS mobilizable_pop,
+    t.pop_labor_aristocracy,
+    t.heat,
+    COALESCE(a.org_count, 0) AS org_presence,
+    COALESCE(a.heat_total, 0) AS hex_heat,
+    a.org_ids
+FROM hex_map h
+JOIN territory_snapshot t
+    ON h.game_id = t.game_id
+    AND h.county_fips = t.county_fips
+LEFT JOIN hex_activity a
+    ON h.game_id = a.game_id
+    AND h.h3_index = a.h3_index
+    AND t.tick = a.tick
+"""
+
+V_HEX_AID_DDL = """
+CREATE OR REPLACE VIEW v_hex_aid AS
+SELECT
+    h.game_id,
+    h.h3_index,
+    h.center_lat,
+    h.center_lng,
+    h.county_fips,
+    t.tick,
+    t.pop_lumpenproletariat,
+    t.pop_proletariat,
+    t.imperial_rent,
+    t.g33_visibility,
+    t.attributes->'reproduction_deficit' AS reproduction_deficit
+FROM hex_map h
+JOIN territory_snapshot t
+    ON h.game_id = t.game_id
+    AND h.county_fips = t.county_fips
+"""
+
+V_HEX_HEAT_DDL = """
+CREATE OR REPLACE VIEW v_hex_heat AS
+SELECT
+    h.game_id,
+    h.h3_index,
+    h.center_lat,
+    h.center_lng,
+    a.tick,
+    a.heat_total,
+    a.heat_delta,
+    a.org_count,
+    a.was_target
+FROM hex_map h
+JOIN hex_activity a
+    ON h.game_id = a.game_id
+    AND h.h3_index = a.h3_index
+WHERE a.heat_total > 0
+"""
+
+V_HEX_INTEL_DDL = """
+CREATE OR REPLACE VIEW v_hex_intel AS
+SELECT
+    h.game_id,
+    h.h3_index,
+    h.center_lat,
+    h.center_lng,
+    h.county_fips,
+    h.county_name,
+    t.tick,
+    t.profit_rate,
+    t.exploitation_rate,
+    t.occ,
+    t.imperial_rent,
+    t.g33_visibility,
+    t.pop_bourgeoisie,
+    t.pop_petit_bourgeoisie,
+    t.pop_labor_aristocracy,
+    t.pop_proletariat,
+    t.pop_lumpenproletariat,
+    t.pop_total,
+    t.heat,
+    t.faction_finance_capital,
+    t.faction_security_state,
+    t.faction_settler_populist,
+    COALESCE(a.org_ids, '{}') AS org_ids,
+    COALESCE(a.org_count, 0) AS org_count,
+    COALESCE(a.heat_total, 0) AS hex_heat
+FROM hex_map h
+JOIN territory_snapshot t
+    ON h.game_id = t.game_id
+    AND h.county_fips = t.county_fips
+LEFT JOIN hex_activity a
+    ON h.game_id = a.game_id
+    AND h.h3_index = a.h3_index
+    AND t.tick = a.tick
+"""
+
+# ─── Spec 037 Indexes ──────────────────────────────────────────────
+
+SPEC037_INDEXES_DDL: list[str] = [
+    # hex_map
+    "CREATE INDEX IF NOT EXISTS ix_hex_map_county ON hex_map (game_id, county_fips)",
+    "CREATE INDEX IF NOT EXISTS ix_hex_map_geom ON hex_map USING GIST (geom)",
+    # territory_snapshot
+    "CREATE INDEX IF NOT EXISTS ix_territory_tick ON territory_snapshot (game_id, tick)",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_territory_series "
+        "ON territory_snapshot (game_id, county_fips, tick)"
+    ),
+    # org_snapshot
+    "CREATE INDEX IF NOT EXISTS ix_org_tick ON org_snapshot (game_id, tick)",
+    "CREATE INDEX IF NOT EXISTS ix_org_owner ON org_snapshot (game_id, tick, owner_type)",
+    "CREATE INDEX IF NOT EXISTS ix_org_county ON org_snapshot (game_id, tick, home_county)",
+    "CREATE INDEX IF NOT EXISTS ix_org_series ON org_snapshot (game_id, org_id, tick)",
+    # edge_snapshot
+    "CREATE INDEX IF NOT EXISTS ix_edge_snap_tick ON edge_snapshot (game_id, tick)",
+    "CREATE INDEX IF NOT EXISTS ix_edge_snap_mode ON edge_snapshot (game_id, tick, edge_mode)",
+    "CREATE INDEX IF NOT EXISTS ix_edge_snap_source ON edge_snapshot (game_id, tick, source_id)",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_edge_snap_series "
+        "ON edge_snapshot (game_id, source_id, target_id, edge_type, tick)"
+    ),
+    # community_snapshot
+    ("CREATE INDEX IF NOT EXISTS ix_community_snap_tick ON community_snapshot (game_id, tick)"),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_community_snap_type "
+        "ON community_snapshot (game_id, tick, community_type)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_community_snap_county "
+        "ON community_snapshot (game_id, tick, county_fips)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_community_snap_series "
+        "ON community_snapshot (game_id, community_id, tick)"
+    ),
+    # hex_activity
+    "CREATE INDEX IF NOT EXISTS ix_hex_activity_tick ON hex_activity (game_id, tick)",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_hex_activity_hot "
+        "ON hex_activity (game_id, tick, heat_total) WHERE heat_total > 0"
+    ),
+    # tick_event
+    "CREATE INDEX IF NOT EXISTS ix_event_tick ON tick_event (game_id, tick)",
+    "CREATE INDEX IF NOT EXISTS ix_event_type ON tick_event (game_id, tick, event_type)",
+    "CREATE INDEX IF NOT EXISTS ix_event_source ON tick_event (game_id, source_id)",
+]
+
 # ─── Aggregated DDL list ────────────────────────────────────────────
 
 POSTGRES_SCHEMA_DDL: list[str] = [
@@ -453,8 +932,26 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     TRACE_LOG_DDL,
     # Layer 6: Semantic
     DOCUMENT_CHUNK_DDL,
-    # Indexes
+    # Layer 7: Spec 037 Domain (static)
+    HEX_MAP_DDL,
+    GAME_DEFINES_SNAPSHOT_DDL,
+    # Layer 8: Spec 037 Snapshots (per-tick, append-only)
+    TERRITORY_SNAPSHOT_DDL,
+    ORG_SNAPSHOT_DDL,
+    EDGE_SNAPSHOT_DDL,
+    COMMUNITY_SNAPSHOT_DDL,
+    HEX_ACTIVITY_DDL,
+    ECONOMIC_SUMMARY_DDL,
+    TICK_EVENT_DDL,
+    # Layer 9: Spec 037 Composition Views
+    V_HEX_ECONOMIC_DDL,
+    V_HEX_MOBILIZE_DDL,
+    V_HEX_AID_DDL,
+    V_HEX_HEAT_DDL,
+    V_HEX_INTEL_DDL,
+    # Indexes (legacy + spec 037)
     *INDEXES_DDL,
+    *SPEC037_INDEXES_DDL,
 ]
 
 # Partition management DDL templates
@@ -485,6 +982,7 @@ def get_trace_partition_name(session_id_hex: str) -> str:
 __all__ = [
     "INDEXES_DDL",
     "POSTGRES_SCHEMA_DDL",
+    "SPEC037_INDEXES_DDL",
     "TRACE_PARTITION_CREATE_TEMPLATE",
     "TRACE_PARTITION_DROP_TEMPLATE",
     "get_trace_partition_name",

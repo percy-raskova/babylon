@@ -1031,6 +1031,572 @@ class PostgresRuntime:
                 )
             return [dict(row) for row in cur.fetchall()]
 
+    # ─── Spec 037: Game-Journal Persistence ─────────────────────────
+
+    def populate_hex_map(
+        self,
+        game_id: UUID,
+        hex_rows: list[dict[str, Any]],
+    ) -> int:
+        """Bulk insert static hex_map rows for a game. Written once at init.
+
+        Args:
+            game_id: Game session UUID.
+            hex_rows: Dicts with h3_index, county_fips, county_name,
+                state_fips, center_lat, center_lng, and optional geom_wkt.
+
+        Returns:
+            Number of rows inserted.
+        """
+        if not hex_rows:
+            return 0
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            for i in range(0, len(hex_rows), _BATCH_SIZE):
+                batch = hex_rows[i : i + _BATCH_SIZE]
+                cur.executemany(
+                    """
+                    INSERT INTO hex_map
+                        (game_id, h3_index, county_fips, county_name,
+                         state_fips, h3_resolution, center_lat, center_lng, geom)
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s,
+                        ST_GeomFromText(%s, 4326)
+                    )
+                    ON CONFLICT (game_id, h3_index) DO NOTHING
+                    """,
+                    [
+                        (
+                            game_id,
+                            h["h3_index"],
+                            h["county_fips"],
+                            h["county_name"],
+                            h["state_fips"],
+                            h.get("h3_resolution", 7),
+                            h["center_lat"],
+                            h["center_lng"],
+                            h.get("geom_wkt"),
+                        )
+                        for h in batch
+                    ],
+                )
+        return len(hex_rows)
+
+    def persist_game_defines(
+        self,
+        game_id: UUID,
+        defines: dict[str, Any],
+    ) -> None:
+        """Freeze GameDefines for a game session. Written once at init.
+
+        Args:
+            game_id: Game session UUID.
+            defines: GameDefines.model_dump().
+        """
+        with self._pool.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO game_defines_snapshot (game_id, defines)
+                VALUES (%s, %s)
+                ON CONFLICT (game_id) DO UPDATE SET defines = EXCLUDED.defines
+                """,
+                (game_id, json.dumps(defines, default=_json_default)),
+            )
+
+    def persist_territory_snapshots(
+        self,
+        game_id: UUID,
+        tick: int,
+        territories: list[dict[str, Any]],
+    ) -> None:
+        """Bulk INSERT territory_snapshot rows for one tick.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            territories: List of territory dicts (one per county per tick).
+        """
+        if not territories:
+            return
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO territory_snapshot
+                    (game_id, tick, county_fips,
+                     c_dept_i, v_dept_i, s_dept_i,
+                     c_dept_iia, v_dept_iia, s_dept_iia,
+                     c_dept_iib, v_dept_iib, s_dept_iib,
+                     c_dept_iii, v_dept_iii, s_dept_iii,
+                     profit_rate, exploitation_rate, occ,
+                     imperial_rent, g33_visibility,
+                     pop_bourgeoisie, pop_petit_bourgeoisie,
+                     pop_labor_aristocracy, pop_proletariat,
+                     pop_lumpenproletariat, pop_total,
+                     faction_finance_capital, faction_security_state,
+                     faction_settler_populist, heat, attributes)
+                VALUES (%s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s)
+                """,
+                [
+                    (
+                        game_id,
+                        tick,
+                        t["county_fips"],
+                        t.get("c_dept_i"),
+                        t.get("v_dept_i"),
+                        t.get("s_dept_i"),
+                        t.get("c_dept_iia"),
+                        t.get("v_dept_iia"),
+                        t.get("s_dept_iia"),
+                        t.get("c_dept_iib"),
+                        t.get("v_dept_iib"),
+                        t.get("s_dept_iib"),
+                        t.get("c_dept_iii"),
+                        t.get("v_dept_iii"),
+                        t.get("s_dept_iii"),
+                        t.get("profit_rate"),
+                        t.get("exploitation_rate"),
+                        t.get("occ"),
+                        t.get("imperial_rent"),
+                        t.get("g33_visibility"),
+                        t.get("pop_bourgeoisie", 0),
+                        t.get("pop_petit_bourgeoisie", 0),
+                        t.get("pop_labor_aristocracy", 0),
+                        t.get("pop_proletariat", 0),
+                        t.get("pop_lumpenproletariat", 0),
+                        t.get("pop_total", 0),
+                        t.get("faction_finance_capital"),
+                        t.get("faction_security_state"),
+                        t.get("faction_settler_populist"),
+                        t.get("heat", 0.0),
+                        json.dumps(t.get("attributes", {}), default=_json_default),
+                    )
+                    for t in territories
+                ],
+            )
+
+    def persist_org_snapshots(
+        self,
+        game_id: UUID,
+        tick: int,
+        orgs: list[dict[str, Any]],
+    ) -> None:
+        """Bulk INSERT org_snapshot rows for one tick.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            orgs: List of org dicts.
+        """
+        if not orgs:
+            return
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO org_snapshot
+                    (game_id, tick, org_id, org_type,
+                     home_county, home_hex,
+                     ooda_phase, action_points, action_points_max,
+                     cadre_count, sympathizer_count,
+                     cadre_labor, sympathizer_labor, material_resources,
+                     coherence, reputation, opsec,
+                     owner_type, owner_id, attributes)
+                VALUES (%s, %s, %s, %s,
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s)
+                """,
+                [
+                    (
+                        game_id,
+                        tick,
+                        o["org_id"],
+                        o["org_type"],
+                        o.get("home_county"),
+                        o.get("home_hex"),
+                        o.get("ooda_phase"),
+                        o.get("action_points"),
+                        o.get("action_points_max"),
+                        o.get("cadre_count", 0),
+                        o.get("sympathizer_count", 0),
+                        o.get("cadre_labor", 0.0),
+                        o.get("sympathizer_labor", 0.0),
+                        o.get("material_resources", 0.0),
+                        o.get("coherence"),
+                        o.get("reputation"),
+                        o.get("opsec"),
+                        o.get("owner_type"),
+                        o.get("owner_id"),
+                        json.dumps(o.get("attributes", {}), default=_json_default),
+                    )
+                    for o in orgs
+                ],
+            )
+
+    def persist_edge_snapshots(
+        self,
+        game_id: UUID,
+        tick: int,
+        edges: list[dict[str, Any]],
+    ) -> None:
+        """Bulk INSERT edge_snapshot rows for one tick.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            edges: List of edge dicts.
+        """
+        if not edges:
+            return
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO edge_snapshot
+                    (game_id, tick, source_id, target_id, edge_type,
+                     edge_mode, value_flow, solidarity, tension, attributes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                [
+                    (
+                        game_id,
+                        tick,
+                        e["source_id"],
+                        e["target_id"],
+                        e["edge_type"],
+                        e.get("edge_mode"),
+                        e.get("value_flow"),
+                        e.get("solidarity"),
+                        e.get("tension"),
+                        json.dumps(e.get("attributes", {}), default=_json_default),
+                    )
+                    for e in edges
+                ],
+            )
+
+    def persist_community_snapshots(
+        self,
+        game_id: UUID,
+        tick: int,
+        communities: list[dict[str, Any]],
+    ) -> None:
+        """Bulk INSERT community_snapshot rows for one tick.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            communities: List of community dicts.
+        """
+        if not communities:
+            return
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO community_snapshot
+                    (game_id, tick, community_id,
+                     community_type, hyperedge_category, contradiction_axis,
+                     county_fips,
+                     collective_identity, ideological_contestation,
+                     dominant_tendency,
+                     reproduction_cost_modifier, rent_access_modifier,
+                     member_count, attributes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                [
+                    (
+                        game_id,
+                        tick,
+                        c["community_id"],
+                        c["community_type"],
+                        c["hyperedge_category"],
+                        c.get("contradiction_axis"),
+                        c.get("county_fips"),
+                        c.get("collective_identity"),
+                        c.get("ideological_contestation"),
+                        c.get("dominant_tendency"),
+                        c.get("reproduction_cost_modifier"),
+                        c.get("rent_access_modifier"),
+                        c.get("member_count"),
+                        json.dumps(c.get("attributes", {}), default=_json_default),
+                    )
+                    for c in communities
+                ],
+            )
+
+    def persist_hex_activity(
+        self,
+        game_id: UUID,
+        tick: int,
+        activities: list[dict[str, Any]],
+    ) -> None:
+        """Bulk INSERT hex_activity rows for one tick (sparse).
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            activities: List of hex activity dicts.
+        """
+        if not activities:
+            return
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO hex_activity
+                    (game_id, tick, h3_index,
+                     heat_delta, heat_total,
+                     org_ids, org_count,
+                     actions_taken, was_target, attributes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                [
+                    (
+                        game_id,
+                        tick,
+                        a["h3_index"],
+                        a.get("heat_delta", 0.0),
+                        a.get("heat_total", 0.0),
+                        a.get("org_ids", []),
+                        a.get("org_count", 0),
+                        a.get("actions_taken", 0),
+                        a.get("was_target", False),
+                        json.dumps(a.get("attributes"), default=_json_default)
+                        if a.get("attributes")
+                        else None,
+                    )
+                    for a in activities
+                ],
+            )
+
+    def persist_economic_summary(
+        self,
+        game_id: UUID,
+        tick: int,
+        summary: dict[str, Any],
+    ) -> None:
+        """INSERT one economic_summary row for a tick.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            summary: Aggregated summary dict.
+        """
+        with self._pool.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO economic_summary
+                    (game_id, tick,
+                     avg_profit_rate, avg_exploitation_rate, avg_occ,
+                     total_imperial_rent, avg_g33_visibility,
+                     total_bourgeoisie, total_petit_bourgeoisie,
+                     total_labor_aristocracy, total_proletariat,
+                     total_lumpenproletariat, total_population,
+                     avg_faction_finance, avg_faction_security,
+                     avg_faction_settler,
+                     total_heat, total_orgs, total_player_orgs,
+                     total_solidaristic_edges, total_antagonistic_edges,
+                     percolation_ratio, fascist_convergence,
+                     narrative_text, attributes)
+                VALUES (%s, %s,
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s,
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s)
+                """,
+                (
+                    game_id,
+                    tick,
+                    summary.get("avg_profit_rate"),
+                    summary.get("avg_exploitation_rate"),
+                    summary.get("avg_occ"),
+                    summary.get("total_imperial_rent"),
+                    summary.get("avg_g33_visibility"),
+                    summary.get("total_bourgeoisie"),
+                    summary.get("total_petit_bourgeoisie"),
+                    summary.get("total_labor_aristocracy"),
+                    summary.get("total_proletariat"),
+                    summary.get("total_lumpenproletariat"),
+                    summary.get("total_population"),
+                    summary.get("avg_faction_finance"),
+                    summary.get("avg_faction_security"),
+                    summary.get("avg_faction_settler"),
+                    summary.get("total_heat"),
+                    summary.get("total_orgs"),
+                    summary.get("total_player_orgs"),
+                    summary.get("total_solidaristic_edges"),
+                    summary.get("total_antagonistic_edges"),
+                    summary.get("percolation_ratio"),
+                    summary.get("fascist_convergence", False),
+                    summary.get("narrative_text"),
+                    json.dumps(summary.get("attributes"), default=_json_default)
+                    if summary.get("attributes")
+                    else None,
+                ),
+            )
+
+    def persist_tick_events(
+        self,
+        game_id: UUID,
+        tick: int,
+        events: list[dict[str, Any]],
+    ) -> None:
+        """Bulk INSERT tick_event rows.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            events: List of event dicts.
+        """
+        if not events:
+            return
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO tick_event
+                    (game_id, tick, event_type, severity,
+                     source_id, target_id, county_fips, h3_index,
+                     summary, detail)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                [
+                    (
+                        game_id,
+                        tick,
+                        e["event_type"],
+                        e.get("severity"),
+                        e.get("source_id"),
+                        e.get("target_id"),
+                        e.get("county_fips"),
+                        e.get("h3_index"),
+                        e["summary"],
+                        json.dumps(e.get("detail"), default=_json_default)
+                        if e.get("detail")
+                        else None,
+                    )
+                    for e in events
+                ],
+            )
+
+    def persist_full_tick(
+        self,
+        game_id: UUID,
+        tick: int,
+        *,
+        territories: list[dict[str, Any]] | None = None,
+        orgs: list[dict[str, Any]] | None = None,
+        edges: list[dict[str, Any]] | None = None,
+        communities: list[dict[str, Any]] | None = None,
+        hex_activities: list[dict[str, Any]] | None = None,
+        economic_summary: dict[str, Any] | None = None,
+        events: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Write all Spec 037 snapshot tables for a single tick atomically.
+
+        Wraps all INSERTs in a single transaction. Either all tables
+        for tick N commit, or none do.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            territories: Territory snapshot rows.
+            orgs: Org snapshot rows.
+            edges: Edge snapshot rows.
+            communities: Community snapshot rows.
+            hex_activities: Hex activity rows (sparse).
+            economic_summary: Single summary dict.
+            events: Tick event rows.
+        """
+        self.persist_territory_snapshots(game_id, tick, territories or [])
+        self.persist_org_snapshots(game_id, tick, orgs or [])
+        self.persist_edge_snapshots(game_id, tick, edges or [])
+        self.persist_community_snapshots(game_id, tick, communities or [])
+        self.persist_hex_activity(game_id, tick, hex_activities or [])
+        if economic_summary:
+            self.persist_economic_summary(game_id, tick, economic_summary)
+        self.persist_tick_events(game_id, tick, events or [])
+
+    # ─── Spec 037: Query Methods ────────────────────────────────────
+
+    def query_territory_time_series(
+        self,
+        game_id: UUID,
+        county_fips: str,
+    ) -> list[dict[str, Any]]:
+        """Get territory snapshot time series for one county.
+
+        Args:
+            game_id: Game session UUID.
+            county_fips: 5-digit FIPS code.
+
+        Returns:
+            List of territory dicts ordered by tick.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, profit_rate, exploitation_rate, occ,
+                       imperial_rent, g33_visibility, heat,
+                       pop_total, pop_proletariat
+                FROM territory_snapshot
+                WHERE game_id = %s AND county_fips = %s
+                ORDER BY tick
+                """,
+                (game_id, county_fips),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def query_economic_summary_series(
+        self,
+        game_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """Get economic summary time series for a game.
+
+        Args:
+            game_id: Game session UUID.
+
+        Returns:
+            List of summary dicts ordered by tick.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT * FROM economic_summary WHERE game_id = %s ORDER BY tick",
+                (game_id,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def query_tick_events(
+        self,
+        game_id: UUID,
+        tick: int,
+    ) -> list[dict[str, Any]]:
+        """Get events for a specific tick.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+
+        Returns:
+            List of event dicts ordered by severity then event_id.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT * FROM tick_event
+                WHERE game_id = %s AND tick = %s
+                ORDER BY severity DESC, event_id
+                """,
+                (game_id, tick),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     # ─── Private helpers ────────────────────────────────────────────
 
     def _persist_nodes(

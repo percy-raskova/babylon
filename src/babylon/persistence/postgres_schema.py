@@ -14,6 +14,8 @@ Defines tables across 10 layers:
 8. Game-Journal Snapshots (7): territory_snapshot, org_snapshot,
    edge_snapshot, community_snapshot, hex_activity,
    economic_summary, tick_event
+8b. Multi-Resolution Hex Cache (2): hex_latest (R7 denormalized
+    current-state cache), hex_substrate (R8 static terrain)
 9. Composition Views (5): v_hex_economic, v_hex_mobilize,
    v_hex_aid, v_hex_heat, v_hex_intel
 
@@ -725,131 +727,165 @@ CREATE TABLE IF NOT EXISTS tick_event (
 )
 """
 
-# ─── Layer 9: Composition Views ─────────────────────────────────────
+# ─── Layer 8b: Multi-Resolution Hex Cache ───────────────────────────
+#
+# hex_latest: R7 denormalized current-state cache (frontend reads HERE).
+# hex_substrate: R8 static terrain/infrastructure (written once at init).
+#
+# County economics live in territory_snapshot (~3,100 rows/tick).
+# Hex-specific events live in hex_activity (sparse, ~5K rows/tick).
+# hex_latest merges both via two-phase SQL UPSERT each tick.
+
+HEX_LATEST_DDL = """
+CREATE TABLE IF NOT EXISTS hex_latest (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    h3_index      VARCHAR(16) NOT NULL,
+
+    -- Which tick this row reflects
+    tick          INTEGER NOT NULL,
+
+    -- ─── Denormalized county economics (from territory_snapshot) ───
+    county_fips   VARCHAR(5)  NOT NULL,
+    county_name   VARCHAR(64) NOT NULL,
+    state_fips    VARCHAR(2)  NOT NULL,
+    center_lat    DOUBLE PRECISION NOT NULL,
+    center_lng    DOUBLE PRECISION NOT NULL,
+
+    -- ValueTensor4x3 (from territory_snapshot)
+    c_dept_i      NUMERIC,  v_dept_i      NUMERIC,  s_dept_i      NUMERIC,
+    c_dept_iia    NUMERIC,  v_dept_iia    NUMERIC,  s_dept_iia    NUMERIC,
+    c_dept_iib    NUMERIC,  v_dept_iib    NUMERIC,  s_dept_iib    NUMERIC,
+    c_dept_iii    NUMERIC,  v_dept_iii    NUMERIC,  s_dept_iii    NUMERIC,
+
+    -- Derived Marxian indicators (from territory_snapshot)
+    profit_rate        FLOAT,
+    exploitation_rate  FLOAT,
+    occ                FLOAT,
+    imperial_rent      NUMERIC,
+    g33_visibility     FLOAT,
+
+    -- Class distribution (from territory_snapshot)
+    pop_bourgeoisie         INTEGER DEFAULT 0,
+    pop_petit_bourgeoisie   INTEGER DEFAULT 0,
+    pop_labor_aristocracy   INTEGER DEFAULT 0,
+    pop_proletariat         INTEGER DEFAULT 0,
+    pop_lumpenproletariat   INTEGER DEFAULT 0,
+    pop_total               INTEGER DEFAULT 0,
+    dominant_class          VARCHAR(24),
+
+    -- Faction balance (from territory_snapshot)
+    faction_finance_capital   FLOAT,
+    faction_security_state    FLOAT,
+    faction_settler_populist  FLOAT,
+
+    -- ─── Hex-specific fields (from hex_activity) ───
+    heat              FLOAT DEFAULT 0.0,
+    heat_delta        FLOAT DEFAULT 0.0,
+    org_ids           VARCHAR(64)[] DEFAULT '{}',
+    org_count         SMALLINT DEFAULT 0,
+    actions_taken     SMALLINT DEFAULT 0,
+    was_target        BOOLEAN DEFAULT FALSE,
+
+    -- ─── Aggregated R8 terrain (from hex_substrate) ───
+    terrain_type      VARCHAR(16) DEFAULT 'LAND',
+    water_coverage    FLOAT DEFAULT 0.0,
+    internet_access   BOOLEAN DEFAULT FALSE,
+
+    -- ─── Forward-compat ───
+    attributes        JSONB DEFAULT '{}'::jsonb,
+
+    PRIMARY KEY (game_id, h3_index)
+)
+"""
+
+HEX_SUBSTRATE_DDL = """
+CREATE TABLE IF NOT EXISTS hex_substrate (
+    game_id           UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    h3_index          VARCHAR(16) NOT NULL,       -- R8 hex
+    r7_parent         VARCHAR(16) NOT NULL,       -- R7 parent for aggregation
+    county_fips       VARCHAR(5)  NOT NULL,
+
+    -- Physical geography
+    terrain_type      VARCHAR(16) NOT NULL DEFAULT 'LAND',
+    water_coverage    FLOAT NOT NULL DEFAULT 0.0,
+    resource_coverage FLOAT NOT NULL DEFAULT 0.0,
+    elevation_m       FLOAT,
+
+    -- Digital infrastructure
+    internet_access   BOOLEAN NOT NULL DEFAULT FALSE,
+    internet_quality  FLOAT NOT NULL DEFAULT 0.0,
+    broadband_pct     FLOAT,
+
+    -- Biocapacity
+    biocapacity_stocks JSONB DEFAULT '{}'::jsonb,
+
+    -- Coercive infrastructure
+    surveillance_coupling FLOAT NOT NULL DEFAULT 0.0,
+    response_mode         VARCHAR(16) NOT NULL DEFAULT 'PERMIT',
+
+    PRIMARY KEY (game_id, h3_index)
+)
+"""
+
+# ─── Layer 9: Composition Views (project from hex_latest) ───────────
+#
+# These are trivial column projections — no JOINs needed because
+# hex_latest is already denormalized. The frontend reads these.
 
 V_HEX_ECONOMIC_DDL = """
 CREATE OR REPLACE VIEW v_hex_economic AS
-SELECT
-    h.game_id,
-    h.h3_index,
-    h.center_lat,
-    h.center_lng,
-    h.county_fips,
-    h.county_name,
-    t.tick,
-    t.profit_rate,
-    t.exploitation_rate,
-    t.occ,
-    t.imperial_rent,
-    t.g33_visibility,
-    t.pop_total,
-    t.heat
-FROM hex_map h
-JOIN territory_snapshot t
-    ON h.game_id = t.game_id
-    AND h.county_fips = t.county_fips
+SELECT game_id, tick, h3_index, center_lat, center_lng,
+       county_fips, county_name,
+       profit_rate, exploitation_rate, occ, imperial_rent,
+       g33_visibility, pop_total, heat
+FROM hex_latest
 """
 
 V_HEX_MOBILIZE_DDL = """
 CREATE OR REPLACE VIEW v_hex_mobilize AS
-SELECT
-    h.game_id,
-    h.h3_index,
-    h.center_lat,
-    h.center_lng,
-    h.county_fips,
-    t.tick,
-    t.pop_proletariat + t.pop_lumpenproletariat AS mobilizable_pop,
-    t.pop_labor_aristocracy,
-    t.heat,
-    COALESCE(a.org_count, 0) AS org_presence,
-    COALESCE(a.heat_total, 0) AS hex_heat,
-    a.org_ids
-FROM hex_map h
-JOIN territory_snapshot t
-    ON h.game_id = t.game_id
-    AND h.county_fips = t.county_fips
-LEFT JOIN hex_activity a
-    ON h.game_id = a.game_id
-    AND h.h3_index = a.h3_index
-    AND t.tick = a.tick
+SELECT game_id, tick, h3_index, center_lat, center_lng,
+       county_fips,
+       pop_proletariat + pop_lumpenproletariat AS mobilizable_pop,
+       pop_labor_aristocracy, heat,
+       org_count AS org_presence, heat_delta AS hex_heat,
+       org_ids
+FROM hex_latest
 """
 
 V_HEX_AID_DDL = """
 CREATE OR REPLACE VIEW v_hex_aid AS
-SELECT
-    h.game_id,
-    h.h3_index,
-    h.center_lat,
-    h.center_lng,
-    h.county_fips,
-    t.tick,
-    t.pop_lumpenproletariat,
-    t.pop_proletariat,
-    t.imperial_rent,
-    t.g33_visibility,
-    t.attributes->'reproduction_deficit' AS reproduction_deficit
-FROM hex_map h
-JOIN territory_snapshot t
-    ON h.game_id = t.game_id
-    AND h.county_fips = t.county_fips
+SELECT game_id, tick, h3_index, center_lat, center_lng,
+       county_fips,
+       pop_lumpenproletariat, pop_proletariat,
+       imperial_rent, g33_visibility,
+       attributes->'reproduction_deficit' AS reproduction_deficit
+FROM hex_latest
 """
 
 V_HEX_HEAT_DDL = """
 CREATE OR REPLACE VIEW v_hex_heat AS
-SELECT
-    h.game_id,
-    h.h3_index,
-    h.center_lat,
-    h.center_lng,
-    a.tick,
-    a.heat_total,
-    a.heat_delta,
-    a.org_count,
-    a.was_target
-FROM hex_map h
-JOIN hex_activity a
-    ON h.game_id = a.game_id
-    AND h.h3_index = a.h3_index
-WHERE a.heat_total > 0
+SELECT game_id, tick, h3_index, center_lat, center_lng,
+       heat AS heat_total, heat_delta,
+       org_count, was_target
+FROM hex_latest
+WHERE heat > 0
 """
 
 V_HEX_INTEL_DDL = """
 CREATE OR REPLACE VIEW v_hex_intel AS
-SELECT
-    h.game_id,
-    h.h3_index,
-    h.center_lat,
-    h.center_lng,
-    h.county_fips,
-    h.county_name,
-    t.tick,
-    t.profit_rate,
-    t.exploitation_rate,
-    t.occ,
-    t.imperial_rent,
-    t.g33_visibility,
-    t.pop_bourgeoisie,
-    t.pop_petit_bourgeoisie,
-    t.pop_labor_aristocracy,
-    t.pop_proletariat,
-    t.pop_lumpenproletariat,
-    t.pop_total,
-    t.heat,
-    t.faction_finance_capital,
-    t.faction_security_state,
-    t.faction_settler_populist,
-    COALESCE(a.org_ids, '{}') AS org_ids,
-    COALESCE(a.org_count, 0) AS org_count,
-    COALESCE(a.heat_total, 0) AS hex_heat
-FROM hex_map h
-JOIN territory_snapshot t
-    ON h.game_id = t.game_id
-    AND h.county_fips = t.county_fips
-LEFT JOIN hex_activity a
-    ON h.game_id = a.game_id
-    AND h.h3_index = a.h3_index
-    AND t.tick = a.tick
+SELECT game_id, tick, h3_index, center_lat, center_lng,
+       county_fips, county_name,
+       profit_rate, exploitation_rate, occ, imperial_rent,
+       g33_visibility,
+       pop_bourgeoisie, pop_petit_bourgeoisie,
+       pop_labor_aristocracy, pop_proletariat,
+       pop_lumpenproletariat, pop_total,
+       heat,
+       faction_finance_capital, faction_security_state,
+       faction_settler_populist,
+       org_ids, org_count,
+       heat AS hex_heat
+FROM hex_latest
 """
 
 # ─── Spec 037 Indexes ──────────────────────────────────────────────
@@ -897,6 +933,12 @@ SPEC037_INDEXES_DDL: list[str] = [
         "CREATE INDEX IF NOT EXISTS ix_hex_activity_hot "
         "ON hex_activity (game_id, tick, heat_total) WHERE heat_total > 0"
     ),
+    # hex_latest (current-state cache — primary frontend read table)
+    "CREATE INDEX IF NOT EXISTS ix_hex_latest_county ON hex_latest (game_id, county_fips)",
+    ("CREATE INDEX IF NOT EXISTS ix_hex_latest_hot ON hex_latest (game_id, heat) WHERE heat > 0"),
+    # hex_substrate (R8 static terrain)
+    "CREATE INDEX IF NOT EXISTS ix_hex_substrate_r7 ON hex_substrate (game_id, r7_parent)",
+    ("CREATE INDEX IF NOT EXISTS ix_hex_substrate_county ON hex_substrate (game_id, county_fips)"),
     # tick_event
     "CREATE INDEX IF NOT EXISTS ix_event_tick ON tick_event (game_id, tick)",
     "CREATE INDEX IF NOT EXISTS ix_event_type ON tick_event (game_id, tick, event_type)",
@@ -943,7 +985,10 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     HEX_ACTIVITY_DDL,
     ECONOMIC_SUMMARY_DDL,
     TICK_EVENT_DDL,
-    # Layer 9: Spec 037 Composition Views
+    # Layer 8b: Multi-Resolution Hex Cache
+    HEX_LATEST_DDL,
+    HEX_SUBSTRATE_DDL,
+    # Layer 9: Spec 037 Composition Views (project from hex_latest)
     V_HEX_ECONOMIC_DDL,
     V_HEX_MOBILIZE_DDL,
     V_HEX_AID_DDL,

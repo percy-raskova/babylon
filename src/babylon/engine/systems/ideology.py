@@ -12,7 +12,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from babylon.formulas import calculate_ideological_routing
+from babylon.formulas.consciousness_routing import (
+    compute_agitation_delta,
+    route_agitation_to_ternary,
+)
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
@@ -167,15 +170,26 @@ class ConsciousnessSystem:
             # Get current ideological profile
             current_profile = _get_ideology_profile_from_node(attrs)
 
-            # Apply ideological routing formula (Sprint 3.4.3 + Periphery Dynamics)
-            new_class, new_nation, new_agitation = calculate_ideological_routing(
-                wage_change=wage_change,
-                wealth_change=wealth_change,  # Periphery Dynamics Extension
-                solidarity_pressure=solidarity_pressure,
-                current_class_consciousness=current_profile["class_consciousness"],
-                current_national_identity=current_profile["national_identity"],
-                current_agitation=current_profile["agitation"],
+            # Apply consciousness routing (Spec 043 - Value Transparency)
+            # Convert wage/wealth changes to agitation via tensor pipeline
+            agitation_increment = compute_agitation_delta(
+                exploitation_rate_delta=abs(wage_change) if wage_change < 0 else 0.0,
+                imperial_rent_delta=wealth_change,  # Wealth decline ~ rent decline
+                visibility_delta=0.0,  # g₃₃ changes handled in community system
             )
+            new_agitation = current_profile["agitation"] + agitation_increment
+
+            # Route agitation through solidarity → class/nation split
+            delta_r, delta_l, _delta_f = route_agitation_to_ternary(
+                agitation=new_agitation,
+                solidarity_factor=min(1.0, solidarity_pressure),
+                education_pressure=0.0,  # Education pressure handled in community system
+            )
+            new_class = min(1.0, current_profile["class_consciousness"] + delta_r)
+            new_nation = min(1.0, current_profile["national_identity"] + abs(delta_l))
+            # Decay agitation after routing
+            decay_rate = services.defines.consciousness.agitation_decay_rate
+            new_agitation = max(0.0, new_agitation * (1.0 - decay_rate))
 
             # Update the ideology in the graph as a dict (IdeologicalProfile format)
             graph.update_node(

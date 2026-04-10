@@ -47,6 +47,15 @@ from babylon.formulas.community import (
 # Re-export Consciousness Computation (Feature 034)
 from babylon.formulas.consciousness import compute_ternary_consciousness
 
+# Re-export Consciousness Routing (Spec 043 - Value Transparency)
+from babylon.formulas.consciousness_routing import (
+    compute_agitation_delta,
+    compute_exploitation_visibility,
+    compute_reification_buffer,
+    normalize_to_simplex,
+    route_agitation_to_ternary,
+)
+
 # Re-export Contradiction formula (Feature 002)
 from babylon.formulas.contradiction import calculate_contradiction_intensity
 
@@ -66,9 +75,6 @@ from babylon.formulas.fundamental_theorem import (
     calculate_labor_aristocracy_ratio,
     is_labor_aristocracy,
 )
-
-# Re-export Ideological Routing formula
-from babylon.formulas.ideological_routing import calculate_ideological_routing
 
 # Re-export D-P-D' Lifecycle Circuit formulas (Feature 030)
 from babylon.formulas.lifecycle import (
@@ -142,8 +148,12 @@ __all__ = [
     "prebisch_singer_effect",
     # Solidarity Transmission
     "calculate_solidarity_transmission",
-    # Ideological Routing
-    "calculate_ideological_routing",
+    # Consciousness Routing (Spec 043)
+    "compute_agitation_delta",
+    "compute_exploitation_visibility",
+    "compute_reification_buffer",
+    "route_agitation_to_ternary",
+    "normalize_to_simplex",
     # Dynamic Balance
     "BourgeoisieDecision",
     "calculate_bourgeoisie_decision",

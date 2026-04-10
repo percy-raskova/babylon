@@ -23,7 +23,7 @@ See Also:
         Stores the intermediate buffers on population nodes.
     :class:`babylon.models.entities.consciousness.TernaryConsciousness`:
         The canonical consciousness state on community hyperedges.
-    :mod:`babylon.formulas.ideological_routing`: Legacy module (to be deleted).
+    :mod:`babylon.config.defines`: Tuning coefficients (ConsciousnessDefines).
 """
 
 from __future__ import annotations

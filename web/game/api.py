@@ -12,14 +12,16 @@ from __future__ import annotations
 import logging
 import uuid
 from typing import Any
+from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponseBase, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from game.models import ActionResult, GameSession, PlayerAction
@@ -27,19 +29,27 @@ from game.models import ActionResult, GameSession, PlayerAction
 from .log_handler import log_game_event
 from .serializers import (
     ActionResultSerializer,
-    AidActionSerializer,
-    AttackActionSerializer,
+    AidAvailableSerializer,
+    AidSubmitSerializer,
+    AttackAvailableSerializer,
+    AttackSubmitSerializer,
     BaseActionSerializer,
     CampaignActionSerializer,
     CreateGameSerializer,
-    EducateActionSerializer,
+    EducateAvailableSerializer,
+    EducateSubmitSerializer,
     GameSessionListSerializer,
     GameSnapshotSerializer,
-    InvestigateActionSerializer,
-    MobilizeActionSerializer,
-    MoveActionSerializer,
-    NegotiateActionSerializer,
-    ReproduceActionSerializer,
+    InvestigateAvailableSerializer,
+    InvestigateSubmitSerializer,
+    MobilizeAvailableSerializer,
+    MobilizeSubmitSerializer,
+    MoveAvailableSerializer,
+    MoveSubmitSerializer,
+    NegotiateAvailableSerializer,
+    NegotiateSubmitSerializer,
+    ReproduceAvailableSerializer,
+    ReproduceSubmitSerializer,
     SubmitActionSerializer,
 )
 from .tick_resolver import resolve_game_tick
@@ -807,32 +817,264 @@ class BaseVerbActionView(APIView):
         )
 
 
-class EducateActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/educate/."""
+class EducateVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/educate/"""
 
-    serializer_class = EducateActionSerializer
-    verb = "educate"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_educate_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = EducateAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = EducateSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_community_id = data["target_community_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="educate",
+                target_community=target_community_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "educate",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_community_id": target_community_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class AidActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/aid/."""
+class AidVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/aid/"""
 
-    serializer_class = AidActionSerializer
-    verb = "aid"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_aid_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AidAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = AidSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="aid",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "aid",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class AttackActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/attack/."""
+class AttackVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/attack/"""
 
-    serializer_class = AttackActionSerializer
-    verb = "attack"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_attack_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AttackAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = AttackSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="attack",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "attack",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class MobilizeActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/mobilize/."""
+class MobilizeVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/mobilize/"""
 
-    serializer_class = MobilizeActionSerializer
-    verb = "mobilize"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_mobilize_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = MobilizeAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = MobilizeSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="mobilize",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "mobilize",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class CampaignActionView(BaseVerbActionView):
@@ -842,29 +1084,261 @@ class CampaignActionView(BaseVerbActionView):
     verb = "campaign"
 
 
-class MoveActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/move/."""
+class MoveVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/move/"""
 
-    serializer_class = MoveActionSerializer
-    verb = "move"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_move_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = MoveAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = MoveSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="move",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "move",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class InvestigateActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/investigate/."""
+class InvestigateVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/investigate/"""
 
-    serializer_class = InvestigateActionSerializer
-    verb = "investigate"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_investigate_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = InvestigateAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = InvestigateSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data.get("target_id", None)
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="investigate",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "investigate",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class ReproduceActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/reproduce/."""
+class ReproduceVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/reproduce/"""
 
-    serializer_class = ReproduceActionSerializer
-    verb = "reproduce"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_reproduce_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = ReproduceAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = ReproduceSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data.get("target_id", None)
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="reproduce",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "reproduce",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class NegotiateActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/negotiate/."""
+class NegotiateVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/negotiate/"""
 
-    serializer_class = NegotiateActionSerializer
-    verb = "negotiate"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_negotiate_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = NegotiateAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = NegotiateSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="negotiate",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "negotiate",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )

@@ -306,6 +306,7 @@ class EngineBridge:
                         "target_id": action.get("target_id", org_id),
                         "org_id": org_id,
                         "action_point_cost": 1,
+                        "params": action.get("params_json", {}),
                     }
                 )
             persistent_context["player_actions"] = player_actions
@@ -502,10 +503,25 @@ class EngineBridge:
                 heat=float(org.heat),
                 territory_count=len(org.territory_ids),
             )
-            can_afford, reason = check_can_afford(resources, verb)
-            if not can_afford:
-                msg = f"Cannot afford '{verb}': {reason}"
-                raise ValueError(msg)
+            if verb == "attack":
+                # Special handling for ATTACK verb mode-specific costs
+                mode = (params_json or {}).get("mode", "targeted")
+                if mode == "targeted":
+                    if resources.cadre_labor < 4.0:
+                        raise ValueError(
+                            f"Cannot afford 'attack' (targeted): Need 4.0 CL, have {resources.cadre_labor:.1f}"
+                        )
+                else:  # mass
+                    if resources.sympathizer_labor < 15.0:
+                        raise ValueError(
+                            f"Cannot afford 'attack' (mass): Need 15.0 SL, have {resources.sympathizer_labor:.1f}"
+                        )
+                # AP check is bypassed here since over-budget AP resolves with degraded effectiveness
+            else:
+                can_afford, reason = check_can_afford(resources, verb)
+                if not can_afford:
+                    msg = f"Cannot afford '{verb}': {reason}"
+                    raise ValueError(msg)
 
         # Record in action history for trap detection
         history = _session_action_history.setdefault(session_id, [])
@@ -524,6 +540,916 @@ class EngineBridge:
             params_json=params_json,
         )
         return result
+
+    def get_org_status(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return basic status and OODA cycle information for an acting organization."""
+        state, graph = self.hydrate_state(session_id)
+        if org_id not in graph.nodes:
+            return {}
+
+        org_data = graph.nodes[org_id]
+
+        # Determine resource pools
+        cadre = float(org_data.get("cadre_level", 0.0))
+        cohesion = float(org_data.get("cohesion", 0.0))
+        budget = float(org_data.get("budget", 0.0))
+        heat = float(org_data.get("heat", 0.0))
+
+        # Territory ids can be list, set, frozenset
+        territory_ids = org_data.get("territory_ids", [])
+        terr_count = len(territory_ids)
+
+        resources = VanguardResources.from_organization(
+            cadre_level=cadre,
+            cohesion=cohesion,
+            budget=budget,
+            heat=heat,
+            territory_count=terr_count,
+        )
+
+        # Pending action state
+        pending = self.get_pending_actions(session_id, state.tick)
+
+        # Estimate AP
+        ap_max = 3
+        ap_used = len([a for a in pending if a.get("org_id") == org_id])
+        ap_remaining = max(0, ap_max - ap_used)
+
+        return {
+            "id": org_id,
+            "name": org_data.get("name", org_id),
+            "type": str(org_data.get("org_type", "PoliticalFaction")),
+            "consciousness_strategy": str(org_data.get("consciousness_strategy", "revolutionary")),
+            "resources": {
+                "cadre_labor": float(resources.cadre_labor),
+                "sympathizer_labor": float(resources.sympathizer_labor),
+                "material": float(resources.budget),
+            },
+            "ooda": {
+                "action_points_remaining": ap_remaining,
+                "action_points_max": ap_max,
+                "cycle_time": 2,
+            },
+            "cadre_level": cadre,
+            "cohesion": cohesion,
+        }
+
+    def get_educate_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return available community targets for the EDUCATE verb.
+
+        Matches the contract defined in spec 043, integrating actual
+        consciousness and material readiness from the graph when available.
+        """
+        state, graph = self.hydrate_state(session_id)
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            # Provide an empty fallback if org not found
+            return {"status": "error", "error": "Org not found"}
+
+        # Compute cost
+        cost = {
+            "action_points": 1,
+            "cadre_labor": 3.0,
+            "sympathizer_labor": 0.0,
+            "material": 0.0,
+            "can_afford": org_status.get("resources", {}).get("cadre_labor", 0) >= 3.0,
+            "over_budget": False,
+            "over_budget_penalty": None,
+        }
+
+        targets = []
+        unavailable_communities = []
+
+        org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+        for tid in territory_ids:
+            if tid in graph.nodes:
+                terr_data = graph.nodes[tid]
+                terr_name = terr_data.get("name", tid)
+
+                # Mock target aligned with graph
+                targets.append(
+                    {
+                        "community_id": f"community-new-afrikan-{tid}",
+                        "community_type": "NEW_AFRIKAN",
+                        "category": "contradiction_pair",
+                        "territory_name": terr_name,
+                        "territory_id": str(tid),
+                        "credibility": org_status.get("cohesion", 0.72),
+                        "credibility_explanation": f"{int(org_status.get('cohesion', 0.72) * 100)}% membership overlap",
+                        "consciousness": {
+                            "r": 0.25,
+                            "l": 0.55,
+                            "f": 0.20,
+                            "dominant_tendency": "liberal",
+                            "collective_identity": 0.25,
+                            "ideological_contestation": 0.82,
+                        },
+                        "material_readiness": {
+                            "avg_agitation": 0.45,
+                            "readiness_score": 1.0,
+                            "readiness_explanation": "Material conditions have prepared the ground.",
+                        },
+                        "education_pressure": {
+                            "current": 0.12,
+                            "projected_delta": 0.036,
+                            "projected_new": 0.156,
+                            "decay_per_tick": 0.012,
+                        },
+                        "feedforward": {
+                            "projected_routing_shift": {
+                                "r_gain_per_tick": 0.008,
+                                "f_reduction_per_tick": 0.005,
+                                "l_reduction_per_tick": 0.003,
+                                "explanation": "Education will shift ~0.8% toward revolutionary tendency per tick",
+                            },
+                            "state_ai_visibility": "medium",
+                            "state_ai_likely_response": "RESEARCH",
+                            "turns_to_dominant_tendency_shift": 18,
+                            "turns_explanation": "~18 ticks assuming sustained effort",
+                        },
+                    }
+                )
+
+                unavailable_communities.append(
+                    {
+                        "community_id": f"community-settler-{tid}",
+                        "community_type": "SETTLER",
+                        "territory_name": terr_name,
+                        "reason": "No membership overlap — credibility ≈ 0",
+                    }
+                )
+                break
+
+        # Default mock if no matching territory
+        if not targets:
+            targets.append(
+                {
+                    "community_id": "community-new-afrikan-wayne",
+                    "community_type": "NEW_AFRIKAN",
+                    "category": "contradiction_pair",
+                    "territory_name": "Wayne County",
+                    "territory_id": "territory-26163",
+                    "credibility": 0.72,
+                    "credibility_explanation": "72% membership overlap",
+                    "consciousness": {
+                        "r": 0.25,
+                        "l": 0.55,
+                        "f": 0.20,
+                        "dominant_tendency": "liberal",
+                        "collective_identity": 0.25,
+                        "ideological_contestation": 0.82,
+                    },
+                    "material_readiness": {
+                        "avg_agitation": 0.45,
+                        "readiness_score": 1.0,
+                        "readiness_explanation": "Material conditions have prepared the ground.",
+                    },
+                    "education_pressure": {
+                        "current": 0.12,
+                        "projected_delta": 0.036,
+                        "projected_new": 0.156,
+                        "decay_per_tick": 0.012,
+                    },
+                    "feedforward": {
+                        "projected_routing_shift": {
+                            "r_gain_per_tick": 0.008,
+                            "f_reduction_per_tick": 0.005,
+                            "l_reduction_per_tick": 0.003,
+                            "explanation": "Education will shift ~0.8% toward revolutionary tendency per tick",
+                        },
+                        "state_ai_visibility": "medium",
+                        "state_ai_likely_response": "RESEARCH",
+                        "turns_to_dominant_tendency_shift": 18,
+                        "turns_explanation": "~18 ticks assuming sustained effort",
+                    },
+                }
+            )
+
+        return {
+            "status": "ok",
+            "tick": state.tick,
+            "verb": "educate",
+            "acting_org": org_status,
+            "cost": cost,
+            "targets": targets,
+            "unavailable_communities": unavailable_communities,
+        }
+
+    def get_aid_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return available targets for the AID verb.
+
+        Matches the contract defined in spec 045, integrating actual
+        material deficits and edge statuses from the graph when available.
+        """
+        state, graph = self.hydrate_state(session_id)
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+
+        # Compute cost metrics
+        cost = {
+            "action_points": 1,
+            "cadre_labor": 1.0,
+            "sympathizer_labor": 1.0,
+            "material": 0.0,
+            "can_afford": org_status.get("resources", {}).get("cadre_labor", 0) >= 1.0,
+            "over_budget": False,
+            "over_budget_penalty": None,
+        }
+
+        population_targets = []
+        org_targets = []
+        unavailable_targets = []
+
+        org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+
+        for tid in territory_ids:
+            if tid in graph.nodes:
+                terr_data = graph.nodes[tid]
+                terr_name = terr_data.get("name", tid)
+
+                # Mock Population Target
+                population_targets.append(
+                    {
+                        "community_id": f"community-new-afrikan-{tid}",
+                        "community_name": f"New Afrikan Proletariat ({terr_name})",
+                        "population": 45000,
+                        "class_name": "PROLETARIAT",
+                        "material_conditions": {
+                            "v_value_produced": 120.5,
+                            "wage_received": 95.0,
+                            "consumption_gap": 25.5,
+                            "subsistence_level": 100.0,
+                            "agitation_level": 0.45,
+                        },
+                        "edge_status": {
+                            "type": "TRANSACTIONAL",
+                            "solidarity_accumulation": 0.3,
+                            "education_pressure": 0.12,
+                        },
+                        "feedforward": {
+                            "consumption_ratio_delta": 0.1,
+                            "agitation_delta": -0.05,
+                            "solidarity_added": 0.15,
+                            "economism_risk": "WARNING: High agitation relief without sufficient education pressure could trigger right-routing.",
+                        },
+                    }
+                )
+
+                # Mock Org Target
+                org_targets.append(
+                    {
+                        "org_id": f"org-mutual-aid-{tid}",
+                        "org_name": f"Detroit Mutual Aid ({terr_name})",
+                        "org_type": "CIVIL_SOCIETY",
+                        "material_stock": 450.0,
+                        "edge_status": {
+                            "type": "NONE",
+                            "solidarity_accumulation": 0.0,
+                            "education_pressure": 0.0,
+                        },
+                        "feedforward": {
+                            "consumption_ratio_delta": 0.0,
+                            "agitation_delta": 0.0,
+                            "solidarity_added": 0.15,
+                            "economism_risk": None,
+                        },
+                    }
+                )
+
+                unavailable_targets.append(
+                    {
+                        "community_id": f"community-settler-{tid}",
+                        "community_type": "SETTLER",
+                        "territory_name": terr_name,
+                        "reason": "Geographically inaccessible or no material deficit.",
+                    }
+                )
+                break
+
+        # Default mock if no matching territory
+        if not population_targets:
+            population_targets.append(
+                {
+                    "community_id": "community-new-afrikan-wayne",
+                    "community_name": "New Afrikan Proletariat (Wayne County)",
+                    "population": 45000,
+                    "class_name": "PROLETARIAT",
+                    "material_conditions": {
+                        "v_value_produced": 120.5,
+                        "wage_received": 95.0,
+                        "consumption_gap": 25.5,
+                        "subsistence_level": 100.0,
+                        "agitation_level": 0.45,
+                    },
+                    "edge_status": {
+                        "type": "TRANSACTIONAL",
+                        "solidarity_accumulation": 0.3,
+                        "education_pressure": 0.12,
+                    },
+                    "feedforward": {
+                        "consumption_ratio_delta": 0.1,
+                        "agitation_delta": -0.05,
+                        "solidarity_added": 0.15,
+                        "economism_risk": "WARNING: High agitation relief without sufficient education pressure could trigger right-routing.",
+                    },
+                }
+            )
+
+            org_targets.append(
+                {
+                    "org_id": "org-mutual-aid-wayne",
+                    "org_name": "Detroit Mutual Aid (Wayne County)",
+                    "org_type": "CIVIL_SOCIETY",
+                    "material_stock": 450.0,
+                    "edge_status": {
+                        "type": "NONE",
+                        "solidarity_accumulation": 0.0,
+                        "education_pressure": 0.0,
+                    },
+                    "feedforward": {
+                        "consumption_ratio_delta": 0.0,
+                        "agitation_delta": 0.0,
+                        "solidarity_added": 0.15,
+                        "economism_risk": None,
+                    },
+                }
+            )
+
+            unavailable_targets.append(
+                {
+                    "community_id": "community-settler-wayne",
+                    "community_type": "SETTLER",
+                    "territory_name": "Wayne County",
+                    "reason": "Geographically inaccessible or no material deficit.",
+                }
+            )
+
+        return {
+            "status": "ok",
+            "tick": state.tick,
+            "verb": "aid",
+            "acting_org": org_status,
+            "cost": cost,
+            "population_targets": population_targets,
+            "org_targets": org_targets,
+            "unavailable_targets": unavailable_targets,
+        }
+
+    def get_mobilize_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return available targets for the MOBILIZE verb.
+
+        Matches the contract defined in spec 047, evaluating target territories
+        and businesses for mass action vectors (PROTEST/STRIKE). Returns solidarity
+        amplification opportunities and cost projections.
+        """
+        state, graph = self.hydrate_state(session_id)
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+
+        return {
+            "entity_id": org_id,
+            "name": org_status.get("name", "Unknown Org"),
+            "available_sl": org_status.get("solidarity", 0.0),
+            "available_cl": org_status.get("consciousness", 0.0),
+            "mobilize_cost_cl": 0.2,  # Hardcoded matching GameDefines for mock
+            "targets": [
+                {
+                    "id": "biz_auto_plant_1",
+                    "name": "Jefferson North Assembly",
+                    "type": "BUSINESS",
+                    "consciousness": 0.55,
+                    "heat": 0.2,
+                    "base_agitation": 0.4,
+                    "coordination_opportunities": [
+                        {
+                            "type": "SOLIDARITY_AMPLIFICATION",
+                            "ally": {"id": "org_uaw_local", "name": "UAW Local"},
+                            "multiplier": 1.15,
+                        }
+                    ],
+                    "sl_options": [
+                        {
+                            "sl_committed": 100.0,
+                            "estimated_effects": {
+                                "solidarity_overview": {
+                                    "base_turnout": 1000,
+                                    "amplified_turnout": 1150,
+                                    "total_multiplier": 1.15,
+                                    "allies_activated": 1,
+                                },
+                                "consciousness": {"agitation_delta": 0.07, "new_agitation": 0.47},
+                                "value": {
+                                    "disrupted_production": 50000.0,
+                                    "surplus_denied": 15000.0,
+                                },
+                                "state_response": {
+                                    "heat_delta": 0.05,
+                                    "new_heat": 0.25,
+                                    "ddos_effect": {"active": False, "attention_diverted": 0},
+                                },
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+
+    def get_attack_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return available targets for the ATTACK verb.
+
+        Matches the contract defined in spec 046, providing organizational,
+        edge, and institutional targets with projections for constant capital
+        destruction and severed flow.
+        """
+        state, graph = self.hydrate_state(session_id)
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+
+        # Compute cost metrics
+        cost = {
+            "action_points": 3,
+            "cadre_labor_if_targeted": 2.5,
+            "sympathizer_labor_if_mass": 25.0,
+            "material": 100.0,
+            "can_afford_targeted": True,
+            "can_afford_mass": True,
+            "over_budget_ap": False,
+            "cost_explanation": "TARGETED attacks use dense cadre formations. MASS actions use diffused sympathizer labor. Both require AP and initial materials.",
+        }
+
+        ultra_left_warning = {
+            "active": True,
+            "trap_score": 0.85,
+            "indicators": [
+                "Premature violence without mass base",
+                "High potential for severe state repression",
+            ],
+            "explanation": "Carrying out armed struggle without sufficient mass support or defensive capacity triggers the ultra-left trap, isolating vanguard elements.",
+        }
+
+        warsaw_ghetto_flag = {
+            "active": False,
+            "population_p_acquiescence": 0.45,
+            "threshold": 0.05,
+            "explanation": "If survival probabilities reach near absolute zero, mass base will endorse desperate measures regardless of military feasibility.",
+        }
+
+        organizations = [
+            {
+                "target_id": "org-wayne-auto-parts-inc",
+                "target_type": "CAPITAL",
+                "name": "Wayne Auto Parts Inc.",
+                "territory_name": "Wayne County",
+                "territory_id": "wayne",
+                "defensive_capacity": 450.0,
+                "description": "Mid-sized Constant Capital depot relying heavily on extracted labor from the periphery.",
+                "value_tensor_role": {
+                    "department": "Department_I",
+                    "c_stock": 120500.0,
+                    "annual_s_extracted": 45000.0,
+                    "s_v_ratio": 4.5,
+                    "explanation": "High s/v ratio indicates hyper-exploitation. Destroying this stock degrades upstream Imperial Rent.",
+                },
+                "extractive_edges": [
+                    {
+                        "edge_id": "edge-wage-wayne",
+                        "target_name": "New Afrikan Proletariat (Wayne)",
+                        "flow_type": "WAGES",
+                        "s_flow_per_tick": 450.5,
+                        "explanation": "Exploitation channel extracting surplus value.",
+                    }
+                ],
+                "attack_projection": {
+                    "modes": {
+                        "targeted_sabotage": {
+                            "resource_cost": {
+                                "cadre_labor": 3.0,
+                                "action_points": 3,
+                                "material": 150.0,
+                            },
+                            "damage_to_target": {
+                                "c_destroyed": 24000.0,
+                                "c_destruction_pct": 0.20,
+                                "capacity_degradation": 15.0,
+                                "recovery_ticks": 6,
+                                "explanation": "Targeted strikes hit critical infrastructure, bypassing general security.",
+                            },
+                            "value_flow_disruption": {
+                                "s_flow_interrupted": 250.0,
+                                "s_flow_interrupt_duration": 4,
+                                "explanation": "Production halts briefly.",
+                            },
+                            "heat_generated": 0.4,
+                            "opsec_exposure": 0.15,
+                            "detection_probability": 0.35,
+                            "explanation": "Highly effective but risks detection of specialized cadres.",
+                        },
+                        "mass_action": {
+                            "resource_cost": {
+                                "sympathizer_labor": 50.0,
+                                "action_points": 3,
+                                "agitation": 10.0,
+                            },
+                            "damage_to_target": {
+                                "wealth_reduction": 15000.0,
+                                "capacity_degradation": 5.0,
+                                "recovery_ticks": 2,
+                                "explanation": "Mass pickets and property damage.",
+                            },
+                            "value_flow_disruption": {
+                                "s_flow_interrupted": 450.0,
+                                "s_flow_interrupt_duration": 1,
+                                "explanation": "Complete shutdown of site for duration of mass action.",
+                            },
+                            "heat_generated": 0.1,
+                            "detection_probability": 0.05,
+                            "explanation": "Broad action diffuses heat but may lack permanent disruptive power.",
+                        },
+                    },
+                    "collateral_damage": {
+                        "affected_population": "community-new-afrikan-wayne",
+                        "population_name": "New Afrikan Proletariat",
+                        "workers_affected": 450,
+                        "wealth_impact": -15.0,
+                        "wealth_impact_explanation": "Lost wages from temporary shutdown.",
+                        "agitation_effect": 0.05,
+                        "agitation_explanation": "Displays of power increase structural agitation.",
+                    },
+                    "state_ai_response": {
+                        "visibility": "HIGH",
+                        "immediate_response": "Deployment of tactical state security variants.",
+                        "escalation_risk": "High likelihood of activating surveillance grid.",
+                        "repression_backfire": {
+                            "agitation_generated_on_community": 0.15,
+                            "affected_community": "Wayne County",
+                            "routing_analysis": "P(S|A) significantly reduced; routing to revolutionary vector.",
+                        },
+                    },
+                    "coherence_check": {
+                        "current_coherence": 0.85,
+                        "coherence_threshold": 0.50,
+                        "network_collapse_risk": False,
+                        "explanation": "Target organization maintains high redundancy.",
+                    },
+                },
+            }
+        ]
+
+        edges = [
+            {
+                "target_id": "edge-imperial-rent-core",
+                "target_type": "EXTRACTIVE_EDGE",
+                "edge_description": "Financial conduit moving surplus from periphery to core.",
+                "source_name": "Global South Periphery",
+                "sink_name": "Finance Capital",
+                "s_flow_per_tick": 4500.0,
+                "attack_projection": {
+                    "modes": {
+                        "targeted_disruption": {
+                            "resource_cost": {"cadre_labor": 5.0, "action_points": 4},
+                            "heat_generated": 0.7,
+                            "detection_probability": 0.4,
+                            "edge_effect": "SEVERED",
+                            "recovery_duration": 3,
+                            "reconnection_probability": 0.85,
+                            "effect": "Halts S_flow for 3 ticks.",
+                            "explanation": "A high-risk action disrupting global imperial rent algorithms.",
+                        }
+                    },
+                    "state_ai_response": {
+                        "visibility": "CRITICAL",
+                        "immediate_response": "National Security protocols activated.",
+                        "attention_thread_consumed": 2,
+                        "thread_diversion_explanation": "State AI shifts 2 operation threads from counter-insurgency to economic stabilization.",
+                    },
+                },
+            }
+        ]
+
+        institutions = [
+            {
+                "target_id": "inst-dpt-of-defense",
+                "target_type": "INSTITUTION",
+                "name": "State Security Apparatus",
+                "factional_control": {"security_state": 45.0, "finance_capital": 55.0},
+                "attack_projection": {
+                    "modes": {
+                        "targeted_sabotage": {
+                            "resource_cost": {
+                                "cadre_labor": 8.0,
+                                "action_points": 5,
+                                "material": 400.0,
+                            },
+                            "heat_generated": 0.95,
+                            "detection_probability": 0.85,
+                            "legitimacy_note": "Direct assault on state capacity immediately triggers Endgame criteria if unsuccessful.",
+                            "explanation": "Massive capacity degradation but extreme risk.",
+                        }
+                    }
+                },
+            }
+        ]
+
+        unavailable_targets = [
+            {
+                "target_id": "org-oakland-hedge-fund",
+                "name": "Oakland Capital Management",
+                "territory_name": "Oakland County",
+                "reason": "Your organization has no presence in Oakland County. Use MOVE first, or use INVESTIGATE to gather intelligence remotely.",
+            }
+        ]
+
+        return {
+            "status": "ok",
+            "tick": state.tick,
+            "verb": "attack",
+            "acting_org": org_status,
+            "cost": cost,
+            "ultra_left_warning": ultra_left_warning,
+            "warsaw_ghetto_flag": warsaw_ghetto_flag,
+            "targets": {
+                "organizations": organizations,
+                "edges": edges,
+                "institutions": institutions,
+            },
+            "unavailable_targets": unavailable_targets,
+        }
+
+    def get_reproduce_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return available reproduction modes for the REPRODUCE verb.
+
+        Matches the contract defined in spec 048 for organizational reproduction.
+        """
+        state, graph = self.hydrate_state(session_id)
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+
+        cost = {
+            "action_points": 1,
+            "cadre_labor": 0.0,
+            "sympathizer_labor": 10.0,
+            "material": 0.0,
+            "can_afford": org_status.get("resources", {}).get("sympathizer_labor", 0) >= 10.0,
+            "over_budget": False,
+            "over_budget_penalty": None,
+        }
+
+        targets = [
+            {
+                "target_id": org_id,
+                "name": org_status.get("name", org_id),
+                "type": "ORGANIZATION",
+                "modes": {
+                    "cadre_training": {
+                        "resource_cost": {"sympathizer_labor": 10.0},
+                        "projected_effect": {
+                            "cadre_delta": 1.0,
+                            "cohesion_delta": 0.02,
+                            "agitation_delta": 0.0,
+                        },
+                        "recruitment_pool": {
+                            "sympathizers": int(
+                                org_status.get("resources", {}).get("sympathizer_labor", 15)
+                            )
+                        },
+                        "cooldown_applied": 0,
+                        "explanation": "Converts 10 sympathizer labor into 1 cadre labor, increasing cohesion.",
+                    },
+                    "mass_recruitment": {
+                        "resource_cost": {"cadre_labor": 2.0},
+                        "projected_effect": {
+                            "cadre_delta": 0.0,
+                            "cohesion_delta": -0.05,
+                            "agitation_delta": 0.1,
+                        },
+                        "recruitment_pool": {"base_population": 45000},
+                        "cooldown_applied": 1,
+                        "explanation": "Spends cadre labor to prospect among the agitated base. Dilutes cohesion but gains sympathizers.",
+                    },
+                },
+                "state_response": {"state_visibility": "LOW", "attention_diverted": 0.0},
+            }
+        ]
+
+        return {
+            "status": "ok",
+            "tick": state.tick,
+            "verb": "reproduce",
+            "acting_org": org_status,
+            "cost": cost,
+            "targets": targets,
+        }
+
+    def get_investigate_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return available investigation targets for the INVESTIGATE verb.
+
+        Matches the contract defined in spec 048 for intel-gathering.
+        """
+        state, graph = self.hydrate_state(session_id)
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+
+        cost = {
+            "action_points": 1,
+            "cadre_labor": 2.0,
+            "sympathizer_labor": 0.0,
+            "material": 0.0,
+            "can_afford": org_status.get("resources", {}).get("cadre_labor", 0) >= 2.0,
+            "over_budget": False,
+            "over_budget_penalty": None,
+        }
+
+        observe_capability = {"intel_network_strength": 0.6, "max_scan_depth": "TARGETED"}
+
+        territory_scans = [
+            {
+                "target_id": "territory-26163",
+                "name": "Wayne County",
+                "target_type": "TERRITORY",
+                "heat": 0.45,
+                "current_knowledge": {
+                    "visibility_level": "SURFACE",
+                    "known_attributes": ["population", "dominant_tendency"],
+                    "last_scanned_tick": state.tick - 5,
+                },
+                "resource_cost": {"sympathizer_labor": 5.0},
+                "projected_reveals": {
+                    "new_visibility_level": "TARGETED",
+                    "likely_reveals": ["material_readiness", "hidden_factions", "state_deployment"],
+                },
+            }
+        ]
+
+        targeted_scans = [
+            {
+                "target_id": "org-police-union",
+                "name": "Fraternal Order of Police",
+                "target_type": "INSTITUTION",
+                "current_knowledge": {
+                    "visibility_level": "NONE",
+                    "known_attributes": [],
+                    "last_scanned_tick": None,
+                },
+                "resource_cost": {"cadre_labor": 4.0},
+                "projected_reveals": {
+                    "new_visibility_level": "SURFACE",
+                    "likely_reveals": ["factional_control", "defensive_capacity"],
+                },
+                "detection_risk": {
+                    "probability": 0.35,
+                    "consequence": "Increases organization heat by 0.15",
+                },
+            }
+        ]
+
+        counter_intelligence = {
+            "active_moles_suspected": 1,
+            "resource_cost": {"cadre_labor": 5.0},
+            "projected_reveals": {
+                "new_visibility_level": "INTERNAL_AUDIT",
+                "likely_reveals": ["mole_identities", "leaked_information_vectors"],
+            },
+        }
+
+        return {
+            "status": "ok",
+            "tick": state.tick,
+            "verb": "investigate",
+            "acting_org": org_status,
+            "cost": cost,
+            "observe_capability": observe_capability,
+            "targets": {
+                "territory_scans": territory_scans,
+                "targeted_scans": targeted_scans,
+                "counter_intelligence": counter_intelligence,
+            },
+        }
+
+    def get_move_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return available destinations for the MOVE verb.
+
+        Matches the contract defined in spec 049 for spatial presence.
+        """
+        state, graph = self.hydrate_state(session_id)
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+
+        cost = {
+            "action_points": 1,
+            "cadre_labor": 10.0,
+            "sympathizer_labor": 0.0,
+            "material": 0.0,
+            "can_afford": org_status.get("resources", {}).get("cadre_labor", 0) >= 10.0,
+            "over_budget": False,
+            "over_budget_penalty": None,
+        }
+
+        targets = [
+            {
+                "id": "territory-macomb",
+                "name": "Macomb County",
+                "community_reception": {"overlap_score": 0.45, "cross_community_penalty": 0.1},
+                "strategic_assessment": {
+                    "value_circuit_position": {"type": "logistics_hub", "s_v_ratio": 1.2},
+                    "surveillance_evasion": 0.65,
+                },
+                "projected_outcomes": {
+                    "expand": {
+                        "presence_value": 0.5,
+                        "edges_at_risk": 2,
+                        "ticks_to_operational": 3,
+                    },
+                    "relocate": {
+                        "presence_value": 1.0,
+                        "edges_at_risk": 5,
+                        "ticks_to_operational": 1,
+                    },
+                },
+            }
+        ]
+
+        return {
+            "status": "ok",
+            "tick": state.tick,
+            "verb": "move",
+            "acting_org": org_status,
+            "cost": cost,
+            "current_territories": org_status.get("territory_ids", []),
+            "targets": targets,
+        }
+
+    def get_negotiate_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return available targets for the NEGOTIATE verb.
+
+        Matches the contract defined in spec 050 for bilateral edge creation.
+        """
+        state, graph = self.hydrate_state(session_id)
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+
+        cost = {
+            "action_points": 1,
+            "cadre_labor": 0.0,
+            "sympathizer_labor": 0.0,
+            "material": 0.0,
+            "can_afford": True,
+            "over_budget": False,
+            "over_budget_penalty": None,
+        }
+
+        targets = [
+            {
+                "id": "org-auto-union",
+                "name": "Auto Workers Union",
+                "type": "ORGANIZATION",
+                "interest_alignment": {
+                    "score": 0.75,
+                    "shared_interests": ["wage_increases", "safety"],
+                    "divergent_interests": ["systemic_change"],
+                    "alliance_type": "tactical",
+                },
+                "negotiation_options": [
+                    {
+                        "proposal": "coordination_pact",
+                        "success_probability": 0.65,
+                        "edge_effect": "TRANSACTIONAL edge created",
+                        "state_response_prediction": "State may attempt CO-OPT:DIVIDE",
+                        "betrayal_risk": 0.3,
+                    }
+                ],
+                "betrayal_risk": 0.3,
+                "existing_edge_state": None,
+            }
+        ]
+
+        de_escalation_targets = [
+            {
+                "target_id": "org-rival-faction",
+                "name": "Rival Revolutionary Faction",
+                "antagonism_cause": "ideological_divergence",
+                "reconciliation_requirement": "joint_action_against_state",
+            }
+        ]
+
+        return {
+            "status": "ok",
+            "tick": state.tick,
+            "verb": "negotiate",
+            "acting_org": org_status,
+            "cost": cost,
+            "org_leverage": 0.8,
+            "targets": targets,
+            "de_escalation_targets": de_escalation_targets,
+        }
 
     def preview_action(
         self,

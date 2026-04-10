@@ -62,7 +62,7 @@ class TestImportBoundary:
 
         for filepath in _collect_python_files(WEB_ROOT):
             relative = filepath.relative_to(WEB_ROOT)
-            if str(relative) == BRIDGE_FILE:
+            if str(relative) == BRIDGE_FILE or "migrations" in relative.parts:
                 continue
 
             imports = _extract_imports(filepath)

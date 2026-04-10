@@ -516,6 +516,68 @@ class ConsciousnessDefines(BaseModel):
         description="= decay_lambda: agitation entropy on same 7-week half-life (FM 3-24).",
     )
 
+    # ----- Spec 043: Consciousness Value Integration -----
+
+    exploitation_sensitivity: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description="Δ(s/v) → agitation conversion. How strongly exploitation rate changes generate crisis energy.",
+    )
+    rent_decline_sensitivity: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Δ(Φ) → agitation conversion. How strongly imperial rent decline generates crisis in core.",
+    )
+    reproduction_visibility_coefficient: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Δ(g₃₃) → agitation. How strongly changes in reproductive labor visibility generate crisis.",
+    )
+    repression_backfire: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Agitation generated from state REPRESS/EXCESSIVE_FORCE events (backfire effect).",
+    )
+    rent_opacity_factor: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="How much imperial rent (Φ) dampens exploitation visibility. Higher = more obscured.",
+    )
+    agitation_consumption_rate: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of agitation consumed per tick by ternary routing.",
+    )
+    liberal_drift_rate: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description="Per-tick drift toward liberal (l) tendency under stable material conditions.",
+    )
+    educate_base_effect: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Base education_pressure increase per EDUCATE verb invocation.",
+    )
+    agitation_education_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Agitation level at which EDUCATE reaches full effectiveness (practice-first gate).",
+    )
+    education_pressure_decay: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Per-tick exponential decay of education_pressure on community hyperedges.",
+    )
+
 
 class TerritoryDefines(BaseModel):
     """Territory dynamics coefficients."""

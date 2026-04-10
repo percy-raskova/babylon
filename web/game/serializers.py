@@ -36,6 +36,104 @@ class SubmitActionSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 # ---------------------------------------------------------------------- #
+# Per-verb action serializers (Spec 040)
+# ---------------------------------------------------------------------- #
+
+
+class BaseActionSerializer(serializers.Serializer[dict[str, Any]]):
+    """Common fields shared by all per-verb action endpoints.
+
+    All nine verb endpoints accept ``org_id`` (acting organization)
+    and ``target_id`` (target node, edge, or community).
+    """
+
+    org_id = serializers.CharField(max_length=64)
+    target_id = serializers.CharField(max_length=64)
+
+
+class EducateActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/educate/ request body.
+
+    Requires ``consciousness_strategy`` from the spec 037 sub-verb taxonomy.
+    """
+
+    consciousness_strategy = serializers.ChoiceField(
+        choices=["REVOLUTIONARY", "LIBERAL", "FASCIST"],
+    )
+
+
+class AidActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/aid/ request body.
+
+    Requires ``resource_type`` and ``amount``. The ``amount`` field is
+    bounded by the org's available material resources (validated at
+    serializer level, not deferred to the engine).
+    """
+
+    resource_type = serializers.ChoiceField(
+        choices=["MATERIAL", "MEDICAL", "LEGAL", "INFRASTRUCTURE"],
+    )
+    amount = serializers.FloatField()
+
+
+class AttackActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/attack/ request body."""
+
+    mode = serializers.ChoiceField(
+        choices=["SABOTAGE", "DIRECT", "EXPROPRIATION"],
+    )
+
+
+class MobilizeActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/mobilize/ request body."""
+
+    action_type = serializers.ChoiceField(
+        choices=["PROTEST", "STRIKE", "BLOCKADE", "MUTUAL_AID_DRIVE"],
+    )
+
+
+class CampaignActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/campaign/ request body."""
+
+    campaign_type = serializers.ChoiceField(
+        choices=["ELECTORAL", "LEGISLATIVE", "PUBLIC_PRESSURE"],
+    )
+
+
+class MoveActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/move/ request body.
+
+    No additional parameters — ``target_id`` IS the destination hex.
+    """
+
+    pass
+
+
+class InvestigateActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/investigate/ request body."""
+
+    depth = serializers.ChoiceField(
+        choices=["SURFACE", "TARGETED", "DEEP"],
+    )
+
+
+class ReproduceActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/reproduce/ request body."""
+
+    method = serializers.ChoiceField(
+        choices=["CADRE", "MASS"],
+    )
+
+
+class NegotiateActionSerializer(BaseActionSerializer):
+    """Validate POST /api/games/{id}/actions/negotiate/ request body."""
+
+    offer_type = serializers.ChoiceField(
+        choices=["ALLIANCE", "CEASEFIRE", "RESOURCE_EXCHANGE", "MERGER"],
+    )
+
+
+# ---------------------------------------------------------------------- #
 # Response serializers (output formatting)
 # ---------------------------------------------------------------------- #
 

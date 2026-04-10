@@ -18,15 +18,26 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
+from rest_framework.views import APIView
 
 from game.models import ActionResult, GameSession, PlayerAction
 
 from .log_handler import log_game_event
 from .serializers import (
     ActionResultSerializer,
+    AidActionSerializer,
+    AttackActionSerializer,
+    BaseActionSerializer,
+    CampaignActionSerializer,
     CreateGameSerializer,
+    EducateActionSerializer,
     GameSessionListSerializer,
     GameSnapshotSerializer,
+    InvestigateActionSerializer,
+    MobilizeActionSerializer,
+    MoveActionSerializer,
+    NegotiateActionSerializer,
+    ReproduceActionSerializer,
     SubmitActionSerializer,
 )
 from .tick_resolver import resolve_game_tick
@@ -97,6 +108,18 @@ def _error(message: str, http_status: int = 400) -> JsonResponse:
     """Return an error response envelope."""
     return JsonResponse(
         {"status": "error", "message": message},
+        status=http_status,
+    )
+
+
+def _error_with_code(
+    message: str,
+    code: str,
+    http_status: int = 400,
+) -> JsonResponse:
+    """Return an error response with a machine-readable error code (Spec 040 §5.1)."""
+    return JsonResponse(
+        {"status": "error", "error": message, "code": code},
         status=http_status,
     )
 
@@ -551,3 +574,186 @@ def _get_session_or_none(game_id: str, user_id: int | None) -> GameSession | Non
         return session
     except GameSession.DoesNotExist:
         return None
+
+
+# ---------------------------------------------------------------------- #
+# Per-verb action endpoints (Spec 040)
+# ---------------------------------------------------------------------- #
+
+# Common base fields that all verb serializers share — everything
+# else in validated_data is a verb-specific parameter.
+_COMMON_FIELDS = frozenset({"org_id", "target_id"})
+
+
+class BaseVerbActionView(APIView):
+    """Base for all per-verb action endpoints (Spec 040 §6.3).
+
+    Subclasses set ``serializer_class`` and ``verb``. The base handles:
+    - Authentication (``IsAuthenticated``)
+    - Game session lookup and active-status check
+    - Serializer validation
+    - ``PlayerAction`` creation via ``EngineBridge.submit_action``
+    - Cost/warning preview via ``EngineBridge.preview_action``
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class: type[BaseActionSerializer] | None = None
+    verb: str | None = None
+
+    def post(self, request: Request, game_id: str) -> JsonResponse:
+        """Handle POST — validate, persist action, return confirmation."""
+        session = _get_session_or_none(game_id, request.user.id)
+        if session is None:
+            return _error("Game not found", http_status=404)
+
+        if session.status != "active":
+            return _error_with_code(
+                f"Cannot submit actions for game in '{session.status}' status",
+                "ACTION_GAME_NOT_ACTIVE",
+            )
+
+        assert self.serializer_class is not None
+        assert self.verb is not None
+
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"game": session, "request": request},
+        )
+        if not serializer.is_valid():
+            return _error_with_code(
+                str(serializer.errors),
+                "ACTION_INVALID_PARAMS",
+            )
+
+        # Extract verb-specific params (everything except common fields)
+        verb_params = {
+            k: v for k, v in serializer.validated_data.items() if k not in _COMMON_FIELDS
+        }
+
+        bridge = _get_bridge()
+        try:
+            turn_id = bridge.submit_action(
+                session_id=uuid.UUID(str(session.id)),
+                tick=session.current_tick,
+                org_id=serializer.validated_data["org_id"],
+                verb=self.verb,
+                target_id=serializer.validated_data["target_id"],
+                params_json=verb_params if verb_params else None,
+            )
+        except ValueError as exc:
+            logger.info(
+                "Action rejected session=%s verb=%s: %s",
+                game_id,
+                self.verb,
+                exc,
+            )
+            return _error(str(exc), http_status=400)
+
+        # Compute cost preview and warnings (read-only)
+        preview = bridge.preview_action(
+            session_id=uuid.UUID(str(session.id)),
+            org_id=serializer.validated_data["org_id"],
+            verb=self.verb,
+            target_id=serializer.validated_data["target_id"],
+        )
+
+        logger.info(
+            "Per-verb action submitted session=%s tick=%d verb=%s org=%s turn_id=%s",
+            session.id,
+            session.current_tick,
+            self.verb,
+            serializer.validated_data["org_id"],
+            turn_id,
+        )
+        log_game_event(
+            category="action_submit",
+            message=f"Action: {self.verb} by {serializer.validated_data['org_id']}",
+            session_id=session.id,
+            user_id=request.user.id,
+            tick=session.current_tick,
+            details={
+                "org_id": serializer.validated_data["org_id"],
+                "verb": self.verb,
+                "target_id": serializer.validated_data["target_id"],
+            },
+            correlation_id=getattr(request, "correlation_id", None),
+        )
+
+        return _envelope(
+            {
+                "turn_id": turn_id,
+                "verb": self.verb,
+                "org_id": serializer.validated_data["org_id"],
+                "target_id": serializer.validated_data["target_id"],
+                "tick": session.current_tick,
+                "ap_cost": preview.get("action_point_cost", 1),
+                "resource_cost": preview.get("resource_cost", {}),
+                "warnings": preview.get("warnings", []),
+            },
+            tick=session.current_tick,
+            session_id=str(session.id),
+            http_status=status.HTTP_201_CREATED,
+        )
+
+
+class EducateActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/educate/."""
+
+    serializer_class = EducateActionSerializer
+    verb = "educate"
+
+
+class AidActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/aid/."""
+
+    serializer_class = AidActionSerializer
+    verb = "aid"
+
+
+class AttackActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/attack/."""
+
+    serializer_class = AttackActionSerializer
+    verb = "attack"
+
+
+class MobilizeActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/mobilize/."""
+
+    serializer_class = MobilizeActionSerializer
+    verb = "mobilize"
+
+
+class CampaignActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/campaign/."""
+
+    serializer_class = CampaignActionSerializer
+    verb = "campaign"
+
+
+class MoveActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/move/."""
+
+    serializer_class = MoveActionSerializer
+    verb = "move"
+
+
+class InvestigateActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/investigate/."""
+
+    serializer_class = InvestigateActionSerializer
+    verb = "investigate"
+
+
+class ReproduceActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/reproduce/."""
+
+    serializer_class = ReproduceActionSerializer
+    verb = "reproduce"
+
+
+class NegotiateActionView(BaseVerbActionView):
+    """POST /api/games/{id}/actions/negotiate/."""
+
+    serializer_class = NegotiateActionSerializer
+    verb = "negotiate"

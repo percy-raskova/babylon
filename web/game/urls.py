@@ -1,6 +1,8 @@
 """Game API URL configuration.
 
 Routes all game-related API endpoints under ``/api/``.
+Per-verb action endpoints (Spec 040) are nested under
+``/api/games/<game_id>/actions/<verb>/``.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ urlpatterns: list[URLPattern] = [
     # State
     path("games/<str:game_id>/state/", api.game_state, name="game-state"),
     path("games/<str:game_id>/map/", api.game_map, name="game-map"),
-    # Actions
+    # Actions — unchanged endpoints (available, preview, pending list)
     path(
         "games/<str:game_id>/actions/available/",
         api.actions_available,
@@ -33,6 +35,53 @@ urlpatterns: list[URLPattern] = [
         api.actions_preview,
         name="actions-preview",
     ),
+    # Per-verb action submission (Spec 040 §6.1)
+    path(
+        "games/<str:game_id>/actions/educate/",
+        api.EducateActionView.as_view(),
+        name="action-educate",
+    ),
+    path(
+        "games/<str:game_id>/actions/aid/",
+        api.AidActionView.as_view(),
+        name="action-aid",
+    ),
+    path(
+        "games/<str:game_id>/actions/attack/",
+        api.AttackActionView.as_view(),
+        name="action-attack",
+    ),
+    path(
+        "games/<str:game_id>/actions/mobilize/",
+        api.MobilizeActionView.as_view(),
+        name="action-mobilize",
+    ),
+    path(
+        "games/<str:game_id>/actions/campaign/",
+        api.CampaignActionView.as_view(),
+        name="action-campaign",
+    ),
+    path(
+        "games/<str:game_id>/actions/move/",
+        api.MoveActionView.as_view(),
+        name="action-move",
+    ),
+    path(
+        "games/<str:game_id>/actions/investigate/",
+        api.InvestigateActionView.as_view(),
+        name="action-investigate",
+    ),
+    path(
+        "games/<str:game_id>/actions/reproduce/",
+        api.ReproduceActionView.as_view(),
+        name="action-reproduce",
+    ),
+    path(
+        "games/<str:game_id>/actions/negotiate/",
+        api.NegotiateActionView.as_view(),
+        name="action-negotiate",
+    ),
+    # Legacy generic action endpoint (backward compat)
     path("games/<str:game_id>/actions/", api.actions_list, name="actions-list"),
     path("games/<str:game_id>/resolve/", api.resolve_tick, name="resolve-tick"),
     # Results

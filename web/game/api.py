@@ -13,7 +13,9 @@ import logging
 import uuid
 from typing import Any
 
-from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.http import HttpRequest, HttpResponseBase, JsonResponse
+from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -55,18 +57,19 @@ def _get_bridge() -> Any:
     """Return the cached EngineBridge instance, creating on first use.
 
     Returns a mock-friendly ``Any`` so tests can replace ``_bridge_instance``.
-    In production, initializes from PostgresRuntime.
+    In production, initializes from PostgresRuntime via ``GameConfig.ready()``.
+    Falls back to ``StubEngineBridge`` when no real bridge is configured
+    (e.g., during development without Postgres).
     """
     global _bridge_instance  # noqa: PLW0603
     if _bridge_instance is None:
-        # Lazy import — only instantiate if actually serving API requests
-        # In production, the persistence layer is injected via settings
-        # For now, raise if called without explicit initialization
-        msg = (
-            "EngineBridge not initialized. Call game.api.init_bridge(persistence) "
-            "or set game.api._bridge_instance in tests."
+        from .stub_bridge import StubEngineBridge
+
+        logger.warning(
+            "EngineBridge not initialized — falling back to StubEngineBridge. "
+            "Set up PostgreSQL or call init_bridge() for production use."
         )
-        raise RuntimeError(msg)
+        _bridge_instance = StubEngineBridge()
     return _bridge_instance
 
 
@@ -121,6 +124,42 @@ def _error_with_code(
     return JsonResponse(
         {"status": "error", "error": message, "code": code},
         status=http_status,
+    )
+
+
+# ---------------------------------------------------------------------- #
+# Server-rendered pages (Django templates + @login_required)
+# ---------------------------------------------------------------------- #
+
+
+@login_required
+def game_list_page(request: HttpRequest) -> HttpResponseBase:
+    """Server-rendered game list page.
+
+    Shows all games for the logged-in user with status, scenario,
+    and current tick. Links to the SPA for each active game.
+    """
+    sessions = GameSession.objects.filter(player_id=request.user.id).order_by("-created_at")[:50]
+    scenarios_by_key = {s["key"]: s for s in SCENARIO_CATALOG}
+    games = [
+        {
+            "id": str(s.id),
+            "scenario": s.scenario,
+            "scenario_name": scenarios_by_key.get(s.scenario, {}).get("name", s.scenario),
+            "current_tick": s.current_tick,
+            "status": s.status,
+            "created_at": s.created_at,
+        }
+        for s in sessions
+    ]
+    return render(
+        request,
+        "game/game_list.html",
+        {
+            "games": games,
+            "scenarios": SCENARIO_CATALOG,
+            "username": request.user.username,
+        },
     )
 
 
@@ -316,6 +355,78 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     snapshot = bridge.get_map_snapshot(uuid.UUID(str(session.id)), tick=tick)
     return _envelope(
         snapshot,
+        tick=snapshot.get("metadata", {}).get("tick", session.current_tick),
+        session_id=str(session.id),
+    )
+
+
+# The 6 canonical map layers matching the frontend MapLayer type
+VALID_MAP_LAYERS: frozenset[str] = frozenset(
+    ["heat", "consciousness", "wealth", "rent", "biocapacity", "population"]
+)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_map_layer(request: Request, game_id: str, layer: str) -> JsonResponse:
+    """GET /api/games/{id}/map/{layer}/ — Per-layer GeoJSON data.
+
+    Returns a GeoJSON FeatureCollection with properties filtered
+    to include only the requested metric plus the identifying fields
+    (h3_index, county_fips, county_name).
+
+    Valid layers: heat, consciousness, wealth, rent, biocapacity, population.
+    """
+    if layer not in VALID_MAP_LAYERS:
+        return _error(
+            f"Invalid layer '{layer}'. Valid layers: {sorted(VALID_MAP_LAYERS)}",
+            http_status=400,
+        )
+
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    try:
+        tick_query = request.query_params.get("tick")
+        tick = int(tick_query) if tick_query is not None else None
+    except ValueError:
+        return _error("Invalid tick parameter", http_status=400)
+
+    bridge = _get_bridge()
+    snapshot = bridge.get_map_snapshot(
+        uuid.UUID(str(session.id)),
+        tick=tick,
+        layer=layer,
+    )
+
+    # Filter properties to only include the requested layer metric
+    # plus identifying fields (h3_index, county_fips, county_name)
+    keep_keys = {"h3_index", "county_fips", "county_name", layer}
+    filtered_features = []
+    for feature in snapshot.get("features", []):
+        original_props = feature.get("properties", {})
+        filtered_props = {k: v for k, v in original_props.items() if k in keep_keys}
+        filtered_features.append(
+            {
+                "type": feature.get("type", "Feature"),
+                "id": feature.get("id"),
+                "geometry": feature.get("geometry"),
+                "properties": filtered_props,
+            }
+        )
+
+    result = {
+        "type": "FeatureCollection",
+        "metadata": {
+            **snapshot.get("metadata", {}),
+            "layer": layer,
+        },
+        "features": filtered_features,
+    }
+
+    return _envelope(
+        result,
         tick=snapshot.get("metadata", {}).get("tick", session.current_tick),
         session_id=str(session.id),
     )

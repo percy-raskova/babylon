@@ -3,6 +3,8 @@
 Routes all game-related API endpoints under ``/api/``.
 Per-verb action endpoints (Spec 040) are nested under
 ``/api/games/<game_id>/actions/<verb>/``.
+Per-layer map endpoints serve filtered GeoJSON at
+``/api/games/<game_id>/map/<layer>/``.
 """
 
 from __future__ import annotations
@@ -14,17 +16,25 @@ from . import api
 app_name = "game"
 
 urlpatterns: list[URLPattern] = [
-    # Scenario catalog
+    # ------------------------------------------------------------------ #
+    # API: Scenario catalog
+    # ------------------------------------------------------------------ #
     path("scenarios/", api.scenario_list, name="scenario-list"),
-    # Game lifecycle
+    # API: Game lifecycle
     path("games/", api.game_list, name="game-list"),
     path("games/<str:game_id>/", api.game_detail, name="game-detail"),
     path("games/<str:game_id>/pause/", api.game_pause, name="game-pause"),
     path("games/<str:game_id>/resume/", api.game_resume, name="game-resume"),
-    # State
+    # API: State
     path("games/<str:game_id>/state/", api.game_state, name="game-state"),
     path("games/<str:game_id>/map/", api.game_map, name="game-map"),
-    # Actions — unchanged endpoints (available, preview, pending list)
+    # API: Per-layer map endpoints
+    path(
+        "games/<str:game_id>/map/<str:layer>/",
+        api.game_map_layer,
+        name="game-map-layer",
+    ),
+    # API: Actions — utility endpoints (available, preview, pending list)
     path(
         "games/<str:game_id>/actions/available/",
         api.actions_available,

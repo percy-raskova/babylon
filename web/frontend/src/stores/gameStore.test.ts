@@ -142,7 +142,7 @@ describe("useGameStore", () => {
     });
 
     server.use(
-      http.post("/api/games/:id/actions/", () =>
+      http.post("/api/games/:id/actions/:verb/", () =>
         HttpResponse.json({
           status: "error",
           data: null,
@@ -154,6 +154,7 @@ describe("useGameStore", () => {
     await useGameStore.getState().submitAction("game-001", {
       org_id: "org-workers-union",
       verb: "attack",
+      target_id: "some-target",
     });
 
     // Error was set during the flow (re-fetch may clear it afterward)

@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import type { AvailableAction, SubmitActionParams } from "@/types/game";
+import type { AvailableAction, PlayerVerb, SubmitActionParams } from "@/types/game";
 
 interface ActionPanelProps {
   actions: AvailableAction[];
@@ -39,8 +39,9 @@ export function ActionPanel({ actions, onSubmit, onResolve, resolving }: ActionP
       setSubmitting(key);
       await onSubmit({
         org_id: action.org_id,
-        verb: action.verb,
-        action_type: action.action_type,
+        verb: action.verb as PlayerVerb,
+        target_id: action.targets?.[0] ?? action.org_id,
+        ...(action.action_type ? { action_type: action.action_type } : {}),
       });
       setSubmitting(null);
     },

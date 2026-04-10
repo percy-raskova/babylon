@@ -190,14 +190,18 @@ export interface ActionResultData {
   details?: Record<string, unknown>;
 }
 
-/** Parameters for submitting an action. */
+/** Parameters for submitting an action.
+ *
+ * Spec 040: The ``verb`` field determines the URL path
+ * (``/api/games/{id}/actions/{verb}/``) rather than being sent
+ * in the request body. The remaining fields become the POST body.
+ */
 export interface SubmitActionParams {
   org_id: string;
-  verb: string;
-  action_type?: string;
-  target_id?: string;
-  target_community?: string;
-  params_json?: Record<string, unknown>;
+  verb: PlayerVerb;
+  target_id: string;
+  /** Verb-specific parameters (consciousness_strategy, mode, etc.). */
+  [key: string]: unknown;
 }
 
 /** Parameters for creating a new game. */

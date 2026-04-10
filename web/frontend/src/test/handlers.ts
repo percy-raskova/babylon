@@ -112,10 +112,10 @@ export const handlers = [
     }),
   ),
 
-  // Submit action
-  http.post("/api/games/:id/actions/", async ({ request }) => {
-    const data = (await request.json()) as { verb: string; targets?: string[] };
-    const verb = data.verb;
+  // Submit action — per-verb endpoints (Spec 040)
+  http.post("/api/games/:id/actions/:verb/", async ({ params, request }) => {
+    const data = (await request.json()) as Record<string, unknown>;
+    const verb = params.verb as string;
 
     // Affordability Check Contract
     let canAfford = true;
@@ -152,11 +152,11 @@ export const handlers = [
       if (verb === "educate") playerOrg.vanguard.budget -= 50;
     }
 
-    queuedActions.push(data);
+    queuedActions.push({ verb, ...data });
 
     return HttpResponse.json({
       status: "ok",
-      data: { id: queuedActions.length, status: "pending" },
+      data: { id: queuedActions.length, status: "pending", verb },
     });
   }),
 

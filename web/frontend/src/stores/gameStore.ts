@@ -130,7 +130,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   submitAction: async (gameId, params) => {
     log.info("Submitting action", { gameId, params });
-    const res = await apiPost(`/api/games/${gameId}/actions/`, params);
+    // Spec 040: verb is in the URL path, not the request body
+    const { verb, ...body } = params;
+    const res = await apiPost(`/api/games/${gameId}/actions/${verb}/`, body);
     if (res.status !== "ok") {
       log.error("Action submission failed", { gameId, message: res.message });
       set({ error: res.message ?? "Failed to submit action" });

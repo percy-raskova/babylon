@@ -253,6 +253,7 @@ describe("Wayne County Frontend Contract", () => {
       await useGameStore.getState().submitAction("wayne-county-001", {
         org_id: "ORG001",
         verb: "attack",
+        target_id: "C003",
       });
 
       // Store should have the error from MSW
@@ -268,6 +269,7 @@ describe("Wayne County Frontend Contract", () => {
       await useGameStore.getState().submitAction("wayne-county-001", {
         org_id: "ORG001",
         verb: "educate",
+        target_id: "C001",
       });
 
       // Re-fetch and check budget
@@ -284,10 +286,12 @@ describe("Wayne County Frontend Contract", () => {
       await useGameStore.getState().submitAction("wayne-county-001", {
         org_id: "ORG001",
         verb: "educate",
+        target_id: "C001",
       });
       await useGameStore.getState().submitAction("wayne-county-001", {
         org_id: "ORG001",
         verb: "educate",
+        target_id: "C001",
       });
 
       // Resolve tick

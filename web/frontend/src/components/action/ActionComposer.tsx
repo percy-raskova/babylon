@@ -64,7 +64,7 @@ export function ActionComposer({ snapshot, onSubmit, resolving }: ActionComposer
     await onSubmit({
       org_id: pendingOrgId,
       verb: pendingVerb,
-      target_id: pendingTargetId ?? undefined,
+      target_id: pendingTargetId ?? pendingOrgId,
     });
     clearPending();
     setSubmitting(false);

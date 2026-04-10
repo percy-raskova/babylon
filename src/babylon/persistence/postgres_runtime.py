@@ -1691,6 +1691,75 @@ class PostgresRuntime:
             )
             return [dict(row) for row in cur.fetchall()]
 
+    # ─── Spec 037: Historical Reconstruction ───────────────────────────
+
+    _RECONSTRUCT_HEX_STATE = """
+        SELECT
+            hm.h3_index,
+            ts.tick,
+            hm.county_fips,
+            hm.county_name,
+            hm.state_fips,
+            hm.center_lat,
+            hm.center_lng,
+            ts.profit_rate,
+            ts.exploitation_rate,
+            ts.occ,
+            ts.imperial_rent,
+            ts.g33_visibility,
+            ts.pop_bourgeoisie,
+            ts.pop_petit_bourgeoisie,
+            ts.pop_labor_aristocracy,
+            ts.pop_proletariat,
+            ts.pop_lumpenproletariat,
+            ts.pop_total,
+            COALESCE(ha.heat_total, 0.0)   AS heat,
+            COALESCE(ha.heat_delta, 0.0)   AS heat_delta,
+            COALESCE(ha.org_count, 0)      AS org_count,
+            COALESCE(ha.actions_taken, 0)  AS actions_taken,
+            COALESCE(ha.was_target, FALSE) AS was_target
+        FROM hex_map hm
+        JOIN territory_snapshot ts
+            ON  ts.game_id     = hm.game_id
+            AND ts.county_fips = hm.county_fips
+        LEFT JOIN LATERAL (
+            SELECT heat_total, heat_delta, org_count, actions_taken, was_target
+            FROM hex_activity ha2
+            WHERE ha2.game_id  = hm.game_id
+              AND ha2.h3_index = hm.h3_index
+              AND ha2.tick     = ts.tick
+        ) ha ON TRUE
+        WHERE hm.game_id = %s
+          AND ts.tick     = %s
+    """
+
+    def reconstruct_hex_state(
+        self,
+        game_id: UUID,
+        tick: int,
+    ) -> list[dict[str, Any]]:
+        """Reconstruct full hex state for a historical tick.
+
+        Unlike ``hex_latest`` (which only holds the current tick), this
+        method reconstructs any past tick by JOINing the append-only
+        ``territory_snapshot`` and ``hex_activity`` journals via
+        ``hex_map``.
+
+        Uses a ``LATERAL`` join to efficiently look up sparse hex events
+        without requiring a full cross-join.
+
+        Args:
+            game_id: Game session UUID.
+            tick: Historical tick number to reconstruct.
+
+        Returns:
+            List of per-hex dicts with economic, demographic, and
+            activity fields. Empty list if no data exists for this tick.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(self._RECONSTRUCT_HEX_STATE, (game_id, tick))
+            return [dict(row) for row in cur.fetchall()]
+
     # ─── Private helpers ────────────────────────────────────────────
 
     def _persist_nodes(

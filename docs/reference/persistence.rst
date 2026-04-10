@@ -380,7 +380,7 @@ PersistenceObserver
 Database Schema (Summary)
 -------------------------
 
-19 PostgreSQL tables across 6 layers. Full DDL in
+23 PostgreSQL tables and views across 9 layers. Full DDL in
 ``babylon.persistence.postgres_schema.POSTGRES_SCHEMA_DDL``.
 
 .. list-table::
@@ -397,8 +397,17 @@ Database Schema (Summary)
      - ``node_state``, ``edge_state``, ``graph_metadata``, ``community_state``, ``community_membership``, ``contradiction_field``, ``edge_curvature``, ``simulation_event``, ``tick_log``, ``tick_summary``
      - Full graph snapshots, community hypergraph, contradiction fields, events, replay metadata, aggregated summaries
    * - Spatial (3)
-     - ``hex_cell``, ``hex_state``, ``hex_terrain_state``
-     - H3 hex geometries (PostGIS), per-hex economic and terrain state
+     - ``hex_cell``, ``hex_map``, ``hex_terrain_state``
+     - H3 hex geometries (PostGIS), county-to-hex mapping, per-hex terrain
+   * - Snapshot (4)
+     - ``territory_snapshot``, ``hex_activity``, ``economic_summary``, ``tick_event``
+     - Append-only per-tick journals for county economics, sparse hex events, aggregates, and events
+   * - Hex Cache (2)
+     - ``hex_latest``, ``hex_substrate``
+     - Denormalized R7 frontend cache and static R8 terrain/infrastructure
+   * - Composition Views (5)
+     - ``v_hex_economic``, ``v_hex_mobilize``, ``v_hex_heat``, ``v_hex_aid``, ``v_hex_intel``
+     - Column projections from ``hex_latest`` for frontend map layers
    * - Infrastructure (1)
      - ``infrastructure_link_state``
      - Per-edge infrastructure capacity and condition
@@ -409,12 +418,168 @@ Database Schema (Summary)
      - ``document_chunk``
      - Document embeddings for vector search (pgvector)
 
-All data tables use composite primary keys of ``(session_id, tick, entity_id)``
+All snapshot tables use composite primary keys of ``(game_id, tick, entity_id)``
 for session-scoped temporal isolation. ``game_session`` uses UUID PK.
-``trace_log`` uses ``BIGSERIAL`` within each partition.
+``hex_latest`` uses ``(game_id, h3_index)`` PK (current state only).
 
 Required PostgreSQL extensions: ``postgis``, ``vector`` (pgvector),
 ``uuid-ossp``.
+
+Multi-Resolution Hex Journal (Feature 037)
+------------------------------------------
+
+The multi-resolution hex journal is a tiered persistence architecture
+optimized for national-scale simulation at H3 resolution 7 (~243K hexes
+for CONUS). It achieves a **305× storage reduction** compared to flat
+per-hex per-tick snapshots.
+
+Architecture
+^^^^^^^^^^^^
+
+Four tables at three resolution tiers:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 20 45
+
+   * - Table
+     - Resolution
+     - Cardinality
+     - Purpose
+   * - ``territory_snapshot``
+     - County
+     - ~3,100 rows/tick
+     - Economic state (ValueTensor4x3, profit rate, class distribution)
+   * - ``hex_activity``
+     - R7 (sparse)
+     - ~5K rows/tick
+     - Heat, organizations, player/AI actions (only hexes with events)
+   * - ``hex_substrate``
+     - R8 (static)
+     - ~1.7M rows (once)
+     - Terrain, water, broadband, surveillance (written at init)
+   * - ``hex_latest``
+     - R7 (all)
+     - ~243K rows (current)
+     - Denormalized cache merging all tiers for frontend O(1) reads
+
+Data Flow
+^^^^^^^^^
+
+::
+
+    territory_snapshot ──► Phase 1: Broadcast ──► hex_latest ──► Frontend
+    hex_activity ──────► Phase 2: Overlay ───┘
+    hex_substrate ─────► Aggregated at init ─┘
+
+**Write path** (each tick):
+
+1. Systems write ``territory_snapshot`` (~3,100 rows) and ``hex_activity``
+   (sparse, ~5K rows).
+2. ``refresh_hex_latest()`` runs two SQL UPDATEs to synchronize the cache.
+
+**Read path** (frontend): ``SELECT`` from ``hex_latest`` or composition
+views. No JOINs required.
+
+refresh_hex_latest (Two-Phase UPSERT)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+   pg.refresh_hex_latest(game_id=game_id, tick=tick)
+
+**Phase 1 — Territory broadcast** (~20ms for 243K hexes):
+   ``UPDATE hex_latest FROM territory_snapshot JOIN hex_map``.
+   All hexes in a county receive identical economic values.
+
+**Phase 2 — Hex activity overlay** (~0.5ms for ~5K sparse rows):
+   ``UPDATE hex_latest FROM hex_activity`` for heat, org, and action
+   fields. Only hexes with activity this tick are touched.
+
+seed_hex_latest (Tick-0 ETL)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+   from babylon.persistence.hex_init import seed_hex_latest
+
+   inserted = seed_hex_latest(pool, game_id)  # After territory_snapshot + hex_map init
+
+``INSERT...SELECT`` that JOINs ``territory_snapshot`` (tick 0),
+``hex_map``, and optionally ``hex_substrate`` (R8 terrain via
+``MODE()``, ``AVG()``, ``BOOL_OR()`` aggregation).
+
+reconstruct_hex_state (Historical Queries)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+   rows = pg.reconstruct_hex_state(game_id=game_id, tick=42)
+
+Reconstructs any past tick by JOINing the append-only
+``territory_snapshot`` and ``hex_activity`` journals via ``hex_map``.
+Uses ``LATERAL`` join for efficient sparse event lookup. Returns a
+list of per-hex dicts with economic, demographic, and activity fields.
+
+.. note::
+
+   ``hex_latest`` only holds the current tick. For historical or
+   time-series analysis, always use ``reconstruct_hex_state()``.
+
+Composition Views
+^^^^^^^^^^^^^^^^^
+
+Five views project subsets of ``hex_latest`` columns for frontend map
+layers. All are trivial ``SELECT`` projections — no JOINs.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - View
+     - Columns
+   * - ``v_hex_economic``
+     - profit_rate, exploitation_rate, occ, imperial_rent, pop_total, heat
+   * - ``v_hex_mobilize``
+     - mobilizable_pop, org_presence, hex_heat, dominant_class
+   * - ``v_hex_heat``
+     - heat, heat_delta, org_count (filtered: heat > 0)
+   * - ``v_hex_aid``
+     - internet_access, terrain_type, water_coverage
+   * - ``v_hex_intel``
+     - faction_*, dominant_class, org_count, actions_taken
+
+Storage Budget
+^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 20 20 35
+
+   * - Component
+     - Rows / tick
+     - Bytes / tick
+     - 260 ticks (10-year sim)
+   * - ``territory_snapshot``
+     - 3,100
+     - ~770 KB
+     - ~200 MB
+   * - ``hex_activity``
+     - ~5,000
+     - ~200 KB
+     - ~52 MB
+   * - ``hex_substrate`` (once)
+     - 1,700,000
+     - ~300 MB
+     - 300 MB (fixed)
+   * - ``hex_latest`` (once)
+     - 243,000
+     - ~30 MB
+     - 30 MB (fixed)
+   * - **Total**
+     -
+     -
+     - **~582 MB / session**
 
 Archival Pipeline (Stubs)
 -------------------------

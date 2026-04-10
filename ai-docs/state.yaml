@@ -398,6 +398,30 @@ implemented:
           release_checklist: "71/71 items passing"
           phases_complete: "7/7"
 
+      multi_resolution_hex_journal:
+        status: "complete"
+        feature_id: "037"
+        date: "2026-04-10"
+        details: "Tiered persistence: county→R7→R8. 305× storage reduction for national-scale simulation."
+        files_created:
+          - "src/babylon/persistence/hex_init.py (tick-0 ETL seeding)"
+        files_modified:
+          - "src/babylon/persistence/postgres_schema.py (hex_latest, hex_substrate, 5 views, 4 indexes)"
+          - "src/babylon/persistence/postgres_runtime.py (refresh_hex_latest, reconstruct_hex_state)"
+          - "web/game/models.py (HexState → hex_latest)"
+        test_suites:
+          - "tests/unit/persistence/test_spec037_schema.py (18 tests)"
+          - "tests/unit/persistence/test_hex_latest_refresh.py (8 tests)"
+          - "tests/unit/persistence/test_hex_init.py (10 tests)"
+          - "tests/unit/persistence/test_reconstruct_hex_state.py (9 tests)"
+        test_count: 45
+        architecture:
+          territory_snapshot: "County-level economics (~3,100 rows/tick)"
+          hex_activity: "R7 sparse events (~5K rows/tick)"
+          hex_substrate: "R8 static terrain (~1.7M rows, once)"
+          hex_latest: "R7 denormalized cache (~243K rows, current)"
+        storage_budget: "~582 MB/session (was ~177 GB without tiering)"
+
   core_logic:
     status: "complete"
     components:

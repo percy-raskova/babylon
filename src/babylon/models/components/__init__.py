@@ -7,7 +7,6 @@ the material ontology of the simulation:
 - MaterialComponent: Wealth, resources, means of production
 - VitalityComponent: Population, subsistence needs
 - SpatialComponent: Location, mobility
-- IdeologicalComponent: Political alignment, adherence
 - MaterialConditionsBuffer: Value-tensor-derived consciousness inputs
 - OrganizationComponent: Cohesion, cadre level
 
@@ -16,7 +15,6 @@ constrained types from babylon.models.types.
 """
 
 from babylon.models.components.base import Component
-from babylon.models.components.ideological import IdeologicalComponent
 from babylon.models.components.material import MaterialComponent
 from babylon.models.components.material_conditions import MaterialConditionsBuffer
 from babylon.models.components.organization import OrganizationComponent
@@ -28,7 +26,6 @@ __all__ = [
     "MaterialComponent",
     "VitalityComponent",
     "SpatialComponent",
-    "IdeologicalComponent",
     "MaterialConditionsBuffer",
     "OrganizationComponent",
 ]

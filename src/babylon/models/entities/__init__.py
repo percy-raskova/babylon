@@ -68,7 +68,6 @@ from babylon.models.entities.relationship import FlowComponent, Relationship
 from babylon.models.entities.revolutionary_finance import RevolutionaryFinance
 from babylon.models.entities.social_class import (
     EconomicComponent,
-    IdeologicalComponent,
     IdeologicalProfile,
     MaterialConditionsComponent,
     SocialClass,
@@ -118,7 +117,6 @@ __all__ = [
     "NarrativeHooks",
     # Component Models
     "EconomicComponent",
-    "IdeologicalComponent",
     "IdeologicalProfile",  # Sprint 3.4.3 - George Jackson Refactor
     "SurvivalComponent",
     "MaterialConditionsComponent",

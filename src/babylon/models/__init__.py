@@ -14,7 +14,6 @@ All game state flows through these validated types.
 # Component Models (Entity-Component architecture)
 from babylon.models.components import (
     Component,
-    IdeologicalComponent,
     MaterialComponent,
     OrganizationComponent,
     SpatialComponent,
@@ -148,7 +147,6 @@ __all__ = [
     "MaterialComponent",
     "VitalityComponent",
     "SpatialComponent",
-    "IdeologicalComponent",
     "OrganizationComponent",
     # Sprint 3.1: Topology Metrics
     "TopologySnapshot",

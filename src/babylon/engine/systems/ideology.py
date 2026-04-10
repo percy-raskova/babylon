@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 
 from babylon.formulas.consciousness_routing import (
     compute_agitation_delta,
+    compute_exploitation_visibility,
+    compute_reification_buffer,
     route_agitation_to_ternary,
 )
 from babylon.models.enums import EdgeType
@@ -192,12 +194,24 @@ class ConsciousnessSystem:
             new_agitation = max(0.0, new_agitation * (1.0 - decay_rate))
 
             # Update the ideology in the graph as a dict (IdeologicalProfile format)
+            # Also write MaterialConditionsBuffer for downstream systems
             graph.update_node(
                 node.id,
                 ideology={
                     "class_consciousness": new_class,
                     "national_identity": new_nation,
                     "agitation": new_agitation,
+                },
+                material_conditions={
+                    "agitation": new_agitation,
+                    "exploitation_visibility": compute_exploitation_visibility(
+                        exploitation_rate=abs(wage_change) if wage_change < 0 else 0.0,
+                        imperial_rent=max(0.0, wealth_change),
+                    ),
+                    "reification_buffer": compute_reification_buffer(
+                        imperial_rent=max(0.0, wealth_change),
+                        total_v=max(1.0, core_wages),
+                    ),
                 },
             )
 

@@ -328,6 +328,12 @@ class StruggleSystem:
                     )
                 )
 
+                # Spec 043: Repression backfire — EXCESSIVE_FORCE generates
+                # agitation via backfire coefficient (George Floyd Dynamic)
+                backfire = services.defines.consciousness.repression_backfire
+                _update_agitation(attrs, backfire)
+                agitation = _get_agitation_from_node(attrs)  # Re-read after update
+
             # Step 2: Check uprising condition
             # Trigger if: (Spark OR P(S|R) > P(S|A)) AND agitation > resistance_threshold
             revolutionary_pressure = p_rev > p_acq

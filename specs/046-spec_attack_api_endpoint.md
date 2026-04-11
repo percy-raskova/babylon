@@ -403,23 +403,23 @@ def resolve_attack(
     defines: AttackDefines,
 ) -> VerbResult:
     """Resolve a queued ATTACK action.
-    
+
     Graph operations (may produce multiple mutations):
     1. Degrade target node attributes (wealth, capacity, c_stock)
     2. Potentially sever or weaken extractive edges from target
     3. Increase heat on acting org and territory
     4. Collateral damage to population nodes in territory
-    
+
     Unlike EDUCATE (1 mutation) or AID (2 mutations), ATTACK can
     produce 3-4 mutations because destruction cascades.
     """
     org = graph.get_node(action.org_id)
     target = graph.get_node(action.target_id)
     mode = action.params.get("mode", "targeted")
-    
+
     mutations = []
     events = []
-    
+
     # --- Determine resource cost and effectiveness ---
     if mode == "targeted":
         resource_key = "cadre_labor"
@@ -431,7 +431,7 @@ def resolve_attack(
         resource_cost = defines.mass_sl_cost
         base_effectiveness = org.combat_readiness * (org.sympathizer_count / 100)
         visibility_multiplier = defines.mass_visibility
-    
+
     # Over-budget degradation
     over_budget_factor = 1.0
     available = getattr(org.resources, resource_key)
@@ -440,36 +440,36 @@ def resolve_attack(
         spent = available
     else:
         spent = resource_cost
-    
+
     # AP over-budget (2 AP required, might only have 1)
     ap_cost = 2
     if org.ooda.action_points_remaining < 2:
         over_budget_factor *= 0.5  # Severely degraded
         # Maximum OPSEC exposure when exhausted
         visibility_multiplier *= 2.0
-    
+
     deduct_resources(org, **{resource_key: spent}, action_points=ap_cost)
-    
+
     # --- Compute damage ---
     effectiveness = base_effectiveness * over_budget_factor
-    
+
     # Effectiveness vs. target's defense
     defense = getattr(target, "defensive_capacity", 0.1)
     damage_ratio = effectiveness / (effectiveness + defense)
     # Lanchester-type: damage scales with ratio, not difference
-    
+
     if target.node_type == "organization" or target.node_type == "business":
         # Damage to org/business: destroy c, reduce wealth, degrade capacity
         c_destroyed = target.c_stock * damage_ratio * defines.c_destruction_rate
         wealth_destroyed = c_destroyed  # c destruction = wealth loss
         capacity_loss = damage_ratio * defines.capacity_degradation_rate
-        
+
         old_c = target.c_stock
         old_wealth = target.wealth
         target.c_stock = max(0, target.c_stock - c_destroyed)
         target.wealth = max(0, target.wealth - wealth_destroyed)
         target.capacity = max(0, target.capacity - capacity_loss)
-        
+
         mutations.append(GraphMutation(
             target_type=target.node_type,
             target_id=target.id,
@@ -484,7 +484,7 @@ def resolve_attack(
             old_value=old_wealth,
             new_value=target.wealth,
         ))
-        
+
         # Check if extractive edges should be weakened
         for edge in graph.get_edges_from(target.id, mode=EdgeMode.EXTRACTIVE):
             s_flow_reduction = edge.s_flow * damage_ratio * defines.flow_disruption_rate
@@ -497,7 +497,7 @@ def resolve_attack(
                 old_value=edge.s_flow + s_flow_reduction,
                 new_value=edge.s_flow,
             ))
-    
+
     elif target.node_type == "edge":
         # Direct edge severing
         edge = graph.get_edge_by_id(action.target_id)
@@ -512,16 +512,16 @@ def resolve_attack(
             old_value=old_flow,
             new_value=0.0,
         ))
-    
+
     # --- Heat generation ---
     heat_increase = damage_ratio * visibility_multiplier * defines.heat_per_damage
     old_heat = org.heat
     org.heat += heat_increase
-    
+
     # Territory heat also increases
     territory = graph.get_territory(org.territory_id)
     territory.heat += heat_increase * defines.territory_heat_fraction
-    
+
     mutations.append(GraphMutation(
         target_type="organization",
         target_id=org.id,
@@ -529,7 +529,7 @@ def resolve_attack(
         old_value=old_heat,
         new_value=org.heat,
     ))
-    
+
     # --- Collateral damage ---
     collateral_wealth_loss = 0.0
     collateral_agitation = 0.0
@@ -539,16 +539,16 @@ def resolve_attack(
             loss = c_destroyed * defines.collateral_fraction * (pop.population / territory.total_population)
             pop.wealth = max(0, pop.wealth - loss)
             collateral_wealth_loss += loss
-            
+
             # Collateral generates agitation (people's lives disrupted)
             agit_increase = loss * defines.collateral_agitation_rate
             pop.material_conditions.agitation += agit_increase
             collateral_agitation += agit_increase
-    
+
     # --- OPSEC exposure ---
     opsec_exposure = visibility_multiplier * defines.opsec_base_exposure
     # State gains intelligence about org structure proportional to exposure
-    
+
     # --- Events ---
     events.append(SimulationEvent(
         type=EventType.ATTACK_CONDUCTED,
@@ -564,11 +564,11 @@ def resolve_attack(
             "opsec_exposure": opsec_exposure,
         },
     ))
-    
+
     # State AI will process this event and likely respond with REPRESS
     # That response generates repression_backfire (spec 043)
     # which creates agitation that feeds consciousness routing
-    
+
     return VerbResult(
         mutations=mutations,
         events=events,
@@ -690,7 +690,7 @@ def resolve_attack(
 ```python
 class AttackDefines(BaseModel):
     """ATTACK verb coefficients."""
-    
+
     targeted_cl_cost: float = Field(
         default=4.0,
         description="CL cost for targeted operations. High — precision requires trained cadre.",

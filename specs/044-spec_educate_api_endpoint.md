@@ -333,11 +333,11 @@ def resolve_educate(
     defines: ConsciousnessDefines,
 ) -> VerbResult:
     """Resolve a queued EDUCATE action.
-    
+
     Graph operation: Increase education_pressure on target community.
     Does NOT directly modify consciousness (r/l/f). Education pressure
     modifies the ROUTING of agitation to consciousness in Layer 3.
-    
+
     Per spec 043: EDUCATE builds interpretive capacity that determines
     how accumulated material experience (agitation) routes through the
     r/l/f simplex. Education without agitation is weak. Agitation
@@ -345,25 +345,25 @@ def resolve_educate(
     """
     org = graph.get_node(action.org_id)
     community = hypergraph.get_hyperedge(action.target_id)
-    
+
     # 1. Compute credibility (Gramsci's organic intellectual gate)
     credibility = compute_community_overlap(org, community, hypergraph)
     # credibility was validated > 0 at queue time, but recheck
-    
+
     # 2. Compute material readiness (Mao's practice-first epistemology)
     pop_nodes = get_population_nodes_in_community(
         community, org.territory_id, graph
     )
     avg_agitation = mean(n.material_conditions.agitation for n in pop_nodes)
     material_readiness = min(
-        1.0, 
+        1.0,
         avg_agitation / defines.agitation_education_threshold
     )
-    
+
     # 3. Compute resource cost and deduct
     cl_cost = defines.educate_cl_cost
     ap_cost = 1
-    
+
     over_budget_factor = 1.0
     if org.resources.cadre_labor < cl_cost:
         # Over budget: resolve with degraded effectiveness
@@ -371,9 +371,9 @@ def resolve_educate(
         cl_spent = org.resources.cadre_labor  # Spend everything
     else:
         cl_spent = cl_cost
-    
+
     deduct_resources(org, cadre_labor=cl_spent, action_points=ap_cost)
-    
+
     # 4. Compute education delta
     education_delta = (
         defines.educate_base_effect
@@ -383,21 +383,21 @@ def resolve_educate(
         * org.cohesion
         * over_budget_factor
     )
-    
+
     # 5. Apply to community education_pressure
     # This is the ONE atomic graph mutation for this verb
     old_pressure = community.education_pressure
     community.education_pressure += education_delta
-    
+
     # 6. Compute consciousness side-effect direction
     # (Does NOT modify r/l/f directly — that happens in Layer 3 routing)
     tendency = org.consciousness_strategy  # REVOLUTIONARY, LIBERAL, FASCIST
-    
+
     # 7. Generate state AI signal
     visibility = compute_educate_visibility(
         org, community, education_delta, defines
     )
-    
+
     # 8. Build result
     return VerbResult(
         mutations=[
@@ -689,17 +689,17 @@ class EducateSubmitSerializer(serializers.Serializer):
     org_id = serializers.CharField()
     target_community_id = serializers.CharField()
     params = serializers.DictField(required=False, default=dict)
-    
+
     def validate_org_id(self, value):
         game = self.context["game"]
         user = self.context["request"].user
         # Check org exists, is player-controlled, has AP
         ...
-    
+
     def validate_target_community_id(self, value):
         # Check community exists, org has credibility > 0
         ...
-    
+
     def validate(self, data):
         # Check no existing action for this org this tick
         ...
@@ -710,7 +710,7 @@ class EducateSubmitSerializer(serializers.Serializer):
 ```python
 class EducateVerbView(APIView):
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request, game_id):
         """Return available EDUCATE targets for an org."""
         game = get_object_or_404(GameSession, id=game_id, created_by=request.user)
@@ -720,21 +720,21 @@ class EducateVerbView(APIView):
                 {"status": "error", "error": "org_id required", "code": "MISSING_PARAMETER"},
                 status=400,
             )
-        
+
         bridge = EngineBridge(game)
         data = bridge.get_educate_targets(org_id)
         serializer = EducateAvailableSerializer(data)
         return Response(serializer.data)
-    
+
     def post(self, request, game_id):
         """Queue an EDUCATE action."""
         game = get_object_or_404(GameSession, id=game_id, created_by=request.user)
         serializer = EducateSubmitSerializer(
-            data=request.data, 
+            data=request.data,
             context={"game": game, "request": request},
         )
         serializer.is_valid(raise_exception=True)
-        
+
         action = PlayerAction.objects.create(
             game=game,
             tick=game.current_tick,
@@ -743,7 +743,7 @@ class EducateVerbView(APIView):
             target_id=serializer.validated_data["target_community_id"],
             parameters=serializer.validated_data.get("params", {}),
         )
-        
+
         return Response(
             {
                 "status": "ok",

@@ -374,11 +374,11 @@ def resolve_aid(
     defines: AidDefines,
 ) -> VerbResult:
     """Resolve a queued AID action.
-    
+
     Two graph mutations:
     1. Transfer resources (org material → target wealth)
     2. Create or strengthen edge (org → target)
-    
+
     Consciousness side-effects computed but applied in Layer 3:
     - Agitation reduction on target (material improvement)
     - Edge creation provides solidarity routing infrastructure
@@ -386,41 +386,41 @@ def resolve_aid(
     org = graph.get_node(action.org_id)
     target = graph.get_node(action.target_id)
     transfer = action.params["transfer_amount"]
-    
+
     # --- Mutation 1: Resource Transfer ---
     # Deduct from org
     deduct_resources(org, material=transfer, action_points=1)
-    
+
     # Apply to target
     if target.node_type == "social_class":
         # Population target: increase wealth, affecting survival calculus
         old_wealth = target.wealth
         target.wealth += transfer * defines.aid_efficiency
         # Aid efficiency < 1.0 accounts for logistics overhead
-        
+
         # Compute agitation reduction
         # Material improvement reduces the experiential gap that generates agitation
         consumption_gap_before = max(0, target.consumption_needs - old_wealth)
         consumption_gap_after = max(0, target.consumption_needs - target.wealth)
         gap_reduction = consumption_gap_before - consumption_gap_after
         agitation_reduction = gap_reduction * defines.agitation_relief_per_unit
-        
+
         # Apply agitation reduction to MaterialConditionsBuffer
         target.material_conditions.agitation = max(
             0.0,
             target.material_conditions.agitation - agitation_reduction
         )
-        
+
     elif target.node_type == "organization":
         # Org target: increase their material stock
         target.resources.material += transfer * defines.aid_efficiency
         agitation_reduction = 0.0  # Org-to-org aid doesn't affect population agitation
-    
+
     # --- Mutation 2: Edge Creation / Strengthening ---
     edge = graph.get_edge(org.id, target.id)
     edge_created = False
     edge_strengthened = False
-    
+
     if edge is None:
         # No existing relationship → create TRANSACTIONAL edge
         graph.create_edge(
@@ -441,7 +441,7 @@ def resolve_aid(
         new_accumulation = old_accumulation + defines.aid_solidarity_increment
         edge.attributes["solidarity_accumulation"] = new_accumulation
         edge_strengthened = True
-        
+
         # Check for mode transition: TRANSACTIONAL → SOLIDARISTIC
         # Requires: solidarity_accumulation >= threshold AND
         #           education_pressure on shared community >= education_threshold
@@ -459,7 +459,7 @@ def resolve_aid(
                 edge.mode = EdgeMode.SOLIDARISTIC
                 # This is a qualitative transformation (Constitution I.7)
                 # Emit a discrete event, not a gradual shift
-    
+
     # --- Consciousness Side-Effect (computed, applied in Layer 3) ---
     # Revolutionary org: aid demonstrates alternative to commodity form
     # Liberal org: aid reinforces dependency
@@ -469,7 +469,7 @@ def resolve_aid(
         "liberal": {"ci_delta": 0.0, "direction": "neutral"},
         "fascist": {"ci_delta": -0.01, "direction": "slight f push"},
     }[org.consciousness_strategy.value]
-    
+
     return VerbResult(
         mutations=[
             GraphMutation(
@@ -538,7 +538,7 @@ After AID resolves in Action Phase, Layer 3 processes:
 ```python
 class AidDefines(BaseModel):
     """AID verb coefficients."""
-    
+
     aid_efficiency: float = Field(
         default=0.85, ge=0.0, le=1.0,
         description=(

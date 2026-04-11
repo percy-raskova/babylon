@@ -1,0 +1,93 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.13.5, pytest-8.4.2, pluggy-1.6.0 -- /home/user/projects/game/babylon/.venv/bin/python
+cachedir: .pytest_cache
+django: version: 5.2.11, settings: babylon_web.settings.testing (from ini)
+hypothesis profile 'default'
+Using --randomly-seed=2824720401
+PyQt6 6.10.2 -- Qt runtime 6.10.2 -- Qt compiled 6.10.0
+ansible: 2.20.3
+rootdir: /home/user/projects/game/babylon
+configfile: pyproject.toml
+plugins: playwright-0.7.2, django-4.12.0, xdist-3.8.0, ansible-26.2.0, mock-3.15.1, hypothesis-6.151.9, base-url-2.1.0, randomly-4.0.1, asyncio-1.3.0, anyio-4.12.1, cov-7.0.0, qt-4.5.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+[1mcollecting ... [0mcollected 6 items
+
+tests/test_simplex_invariants.py::TestSimplexInvariants::test_normalization_to_simplex [32mPASSED[0m[33m [ 16%][0m
+tests/test_simplex_invariants.py::TestSimplexInvariants::test_shannon_entropy_bounds [32mPASSED[0m[33m [ 33%][0m
+tests/test_simplex_invariants.py::TestSimplexInvariants::test_routing_formula_monotonicity [32mPASSED[0m[33m [ 50%][0m
+tests/test_simplex_invariants.py::TestSimplexInvariants::test_legacy_construction_equivalence [31mFAILED[0m[31m [ 66%][0m
+tests/test_simplex_invariants.py::TestSimplexInvariants::test_substrate_floor_respected_in_constructor [32mPASSED[0m[31m [ 83%][0m
+tests/test_simplex_invariants.py::TestSimplexInvariants::test_simplex_constraint_and_non_negative [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m__________ TestSimplexInvariants.test_legacy_construction_equivalence __________[0m
+  + Exception Group Traceback (most recent call last):
+  |   File "/home/user/projects/game/babylon/tests/test_simplex_invariants.py", line 103, in test_legacy_construction_equivalence
+  |     ci=st.floats(min_value=0.0, max_value=1.0),
+  |            ^^^^^^^
+  |   File "/home/user/projects/game/babylon/.venv/lib/python3.13/site-packages/hypothesis/core.py", line 2246, in wrapped_test
+  |     raise the_error_hypothesis_found
+  | ExceptionGroup: Hypothesis found 3 distinct failures. (3 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/home/user/projects/game/babylon/tests/test_simplex_invariants.py", line 124, in test_legacy_construction_equivalence
+    |     assert tc.dominant_tendency == ten
+    | AssertionError: assert <ConsciousnessTendency.LIBERAL: 'liberal'> == <ConsciousnessTendency.REVOLUTIONARY: 'revolutionary'>
+    |
+    |   [0m[91m- revolutionary[39;49;00m[90m[39;49;00m
+    |   [92m+ liberal[39;49;00m[90m[39;49;00m
+    | Falsifying example: test_legacy_construction_equivalence(
+    |     self=<tests.test_simplex_invariants.TestSimplexInvariants object at 0x7fd512c1e450>,
+    |     ci=0.375,
+    |     ten=<ConsciousnessTendency.REVOLUTIONARY: 'revolutionary'>,
+    |     cont=0.0,
+    | )
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/home/user/projects/game/babylon/tests/test_simplex_invariants.py", line 126, in test_legacy_construction_equivalence
+    |     assert tc.dominant_tendency == ten
+    | AssertionError: assert <ConsciousnessTendency.REVOLUTIONARY: 'revolutionary'> == <ConsciousnessTendency.LIBERAL: 'liberal'>
+    |
+    |   [0m[91m- liberal[39;49;00m[90m[39;49;00m
+    |   [92m+ revolutionary[39;49;00m[90m[39;49;00m
+    | Falsifying example: test_legacy_construction_equivalence(
+    |     self=<tests.test_simplex_invariants.TestSimplexInvariants object at 0x7fd512c1e450>,
+    |     ci=0.625,
+    |     ten=<ConsciousnessTendency.LIBERAL: 'liberal'>,
+    |     cont=0.0,
+    | )
+    +---------------- 3 ----------------
+    | Traceback (most recent call last):
+    |   File "/home/user/projects/game/babylon/tests/test_simplex_invariants.py", line 128, in test_legacy_construction_equivalence
+    |     assert tc.dominant_tendency == ten
+    | AssertionError: assert <ConsciousnessTendency.REVOLUTIONARY: 'revolutionary'> == <ConsciousnessTendency.FASCIST: 'fascist'>
+    |
+    |   [0m[91m- fascist[39;49;00m[90m[39;49;00m
+    |   [92m+ revolutionary[39;49;00m[90m[39;49;00m
+    | Falsifying example: test_legacy_construction_equivalence(
+    |     self=<tests.test_simplex_invariants.TestSimplexInvariants object at 0x7fd512c1e450>,
+    |     ci=0.5,
+    |     ten=<ConsciousnessTendency.FASCIST: 'fascist'>,
+    |     cont=0.0,
+    | )
+    +------------------------------------
+[33m=============================== warnings summary ===============================[0m
+src/babylon/models/components/organization.py:21
+  /home/user/projects/game/babylon/src/babylon/models/components/organization.py:21: DeprecationWarning: OrganizationComponent is deprecated. Use babylon.models.entities.organization.Organization and its subtypes (StateApparatus, Business, PoliticalFaction, CivilSocietyOrg) instead. See Feature 031.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============================= slowest 10 durations =============================
+0.17s call     tests/test_simplex_invariants.py::TestSimplexInvariants::test_simplex_constraint_and_non_negative
+0.17s call     tests/test_simplex_invariants.py::TestSimplexInvariants::test_legacy_construction_equivalence
+0.15s call     tests/test_simplex_invariants.py::TestSimplexInvariants::test_normalization_to_simplex
+0.14s call     tests/test_simplex_invariants.py::TestSimplexInvariants::test_shannon_entropy_bounds
+0.13s call     tests/test_simplex_invariants.py::TestSimplexInvariants::test_routing_formula_monotonicity
+0.00s setup    tests/test_simplex_invariants.py::TestSimplexInvariants::test_normalization_to_simplex
+0.00s setup    tests/test_simplex_invariants.py::TestSimplexInvariants::test_substrate_floor_respected_in_constructor
+0.00s setup    tests/test_simplex_invariants.py::TestSimplexInvariants::test_shannon_entropy_bounds
+0.00s setup    tests/test_simplex_invariants.py::TestSimplexInvariants::test_routing_formula_monotonicity
+0.00s setup    tests/test_simplex_invariants.py::TestSimplexInvariants::test_simplex_constraint_and_non_negative
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m tests/test_simplex_invariants.py::[1mTestSimplexInvariants::test_legacy_construction_equivalence[0m - ExceptionGroup: Hypothesis found 3 distinct failures. (3 sub-exceptions)
+[31m==================== [31m[1m1 failed[0m, [32m5 passed[0m, [33m1 warning[0m[31m in 2.77s[0m[31m ====================[0m

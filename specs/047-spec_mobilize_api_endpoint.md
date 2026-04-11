@@ -412,27 +412,27 @@ def resolve_mobilize(
     defines: MobilizeDefines,
 ) -> VerbResult:
     """Resolve a queued MOBILIZE action.
-    
+
     Graph operations:
     1. Temporarily amplify SOLIDARISTIC edges (boost for this tick)
     2. Apply political pressure to target (territory heat, institutional pressure)
     3. Generate practice-agitation on participating communities
     4. For strikes: reduce s-flow on target business extractive edges
-    
+
     MOBILIZE is unique: it generates agitation that routes with an
     inherent r-bonus because collective action IS de-reification.
     """
     org = graph.get_node(action.org_id)
     target = graph.get_node(action.target_id)
     sl_committed = action.params["sl_committed"]
-    
+
     mutations = []
     events = []
-    
+
     # --- Compute mobilization scale ---
     # Base turnout from SL committed
     base_turnout = sl_committed * defines.turnout_per_sl
-    
+
     # Solidarity multiplier from SOLIDARISTIC edges
     sol_edges = graph.get_edges_from(
         org.id, mode=EdgeMode.SOLIDARISTIC
@@ -440,21 +440,21 @@ def resolve_mobilize(
     solidarity_multiplier = 1.0 + (
         len(sol_edges) * defines.solidarity_amplification_per_edge
     )
-    
+
     effective_turnout = int(base_turnout * solidarity_multiplier)
-    
+
     # Reputation modifier — unknown orgs draw smaller crowds
     reputation_factor = 0.5 + (org.reputation * 0.5)
     effective_turnout = int(effective_turnout * reputation_factor)
-    
+
     # --- Deduct resources ---
     deduct_resources(
-        org, 
+        org,
         sympathizer_labor=sl_committed,
         cadre_labor=defines.mobilize_cl_cost,
         action_points=1,
     )
-    
+
     # --- Determine mobilization form based on target ---
     if target.node_type == "territory":
         form = "demonstration"
@@ -464,7 +464,7 @@ def resolve_mobilize(
         form = "blockade"
     else:
         form = "demonstration"  # default
-    
+
     # --- Form-specific value effects ---
     if form == "strike":
         # Compute workforce participation
@@ -474,12 +474,12 @@ def resolve_mobilize(
             effective_turnout / workforce,
             1.0,
         )
-        
+
         # Value disruption proportional to participation
         s_reduction = target.s_per_tick * participation
         v_withdrawn = target.v_per_tick * participation
         c_idle_fraction = participation
-        
+
         # Apply to target's extractive edges
         for edge in graph.get_edges_from(target.id, mode=EdgeMode.EXTRACTIVE):
             old_flow = edge.s_flow
@@ -490,13 +490,13 @@ def resolve_mobilize(
                 field="s_flow",
                 old_value=old_flow, new_value=edge.s_flow,
             ))
-        
+
         # Strike-specific consciousness: the LTV made material
         practice_agitation = (
             participation * defines.strike_practice_agitation
         )
         r_routing_bonus = defines.strike_r_routing_bonus
-        
+
     elif form == "blockade":
         # Sever target edge temporarily
         edge = graph.get_edge_by_id(action.target_id)
@@ -511,7 +511,7 @@ def resolve_mobilize(
         practice_agitation = defines.blockade_practice_agitation
         r_routing_bonus = defines.blockade_r_routing_bonus
         s_reduction = old_flow
-        
+
     else:  # demonstration
         # No direct value disruption — political pressure only
         practice_agitation = (
@@ -519,29 +519,29 @@ def resolve_mobilize(
         )
         r_routing_bonus = defines.demo_r_routing_bonus
         s_reduction = 0.0
-    
+
     # --- Heat generation ---
     visibility = effective_turnout / defines.visibility_scaling_population
     heat_increase = visibility * defines.heat_per_visibility
     org.heat += heat_increase
-    
+
     territory = graph.get_territory(
         target.territory_id if hasattr(target, 'territory_id') else target.id
     )
     territory.heat += heat_increase * defines.territory_heat_fraction
-    
+
     mutations.append(GraphMutation(
         target_type="organization", target_id=org.id,
         field="heat",
         old_value=org.heat - heat_increase, new_value=org.heat,
     ))
-    
+
     # --- Temporary solidarity amplification ---
     for edge in sol_edges:
         edge.attributes["mobilize_amplified"] = True
         edge.attributes["amplification_tick"] = action.tick
         # Amplification decays automatically next tick in Layer 3
-    
+
     # --- Practice agitation on communities ---
     # Distribute practice_agitation across communities present in territory
     participating_communities = get_communities_in_territory(
@@ -556,7 +556,7 @@ def resolve_mobilize(
             community.practice_r_routing_bonus,
             r_routing_bonus,
         )
-    
+
     # --- New edge creation from demonstration ---
     if effective_turnout > defines.edge_creation_turnout_threshold:
         new_edges_created = int(
@@ -576,7 +576,7 @@ def resolve_mobilize(
                         "established_by": "mobilize",
                     },
                 )
-    
+
     # --- Events ---
     events.append(SimulationEvent(
         type=EventType.MOBILIZATION,
@@ -592,7 +592,7 @@ def resolve_mobilize(
             "heat_generated": heat_increase,
         },
     ))
-    
+
     return VerbResult(
         mutations=mutations,
         events=events,
@@ -625,7 +625,7 @@ def resolve_mobilize(
 ```python
 class MobilizeDefines(BaseModel):
     """MOBILIZE verb coefficients."""
-    
+
     mobilize_cl_cost: float = Field(
         default=1.0,
         description="CL cost. Low — cadre direct, sympathizers march.",
@@ -641,7 +641,7 @@ class MobilizeDefines(BaseModel):
             "give 1.9x multiplier. 10 edges give 4.0x."
         ),
     )
-    
+
     # Form-specific practice agitation
     strike_practice_agitation: float = Field(
         default=0.30, ge=0.0,
@@ -685,7 +685,7 @@ class MobilizeDefines(BaseModel):
         default=0.25, ge=0.0,
         description="r-routing bonus for blockade practice agitation.",
     )
-    
+
     # Duration
     strike_duration_ticks: int = Field(
         default=3,
@@ -695,7 +695,7 @@ class MobilizeDefines(BaseModel):
         default=2,
         description="Ticks a blockade severs an edge.",
     )
-    
+
     # Heat and visibility
     visibility_scaling_population: float = Field(
         default=5000.0,
@@ -709,7 +709,7 @@ class MobilizeDefines(BaseModel):
         default=0.6, ge=0.0, le=1.0,
         description="Fraction of org heat applied to territory. Higher than ATTACK (0.5) because mobilizations are more public.",
     )
-    
+
     # Edge creation
     edge_creation_turnout_threshold: int = Field(
         default=200,

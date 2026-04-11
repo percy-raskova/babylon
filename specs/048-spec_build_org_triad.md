@@ -239,7 +239,7 @@ POST /api/games/{game_id}/verbs/reproduce/
 def resolve_reproduce(action, graph, hypergraph, defines):
     org = graph.get_node(action.org_id)
     mode = action.params["mode"]
-    
+
     if mode == "cadre_training":
         # Promote sympathizers to cadre
         promotions = min(
@@ -254,7 +254,7 @@ def resolve_reproduce(action, graph, hypergraph, defines):
         # Coherence improves (cadre ratio increases)
         # CL generation increases
         # Community credibility may increase (more cadre embedded in communities)
-        
+
     elif mode == "mass_recruitment":
         territory = action.params["recruitment_territory"]
         # Compute recruitment from population pools
@@ -266,7 +266,7 @@ def resolve_reproduce(action, graph, hypergraph, defines):
         # SL generation increases
         # New TRANSACTIONAL edges to recruited population possible
         # Visibility increases if recruitment is large
-    
+
     return VerbResult(...)
 ```
 
@@ -508,22 +508,22 @@ def resolve_investigate(action, graph, hypergraph, defines):
     org = graph.get_node(action.org_id)
     target = graph.get_node(action.target_id)
     mode = action.params["mode"]
-    
+
     # Intelligence effectiveness
     observe = org.ooda.observe_capability
     if mode == "counter_intel":
         target_opsec = 0.0  # Investigating yourself has no resistance
     else:
         target_opsec = getattr(target, "opsec", 0.5)
-    
+
     # Community embedding bonus
     if is_same_territory(org, target):
         embedding_bonus = org.presence_strength_in(target.territory_id)
     else:
         embedding_bonus = 0.0
-    
+
     intel_effectiveness = (observe + embedding_bonus) / (observe + embedding_bonus + target_opsec)
-    
+
     # Roll for each hidden attribute
     reveals = []
     for attr in get_hidden_attributes(target, graph):
@@ -531,7 +531,7 @@ def resolve_investigate(action, graph, hypergraph, defines):
             reveals.append(attr)
             # Promote from hidden to visible in player's information layer
             promote_to_visible(attr, org.player_id)
-    
+
     # Detection check
     if random() < compute_detection_probability(mode, target, org, defines):
         # State gains intelligence about YOUR investigation
@@ -540,12 +540,12 @@ def resolve_investigate(action, graph, hypergraph, defines):
             payload={"investigator": org.id, "target": target.id},
         ))
         # May trigger state RESEARCH response
-    
+
     # Counter-intel specifics
     if mode == "counter_intel":
         infiltration_assessment = compute_infiltration_risk(org, graph, defines)
         reveals.append({"type": "infiltration_assessment", "data": infiltration_assessment})
-    
+
     return VerbResult(
         mutations=[],  # INVESTIGATE changes only the information layer, not the graph
         events=events,

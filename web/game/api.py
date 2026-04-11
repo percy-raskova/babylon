@@ -272,6 +272,22 @@ SCENARIO_CATALOG: list[dict[str, Any]] = [
     },
 ]
 
+VALID_MAP_LAYERS: frozenset[str] = frozenset(
+    {
+        "heat",
+        "consciousness",
+        "wealth",
+        "rent",
+        "biocapacity",
+        "population",
+        "profit_rate",
+        "exploitation_rate",
+        "occ",
+        "imperial_rent",
+        "org_presence",
+    }
+)
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -350,7 +366,7 @@ def game_state(request: Request, game_id: str) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def game_map(request: Request, game_id: str) -> JsonResponse:
-    """GET /api/games/{id}/map/ — Hex map state snapshot."""
+    """GET /api/games/{id}/map/?lens={lens_name} — Hex map state snapshot."""
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
@@ -361,8 +377,36 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     except ValueError:
         return _error("Invalid tick parameter", http_status=400)
 
+    lens = request.query_params.get("lens")
+
     bridge = _get_bridge()
-    snapshot = bridge.get_map_snapshot(uuid.UUID(str(session.id)), tick=tick)
+    snapshot = bridge.get_map_snapshot(uuid.UUID(str(session.id)), tick=tick, layer=lens)
+
+    if lens and lens in VALID_MAP_LAYERS:
+        # Filter properties to only include the requested layer metric plus identifying fields
+        keep_keys = {"h3_index", "county_fips", "county_name", lens}
+        filtered_features = []
+        for feature in snapshot.get("features", []):
+            original_props = feature.get("properties", {})
+            filtered_props = {k: v for k, v in original_props.items() if k in keep_keys}
+            filtered_features.append(
+                {
+                    "type": feature.get("type", "Feature"),
+                    "id": feature.get("id"),
+                    "geometry": feature.get("geometry"),
+                    "properties": filtered_props,
+                }
+            )
+
+        snapshot = {
+            "type": "FeatureCollection",
+            "metadata": {
+                **snapshot.get("metadata", {}),
+                "layer": lens,
+            },
+            "features": filtered_features,
+        }
+
     return _envelope(
         snapshot,
         tick=snapshot.get("metadata", {}).get("tick", session.current_tick),
@@ -370,76 +414,182 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     )
 
 
-# The 6 canonical map layers matching the frontend MapLayer type
-VALID_MAP_LAYERS: frozenset[str] = frozenset(
-    ["heat", "consciousness", "wealth", "rent", "biocapacity", "population"]
-)
+# ---------------------------------------------------------------------- #
+# Dashboards and Analytics
+# ---------------------------------------------------------------------- #
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def game_map_layer(request: Request, game_id: str, layer: str) -> JsonResponse:
-    """GET /api/games/{id}/map/{layer}/ — Per-layer GeoJSON data.
-
-    Returns a GeoJSON FeatureCollection with properties filtered
-    to include only the requested metric plus the identifying fields
-    (h3_index, county_fips, county_name).
-
-    Valid layers: heat, consciousness, wealth, rent, biocapacity, population.
-    """
-    if layer not in VALID_MAP_LAYERS:
-        return _error(
-            f"Invalid layer '{layer}'. Valid layers: {sorted(VALID_MAP_LAYERS)}",
-            http_status=400,
-        )
-
+def game_summary(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/summary/ - Top-bar aggregate."""
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
-
-    try:
-        tick_query = request.query_params.get("tick")
-        tick = int(tick_query) if tick_query is not None else None
-    except ValueError:
-        return _error("Invalid tick parameter", http_status=400)
-
     bridge = _get_bridge()
-    snapshot = bridge.get_map_snapshot(
-        uuid.UUID(str(session.id)),
-        tick=tick,
-        layer=layer,
-    )
+    data = bridge.get_game_summary(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
-    # Filter properties to only include the requested layer metric
-    # plus identifying fields (h3_index, county_fips, county_name)
-    keep_keys = {"h3_index", "county_fips", "county_name", layer}
-    filtered_features = []
-    for feature in snapshot.get("features", []):
-        original_props = feature.get("properties", {})
-        filtered_props = {k: v for k, v in original_props.items() if k in keep_keys}
-        filtered_features.append(
-            {
-                "type": feature.get("type", "Feature"),
-                "id": feature.get("id"),
-                "geometry": feature.get("geometry"),
-                "properties": filtered_props,
-            }
-        )
 
-    result = {
-        "type": "FeatureCollection",
-        "metadata": {
-            **snapshot.get("metadata", {}),
-            "layer": layer,
-        },
-        "features": filtered_features,
-    }
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_timeseries(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/timeseries/ - Per-tick history for charts."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_game_timeseries(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
-    return _envelope(
-        result,
-        tick=snapshot.get("metadata", {}).get("tick", session.current_tick),
-        session_id=str(session.id),
-    )
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_economy(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/economy/ - Economy left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_economy_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_communities(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/communities/ - Communities left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_communities_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_organizations(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/organizations/ - Organizations left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_organizations_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_edges(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/edges/ - Edges left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_edges_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_state_apparatus(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/state-apparatus/ - State-apparatus left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_state_apparatus_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_journal(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/journal/ - Journal left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_journal_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_alerts(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/alerts/ - Alerts left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_alerts_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+# ---------------------------------------------------------------------- #
+# Inspector Endpoints (Drill-Downs)
+# ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_node(request: Request, game_id: str, node_id: str) -> JsonResponse:
+    """GET /api/games/{id}/node/{node_id}/ - Node inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_node(uuid.UUID(str(session.id)), node_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_org(request: Request, game_id: str, org_id: str) -> JsonResponse:
+    """GET /api/games/{id}/org/{org_id}/ - Org inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_org(uuid.UUID(str(session.id)), org_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_community(request: Request, game_id: str, hyperedge_id: str) -> JsonResponse:
+    """GET /api/games/{id}/community/{hyperedge_id}/ - Community inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_community(uuid.UUID(str(session.id)), hyperedge_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_edge(request: Request, game_id: str, edge_id: str) -> JsonResponse:
+    """GET /api/games/{id}/edge/{edge_id}/ - Edge inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_edge(uuid.UUID(str(session.id)), edge_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_hex(request: Request, game_id: str, h3_index: str) -> JsonResponse:
+    """GET /api/games/{id}/hex/{h3_index}/ - Hex inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_hex(uuid.UUID(str(session.id)), h3_index)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
 # ---------------------------------------------------------------------- #
@@ -500,6 +650,31 @@ def actions_preview(request: Request, game_id: str) -> JsonResponse:
         tick=session.current_tick,
         session_id=str(session.id),
     )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def action_delete(request: Request, game_id: str, action_id: int) -> JsonResponse:
+    """DELETE /api/games/{id}/actions/{action_id}/ — Cancel a pending action."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    try:
+        action = PlayerAction.objects.get(
+            id=action_id,
+            session_id=session.id,
+            tick=session.current_tick,
+            resolved=False,
+        )
+        action.delete()
+        return _envelope(
+            {"status": "deleted", "action_id": action_id},
+            tick=session.current_tick,
+            session_id=str(session.id),
+        )
+    except PlayerAction.DoesNotExist:
+        return _error("Action not found or already resolved", http_status=404)
 
 
 @api_view(["GET", "POST"])

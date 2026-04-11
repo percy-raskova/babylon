@@ -74,7 +74,12 @@ def resolve_mobilize(
 
     # For future extension: check hypergraph for shared class-struggle events
     hyper_multiplier = 1.0
-    if hypergraph and hasattr(hypergraph, "nodes") and target_id in hypergraph.nodes and any(org_id in edge for edge in hypergraph.edges(target_id)):
+    if (
+        hypergraph
+        and hasattr(hypergraph, "nodes")
+        and target_id in hypergraph.nodes
+        and any(org_id in edge for edge in hypergraph.edges(target_id))
+    ):
         hyper_multiplier = 1.5
 
     total_multiplier = reduce(mul, edge_multipliers, 1.0) * hyper_multiplier

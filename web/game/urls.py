@@ -27,14 +27,32 @@ urlpatterns: list[URLPattern] = [
     path("games/<str:game_id>/resume/", api.game_resume, name="game-resume"),
     # API: State
     path("games/<str:game_id>/state/", api.game_state, name="game-state"),
+    path("games/<str:game_id>/summary/", api.game_summary, name="game-summary"),
+    path("games/<str:game_id>/timeseries/", api.game_timeseries, name="game-timeseries"),
     path("games/<str:game_id>/map/", api.game_map, name="game-map"),
-    # API: Per-layer map endpoints
+    # API: Domain Dashboards
+    path("games/<str:game_id>/economy/", api.game_economy, name="game-economy"),
+    path("games/<str:game_id>/communities/", api.game_communities, name="game-communities"),
+    path("games/<str:game_id>/organizations/", api.game_organizations, name="game-organizations"),
+    path("games/<str:game_id>/edges/", api.game_edges, name="game-edges"),
     path(
-        "games/<str:game_id>/map/<str:layer>/",
-        api.game_map_layer,
-        name="game-map-layer",
+        "games/<str:game_id>/state-apparatus/",
+        api.game_state_apparatus,
+        name="game-state-apparatus",
     ),
-    # API: Actions — utility endpoints (available, preview, pending list)
+    path("games/<str:game_id>/journal/", api.game_journal, name="game-journal"),
+    path("games/<str:game_id>/alerts/", api.game_alerts, name="game-alerts"),
+    # API: Inspector Drill-Downs
+    path("games/<str:game_id>/node/<str:node_id>/", api.inspector_node, name="inspector-node"),
+    path("games/<str:game_id>/org/<str:org_id>/", api.inspector_org, name="inspector-org"),
+    path(
+        "games/<str:game_id>/community/<str:hyperedge_id>/",
+        api.inspector_community,
+        name="inspector-community",
+    ),
+    path("games/<str:game_id>/edge/<str:edge_id>/", api.inspector_edge, name="inspector-edge"),
+    path("games/<str:game_id>/hex/<str:h3_index>/", api.inspector_hex, name="inspector-hex"),
+    # API: Actions — utility endpoints (available, preview, pending list, cancel)
     path(
         "games/<str:game_id>/actions/available/",
         api.actions_available,
@@ -44,6 +62,11 @@ urlpatterns: list[URLPattern] = [
         "games/<str:game_id>/actions/preview/",
         api.actions_preview,
         name="actions-preview",
+    ),
+    path(
+        "games/<str:game_id>/actions/<int:action_id>/",
+        api.action_delete,
+        name="action-delete",
     ),
     # Per-verb action submission (Spec 040 §6.1 / Spec 043)
     path(

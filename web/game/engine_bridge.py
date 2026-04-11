@@ -252,6 +252,70 @@ class EngineBridge:
         }
 
     # ------------------------------------------------------------------ #
+    # Domain Dashboards (Scaffolding for full UI requirements)
+    # ------------------------------------------------------------------ #
+
+    def get_game_summary(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the top-bar summary data: tick, profit rate, phi, state faction, alerts."""
+        return {}
+
+    def get_game_timeseries(self, _session_id: UUID) -> dict[str, Any]:
+        """Return historical timeseries data for charting."""
+        return {}
+
+    def get_economy_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the economy left-panel dashboard data."""
+        return {}
+
+    def get_communities_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the communities left-panel dashboard data."""
+        return {}
+
+    def get_organizations_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the organizations left-panel dashboard data."""
+        return {}
+
+    def get_edges_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the edges/relations left-panel dashboard data."""
+        return {}
+
+    def get_state_apparatus_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the state-apparatus intelligence screen data."""
+        return {}
+
+    def get_journal_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the historical event log data."""
+        return {}
+
+    def get_alerts_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the active alerts and threshold crossings."""
+        return {}
+
+    # ------------------------------------------------------------------ #
+    # Inspector Views
+    # ------------------------------------------------------------------ #
+
+    def get_inspector_node(self, _session_id: UUID, _node_id: str) -> dict[str, Any]:
+        """Return detailed stats for a generic node click."""
+        return {}
+
+    def get_inspector_org(self, _session_id: UUID, _org_id: str) -> dict[str, Any]:
+        """Return detailed drill-down data for a specific organization."""
+        return {}
+
+    def get_inspector_community(self, _session_id: UUID, _hyperedge_id: str) -> dict[str, Any]:
+        """Return detailed drill-down data for a community hyperedge."""
+        return {}
+
+    def get_inspector_edge(self, _session_id: UUID, _edge_id: str) -> dict[str, Any]:
+        """Return detailed drill-down data for an edge."""
+        return {}
+
+    def get_inspector_hex(self, _session_id: UUID, _h3_index: str) -> dict[str, Any]:
+        """Return detailed drill-down data for a map hex."""
+        return {}
+
+    # ------------------------------------------------------------------ #
     # Tick resolution
     # ------------------------------------------------------------------ #
 

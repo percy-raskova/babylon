@@ -75,22 +75,43 @@ class DialecticRegistry:
 
 
 # ===========================================================================
-# Module-level default registry with all known V1 types
+# Module-level default registry with all known types
 # ===========================================================================
 
 
 def _build_default_registry() -> DialecticRegistry:
     """Build the default registry with all known dialectic types."""
-    from babylon.engine.dialectics.volume_1 import (
-        AccumulationDialectic,
-        CommodityDialectic,
-        LaborProcessDialectic,
-        PrimitiveAccumulationDialectic,
-        ProductionDialectic,
-        WageDialectic,
+    from babylon.engine.dialectics.accumulation import AccumulationDialectic
+    from babylon.engine.dialectics.circulation import CirculationDialectic
+    from babylon.engine.dialectics.commodity import CommodityDialectic
+    from babylon.engine.dialectics.consciousness import ClassConsciousnessDialectic
+    from babylon.engine.dialectics.consumption import ConsumptionDialectic
+    from babylon.engine.dialectics.credit import CreditDialectic
+    from babylon.engine.dialectics.crises import (
+        DebtSpiralCrisisDialectic,
+        DisproportionalityCrisisDialectic,
+        FinancialCrisisDialectic,
+        RealizationCrisisDialectic,
     )
+    from babylon.engine.dialectics.distribution import DistributionDialectic
+    from babylon.engine.dialectics.imperial import ImperialDialectic
+    from babylon.engine.dialectics.labor_process import LaborProcessDialectic
+    from babylon.engine.dialectics.primitive_accumulation import (
+        PrimitiveAccumulationDialectic,
+    )
+    from babylon.engine.dialectics.production import ProductionDialectic
+    from babylon.engine.dialectics.rent import RentDialectic
+    from babylon.engine.dialectics.reproduction import ReproductionDialectic
+    from babylon.engine.dialectics.surplus_distribution import (
+        SurplusDistributionDialectic,
+    )
+    from babylon.engine.dialectics.trpf import TRPFDialectic
+    from babylon.engine.dialectics.turnover import TurnoverDialectic
+    from babylon.engine.dialectics.wage import WageDialectic
 
     registry = DialecticRegistry()
+
+    # V1
     registry.register(CommodityDialectic)
     registry.register(LaborProcessDialectic)
     registry.register(ProductionDialectic)
@@ -98,43 +119,26 @@ def _build_default_registry() -> DialecticRegistry:
     registry.register(AccumulationDialectic)
     registry.register(PrimitiveAccumulationDialectic)
 
-    from babylon.engine.dialectics.volume_2 import (
-        CirculationDialectic,
-        ConsumptionDialectic,
-        DisproportionalityCrisisDialectic,
-        DistributionDialectic,
-        RealizationCrisisDialectic,
-        ReproductionDialectic,
-        TurnoverDialectic,
-    )
-
+    # V2
     registry.register(CirculationDialectic)
     registry.register(ConsumptionDialectic)
     registry.register(DistributionDialectic)
     registry.register(ReproductionDialectic)
     registry.register(TurnoverDialectic)
-    registry.register(DisproportionalityCrisisDialectic)
-    registry.register(RealizationCrisisDialectic)
 
-    from babylon.engine.dialectics.consciousness import ClassConsciousnessDialectic
-
-    registry.register(ClassConsciousnessDialectic)
-
-    from babylon.engine.dialectics.volume_3 import (
-        CreditDialectic,
-        DebtSpiralCrisisDialectic,
-        FinancialCrisisDialectic,
-        ImperialDialectic,
-        RentDialectic,
-        SurplusDistributionDialectic,
-        TRPFDialectic,
-    )
-
+    # V3
     registry.register(SurplusDistributionDialectic)
     registry.register(TRPFDialectic)
     registry.register(CreditDialectic)
     registry.register(RentDialectic)
     registry.register(ImperialDialectic)
+
+    # Consciousness
+    registry.register(ClassConsciousnessDialectic)
+
+    # Crises
+    registry.register(RealizationCrisisDialectic)
+    registry.register(DisproportionalityCrisisDialectic)
     registry.register(DebtSpiralCrisisDialectic)
     registry.register(FinancialCrisisDialectic)
 

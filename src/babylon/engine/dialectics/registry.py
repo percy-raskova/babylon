@@ -126,11 +126,11 @@ def _build_default_registry() -> DialecticRegistry:
         FinancialCrisisDialectic,
         ImperialDialectic,
         RentDialectic,
-        TransformationDialectic,
+        SurplusDistributionDialectic,
         TRPFDialectic,
     )
 
-    registry.register(TransformationDialectic)
+    registry.register(SurplusDistributionDialectic)
     registry.register(TRPFDialectic)
     registry.register(CreditDialectic)
     registry.register(RentDialectic)

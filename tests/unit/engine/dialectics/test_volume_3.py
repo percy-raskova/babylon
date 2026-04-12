@@ -30,44 +30,44 @@ from babylon.engine.dialectics.volume_3 import (
     ProfitRateState,
     RentDialectic,
     RentPole,
-    TransformationDialectic,
-    TransformationPole,
+    SurplusDistributionDialectic,
+    SurplusDistributionPole,
     TRPFDialectic,
 )
 
 # ===========================================================================
-# TransformationDialectic (V3 Ch9-10): Value ↔ PriceOfProduction
+# SurplusDistributionDialectic (V3 Ch9-10): Value ↔ PriceOfProduction
 # ===========================================================================
 
 
-class TestTransformationDialectic:
+class TestSurplusDistributionDialectic:
     """Tests for the surplus value distribution dialectic."""
 
     def test_construction_and_poles(self) -> None:
-        pole_a = TransformationPole(
+        pole_a = SurplusDistributionPole(
             total_surplus=1000.0,
             interest_payments=200.0,
             ground_rent=100.0,
             taxes=50.0,
         )
-        td = TransformationDialectic(
+        td = SurplusDistributionDialectic(
             pole_a=pole_a,
             pole_b=EmptyPole(),
             weight=0.0,
             tick_created=0,
             tick_updated=0,
         )
-        assert td.type_tag == "TransformationDialectic"
+        assert td.type_tag == "SurplusDistributionDialectic"
         assert td.pole_a.total_surplus == 1000.0
 
     def test_observe_emits_distribution_components(self) -> None:
-        pole_a = TransformationPole(
+        pole_a = SurplusDistributionPole(
             total_surplus=1000.0,
             interest_payments=200.0,
             ground_rent=100.0,
             taxes=50.0,
         )
-        td = TransformationDialectic(
+        td = SurplusDistributionDialectic(
             pole_a=pole_a,
             pole_b=EmptyPole(),
             weight=0.0,
@@ -83,13 +83,13 @@ class TestTransformationDialectic:
 
     def test_step_shifts_weight_on_profit_squeeze(self) -> None:
         """When claims crowd out enterprise profit, weight shifts negative."""
-        pole_a = TransformationPole(
+        pole_a = SurplusDistributionPole(
             total_surplus=100.0,
             interest_payments=40.0,
             ground_rent=30.0,
             taxes=20.0,
         )
-        td = TransformationDialectic(
+        td = SurplusDistributionDialectic(
             pole_a=pole_a,
             pole_b=EmptyPole(),
             weight=0.0,
@@ -101,17 +101,17 @@ class TestTransformationDialectic:
         result = td.step(inputs, WorldView(tick=1, dialectics={}))
         # When interest increases, weight should shift (toward B / claims dominant)
         assert result.tick_updated == 1
-        assert isinstance(result, TransformationDialectic)
+        assert isinstance(result, SurplusDistributionDialectic)
 
     def test_invariant_accounting_identity(self) -> None:
         """s = p + i + r + t must hold."""
-        pole_a = TransformationPole(
+        pole_a = SurplusDistributionPole(
             total_surplus=1000.0,
             interest_payments=200.0,
             ground_rent=100.0,
             taxes=50.0,
         )
-        td = TransformationDialectic(
+        td = SurplusDistributionDialectic(
             pole_a=pole_a,
             pole_b=EmptyPole(),
             weight=0.0,
@@ -123,14 +123,14 @@ class TestTransformationDialectic:
 
     def test_sublation_to_debt_spiral(self) -> None:
         """Claims exceeding surplus triggers debt spiral crisis."""
-        pole_a = TransformationPole(
+        pole_a = SurplusDistributionPole(
             total_surplus=100.0,
             interest_payments=50.0,
             ground_rent=40.0,
             taxes=20.0,
         )
         # Claims = 50 + 40 + 20 = 110 > 100 surplus → claims exceed surplus
-        td = TransformationDialectic(
+        td = SurplusDistributionDialectic(
             pole_a=pole_a,
             pole_b=EmptyPole(),
             weight=-0.9,

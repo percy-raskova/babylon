@@ -9,7 +9,7 @@ this decomposition drives.
 
 Five primary dialectics:
 
-* :class:`TransformationDialectic` (Ch9-10): Value → Price of Production
+* :class:`SurplusDistributionDialectic` (Ch9-10): Surplus Value Distribution
 * :class:`TRPFDialectic` (Ch13-15): Falling Profit Rate ↔ Counter-Tendencies
 * :class:`CreditDialectic` (Ch21-33): Real Capital ↔ Fictitious Capital
 * :class:`RentDialectic` (Ch37-47): Ground Rent extraction categories
@@ -17,8 +17,44 @@ Five primary dialectics:
 
 Two crisis sublation types:
 
-* :class:`DebtSpiralCrisisDialectic`: From TransformationDialectic
+* :class:`DebtSpiralCrisisDialectic`: From SurplusDistributionDialectic
 * :class:`FinancialCrisisDialectic`: From CreditDialectic
+
+Delegation Pattern:
+    Dialectic classes are **thin shells** around existing domain logic.
+    Each pole model reimplements the domain formula (e.g., ``p = s - i - r - t``)
+    rather than calling the domain calculator directly, because the dialectic
+    layer receives pre-computed inputs and operates at a higher abstraction level.
+    The mathematical formulas are **identical** to their domain counterparts.
+
+    .. list-table:: Domain Delegation Map
+       :header-rows: 1
+
+       * - Dialectic
+         - Reimplements
+         - Domain Source
+       * - ``SurplusDistributionDialectic``
+         - ``p = s - i - r - t``
+         - ``economics.distribution.SurplusValueDistribution``
+       * - ``RentDialectic``
+         - ``total_rent = agri + resource + urban``
+         - ``economics.rent.RentExtraction``
+       * - ``TRPFDialectic``
+         - (delegates directly)
+         - ``counter_tendencies.CounterTendencyStrength``
+       * - ``CreditDialectic``
+         - (delegates directly)
+         - ``credit.FictitiousCapitalStock.ratio_to_real()``
+       * - ``ImperialDialectic``
+         - (delegates directly)
+         - ``formulas.fundamental_theorem``
+
+Future Work:
+    A ``ValueTransformationDialectic`` (labor-value hours → money wages)
+    is needed to bridge the value-price gap. See the Transformation Problem
+    (V3 Ch9): values must be converted to prices of production for the
+    simulation to model wage-setting realistically. This is deferred to
+    a future specification (see spec 024, Assumptions, line 221).
 
 See Also:
     :mod:`babylon.engine.dialectics.volume_1`: Production dialectics.
@@ -52,11 +88,18 @@ from babylon.formulas.fundamental_theorem import (
 # ===========================================================================
 
 
-class TransformationPole(BaseModel):
-    """Pole A for the Transformation dialectic.
+class SurplusDistributionPole(BaseModel):
+    """Pole A for the Distribution dialectic.
 
-    Holds the surplus value distribution decomposition:
-    s = profit_of_enterprise + interest + rent + taxes.
+    Reimplements the surplus value distribution identity from
+    ``economics.distribution.SurplusValueDistribution`` for the
+    dialectic layer. The formula ``p = s - i - r - t`` is identical
+    to ``SurplusValueDistribution.profit_of_enterprise``. This is
+    intentional: the dialectic receives pre-computed distribution
+    inputs and does not perform data-source lookups.
+
+    See Also:
+        :class:`babylon.economics.distribution.types.SurplusValueDistribution`
 
     Attributes:
         total_surplus: Total surplus value produced (s).
@@ -118,6 +161,15 @@ class CreditPole(BaseModel):
 class RentPole(BaseModel):
     """Pole A for the Rent dialectic — three-category decomposition.
 
+    Reimplements the three-category rent aggregation from
+    ``economics.rent.types.RentExtraction``. The formula
+    ``total_rent = agri + resource + urban`` is identical.
+    This is intentional: the dialectic receives pre-aggregated
+    county-level data and does not perform data-source lookups.
+
+    See Also:
+        :class:`babylon.economics.rent.types.RentExtraction`
+
     Attributes:
         agricultural_rent: Rent from farming / rural land.
         resource_rent: Rent from extractive industries.
@@ -169,12 +221,17 @@ class PeripheryEconomy(BaseModel):
 
 
 # ===========================================================================
-# TransformationDialectic (V3 Ch9-10)
+# SurplusDistributionDialectic (V3 Ch9-10)
 # ===========================================================================
 
 
-class TransformationDialectic(Dialectic[TransformationPole, EmptyPole]):
-    """Value → Price-of-Production / Surplus Value Distribution.
+class SurplusDistributionDialectic(Dialectic[SurplusDistributionPole, EmptyPole]):
+    """Surplus Value Distribution — s = p + i + r + t.
+
+    Named "Distribution" rather than "Transformation" to distinguish this
+    from the value → price *transformation problem* (V3 Ch9-10), which is
+    out of scope (spec 024, Assumptions). This dialectic models how total
+    surplus decomposes into competing revenue claims.
 
     Pole A stores the s = p + i + r + t decomposition. Weight tracks the
     share of surplus retained by industrial capital (enterprise profit)
@@ -190,13 +247,13 @@ class TransformationDialectic(Dialectic[TransformationPole, EmptyPole]):
         Weight shifts toward +1 as claims crowd out enterprise profit.
 
     Sublation:
-        When ``claims_exceed_surplus`` is True AND ``weight < -0.7``,
+        When ``claims_exceed_surplus`` is True,
         sublates to :class:`DebtSpiralCrisisDialectic`.
     """
 
-    type_tag: str = "TransformationDialectic"
+    type_tag: str = "SurplusDistributionDialectic"
 
-    def step(self, inputs: TickInputs, world: WorldView) -> TransformationDialectic:
+    def step(self, inputs: TickInputs, world: WorldView) -> SurplusDistributionDialectic:
         """Motion law T for surplus value distribution.
 
         Args:
@@ -205,7 +262,7 @@ class TransformationDialectic(Dialectic[TransformationPole, EmptyPole]):
             world: Read-only world context.
 
         Returns:
-            New TransformationDialectic with updated weight and poles.
+            New SurplusDistributionDialectic with updated weight and poles.
         """
         own = inputs.upstream.get(self.id, {})
         interest_shift = float(own.get("interest_rate_increase", 0.0))
@@ -281,7 +338,7 @@ class TransformationDialectic(Dialectic[TransformationPole, EmptyPole]):
         )
         if abs(reconstructed - self.pole_a.total_surplus) > 1e-6:
             violations.append(
-                f"TransformationDialectic {self.id}: "
+                f"SurplusDistributionDialectic {self.id}: "
                 f"accounting identity violated: "
                 f"p+i+r+t={reconstructed} != s={self.pole_a.total_surplus}"
             )
@@ -670,7 +727,7 @@ class ImperialDialectic(Dialectic[CoreEconomy, PeripheryEconomy]):
 class DebtSpiralCrisisDialectic(Dialectic[EmptyPole, EmptyPole]):
     """Crisis dialectic produced when financial claims exceed surplus.
 
-    Produced by :meth:`TransformationDialectic.sublate` when
+    Produced by :meth:`SurplusDistributionDialectic.sublate` when
     interest + rent + taxes > total surplus (FR-016).
 
     The debt spiral is self-reinforcing: unpaid interest accrues as
@@ -726,13 +783,13 @@ __all__ = [
     "CreditDialectic",
     "CreditPole",
     "DebtSpiralCrisisDialectic",
+    "SurplusDistributionDialectic",
+    "SurplusDistributionPole",
     "FinancialCrisisDialectic",
     "ImperialDialectic",
     "PeripheryEconomy",
     "ProfitRateState",
     "RentDialectic",
     "RentPole",
-    "TransformationDialectic",
-    "TransformationPole",
     "TRPFDialectic",
 ]

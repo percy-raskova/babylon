@@ -64,6 +64,15 @@ class ProductionSystem:
     Bourgeoisie classes extract value but do not produce it.
     """
 
+    # Spec 040, Discipline 1: Declared invariants preserved by this system
+    invariants: list[object] = []  # populated in __init__
+
+    def __init__(self) -> None:
+        """Initialize ProductionSystem with declared invariants."""
+        from babylon.engine.invariants import NonNegativeWealth
+
+        self.invariants = [NonNegativeWealth()]
+
     @property
     def name(self) -> str:
         """System identifier."""

@@ -20,11 +20,7 @@ This package provides the Marxian value transformation layer:
 Example:
     >>> from babylon.economics import MarxianHydrator, DepartmentMapper
     >>> from babylon.economics import ValueTensor4x3, DepartmentRow
-    >>> from babylon.economics import (
-    ...     PeripheryReproductionBasket,
-    ...     ImperialRentCalculator,
-    ...     ImperialRentResult,
-    ... )
+    >>> from babylon.economics import ValueTensor4x3, DepartmentRow
     >>> from babylon.economics import (
     ...     ShadowLaborConfig,
     ...     ShadowLaborResult,
@@ -41,7 +37,6 @@ Example:
     ...     DefaultMELTCalculator,
     ...     DefaultBasketVisibilityCalculator,
     ...     DefaultClassPositionClassifier,
-    ...     DefaultImperialRentCalculator as TVTImperialRentCalculator,
     ... )
 
 See Also:
@@ -129,20 +124,6 @@ from babylon.economics.melt import (
     MELTCalculator,
     NationalParameters,
 )
-from babylon.economics.melt import (
-    DefaultImperialRentCalculator as TVTImperialRentCalculator,
-)
-from babylon.economics.melt import (
-    ImperialRentCalculator as TVTImperialRentCalculatorProtocol,
-)
-
-# Imperial rent (Emmanuel-Amin framework)
-from babylon.economics.reproduction import (
-    ImperialRentCalculator,
-    ImperialRentResult,
-    PeripheryReproductionBasket,
-    RentStructure,
-)
 
 # Shadow labor (Department III visibility)
 from babylon.economics.shadow_labor import (
@@ -217,11 +198,6 @@ __all__ = [
     "map_sector_value",
     # Hydrator
     "MarxianHydrator",
-    # Imperial rent (Emmanuel-Amin framework)
-    "ImperialRentCalculator",
-    "ImperialRentResult",
-    "PeripheryReproductionBasket",
-    "RentStructure",
     # Shadow labor (Department III visibility)
     "ShadowLaborConfig",
     "ShadowLaborResult",
@@ -246,11 +222,9 @@ __all__ = [
     "MELTCalculator",
     "BasketVisibilityCalculator",
     "ClassPositionClassifier",
-    "TVTImperialRentCalculatorProtocol",
     "DefaultMELTCalculator",
     "DefaultBasketVisibilityCalculator",
     "DefaultClassPositionClassifier",
-    "TVTImperialRentCalculator",
     # Throughput Position and Domestic Value Geography (Feature 014)
     "ThroughputMetrics",
     "WageShareEstimate",

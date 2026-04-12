@@ -25,8 +25,8 @@ class FormulaRegistry:
 
     Example:
         >>> registry = FormulaRegistry.default()
-        >>> rent = registry.get("imperial_rent")
-        >>> result = rent(alpha=0.5, periphery_wages=0.4, periphery_consciousness=0.2)
+        >>> la = registry.get("labor_aristocracy_ratio")
+        >>> result = la(core_wages=120.0, value_produced=100.0)
     """
 
     def __init__(self) -> None:
@@ -70,8 +70,7 @@ class FormulaRegistry:
     def default(cls) -> "FormulaRegistry":
         """Create a registry pre-populated with all standard formulas.
 
-        Registers all 12 formulas from babylon.formulas:
-        - imperial_rent
+        Registers formulas from babylon.formulas:
         - labor_aristocracy_ratio
         - is_labor_aristocracy
         - consciousness_drift
@@ -90,7 +89,6 @@ class FormulaRegistry:
         registry = cls()
 
         # Fundamental Theorem formulas
-        registry.register("imperial_rent", formulas.calculate_imperial_rent)
         registry.register("labor_aristocracy_ratio", formulas.calculate_labor_aristocracy_ratio)
         registry.register("is_labor_aristocracy", formulas.is_labor_aristocracy)
         registry.register("consciousness_drift", formulas.calculate_consciousness_drift)

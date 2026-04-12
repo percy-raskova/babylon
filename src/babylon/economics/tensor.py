@@ -418,9 +418,6 @@ class ValueTensor4x3(BaseModel):
 
         Returns:
             Imperial rent in signed labor-hours (can be negative).
-
-        See Also:
-            :func:`babylon.formulas.calculate_imperial_rent`: Formula documentation.
         """
         return SignedLaborHours(self.total_v - self.total_value)
 

@@ -71,7 +71,6 @@ from babylon.formulas.dynamic_balance import (
 # Re-export Fundamental Theorem formulas
 from babylon.formulas.fundamental_theorem import (
     calculate_consciousness_drift,
-    calculate_imperial_rent,
     calculate_labor_aristocracy_ratio,
     is_labor_aristocracy,
 )
@@ -132,7 +131,6 @@ __all__ = [
     "LOSS_AVERSION_COEFFICIENT",
     "EPSILON",
     # Fundamental Theorem
-    "calculate_imperial_rent",
     "calculate_labor_aristocracy_ratio",
     "is_labor_aristocracy",
     "calculate_consciousness_drift",

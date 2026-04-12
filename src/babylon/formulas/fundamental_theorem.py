@@ -12,30 +12,6 @@ from babylon.config.defines import GameDefines
 LOSS_AVERSION_COEFFICIENT = GameDefines().behavioral.loss_aversion_lambda
 
 
-def calculate_imperial_rent(
-    alpha: float,
-    periphery_wages: float,
-    periphery_consciousness: float,
-) -> float:
-    """Phi = alpha * Wp * (1 - Psi_p). Value extracted from periphery.
-
-    Args:
-        alpha: Extraction efficiency [0, 1].
-        periphery_wages: Periphery wage share [0, 1].
-        periphery_consciousness: Resistance level (1 = full resistance).
-
-    Returns:
-        Imperial rent value (>= 0).
-
-    Examples:
-        >>> calculate_imperial_rent(0.5, 0.3, 0.2)
-        0.12
-        >>> calculate_imperial_rent(0.8, 0.6, 1.0)  # Full consciousness
-        0.0
-    """
-    return max(0.0, alpha * periphery_wages * (1 - periphery_consciousness))
-
-
 def calculate_labor_aristocracy_ratio(
     core_wages: float,
     value_produced: float,

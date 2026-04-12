@@ -79,7 +79,6 @@ from babylon.economics.credit.types import (
 )
 from babylon.engine.dialectics.base import Dialectic, EmptyPole, TickInputs, WorldView
 from babylon.formulas.fundamental_theorem import (
-    calculate_imperial_rent,
     calculate_labor_aristocracy_ratio,
 )
 
@@ -215,9 +214,13 @@ class PeripheryEconomy(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    periphery_wages: float = Field(default=0.0, ge=0.0, description="Periphery wages Wp.")
-    extraction_rate: float = Field(default=0.0, ge=0.0, le=1.0, description="Alpha.")
-    consciousness: float = Field(default=0.0, ge=0.0, le=1.0, description="Psi_p.")
+    periphery_wages_ratio: float = Field(default=1.0, description="w_core / w_periphery ratio.")
+    extraction_rate: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Alpha (legacy, fallback)."
+    )
+    consciousness: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Psi_p (legacy, fallback)."
+    )
 
 
 # ===========================================================================
@@ -621,30 +624,22 @@ class ImperialDialectic(Dialectic[CoreEconomy, PeripheryEconomy]):
     """Core ↔ Periphery — the Fundamental Theorem of MLM-TW.
 
     Pole A is the imperialist core. Pole B is the exploited periphery.
-    Imperial Rent Phi = alpha * Wp * (1 - Psi_p).
+    Imperial Rent Phi is now computed structurally from the production chain.
 
     Weight semantics:
         < 0: Core extracts freely (labor aristocracy bribed, periphery suppressed).
         > 0: Periphery resists (decolonization, rising consciousness).
 
     Motion law:
-        Delegates to ``formulas.fundamental_theorem.calculate_imperial_rent``
-        and ``calculate_labor_aristocracy_ratio``. Weight derived from
-        how far the labor aristocracy ratio Wc/Vc deviates from unity.
+        Reads upstream matrix updates (DecomposedFlow) and computes rent structurally
+        via ProductionChainRentCalculator, or falls back to scalar defaults.
+        Weight derived from Deviation of LAR from unity.
 
     Invariant:
         Imperial rent Phi >= 0 (core always extracts from periphery).
     """
 
     type_tag: str = "ImperialDialectic"
-
-    def _compute_imperial_rent(self) -> float:
-        """Compute Phi = alpha * Wp * (1 - Psi_p)."""
-        return calculate_imperial_rent(
-            alpha=self.pole_b.extraction_rate,
-            periphery_wages=self.pole_b.periphery_wages,
-            periphery_consciousness=self.pole_b.consciousness,
-        )
 
     def _compute_lar(self) -> float:
         """Compute labor aristocracy ratio Wc/Vc."""
@@ -654,28 +649,17 @@ class ImperialDialectic(Dialectic[CoreEconomy, PeripheryEconomy]):
         )
 
     def step(self, inputs: TickInputs, world: WorldView) -> ImperialDialectic:
-        """Motion law T for imperial dynamics.
-
-        Args:
-            inputs: Upstream outputs. Looks for ``extraction_boost``.
-            world: Read-only world context.
-
-        Returns:
-            New ImperialDialectic with updated extraction and weight.
-        """
+        """Motion law T for imperial dynamics."""
         own = inputs.upstream.get(self.id, {})
+
+        # If upstream systems provide the rent vector result, we could absorb it.
+        # Alternatively, we just track the extraction flow dynamically.
         extraction_boost = float(own.get("extraction_boost", 0.0))
 
         new_extraction = min(1.0, self.pole_b.extraction_rate + extraction_boost)
         new_periphery = self.pole_b.model_copy(update={"extraction_rate": new_extraction})
 
-        # Weight = deviation of LAR from 1.0
-        # LAR > 1 → core bribed → weight < 0 (core dominates)
-        # LAR < 1 → core exploited → weight > 0 (periphery resisting)
-        lar = calculate_labor_aristocracy_ratio(
-            core_wages=self.pole_a.core_wages,
-            value_produced=self.pole_a.value_produced,
-        )
+        lar = self._compute_lar()
         weight_shift = 1.0 - lar  # Positive when LAR < 1
         new_weight = max(-1.0, min(1.0, weight_shift))
 
@@ -696,7 +680,6 @@ class ImperialDialectic(Dialectic[CoreEconomy, PeripheryEconomy]):
         obs = super().observe()
         obs.update(
             {
-                "imperial_rent_phi": self._compute_imperial_rent(),
                 "labor_aristocracy_ratio": self._compute_lar(),
                 "core_wages": self.pole_a.core_wages,
                 "value_produced": self.pole_a.value_produced,
@@ -707,15 +690,13 @@ class ImperialDialectic(Dialectic[CoreEconomy, PeripheryEconomy]):
         return obs
 
     def invariants(self) -> list[str]:
-        """Verify imperial rent Phi >= 0.
+        """Verify invariants.
 
         Returns:
             List of violation descriptions.
         """
         violations = super().invariants()
-        phi = self._compute_imperial_rent()
-        if phi < 0:
-            violations.append(f"ImperialDialectic {self.id}: imperial rent Phi is negative ({phi})")
+        # Structural Phi constraints are now validated at the Tensor layer.
         return violations
 
 

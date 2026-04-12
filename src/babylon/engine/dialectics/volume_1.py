@@ -28,7 +28,6 @@ from babylon.economics.tensor import DepartmentRow
 from babylon.economics.value import AbstractLabor, ConcreteLabor, ExchangeValue, UseValue
 from babylon.engine.dialectics.base import Dialectic, EmptyPole, TickInputs, WorldView
 from babylon.formulas.fundamental_theorem import (
-    calculate_imperial_rent,
     calculate_labor_aristocracy_ratio,
 )
 
@@ -643,13 +642,8 @@ class PrimitiveAccumulationDialectic(Dialectic[ColonialExpropriation, SettlerFor
         settler_share = self.pole_b.settler_share
 
         # Imperial rent = extraction distributed to settlers
-        # Using the fundamental theorem to calculate exactly how much is extracted.
-        # We model settler_share as the alpha (extraction efficiency) over the periphery wages (extraction).
-        imperial_rent = calculate_imperial_rent(
-            alpha=settler_share,
-            periphery_wages=extraction,
-            periphery_consciousness=0.0,
-        )
+        # Using the fundamental theorem conceptually:
+        imperial_rent = extraction * settler_share
 
         # Derive an endogenous Wc/Vc based on the imperial rent to ground it in the theorem.
         # Assuming base wages match value produced (1.0 ratio), and they receive imperial_rent on top.

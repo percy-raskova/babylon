@@ -2267,7 +2267,7 @@ class DimBEAIOTableType(NormalizedBase):
 
     __table_args__ = (
         CheckConstraint(
-            "table_type IN ('USE', 'MAKE', 'SUPPLY', 'TOTAL_REQ')",
+            "table_type IN ('USE', 'MAKE', 'SUPPLY', 'TOTAL_REQ', 'IMPORT_USE')",
             name="ck_bea_io_table_type_valid",
         ),
     )
@@ -2347,6 +2347,64 @@ class FactFAFCommodityFlow(NormalizedBase):
         Index("idx_faf_flow_dest", "dest_cfs_area_id"),
         Index("idx_faf_flow_sctg", "sctg_id"),
         Index("idx_faf_flow_year", "year"),
+    )
+
+
+class FactHickelDrain(NormalizedBase):
+    """Hickel et al. (2022) Unequal Exchange via appropriate and unequal flows.
+
+    Captures net appropriation of resources and embodied labor between Core
+    and Periphery, with derived value transfers in USD. Data source parses
+    the final calibration CSVs.
+    """
+
+    __tablename__ = "fact_hickel_drain"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    # The source region mapping to dim_country.world_system_tier
+    drain_direction: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # e.g. 'South to North'
+
+    # Types of drain tracking
+    resource_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # e.g. 'Embodied Labor', 'Embodied Land', 'Raw Materials', 'Energy'
+
+    # Value metrics
+    net_appropriation: Mapped[float] = mapped_column(Float, nullable=False)
+    units: Mapped[str] = mapped_column(String(50), nullable=False)
+    monetary_value_billions: Mapped[float | None] = mapped_column(
+        Float
+    )  # Calculated value in constant USD
+
+    __table_args__ = (
+        Index("idx_hickel_time", "time_id"),
+        Index("idx_hickel_resource", "resource_type"),
+    )
+
+
+class FactRicciUnequalExchange(NormalizedBase):
+    """Ricci (2021) Unequal Exchange tracking metrics.
+
+    Tracks value transfers through unequal exchange related to labor value
+    and trade. Corresponds to final Ricci calibration CSVs.
+    """
+
+    __tablename__ = "fact_ricci_unequal_exchange"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+
+    country_id: Mapped[int] = mapped_column(ForeignKey("dim_country.country_id"), nullable=False)
+
+    trade_volume_billions: Mapped[float | None] = mapped_column(Float)
+    ue_transfer_billions: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        Index("idx_ricci_time", "time_id"),
+        Index("idx_ricci_country", "country_id"),
     )
 
 
@@ -2468,4 +2526,6 @@ __all__ = [
     "DimBEAIOTableType",
     "FactBEAIOCoefficient",
     "FactFAFCommodityFlow",
+    "FactHickelDrain",
+    "FactRicciUnequalExchange",
 ]

@@ -606,44 +606,22 @@ class TickDynamicsSystem:
     def _compute_imperial_rent(
         self,
         county_states: dict[str, CountyEconomicState],
-        national_params: NationalTickParameters,
-        services: ServiceContainer,
+        _national_params: NationalTickParameters,
+        _services: ServiceContainer,
     ) -> dict[str, CountyEconomicState]:
         """Step 4: Compute imperial rent flows.
 
         Args:
             county_states: Current county states.
             national_params: National parameters.
-            services: ServiceContainer with imperial rent calculator.
+            services: ServiceContainer with formulas.
 
         Returns:
-            Updated county states with phi_hour.
+            Updated county states with phi_hour (now 0.0 until tensor integration).
         """
-        if services.imperial_rent_calculator is None:
-            return county_states
-
-        # Build NationalParameters for the imperial rent calculator
-        from babylon.economics.melt.parameters import NationalParameters
-
-        nat_params = NationalParameters(
-            year=min(max(national_params.year, 2010), 2030),
-            tau=national_params.tau,
-            alpha=0.25,  # MVP default
-            gamma_import=0.35,  # MVP default
-            gamma_basket=national_params.gamma_basket,
-            tau_effective=national_params.tau_effective,
-            v_reproduction=national_params.v_reproduction,
-            estimated=national_params.estimated,
-        )
-
         updated: dict[str, CountyEconomicState] = {}
         for fips, county in county_states.items():
-            phi_hour = services.imperial_rent_calculator.compute_phi_hour(
-                county.median_wage, nat_params
-            )
-            # Phi_hour can be negative (net exploited), but we store as ge=0
-            phi_hour_clamped = max(phi_hour, 0.0)
-            updated[fips] = county.model_copy(update={"phi_hour": phi_hour_clamped})
+            updated[fips] = county.model_copy(update={"phi_hour": 0.0})
         return updated
 
     def _check_crisis_triggers(

@@ -155,8 +155,6 @@ class ImperialRentSystem:
 
             graph = NetworkXAdapter.wrap(graph)
 
-        calculate_imperial_rent = services.formulas.get("imperial_rent")
-
         # Epoch 0: Convert annual extraction rate to per-tick (weekly) rate
         annual_extraction_efficiency = services.defines.economy.extraction_efficiency
         weeks_per_year = services.defines.timescale.weeks_per_year
@@ -193,12 +191,8 @@ class ImperialRentSystem:
             # Extract class consciousness (handles both IdeologicalProfile and legacy)
             consciousness = _get_class_consciousness_from_node(worker_attrs)
 
-            # Calculate imperial rent
-            rent = calculate_imperial_rent(
-                alpha=extraction_efficiency,
-                periphery_wages=worker_wealth,
-                periphery_consciousness=consciousness,
-            )
+            # Calculate imperial rent extracted from this worker
+            rent = extraction_efficiency * worker_wealth * (1.0 - consciousness)
 
             # Cap rent at available wealth
             rent = min(rent, worker_wealth)

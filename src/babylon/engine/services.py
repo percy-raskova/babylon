@@ -49,7 +49,6 @@ class ServiceContainer:
         - capital_calculator: Capital stock computation (Feature 012)
         - throughput_calculator: Throughput position computation (Feature 014)
         - transition_engine: Class transition engine (Feature 016)
-        - imperial_rent_calculator: Imperial rent computation (Feature 013)
         - tensor_registry: Cached economic tensor data (Feature 011)
 
     Example:
@@ -85,7 +84,6 @@ class ServiceContainer:
     capital_calculator: Any = field(default=None)
     throughput_calculator: Any = field(default=None)
     transition_engine: Any = field(default=None)
-    imperial_rent_calculator: Any = field(default=None)
     tensor_registry: Any = field(default=None)
 
     # Hypergraph community layer (Feature 022 - optional, default None)
@@ -136,7 +134,6 @@ class ServiceContainer:
         capital_calculator: Any = None,
         throughput_calculator: Any = None,
         transition_engine: Any = None,
-        imperial_rent_calculator: Any = None,
         tensor_registry: Any = None,
         community_hypergraph: Any = None,
         turnover_profile_source: Any = None,
@@ -171,7 +168,6 @@ class ServiceContainer:
             capital_calculator: Optional CapitalStockCalculator (Feature 012).
             throughput_calculator: Optional ThroughputCalculator (Feature 014).
             transition_engine: Optional ClassTransitionEngine (Feature 016).
-            imperial_rent_calculator: Optional ImperialRentCalculator (Feature 013).
             tensor_registry: Optional TensorRegistry for cached tensor data (Feature 011).
             community_hypergraph: Optional XGI Hypergraph for community membership (Feature 022).
 
@@ -204,7 +200,6 @@ class ServiceContainer:
             capital_calculator=capital_calculator,
             throughput_calculator=throughput_calculator,
             transition_engine=transition_engine,
-            imperial_rent_calculator=imperial_rent_calculator,
             tensor_registry=tensor_registry,
             community_hypergraph=community_hypergraph,
             turnover_profile_source=turnover_profile_source,

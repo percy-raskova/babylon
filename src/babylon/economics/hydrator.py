@@ -24,10 +24,6 @@ from __future__ import annotations
 
 from babylon.economics.adapters import BEADataSource, QCEWDataSource
 from babylon.economics.department_mapper import Department, DepartmentMapper
-from babylon.economics.reproduction import (
-    ImperialRentCalculator,
-    ImperialRentResult,
-)
 from babylon.economics.snlt import DEFAULT_SNLT_CONFIG, SNLTConfig
 from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
 from babylon.models.types import LaborHours
@@ -70,7 +66,6 @@ class MarxianHydrator:
         qcew_source: QCEWDataSource,
         bea_source: BEADataSource,
         dept_mapper: DepartmentMapper,
-        rent_calculator: ImperialRentCalculator | None = None,  # pragma: no mutate
         snlt_config: SNLTConfig | None = None,  # pragma: no mutate
     ) -> None:
         """Initialize the hydrator with data sources and mapper.
@@ -79,15 +74,12 @@ class MarxianHydrator:
             qcew_source: Source for QCEW wage data (implements QCEWDataSource).
             bea_source: Source for BEA industry ratios (implements BEADataSource).
             dept_mapper: NAICS-to-department mapper with default ratios.
-            rent_calculator: Optional imperial rent calculator. Required for
-                hydrate_with_rent() method.
             snlt_config: Year-specific SNLT conversion factors. Defaults to
                 DEFAULT_SNLT_CONFIG (factor 1.0 = wage-proportional proxy).
         """
         self._qcew_source = qcew_source  # pragma: no mutate
         self._bea_source = bea_source  # pragma: no mutate
         self._dept_mapper = dept_mapper  # pragma: no mutate
-        self._rent_calculator = rent_calculator  # pragma: no mutate
         self._snlt_config = snlt_config or DEFAULT_SNLT_CONFIG  # pragma: no mutate
 
     def hydrate(self, fips_code: str, year: int) -> ValueTensor4x3:
@@ -183,49 +175,6 @@ class MarxianHydrator:
             dept_III=dept_rows[Department.III],
             naics_granularity=naics_granularity,
             excluded_wages=excluded_hours,
-        )
-
-    def hydrate_with_rent(self, fips_code: str, year: int) -> ImperialRentResult:
-        """Compute tensor and imperial rent calculation.
-
-        Returns the tensor wrapped with imperial rent metadata, measuring
-        the gross differential between core wages and peripheral reproduction cost.
-
-        This method requires rent_calculator to be configured at initialization.
-
-        Args:
-            fips_code: 5-digit FIPS county code.
-            year: Data year.
-
-        Returns:
-            ImperialRentResult containing tensor and imperial rent metrics.
-
-        Raises:
-            ValueError: If rent_calculator was not provided at initialization.
-
-        Example:
-            >>> basket = PeripheryReproductionBasket.default()
-            >>> calculator = ImperialRentCalculator(basket)
-            >>> hydrator = MarxianHydrator(qcew, bea, mapper, calculator)
-            >>> result = hydrator.hydrate_with_rent("26163", 2022)
-            >>> result.imperial_rent > 0
-            True
-        """
-        if self._rent_calculator is None:
-            msg = "ImperialRentCalculator required for hydrate_with_rent()"
-            raise ValueError(msg)
-
-        tensor = self.hydrate(fips_code, year)
-
-        # total_v = variable capital = wages paid to workers
-        core_wages = tensor.total_v
-        imperial_rent = self._rent_calculator.calculate_imperial_rent(core_wages, fips_code, year)
-
-        return ImperialRentResult(
-            tensor=tensor,
-            periphery_baseline=self._rent_calculator.periphery_baseline,
-            core_wages=core_wages,
-            imperial_rent=imperial_rent,
         )
 
     def _get_dept_sv_ratio(

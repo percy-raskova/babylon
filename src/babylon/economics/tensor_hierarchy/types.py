@@ -614,18 +614,167 @@ class StationaryDistribution(BaseModel):
 
 
 # =============================================================================
+# LEVEL 2: LEONTIEF PRODUCTION CHAIN RENT
+# =============================================================================
+
+
+class ImportShareVector(BaseModel):
+    """Fraction of inputs sourced from imports per industry (m_j).
+
+    Derived from BEA IMPORT_USE and total USE tables.
+
+    Args:
+        year: Data year.
+        industries: Ordered BEA industry codes.
+        shares: Vector of import fractions, shape (n,), values in [0.0, 1.0].
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    year: Annotated[int, Field(ge=1997, description="BEA data year")]
+    industries: list[str] = Field(description="Ordered BEA industry codes")
+    shares: np.ndarray = Field(description="Import share fractions, shape (n,)")
+
+    @field_validator("shares", mode="before")
+    @classmethod
+    def coerce_shares(cls, v: object) -> np.ndarray:
+        """Coerce list or array to float64 ndarray."""
+        return _to_ndarray(v)
+
+    @model_validator(mode="after")
+    def validate_shares(self) -> ImportShareVector:
+        """Validate shape and range of shares."""
+        n = len(self.industries)
+        if self.shares.shape != (n,):
+            msg = f"shares shape {self.shares.shape} must be ({n},)"
+            raise ValueError(msg)
+        if not np.all((self.shares >= 0.0) & (self.shares <= 1.0)):
+            msg = "All import shares must be in range [0.0, 1.0]"
+            raise ValueError(msg)
+        return self
+
+
+class DecomposedFlow(BaseModel):
+    """Decomposed BEA coefficient matrix into domestic and import segments.
+
+    Args:
+        year: Data year.
+        industries: Ordered BEA industry codes.
+        A_d: Domestic coefficient matrix, shape (n, n).
+        A_m: Import coefficient matrix, shape (n, n).
+        L_d: Domestic Leontief inverse (I - A_d)^{-1}, shape (n, n).
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    year: Annotated[int, Field(ge=1997, description="BEA data year")]
+    industries: list[str] = Field(description="Ordered BEA industry codes")
+    A_d: np.ndarray = Field(description="Domestic coefficient matrix")
+    A_m: np.ndarray = Field(description="Import coefficient matrix")
+    L_d: np.ndarray = Field(description="Domestic Leontief inverse")
+
+    @field_validator("A_d", "A_m", "L_d", mode="before")
+    @classmethod
+    def coerce_matrices(cls, v: object) -> np.ndarray:
+        """Coerce list or array to float64 ndarray."""
+        return _to_ndarray(v)
+
+    @model_validator(mode="after")
+    def validate_shapes(self) -> DecomposedFlow:
+        """Validate shapes of all matrices."""
+        n = len(self.industries)
+        for name, matrix in (("A_d", self.A_d), ("A_m", self.A_m), ("L_d", self.L_d)):
+            if matrix.shape != (n, n):
+                msg = f"{name} shape {matrix.shape} must be ({n}, {n})"
+                raise ValueError(msg)
+        return self
+
+
+class PeripheryLaborCoefficients(BaseModel):
+    """Wage differentials per industry between Core and Periphery.
+
+    Represents (w_core / w_periphery) for each industry group.
+
+    Args:
+        year: Data year.
+        industries: Ordered BEA industry codes.
+        wage_ratios: Vector of wage ratios, shape (n,), expected >= 1.0.
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    year: Annotated[int, Field(ge=1997, description="BEA data year")]
+    industries: list[str] = Field(description="Ordered BEA industry codes")
+    wage_ratios: np.ndarray = Field(description="Core-to-periphery wage ratios, shape (n,)")
+
+    @field_validator("wage_ratios", mode="before")
+    @classmethod
+    def coerce_wage_ratios(cls, v: object) -> np.ndarray:
+        """Coerce list or array to float64 ndarray."""
+        return _to_ndarray(v)
+
+    @model_validator(mode="after")
+    def validate_ratios(self) -> PeripheryLaborCoefficients:
+        """Validate shapes and optionally basic sanity bounds."""
+        n = len(self.industries)
+        if self.wage_ratios.shape != (n,):
+            msg = f"wage_ratios shape {self.wage_ratios.shape} must be ({n},)"
+            raise ValueError(msg)
+        return self
+
+
+class ProductionChainRentResult(BaseModel):
+    """Imperial rent extracted via Leontief production chain.
+
+    Args:
+        year: Data year.
+        industries: Ordered BEA industry codes.
+        phi_vector: Vector of imperial rent extracted per industry phi_j, shape (n,).
+        total_phi: Aggregate imperial rent across all industries.
+        dept_phi: Rent aggregated by Marxian Department (I, IIA, IIB, III).
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    year: Annotated[int, Field(ge=1997, description="Data year")]
+    industries: list[str] = Field(description="Ordered BEA industry codes")
+    phi_vector: np.ndarray = Field(description="Rent vector, shape (n,)")
+    total_phi: float = Field(description="Total imperial rent extracted")
+    dept_phi: dict[Department, float] = Field(description="Rent aggregated by Department")
+
+    @field_validator("phi_vector", mode="before")
+    @classmethod
+    def coerce_phi_vector(cls, v: object) -> np.ndarray:
+        """Coerce list or array to float64 ndarray."""
+        return _to_ndarray(v)
+
+    @model_validator(mode="after")
+    def validate_vector(self) -> ProductionChainRentResult:
+        """Validate shape matches industries."""
+        n = len(self.industries)
+        if self.phi_vector.shape != (n,):
+            msg = f"phi_vector shape {self.phi_vector.shape} must be ({n},)"
+            raise ValueError(msg)
+        return self
+
+
+# =============================================================================
 # EXPORTS
 # =============================================================================
 
 
 __all__ = [
     "ClassTransitionMatrix",
+    "DecomposedFlow",
     "Department",
     "GeographicFlow",
     "ImperialRentField",
+    "ImportShareVector",
     "InterIndustryFlow",
     "IOTableType",
     "LeontiefInverse",
+    "PeripheryLaborCoefficients",
+    "ProductionChainRentResult",
     "ReproductionRequirements",
     "ShadowSubsidyTensor",
     "StationaryDistribution",

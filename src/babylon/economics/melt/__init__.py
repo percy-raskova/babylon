@@ -49,7 +49,6 @@ Example:
     >>> from babylon.economics.melt import (
     ...     ClassPosition,
     ...     DefaultClassPositionClassifier,
-    ...     DefaultImperialRentCalculator,
     ...     NationalParameters,
     ... )
     >>> classifier = DefaultClassPositionClassifier()
@@ -57,14 +56,13 @@ Example:
     >>> classifier.classify_by_wealth_percentile(70.0)
     <ClassPosition.LABOR_ARISTOCRACY: 3>
     >>> # Imperial rent is separate concern
-    >>> rent_calc = DefaultImperialRentCalculator()
-    >>> rent_calc.compute_phi_hour(wage=50.0, params=params)
-    0.13  # Extraction rate, NOT class position
+    >>> rent_calc = {} # Deprecated
+    >>> # rent_calc.compute_phi_hour(wage=50.0, params=params)
+    >>> # 0.13  # Extraction rate, NOT class position
 
 See Also:
     :mod:`babylon.economics.tensor`: NoDataSentinel pattern
     :mod:`babylon.economics.capital_stock`: Service pattern reference
-    :mod:`babylon.economics.reproduction`: Emmanuel-Amin imperial rent (alternative)
 """
 
 from babylon.economics.melt.basket_visibility import (
@@ -78,10 +76,6 @@ from babylon.economics.melt.class_position import (
 from babylon.economics.melt.filtration import (
     FiltrationResult,
     apply_filtration,
-)
-from babylon.economics.melt.imperial_rent import (
-    DefaultImperialRentCalculator,
-    ImperialRentCalculator,
 )
 from babylon.economics.melt.melt_calculator import (
     DefaultMELTCalculator,
@@ -117,14 +111,12 @@ __all__ = [
     "MELTCalculator",
     "BasketVisibilityCalculator",
     "ClassPositionClassifier",
-    "ImperialRentCalculator",
     "WealthProxyCalculator",
     "UnifiedClassifier",
     # Default implementations
     "DefaultMELTCalculator",
     "DefaultBasketVisibilityCalculator",
     "DefaultClassPositionClassifier",
-    "DefaultImperialRentCalculator",
     "DefaultRentDifferentialCalculator",
     "DefaultWealthProxyCalculator",
     "DefaultUnifiedClassifier",

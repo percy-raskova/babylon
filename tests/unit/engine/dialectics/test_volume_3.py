@@ -454,7 +454,7 @@ class TestImperialDialectic:
         )
         assert imp.type_tag == "ImperialDialectic"
 
-    def test_observe_emits_imperial_rent(self) -> None:
+    def test_observe_emits_lar(self) -> None:
         core = CoreEconomy(
             core_wages=100.0,
             value_produced=80.0,
@@ -473,9 +473,8 @@ class TestImperialDialectic:
             tick_updated=0,
         )
         obs = imp.observe()
-        assert "imperial_rent_phi" in obs
         assert "labor_aristocracy_ratio" in obs
-        assert obs["imperial_rent_phi"] >= 0.0
+        assert obs["labor_aristocracy_ratio"] > 0.0
 
     def test_step_adjusts_weight_from_lar(self) -> None:
         core = CoreEconomy(
@@ -499,26 +498,6 @@ class TestImperialDialectic:
         result = imp.step(inputs, WorldView(tick=1, dialectics={}))
         assert result.tick_updated == 1
         assert isinstance(result, ImperialDialectic)
-
-    def test_invariant_imperial_rent_non_negative(self) -> None:
-        core = CoreEconomy(
-            core_wages=100.0,
-            value_produced=80.0,
-            profit_rate=0.15,
-        )
-        periphery = PeripheryEconomy(
-            periphery_wages=20.0,
-            extraction_rate=0.6,
-            consciousness=0.1,
-        )
-        imp = ImperialDialectic(
-            pole_a=core,
-            pole_b=periphery,
-            weight=0.0,
-            tick_created=0,
-            tick_updated=0,
-        )
-        assert imp.invariants() == []
 
 
 # ===========================================================================

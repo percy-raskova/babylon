@@ -46,7 +46,6 @@ from babylon.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareA
 from babylon.economics.gamma.gamma_iii import DefaultGammaIIICalculator
 from babylon.economics.melt import (
     DefaultBasketVisibilityCalculator,
-    DefaultImperialRentCalculator,
     DefaultMELTCalculator,
 )
 from babylon.economics.melt.adapters import (
@@ -87,7 +86,6 @@ def create_economics_services(
     """
     # Level 0: No dependencies
     basket = DefaultBasketVisibilityCalculator()
-    imperial_rent = DefaultImperialRentCalculator()
 
     # Level 1: Data source adapters
     bea_national = SQLiteBEANationalGDPSource(session_factory)
@@ -119,7 +117,6 @@ def create_economics_services(
         "capital_calculator": capital,
         "throughput_calculator": throughput,
         "transition_engine": transition,
-        "imperial_rent_calculator": imperial_rent,
         "tensor_registry": tensor_registry,
     }
 

@@ -79,6 +79,27 @@ class CirculationDialectic(Dialectic[CircuitState, EmptyPole]):
             update={"pole_a": new_circuit_state, "weight": new_weight, "tick_updated": world.tick}
         )
 
+    def observe(self) -> dict[str, Any]:
+        """Project circulation state for downstream dialectics.
+
+        Emits:
+        - ``total_capital``: M + P + C' aggregate.
+        - ``realized_money``: money-capital = realized money from sales.
+        - ``commodity_overhang``: unsold commodity fraction.
+
+        Returns:
+            Base observation extended with circulation outputs.
+        """
+        obs = super().observe()
+        obs.update(
+            {
+                "total_capital": float(self.pole_a.total_capital),
+                "realized_money": float(self.pole_a.money_capital),
+                "commodity_overhang": self.pole_a.commodity_overhang,
+            }
+        )
+        return obs
+
     def sublate(self) -> Dialectic[Any, Any] | None:
         """Sublate to Realization Crisis if commodity overhang exceeds threshold.
 

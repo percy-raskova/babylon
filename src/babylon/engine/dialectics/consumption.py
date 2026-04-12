@@ -6,6 +6,8 @@ See Also:
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.engine.dialectics.base import Dialectic, TickInputs, WorldView
@@ -55,6 +57,25 @@ class ConsumptionDialectic(Dialectic[ProductiveConsumption, IndividualConsumptio
         """
         _ = inputs
         return self.model_copy(update={"tick_updated": world.tick})
+
+    def observe(self) -> dict[str, Any]:
+        """Project consumption state for downstream dialectics.
+
+        Emits the two renewal outputs that close the Grundrisse cycle:
+        - ``mp_renewed``: means of production consumed (→ Production)
+        - ``labor_power_renewed``: labor-power reproduced (→ Production)
+
+        Returns:
+            Base observation extended with renewal outputs.
+        """
+        obs = super().observe()
+        obs.update(
+            {
+                "mp_renewed": self.pole_a.means_of_production_value,
+                "labor_power_renewed": self.pole_b.labor_power_reproduced,
+            }
+        )
+        return obs
 
 
 __all__ = [

@@ -10,6 +10,8 @@ See Also:
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.engine.dialectics.base import Dialectic, TickInputs, WorldView
@@ -67,6 +69,29 @@ class DistributionDialectic(Dialectic[Wages, SurplusShares]):
             delta = float(own_input.get("intensity", 0.0))
         new_weight = max(-1.0, min(1.0, self.weight + delta))
         return self.model_copy(update={"weight": new_weight, "tick_updated": world.tick})
+
+    def observe(self) -> dict[str, Any]:
+        """Project distribution state for downstream dialectics.
+
+        Emits:
+        - ``wages_paid``: total wages from pole A (→ Consumption)
+        - ``surplus_distributed``: total surplus from pole B (→ Consumption)
+
+        Returns:
+            Base observation extended with distribution outputs.
+        """
+        obs = super().observe()
+        obs.update(
+            {
+                "wages_paid": self.pole_a.wages_paid,
+                "surplus_distributed": (
+                    self.pole_b.profit_distributed
+                    + self.pole_b.interest_paid
+                    + self.pole_b.rent_paid
+                ),
+            }
+        )
+        return obs
 
 
 __all__ = [

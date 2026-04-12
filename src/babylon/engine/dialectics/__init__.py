@@ -24,6 +24,9 @@ Modules:
     imperial: ImperialDialectic (V3 Ch14 §V + MLM-TW).
     crises: All crisis sublation dialectics.
     consciousness: ClassConsciousnessDialectic (Lukacs/MIM(P)).
+    class_struggle: ClassDialectic — In-Itself ↔ For-Itself.
+    party: PartyDialectic — Vanguard ↔ Mass Line.
+    transformation: TransformationDialectic — Value → Price of Production.
     world: ``World``, ``Morphism``, and ``Event`` models.
     tick: The pure ``tick()`` function.
     invariants_v2: Universal and per-type invariant checkers.
@@ -39,6 +42,7 @@ from babylon.engine.dialectics.accumulation import (
 )
 from babylon.engine.dialectics.base import Dialectic, TickInputs, WorldView
 from babylon.engine.dialectics.circulation import CirculationDialectic
+from babylon.engine.dialectics.class_struggle import ClassDialectic, ForItself, InItself
 from babylon.engine.dialectics.commodity import CommodityDialectic
 from babylon.engine.dialectics.consciousness import ClassConsciousnessDialectic
 from babylon.engine.dialectics.consumption import (
@@ -64,6 +68,7 @@ from babylon.engine.dialectics.imperial import (
     PeripheryEconomy,
 )
 from babylon.engine.dialectics.labor_process import LaborProcessDialectic
+from babylon.engine.dialectics.party import MassLine, PartyDialectic, Vanguard
 from babylon.engine.dialectics.primitive_accumulation import (
     ColonialExpropriation,
     PrimitiveAccumulationDialectic,
@@ -75,6 +80,10 @@ from babylon.engine.dialectics.reproduction import ReproductionDialectic
 from babylon.engine.dialectics.surplus_distribution import (
     SurplusDistributionDialectic,
     SurplusDistributionPole,
+)
+from babylon.engine.dialectics.transformation import (
+    TransformationDialectic,
+    TransformationPole,
 )
 from babylon.engine.dialectics.trpf import ProfitRateState, TRPFDialectic
 from babylon.engine.dialectics.turnover import TurnoverDialectic
@@ -124,8 +133,17 @@ __all__ = [
     "ImperialDialectic",
     "CoreEconomy",
     "PeripheryEconomy",
-    # Consciousness
+    # Consciousness / Class / Party
     "ClassConsciousnessDialectic",
+    "ClassDialectic",
+    "InItself",
+    "ForItself",
+    "PartyDialectic",
+    "Vanguard",
+    "MassLine",
+    # Transformation
+    "TransformationDialectic",
+    "TransformationPole",
     # Crises
     "RealizationCrisisDialectic",
     "DisproportionalityCrisisDialectic",

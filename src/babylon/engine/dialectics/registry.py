@@ -83,6 +83,7 @@ def _build_default_registry() -> DialecticRegistry:
     """Build the default registry with all known dialectic types."""
     from babylon.engine.dialectics.accumulation import AccumulationDialectic
     from babylon.engine.dialectics.circulation import CirculationDialectic
+    from babylon.engine.dialectics.class_struggle import ClassDialectic
     from babylon.engine.dialectics.commodity import CommodityDialectic
     from babylon.engine.dialectics.consciousness import ClassConsciousnessDialectic
     from babylon.engine.dialectics.consumption import ConsumptionDialectic
@@ -96,6 +97,7 @@ def _build_default_registry() -> DialecticRegistry:
     from babylon.engine.dialectics.distribution import DistributionDialectic
     from babylon.engine.dialectics.imperial import ImperialDialectic
     from babylon.engine.dialectics.labor_process import LaborProcessDialectic
+    from babylon.engine.dialectics.party import PartyDialectic
     from babylon.engine.dialectics.primitive_accumulation import (
         PrimitiveAccumulationDialectic,
     )
@@ -105,6 +107,7 @@ def _build_default_registry() -> DialecticRegistry:
     from babylon.engine.dialectics.surplus_distribution import (
         SurplusDistributionDialectic,
     )
+    from babylon.engine.dialectics.transformation import TransformationDialectic
     from babylon.engine.dialectics.trpf import TRPFDialectic
     from babylon.engine.dialectics.turnover import TurnoverDialectic
     from babylon.engine.dialectics.wage import WageDialectic
@@ -132,9 +135,12 @@ def _build_default_registry() -> DialecticRegistry:
     registry.register(CreditDialectic)
     registry.register(RentDialectic)
     registry.register(ImperialDialectic)
+    registry.register(TransformationDialectic)
 
-    # Consciousness
+    # Consciousness / Class / Party
     registry.register(ClassConsciousnessDialectic)
+    registry.register(ClassDialectic)
+    registry.register(PartyDialectic)
 
     # Crises
     registry.register(RealizationCrisisDialectic)

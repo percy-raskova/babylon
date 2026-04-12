@@ -654,10 +654,15 @@ def _apply_community_decay(
             defines.core_organizer_maintenance_factor,
         )
 
+        # Education pressure decays (Spec 043 — consciousness value integration)
+        edu_decay = services.defines.consciousness.education_pressure_decay
+        new_edu_pressure = float(state.education_pressure) * (1.0 - edu_decay)
+
         community_states[comm_type] = state.model_copy(
             update={
                 "heat": max(0.0, new_heat),
                 "cohesion": max(0.0, new_cohesion),
                 "infrastructure": new_infra,
+                "education_pressure": max(0.0, new_edu_pressure),
             },
         )

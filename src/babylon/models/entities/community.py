@@ -304,6 +304,11 @@ class CommunityState(BaseModel):
         default_factory=CommunityConsciousness,
         description="Ideological dimension of the community",
     )
+    education_pressure: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Accumulated EDUCATE verb effect. Modifies agitation routing toward revolutionary consciousness.",
+    )
 
     @model_validator(mode="after")
     def _assign_category(self) -> CommunityState:

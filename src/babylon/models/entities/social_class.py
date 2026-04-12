@@ -137,18 +137,6 @@ class IdeologicalProfile(BaseModel):
         return 1.0 - 2.0 * self.class_consciousness
 
 
-class IdeologicalComponent(BaseModel):
-    """Ideological state of a social class (legacy component view)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    ideology: "IdeologicalProfile" = Field(
-        default_factory=IdeologicalProfile,
-        description="Multi-dimensional ideological profile",
-    )
-    organization: Probability = Field(default=0.1, description="Collective cohesion (0.1 = 10%)")
-
-
 class SurvivalComponent(BaseModel):
     """Survival calculus outputs for a social class."""
 
@@ -255,12 +243,6 @@ class SocialClass(BaseModel):
             "economic",
             EconomicComponent,
             {"wealth": ("wealth", 10.0), "subsistence_threshold": ("subsistence_threshold", 5.0)},
-        )
-        cls._unpack_component(
-            data,
-            "ideological",
-            IdeologicalComponent,
-            {"ideology": ("ideology", None), "organization": ("organization", 0.1)},
         )
         cls._unpack_component(
             data,
@@ -426,14 +408,6 @@ class SocialClass(BaseModel):
         return EconomicComponent(
             wealth=self.wealth,
             subsistence_threshold=self.subsistence_threshold,
-        )
-
-    @property
-    def ideological(self) -> IdeologicalComponent:
-        """Return ideological component view (computed, not live)."""
-        return IdeologicalComponent(
-            ideology=self.ideology,
-            organization=self.organization,
         )
 
     @property

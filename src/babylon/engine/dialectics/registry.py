@@ -116,6 +116,10 @@ def _build_default_registry() -> DialecticRegistry:
     registry.register(DisproportionalityCrisisDialectic)
     registry.register(RealizationCrisisDialectic)
 
+    from babylon.engine.dialectics.consciousness import ClassConsciousnessDialectic
+
+    registry.register(ClassConsciousnessDialectic)
+
     return registry
 
 

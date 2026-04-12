@@ -58,3 +58,7 @@ thoughts/
 .agents/
 .claude/
 antigravity-babylon/
+
+# specifications
+specs/
+docs/

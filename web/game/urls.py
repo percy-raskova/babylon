@@ -27,14 +27,32 @@ urlpatterns: list[URLPattern] = [
     path("games/<str:game_id>/resume/", api.game_resume, name="game-resume"),
     # API: State
     path("games/<str:game_id>/state/", api.game_state, name="game-state"),
+    path("games/<str:game_id>/summary/", api.game_summary, name="game-summary"),
+    path("games/<str:game_id>/timeseries/", api.game_timeseries, name="game-timeseries"),
     path("games/<str:game_id>/map/", api.game_map, name="game-map"),
-    # API: Per-layer map endpoints
+    # API: Domain Dashboards
+    path("games/<str:game_id>/economy/", api.game_economy, name="game-economy"),
+    path("games/<str:game_id>/communities/", api.game_communities, name="game-communities"),
+    path("games/<str:game_id>/organizations/", api.game_organizations, name="game-organizations"),
+    path("games/<str:game_id>/edges/", api.game_edges, name="game-edges"),
     path(
-        "games/<str:game_id>/map/<str:layer>/",
-        api.game_map_layer,
-        name="game-map-layer",
+        "games/<str:game_id>/state-apparatus/",
+        api.game_state_apparatus,
+        name="game-state-apparatus",
     ),
-    # API: Actions — utility endpoints (available, preview, pending list)
+    path("games/<str:game_id>/journal/", api.game_journal, name="game-journal"),
+    path("games/<str:game_id>/alerts/", api.game_alerts, name="game-alerts"),
+    # API: Inspector Drill-Downs
+    path("games/<str:game_id>/node/<str:node_id>/", api.inspector_node, name="inspector-node"),
+    path("games/<str:game_id>/org/<str:org_id>/", api.inspector_org, name="inspector-org"),
+    path(
+        "games/<str:game_id>/community/<str:hyperedge_id>/",
+        api.inspector_community,
+        name="inspector-community",
+    ),
+    path("games/<str:game_id>/edge/<str:edge_id>/", api.inspector_edge, name="inspector-edge"),
+    path("games/<str:game_id>/hex/<str:h3_index>/", api.inspector_hex, name="inspector-hex"),
+    # API: Actions — utility endpoints (available, preview, pending list, cancel)
     path(
         "games/<str:game_id>/actions/available/",
         api.actions_available,
@@ -45,26 +63,31 @@ urlpatterns: list[URLPattern] = [
         api.actions_preview,
         name="actions-preview",
     ),
-    # Per-verb action submission (Spec 040 §6.1)
     path(
-        "games/<str:game_id>/actions/educate/",
-        api.EducateActionView.as_view(),
-        name="action-educate",
+        "games/<str:game_id>/actions/<int:action_id>/",
+        api.action_delete,
+        name="action-delete",
+    ),
+    # Per-verb action submission (Spec 040 §6.1 / Spec 043)
+    path(
+        "games/<str:game_id>/verbs/educate/",
+        api.EducateVerbView.as_view(),
+        name="verb-educate",
     ),
     path(
-        "games/<str:game_id>/actions/aid/",
-        api.AidActionView.as_view(),
-        name="action-aid",
+        "games/<str:game_id>/verbs/aid/",
+        api.AidVerbView.as_view(),
+        name="verb-aid",
     ),
     path(
-        "games/<str:game_id>/actions/attack/",
-        api.AttackActionView.as_view(),
-        name="action-attack",
+        "games/<str:game_id>/verbs/attack/",
+        api.AttackVerbView.as_view(),
+        name="verb-attack",
     ),
     path(
-        "games/<str:game_id>/actions/mobilize/",
-        api.MobilizeActionView.as_view(),
-        name="action-mobilize",
+        "games/<str:game_id>/verbs/mobilize/",
+        api.MobilizeVerbView.as_view(),
+        name="verb-mobilize",
     ),
     path(
         "games/<str:game_id>/actions/campaign/",
@@ -72,24 +95,24 @@ urlpatterns: list[URLPattern] = [
         name="action-campaign",
     ),
     path(
-        "games/<str:game_id>/actions/move/",
-        api.MoveActionView.as_view(),
-        name="action-move",
+        "games/<str:game_id>/verbs/move/",
+        api.MoveVerbView.as_view(),
+        name="verb-move",
     ),
     path(
-        "games/<str:game_id>/actions/investigate/",
-        api.InvestigateActionView.as_view(),
-        name="action-investigate",
+        "games/<str:game_id>/verbs/investigate/",
+        api.InvestigateVerbView.as_view(),
+        name="verb-investigate",
     ),
     path(
-        "games/<str:game_id>/actions/reproduce/",
-        api.ReproduceActionView.as_view(),
-        name="action-reproduce",
+        "games/<str:game_id>/verbs/reproduce/",
+        api.ReproduceVerbView.as_view(),
+        name="verb-reproduce",
     ),
     path(
-        "games/<str:game_id>/actions/negotiate/",
-        api.NegotiateActionView.as_view(),
-        name="action-negotiate",
+        "games/<str:game_id>/verbs/negotiate/",
+        api.NegotiateVerbView.as_view(),
+        name="verb-negotiate",
     ),
     # Legacy generic action endpoint (backward compat)
     path("games/<str:game_id>/actions/", api.actions_list, name="actions-list"),

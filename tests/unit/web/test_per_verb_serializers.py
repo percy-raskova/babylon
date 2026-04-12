@@ -150,70 +150,41 @@ class TestAidActionSerializer:
 
 
 @pytest.mark.unit
-class TestAttackActionSerializer:
-    """AttackActionSerializer requires mode."""
+class TestAttackSubmitSerializer:
+    """AttackSubmitSerializer requires mode."""
 
     def test_valid_attack(self) -> None:
-        from game.serializers import AttackActionSerializer
+        from game.serializers import AttackSubmitSerializer
 
-        s = AttackActionSerializer(
-            data={"org_id": "org_1", "target_id": "org_2", "mode": "SABOTAGE"}
+        s = AttackSubmitSerializer(
+            data={"org_id": "org_1", "target_id": "org_2", "params": {"mode": "targeted"}}
         )
         assert s.is_valid(), s.errors
 
     def test_all_modes(self) -> None:
-        from game.serializers import AttackActionSerializer
+        from game.serializers import AttackSubmitSerializer
 
-        for mode in ("SABOTAGE", "DIRECT", "EXPROPRIATION"):
-            s = AttackActionSerializer(data={"org_id": "org_1", "target_id": "org_2", "mode": mode})
+        for mode in ("targeted", "mass"):
+            s = AttackSubmitSerializer(
+                data={"org_id": "org_1", "target_id": "org_2", "params": {"mode": mode}}
+            )
             assert s.is_valid(), f"Mode {mode} failed: {s.errors}"
 
     def test_missing_mode(self) -> None:
-        from game.serializers import AttackActionSerializer
+        from game.serializers import AttackSubmitSerializer
 
-        s = AttackActionSerializer(data={"org_id": "org_1", "target_id": "org_2"})
+        s = AttackSubmitSerializer(data={"org_id": "org_1", "target_id": "org_2", "params": {}})
         assert not s.is_valid()
-        assert "mode" in s.errors
+        assert "mode" in s.errors["params"]
 
     def test_invalid_mode(self) -> None:
-        from game.serializers import AttackActionSerializer
+        from game.serializers import AttackSubmitSerializer
 
-        s = AttackActionSerializer(data={"org_id": "org_1", "target_id": "org_2", "mode": "NUKE"})
-        assert not s.is_valid()
-        assert "mode" in s.errors
-
-
-@pytest.mark.unit
-class TestMobilizeActionSerializer:
-    """MobilizeActionSerializer requires action_type."""
-
-    def test_valid_mobilize(self) -> None:
-        from game.serializers import MobilizeActionSerializer
-
-        s = MobilizeActionSerializer(
-            data={
-                "org_id": "org_1",
-                "target_id": "hex_abc",
-                "action_type": "PROTEST",
-            }
+        s = AttackSubmitSerializer(
+            data={"org_id": "org_1", "target_id": "org_2", "params": {"mode": "NUKE"}}
         )
-        assert s.is_valid(), s.errors
-
-    def test_all_action_types(self) -> None:
-        from game.serializers import MobilizeActionSerializer
-
-        for at in ("PROTEST", "STRIKE", "BLOCKADE", "MUTUAL_AID_DRIVE"):
-            s = MobilizeActionSerializer(
-                data={"org_id": "org_1", "target_id": "hex_abc", "action_type": at}
-            )
-            assert s.is_valid(), f"Action type {at} failed: {s.errors}"
-
-    def test_missing_action_type(self) -> None:
-        from game.serializers import MobilizeActionSerializer
-
-        s = MobilizeActionSerializer(data={"org_id": "org_1", "target_id": "hex_abc"})
         assert not s.is_valid()
-        assert "action_type" in s.errors
+        assert "mode" in s.errors["params"]
 
 
 @pytest.mark.unit
@@ -251,134 +222,3 @@ class TestCampaignActionSerializer:
         s = CampaignActionSerializer(data={"org_id": "org_1", "target_id": "institution_1"})
         assert not s.is_valid()
         assert "campaign_type" in s.errors
-
-
-@pytest.mark.unit
-class TestMoveActionSerializer:
-    """MoveActionSerializer has no additional params — target_id IS destination."""
-
-    def test_valid_move(self) -> None:
-        from game.serializers import MoveActionSerializer
-
-        s = MoveActionSerializer(data={"org_id": "org_1", "target_id": "hex_dest"})
-        assert s.is_valid(), s.errors
-
-    def test_no_extra_fields_required(self) -> None:
-        """Move should work with only common fields."""
-        from game.serializers import MoveActionSerializer
-
-        s = MoveActionSerializer(data={"org_id": "org_1", "target_id": "hex_dest"})
-        assert s.is_valid(), s.errors
-        # validated_data should only have common fields
-        assert set(s.validated_data.keys()) == {"org_id", "target_id"}
-
-
-@pytest.mark.unit
-class TestInvestigateActionSerializer:
-    """InvestigateActionSerializer requires depth."""
-
-    def test_valid_investigate(self) -> None:
-        from game.serializers import InvestigateActionSerializer
-
-        s = InvestigateActionSerializer(
-            data={
-                "org_id": "org_1",
-                "target_id": "territory_1",
-                "depth": "SURFACE",
-            }
-        )
-        assert s.is_valid(), s.errors
-
-    def test_all_depths(self) -> None:
-        from game.serializers import InvestigateActionSerializer
-
-        for depth in ("SURFACE", "TARGETED", "DEEP"):
-            s = InvestigateActionSerializer(
-                data={
-                    "org_id": "org_1",
-                    "target_id": "territory_1",
-                    "depth": depth,
-                }
-            )
-            assert s.is_valid(), f"Depth {depth} failed: {s.errors}"
-
-    def test_missing_depth(self) -> None:
-        from game.serializers import InvestigateActionSerializer
-
-        s = InvestigateActionSerializer(data={"org_id": "org_1", "target_id": "territory_1"})
-        assert not s.is_valid()
-        assert "depth" in s.errors
-
-
-@pytest.mark.unit
-class TestReproduceActionSerializer:
-    """ReproduceActionSerializer requires method."""
-
-    def test_valid_reproduce(self) -> None:
-        from game.serializers import ReproduceActionSerializer
-
-        s = ReproduceActionSerializer(
-            data={
-                "org_id": "org_1",
-                "target_id": "community_a",
-                "method": "CADRE",
-            }
-        )
-        assert s.is_valid(), s.errors
-
-    def test_all_methods(self) -> None:
-        from game.serializers import ReproduceActionSerializer
-
-        for method in ("CADRE", "MASS"):
-            s = ReproduceActionSerializer(
-                data={
-                    "org_id": "org_1",
-                    "target_id": "community_a",
-                    "method": method,
-                }
-            )
-            assert s.is_valid(), f"Method {method} failed: {s.errors}"
-
-    def test_missing_method(self) -> None:
-        from game.serializers import ReproduceActionSerializer
-
-        s = ReproduceActionSerializer(data={"org_id": "org_1", "target_id": "community_a"})
-        assert not s.is_valid()
-        assert "method" in s.errors
-
-
-@pytest.mark.unit
-class TestNegotiateActionSerializer:
-    """NegotiateActionSerializer requires offer_type."""
-
-    def test_valid_negotiate(self) -> None:
-        from game.serializers import NegotiateActionSerializer
-
-        s = NegotiateActionSerializer(
-            data={
-                "org_id": "org_1",
-                "target_id": "org_2",
-                "offer_type": "ALLIANCE",
-            }
-        )
-        assert s.is_valid(), s.errors
-
-    def test_all_offer_types(self) -> None:
-        from game.serializers import NegotiateActionSerializer
-
-        for ot in ("ALLIANCE", "CEASEFIRE", "RESOURCE_EXCHANGE", "MERGER"):
-            s = NegotiateActionSerializer(
-                data={
-                    "org_id": "org_1",
-                    "target_id": "org_2",
-                    "offer_type": ot,
-                }
-            )
-            assert s.is_valid(), f"Offer type {ot} failed: {s.errors}"
-
-    def test_missing_offer_type(self) -> None:
-        from game.serializers import NegotiateActionSerializer
-
-        s = NegotiateActionSerializer(data={"org_id": "org_1", "target_id": "org_2"})
-        assert not s.is_valid()
-        assert "offer_type" in s.errors

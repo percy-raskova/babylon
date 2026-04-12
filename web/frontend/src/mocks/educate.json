@@ -1,0 +1,122 @@
+{
+  "status": "ok",
+  "tick": 14,
+  "verb": "educate",
+  "acting_org": {
+    "id": "org-detroit-freedom-school",
+    "name": "Detroit Freedom School",
+    "type": "PoliticalFaction",
+    "consciousness_strategy": "revolutionary",
+    "resources": {
+      "cadre_labor": 12.0,
+      "sympathizer_labor": 45.0,
+      "material": 8.0
+    },
+    "ooda": {
+      "action_points_remaining": 2,
+      "action_points_max": 3,
+      "cycle_time": 2
+    },
+    "cadre_level": 0.65,
+    "cohesion": 0.78
+  },
+  "cost": {
+    "action_points": 1,
+    "cadre_labor": 3.0,
+    "sympathizer_labor": 0.0,
+    "material": 0.0,
+    "can_afford": true,
+    "over_budget": false,
+    "over_budget_penalty": null
+  },
+  "targets": [
+    {
+      "community_id": "community-new-afrikan-wayne",
+      "community_type": "NEW_AFRIKAN",
+      "category": "contradiction_pair",
+      "territory_name": "Wayne County",
+      "territory_id": "territory-26163",
+      "credibility": 0.72,
+      "credibility_explanation": "72% membership overlap",
+      "consciousness": {
+        "r": 0.25,
+        "l": 0.55,
+        "f": 0.20,
+        "dominant_tendency": "liberal",
+        "collective_identity": 0.25,
+        "ideological_contestation": 0.82
+      },
+      "material_readiness": {
+        "avg_agitation": 0.45,
+        "readiness_score": 1.0,
+        "readiness_explanation": "Material conditions have prepared the ground."
+      },
+      "education_pressure": {
+        "current": 0.12,
+        "projected_delta": 0.036,
+        "projected_new": 0.156,
+        "decay_per_tick": 0.012
+      },
+      "feedforward": {
+        "projected_routing_shift": {
+          "r_gain_per_tick": 0.008,
+          "f_reduction_per_tick": 0.005,
+          "l_reduction_per_tick": 0.003,
+          "explanation": "Education will shift ~0.8% toward revolutionary tendency per tick"
+        },
+        "state_ai_visibility": "medium",
+        "state_ai_likely_response": "RESEARCH",
+        "turns_to_dominant_tendency_shift": 18,
+        "turns_explanation": "~18 ticks assuming sustained effort"
+      }
+    },
+    {
+      "community_id": "community-women-wayne",
+      "community_type": "WOMEN",
+      "category": "contradiction_pair",
+      "territory_name": "Wayne County",
+      "territory_id": "territory-26163",
+      "credibility": 0.41,
+      "credibility_explanation": "41% membership overlap",
+      "consciousness": {
+        "r": 0.15,
+        "l": 0.70,
+        "f": 0.15,
+        "dominant_tendency": "liberal",
+        "collective_identity": 0.15,
+        "ideological_contestation": 0.58
+      },
+      "material_readiness": {
+        "avg_agitation": 0.22,
+        "readiness_score": 0.73,
+        "readiness_explanation": "Material conditions have not fully prepared the ground."
+      },
+      "education_pressure": {
+        "current": 0.03,
+        "projected_delta": 0.015,
+        "projected_new": 0.045,
+        "decay_per_tick": 0.003
+      },
+      "feedforward": {
+        "projected_routing_shift": {
+          "r_gain_per_tick": 0.002,
+          "f_reduction_per_tick": 0.001,
+          "l_reduction_per_tick": 0.001,
+          "explanation": "Low agitation limits effect"
+        },
+        "state_ai_visibility": "low",
+        "state_ai_likely_response": "None",
+        "turns_to_dominant_tendency_shift": null,
+        "turns_explanation": "Material conditions insufficient"
+      }
+    }
+  ],
+  "unavailable_communities": [
+    {
+      "community_id": "community-settler-oakland",
+      "community_type": "SETTLER",
+      "territory_name": "Oakland County",
+      "reason": "No membership overlap — credibility ≈ 0"
+    }
+  ]
+}

@@ -516,6 +516,68 @@ class ConsciousnessDefines(BaseModel):
         description="= decay_lambda: agitation entropy on same 7-week half-life (FM 3-24).",
     )
 
+    # ----- Spec 043: Consciousness Value Integration -----
+
+    exploitation_sensitivity: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description="Δ(s/v) → agitation conversion. How strongly exploitation rate changes generate crisis energy.",
+    )
+    rent_decline_sensitivity: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Δ(Φ) → agitation conversion. How strongly imperial rent decline generates crisis in core.",
+    )
+    reproduction_visibility_coefficient: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Δ(g₃₃) → agitation. How strongly changes in reproductive labor visibility generate crisis.",
+    )
+    repression_backfire: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Agitation generated from state REPRESS/EXCESSIVE_FORCE events (backfire effect).",
+    )
+    rent_opacity_factor: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="How much imperial rent (Φ) dampens exploitation visibility. Higher = more obscured.",
+    )
+    agitation_consumption_rate: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of agitation consumed per tick by ternary routing.",
+    )
+    liberal_drift_rate: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description="Per-tick drift toward liberal (l) tendency under stable material conditions.",
+    )
+    educate_base_effect: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Base education_pressure increase per EDUCATE verb invocation.",
+    )
+    agitation_education_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Agitation level at which EDUCATE reaches full effectiveness (practice-first gate).",
+    )
+    education_pressure_decay: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Per-tick exponential decay of education_pressure on community hyperedges.",
+    )
+
 
 class TerritoryDefines(BaseModel):
     """Territory dynamics coefficients."""
@@ -767,6 +829,72 @@ class StruggleDefines(BaseModel):
         ge=0.0,
         le=1.0,
         description="Game design: acquiescence boost for core workers during fascist turn.",
+    )
+
+
+class AidDefines(BaseModel):
+    """AID verb coefficients."""
+
+    aid_efficiency: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of transferred resources that reach the target. "
+            "< 1.0 accounts for logistics overhead. "
+            "Game Design Knob."
+        ),
+    )
+    aid_cl_cost: float = Field(
+        default=0.0,
+        description="CL cost for AID. Zero — aid is logistically simple.",
+    )
+    aid_solidarity_increment: float = Field(
+        default=0.15,
+        ge=0.0,
+        description=(
+            "Solidarity accumulated per AID action on the org→target edge. "
+            "Accumulates toward solidaristic_threshold. "
+            "Game Design Knob."
+        ),
+    )
+    solidaristic_threshold: float = Field(
+        default=1.0,
+        ge=0.0,
+        description=(
+            "Solidarity accumulation required for TRANSACTIONAL → SOLIDARISTIC "
+            "transition. At 1.0 with increment 0.15, takes ~7 AID actions. "
+            "But also requires education_threshold_for_solidarity to be met."
+        ),
+    )
+    education_threshold_for_solidarity: float = Field(
+        default=0.15,
+        ge=0.0,
+        description=(
+            "Minimum education_pressure on a shared community for "
+            "TRANSACTIONAL → SOLIDARISTIC transition. "
+            "Enforces the 'AID alone is not solidarity' principle. "
+            "Without education, the edge stays transactional forever."
+        ),
+    )
+    agitation_relief_per_unit: float = Field(
+        default=0.05,
+        ge=0.0,
+        description=(
+            "Agitation reduction per unit of consumption gap closed by AID. "
+            "Higher = AID reduces agitation faster = stronger economism risk. "
+            "Calibrate: closing 1.0 consumption gap should reduce agitation "
+            "by ~0.05 (noticeable but not overwhelming)."
+        ),
+    )
+    economism_warning_threshold: float = Field(
+        default=0.1,
+        ge=0.0,
+        description=(
+            "Agitation reduction above which the feedforward displays "
+            "an economism warning if education_pressure is below "
+            "education_threshold_for_solidarity."
+        ),
     )
 
 
@@ -3682,6 +3810,88 @@ class InstitutionDefines(BaseModel):
     )
 
 
+class MobilizeDefines(BaseModel):
+    """Configuration for MOBILIZE verb organizational actions."""
+
+    model_config = ConfigDict(frozen=True)
+
+    mobilize_cl_cost: float = Field(
+        default=0.2,
+        ge=0.0,
+        description="[M] Consciousness Layer cost to initiate mobilization.",
+    )
+    min_consciousness: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="[M] Minimum target consciousness required to sustain mobilization.",
+    )
+    turnout_per_sl: float = Field(
+        default=0.01,
+        ge=0.0,
+        description="[M] Percentage of population mobilized per Solidarity Level invested.",
+    )
+    solidarity_amplification_per_edge: float = Field(
+        default=0.05,
+        ge=0.0,
+        description="[M] Solidarity multiplier applied per inbound solidaristic edge.",
+    )
+    heat_generation_per_demonstrator: float = Field(
+        default=0.001,
+        ge=0.0,
+        description="[M] Heat generated per mobilized person.",
+    )
+    base_agitation_gain: float = Field(
+        default=0.05,
+        ge=0.0,
+        description="[M] Base agitation level added to target territory on success.",
+    )
+    strike_value_disruption_factor: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="[M] Percentage of extracted value disrupted by strike action.",
+    )
+    max_demonstrators_before_backfire: int = Field(
+        default=100_000,
+        ge=0,
+        description="[M] Maximum demonstrators before backfire dynamic engages.",
+    )
+    backfire_heat_multiplier: float = Field(
+        default=2.0,
+        ge=1.0,
+        description="[M] Heat penalty multiplier when mobilization backfires.",
+    )
+    backfire_agitation_gain: float = Field(
+        default=0.15,
+        ge=0.0,
+        description="[M] Reverse agitation added due to backfire effect.",
+    )
+
+
+class MoveDefines(BaseModel):
+    """MOVE verb coefficients."""
+
+    expand_presence_split: float = Field(default=0.30)
+    minimum_reception: float = Field(default=0.05)
+    relocation_withdrawal_ticks: int = Field(default=3)
+    expansion_edge_strain: float = Field(default=0.1)
+    evasion_base_probability: float = Field(default=0.40)
+    reacquire_ticks: int = Field(default=2)
+    distance_ap_surcharge: int = Field(default=1)
+
+
+class NegotiateDefines(BaseModel):
+    """NEGOTIATE verb coefficients."""
+
+    interest_weight: float = Field(default=0.6)
+    leverage_weight: float = Field(default=0.4)
+    institutional_leverage_weight: float = Field(default=0.8)
+    negotiate_solidarity_increment: float = Field(default=0.05)
+    betrayal_base_rate: float = Field(default=0.05)
+    leverage_threshold_for_institutions: float = Field(default=0.50)
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -3727,6 +3937,7 @@ class GameDefines(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     crisis: CrisisDefines = Field(default_factory=CrisisDefines)
+    mobilize: MobilizeDefines = Field(default_factory=MobilizeDefines)
     economy: EconomyDefines = Field(default_factory=EconomyDefines)
     survival: SurvivalDefines = Field(default_factory=SurvivalDefines)
     vitality: VitalityDefines = Field(default_factory=VitalityDefines)
@@ -3774,6 +3985,8 @@ class GameDefines(BaseModel):
     state_ai: StateApparatusAIDefines = Field(default_factory=StateApparatusAIDefines)
     # Institution Base Model (Feature 040)
     institution: InstitutionDefines = Field(default_factory=InstitutionDefines)
+    move: MoveDefines = Field(default_factory=MoveDefines)
+    negotiate: NegotiateDefines = Field(default_factory=NegotiateDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -3860,6 +4073,7 @@ class GameDefines(BaseModel):
         )
 
         return cls(
+            mobilize=MobilizeDefines(**data.get("mobilize", {})),
             crisis=CrisisDefines(**data.get("crisis", {})),
             economy=EconomyDefines(**data.get("economy", {})),
             survival=SurvivalDefines(**data.get("survival", {})),
@@ -3894,6 +4108,8 @@ class GameDefines(BaseModel):
             class_system=ClassSystemDefines(**data.get("class_system", {})),
             state_ai=StateApparatusAIDefines(**data.get("state_ai", {})),
             institution=InstitutionDefines(**data.get("institution", {})),
+            move=MoveDefines(**data.get("move", {})),
+            negotiate=NegotiateDefines(**data.get("negotiate", {})),
         )
 
     @classmethod

@@ -533,6 +533,84 @@ class StubEngineBridge:
             "features": features,
         }
 
+    # ------------------------------------------------------------------ #
+    # Domain Dashboards (Scaffolding for full UI requirements)
+    # ------------------------------------------------------------------ #
+
+    def get_game_summary(self, session_id: UUID) -> dict[str, Any]:
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        return {
+            "tick": tick,
+            "profit_rate": 0.08,
+            "exploitation_rate": 0.45,
+            "phi": 50.0,
+            "hegemon": "institutionalist_bonapartist",
+            "alerts": [
+                {"id": "A1", "severity": "high", "message": "Evictions expected in Hamtramck"}
+            ],
+        }
+
+    def get_game_timeseries(self, _session_id: UUID) -> dict[str, Any]:
+        return {"data": []}
+
+    def get_economy_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        return {}
+
+    def get_communities_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        return {}
+
+    def get_organizations_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        return {}
+
+    def get_edges_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        return {}
+
+    def get_state_apparatus_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        return {}
+
+    def get_journal_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        return {}
+
+    def get_alerts_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+        return {}
+
+    # ------------------------------------------------------------------ #
+    # Inspector Views
+    # ------------------------------------------------------------------ #
+
+    def get_inspector_node(self, _session_id: UUID, node_id: str) -> dict[str, Any]:
+        return {"id": node_id, "type": "node", "details": "Stub details for node."}
+
+    def get_inspector_org(self, _session_id: UUID, org_id: str) -> dict[str, Any]:
+        return {
+            "id": org_id,
+            "name": "Wayne County Organizing Committee",
+            "type": "Vanguard",
+            "cadre_level": 0.10,
+            "cohesion": 0.55,
+            "funds": 100.0,
+            "heat": 0.0,
+            "territories": ["T001", "T002"],
+        }
+
+    def get_inspector_community(self, _session_id: UUID, hyperedge_id: str) -> dict[str, Any]:
+        return {"id": hyperedge_id, "type": "community"}
+
+    def get_inspector_edge(self, _session_id: UUID, edge_id: str) -> dict[str, Any]:
+        return {"id": edge_id, "type": "edge"}
+
+    def get_inspector_hex(self, _session_id: UUID, h3_index: str) -> dict[str, Any]:
+        return {
+            "h3_index": h3_index,
+            "county_fips": "26163",
+            "county_name": "Wayne County",
+            "population": 45000,
+            "profit_rate": 0.08,
+            "heat": 0.1,
+            "dominant_class": "proletariat",
+        }
+
     def get_available_actions(self, _session_id: UUID) -> list[dict[str, Any]]:
         """Return available actions for current tick."""
         return [

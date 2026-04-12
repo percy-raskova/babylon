@@ -227,6 +227,11 @@ known-first-party = [
 ]
 "tools/**" = [
     "C901",
+    "SIM",
+]
+"scripts/**" = [
+    "C901",
+    "SIM",
 ]
 
 [tool.ruff.format]

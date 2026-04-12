@@ -12,14 +12,16 @@ from __future__ import annotations
 import logging
 import uuid
 from typing import Any
+from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponseBase, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from game.models import ActionResult, GameSession, PlayerAction
@@ -27,19 +29,27 @@ from game.models import ActionResult, GameSession, PlayerAction
 from .log_handler import log_game_event
 from .serializers import (
     ActionResultSerializer,
-    AidActionSerializer,
-    AttackActionSerializer,
+    AidAvailableSerializer,
+    AidSubmitSerializer,
+    AttackAvailableSerializer,
+    AttackSubmitSerializer,
     BaseActionSerializer,
     CampaignActionSerializer,
     CreateGameSerializer,
-    EducateActionSerializer,
+    EducateAvailableSerializer,
+    EducateSubmitSerializer,
     GameSessionListSerializer,
     GameSnapshotSerializer,
-    InvestigateActionSerializer,
-    MobilizeActionSerializer,
-    MoveActionSerializer,
-    NegotiateActionSerializer,
-    ReproduceActionSerializer,
+    InvestigateAvailableSerializer,
+    InvestigateSubmitSerializer,
+    MobilizeAvailableSerializer,
+    MobilizeSubmitSerializer,
+    MoveAvailableSerializer,
+    MoveSubmitSerializer,
+    NegotiateAvailableSerializer,
+    NegotiateSubmitSerializer,
+    ReproduceAvailableSerializer,
+    ReproduceSubmitSerializer,
     SubmitActionSerializer,
 )
 from .tick_resolver import resolve_game_tick
@@ -262,6 +272,22 @@ SCENARIO_CATALOG: list[dict[str, Any]] = [
     },
 ]
 
+VALID_MAP_LAYERS: frozenset[str] = frozenset(
+    {
+        "heat",
+        "consciousness",
+        "wealth",
+        "rent",
+        "biocapacity",
+        "population",
+        "profit_rate",
+        "exploitation_rate",
+        "occ",
+        "imperial_rent",
+        "org_presence",
+    }
+)
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -350,6 +376,7 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
 
     Query parameters:
         tick (int, optional): Tick to query. Default: current tick.
+        lens (str, optional): Metric to overlay.
         zoom (str, optional): Spatial aggregation level.
             One of: state, bea, msa, county, hex. Default: county.
     """
@@ -363,6 +390,7 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     except ValueError:
         return _error("Invalid tick parameter", http_status=400)
 
+    lens = request.query_params.get("lens")
     zoom = request.query_params.get("zoom", DEFAULT_ZOOM)
     if zoom not in VALID_ZOOM_LEVELS:
         return _error(
@@ -374,8 +402,34 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     snapshot = bridge.get_map_snapshot(
         uuid.UUID(str(session.id)),
         tick=tick,
+        layer=lens,
         zoom=zoom,
     )
+
+    if lens and lens in VALID_MAP_LAYERS:
+        # Filter properties to only include the requested layer metric plus identifying fields
+        keep_keys = {"h3_index", "county_fips", "county_name", lens}
+        filtered_features = []
+        for feature in snapshot.get("features", []):
+            original_props = feature.get("properties", {})
+            filtered_props = {k: v for k, v in original_props.items() if k in keep_keys}
+            filtered_features.append(
+                {
+                    "type": feature.get("type", "Feature"),
+                    "id": feature.get("id"),
+                    "geometry": feature.get("geometry"),
+                    "properties": filtered_props,
+                }
+            )
+
+        snapshot = {
+            "type": "FeatureCollection",
+            "metadata": {
+                **snapshot.get("metadata", {}),
+                "layer": lens,
+            },
+            "features": filtered_features,
+        }
     return _envelope(
         snapshot,
         tick=snapshot.get("metadata", {}).get("tick", session.current_tick),
@@ -383,84 +437,182 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     )
 
 
-# The 6 canonical map layers matching the frontend MapLayer type
-VALID_MAP_LAYERS: frozenset[str] = frozenset(
-    ["heat", "consciousness", "wealth", "rent", "biocapacity", "population"]
-)
+# ---------------------------------------------------------------------- #
+# Dashboards and Analytics
+# ---------------------------------------------------------------------- #
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def game_map_layer(request: Request, game_id: str, layer: str) -> JsonResponse:
-    """GET /api/games/{id}/map/{layer}/ — Per-layer GeoJSON data.
-
-    Returns a GeoJSON FeatureCollection with properties filtered
-    to include only the requested metric plus the identifying fields
-    (h3_index, county_fips, county_name).
-
-    Valid layers: heat, consciousness, wealth, rent, biocapacity, population.
-    """
-    if layer not in VALID_MAP_LAYERS:
-        return _error(
-            f"Invalid layer '{layer}'. Valid layers: {sorted(VALID_MAP_LAYERS)}",
-            http_status=400,
-        )
-
+def game_summary(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/summary/ - Top-bar aggregate."""
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
-
-    try:
-        tick_query = request.query_params.get("tick")
-        tick = int(tick_query) if tick_query is not None else None
-    except ValueError:
-        return _error("Invalid tick parameter", http_status=400)
-
-    zoom = request.query_params.get("zoom", DEFAULT_ZOOM)
-    if zoom not in VALID_ZOOM_LEVELS:
-        return _error(
-            f"Invalid zoom '{zoom}'. Valid levels: {sorted(VALID_ZOOM_LEVELS)}",
-            http_status=400,
-        )
-
     bridge = _get_bridge()
-    snapshot = bridge.get_map_snapshot(
-        uuid.UUID(str(session.id)),
-        tick=tick,
-        layer=layer,
-        zoom=zoom,
-    )
+    data = bridge.get_game_summary(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
-    # Filter properties to only include the requested layer metric
-    # plus identifying fields (h3_index, county_fips, county_name)
-    keep_keys = {"h3_index", "county_fips", "county_name", layer}
-    filtered_features = []
-    for feature in snapshot.get("features", []):
-        original_props = feature.get("properties", {})
-        filtered_props = {k: v for k, v in original_props.items() if k in keep_keys}
-        filtered_features.append(
-            {
-                "type": feature.get("type", "Feature"),
-                "id": feature.get("id"),
-                "geometry": feature.get("geometry"),
-                "properties": filtered_props,
-            }
-        )
 
-    result = {
-        "type": "FeatureCollection",
-        "metadata": {
-            **snapshot.get("metadata", {}),
-            "layer": layer,
-        },
-        "features": filtered_features,
-    }
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_timeseries(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/timeseries/ - Per-tick history for charts."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_game_timeseries(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
-    return _envelope(
-        result,
-        tick=snapshot.get("metadata", {}).get("tick", session.current_tick),
-        session_id=str(session.id),
-    )
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_economy(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/economy/ - Economy left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_economy_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_communities(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/communities/ - Communities left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_communities_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_organizations(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/organizations/ - Organizations left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_organizations_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_edges(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/edges/ - Edges left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_edges_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_state_apparatus(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/state-apparatus/ - State-apparatus left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_state_apparatus_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_journal(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/journal/ - Journal left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_journal_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_alerts(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/alerts/ - Alerts left-panel dashboard."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_alerts_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+# ---------------------------------------------------------------------- #
+# Inspector Endpoints (Drill-Downs)
+# ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_node(request: Request, game_id: str, node_id: str) -> JsonResponse:
+    """GET /api/games/{id}/node/{node_id}/ - Node inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_node(uuid.UUID(str(session.id)), node_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_org(request: Request, game_id: str, org_id: str) -> JsonResponse:
+    """GET /api/games/{id}/org/{org_id}/ - Org inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_org(uuid.UUID(str(session.id)), org_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_community(request: Request, game_id: str, hyperedge_id: str) -> JsonResponse:
+    """GET /api/games/{id}/community/{hyperedge_id}/ - Community inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_community(uuid.UUID(str(session.id)), hyperedge_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_edge(request: Request, game_id: str, edge_id: str) -> JsonResponse:
+    """GET /api/games/{id}/edge/{edge_id}/ - Edge inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_edge(uuid.UUID(str(session.id)), edge_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_hex(request: Request, game_id: str, h3_index: str) -> JsonResponse:
+    """GET /api/games/{id}/hex/{h3_index}/ - Hex inspector."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_inspector_hex(uuid.UUID(str(session.id)), h3_index)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
 # ---------------------------------------------------------------------- #
@@ -521,6 +673,31 @@ def actions_preview(request: Request, game_id: str) -> JsonResponse:
         tick=session.current_tick,
         session_id=str(session.id),
     )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def action_delete(request: Request, game_id: str, action_id: int) -> JsonResponse:
+    """DELETE /api/games/{id}/actions/{action_id}/ — Cancel a pending action."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    try:
+        action = PlayerAction.objects.get(
+            id=action_id,
+            session_id=session.id,
+            tick=session.current_tick,
+            resolved=False,
+        )
+        action.delete()
+        return _envelope(
+            {"status": "deleted", "action_id": action_id},
+            tick=session.current_tick,
+            session_id=str(session.id),
+        )
+    except PlayerAction.DoesNotExist:
+        return _error("Action not found or already resolved", http_status=404)
 
 
 @api_view(["GET", "POST"])
@@ -838,32 +1015,264 @@ class BaseVerbActionView(APIView):
         )
 
 
-class EducateActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/educate/."""
+class EducateVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/educate/"""
 
-    serializer_class = EducateActionSerializer
-    verb = "educate"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_educate_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = EducateAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = EducateSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_community_id = data["target_community_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="educate",
+                target_community=target_community_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "educate",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_community_id": target_community_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class AidActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/aid/."""
+class AidVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/aid/"""
 
-    serializer_class = AidActionSerializer
-    verb = "aid"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_aid_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AidAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = AidSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="aid",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "aid",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class AttackActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/attack/."""
+class AttackVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/attack/"""
 
-    serializer_class = AttackActionSerializer
-    verb = "attack"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_attack_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AttackAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = AttackSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="attack",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "attack",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class MobilizeActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/mobilize/."""
+class MobilizeVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/mobilize/"""
 
-    serializer_class = MobilizeActionSerializer
-    verb = "mobilize"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_mobilize_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = MobilizeAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = MobilizeSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="mobilize",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "mobilize",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class CampaignActionView(BaseVerbActionView):
@@ -873,32 +1282,264 @@ class CampaignActionView(BaseVerbActionView):
     verb = "campaign"
 
 
-class MoveActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/move/."""
+class MoveVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/move/"""
 
-    serializer_class = MoveActionSerializer
-    verb = "move"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_move_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = MoveAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = MoveSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="move",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "move",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class InvestigateActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/investigate/."""
+class InvestigateVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/investigate/"""
 
-    serializer_class = InvestigateActionSerializer
-    verb = "investigate"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_investigate_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = InvestigateAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = InvestigateSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data.get("target_id", None)
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="investigate",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "investigate",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class ReproduceActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/reproduce/."""
+class ReproduceVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/reproduce/"""
 
-    serializer_class = ReproduceActionSerializer
-    verb = "reproduce"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_reproduce_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = ReproduceAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = ReproduceSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data.get("target_id", None)
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="reproduce",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "reproduce",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class NegotiateActionView(BaseVerbActionView):
-    """POST /api/games/{id}/actions/negotiate/."""
+class NegotiateVerbView(APIView):
+    """GET/POST /api/games/{id}/verbs/negotiate/"""
 
-    serializer_class = NegotiateActionSerializer
-    verb = "negotiate"
+    def get(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response(
+                {"status": "error", "message": "org_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = _get_bridge()
+        data = bridge.get_negotiate_targets(session.id, org_id)
+        if data.get("status") == "error":
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = NegotiateAvailableSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request, game_id: UUID) -> Response:
+        session = get_object_or_404(GameSession, id=game_id)
+
+        serializer = NegotiateSubmitSerializer(
+            data=request.data, context={"game": session, "request": request}
+        )
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+        org_id = data["org_id"]
+        target_id = data["target_id"]
+        params = data.get("params", {})
+
+        bridge = _get_bridge()
+        try:
+            action_id = bridge.submit_action(
+                session_id=session.id,
+                tick=session.current_tick,
+                org_id=org_id,
+                verb="negotiate",
+                target_id=target_id,
+                params_json=params,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "ok",
+                "tick": session.current_tick,
+                "verb": "negotiate",
+                "action_id": action_id,
+                "acting_org_id": org_id,
+                "target_id": target_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 # ---------------------------------------------------------------------- #

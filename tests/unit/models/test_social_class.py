@@ -553,16 +553,6 @@ class TestComponentModels:
         assert econ.wealth == 50.0
         assert econ.subsistence_threshold == 10.0
 
-    def test_ideological_component_creation(self) -> None:
-        """Can create IdeologicalComponent with valid data."""
-        from babylon.models.entities.social_class import IdeologicalComponent
-
-        # Sprint 3.4.3: ideology in IdeologicalComponent is now IdeologicalProfile
-        profile = IdeologicalProfile(class_consciousness=0.75, national_identity=0.3)
-        ideo = IdeologicalComponent(ideology=profile, organization=0.3)
-        assert ideo.ideology.class_consciousness == 0.75
-        assert ideo.organization == 0.3
-
     def test_survival_component_creation(self) -> None:
         """Can create SurvivalComponent with valid data."""
         from babylon.models.entities.social_class import SurvivalComponent
@@ -608,19 +598,17 @@ class TestSocialClassComponentConstruction:
         """Can create SocialClass using all components."""
         from babylon.models.entities.social_class import (
             EconomicComponent,
-            IdeologicalComponent,
             MaterialConditionsComponent,
             SurvivalComponent,
         )
 
-        # Sprint 3.4.3: ideology in IdeologicalComponent is now IdeologicalProfile
-        profile = IdeologicalProfile(class_consciousness=0.75, national_identity=0.25)
         worker = SocialClass(
             id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             economic=EconomicComponent(wealth=50.0),
-            ideological=IdeologicalComponent(ideology=profile, organization=0.3),
+            ideology=IdeologicalProfile(class_consciousness=0.75, national_identity=0.25),
+            organization=0.3,
             survival=SurvivalComponent(p_acquiescence=0.6, p_revolution=0.4),
             material_conditions=MaterialConditionsComponent(repression_faced=0.7),
         )
@@ -678,20 +666,6 @@ class TestSocialClassComponentAccess:
         assert worker.economic.wealth == 50.0
         assert worker.economic.subsistence_threshold == 10.0
 
-    def test_access_ideological_component(self) -> None:
-        """Can access ideological data via component property."""
-        worker = SocialClass(
-            id=PERIPHERY_WORKER_ID,
-            name="Worker",
-            role=SocialRole.PERIPHERY_PROLETARIAT,
-            ideology=-0.5,  # Legacy conversion to IdeologicalProfile
-            organization=0.3,
-        )
-        # Sprint 3.4.3: ideology is now IdeologicalProfile
-        assert isinstance(worker.ideological.ideology, IdeologicalProfile)
-        assert worker.ideological.ideology.to_legacy_ideology() == pytest.approx(-0.5, abs=0.01)
-        assert worker.ideological.organization == 0.3
-
     def test_access_survival_component(self) -> None:
         """Can access survival data via component property."""
         worker = SocialClass(
@@ -718,7 +692,6 @@ class TestSocialClassComponentAccess:
         """Component properties return correct types."""
         from babylon.models.entities.social_class import (
             EconomicComponent,
-            IdeologicalComponent,
             MaterialConditionsComponent,
             SurvivalComponent,
         )
@@ -729,7 +702,6 @@ class TestSocialClassComponentAccess:
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
         assert isinstance(worker.economic, EconomicComponent)
-        assert isinstance(worker.ideological, IdeologicalComponent)
         assert isinstance(worker.survival, SurvivalComponent)
         assert isinstance(worker.material_conditions, MaterialConditionsComponent)
 

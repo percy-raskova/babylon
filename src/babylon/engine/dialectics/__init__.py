@@ -15,9 +15,11 @@ Modules:
 """
 
 from babylon.engine.dialectics.base import Dialectic, TickInputs, WorldView
+from babylon.engine.dialectics.consciousness import ClassConsciousnessDialectic
 
 __all__ = [
     "Dialectic",
     "TickInputs",
     "WorldView",
+    "ClassConsciousnessDialectic",
 ]

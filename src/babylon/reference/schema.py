@@ -146,6 +146,60 @@ class BridgeCountyMetro(NormalizedBase):
     is_principal_city: Mapped[bool] = mapped_column(default=False)
 
 
+class DimBEAEconomicArea(NormalizedBase):
+    """BEA Economic Areas (2004 redefinition).
+
+    Bureau of Economic Analysis Economic Areas are functional economic
+    regions defined by commuting patterns and newspaper circulation.
+    Unlike MSAs (which cover ~85% of the population), BEA EAs provide
+    wall-to-wall coverage of the entire US, including rural areas.
+
+    The 2004 redefinition partitions CONUS into ~179 EAs, each anchored
+    by a node metropolitan area. Cross-state EAs are common (e.g.,
+    Chicago EA includes Berrien County MI, Toledo EA includes Monroe
+    County MI).
+
+    Data Source:
+        BEA Regional Economic Areas (REA) 2004 definitions
+        https://www.bea.gov/regional/
+
+    Use Cases:
+        - Mid-tier zoom aggregation in the map API (between state and county)
+        - Labor market boundary analysis
+        - Regional economic divergence tracking (Spec 040 Sub-Test B)
+    """
+
+    __tablename__ = "dim_bea_economic_area"
+
+    bea_ea_id: Mapped[int] = mapped_column(primary_key=True)
+    ea_code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
+    ea_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    node_metro_area: Mapped[str | None] = mapped_column(String(200))
+
+    __table_args__ = (Index("idx_bea_ea_code", "ea_code"),)
+
+
+class BridgeCountyBEAEA(NormalizedBase):
+    """County to BEA Economic Area mapping.
+
+    National-scope bridge table mapping all ~3,143 US counties to their
+    BEA Economic Area. Loaded nationally (not just Michigan) to correctly
+    handle cross-border EAs.
+
+    Cross-border examples relevant to Michigan:
+        - Berrien County (26021) → Chicago-Naperville EA
+        - Monroe County (26115) → Toledo OH EA
+        - Menominee County (26109) → Marinette WI-MI EA
+    """
+
+    __tablename__ = "bridge_county_bea_ea"
+
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    bea_ea_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_economic_area.bea_ea_id"), primary_key=True
+    )
+
+
 class BridgeCountyH3(NormalizedBase):
     """H3 hexagon to county mapping for spatial aggregation.
 
@@ -2306,6 +2360,8 @@ __all__ = [
     "DimCounty",
     "DimMetroArea",
     "BridgeCountyMetro",
+    "DimBEAEconomicArea",
+    "BridgeCountyBEAEA",
     "DimGeographicHierarchy",
     "DimCFSArea",
     "BridgeCFSCounty",

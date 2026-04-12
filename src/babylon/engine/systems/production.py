@@ -67,11 +67,16 @@ class ProductionSystem:
     # Spec 040, Discipline 1: Declared invariants preserved by this system
     invariants: list[object] = []  # populated in __init__
 
+    # Spec 040, Discipline 4: Phase this system operates in
+    phase: int = 0  # Phase.PRODUCTION
+
     def __init__(self) -> None:
-        """Initialize ProductionSystem with declared invariants."""
+        """Initialize ProductionSystem with declared invariants and phase."""
         from babylon.engine.invariants import NonNegativeWealth
+        from babylon.engine.phase import Phase
 
         self.invariants = [NonNegativeWealth()]
+        self.phase = Phase.PRODUCTION
 
     @property
     def name(self) -> str:

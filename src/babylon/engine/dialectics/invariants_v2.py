@@ -3,7 +3,7 @@
 The engine enforces three universal invariants on every Dialectic at
 every tick:
 
-1. ``weight ∈ [0, 1]``
+1. ``weight ∈ [-1, 1]``
 2. Type stability across motion (a CommodityDialectic remains one)
 3. ``step()`` returns a Dialectic of the declared type
 
@@ -26,7 +26,7 @@ def check_universal_invariants(d: Dialectic[Any, Any]) -> list[str]:
     """Check universal invariants on a single dialectic.
 
     Universal invariants:
-        - weight ∈ [0.0, 1.0]
+        - weight ∈ [-1.0, 1.0]
         - type_tag is a non-empty string
 
     These are defensive checks — Pydantic should already enforce weight
@@ -39,8 +39,8 @@ def check_universal_invariants(d: Dialectic[Any, Any]) -> list[str]:
         List of violation descriptions. Empty = valid.
     """
     violations: list[str] = []
-    if d.weight < 0.0 or d.weight > 1.0:
-        violations.append(f"{d.type_tag} {d.id}: weight {d.weight} out of [0, 1]")
+    if d.weight < -1.0 or d.weight > 1.0:
+        violations.append(f"{d.type_tag} {d.id}: weight {d.weight} out of [-1, 1]")
     if not d.type_tag:
         violations.append(f"Dialectic {d.id}: empty type_tag")
     return violations

@@ -107,11 +107,11 @@ class TestCommodityDialecticStep:
     """Motion law: production shifts toward exchange, consumption toward use."""
 
     def test_production_input_shifts_toward_exchange(self) -> None:
-        """Production event shifts weight toward exchange (lower weight = B dominant)."""
+        """Production event shifts weight toward exchange (weight increases, toward B)."""
         cd = CommodityDialectic(
             pole_a=UseValue(),
             pole_b=ExchangeValue(),
-            weight=0.5,
+            weight=0.0,
             tick_created=0,
             tick_updated=0,
         )
@@ -119,15 +119,15 @@ class TestCommodityDialecticStep:
         world = WorldView(tick=1, dialectics={})
         result = cd.step(inputs, world)
         assert isinstance(result, CommodityDialectic)
-        # Production shifts toward exchange: weight decreases
-        assert result.weight < cd.weight
+        # Production shifts toward exchange: weight increases
+        assert result.weight > cd.weight
 
     def test_consumption_input_shifts_toward_use(self) -> None:
-        """Consumption event shifts weight toward use (higher weight = A dominant)."""
+        """Consumption event shifts weight toward use (weight decreases, toward A)."""
         cd = CommodityDialectic(
             pole_a=UseValue(),
             pole_b=ExchangeValue(),
-            weight=0.5,
+            weight=0.0,
             tick_created=0,
             tick_updated=0,
         )
@@ -135,15 +135,15 @@ class TestCommodityDialecticStep:
         world = WorldView(tick=1, dialectics={})
         result = cd.step(inputs, world)
         assert isinstance(result, CommodityDialectic)
-        # Consumption shifts toward use: weight increases
-        assert result.weight > cd.weight
+        # Consumption shifts toward use: weight decreases
+        assert result.weight < cd.weight
 
     def test_no_input_preserves_weight(self) -> None:
         """No upstream input means no change in weight."""
         cd = CommodityDialectic(
             pole_a=UseValue(),
             pole_b=ExchangeValue(),
-            weight=0.5,
+            weight=0.0,
             tick_created=0,
             tick_updated=0,
         )
@@ -156,28 +156,28 @@ class TestCommodityDialecticStep:
         cd = CommodityDialectic(
             pole_a=UseValue(),
             pole_b=ExchangeValue(),
-            weight=0.5,
+            weight=0.0,
             tick_created=0,
             tick_updated=0,
         )
         result = cd.step(TickInputs(), WorldView(tick=1, dialectics={}))
         assert result.tick_updated == 1
 
-    def test_weight_clamped_at_zero(self) -> None:
-        """Production can't push weight below 0."""
+    def test_weight_clamped_at_negative_one(self) -> None:
+        """Consumption can't push weight below -1."""
         cd = CommodityDialectic(
             pole_a=UseValue(),
             pole_b=ExchangeValue(),
-            weight=0.01,
+            weight=-0.99,
             tick_created=0,
             tick_updated=0,
         )
-        inputs = TickInputs(upstream={cd.id: {"event": "production", "intensity": 1.0}})
+        inputs = TickInputs(upstream={cd.id: {"event": "consumption", "intensity": 1.0}})
         result = cd.step(inputs, WorldView(tick=1, dialectics={}))
-        assert result.weight >= 0.0
+        assert result.weight >= -1.0
 
-    def test_weight_clamped_at_one(self) -> None:
-        """Consumption can't push weight above 1."""
+    def test_weight_clamped_at_positive_one(self) -> None:
+        """Production can't push weight above 1."""
         cd = CommodityDialectic(
             pole_a=UseValue(),
             pole_b=ExchangeValue(),
@@ -185,7 +185,7 @@ class TestCommodityDialecticStep:
             tick_created=0,
             tick_updated=0,
         )
-        inputs = TickInputs(upstream={cd.id: {"event": "consumption", "intensity": 1.0}})
+        inputs = TickInputs(upstream={cd.id: {"event": "production", "intensity": 1.0}})
         result = cd.step(inputs, WorldView(tick=1, dialectics={}))
         assert result.weight <= 1.0
 

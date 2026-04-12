@@ -39,8 +39,10 @@ class TestCheckUniversalInvariants:
         assert violations == []
 
     def test_weight_at_boundary_valid(self) -> None:
+        d_neg = _make_commodity(weight=-1.0)
         d0 = _make_commodity(weight=0.0)
         d1 = _make_commodity(weight=1.0)
+        assert check_universal_invariants(d_neg) == []
         assert check_universal_invariants(d0) == []
         assert check_universal_invariants(d1) == []
 

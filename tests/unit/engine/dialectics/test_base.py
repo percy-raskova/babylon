@@ -3,7 +3,7 @@
 Validates:
 - Construction with generic typed poles
 - Frozen immutability (ConfigDict frozen=True)
-- Weight bounds [0, 1]
+- Weight bounds [-1, 1]
 - Abstract step() enforcement
 - Default sublate() returns None
 - Default observe() returns expected dict
@@ -185,7 +185,7 @@ class TestDialecticImmutability:
 
 
 class TestDialecticWeightBounds:
-    """Weight must be in [0.0, 1.0]."""
+    """Weight must be in [-1.0, 1.0]."""
 
     def test_weight_zero_valid(self) -> None:
         d = StubDialectic(
@@ -207,12 +207,22 @@ class TestDialecticWeightBounds:
         )
         assert d.weight == 1.0
 
-    def test_weight_negative_raises(self) -> None:
+    def test_weight_negative_one_valid(self) -> None:
+        d = StubDialectic(
+            pole_a=PoleFoo(),
+            pole_b=PoleBar(),
+            weight=-1.0,
+            tick_created=0,
+            tick_updated=0,
+        )
+        assert d.weight == -1.0
+
+    def test_weight_below_negative_one_raises(self) -> None:
         with pytest.raises(ValidationError):
             StubDialectic(
                 pole_a=PoleFoo(),
                 pole_b=PoleBar(),
-                weight=-0.1,
+                weight=-1.1,
                 tick_created=0,
                 tick_updated=0,
             )
@@ -286,7 +296,18 @@ class TestDialecticObservation:
         assert isinstance(obs, dict)
         assert obs["type"] == "StubDialectic"
         assert obs["weight"] == 0.7
-        assert obs["principal_aspect"] == "A"  # weight > 0.5
+        assert obs["principal_aspect"] == "B"  # weight > 0 = B dominant
+
+    def test_observe_principal_aspect_a(self) -> None:
+        d = StubDialectic(
+            pole_a=PoleFoo(),
+            pole_b=PoleBar(),
+            weight=-0.3,
+            tick_created=0,
+            tick_updated=0,
+        )
+        obs = d.observe()
+        assert obs["principal_aspect"] == "A"  # weight < 0 = A dominant
 
     def test_observe_principal_aspect_b(self) -> None:
         d = StubDialectic(
@@ -297,7 +318,7 @@ class TestDialecticObservation:
             tick_updated=0,
         )
         obs = d.observe()
-        assert obs["principal_aspect"] == "B"  # weight < 0.5
+        assert obs["principal_aspect"] == "B"  # weight > 0 = B dominant
 
     def test_observe_includes_id(self) -> None:
         d = StubDialectic(

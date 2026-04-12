@@ -3,12 +3,12 @@
 A Dialectic is a 5-tuple ``D = (A, Ā, w, T, σ)``:
 
 - ``A, Ā`` are typed states — the two poles.
-- ``w ∈ [0, 1]`` is the principal aspect weight.
+- ``w ∈ [-1, 1]`` is the principal aspect weight.
 - ``T`` is the motion operator (implemented as :meth:`step`).
 - ``σ`` is the sublation predicate (implemented as :meth:`sublate`).
 
 The engine enforces three universal invariants on every Dialectic at every
-tick: weight ∈ [0, 1], type stability across motion, and that ``step``
+tick: weight ∈ [-1, 1], type stability across motion, and that ``step``
 returns a Dialectic of the declared type.
 
 See Also:
@@ -100,7 +100,8 @@ class Dialectic(BaseModel, Generic[A, B]):  # noqa: UP046 — Pydantic requires 
         type_tag: Discriminator string set by each subclass.
         pole_a: The first pole (typed state A).
         pole_b: The second pole (typed state B / Ā).
-        weight: Principal aspect weight ∈ [0, 1]. 1 = pole A dominant.
+        weight: Principal aspect weight ∈ [-1, 1]. <0 = pole A dominant,
+                0 = equilibrium, >0 = pole B dominant.
         parent_id: UUID of the predecessor if this was produced by sublation.
         tick_created: Tick when this dialectic was first instantiated.
         tick_updated: Tick when this dialectic was last stepped.
@@ -112,7 +113,7 @@ class Dialectic(BaseModel, Generic[A, B]):  # noqa: UP046 — Pydantic requires 
     type_tag: str  # Set by subclass as a class variable or field default
     pole_a: A
     pole_b: B
-    weight: float = Field(..., ge=0.0, le=1.0)
+    weight: float = Field(..., ge=-1.0, le=1.0)
     parent_id: UUID | None = None
     tick_created: int
     tick_updated: int
@@ -158,7 +159,7 @@ class Dialectic(BaseModel, Generic[A, B]):  # noqa: UP046 — Pydantic requires 
             "id": str(self.id),
             "type": self.type_tag,
             "weight": self.weight,
-            "principal_aspect": "A" if self.weight > 0.5 else "B",
+            "principal_aspect": "A" if self.weight < 0 else "B",
         }
 
     def invariants(self) -> list[str]:

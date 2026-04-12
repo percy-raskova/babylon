@@ -61,11 +61,12 @@ class CommodityDialectic(Dialectic[UseValue, ExchangeValue]):
     """The use-value ↔ exchange-value contradiction (V1 Ch1).
 
     Weight reflects whether the commodity is currently being held for
-    use (``weight → 1``) or for exchange (``weight → 0``).
+    use (``weight < 0``, A dominant) or for exchange (``weight > 0``,
+    B dominant). Zero is equilibrium.
 
     Motion law:
-        - **Production** events shift weight toward exchange (decrease).
-        - **Consumption** events shift weight toward use (increase).
+        - **Production** events shift weight toward exchange (increase, toward B).
+        - **Consumption** events shift weight toward use (decrease, toward A).
 
     The input convention is an upstream dict with keys:
         - ``event``: ``"production"`` or ``"consumption"``
@@ -82,8 +83,8 @@ class CommodityDialectic(Dialectic[UseValue, ExchangeValue]):
     def step(self, inputs: TickInputs, world: WorldView) -> CommodityDialectic:
         """Motion law T for the commodity contradiction.
 
-        Production events shift weight toward exchange (pole B);
-        consumption events shift toward use (pole A).
+        Production events shift weight toward exchange (pole B, positive);
+        consumption events shift toward use (pole A, negative).
 
         Args:
             inputs: Upstream outputs. Looks for own id's entry with
@@ -103,13 +104,13 @@ class CommodityDialectic(Dialectic[UseValue, ExchangeValue]):
             intensity = float(own_input.get("intensity", 0.0))
 
             if event == "production":
-                # Production shifts toward exchange: weight decreases
-                delta = -intensity
-            elif event == "consumption":
-                # Consumption shifts toward use: weight increases
+                # Production shifts toward exchange (B): weight increases
                 delta = intensity
+            elif event == "consumption":
+                # Consumption shifts toward use (A): weight decreases
+                delta = -intensity
 
-        new_weight = max(0.0, min(1.0, self.weight + delta))
+        new_weight = max(-1.0, min(1.0, self.weight + delta))
 
         return self.model_copy(
             update={

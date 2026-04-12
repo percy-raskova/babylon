@@ -68,9 +68,16 @@ class WorldView(BaseModel):
     Provides the ``World`` term from the formal definition — read-only
     access to the rest of the graph for context during ``step()``.
 
+    The ``previous`` field holds a frozen snapshot of the prior tick's
+    WorldView. This enables the cyclical step pattern from the Grundrisse:
+    each dialectic reads peer outputs from the *previous* tick, not the
+    current one. The cycle is in the runtime data flow, not the static
+    type graph.
+
     Attributes:
         tick: Current simulation tick.
         dialectics: Read-only view of all live dialectics by ID.
+        previous: Frozen snapshot of the prior tick's WorldView (None at t=0).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -80,6 +87,27 @@ class WorldView(BaseModel):
         default_factory=dict,
         description="Read-only view of all live dialectics by ID.",
     )
+    previous: WorldView | None = Field(
+        default=None,
+        description="Frozen snapshot of the prior tick's WorldView.",
+    )
+
+    def find_successor(self, dialectic_id: UUID) -> Any | None:
+        """Locate the successor of a sublated dialectic.
+
+        Searches all dialectics in the current view for one whose
+        ``parent_id`` matches the given ``dialectic_id``.
+
+        Args:
+            dialectic_id: UUID of the (potentially) sublated dialectic.
+
+        Returns:
+            The successor dialectic, or None if no successor exists.
+        """
+        for d in self.dialectics.values():
+            if getattr(d, "parent_id", None) == dialectic_id:
+                return d
+        return None
 
 
 # ===========================================================================

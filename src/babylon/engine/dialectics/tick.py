@@ -54,14 +54,22 @@ def tick(
     events: list[WorldEvent] = []
 
     # ---------------------------------------------------------------
-    # 1. Step all live dialectics
+    # 1. Step ALL dialectics — including sublated ones.
+    #
+    # Grundrisse insight: sublated dialectics don't stop evolving.
+    # The class that produced a party continues to evolve, now
+    # governed by the party. Materially: the commodity form persists
+    # after money emerges. Sublation = preserved + negated + raised.
     # ---------------------------------------------------------------
-    live = world.get_live_dialectics()
-    new_dialectics: dict[UUID, Any] = dict(world.dialectics)  # preserve sublated
+    new_dialectics: dict[UUID, Any] = dict(world.dialectics)
 
-    world_view = WorldView(tick=new_tick, dialectics=world.dialectics)
+    # Build a WorldView with `previous` pointing to the prior tick's state.
+    # This enables the cyclical step pattern: each dialectic reads peer
+    # outputs from the *previous* tick, not the current mutating one.
+    previous_view = WorldView(tick=world.tick, dialectics=world.dialectics)
+    world_view = WorldView(tick=new_tick, dialectics=world.dialectics, previous=previous_view)
 
-    for d_id, d in live.items():
+    for d_id, d in world.dialectics.items():
         inputs = world.get_inputs_for(d_id)
         new_d = d.step(inputs, world_view)
         new_dialectics[d_id] = new_d

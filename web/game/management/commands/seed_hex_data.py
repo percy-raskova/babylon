@@ -59,10 +59,12 @@ class Command(BaseCommand):
                     exploitation_rate=props.get("exploitation_rate"),
                     occ=props.get("occ"),
                     imperial_rent=props.get("imperial_rent"),
-                    heat=props.get("heat"),
-                    org_presence=props.get("org_presence", 0),
+                    heat=props.get("heat", 0.0),
+                    org_count=props.get("org_presence", 0),
                     dominant_class=props.get("dominant_class"),
-                    population=props.get("population"),
+                    pop_total=props.get("population", 0),
+                    center_lat=props.get("center_lat", 42.0),
+                    center_lng=props.get("center_lng", -83.0),
                 )
             )
 

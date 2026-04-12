@@ -26,7 +26,13 @@ def test_seed_command_populates(test_game):
 def test_unique_constraint(test_game):
     """Duplicate (game_id, tick, h3_index) raises IntegrityError."""
     HexState.objects.create(
-        game=test_game, tick=0, h3_index="872b5912affffff", county_fips="26163", county_name="Wayne"
+        game=test_game,
+        tick=0,
+        h3_index="872b5912affffff",
+        county_fips="26163",
+        county_name="Wayne",
+        center_lat=42.0,
+        center_lng=-83.0,
     )
 
     with pytest.raises(IntegrityError):
@@ -36,6 +42,8 @@ def test_unique_constraint(test_game):
             h3_index="872b5912affffff",
             county_fips="26163",
             county_name="Wayne",
+            center_lat=42.0,
+            center_lng=-83.0,
         )
 
 

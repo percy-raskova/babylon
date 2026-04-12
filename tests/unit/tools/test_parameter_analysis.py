@@ -21,6 +21,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import inspect
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -834,7 +835,7 @@ class TestSweepCLI:
         import subprocess
 
         result = subprocess.run(
-            ["poetry", "run", "python", "tools/parameter_analysis.py", "sweep", "--help"],
+            [sys.executable, "tools/parameter_analysis.py", "sweep", "--help"],
             capture_output=True,
             text=True,
             cwd=str(PROJECT_ROOT),
@@ -849,9 +850,7 @@ class TestSweepCLI:
 
         result = subprocess.run(
             [
-                "poetry",
-                "run",
-                "python",
+                sys.executable,
                 "tools/parameter_analysis.py",
                 "sweep",
                 "--start",
@@ -876,9 +875,7 @@ class TestSweepCLI:
 
         result = subprocess.run(
             [
-                "poetry",
-                "run",
-                "python",
+                sys.executable,
                 "tools/parameter_analysis.py",
                 "sweep",
                 "--param",

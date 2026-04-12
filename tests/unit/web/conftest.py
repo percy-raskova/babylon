@@ -91,8 +91,6 @@ from game.models import ActionResult, GameSession, HexState, PlayerAction
 
 for _model in (GameSession, PlayerAction, ActionResult, HexState):
     _model._meta.managed = True  # type: ignore[misc]
-    if _model.__name__ == "HexState":
-        _model._meta.db_table = "sim_hex_states"
 
 _UNMANAGED_TABLE_SQL = [
     """CREATE TABLE IF NOT EXISTS game_session (
@@ -137,22 +135,42 @@ _UNMANAGED_TABLE_SQL = [
         heat_delta REAL,
         details TEXT
     )""",
-    """CREATE TABLE IF NOT EXISTS sim_hex_states (
+    """CREATE TABLE IF NOT EXISTS hex_latest (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         game_id CHAR(32) NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
         tick INTEGER NOT NULL,
         h3_index VARCHAR(20) NOT NULL,
         county_fips VARCHAR(5) NOT NULL,
-        county_name VARCHAR(50) NOT NULL,
+        county_name VARCHAR(100) NOT NULL,
+        bea_ea_code VARCHAR(8),
+        msa_code VARCHAR(10),
+        state_fips VARCHAR(2) NOT NULL DEFAULT '26',
+        center_lat REAL NOT NULL,
+        center_lng REAL NOT NULL,
         profit_rate REAL,
         exploitation_rate REAL,
         occ REAL,
         imperial_rent REAL,
-        heat REAL,
-        org_presence INTEGER DEFAULT 0,
-        dominant_class VARCHAR(30),
-        population INTEGER,
-        UNIQUE(game_id, tick, h3_index)
+        g33_visibility REAL,
+        pop_bourgeoisie INTEGER DEFAULT 0,
+        pop_petit_bourgeoisie INTEGER DEFAULT 0,
+        pop_labor_aristocracy INTEGER DEFAULT 0,
+        pop_proletariat INTEGER DEFAULT 0,
+        pop_lumpenproletariat INTEGER DEFAULT 0,
+        pop_total INTEGER DEFAULT 0,
+        dominant_class VARCHAR(24),
+        faction_finance_capital REAL,
+        faction_security_state REAL,
+        faction_settler_populist REAL,
+        heat REAL DEFAULT 0.0,
+        heat_delta REAL DEFAULT 0.0,
+        org_count INTEGER DEFAULT 0,
+        actions_taken INTEGER DEFAULT 0,
+        was_target BOOLEAN DEFAULT 0,
+        terrain_type VARCHAR(16) DEFAULT 'LAND',
+        water_coverage REAL DEFAULT 0.0,
+        internet_access BOOLEAN DEFAULT 0,
+        UNIQUE(game_id, h3_index)
     )""",
 ]
 

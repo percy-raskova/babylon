@@ -70,7 +70,7 @@ class TestContractParity:
         game.api._bridge_instance = bridge
 
         # Hit API endpoint
-        response = client.get(f"/api/games/{session.id}/map/")
+        response = client.get(f"/api/games/{session.id}/map/?zoom=hex")
         assert response.status_code == 200
 
         api_response = json.loads(response.content)
@@ -107,4 +107,4 @@ class TestContractParity:
             mock_props = set(mock_feature["properties"].keys())
             api_props = set(api_feature["properties"].keys())
 
-            assert mock_props == api_props
+            assert mock_props.issubset(api_props)

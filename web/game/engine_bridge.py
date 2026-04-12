@@ -236,9 +236,9 @@ class EngineBridge:
                         "occ": state.occ,
                         "imperial_rent": state.imperial_rent,
                         "heat": state.heat,
-                        "org_presence": state.org_presence,
+                        "org_presence": state.org_count,
                         "dominant_class": state.dominant_class,
-                        "population": state.population,
+                        "population": state.pop_total,
                     },
                 }
                 features.append(feature)
@@ -307,13 +307,13 @@ class EngineBridge:
             if key is None:
                 key = "unknown"
             acc = groups[key]
-            pop = state.population or 0
+            pop = state.pop_total or 0
             acc["profit_rate_sum"] += (state.profit_rate or 0) * pop
             acc["exploitation_rate_sum"] += (state.exploitation_rate or 0) * pop
             acc["occ_sum"] += (state.occ or 0) * pop
             acc["imperial_rent_sum"] += state.imperial_rent or 0
             acc["heat_sum"] += (state.heat or 0) * pop
-            acc["org_presence_sum"] += state.org_presence or 0
+            acc["org_presence_sum"] += state.org_count or 0
             acc["population_sum"] += pop
             acc["count"] += 1
 

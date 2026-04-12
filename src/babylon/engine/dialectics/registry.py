@@ -81,10 +81,22 @@ class DialecticRegistry:
 
 def _build_default_registry() -> DialecticRegistry:
     """Build the default registry with all known dialectic types."""
-    from babylon.engine.dialectics.volume_1 import CommodityDialectic
+    from babylon.engine.dialectics.volume_1 import (
+        AccumulationDialectic,
+        CommodityDialectic,
+        LaborProcessDialectic,
+        PrimitiveAccumulationDialectic,
+        ProductionDialectic,
+        WageDialectic,
+    )
 
     registry = DialecticRegistry()
     registry.register(CommodityDialectic)
+    registry.register(LaborProcessDialectic)
+    registry.register(ProductionDialectic)
+    registry.register(WageDialectic)
+    registry.register(AccumulationDialectic)
+    registry.register(PrimitiveAccumulationDialectic)
     return registry
 
 

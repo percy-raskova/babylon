@@ -88,12 +88,12 @@ class TestInitializeCircuitState:
         assert state.fips_code == WAYNE_COUNTY_FIPS
         assert state.year == TEST_YEAR
 
-        # M = (10+20)/70 * 700 = 300
-        assert abs(state.money_capital - 300.0) < 0.01
-        # P = 30/70 * 700 = 300
-        assert abs(state.productive_capital - 300.0) < 0.01
-        # C = 10/70 * 700 = 100
-        assert abs(state.commodity_capital - 100.0) < 0.01
+        # M = 10/70 * 700 = 100
+        assert abs(state.money_capital - 100.0) < 0.01
+        # P = 40/70 * 700 = 400
+        assert abs(state.productive_capital - 400.0) < 0.01
+        # C = 20/70 * 700 = 200
+        assert abs(state.commodity_capital - 200.0) < 0.01
 
     def test_total_capital_preserved(self) -> None:
         """Total capital (M+P+C) equals initial total_capital."""
@@ -119,11 +119,11 @@ class TestInitializeCircuitState:
             turnover=MANUFACTURING_PROFILE,
         )
 
-        # P = 300, fixed_ratio = 0.6
-        # fixed = 300 * 0.6 = 180
-        assert abs(state.fixed_capital - 180.0) < 0.01
-        # circulating = 300 - 180 = 120
-        assert abs(state.circulating_capital - 120.0) < 0.01
+        # P = 400, fixed_ratio = 0.6
+        # fixed = 400 * 0.6 = 240
+        assert abs(state.fixed_capital - 240.0) < 0.01
+        # circulating = 400 - 240 = 160
+        assert abs(state.circulating_capital - 160.0) < 0.01
 
     def test_fixed_plus_circulating_equals_productive(self) -> None:
         """fixed_capital + circulating_capital == productive_capital."""
@@ -189,9 +189,9 @@ class TestInitializeCircuitState:
 
         SERVICE_PROFILE: working=1, non_working=0, purchase=3, sale=5
         turnover = 9 days
-        M fraction = (3+5)/9 = 8/9
+        M fraction = 3/9
         P fraction = 1/9
-        C fraction = 0/9 = 0
+        C fraction = 5/9
         """
         state = initialize_circuit_state(
             fips_code=WAYNE_COUNTY_FIPS,
@@ -200,9 +200,9 @@ class TestInitializeCircuitState:
             turnover=SERVICE_PROFILE,
         )
 
-        assert abs(state.money_capital - 800.0) < 0.01
+        assert abs(state.money_capital - 300.0) < 0.01
         assert abs(state.productive_capital - 100.0) < 0.01
-        assert abs(state.commodity_capital - 0.0) < 0.01
+        assert abs(state.commodity_capital - 500.0) < 0.01
 
 
 # =============================================================================
@@ -263,7 +263,7 @@ class TestAdvanceCircuitTransitions:
         from P to C.
         """
         state = self._make_state(productive=100.0)
-        # working_period = 30 days, elapsed = 15 -> fraction = 0.5
+        # working_period = 30, non_working = 10 => production = 40 days, elapsed = 15 -> fraction = 0.375
         result = advance_circuit(
             state=state,
             turnover=MANUFACTURING_PROFILE,
@@ -301,8 +301,8 @@ class TestAdvanceCircuitTransitions:
         state = self._make_state(productive=100.0)
         initial_total = state.total_capital
 
-        # working_period = 30 days, elapsed = 30 -> fraction = 1.0
-        # surplus_value = 50 -> surplus_created = 50 * 1.0 = 50
+        # production = 40 days, elapsed = 30 -> fraction = 0.75
+        # surplus_value = 50 -> surplus_created = 50 * 0.75 = 37.5
         result = advance_circuit(
             state=state,
             turnover=MANUFACTURING_PROFILE,
@@ -310,8 +310,8 @@ class TestAdvanceCircuitTransitions:
             elapsed_days=30,
         )
 
-        # Total should increase by surplus_created (50)
-        assert abs(result.total_capital - (initial_total + 50.0)) < 1.0
+        # Total should increase by surplus_created (37.5)
+        assert abs(result.total_capital - (initial_total + 37.5)) < 1.0
 
     def test_surplus_proportional_to_production_fraction(self) -> None:
         """Surplus created is proportional to production fraction.
@@ -321,8 +321,8 @@ class TestAdvanceCircuitTransitions:
         state = self._make_state(productive=100.0)
         initial_total = state.total_capital
 
-        # working_period = 30 days, elapsed = 15 -> fraction = 0.5
-        # surplus_value = 60 -> surplus_created = 60 * 0.5 = 30
+        # production = 40 days, elapsed = 15 -> fraction = 0.375
+        # surplus_value = 60 -> surplus_created = 60 * 0.375 = 22.5
         result = advance_circuit(
             state=state,
             turnover=MANUFACTURING_PROFILE,
@@ -330,7 +330,7 @@ class TestAdvanceCircuitTransitions:
             elapsed_days=15,
         )
 
-        expected_surplus = 60.0 * (15.0 / 30.0)
+        expected_surplus = 60.0 * (15.0 / 40.0)
         assert abs(result.total_capital - (initial_total + expected_surplus)) < 1.0
 
 
@@ -390,8 +390,8 @@ class TestAdvanceCircuitInvariants:
 
         elapsed = 15
         surplus = 40.0
-        # production_fraction = 15 / 30 = 0.5
-        expected_surplus_created = surplus * (elapsed / 30.0)
+        # production_fraction = 15 / 40 = 0.375
+        expected_surplus_created = surplus * (elapsed / 40.0)
 
         result = advance_circuit(
             state=state,

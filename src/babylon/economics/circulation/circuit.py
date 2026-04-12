@@ -96,7 +96,7 @@ def advance_circuit(
 
     # Compute fractional flows for each phase transition
     purchase_frac = _phase_fraction(elapsed_days, turnover.purchase_time_days)
-    production_frac = _phase_fraction(elapsed_days, turnover.working_period_days)
+    production_frac = _phase_fraction(elapsed_days, turnover.production_time)
     sale_frac = _phase_fraction(elapsed_days, turnover.sale_time_days)
 
     # Capital flowing between forms
@@ -138,9 +138,9 @@ def initialize_circuit_state(
     The distribution reflects how capital at rest is distributed across
     the circuit: more capital sits in phases that take longer.
 
-    - M fraction = (purchase_time + sale_time) / turnover_time
-    - P fraction = working_period / turnover_time
-    - C fraction = non_working_production / turnover_time
+    - M fraction = purchase_time / turnover_time
+    - P fraction = production_time / turnover_time
+    - C fraction = sale_time_days / turnover_time
 
     If turnover_time is 0 (which requires working_period > 0 due to
     validation), all capital is placed in money form as a safe default.
@@ -181,9 +181,9 @@ def initialize_circuit_state(
         )
 
     # Distribute proportionally to phase durations
-    m_fraction = (turnover.purchase_time_days + turnover.sale_time_days) / tt
-    p_fraction = turnover.working_period_days / tt
-    c_fraction = turnover.non_working_production_days / tt
+    m_fraction = turnover.purchase_time_days / tt
+    p_fraction = turnover.production_time / tt
+    c_fraction = turnover.sale_time_days / tt
 
     money = total_capital * m_fraction
     productive = total_capital * p_fraction

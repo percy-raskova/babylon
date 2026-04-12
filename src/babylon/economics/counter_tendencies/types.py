@@ -25,6 +25,24 @@ are the primary mechanisms sustaining core profit rates. The remaining
 four tendencies receive equal weight (0.15 each). Sum = 1.0.
 """
 
+IMPERIAL_RENT_REFERENCE_SCALE: Final[float] = 500_000_000_000.0
+"""Reference scale for imperial rent normalization (dollars).
+
+Imperial rent flows are normalized to [0, 1] via::
+
+    normalized = min(imperial_rent_flow / IMPERIAL_RENT_REFERENCE_SCALE, 1.0)
+
+This makes the counter-tendency weight proportional to the actual
+magnitude of unequal exchange (Marx V3 Ch14 §V), capping at 1.0
+when the flow reaches the reference scale.
+
+Traceability: The default $500B corresponds approximately to the annual
+net value transfer from Global South to Global North estimated by
+Cope (2012), *Divided World Divided Class*.  This constant is intended
+to be tunable: a future imperial rent specification may replace it
+with a GameDefines-sourced parameter calibrated against FRED trade data.
+"""
+
 _IMPERIAL_RENT_EPSILON: Final[float] = 1e-10
 """Epsilon for imperial rent normalization (prevents division by zero)."""
 
@@ -89,16 +107,18 @@ class CounterTendencyStrength(BaseModel):
         - [2] -constant_capital_cheapening: inverted (negative price change
           = cheapening = positive CT)
         - [3] reserve_army_size: direct (high unemployment = positive CT)
-        - [4] imperial_rent_flow: normalized to [0, 1] binary indicator
+        - [4] imperial_rent_flow: linear normalization against
+          ``IMPERIAL_RENT_REFERENCE_SCALE``, capped at 1.0.
+          The *magnitude* of unequal exchange matters (Marx V3 Ch14 §V).
         - [5] fictitious_profit_share: direct
         """
-        imperial_normalized: float
-        if self.imperial_rent_flow > 0:
-            imperial_normalized = self.imperial_rent_flow / max(
-                self.imperial_rent_flow, _IMPERIAL_RENT_EPSILON
-            )
-        else:
-            imperial_normalized = 0.0
+        # Magnitude-sensitive normalization: larger flows → stronger CT.
+        # Capped at 1.0 at the reference scale. Extensible: adjust
+        # IMPERIAL_RENT_REFERENCE_SCALE to recalibrate.
+        imperial_normalized = min(
+            self.imperial_rent_flow / max(IMPERIAL_RENT_REFERENCE_SCALE, _IMPERIAL_RENT_EPSILON),
+            1.0,
+        )
 
         indicators: list[float] = [
             self.exploitation_rate_change,

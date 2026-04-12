@@ -151,6 +151,8 @@ class TestCounterTendencyStrengthComputed:
 
     def test_net_counter_tendency_weighted_sum(self) -> None:
         """net_counter_tendency uses COUNTER_TENDENCY_WEIGHTS in correct order."""
+        from babylon.economics.counter_tendencies.types import IMPERIAL_RENT_REFERENCE_SCALE
+
         ct = CounterTendencyStrength(
             year=2020,
             exploitation_rate_change=0.1,
@@ -165,23 +167,49 @@ class TestCounterTendencyStrengthComputed:
         # [1] wage_suppression = 0.01
         # [2] -constant_capital_cheapening = -(-0.03) = 0.03
         # [3] reserve_army_size = 0.08
-        # [4] normalized imperial rent = 1.0 (since flow > 0)
+        # [4] imperial_rent = min(500B / reference_scale, 1.0)
         # [5] fictitious_profit_share = 0.25
-        indicators = [0.1, 0.01, 0.03, 0.08, 1.0, 0.25]
+        imperial_norm = min(500_000_000_000.0 / IMPERIAL_RENT_REFERENCE_SCALE, 1.0)
+        indicators = [0.1, 0.01, 0.03, 0.08, imperial_norm, 0.25]
         expected = sum(w * v for w, v in zip(indicators, COUNTER_TENDENCY_WEIGHTS, strict=True))
         assert ct.net_counter_tendency == pytest.approx(expected)
 
-    def test_imperial_rent_normalized_to_binary(self) -> None:
-        """Imperial rent flow > 0 normalizes to 1.0 in the weighted sum."""
-        ct_with_rent = CounterTendencyStrength(
+    def test_imperial_rent_magnitude_sensitive(self) -> None:
+        """Imperial rent normalization is magnitude-sensitive, not binary.
+
+        Marx V3 Ch14 §V: the *magnitude* of unequal exchange matters.
+        A $100 flow and a $100B flow must produce different CT strengths.
+        """
+        ct_small = CounterTendencyStrength(
             year=2020,
-            imperial_rent_flow=1.0,  # Tiny but positive
+            imperial_rent_flow=1_000_000.0,  # $1M — tiny
         )
-        ct_without_rent = CounterTendencyStrength(
+        ct_large = CounterTendencyStrength(
+            year=2020,
+            imperial_rent_flow=500_000_000_000.0,  # $500B — large
+        )
+        ct_zero = CounterTendencyStrength(
             year=2020,
             imperial_rent_flow=0.0,
         )
-        # Difference should be exactly the imperial rent weight * 1.0
-        imperial_rent_weight = COUNTER_TENDENCY_WEIGHTS[4]
-        diff = ct_with_rent.net_counter_tendency - ct_without_rent.net_counter_tendency
-        assert diff == pytest.approx(imperial_rent_weight)
+        # Large flow should produce strictly stronger CT than small flow
+        assert ct_large.net_counter_tendency > ct_small.net_counter_tendency
+        # Small flow should produce strictly stronger CT than zero
+        assert ct_small.net_counter_tendency > ct_zero.net_counter_tendency
+
+    def test_imperial_rent_caps_at_reference_scale(self) -> None:
+        """Imperial rent normalization caps at 1.0 at the reference scale."""
+        from babylon.economics.counter_tendencies.types import IMPERIAL_RENT_REFERENCE_SCALE
+
+        ct_at_scale = CounterTendencyStrength(
+            year=2020,
+            imperial_rent_flow=IMPERIAL_RENT_REFERENCE_SCALE,
+        )
+        ct_above_scale = CounterTendencyStrength(
+            year=2020,
+            imperial_rent_flow=IMPERIAL_RENT_REFERENCE_SCALE * 2.0,
+        )
+        # Both should produce the same CT (capped at 1.0)
+        assert ct_at_scale.net_counter_tendency == pytest.approx(
+            ct_above_scale.net_counter_tendency
+        )

@@ -120,6 +120,24 @@ def _build_default_registry() -> DialecticRegistry:
 
     registry.register(ClassConsciousnessDialectic)
 
+    from babylon.engine.dialectics.volume_3 import (
+        CreditDialectic,
+        DebtSpiralCrisisDialectic,
+        FinancialCrisisDialectic,
+        ImperialDialectic,
+        RentDialectic,
+        TransformationDialectic,
+        TRPFDialectic,
+    )
+
+    registry.register(TransformationDialectic)
+    registry.register(TRPFDialectic)
+    registry.register(CreditDialectic)
+    registry.register(RentDialectic)
+    registry.register(ImperialDialectic)
+    registry.register(DebtSpiralCrisisDialectic)
+    registry.register(FinancialCrisisDialectic)
+
     return registry
 
 

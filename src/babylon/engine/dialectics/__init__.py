@@ -8,6 +8,8 @@ Modules:
     base: The generic ``Dialectic[A, B]`` base class and supporting types.
     volume_1: Capital Volume I dialectics (CommodityDialectic, etc.).
     volume_2: Capital Volume II dialectics (Circulation, Turnover, Reproduction).
+    volume_3: Capital Volume III dialectics (Transformation, TRPF, Credit, Rent, Imperial).
+    consciousness: Class Consciousness dialectic (Lukacs/MIM(P)).
     world: ``World``, ``Morphism``, and ``Event`` models.
     tick: The pure ``tick()`` function.
     invariants: Universal and per-type invariant checkers.
@@ -16,10 +18,26 @@ Modules:
 
 from babylon.engine.dialectics.base import Dialectic, TickInputs, WorldView
 from babylon.engine.dialectics.consciousness import ClassConsciousnessDialectic
+from babylon.engine.dialectics.volume_3 import (
+    CreditDialectic,
+    DebtSpiralCrisisDialectic,
+    FinancialCrisisDialectic,
+    ImperialDialectic,
+    RentDialectic,
+    TransformationDialectic,
+    TRPFDialectic,
+)
 
 __all__ = [
-    "Dialectic",
-    "TickInputs",
-    "WorldView",
     "ClassConsciousnessDialectic",
+    "CreditDialectic",
+    "DebtSpiralCrisisDialectic",
+    "Dialectic",
+    "FinancialCrisisDialectic",
+    "ImperialDialectic",
+    "RentDialectic",
+    "TickInputs",
+    "TransformationDialectic",
+    "TRPFDialectic",
+    "WorldView",
 ]

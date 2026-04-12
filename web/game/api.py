@@ -899,3 +899,94 @@ class NegotiateActionView(BaseVerbActionView):
 
     serializer_class = NegotiateActionSerializer
     verb = "negotiate"
+
+
+# ---------------------------------------------------------------------- #
+# V2 Dialectic Engine endpoints
+# ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dialectic_world_state(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/v2/world/ — Full v2 dialectic world snapshot.
+
+    Returns all live dialectics with their observations, morphisms,
+    and events for the current (or specified) tick.
+
+    Query parameters:
+        tick (int, optional): Tick to query. Default: latest.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    try:
+        tick_query = request.query_params.get("tick")
+        tick_val = int(tick_query) if tick_query is not None else None
+    except ValueError:
+        return _error("Invalid tick parameter", http_status=400)
+
+    from .repositories import DialecticRepository
+
+    repo = DialecticRepository()
+    world = repo.load_world(session, tick=tick_val)
+
+    # Build response data
+    dialectic_list = []
+    for d in world.get_live_dialectics().values():
+        dialectic_list.append(
+            {
+                "tick": world.tick,
+                "dialectic_id": str(d.id),
+                "type_tag": d.type_tag,
+                "weight": d.weight,
+                "observation": d.observe(),
+                "parent_id": str(d.parent_id) if d.parent_id else None,
+            }
+        )
+
+    morphism_list = [
+        {
+            "id": str(m.id),
+            "source_id": str(m.source_id),
+            "target_id": str(m.target_id),
+            "relation": m.relation,
+            "weight": m.weight,
+        }
+        for m in world.morphisms
+    ]
+
+    data = {
+        "tick": world.tick,
+        "dialectics": dialectic_list,
+        "morphisms": morphism_list,
+        "events": [],
+    }
+    return _envelope(data, tick=world.tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dialectic_detail(request: Request, game_id: str, dialectic_id: str) -> JsonResponse:
+    """GET /api/games/{id}/v2/dialectics/{dialectic_id}/ — Single dialectic history.
+
+    Returns the time-series of a specific dialectic's snapshots.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    try:
+        parsed_did = uuid.UUID(dialectic_id)
+    except ValueError:
+        return _error("Invalid dialectic_id", http_status=400)
+
+    from .repositories import DialecticRepository
+
+    repo = DialecticRepository()
+    history = repo.load_dialectic_history(session, parsed_did)
+    return _envelope(
+        {"dialectic_id": dialectic_id, "snapshots": history},
+        session_id=str(session.id),
+    )

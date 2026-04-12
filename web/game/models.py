@@ -476,3 +476,92 @@ class TickEvent(models.Model):
 
     def __str__(self) -> str:
         return f"TickEvent({self.game_id}, t={self.tick}, {self.event_type})"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# V2 Dialectic Engine — Tick-Keyed JSONB Snapshots
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class DialecticSnapshot(models.Model):
+    """Tick-keyed JSONB snapshot of a Dialectic instance.
+
+    Stores the full serialized state of each Dialectic per tick,
+    enabling time-travel queries and historical replay.
+
+    Unlike the v1 snapshot tables (managed=False), this table is
+    Django-managed to support the v2 migration strategy.
+    """
+
+    game = models.ForeignKey(
+        GameSession,
+        on_delete=models.CASCADE,
+        db_column="game_id",
+    )
+    tick = models.IntegerField(db_index=True)
+    dialectic_id = models.UUIDField(
+        db_index=True,
+        help_text="Maps to Dialectic.id from the engine.",
+    )
+    type_tag = models.CharField(
+        max_length=64,
+        db_index=True,
+        help_text="Discriminator for Dialectic subclass.",
+    )
+    weight = models.FloatField()
+    state_json = models.JSONField(help_text="Full serialized Dialectic via Pydantic model_dump().")
+    parent_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Predecessor dialectic if produced by sublation.",
+    )
+
+    class Meta:
+        db_table = "dialectic_snapshot"
+        ordering = ["tick"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "tick", "dialectic_id"],
+                name="uq_dialectic_snapshot",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"DialecticSnapshot({self.game_id}, t={self.tick}, {self.type_tag})"
+
+
+class MorphismSnapshot(models.Model):
+    """Tick-keyed snapshot of a Morphism edge.
+
+    Stores morphism wiring at each tick to track how the dialectical
+    graph evolves over time.
+    """
+
+    game = models.ForeignKey(
+        GameSession,
+        on_delete=models.CASCADE,
+        db_column="game_id",
+    )
+    tick = models.IntegerField(db_index=True)
+    morphism_id = models.UUIDField(db_index=True)
+    source_dialectic_id = models.UUIDField()
+    target_dialectic_id = models.UUIDField()
+    relation = models.CharField(max_length=32)
+    weight = models.FloatField(default=1.0)
+    metadata_json = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "morphism_snapshot"
+        ordering = ["tick"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "tick", "morphism_id"],
+                name="uq_morphism_snapshot",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"MorphismSnapshot({self.game_id}, t={self.tick}, "
+            f"{self.source_dialectic_id}->{self.target_dialectic_id})"
+        )

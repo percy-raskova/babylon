@@ -298,3 +298,41 @@ class ActionResultSerializer(serializers.Serializer[dict[str, Any]]):
     consciousness_delta = serializers.FloatField(allow_null=True)
     heat_delta = serializers.FloatField(allow_null=True)
     details = serializers.DictField(required=False, allow_null=True)
+
+
+# ---------------------------------------------------------------------- #
+# V2 Dialectic Engine serializers
+# ---------------------------------------------------------------------- #
+
+
+class DialecticObservationSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize a Dialectic.observe() output for frontend consumption.
+
+    This serializer validates the observation dict produced by
+    ``Dialectic.observe()`` before sending it to the frontend.
+    """
+
+    id = serializers.UUIDField()
+    type = serializers.CharField()
+    weight = serializers.FloatField()
+    principal_aspect = serializers.ChoiceField(choices=["A", "B"])
+
+
+class DialecticSnapshotSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize a DialecticSnapshot for the v2 API."""
+
+    tick = serializers.IntegerField()
+    dialectic_id = serializers.UUIDField()
+    type_tag = serializers.CharField()
+    weight = serializers.FloatField()
+    observation = serializers.DictField()
+    parent_id = serializers.UUIDField(allow_null=True)
+
+
+class WorldSnapshotSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize a full World snapshot for the v2 API."""
+
+    tick = serializers.IntegerField()
+    dialectics = DialecticSnapshotSerializer(many=True)
+    morphisms = serializers.ListField(child=serializers.DictField())
+    events = serializers.ListField(child=serializers.DictField())

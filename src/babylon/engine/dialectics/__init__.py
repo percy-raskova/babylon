@@ -27,6 +27,7 @@ Modules:
     class_struggle: ClassDialectic — In-Itself ↔ For-Itself.
     party: PartyDialectic — Vanguard ↔ Mass Line.
     transformation: TransformationDialectic — Value → Price of Production.
+    sublation: SublationRule — composable Aufhebung lifecycle.
     world: ``World``, ``Morphism``, and ``Event`` models.
     tick: The pure ``tick()`` function.
     invariants_v2: Universal and per-type invariant checkers.
@@ -77,6 +78,7 @@ from babylon.engine.dialectics.primitive_accumulation import (
 from babylon.engine.dialectics.production import ProductionDialectic
 from babylon.engine.dialectics.rent import RentDialectic, RentPole
 from babylon.engine.dialectics.reproduction import ReproductionDialectic
+from babylon.engine.dialectics.sublation import SublationRule
 from babylon.engine.dialectics.surplus_distribution import (
     SurplusDistributionDialectic,
     SurplusDistributionPole,
@@ -98,6 +100,7 @@ __all__ = [
     "Dialectic",
     "TickInputs",
     "WorldView",
+    "SublationRule",
     # V1 dialectics
     "CommodityDialectic",
     "LaborProcessDialectic",

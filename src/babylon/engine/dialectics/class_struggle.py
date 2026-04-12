@@ -17,6 +17,7 @@ class's motion — not raw material conditions.
 
 See Also:
     :class:`babylon.engine.dialectics.party.PartyDialectic`
+    :class:`babylon.engine.dialectics.sublation.SublationRule`
     :class:`babylon.engine.dialectics.base.Dialectic`: Generic base class.
 """
 
@@ -27,6 +28,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.engine.dialectics.base import Dialectic, TickInputs, WorldView
+from babylon.engine.dialectics.sublation import SublationRule
 
 
 class InItself(BaseModel):
@@ -67,6 +69,34 @@ class ForItself(BaseModel):
 _SUBLATION_WEIGHT_THRESHOLD = 0.7
 
 
+def _make_party_sublation_rule() -> SublationRule:
+    """Construct the class→party sublation rule.
+
+    Deferred to a function to avoid circular imports (party.py
+    imports are only needed when the factory fires).
+    """
+    return SublationRule(
+        name="class_to_party",
+        threshold=lambda d: d.weight >= _SUBLATION_WEIGHT_THRESHOLD,
+        successor_type="PartyDialectic",
+        successor_factory=_create_party,
+    )
+
+
+def _create_party(d: Dialectic[Any, Any]) -> Dialectic[Any, Any]:
+    """Factory: create a PartyDialectic from a sublating ClassDialectic."""
+    from babylon.engine.dialectics.party import MassLine, PartyDialectic, Vanguard
+
+    return PartyDialectic(
+        pole_a=Vanguard(discipline=d.pole_b.organization_level),
+        pole_b=MassLine(support=d.pole_a.material_grievance),
+        weight=0.5,
+        parent_id=d.id,
+        tick_created=d.tick_updated,
+        tick_updated=d.tick_updated,
+    )
+
+
 class ClassDialectic(Dialectic[InItself, ForItself]):
     """In-Itself ↔ For-Itself class consciousness contradiction.
 
@@ -80,7 +110,8 @@ class ClassDialectic(Dialectic[InItself, ForItself]):
         exists, motion is governed by the party's directive.
 
     Sublation:
-        When weight >= 0.7, sublates to PartyDialectic.
+        Uses ``SublationRule`` — when weight >= 0.7, sublates to
+        PartyDialectic.
     """
 
     type_tag: str = "ClassDialectic"
@@ -124,26 +155,17 @@ class ClassDialectic(Dialectic[InItself, ForItself]):
     def sublate(self) -> Dialectic[Any, Any] | None:
         """Sublate to PartyDialectic when weight >= threshold.
 
-        The class produces the party. From that point on, the party
-        governs the class. The class did not cease to exist — it
-        became a *moment* of the higher-order dialectic it generated.
+        Delegates to the ``SublationRule`` abstraction. The class
+        produces the party. From that point on, the party governs
+        the class.
 
         Returns:
             PartyDialectic if threshold crossed, else None.
         """
-        if self.weight < _SUBLATION_WEIGHT_THRESHOLD:
-            return None
-
-        from babylon.engine.dialectics.party import MassLine, PartyDialectic, Vanguard
-
-        return PartyDialectic(
-            pole_a=Vanguard(discipline=self.pole_b.organization_level),
-            pole_b=MassLine(support=self.pole_a.material_grievance),
-            weight=0.5,
-            parent_id=self.id,
-            tick_created=self.tick_updated,
-            tick_updated=self.tick_updated,
-        )
+        rule = _make_party_sublation_rule()
+        if rule.threshold_met(self):
+            return rule.create_successor(self)
+        return None
 
     def observe(self) -> dict[str, Any]:
         """Project class state for downstream consumption.

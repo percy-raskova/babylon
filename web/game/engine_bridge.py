@@ -182,12 +182,20 @@ class EngineBridge:
         state, _graph = self.hydrate_state(session_id)
         return _state_to_snapshot(state, session_id)
 
-    def get_map_snapshot(self, session_id: UUID, tick: int | None = None) -> dict[str, Any]:
+    def get_map_snapshot(
+        self,
+        session_id: UUID,
+        tick: int | None = None,
+        _layer: str | None = None,
+        zoom: str = "county",
+    ) -> dict[str, Any]:
         """Return a GeoJSON FeatureCollection of hex states for a given tick.
 
         Args:
             session_id: The game session UUID.
             tick: The tick to query data for. If None, uses current tick.
+            layer: Optional layer filter (unused here, filtering done in API).
+            zoom: Spatial aggregation level (state/bea/msa/county/hex).
 
         Returns:
             GeoJSON dict matching the HexMap frontend contract.
@@ -205,33 +213,38 @@ class EngineBridge:
 
         hex_states = HexState.objects.filter(game=session, tick=target_tick)
 
-        features = []
-        for state in hex_states:
-            boundary = h3.cell_to_boundary(state.h3_index)
-            # GeoJSON expects [lng, lat] format
-            coordinates = [[lng, lat] for lat, lng in boundary]
-            # Close the polygon
-            coordinates.append(coordinates[0])
+        if zoom == "hex":
+            # Full hex-level detail — no aggregation
+            features = []
+            for state in hex_states:
+                boundary = h3.cell_to_boundary(state.h3_index)
+                coordinates = [[lng, lat] for lat, lng in boundary]
+                coordinates.append(coordinates[0])
 
-            feature = {
-                "type": "Feature",
-                "id": state.h3_index,
-                "geometry": {"type": "Polygon", "coordinates": [coordinates]},
-                "properties": {
-                    "h3_index": state.h3_index,
-                    "county_fips": state.county_fips,
-                    "county_name": state.county_name,
-                    "profit_rate": state.profit_rate,
-                    "exploitation_rate": state.exploitation_rate,
-                    "occ": state.occ,
-                    "imperial_rent": state.imperial_rent,
-                    "heat": state.heat,
-                    "org_presence": state.org_presence,
-                    "dominant_class": state.dominant_class,
-                    "population": state.population,
-                },
-            }
-            features.append(feature)
+                feature = {
+                    "type": "Feature",
+                    "id": state.h3_index,
+                    "geometry": {"type": "Polygon", "coordinates": [coordinates]},
+                    "properties": {
+                        "h3_index": state.h3_index,
+                        "county_fips": state.county_fips,
+                        "county_name": state.county_name,
+                        "bea_ea_code": state.bea_ea_code,
+                        "msa_code": state.msa_code,
+                        "profit_rate": state.profit_rate,
+                        "exploitation_rate": state.exploitation_rate,
+                        "occ": state.occ,
+                        "imperial_rent": state.imperial_rent,
+                        "heat": state.heat,
+                        "org_presence": state.org_presence,
+                        "dominant_class": state.dominant_class,
+                        "population": state.population,
+                    },
+                }
+                features.append(feature)
+        else:
+            # Aggregated zoom level — group by dimension column
+            features = self._aggregate_hex_features(hex_states, zoom)
 
         return {
             "type": "FeatureCollection",
@@ -239,6 +252,7 @@ class EngineBridge:
                 "tick": target_tick,
                 "scenario": session.scenario,
                 "h3_resolution": 7,
+                "zoom": zoom,
                 "available_metrics": [
                     "profit_rate",
                     "exploitation_rate",
@@ -250,6 +264,88 @@ class EngineBridge:
             },
             "features": features,
         }
+
+    @staticmethod
+    def _aggregate_hex_features(
+        hex_states: Any,
+        zoom: str,
+    ) -> list[dict[str, Any]]:
+        """Aggregate hex-level data to a higher zoom tier.
+
+        Groups hex states by the dimension column matching the zoom level,
+        then computes weighted averages (by population) for numeric metrics
+        and sums for additive metrics.
+        """
+        from collections import defaultdict
+
+        # Map zoom level to the grouping key
+        group_key_map = {
+            "state": "state_fips",
+            "bea": "bea_ea_code",
+            "msa": "msa_code",
+            "county": "county_fips",
+        }
+        group_attr = group_key_map.get(zoom, "county_fips")
+
+        # Accumulators: group_value → {metric sums}
+        groups: dict[str, dict[str, float]] = defaultdict(
+            lambda: {
+                "profit_rate_sum": 0.0,
+                "exploitation_rate_sum": 0.0,
+                "occ_sum": 0.0,
+                "imperial_rent_sum": 0.0,
+                "heat_sum": 0.0,
+                "org_presence_sum": 0,
+                "population_sum": 0,
+                "count": 0,
+            }
+        )
+        group_names: dict[str, str] = {}
+
+        for state in hex_states:
+            key = getattr(state, group_attr, None)
+            if key is None:
+                key = "unknown"
+            acc = groups[key]
+            pop = state.population or 0
+            acc["profit_rate_sum"] += (state.profit_rate or 0) * pop
+            acc["exploitation_rate_sum"] += (state.exploitation_rate or 0) * pop
+            acc["occ_sum"] += (state.occ or 0) * pop
+            acc["imperial_rent_sum"] += state.imperial_rent or 0
+            acc["heat_sum"] += (state.heat or 0) * pop
+            acc["org_presence_sum"] += state.org_presence or 0
+            acc["population_sum"] += pop
+            acc["count"] += 1
+
+            # Capture a name for the group
+            if key not in group_names:
+                group_names[key] = state.county_name or key
+
+        features: list[dict[str, Any]] = []
+        for key, acc in groups.items():
+            total_pop = acc["population_sum"] or 1  # avoid div-by-zero
+            features.append(
+                {
+                    "type": "Feature",
+                    "id": key,
+                    "geometry": None,  # Geometry deferred — frontend uses reference polygons
+                    "properties": {
+                        "group_key": key,
+                        "group_name": group_names.get(key, key),
+                        "zoom": zoom,
+                        "hex_count": acc["count"],
+                        "profit_rate": round(acc["profit_rate_sum"] / total_pop, 6),
+                        "exploitation_rate": round(acc["exploitation_rate_sum"] / total_pop, 4),
+                        "occ": round(acc["occ_sum"] / total_pop, 4),
+                        "imperial_rent": round(acc["imperial_rent_sum"], 2),
+                        "heat": round(acc["heat_sum"] / total_pop, 4),
+                        "org_presence": acc["org_presence_sum"],
+                        "population": acc["population_sum"],
+                    },
+                }
+            )
+
+        return features
 
     # ------------------------------------------------------------------ #
     # Tick resolution

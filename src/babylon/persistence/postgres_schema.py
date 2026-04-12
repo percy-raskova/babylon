@@ -259,6 +259,10 @@ HEX_CELL_DDL = """
 CREATE TABLE IF NOT EXISTS hex_cell (
     h3_index        VARCHAR(15) PRIMARY KEY,
     county_fips     VARCHAR(5) NOT NULL,
+    county_name     VARCHAR(100),
+    bea_ea_code     VARCHAR(8),
+    msa_code        VARCHAR(10),
+    state_fips      VARCHAR(2) NOT NULL DEFAULT '26',
     res6_parent     VARCHAR(15) NOT NULL,
     res5_parent     VARCHAR(15) NOT NULL,
     geometry        geometry(Polygon, 4326) NOT NULL,
@@ -406,6 +410,9 @@ INDEXES_DDL: list[str] = [
     ),
     # Spatial
     "CREATE INDEX IF NOT EXISTS idx_hex_cell_county ON hex_cell(county_fips)",
+    "CREATE INDEX IF NOT EXISTS idx_hex_cell_bea_ea ON hex_cell(bea_ea_code)",
+    "CREATE INDEX IF NOT EXISTS idx_hex_cell_msa ON hex_cell(msa_code)",
+    "CREATE INDEX IF NOT EXISTS idx_hex_cell_state ON hex_cell(state_fips)",
     "CREATE INDEX IF NOT EXISTS idx_hex_cell_geom ON hex_cell USING GIST (geometry)",
     "CREATE INDEX IF NOT EXISTS idx_hex_state_session_tick ON hex_state(session_id, tick)",
     "CREATE INDEX IF NOT EXISTS idx_hex_state_session_h3 ON hex_state(session_id, h3_index)",

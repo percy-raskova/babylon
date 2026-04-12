@@ -337,10 +337,22 @@ def game_state(request: Request, game_id: str) -> JsonResponse:
     )
 
 
+# ---- Zoom levels for multi-resolution map --------------------------------
+# Tier hierarchy: state → bea → msa → county → hex
+VALID_ZOOM_LEVELS: frozenset[str] = frozenset(["state", "bea", "msa", "county", "hex"])
+DEFAULT_ZOOM = "county"
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def game_map(request: Request, game_id: str) -> JsonResponse:
-    """GET /api/games/{id}/map/ — Hex map state snapshot."""
+    """GET /api/games/{id}/map/ — Hex map state snapshot.
+
+    Query parameters:
+        tick (int, optional): Tick to query. Default: current tick.
+        zoom (str, optional): Spatial aggregation level.
+            One of: state, bea, msa, county, hex. Default: county.
+    """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
@@ -351,8 +363,19 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     except ValueError:
         return _error("Invalid tick parameter", http_status=400)
 
+    zoom = request.query_params.get("zoom", DEFAULT_ZOOM)
+    if zoom not in VALID_ZOOM_LEVELS:
+        return _error(
+            f"Invalid zoom '{zoom}'. Valid levels: {sorted(VALID_ZOOM_LEVELS)}",
+            http_status=400,
+        )
+
     bridge = _get_bridge()
-    snapshot = bridge.get_map_snapshot(uuid.UUID(str(session.id)), tick=tick)
+    snapshot = bridge.get_map_snapshot(
+        uuid.UUID(str(session.id)),
+        tick=tick,
+        zoom=zoom,
+    )
     return _envelope(
         snapshot,
         tick=snapshot.get("metadata", {}).get("tick", session.current_tick),
@@ -393,11 +416,19 @@ def game_map_layer(request: Request, game_id: str, layer: str) -> JsonResponse:
     except ValueError:
         return _error("Invalid tick parameter", http_status=400)
 
+    zoom = request.query_params.get("zoom", DEFAULT_ZOOM)
+    if zoom not in VALID_ZOOM_LEVELS:
+        return _error(
+            f"Invalid zoom '{zoom}'. Valid levels: {sorted(VALID_ZOOM_LEVELS)}",
+            http_status=400,
+        )
+
     bridge = _get_bridge()
     snapshot = bridge.get_map_snapshot(
         uuid.UUID(str(session.id)),
         tick=tick,
         layer=layer,
+        zoom=zoom,
     )
 
     # Filter properties to only include the requested layer metric

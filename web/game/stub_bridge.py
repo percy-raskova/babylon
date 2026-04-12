@@ -348,6 +348,77 @@ def _make_hex_features(tick: int, layer: str | None = None) -> list[dict[str, An
     return features
 
 
+def _make_aggregated_features(zoom: str, tick: int) -> list[dict[str, Any]]:
+    """Generate mock aggregated features for non-hex zoom levels.
+
+    Returns correctly-shaped GeoJSON features grouped by the zoom tier
+    with population-weighted averages for numeric metrics.
+    """
+    # Mock data for each zoom level — Michigan-specific
+    zoom_data: dict[str, list[tuple[str, str, int]]] = {
+        "state": [("26", "Michigan", 10_037_000)],
+        "bea": [
+            ("DET", "Detroit-Warren-Ann Arbor", 5_400_000),
+            ("GRR", "Grand Rapids-Muskegon-Holland", 1_500_000),
+            ("LAN", "Lansing-East Lansing", 550_000),
+            ("KAL", "Kalamazoo-Battle Creek-Portage", 480_000),
+            ("SAG", "Saginaw-Midland-Bay City", 380_000),
+            ("TVC", "Traverse City-Northern Lower", 620_000),
+            ("MQT", "Marquette-Upper Peninsula", 307_000),
+            ("CHI", "Chicago-Naperville (cross-border)", 130_000),
+        ],
+        "msa": [
+            ("19820", "Detroit-Warren-Dearborn", 4_300_000),
+            ("24340", "Grand Rapids-Kentwood", 1_070_000),
+            ("29620", "Lansing-East Lansing", 478_000),
+            ("25980", "Kalamazoo-Portage", 265_000),
+            ("22420", "Flint", 406_000),
+            ("11460", "Ann Arbor", 372_000),
+            ("40980", "Saginaw", 190_000),
+        ],
+        "county": [
+            ("26163", "Wayne County", 1_750_000),
+            ("26125", "Oakland County", 1_275_000),
+            ("26099", "Macomb County", 880_000),
+            ("26081", "Kent County", 660_000),
+            ("26049", "Genesee County", 406_000),
+            ("26161", "Washtenaw County", 372_000),
+            ("26065", "Ingham County", 285_000),
+        ],
+    }
+
+    groups = zoom_data.get(zoom, zoom_data["county"])
+    features: list[dict[str, Any]] = []
+
+    for key, name, pop in groups:
+        # Deterministic pseudo-random variation per group
+        seed = hash(key + str(tick)) % 1000
+        r = seed / 1000.0
+
+        features.append(
+            {
+                "type": "Feature",
+                "id": key,
+                "geometry": None,  # Geometry from reference polygons
+                "properties": {
+                    "group_key": key,
+                    "group_name": name,
+                    "zoom": zoom,
+                    "hex_count": int(pop / 250),  # Approximate hex density
+                    "profit_rate": round(0.02 + r * 0.12, 6),
+                    "exploitation_rate": round(0.3 + r * 0.5, 4),
+                    "occ": round(1.5 + r * 4.0, 4),
+                    "imperial_rent": round(r * 80.0, 2),
+                    "heat": round(0.1 + r * 0.8, 4),
+                    "org_presence": int(r * 500),
+                    "population": pop,
+                },
+            }
+        )
+
+    return features
+
+
 class StubEngineBridge:
     """Mock bridge that returns correctly-shaped data without engine deps.
 
@@ -422,10 +493,20 @@ class StubEngineBridge:
         session_id: UUID,
         tick: int | None = None,
         layer: str | None = None,
+        zoom: str = "county",
     ) -> dict[str, Any]:
-        """Return a GeoJSON FeatureCollection for the hex map."""
+        """Return a GeoJSON FeatureCollection for the hex map.
+
+        When zoom is 'hex', returns individual hex features.
+        For higher zoom levels, returns aggregated mock data.
+        """
         session = _stub_sessions.get(session_id, {"tick": 0, "scenario": "wayne_county"})
         effective_tick = tick if tick is not None else session["tick"]
+
+        if zoom == "hex":
+            features: list[dict[str, Any]] = _make_hex_features(effective_tick, layer)
+        else:
+            features = _make_aggregated_features(zoom, effective_tick)
 
         return {
             "type": "FeatureCollection",
@@ -433,6 +514,7 @@ class StubEngineBridge:
                 "tick": effective_tick,
                 "scenario": session["scenario"],
                 "h3_resolution": 7,
+                "zoom": zoom,
                 "layer": layer,
                 "available_metrics": [
                     "heat",
@@ -448,7 +530,7 @@ class StubEngineBridge:
                     "org_presence",
                 ],
             },
-            "features": _make_hex_features(effective_tick, layer),
+            "features": features,
         }
 
     def get_available_actions(self, _session_id: UUID) -> list[dict[str, Any]]:

@@ -19,12 +19,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from babylon.economics.value import ExchangeValue, UseValue
 from babylon.engine.dialectics.base import TickInputs, WorldView
-from babylon.engine.dialectics.volume_1 import (
-    CommodityDialectic,
-    ExchangeValue,
-    UseValue,
-)
+from babylon.engine.dialectics.volume_1 import CommodityDialectic
 
 # ===========================================================================
 # Pole Tests

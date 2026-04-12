@@ -7,6 +7,7 @@ time-evolution of a graph of dialectics under their motion laws.
 Modules:
     base: The generic ``Dialectic[A, B]`` base class and supporting types.
     volume_1: Capital Volume I dialectics (CommodityDialectic, etc.).
+    volume_2: Capital Volume II dialectics (Circulation, Turnover, Reproduction).
     world: ``World``, ``Morphism``, and ``Event`` models.
     tick: The pure ``tick()`` function.
     invariants: Universal and per-type invariant checkers.

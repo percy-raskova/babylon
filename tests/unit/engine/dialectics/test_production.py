@@ -24,27 +24,20 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from babylon.engine.dialectics.base import TickInputs, WorldView
+from babylon.economics.tensor import DepartmentRow
+from babylon.economics.value import AbstractLabor, ConcreteLabor
+from babylon.engine.dialectics.base import EmptyPole, TickInputs, WorldView
 from babylon.engine.dialectics.tick import tick
 from babylon.engine.dialectics.volume_1 import (
-    # LaborProcess poles
-    AbstractLabor,
-    # Accumulation poles
     AccumulationDialectic,
-    # PrimitiveAccumulation poles
     ColonialExpropriation,
     ConcentrationOfCapital,
-    ConcreteLabor,
-    # Production poles
-    LaborProcess,
     LaborProcessDialectic,
-    # Wage poles
     PriceOfLaborPower,
     PrimitiveAccumulationDialectic,
     ProductionDialectic,
     ReserveArmyExpansion,
     SettlerFormation,
-    Valorization,
     ValueOfLaborPower,
     WageDialectic,
 )
@@ -188,79 +181,18 @@ class TestLaborProcessDialectic:
 # ===========================================================================
 
 
-class TestLaborProcessPole:
-    """LaborProcess pole (constant + variable capital)."""
-
-    def test_default_construction(self) -> None:
-        lp = LaborProcess()
-        assert lp.constant_capital >= 0.0
-        assert lp.variable_capital >= 0.0
-
-    def test_custom_values(self) -> None:
-        lp = LaborProcess(
-            constant_capital=12.0,
-            variable_capital=3.0,
-            labor_hours=8.0,
-            raw_materials=10.0,
-            physical_depreciation=2.0,
-        )
-        assert lp.constant_capital == 12.0
-        assert lp.variable_capital == 3.0
-        assert lp.labor_hours == 8.0
-        assert lp.raw_materials == 10.0
-        assert lp.physical_depreciation == 2.0
-
-    def test_moral_depreciation_stub_defaults_zero(self) -> None:
-        lp = LaborProcess()
-        assert lp.moral_depreciation_stub == 0.0
-
-
-class TestValoization:
-    """Valorization pole (surplus-value extraction)."""
-
-    def test_default_construction(self) -> None:
-        v = Valorization()
-        assert v.surplus_value >= 0.0
-        assert v.working_day_hours > 0.0
-
-    def test_custom_values(self) -> None:
-        v = Valorization(
-            surplus_value=3.0,
-            rate_of_exploitation=1.0,
-            necessary_labor_time=4.0,
-            surplus_labor_time=4.0,
-            working_day_hours=8.0,
-        )
-        assert v.surplus_value == 3.0
-        assert v.rate_of_exploitation == 1.0
-        assert v.working_day_hours == 8.0
-
-    def test_working_day_must_be_positive(self) -> None:
-        with pytest.raises(ValidationError):
-            Valorization(working_day_hours=0.0)
-
-
 class TestProductionDialectic:
     """ProductionDialectic: labor process ↔ valorization (V1 Ch7§2)."""
 
     def _make(self, weight: float = 0.0, **kwargs: Any) -> ProductionDialectic:
-        lp = LaborProcess(
-            constant_capital=kwargs.get("c", 12.0),
-            variable_capital=kwargs.get("v", 3.0),
-            labor_hours=kwargs.get("labor_hours", 8.0),
-            raw_materials=kwargs.get("raw_materials", 10.0),
-            physical_depreciation=kwargs.get("depreciation", 2.0),
-        )
-        val = Valorization(
-            surplus_value=kwargs.get("s", 3.0),
-            rate_of_exploitation=kwargs.get("e", 1.0),
-            necessary_labor_time=kwargs.get("necessary", 4.0),
-            surplus_labor_time=kwargs.get("surplus_time", 4.0),
-            working_day_hours=kwargs.get("working_day", 8.0),
+        row = DepartmentRow(
+            c=kwargs.get("c", 12.0),
+            v=kwargs.get("v", 3.0),
+            s=kwargs.get("s", 3.0),
         )
         return ProductionDialectic(
-            pole_a=lp,
-            pole_b=val,
+            pole_a=row,
+            pole_b=EmptyPole(),
             weight=weight,
             tick_created=0,
             tick_updated=0,
@@ -274,13 +206,6 @@ class TestProductionDialectic:
         d = self._make()
         result = d.step(_empty_inputs(), _world())
         assert isinstance(result, ProductionDialectic)
-
-    def test_ch9_exploitation_rate(self) -> None:
-        """Ch9§1: e = surplus_labor / necessary_labor."""
-        d = self._make(necessary=4.0, surplus_time=4.0, e=1.0)
-        obs = d.observe()
-        # With equal necessary and surplus labor, e = 1.0
-        assert obs["rate_of_exploitation"] == pytest.approx(1.0, abs=0.01)
 
     def test_ch9_surplus_value_formula(self) -> None:
         """Ch9: s = v × e."""
@@ -303,10 +228,6 @@ class TestProductionDialectic:
             c=12.0,  # cotton(10) + spindle(2)
             v=3.0,  # labor-power value
             s=3.0,  # surplus
-            necessary=3.0,
-            surplus_time=3.0,
-            working_day=6.0,
-            e=1.0,
         )
         obs = d.observe()
         assert obs["c"] == pytest.approx(12.0)
@@ -321,13 +242,6 @@ class TestProductionDialectic:
         for key in ("l", "c", "v", "s", "r"):
             assert key in obs, f"Missing key: {key}"
 
-    def test_observe_returns_labor_pool(self) -> None:
-        """observe() emits labor pool fields for macro aggregation."""
-        d = self._make(labor_hours=8.0, necessary=4.0, surplus_time=4.0)
-        obs = d.observe()
-        assert "labor_hours_contributed" in obs
-        assert obs["labor_hours_contributed"] == 8.0
-
     def test_observe_organic_composition(self) -> None:
         """Ch25§2: OCC = c/v."""
         d = self._make(c=12.0, v=3.0)
@@ -339,27 +253,12 @@ class TestProductionDialectic:
         d = self._make(s=0.0)
         assert d.invariants() == []
 
-    def test_invariant_surplus_labor_within_working_day(self) -> None:
-        """Ch11: surplus labor time ≤ working day hours."""
-        d = self._make(surplus_time=4.0, working_day=8.0)
-        assert d.invariants() == []
-
     def test_step_updates_weight(self) -> None:
         """Higher exploitation → weight shifts positive (toward valorization)."""
         d = self._make(weight=0.0, e=2.0)  # High exploitation
         result = d.step(_empty_inputs(), _world())
         # With e > 1, weight should shift positive
         assert result.weight > 0.0 or result.weight == 0.0  # at minimum no regression
-
-    def test_physical_depreciation_field_present(self) -> None:
-        """Ch15§2: physical depreciation enters value piecemeal."""
-        d = self._make(depreciation=2.0)
-        assert d.pole_a.physical_depreciation == 2.0
-
-    def test_moral_depreciation_stub(self) -> None:
-        """Moral depreciation stubbed at 0.0. TODO: Phase 4."""
-        d = self._make()
-        assert d.pole_a.moral_depreciation_stub == 0.0
 
 
 # ===========================================================================
@@ -706,20 +605,12 @@ class TestDialecticCoupling:
             tick_updated=0,
         )
         pd = ProductionDialectic(
-            pole_a=LaborProcess(
-                constant_capital=12.0,
-                variable_capital=3.0,
-                labor_hours=8.0,
-                raw_materials=10.0,
-                physical_depreciation=2.0,
+            pole_a=DepartmentRow(
+                c=12.0,
+                v=3.0,
+                s=3.0,
             ),
-            pole_b=Valorization(
-                surplus_value=3.0,
-                rate_of_exploitation=1.0,
-                necessary_labor_time=4.0,
-                surplus_labor_time=4.0,
-                working_day_hours=8.0,
-            ),
+            pole_b=EmptyPole(),
             weight=0.0,
             tick_created=0,
             tick_updated=0,

@@ -33,8 +33,14 @@ B = TypeVar("B", bound=BaseModel)
 
 
 # ===========================================================================
-# Supporting types for step() interface
+# Supporting types
 # ===========================================================================
+
+
+class EmptyPole(BaseModel):
+    """Placeholder pole when a Dialectic represents a unary transformation or state wrapper."""
+
+    model_config = ConfigDict(frozen=True)
 
 
 class TickInputs(BaseModel):

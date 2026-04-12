@@ -97,6 +97,25 @@ def _build_default_registry() -> DialecticRegistry:
     registry.register(WageDialectic)
     registry.register(AccumulationDialectic)
     registry.register(PrimitiveAccumulationDialectic)
+
+    from babylon.engine.dialectics.volume_2 import (
+        CirculationDialectic,
+        ConsumptionDialectic,
+        DisproportionalityCrisisDialectic,
+        DistributionDialectic,
+        RealizationCrisisDialectic,
+        ReproductionDialectic,
+        TurnoverDialectic,
+    )
+
+    registry.register(CirculationDialectic)
+    registry.register(ConsumptionDialectic)
+    registry.register(DistributionDialectic)
+    registry.register(ReproductionDialectic)
+    registry.register(TurnoverDialectic)
+    registry.register(DisproportionalityCrisisDialectic)
+    registry.register(RealizationCrisisDialectic)
+
     return registry
 
 

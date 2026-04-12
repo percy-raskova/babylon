@@ -23,39 +23,18 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.engine.dialectics.base import Dialectic, TickInputs, WorldView
+from babylon.economics.reserve_army.calculator import DefaultWagePressureCalculator
+from babylon.economics.tensor import DepartmentRow
+from babylon.economics.value import AbstractLabor, ConcreteLabor, ExchangeValue, UseValue
+from babylon.engine.dialectics.base import Dialectic, EmptyPole, TickInputs, WorldView
+from babylon.formulas.fundamental_theorem import (
+    calculate_imperial_rent,
+    calculate_labor_aristocracy_ratio,
+)
 
 # ===========================================================================
-# Pole types
+# CommodityDialectic
 # ===========================================================================
-
-
-class UseValue(BaseModel):
-    """Properties of a commodity as use-value (V1 Ch1).
-
-    Attributes:
-        utility: How useful the commodity is to its possessor, ∈ [0, 1].
-        demand: Aggregate demand (labor-hours or units).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    utility: float = Field(default=0.5, ge=0.0, le=1.0)
-    demand: float = Field(default=0.0, ge=0.0)
-
-
-class ExchangeValue(BaseModel):
-    """Properties of a commodity as exchange-value (V1 Ch1).
-
-    Attributes:
-        price: Monetary price of the commodity.
-        snlt: Socially Necessary Labour Time embodied.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    price: float = Field(default=0.0, ge=0.0)
-    snlt: float = Field(default=0.0, ge=0.0)
 
 
 # ===========================================================================
@@ -166,45 +145,6 @@ class CommodityDialectic(Dialectic[UseValue, ExchangeValue]):
 # ===========================================================================
 
 
-class ConcreteLabor(BaseModel):
-    """Properties of labor as concrete, particular activity (V1 Ch1§2).
-
-    Concrete labor creates use-values: spinning produces yarn, weaving
-    produces cloth. It is labor in its specific, qualitative form.
-
-    Attributes:
-        skill: Worker skill level ∈ [0, 1].
-        intensity: Labor intensity ∈ [0, 1].
-        hours: Hours of concrete labor performed.
-        labor_type: Qualitative type of labor (spinning, mining, etc.).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    skill: float = Field(default=0.5, ge=0.0, le=1.0)
-    intensity: float = Field(default=0.5, ge=0.0, le=1.0)
-    hours: float = Field(default=0.0, ge=0.0)
-    labor_type: str = Field(default="general")
-
-
-class AbstractLabor(BaseModel):
-    """Properties of labor as abstract, homogeneous substance (V1 Ch1§2).
-
-    Abstract labor is the social substance of value — labor stripped of
-    its concrete characteristics and reduced to expenditure of human
-    labor-power in general.
-
-    Attributes:
-        snlt: Socially Necessary Labour Time embodied.
-        productivity: Labor productivity multiplier (> 1.0 = above average).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    snlt: float = Field(default=0.0, ge=0.0)
-    productivity: float = Field(default=1.0, gt=0.0)
-
-
 class LaborProcessDialectic(Dialectic[ConcreteLabor, AbstractLabor]):
     """The concrete ↔ abstract labor contradiction (V1 Ch1§2, Ch7§1).
 
@@ -269,65 +209,7 @@ class LaborProcessDialectic(Dialectic[ConcreteLabor, AbstractLabor]):
 # ===========================================================================
 
 
-class LaborProcess(BaseModel):
-    """The labor process as consumption of means of production (V1 Ch7).
-
-    Ch7: "The labour-process... is human action with a view to the
-    production of use-values, appropriation of natural substances to
-    human requirements."
-
-    Attributes:
-        constant_capital: Value of means of production consumed (c).
-        variable_capital: Value of labor-power consumed (v).
-        labor_hours: Total labor hours in this production process.
-        raw_materials: Value of raw materials consumed.
-        physical_depreciation: Physical wear-and-tear on instruments (Ch15§2).
-        moral_depreciation_stub: Placeholder for Phase 4 (V3 port). Always 0.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    constant_capital: float = Field(default=0.0, ge=0.0)
-    variable_capital: float = Field(default=0.0, ge=0.0)
-    labor_hours: float = Field(default=0.0, ge=0.0)
-    raw_materials: float = Field(default=0.0, ge=0.0)
-    physical_depreciation: float = Field(default=0.0, ge=0.0)
-    moral_depreciation_stub: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Stubbed for Phase 4 (V3 port). Always 0.0.",
-    )
-
-
-class Valorization(BaseModel):
-    """The valorization process — extraction of surplus-value (V1 Ch7§2).
-
-    Ch9: "The rate of surplus-value is therefore an exact expression for
-    the degree of exploitation of labour-power by capital."
-
-    Attributes:
-        surplus_value: Total surplus-value produced (s).
-        rate_of_exploitation: e = s/v (Ch9§1).
-        necessary_labor_time: Hours needed to reproduce labor-power value.
-        surplus_labor_time: Hours beyond necessary labor (creates surplus).
-        working_day_hours: Total working day length. Stubbed as parameter;
-            TODO Phase 5: link to ClassDialectic for working day struggle.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    surplus_value: float = Field(default=0.0, ge=0.0)
-    rate_of_exploitation: float = Field(default=0.0, ge=0.0)
-    necessary_labor_time: float = Field(default=0.0, ge=0.0)
-    surplus_labor_time: float = Field(default=0.0, ge=0.0)
-    working_day_hours: float = Field(
-        default=8.0,
-        gt=0.0,
-        description="Working day length in hours. TODO: Phase 5 ClassDialectic.",
-    )
-
-
-class ProductionDialectic(Dialectic[LaborProcess, Valorization]):
+class ProductionDialectic(Dialectic[DepartmentRow, EmptyPole]):
     """The labor process ↔ valorization process contradiction (V1 Ch7§2).
 
     Ch7§2: "The production of surplus-value is the differentia specifica
@@ -362,7 +244,7 @@ class ProductionDialectic(Dialectic[LaborProcess, Valorization]):
             New ProductionDialectic with updated weight and tick.
         """
         delta = 0.0
-        e = self.pole_b.rate_of_exploitation
+        e = self.pole_a.exploitation_rate
 
         # Check for upstream input (from LaborProcessDialectic)
         own_input = inputs.upstream.get(self.id)
@@ -384,11 +266,10 @@ class ProductionDialectic(Dialectic[LaborProcess, Valorization]):
         Returns:
             Value tensor components, OCC, and labor pool contribution.
         """
-        c = self.pole_a.constant_capital
-        v = self.pole_a.variable_capital
-        s = self.pole_b.surplus_value
-        e = self.pole_b.rate_of_exploitation
-        labor_hours = self.pole_a.labor_hours
+        c = float(self.pole_a.c)
+        v = float(self.pole_a.v)
+        s = float(self.pole_a.s)
+        e = self.pole_a.exploitation_rate
 
         obs = super().observe()
         obs.update(
@@ -399,10 +280,7 @@ class ProductionDialectic(Dialectic[LaborProcess, Valorization]):
                 "l": v + s,  # Living labor = new value
                 "r": e,  # Rate of exploitation alias
                 "rate_of_exploitation": e,
-                "occ": c / v if v > 0 else 0.0,  # Ch25§2: OCC = c/v
-                "labor_hours_contributed": labor_hours,
-                "necessary_labor_time": self.pole_b.necessary_labor_time,
-                "surplus_labor_time": self.pole_b.surplus_labor_time,
+                "occ": self.pole_a.organic_composition,
             }
         )
         return obs
@@ -412,20 +290,13 @@ class ProductionDialectic(Dialectic[LaborProcess, Valorization]):
 
         Checks:
             - Surplus value ≥ 0.
-            - Surplus labor time ≤ working day hours (Ch11).
 
         Returns:
             List of violation descriptions.
         """
         violations = super().invariants()
-        if self.pole_b.surplus_value < 0:
-            violations.append(f"ProductionDialectic {self.id}: surplus_value is negative")
-        if self.pole_b.surplus_labor_time > self.pole_b.working_day_hours:
-            violations.append(
-                f"ProductionDialectic {self.id}: surplus_labor_time "
-                f"({self.pole_b.surplus_labor_time}) exceeds working_day "
-                f"({self.pole_b.working_day_hours})"
-            )
+        if self.pole_a.s < 0:
+            violations.append(f"ProductionDialectic {self.id}: s is negative")
         return violations
 
 
@@ -634,6 +505,9 @@ class AccumulationDialectic(Dialectic[ConcentrationOfCapital, ReserveArmyExpansi
         Returns:
             Base observation + accumulation-specific fields.
         """
+        pressure_calc = DefaultWagePressureCalculator()
+        computed_pressure = pressure_calc.compute_wage_pressure(self.pole_b.unemployed_fraction)
+
         obs = super().observe()
         obs.update(
             {
@@ -642,10 +516,10 @@ class AccumulationDialectic(Dialectic[ConcentrationOfCapital, ReserveArmyExpansi
                 "fixed_capital": self.pole_a.fixed_capital,
                 "centralization_index": self.pole_a.centralization_index,
                 "unemployed_fraction": self.pole_b.unemployed_fraction,
-                "wage_pressure": self.pole_b.wage_pressure,
+                "wage_pressure": computed_pressure,
                 "absorption_rate": self.pole_b.absorption_rate,
                 "total_labor_pool": self.pole_b.total_labor_pool,
-                "reserve_army_pressure": self.pole_b.wage_pressure,
+                "reserve_army_pressure": computed_pressure,
             }
         )
         return obs
@@ -767,8 +641,23 @@ class PrimitiveAccumulationDialectic(Dialectic[ColonialExpropriation, SettlerFor
         """
         extraction = self.pole_a.colonial_extraction
         settler_share = self.pole_b.settler_share
+
         # Imperial rent = extraction distributed to settlers
-        imperial_rent = extraction * settler_share
+        # Using the fundamental theorem to calculate exactly how much is extracted.
+        # We model settler_share as the alpha (extraction efficiency) over the periphery wages (extraction).
+        imperial_rent = calculate_imperial_rent(
+            alpha=settler_share,
+            periphery_wages=extraction,
+            periphery_consciousness=0.0,
+        )
+
+        # Derive an endogenous Wc/Vc based on the imperial rent to ground it in the theorem.
+        # Assuming base wages match value produced (1.0 ratio), and they receive imperial_rent on top.
+        derived_lar = self.pole_b.labor_aristocracy_ratio
+        if extraction > 0:
+            derived_lar = calculate_labor_aristocracy_ratio(
+                core_wages=extraction + imperial_rent, value_produced=extraction
+            )
 
         obs = super().observe()
         obs.update(
@@ -778,7 +667,7 @@ class PrimitiveAccumulationDialectic(Dialectic[ColonialExpropriation, SettlerFor
                 "land_theft": self.pole_a.land_theft,
                 "super_exploitation_rate": self.pole_a.super_exploitation_rate,
                 "settler_share": settler_share,
-                "labor_aristocracy_ratio": self.pole_b.labor_aristocracy_ratio,
+                "labor_aristocracy_ratio": derived_lar,
                 "settler_identity": self.pole_b.settler_identity,
                 "immiseration_resistance": self.pole_b.immiseration_resistance,
                 "imperial_rent_generated": imperial_rent,

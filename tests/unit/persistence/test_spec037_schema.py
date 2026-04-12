@@ -15,7 +15,9 @@ from babylon.persistence.postgres_schema import (
     EDGE_SNAPSHOT_DDL,
     GAME_DEFINES_SNAPSHOT_DDL,
     HEX_ACTIVITY_DDL,
+    HEX_LATEST_DDL,
     HEX_MAP_DDL,
+    HEX_SUBSTRATE_DDL,
     ORG_SNAPSHOT_DDL,
     POSTGRES_SCHEMA_DDL,
     SPEC037_INDEXES_DDL,
@@ -135,13 +137,15 @@ class TestSpec037SnapshotTables:
 class TestSpec037CompositionViews:
     """Layer 9: Composition views for React map layers."""
 
-    def test_v_hex_economic_joins_correctly(self) -> None:
+    def test_v_hex_economic_projects_from_hex_latest(self) -> None:
+        """v_hex_economic projects from hex_latest (no JOINs)."""
         assert "CREATE OR REPLACE VIEW v_hex_economic" in V_HEX_ECONOMIC_DDL
-        assert "hex_map h" in V_HEX_ECONOMIC_DDL
-        assert "territory_snapshot t" in V_HEX_ECONOMIC_DDL
+        assert "hex_latest" in V_HEX_ECONOMIC_DDL
+        assert "profit_rate" in V_HEX_ECONOMIC_DDL
 
-    def test_v_hex_mobilize_has_left_join(self) -> None:
-        assert "LEFT JOIN hex_activity" in V_HEX_MOBILIZE_DDL
+    def test_v_hex_mobilize_projects_from_hex_latest(self) -> None:
+        """v_hex_mobilize projects from hex_latest with computed mobilizable_pop."""
+        assert "hex_latest" in V_HEX_MOBILIZE_DDL
         assert "mobilizable_pop" in V_HEX_MOBILIZE_DDL
 
     def test_v_hex_aid_view(self) -> None:
@@ -149,7 +153,8 @@ class TestSpec037CompositionViews:
         assert "reproduction_deficit" in V_HEX_AID_DDL
 
     def test_v_hex_heat_filters_zero(self) -> None:
-        assert "WHERE a.heat_total > 0" in V_HEX_HEAT_DDL
+        """v_hex_heat filters WHERE heat > 0 on hex_latest."""
+        assert "WHERE heat > 0" in V_HEX_HEAT_DDL
 
     def test_v_hex_intel_is_comprehensive(self) -> None:
         """Intel view should include all territory + hex activity columns."""
@@ -164,8 +169,8 @@ class TestSpec037Indexes:
     """Spec 037 index declarations."""
 
     def test_index_count(self) -> None:
-        """21 indexes defined for the 9 new tables."""
-        assert len(SPEC037_INDEXES_DDL) == 21
+        """25 indexes defined for the 11 tables (incl. hex_latest + hex_substrate)."""
+        assert len(SPEC037_INDEXES_DDL) == 25
 
     def test_all_tables_have_tick_index(self) -> None:
         """Every snapshot table should have a game_id+tick index."""
@@ -197,6 +202,8 @@ class TestSpec037AggregatedDDL:
             HEX_ACTIVITY_DDL,
             ECONOMIC_SUMMARY_DDL,
             TICK_EVENT_DDL,
+            HEX_LATEST_DDL,
+            HEX_SUBSTRATE_DDL,
             V_HEX_ECONOMIC_DDL,
             V_HEX_MOBILIZE_DDL,
             V_HEX_AID_DDL,

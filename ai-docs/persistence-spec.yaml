@@ -408,6 +408,111 @@ implementation:
     - "Test RNG state restoration (determinism)"
 
 # =============================================================================
+# MULTI-RESOLUTION HEX JOURNAL (Feature 037)
+# =============================================================================
+# National-scale tiered persistence architecture for the hex-based map.
+# Optimized for H3 R7 (~243K hexes for CONUS) with 305× storage reduction.
+
+multi_resolution_hex_journal:
+  feature_id: "037"
+  status: "IMPLEMENTED"
+  date: "2026-04-10"
+  spec: "docs/reference/persistence.rst"
+
+  architecture:
+    principle: |
+      County-level economics are stored ONCE per county per tick (~3,100 rows),
+      not per hex (~243,000 rows). Hex-level events are sparse (~5K rows/tick).
+      The denormalized hex_latest cache merges both tiers for O(1) frontend reads.
+
+    tables:
+      territory_snapshot:
+        resolution: "County"
+        cardinality: "~3,100 rows/tick"
+        purpose: "ValueTensor4x3, profit_rate, class distribution, faction balance"
+        pk: "(game_id, tick, county_fips)"
+
+      hex_activity:
+        resolution: "R7 (sparse)"
+        cardinality: "~5K rows/tick"
+        purpose: "Heat, org_ids, actions_taken, was_target. Only hexes with events."
+        pk: "(game_id, tick, h3_index)"
+
+      hex_substrate:
+        resolution: "R8 (static)"
+        cardinality: "~1.7M rows (written once at init)"
+        purpose: "Terrain, water, broadband, surveillance, biocapacity"
+        pk: "(game_id, h3_index)"
+        note: "Aggregated to R7 via MODE/AVG/BOOL_OR in seed_hex_latest"
+
+      hex_latest:
+        resolution: "R7 (all hexes)"
+        cardinality: "~243K rows (current state only)"
+        purpose: "Denormalized cache merging county economics + hex events + terrain"
+        pk: "(game_id, h3_index)"
+        updated_by: "refresh_hex_latest() two-phase UPSERT each tick"
+        note: "Frontend reads HERE. Never JOINs at query time."
+
+  write_path:
+    description: "Append-only journals + cache refresh"
+    steps:
+      - "1. Systems write territory_snapshot (~3,100 rows) and hex_activity (sparse)"
+      - "2. refresh_hex_latest(game_id, tick) runs two SQL UPDATEs"
+    refresh_phases:
+      phase_1:
+        name: "Territory broadcast"
+        timing: "~20ms for 243K US hexes"
+        sql: "UPDATE hex_latest FROM territory_snapshot JOIN hex_map"
+        note: "All hexes in a county receive identical economic values"
+      phase_2:
+        name: "Hex activity overlay"
+        timing: "~0.5ms for ~5K sparse rows"
+        sql: "UPDATE hex_latest FROM hex_activity"
+        note: "Only hexes with events this tick are touched"
+
+  read_path:
+    description: "SELECT from hex_latest or composition views (no JOINs)"
+    views:
+      - "v_hex_economic: profit_rate, exploitation_rate, occ, imperial_rent"
+      - "v_hex_mobilize: mobilizable_pop, org_presence, dominant_class"
+      - "v_hex_heat: heat, heat_delta, org_count (filtered: heat > 0)"
+      - "v_hex_aid: internet_access, terrain_type, water_coverage"
+      - "v_hex_intel: faction_*, dominant_class, org_count, actions_taken"
+
+  etl:
+    module: "babylon.persistence.hex_init"
+    function: "seed_hex_latest(pool, game_id)"
+    description: |
+      INSERT...SELECT from territory_snapshot(tick=0) JOIN hex_map
+      LEFT JOIN hex_substrate (R8→R7 aggregation via MODE/AVG/BOOL_OR).
+
+  historical_reconstruction:
+    method: "PostgresRuntime.reconstruct_hex_state(game_id, tick)"
+    description: |
+      LATERAL join between territory_snapshot + hex_activity via hex_map.
+      Reconstructs any past tick from append-only journals.
+      hex_latest only holds current state — use this for time-travel.
+
+  storage_budget:
+    territory_snapshot: "~200 MB / 260-tick session"
+    hex_activity: "~52 MB / 260-tick session"
+    hex_substrate: "~300 MB (fixed, one-time)"
+    hex_latest: "~30 MB (fixed, current state)"
+    total: "~582 MB / session (was ~177 GB without tiering)"
+    compression_ratio: "305×"
+
+  files:
+    schema: "src/babylon/persistence/postgres_schema.py"
+    runtime: "src/babylon/persistence/postgres_runtime.py"
+    etl: "src/babylon/persistence/hex_init.py"
+    django_model: "web/game/models.py (HexState)"
+    tests:
+      - "tests/unit/persistence/test_spec037_schema.py"
+      - "tests/unit/persistence/test_hex_latest_refresh.py"
+      - "tests/unit/persistence/test_hex_init.py"
+      - "tests/unit/persistence/test_reconstruct_hex_state.py"
+
+# =============================================================================
 # FUTURE CONSIDERATIONS
 # =============================================================================
 

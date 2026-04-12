@@ -152,37 +152,71 @@ class ActionResult(models.Model):
 
 
 class HexState(models.Model):
-    """Wraps the ``sim.hex_states`` table for the HexMap component."""
+    """Per-hex current state — denormalized R7 cache for map rendering.
 
-    id = models.AutoField(primary_key=True)
+    Wraps ``hex_latest``. County economics are broadcast from
+    ``territory_snapshot``; hex-specific data (heat, org) comes
+    from ``hex_activity``. Updated server-side via SQL UPSERT
+    after each tick.
+    """
+
     game = models.ForeignKey(
         GameSession,
         on_delete=models.CASCADE,
         db_column="game_id",
     )
+    h3_index = models.CharField(max_length=16)
     tick = models.IntegerField()
-    h3_index = models.CharField(max_length=20)
+
+    # Denormalized county economics
     county_fips = models.CharField(max_length=5)
     county_name = models.CharField(max_length=100)
     bea_ea_code = models.CharField(max_length=8, null=True, blank=True)
     msa_code = models.CharField(max_length=10, null=True, blank=True)
     state_fips = models.CharField(max_length=2, default="26")
+    center_lat = models.FloatField()
+    center_lng = models.FloatField()
+
+    # Derived Marxian indicators
     profit_rate = models.FloatField(null=True, blank=True)
     exploitation_rate = models.FloatField(null=True, blank=True)
     occ = models.FloatField(null=True, blank=True)
     imperial_rent = models.FloatField(null=True, blank=True)
-    heat = models.FloatField(null=True, blank=True)
-    org_presence = models.IntegerField(default=0)
-    dominant_class = models.CharField(max_length=30, null=True, blank=True)
-    population = models.IntegerField(null=True, blank=True)
+    g33_visibility = models.FloatField(null=True, blank=True)
+
+    # Class distribution
+    pop_bourgeoisie = models.IntegerField(default=0)
+    pop_petit_bourgeoisie = models.IntegerField(default=0)
+    pop_labor_aristocracy = models.IntegerField(default=0)
+    pop_proletariat = models.IntegerField(default=0)
+    pop_lumpenproletariat = models.IntegerField(default=0)
+    pop_total = models.IntegerField(default=0)
+    dominant_class = models.CharField(max_length=24, null=True, blank=True)
+
+    # Faction balance
+    faction_finance_capital = models.FloatField(null=True, blank=True)
+    faction_security_state = models.FloatField(null=True, blank=True)
+    faction_settler_populist = models.FloatField(null=True, blank=True)
+
+    # Hex-specific fields
+    heat = models.FloatField(default=0.0)
+    heat_delta = models.FloatField(default=0.0)
+    org_count = models.SmallIntegerField(default=0)
+    actions_taken = models.SmallIntegerField(default=0)
+    was_target = models.BooleanField(default=False)
+
+    # Aggregated R8 terrain
+    terrain_type = models.CharField(max_length=16, default="LAND")
+    water_coverage = models.FloatField(default=0.0)
+    internet_access = models.BooleanField(default=False)
 
     class Meta:
         managed = False
-        db_table = '"sim"."hex_states"'
+        db_table = "hex_latest"
         constraints = [
             models.UniqueConstraint(
-                fields=["game", "tick", "h3_index"],
-                name="unique_game_tick_h3",
+                fields=["game", "h3_index"],
+                name="unique_hex_latest_pk",
             ),
         ]
 

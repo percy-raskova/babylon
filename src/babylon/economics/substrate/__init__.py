@@ -21,6 +21,7 @@ from babylon.economics.substrate.conservation import (
     DefaultConservationChecker,
 )
 from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
+from babylon.economics.substrate.ground_rent import GroundRentResult, compute_ground_rent
 from babylon.economics.substrate.hydrator import hydrate_hex_grid
 from babylon.economics.substrate.production import DefaultHexProductionComputer
 from babylon.economics.substrate.protocols import (
@@ -42,6 +43,7 @@ from babylon.economics.substrate.types import (
     BoundaryFlowRegister,
     HexEconomicState,
     HexGrid,
+    HexTenureComposition,
     SubstrateConfig,
     TractWeight,
 )
@@ -54,8 +56,12 @@ __all__ = [
     "BoundaryFlowRegister",
     "HexEconomicState",
     "HexGrid",
+    "HexTenureComposition",
     "SubstrateConfig",
     "TractWeight",
+    # Ground rent (Feature 043)
+    "GroundRentResult",
+    "compute_ground_rent",
     # Protocols
     "CommuterFlowSource",
     "ConservationChecker",

@@ -18,6 +18,7 @@ from babylon.economics.substrate.types import (
     BoundaryFlowRegister,
     HexEconomicState,
     HexGrid,
+    HexTenureComposition,
     SubstrateConfig,
     TractWeight,
 )
@@ -137,6 +138,70 @@ class TestTractWeight:
 
 
 # =============================================================================
+# HexTenureComposition
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestHexTenureComposition:
+    """Tests for HexTenureComposition Pydantic model."""
+
+    def test_valid_construction(self) -> None:
+        """Test HexTenureComposition with valid values."""
+        h = HexTenureComposition(
+            residential_owner_occupied=0.4,
+            residential_rental=0.2,
+            commercial=0.1,
+            industrial=0.1,
+            public=0.1,
+            trust_land=0.05,
+            vacant_abandoned=0.05,
+        )
+        assert h.residential_owner_occupied == 0.4
+        assert h.vacant_abandoned == 0.05
+
+    def test_frozen_immutability(self) -> None:
+        """Test that HexTenureComposition is immutable (frozen=True)."""
+        h = HexTenureComposition(
+            residential_owner_occupied=0.4,
+            residential_rental=0.2,
+            commercial=0.1,
+            industrial=0.1,
+            public=0.1,
+            trust_land=0.05,
+            vacant_abandoned=0.05,
+        )
+        with pytest.raises(ValidationError):
+            h.commercial = 0.5  # type: ignore[misc]
+
+    def test_sum_must_be_one(self) -> None:
+        """Test that validation fails if sum is not 1.0."""
+        with pytest.raises(ValidationError, match="Tenure shares must sum to 1.0"):
+            HexTenureComposition(
+                residential_owner_occupied=0.4,
+                residential_rental=0.2,
+                commercial=0.1,
+                industrial=0.1,
+                public=0.1,
+                trust_land=0.05,
+                vacant_abandoned=0.1,  # sum is 1.05
+            )
+
+    def test_negative_values_rejected(self) -> None:
+        """Test that negative tenure shares are rejected."""
+        with pytest.raises(ValidationError):
+            HexTenureComposition(
+                residential_owner_occupied=-0.1,
+                residential_rental=0.5,
+                commercial=0.2,
+                industrial=0.1,
+                public=0.1,
+                trust_land=0.1,
+                vacant_abandoned=0.1,
+            )
+
+
+# =============================================================================
 # HexEconomicState
 # =============================================================================
 
@@ -165,6 +230,31 @@ class TestHexEconomicState:
         assert h.dept_shares == (0.3, 0.3, 0.2, 0.2)
         assert h.profit_rate == 0.0  # default
         assert h.exploitation_rate == 0.0  # default
+        assert h.tenure_composition is None  # default
+
+    def test_valid_construction_with_tenure(self) -> None:
+        """Test HexEconomicState constructed with HexTenureComposition."""
+        tenure = HexTenureComposition(
+            residential_owner_occupied=0.5,
+            residential_rental=0.2,
+            commercial=0.1,
+            industrial=0.1,
+            public=0.1,
+            trust_land=0.0,
+            vacant_abandoned=0.0,
+        )
+        h = HexEconomicState(
+            h3_index="872830828ffffff",
+            county_fips="26163",
+            constant_capital=500.0,
+            variable_capital=200.0,
+            surplus_value=100.0,
+            employment=50.0,
+            dept_shares=(0.3, 0.3, 0.2, 0.2),
+            tenure_composition=tenure,
+        )
+        assert h.tenure_composition is not None
+        assert h.tenure_composition.residential_owner_occupied == 0.5
 
     def test_frozen_immutability(self) -> None:
         """Test that HexEconomicState is immutable (frozen=True)."""

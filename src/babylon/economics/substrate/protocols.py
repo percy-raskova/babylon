@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from babylon.config.defines import RentCircuitDefines
     from babylon.economics.substrate.types import (
         BoundaryFlowRegister,
         HexGrid,
@@ -262,12 +263,23 @@ class HexEqualizationComputer(Protocol):
         >>> post_grid = computer.equalize_capital(grid, alpha=0.01)
     """
 
-    def equalize_capital(self, grid: HexGrid, alpha: float = 0.01) -> HexGrid:
+    def equalize_capital(
+        self,
+        grid: HexGrid,
+        alpha: float = 0.01,
+        rent_defines: RentCircuitDefines | None = None,
+    ) -> HexGrid:
         """Migrate capital between hexes based on profit rate gradient.
+
+        When ``rent_defines`` is provided and hexes carry a
+        ``tenure_composition``, ground rent is extracted from ``v`` and
+        ``s`` before capital migration (FR-010, Feature 043).
 
         Args:
             grid: HexGrid with current capital stocks and profit rates.
             alpha: Capital migration speed coefficient (default 0.01).
+            rent_defines: Optional RentCircuitDefines for ground rent
+                extraction. None disables rent (backward compatible).
 
         Returns:
             New HexGrid with updated constant capital stocks.

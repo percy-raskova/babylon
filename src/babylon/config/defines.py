@@ -3146,6 +3146,25 @@ class InfrastructureDefines(BaseModel):
         return getattr(self, key, 0.0)
 
 
+class RentCircuitDefines(BaseModel):
+    """Parameters for ground rent extraction in Volume III equalization (Feature 043)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    absolute_rent_fraction: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=0.5,
+        description="Fraction of extracted volume III rent considered absolute rent.",
+    )
+    differential_rent_elasticity: float = Field(
+        default=1.2,
+        ge=0.1,
+        le=5.0,
+        description="Responsiveness of differential rent given local surplus intensity.",
+    )
+
+
 class ClassSystemDefines(BaseModel):
     """Unified class system coefficients (Feature 038).
 
@@ -3190,8 +3209,8 @@ class ClassSystemDefines(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Fed SCF: fraction of homeowners with meaningful equity. "
-            "Calibrated: 65% ownership * 0.6 = 39% ~ 40% LA share."
+            "Feature 043: Absolute threshold test on equity required for LA classification. "
+            "Formerly a population-level numeric scaler."
         ),
     )
     base_class_solidarity: dict[str, dict[str, float]] = Field(
@@ -3980,6 +3999,7 @@ class GameDefines(BaseModel):
     infra_terrain: InfraTerrainDefines = Field(default_factory=InfraTerrainDefines)
     infrastructure: InfrastructureDefines = Field(default_factory=InfrastructureDefines)
     # Unified Class System (Feature 038)
+    rent_circuit: RentCircuitDefines = Field(default_factory=RentCircuitDefines)
     class_system: ClassSystemDefines = Field(default_factory=ClassSystemDefines)
     # State Apparatus AI (Feature 039)
     state_ai: StateApparatusAIDefines = Field(default_factory=StateApparatusAIDefines)
@@ -4105,6 +4125,7 @@ class GameDefines(BaseModel):
             bifurcation=BifurcationDefines(**data.get("bifurcation", {})),
             infra_terrain=InfraTerrainDefines(**data.get("infra_terrain", {})),
             infrastructure=InfrastructureDefines(**data.get("infrastructure", {})),
+            rent_circuit=RentCircuitDefines(**data.get("rent_circuit", {})),
             class_system=ClassSystemDefines(**data.get("class_system", {})),
             state_ai=StateApparatusAIDefines(**data.get("state_ai", {})),
             institution=InstitutionDefines(**data.get("institution", {})),

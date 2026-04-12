@@ -2,7 +2,8 @@
 
 Provides terrain classification, typed infrastructure on H3 mesh edges and
 vertices, biocapacity extraction, nonlocal edges for airports/shipping lanes,
-internet consciousness field operations, and weighted Laplacian integration.
+internet consciousness field operations, weighted Laplacian integration, and
+R8 geographic substrate generation/aggregation.
 
 See Also:
     ``specs/036-infrastructure-topology/spec.md``: Feature specification.
@@ -28,6 +29,10 @@ from babylon.infrastructure.protocols import (
     SpatialSnapper,
     TerrainClassifier,
 )
+
+# R8 Geographic Substrate (Feature 036-R8)
+from babylon.infrastructure.r8_pipeline import R8SubstrateResult, build_r8_substrate
+from babylon.infrastructure.r8_types import HexR8State, R8FeatureType, R8LinearFeature
 from babylon.infrastructure.terrain import (
     DefaultBiocapacityStore,
     DefaultTerrainClassifier,
@@ -61,6 +66,11 @@ __all__: list[str] = [
     "SurveillanceResult",
     "TerrainClassification",
     "VertexState",
+    # R8 Substrate DTOs
+    "HexR8State",
+    "R8FeatureType",
+    "R8LinearFeature",
+    "R8SubstrateResult",
     # Protocols
     "BiocapacityStore",
     "EdgeCapacityCalculator",
@@ -79,4 +89,6 @@ __all__: list[str] = [
     # Nonlocal edge generators
     "generate_airport_edges",
     "generate_shipping_edges",
+    # R8 Pipeline
+    "build_r8_substrate",
 ]

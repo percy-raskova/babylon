@@ -63,38 +63,44 @@ export function buildGraph(snapshot: GameSnapshot): Graph<NodeAttrs, EdgeAttrs> 
 
   // Add entity nodes
   for (const e of snapshot.entities) {
-    graph.addNode(e.id, {
-      label: e.name,
-      x: hashPosition(e.id, 1) * 100,
-      y: hashPosition(e.id, 2) * 100,
-      size: 4 + Math.min(e.wealth / 10, 12),
-      color: NODE_COLORS.entity,
-      nodeType: "entity",
-    });
+    if (!graph.hasNode(e.id)) {
+      graph.addNode(e.id, {
+        label: e.name,
+        x: hashPosition(e.id, 1) * 100,
+        y: hashPosition(e.id, 2) * 100,
+        size: 4 + Math.min(e.wealth / 10, 12),
+        color: NODE_COLORS.entity,
+        nodeType: "entity",
+      });
+    }
   }
 
   // Add territory nodes
   for (const t of snapshot.territories) {
-    graph.addNode(t.id, {
-      label: t.name,
-      x: hashPosition(t.id, 3) * 100,
-      y: hashPosition(t.id, 4) * 100,
-      size: 3 + Math.min(t.heat * 8, 10),
-      color: NODE_COLORS.territory,
-      nodeType: "territory",
-    });
+    if (!graph.hasNode(t.id)) {
+      graph.addNode(t.id, {
+        label: t.name,
+        x: hashPosition(t.id, 3) * 100,
+        y: hashPosition(t.id, 4) * 100,
+        size: 3 + Math.min(t.heat * 8, 10),
+        color: NODE_COLORS.territory,
+        nodeType: "territory",
+      });
+    }
   }
 
   // Add organization nodes
   for (const o of snapshot.organizations) {
-    graph.addNode(o.id, {
-      label: o.name,
-      x: hashPosition(o.id, 5) * 100,
-      y: hashPosition(o.id, 6) * 100,
-      size: 5 + Math.min(o.budget / 5, 10),
-      color: NODE_COLORS.organization,
-      nodeType: "organization",
-    });
+    if (!graph.hasNode(o.id)) {
+      graph.addNode(o.id, {
+        label: o.name,
+        x: hashPosition(o.id, 5) * 100,
+        y: hashPosition(o.id, 6) * 100,
+        size: 5 + Math.min(o.budget / 5, 10),
+        color: NODE_COLORS.organization,
+        nodeType: "organization",
+      });
+    }
   }
 
   // Add institution nodes

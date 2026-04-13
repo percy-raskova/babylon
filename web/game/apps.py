@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 
@@ -104,4 +105,9 @@ class GameConfig(AppConfig):
                     details TEXT
                 )
             """)
+            # Ensure snapshot_json column exists on pre-existing tables
+            with contextlib.suppress(Exception):
+                cursor.execute(
+                    "ALTER TABLE game_session ADD COLUMN snapshot_json TEXT NOT NULL DEFAULT '{}'"
+                )
         logger.info("Stub tables created (game_session, game_turn, action_result)")

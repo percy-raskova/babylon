@@ -51,3 +51,7 @@ LOGGING["loggers"]["django.db.backends"]["level"] = "WARNING"  # type: ignore[in
 # (GameSession, PlayerAction, ActionResult are managed=False in production
 # because they're created by the Postgres runtime DDL)
 STUB_CREATE_TABLES = True
+
+# Use deterministic MockEngineBridge instead of StubEngineBridge (Spec 045).
+# Snapshots persist to GameSession.snapshot_json and progress deterministically.
+BABYLON_MOCK_MODE = True

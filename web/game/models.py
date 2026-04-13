@@ -28,6 +28,7 @@ class GameSession(models.Model):
     status = models.CharField(max_length=16, default="active")
     config_json = models.JSONField(default=dict)
     game_defines_json = models.JSONField(default=dict)
+    snapshot_json = models.JSONField(default=dict)
     trace_level = models.CharField(max_length=8, default="NONE")
     rng_seed = models.BigIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

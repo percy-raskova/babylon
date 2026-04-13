@@ -799,17 +799,6 @@ class MockEngineBridge:
                 )
         return actions
 
-    def preview_action(self, _session_id: uuid.UUID, **_kwargs: Any) -> dict[str, Any]:
-        """Return a stub preview."""
-        return {
-            "estimated_consciousness_delta": 0.05,
-            "estimated_heat_delta": 0.02,
-            "action_point_cost": 1,
-            "success_probability": 0.85,
-            "affected_territory_ids": [],
-            "warnings": [],
-        }
-
     # ------------------------------------------------------------------ #
     # Dashboard / inspector endpoints (mostly empty stubs)
     # ------------------------------------------------------------------ #
@@ -854,6 +843,169 @@ class MockEngineBridge:
         snap = self.get_snapshot(session_id)
         traps: dict[str, Any] = snap.get("traps", {})
         return traps
+
+    # ------------------------------------------------------------------ #
+    # Map Snapshot (GeoJSON for DeckGLMap)
+    # ------------------------------------------------------------------ #
+
+    def get_map_snapshot(
+        self,
+        session_id: uuid.UUID,
+        tick: int | None = None,
+        layer: str | None = None,
+        zoom: str = "county",
+    ) -> dict[str, Any]:
+        """Return a GeoJSON FeatureCollection for the hex map.
+
+        Generates features from the persisted snapshot territories with
+        H3-based geometry placeholders (DeckGLMap renders via H3HexagonLayer,
+        not GeoJSON geometry).
+        """
+        snap = self.get_snapshot(session_id)
+        effective_tick = tick if tick is not None else snap.get("tick", 0)
+        features: list[dict[str, Any]] = []
+        for t in snap.get("territories", []):
+            features.append(
+                {
+                    "type": "Feature",
+                    "id": t["id"],
+                    "properties": {
+                        "h3_index": t.get("h3_index"),
+                        "county_fips": "26163",
+                        "county_name": t["name"],
+                        "heat": t["heat"],
+                        "consciousness": 0.0,
+                        "wealth": 0.0,
+                        "rent": t.get("rent_level", 0),
+                        "biocapacity": t.get("biocapacity", 1.0),
+                        "population": t.get("population", 0),
+                        "profit_rate": snap.get("economy", {}).get("profit_rate", 0),
+                        "exploitation_rate": snap.get("economy", {}).get("exploitation_rate", 0),
+                        "occ": t.get("rent_level", 0),
+                        "imperial_rent": snap.get("economy", {}).get("imperial_rent", 0),
+                        "org_presence": len(
+                            [
+                                o
+                                for o in snap.get("organizations", [])
+                                if t["id"] in o.get("territory_ids", [])
+                            ]
+                        ),
+                    },
+                    "geometry": None,
+                }
+            )
+        return {
+            "type": "FeatureCollection",
+            "metadata": {
+                "tick": effective_tick,
+                "scenario": "wayne_county_mock",
+                "h3_resolution": 4,
+                "zoom": zoom,
+                "layer": layer,
+                "available_metrics": [
+                    "heat",
+                    "consciousness",
+                    "wealth",
+                    "rent",
+                    "biocapacity",
+                    "population",
+                    "profit_rate",
+                    "exploitation_rate",
+                    "occ",
+                    "imperial_rent",
+                    "org_presence",
+                ],
+            },
+            "features": features,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Domain Dashboards (scaffold stubs for API completeness)
+    # ------------------------------------------------------------------ #
+
+    def get_game_timeseries(self, _session_id: uuid.UUID) -> dict[str, Any]:
+        """Return empty time series — frontend accumulates via extractSummary."""
+        return {"data": []}
+
+    def get_economy_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
+        return {}
+
+    def get_communities_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
+        return {}
+
+    def get_organizations_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
+        return {}
+
+    def get_edges_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
+        return {}
+
+    def get_state_apparatus_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
+        return {}
+
+    def get_journal_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
+        return {}
+
+    def get_alerts_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
+        return {}
+
+    # ------------------------------------------------------------------ #
+    # Inspector Views
+    # ------------------------------------------------------------------ #
+
+    def get_inspector_node(self, session_id: uuid.UUID, node_id: str) -> dict[str, Any]:
+        """Return entity detail by ID for the inspector panel."""
+        snap = self.get_snapshot(session_id)
+        for e in snap.get("entities", []):
+            if e["id"] == node_id:
+                return dict(e)
+        return {"id": node_id, "type": "node", "details": "Not found"}
+
+    def get_inspector_org(self, session_id: uuid.UUID, org_id: str) -> dict[str, Any]:
+        """Return organization detail by ID for the inspector panel."""
+        snap = self.get_snapshot(session_id)
+        for o in snap.get("organizations", []):
+            if o["id"] == org_id:
+                return dict(o)
+        return {"id": org_id, "type": "organization", "details": "Not found"}
+
+    def get_inspector_community(self, _session_id: uuid.UUID, hyperedge_id: str) -> dict[str, Any]:
+        return {"id": hyperedge_id, "type": "community"}
+
+    def get_inspector_edge(self, _session_id: uuid.UUID, edge_id: str) -> dict[str, Any]:
+        return {"id": edge_id, "type": "edge"}
+
+    def get_inspector_hex(self, session_id: uuid.UUID, h3_index: str) -> dict[str, Any]:
+        """Return territory detail by H3 index for the inspector panel."""
+        snap = self.get_snapshot(session_id)
+        for t in snap.get("territories", []):
+            if t.get("h3_index") == h3_index:
+                return dict(t)
+        return {
+            "h3_index": h3_index,
+            "county_fips": "26163",
+            "county_name": "Wayne County",
+            "population": 0,
+            "heat": 0.0,
+        }
+
+    def preview_action(
+        self,
+        _session_id: uuid.UUID,
+        _org_id: str,
+        _verb: str,
+        _target_id: str,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        """Return a preview of the action's expected effects."""
+        return {
+            "status": "ok",
+            "preview": {
+                "consciousness_delta": 0.05,
+                "heat_delta": 0.02,
+                "cost": 1.0,
+                "success_probability": 0.8,
+            },
+        }
 
     # Verb-specific endpoints (return minimal stubs)
     # Parameters are part of the interface contract but unused in mock mode.

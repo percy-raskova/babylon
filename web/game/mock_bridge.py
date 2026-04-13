@@ -819,6 +819,19 @@ class MockEngineBridge:
                 return dict(t)
         return {}
 
+    def get_game_summary(self, session_id: uuid.UUID) -> dict[str, Any]:
+        """Return game summary for the TopBar indicators."""
+        snap = self.get_snapshot(session_id)
+        economy: dict[str, Any] = snap.get("economy", {})
+        return {
+            "tick": snap.get("tick", 0),
+            "profit_rate": economy.get("profit_rate", 0),
+            "exploitation_rate": economy.get("exploitation_rate", 0),
+            "phi": economy.get("imperial_rent", 0),
+            "hegemon": "institutionalist_bonapartist",
+            "alerts": [],
+        }
+
     def get_economy_summary(self, session_id: uuid.UUID) -> dict[str, Any]:
         """Return economy summary."""
         snap = self.get_snapshot(session_id)

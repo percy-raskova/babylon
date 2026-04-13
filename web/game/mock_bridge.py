@@ -659,7 +659,7 @@ class MockEngineBridge:
     def resolve_tick(
         self,
         session_id: uuid.UUID,
-        _persistent_context: dict[str, Any] | None = None,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Resolve one tick of mock progression.
 

@@ -92,12 +92,76 @@ class TestMapSnapshotShape:
         assert len(result["features"]) > 0
 
     def test_features_have_properties(self) -> None:
+        # Default zoom=county returns aggregated features with group_key
         result = self.bridge.get_map_snapshot(self.session_id)
         for feature in result["features"]:
             assert "properties" in feature
             props = feature["properties"]
             assert "heat" in props
+            assert "group_key" in props
+            assert "group_level" in props
+            assert "hex_count" in props
+
+    def test_hex_zoom_has_h3_index(self) -> None:
+        """At zoom=hex, each feature has an h3_index."""
+        result = self.bridge.get_map_snapshot(self.session_id, zoom="hex")
+        for feature in result["features"]:
+            props = feature["properties"]
             assert "h3_index" in props
+
+    def test_county_aggregation_groups_by_fips(self) -> None:
+        """County zoom aggregates 10 hexes into 3 county groups."""
+        result = self.bridge.get_map_snapshot(self.session_id, zoom="county")
+        features = result["features"]
+        group_keys = {f["properties"]["group_key"] for f in features}
+        assert group_keys == {"26163", "26125", "26099"}
+
+    def test_state_aggregation_single_group(self) -> None:
+        """State zoom aggregates all hexes into a single Michigan group."""
+        result = self.bridge.get_map_snapshot(self.session_id, zoom="state")
+        assert len(result["features"]) == 1
+        props = result["features"][0]["properties"]
+        assert props["group_key"] == "26"
+        assert props["group_name"] == "Michigan"
+
+    def test_cz_aggregation(self) -> None:
+        """CZ zoom aggregates all hexes into a single Detroit CZ group."""
+        result = self.bridge.get_map_snapshot(self.session_id, zoom="cz")
+        assert len(result["features"]) == 1
+        props = result["features"][0]["properties"]
+        assert props["group_key"] == "19804"
+        assert props["group_name"] == "Detroit CZ"
+
+    def test_msa_aggregation(self) -> None:
+        """MSA zoom aggregates all hexes into a single Detroit MSA group."""
+        result = self.bridge.get_map_snapshot(self.session_id, zoom="msa")
+        assert len(result["features"]) == 1
+        props = result["features"][0]["properties"]
+        assert props["group_key"] == "19820"
+
+    def test_bea_ea_aggregation(self) -> None:
+        """BEA EA zoom aggregates all hexes into a single DET group."""
+        result = self.bridge.get_map_snapshot(self.session_id, zoom="bea_ea")
+        assert len(result["features"]) == 1
+        props = result["features"][0]["properties"]
+        assert props["group_key"] == "DET"
+
+    def test_aggregation_sums_population(self) -> None:
+        """Population is summed, not averaged, during county aggregation."""
+        result = self.bridge.get_map_snapshot(self.session_id, zoom="county")
+        # Wayne county has 5 hexes: 245k + 180k + 95k + 110k + 75k = 705k
+        wayne = next(f for f in result["features"] if f["properties"]["group_key"] == "26163")
+        assert wayne["properties"]["population"] == 705000
+
+    def test_framing_fields_present_in_aggregated(self) -> None:
+        """Aggregated features carry all admin framing identifiers."""
+        result = self.bridge.get_map_snapshot(self.session_id, zoom="county")
+        for feature in result["features"]:
+            props = feature["properties"]
+            assert "state_fips" in props
+            assert "cz_id" in props
+            assert "bea_ea_code" in props
+            assert "msa_code" in props
 
     def test_has_metadata(self) -> None:
         result = self.bridge.get_map_snapshot(self.session_id)
@@ -242,6 +306,32 @@ class TestApiEndpointSmoke:
     def test_alerts_endpoint(self) -> None:
         resp = self.client.get(f"/api/games/{self.session_id}/alerts/")
         _assert_not_500(resp, "alerts/")
+
+    # -- Spatial Multi-Scale endpoints --
+
+    def test_org_network_endpoint(self) -> None:
+        resp = self.client.get(f"/api/games/{self.session_id}/orgs/network/")
+        _assert_not_500(resp, "orgs/network/")
+
+    def test_hypergraph_communities_endpoint(self) -> None:
+        resp = self.client.get(f"/api/games/{self.session_id}/hypergraph/communities/")
+        _assert_not_500(resp, "hypergraph/communities/")
+
+    def test_infrastructure_endpoint(self) -> None:
+        resp = self.client.get(f"/api/games/{self.session_id}/infrastructure/")
+        _assert_not_500(resp, "infrastructure/")
+
+    def test_map_cz_zoom_endpoint(self) -> None:
+        resp = self.client.get(f"/api/games/{self.session_id}/map/?zoom=cz")
+        _assert_not_500(resp, "map/?zoom=cz")
+
+    def test_map_bea_ea_zoom_endpoint(self) -> None:
+        resp = self.client.get(f"/api/games/{self.session_id}/map/?zoom=bea_ea")
+        _assert_not_500(resp, "map/?zoom=bea_ea")
+
+    def test_map_hex_zoom_endpoint(self) -> None:
+        resp = self.client.get(f"/api/games/{self.session_id}/map/?zoom=hex")
+        _assert_not_500(resp, "map/?zoom=hex")
 
     # -- Inspector endpoints --
 

@@ -42,6 +42,18 @@ urlpatterns: list[URLPattern] = [
     ),
     path("games/<str:game_id>/journal/", api.game_journal, name="game-journal"),
     path("games/<str:game_id>/alerts/", api.game_alerts, name="game-alerts"),
+    # API: Spatial Multi-Scale
+    path("games/<str:game_id>/orgs/network/", api.org_network, name="org-network"),
+    path(
+        "games/<str:game_id>/hypergraph/communities/",
+        api.hypergraph_communities,
+        name="hypergraph-communities",
+    ),
+    path(
+        "games/<str:game_id>/infrastructure/",
+        api.game_infrastructure,
+        name="game-infrastructure",
+    ),
     # API: Inspector Drill-Downs
     path("games/<str:game_id>/node/<str:node_id>/", api.inspector_node, name="inspector-node"),
     path("games/<str:game_id>/org/<str:org_id>/", api.inspector_org, name="inspector-org"),

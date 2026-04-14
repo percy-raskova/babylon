@@ -373,8 +373,10 @@ def game_state(request: Request, game_id: str) -> JsonResponse:
 
 
 # ---- Zoom levels for multi-resolution map --------------------------------
-# Tier hierarchy: state → bea → msa → county → hex
-VALID_ZOOM_LEVELS: frozenset[str] = frozenset(["state", "bea", "msa", "county", "hex"])
+# Tier hierarchy: state → bea_ea → msa → county → cz → hex
+VALID_ZOOM_LEVELS: frozenset[str] = frozenset(
+    ["state", "bea", "bea_ea", "msa", "county", "cz", "hex"]
+)
 DEFAULT_ZOOM = "county"
 
 
@@ -556,6 +558,72 @@ def game_alerts(request: Request, game_id: str) -> JsonResponse:
         return _error("Game not found", http_status=404)
     bridge = _get_bridge()
     data = bridge.get_alerts_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+# ---------------------------------------------------------------------- #
+# Spatial Multi-Scale Endpoints
+# ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def org_network(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/orgs/network/ — Org-network graph.
+
+    Returns nodes (orgs, institutions, territories) and edges
+    (PRESENCE, SOLIDARITY, EXPLOITATION, etc.) for the topology graph panel.
+
+    Query parameters:
+        territory (str, optional): Filter to orgs operating in this territory.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    territory_filter = request.query_params.get("territory")
+    data = bridge.get_org_network(
+        uuid.UUID(str(session.id)),
+        territory_filter=territory_filter,
+    )
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def hypergraph_communities(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/hypergraph/communities/ — Hyperedge data.
+
+    Returns N-ary community memberships for compound-node graph rendering.
+
+    Query parameters:
+        territory (str, optional): Filter to communities with members in this territory.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    territory_filter = request.query_params.get("territory")
+    data = bridge.get_hypergraph_communities(
+        uuid.UUID(str(session.id)),
+        territory_filter=territory_filter,
+    )
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_infrastructure(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/infrastructure/ — Infrastructure network.
+
+    Returns nodes (hubs) and edges (corridors) for map overlay rendering.
+    Future phase — currently returns empty collections.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_infrastructure(uuid.UUID(str(session.id)))
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 

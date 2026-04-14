@@ -2,10 +2,10 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.8.2 → 1.10.0
-Bump Rationale: Two MINOR additions — Article X (Deployment Infrastructure,
-  6 principles) and II.8 (Client as Presentation Layer). Each is a new
-  principle/section → MINOR per governance policy. Combined: 1.9.0 + 1.10.0.
+Version Change: 1.10.0 → 1.10.1
+Bump Rationale: PATCH — added three spatial framing data sources to III.4
+  (USDA ERS CZs, BEA EAs, OMB CBSAs). No new principles or sections.
+  Required by Multi-Scale Spatial Rendering spec.
 
 Modified Principles:
   - II: Added II.8 Client as Presentation Layer
@@ -154,7 +154,7 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **3. Physics Cosplay Prohibition** — Tensor notation earns its keep through actual invariance. Reject formalism without transformation laws.
 
-**4. Data Source Traceability** — Approved: QCEW, Census/ACS, BEA, FRED, HIFLD, BTS, FCC, ATUS, CDC WONDER, Piketty/WID, PWT, Census Trade, Eviction Lab, US Courts, ATTOM/CoreLogic, Fed SCF, Fed Z.1 Financial Accounts, Chetty Opportunity Atlas, Natural Earth. New sources require explicit addition.
+**4. Data Source Traceability** — Approved: QCEW, Census/ACS, BEA, FRED, HIFLD, BTS, FCC, ATUS, CDC WONDER, Piketty/WID, PWT, Census Trade, Eviction Lab, US Courts, ATTOM/CoreLogic, Fed SCF, Fed Z.1 Financial Accounts, Chetty Opportunity Atlas, Natural Earth, USDA ERS Commuting Zones (derived from Census JTW), BEA Economic Areas (BEA regional definitions), OMB Core-Based Statistical Areas/CBSAs (OMB metro area definitions). New sources require explicit addition.
 
 **5. Empirical vs Strategic Separation** — Material conditions from data (nodes, constraints, extractive edges). Strategic intervention NOT from data (solidaristic edges, organizing, consciousness-raising).
 
@@ -244,4 +244,4 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 ______________________________________________________________________
 
-**Version**: 1.10.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-03-01
+**Version**: 1.10.1 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-04-14

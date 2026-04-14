@@ -25,6 +25,7 @@ import { NotificationToast } from "@/components/events/NotificationToast";
 import { EndgameOverlay } from "@/components/layout/EndgameOverlay";
 import { detectEndgame } from "@/utils/endgame";
 import type { ActionResultData, EndgameData } from "@/types/game";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 interface GameShellProps {
   username: string;
@@ -94,8 +95,18 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
 
   if (!snapshot) {
     return (
-      <div className="flex h-screen items-center justify-center text-silver">
-        No state available
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-void text-center">
+        <p className="text-base font-medium text-silver">No state available</p>
+        {error && <p className="text-sm text-crimson">{error}</p>}
+        <p className="max-w-sm text-xs text-ash">
+          This usually means the session expired or you aren&apos;t logged in. Try logging in again.
+        </p>
+        <button
+          onClick={onBack}
+          className="rounded border border-wet-concrete px-4 py-2 text-sm text-silver hover:border-gold"
+        >
+          ← Back to Games
+        </button>
       </div>
     );
   }
@@ -141,7 +152,9 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
           {/* Map + critical notification overlay */}
           <div className="relative flex-1 overflow-hidden p-3">
             <div className="h-full rounded-lg border border-wet-concrete bg-dark-metal">
-              <DeckGLMap snapshot={snapshot} />
+              <ErrorBoundary fallbackLabel="Map">
+                <DeckGLMap snapshot={snapshot} />
+              </ErrorBoundary>
             </div>
             {/* Critical event toast overlay */}
             <NotificationToast
@@ -154,10 +167,26 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
 
           {/* Bottom panel */}
           <BottomPanel>
-            {bottomTab === "timeseries" && <TimeSeries snapshot={snapshot} />}
-            {bottomTab === "events" && <EventLog snapshot={snapshot} />}
-            {bottomTab === "graph" && <GraphView snapshot={snapshot} />}
-            {bottomTab === "notifications" && <EventLog snapshot={snapshot} grouped />}
+            {bottomTab === "timeseries" && (
+              <ErrorBoundary fallbackLabel="Time Series">
+                <TimeSeries snapshot={snapshot} />
+              </ErrorBoundary>
+            )}
+            {bottomTab === "events" && (
+              <ErrorBoundary fallbackLabel="Event Log">
+                <EventLog snapshot={snapshot} />
+              </ErrorBoundary>
+            )}
+            {bottomTab === "graph" && (
+              <ErrorBoundary fallbackLabel="Topology Graph">
+                <GraphView snapshot={snapshot} />
+              </ErrorBoundary>
+            )}
+            {bottomTab === "notifications" && (
+              <ErrorBoundary fallbackLabel="Notifications">
+                <EventLog snapshot={snapshot} grouped />
+              </ErrorBoundary>
+            )}
           </BottomPanel>
         </div>
 

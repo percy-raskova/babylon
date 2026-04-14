@@ -60,7 +60,7 @@ function extractLinkedEntity(event: GameEvent): {
   if (data?.entity_id || data?.source_id) {
     return {
       linkedEntityId: (data.entity_id ?? data.source_id) as string,
-      linkedEntityType: "entity",
+      linkedEntityType: "organization",
     };
   }
   return { linkedEntityId: null, linkedEntityType: null };

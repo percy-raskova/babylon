@@ -96,7 +96,7 @@ describe("Wayne County Frontend Contract", () => {
       expect(
         screen.getAllByText("Wayne County Organizing Committee").length,
       ).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("civil_society").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("civil_society_org").length).toBeGreaterThanOrEqual(1);
     });
 
     it("falls back to basic display when vanguard is undefined", () => {
@@ -105,14 +105,16 @@ describe("Wayne County Frontend Contract", () => {
           {
             id: "ORG001",
             name: "Test Org",
-            org_type: "civil_society",
+            org_type: "civil_society_org",
             class_character: "proletarian",
             cohesion: 0.5,
             cadre_level: 0.1,
             budget: 100,
             heat: 0,
             territory_ids: [],
-            consciousness_tendency: "revolutionary",
+            hyperedge_memberships: [],
+            consciousness: { liberal: 0.05, fascist: 0.02, revolutionary: 0.93 },
+            ooda: { observe: 0.6, orient: 0.5, decide: 0.7, act: 0.8, cycle_ticks: 1 },
             vanguard: undefined,
           },
         ],
@@ -141,21 +143,18 @@ describe("Wayne County Frontend Contract", () => {
       renderWithWayneCounty({
         traps: {
           liberal: {
-            trap_type: "liberal",
             severity: "moderate",
             score: 0.6,
             indicators: ["Excessive electoral focus"],
             ticks_at_moderate: 2,
           },
           ultra_left: {
-            trap_type: "ultra_left",
             severity: "none",
             score: 0.1,
             indicators: [],
             ticks_at_moderate: 0,
           },
           rightist: {
-            trap_type: "rightist",
             severity: "none",
             score: 0.0,
             indicators: [],
@@ -175,21 +174,18 @@ describe("Wayne County Frontend Contract", () => {
       renderWithWayneCounty({
         traps: {
           liberal: {
-            trap_type: "liberal",
             severity: "none",
             score: 0.0,
             indicators: [],
             ticks_at_moderate: 0,
           },
           ultra_left: {
-            trap_type: "ultra_left",
             severity: "severe",
             score: 1.0,
             indicators: [],
             ticks_at_moderate: 5,
           },
           rightist: {
-            trap_type: "rightist",
             severity: "none",
             score: 0.0,
             indicators: [],

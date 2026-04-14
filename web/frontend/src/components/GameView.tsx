@@ -32,7 +32,7 @@ export function GameView({ gameId, onBack }: GameViewProps) {
     if (!snapshot) return null;
     return (
       snapshot.organizations.find(
-        (o) => o.class_character === "proletarian" && o.org_type === "civil_society",
+        (o) => o.class_character === "proletarian" && o.org_type === "civil_society_org",
       ) ??
       snapshot.organizations[0] ??
       null

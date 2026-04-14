@@ -4,6 +4,9 @@
  * PersistentIndicators renders pinned indicators from uiStore using
  * IndicatorChip. Default pinned: avg_consciousness, avg_heat,
  * avg_organization, imperial_rent.
+ *
+ * Updated for Spec 052: consciousness from org revolutionary component,
+ * organization from cadre_level, imperial_rent from derived block.
  */
 
 import { describe, it, expect } from "vitest";
@@ -30,21 +33,23 @@ describe("PersistentIndicators", () => {
   });
 
   it("computes average consciousness correctly", () => {
-    const snap = makeSnapshot(); // 2 entities: consciousness 0.3 and 0.1 -> avg 0.2
+    // Default fixture: 1 org with consciousness.revolutionary = 0.85 -> avg 0.85
+    const snap = makeSnapshot();
     render(<PersistentIndicators snapshot={snap} />);
-    expect(screen.getByText("0.20")).toBeInTheDocument();
+    expect(screen.getByText("0.85")).toBeInTheDocument();
   });
 
   it("shows imperial rent value", () => {
-    const snap = makeSnapshot(); // economy.imperial_rent = 50
+    // derived.imperial_rent.total = 15.5
+    const snap = makeSnapshot();
     render(<PersistentIndicators snapshot={snap} />);
-    expect(screen.getByText("$50.0")).toBeInTheDocument();
+    expect(screen.getByText("$15.5")).toBeInTheDocument();
   });
 
   it("shows avg organization value", () => {
+    // 1 org with cadre_level = 0.35 -> avg = 0.35
     const snap = makeSnapshot();
     render(<PersistentIndicators snapshot={snap} />);
-    // Both entities have organization 0.15 -> avg = 0.15
-    expect(screen.getByText("0.15")).toBeInTheDocument();
+    expect(screen.getByText("0.35")).toBeInTheDocument();
   });
 });

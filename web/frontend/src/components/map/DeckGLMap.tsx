@@ -17,6 +17,7 @@ import { getColorScale, type RGBAColor } from "@/theme/colors";
 import { LayerControls } from "@/components/map/LayerControls";
 import { MapLegend } from "@/components/map/MapLegend";
 import { HexTooltip } from "@/components/map/HexTooltip";
+import { FramingSelector } from "@/components/map/FramingSelector";
 import type { GameSnapshot, TerritoryState, MapLayer } from "@/types/game";
 
 /** Dark basemap style — no external tiles, pure background. */
@@ -56,6 +57,13 @@ function getMetricValue(territory: TerritoryState, layer: MapLayer): number {
       return territory.biocapacity;
     case "population":
       return Math.min(territory.population / 1_000_000, 1);
+    case "profit_rate":
+    case "exploitation_rate":
+    case "occ":
+    case "imperial_rent":
+    case "org_presence":
+      // Extended metrics — render with rent_level as fallback
+      return territory.rent_level;
   }
 }
 
@@ -146,6 +154,11 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
       <div className="absolute left-3 top-3 z-10 flex flex-col gap-2 rounded-md bg-void/80 p-2 backdrop-blur-sm">
         <LayerControls />
         <MapLegend />
+      </div>
+
+      {/* Framing level selector */}
+      <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
+        <FramingSelector />
       </div>
 
       {/* Map */}

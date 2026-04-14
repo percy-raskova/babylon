@@ -2,6 +2,9 @@
  * Integration test: full action submission flow.
  *
  * Tests the ActionComposer → API → store → re-render cycle.
+ *
+ * Updated for Spec 052: educate targets hyperedges, not entities.
+ * Full flow test uses mobilize→territory instead.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -14,22 +17,22 @@ import { makeSnapshot } from "@/test/fixtures";
 describe("action submission flow", () => {
   const snapshot = makeSnapshot();
 
-  it("completes full verb → target → submit cycle", async () => {
+  it("completes full verb → target → submit cycle (mobilize + territory)", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
     render(<ActionComposer snapshot={snapshot} onSubmit={onSubmit} resolving={false} />);
 
-    // Step 1: Org is auto-selected (only 1 org). Select verb "Educate"
-    await user.click(screen.getByText("Educate"));
+    // Step 1: Org is auto-selected (has vanguard). Select verb "Mobilize"
+    await user.click(screen.getByText("Mobilize"));
 
-    // Step 2: Target selector appears — select an entity
+    // Step 2: Target selector appears — select a territory
     await waitFor(() => {
       expect(screen.getByText("Select Target")).toBeInTheDocument();
     });
 
-    // The TargetSelector shows entities by name — click "Proletariat"
-    await user.click(screen.getByText("Proletariat"));
+    // The TargetSelector shows territories by name — click "Downtown"
+    await user.click(screen.getByText("Downtown"));
 
     // Step 3: Preview should show with Submit button
     await waitFor(() => {
@@ -42,8 +45,9 @@ describe("action submission flow", () => {
       expect(onSubmit).toHaveBeenCalledOnce();
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({
-          verb: "educate",
+          verb: "mobilize",
           org_id: "org-workers-union",
+          target_id: "territory-downtown",
         }),
       );
     });

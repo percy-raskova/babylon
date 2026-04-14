@@ -1,5 +1,8 @@
 /**
  * Unit tests for the ActionComposer component.
+ *
+ * Updated for Spec 052: player orgs identified by vanguard presence.
+ * Educate targets hyperedges, not entities.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -23,7 +26,7 @@ describe("ActionComposer", () => {
 
   it("shows verb grid when org is selected", () => {
     render(<ActionComposer {...defaultProps} />);
-    // With organizations in snapshot, first org is auto-selected
+    // With organizations in snapshot (and vanguard present), first org is auto-selected
     expect(screen.getByText("Select Verb")).toBeInTheDocument();
     expect(screen.getByText("Educate")).toBeInTheDocument();
   });
@@ -38,6 +41,30 @@ describe("ActionComposer", () => {
   it("shows empty state when no organizations", () => {
     const emptySnap = makeSnapshot({ organizations: [] });
     render(<ActionComposer {...defaultProps} snapshot={emptySnap} />);
+    expect(screen.getByText(/No organizations available/)).toBeInTheDocument();
+  });
+
+  it("shows empty state when no orgs have vanguard", () => {
+    const noVanguardSnap = makeSnapshot({
+      organizations: [
+        {
+          id: "org-no-vanguard",
+          name: "Observer Org",
+          org_type: "civil_society_org",
+          class_character: "proletarian",
+          cohesion: 0.5,
+          cadre_level: 0.1,
+          budget: 10,
+          heat: 0,
+          territory_ids: [],
+          hyperedge_memberships: [],
+          consciousness: { liberal: 0.5, fascist: 0.1, revolutionary: 0.4 },
+          ooda: { observe: 0.5, orient: 0.5, decide: 0.5, act: 0.5, cycle_ticks: 1 },
+          // No vanguard — not player-controllable
+        },
+      ],
+    });
+    render(<ActionComposer {...defaultProps} snapshot={noVanguardSnap} />);
     expect(screen.getByText(/No organizations available/)).toBeInTheDocument();
   });
 
@@ -69,15 +96,15 @@ describe("ActionComposer", () => {
     expect(screen.getByText("Submit Action")).toBeInTheDocument();
   });
 
-  it("full flow: verb → target → preview → submit", async () => {
+  it("full flow: verb → target → preview → submit (mobilize + territory)", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ActionComposer {...defaultProps} onSubmit={onSubmit} />);
 
-    // Select verb
-    await user.click(screen.getByText("Educate"));
+    // Select verb (mobilize targets territories)
+    await user.click(screen.getByText("Mobilize"));
     // Select target
-    await user.click(screen.getByText("Proletariat"));
+    await user.click(screen.getByText("Downtown"));
     // Preview should appear
     expect(screen.getByText("Action Preview")).toBeInTheDocument();
     // Submit
@@ -86,8 +113,8 @@ describe("ActionComposer", () => {
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
         org_id: "org-workers-union",
-        verb: "educate",
-        target_id: "entity-proletariat",
+        verb: "mobilize",
+        target_id: "territory-downtown",
       });
     });
   });

@@ -1,11 +1,13 @@
 /**
  * Unit tests for the GraphView component (stubbed — Sigma.js mocked in setup.ts).
+ *
+ * Updated for Spec 052: no entities, edges use mode enum.
  */
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { GraphView } from "./GraphView";
-import { makeSnapshot, makeEntity, makeTerritory, makeEdge } from "@/test/fixtures";
+import { makeSnapshot, makeOrg, makeTerritory, makeEdge } from "@/test/fixtures";
 
 // Enhance useSigma mock to support the methods EdgeFilter calls
 vi.mock("@react-sigma/core", () => ({
@@ -24,9 +26,11 @@ vi.mock("@react-sigma/core", () => ({
 describe("GraphView", () => {
   it("renders without crashing with empty snapshot", () => {
     const snapshot = makeSnapshot({
-      entities: [],
       territories: [],
+      organizations: [],
+      institutions: [],
       edges: [],
+      hyperedges: [],
     });
     const { container } = render(<GraphView snapshot={snapshot} />);
     expect(container.querySelector("div")).toBeTruthy();
@@ -34,12 +38,12 @@ describe("GraphView", () => {
 
   it("renders with populated snapshot", () => {
     const snapshot = makeSnapshot({
-      entities: [
-        makeEntity({ id: "e1", name: "Worker" }),
-        makeEntity({ id: "e2", name: "Capitalist" }),
+      organizations: [
+        makeOrg({ id: "o1", name: "Workers" }),
+        makeOrg({ id: "o2", name: "Capitalists" }),
       ],
       territories: [makeTerritory({ id: "t1" })],
-      edges: [makeEdge({ source_id: "e1", target_id: "e2" })],
+      edges: [makeEdge({ source_id: "o1", target_id: "o2", mode: "EXTRACTIVE" })],
     });
     const { container } = render(<GraphView snapshot={snapshot} />);
     expect(container.querySelector("div")).toBeTruthy();
@@ -48,21 +52,32 @@ describe("GraphView", () => {
   it("renders edge filter buttons", () => {
     const snapshot = makeSnapshot({
       edges: [
-        makeEdge({ source_id: "e1", target_id: "e2", edge_type: "EXPLOITATION" }),
-        makeEdge({ source_id: "e1", target_id: "e2", edge_type: "SOLIDARITY" }),
+        makeEdge({
+          source_id: "org-finance-bloc",
+          target_id: "org-workers-union",
+          mode: "EXTRACTIVE",
+        }),
+        makeEdge({
+          id: "e2",
+          source_id: "org-workers-union",
+          target_id: "territory-downtown",
+          mode: "SOLIDARISTIC",
+        }),
       ],
     });
     render(<GraphView snapshot={snapshot} />);
     expect(screen.getByText("All")).toBeInTheDocument();
-    expect(screen.getByText("EXPLOITATION")).toBeInTheDocument();
-    expect(screen.getByText("SOLIDARITY")).toBeInTheDocument();
+    expect(screen.getByText("EXTRACTIVE")).toBeInTheDocument();
+    expect(screen.getByText("SOLIDARISTIC")).toBeInTheDocument();
   });
 
-  it("renders legend items", () => {
+  it("renders legend items (no Entity)", () => {
     const snapshot = makeSnapshot();
     const { container } = render(<GraphView snapshot={snapshot} />);
     const legendText = container.textContent ?? "";
-    expect(legendText).toContain("Entity");
+    expect(legendText).not.toContain("Entity");
     expect(legendText).toContain("Territory");
+    expect(legendText).toContain("Organization");
+    expect(legendText).toContain("Institution");
   });
 });

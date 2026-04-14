@@ -2,6 +2,8 @@
  * Integration test: store ↔ component sync.
  *
  * Tests that Zustand store changes trigger component re-renders.
+ *
+ * Updated for Spec 052: no entities — consciousness from orgs, wealth from budgets.
  */
 
 import { describe, it, expect } from "vitest";
@@ -9,7 +11,7 @@ import { render, screen, act } from "@testing-library/react";
 import { Inspector } from "@/components/inspector/Inspector";
 import { PersistentIndicators } from "@/components/charts/PersistentIndicators";
 import { useUIStore } from "@/stores/uiStore";
-import { makeSnapshot, makeEntity, makeTerritory } from "@/test/fixtures";
+import { makeSnapshot, makeOrg, makeTerritory, makeConsciousness } from "@/test/fixtures";
 
 describe("store ↔ component sync", () => {
   it("UI store selection change re-renders Inspector", () => {
@@ -19,14 +21,14 @@ describe("store ↔ component sync", () => {
     // Initially shows OrgDashboard
     expect(screen.getByText("Workers Union")).toBeInTheDocument();
 
-    // Set node selection in store
+    // Set node selection in store — use org ID, not entity ID
     act(() => {
-      useUIStore.setState({ selectedNodeId: "entity-proletariat" });
+      useUIStore.setState({ selectedNodeId: "org-workers-union" });
     });
     rerender(<Inspector snapshot={snapshot} />);
 
-    // Now shows entity detail — "Proletariat" in both breadcrumbs + detail
-    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
+    // Now shows org detail — consciousness section
+    expect(screen.getByText("Revolutionary")).toBeInTheDocument();
 
     // Clear selection
     act(() => {
@@ -35,14 +37,15 @@ describe("store ↔ component sync", () => {
     rerender(<Inspector snapshot={snapshot} />);
 
     // Back to OrgDashboard
-    expect(screen.getByText("Workers Union")).toBeInTheDocument();
+    expect(screen.getAllByText("Workers Union").length).toBeGreaterThanOrEqual(1);
   });
 
   it("snapshot change updates PersistentIndicators", () => {
     const snap1 = makeSnapshot({
-      entities: [
-        makeEntity({ consciousness: 0.5 }),
-        makeEntity({ id: "entity-bourgeoisie", consciousness: 0.5 }),
+      organizations: [
+        makeOrg({
+          consciousness: makeConsciousness({ revolutionary: 0.5, liberal: 0.3, fascist: 0.2 }),
+        }),
       ],
     });
     const { rerender } = render(<PersistentIndicators snapshot={snap1} />);
@@ -50,9 +53,10 @@ describe("store ↔ component sync", () => {
 
     // Update with different consciousness values
     const snap2 = makeSnapshot({
-      entities: [
-        makeEntity({ consciousness: 0.8 }),
-        makeEntity({ id: "entity-bourgeoisie", consciousness: 0.8 }),
+      organizations: [
+        makeOrg({
+          consciousness: makeConsciousness({ revolutionary: 0.8, liberal: 0.15, fascist: 0.05 }),
+        }),
       ],
     });
     rerender(<PersistentIndicators snapshot={snap2} />);

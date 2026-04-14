@@ -45,13 +45,16 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
   const clearBreadcrumbs = useUIStore((s) => s.clearBreadcrumbs);
   const setSelectedHex = useUIStore((s) => s.setSelectedHex);
   const setSelectedNode = useUIStore((s) => s.setSelectedNode);
+  const graphPanelOpen = useUIStore((s) => s.graphPanelOpen);
+  const graphPanelWidth = useUIStore((s) => s.graphPanelWidth);
+  const toggleGraphPanel = useUIStore((s) => s.toggleGraphPanel);
 
   // Find the player org for the resource panel
   const playerOrg = useMemo(() => {
     if (!snapshot) return null;
     return (
       snapshot.organizations.find(
-        (o) => o.class_character === "proletarian" && o.org_type === "civil_society",
+        (o) => o.class_character === "proletarian" && o.org_type === "civil_society_org",
       ) ??
       snapshot.organizations[0] ??
       null
@@ -145,8 +148,47 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
         <TrapIndicator traps={snapshot.traps} />
       </div>
 
-      {/* Main area: map + right panel */}
+      {/* Main area: graph panel (left) + map (center) + right panel */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Left panel: Topology graph (Option A — peer panel) */}
+        {graphPanelOpen && (
+          <div
+            className="flex shrink-0 flex-col overflow-hidden border-r border-wet-concrete"
+            style={{ width: graphPanelWidth }}
+          >
+            <div className="flex items-center justify-between border-b border-wet-concrete bg-void px-3 py-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-ash">
+                Topology
+              </span>
+              <button
+                onClick={toggleGraphPanel}
+                className="text-[10px] text-ash hover:text-gold"
+                title="Collapse graph panel"
+                data-testid="collapse-graph-panel"
+              >
+                ◀
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden p-2">
+              <ErrorBoundary fallbackLabel="Topology Graph">
+                <GraphView snapshot={snapshot} />
+              </ErrorBoundary>
+            </div>
+          </div>
+        )}
+
+        {/* Graph panel collapsed toggle */}
+        {!graphPanelOpen && (
+          <button
+            onClick={toggleGraphPanel}
+            className="flex w-6 shrink-0 items-center justify-center border-r border-wet-concrete bg-void text-[10px] text-ash hover:bg-dark-metal hover:text-gold"
+            title="Expand graph panel"
+            data-testid="expand-graph-panel"
+          >
+            ▶
+          </button>
+        )}
+
         {/* Center: map + bottom panel */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Map + critical notification overlay */}
@@ -165,7 +207,7 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
           {/* Lens selector */}
           <LensBar />
 
-          {/* Bottom panel */}
+          {/* Bottom panel (graph tab removed — now in left panel) */}
           <BottomPanel>
             {bottomTab === "timeseries" && (
               <ErrorBoundary fallbackLabel="Time Series">
@@ -175,11 +217,6 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
             {bottomTab === "events" && (
               <ErrorBoundary fallbackLabel="Event Log">
                 <EventLog snapshot={snapshot} />
-              </ErrorBoundary>
-            )}
-            {bottomTab === "graph" && (
-              <ErrorBoundary fallbackLabel="Topology Graph">
-                <GraphView snapshot={snapshot} />
               </ErrorBoundary>
             )}
             {bottomTab === "notifications" && (

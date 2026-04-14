@@ -42,14 +42,11 @@ export function Inspector({ snapshot }: InspectorProps) {
 
   useEffect(() => {
     if (selectedNodeId && selectedNodeId !== prevNodeRef.current) {
-      const entity = snapshot.entities.find((e) => e.id === selectedNodeId);
       const org = snapshot.organizations.find((o) => o.id === selectedNodeId);
       const inst = snapshot.institutions.find((i) => i.id === selectedNodeId);
-      const found = entity ?? org ?? inst;
+      const found = org ?? inst;
       if (found) {
-        let entityType: "entity" | "organization" | "institution" = "institution";
-        if (entity) entityType = "entity";
-        else if (org) entityType = "organization";
+        const entityType: "organization" | "institution" = org ? "organization" : "institution";
         pushBreadcrumb({
           entityType,
           entityId: selectedNodeId,
@@ -59,14 +56,7 @@ export function Inspector({ snapshot }: InspectorProps) {
       }
     }
     prevNodeRef.current = selectedNodeId;
-  }, [
-    selectedNodeId,
-    snapshot.entities,
-    snapshot.organizations,
-    snapshot.institutions,
-    pushBreadcrumb,
-    activeLens,
-  ]);
+  }, [selectedNodeId, snapshot.organizations, snapshot.institutions, pushBreadcrumb, activeLens]);
 
   const hasSelection = selectedNodeId || selectedHexId;
 

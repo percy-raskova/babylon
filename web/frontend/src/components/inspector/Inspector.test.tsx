@@ -18,10 +18,10 @@ describe("Inspector", () => {
   });
 
   it("shows NodeInspector when nodeId selected", () => {
-    useUIStore.setState({ selectedNodeId: "entity-proletariat" });
+    useUIStore.setState({ selectedNodeId: "org-workers-union" });
     render(<Inspector snapshot={snapshot} />);
-    // "Proletariat" may appear in breadcrumbs + inspector detail
-    expect(screen.getAllByText("Proletariat").length).toBeGreaterThanOrEqual(1);
+    // "Workers Union" may appear in breadcrumbs + inspector detail
+    expect(screen.getAllByText("Workers Union").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows HexInspector when hexId selected", () => {
@@ -33,23 +33,23 @@ describe("Inspector", () => {
 
   it("node selection takes priority over hex selection", () => {
     useUIStore.setState({
-      selectedNodeId: "entity-proletariat",
+      selectedNodeId: "org-workers-union",
       selectedHexId: "territory-downtown",
     });
     render(<Inspector snapshot={snapshot} />);
-    // Should show entity detail (P(Acquiescence) is unique to entity)
-    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
+    // Should show org detail (Class Character is unique to org)
+    expect(screen.getByText("proletarian")).toBeInTheDocument();
   });
 
   it("overview button resets node selection", async () => {
     const user = userEvent.setup();
     useUIStore.setState({
-      selectedNodeId: "entity-proletariat",
+      selectedNodeId: "org-workers-union",
       breadcrumbs: [
         {
-          entityType: "entity",
-          entityId: "entity-proletariat",
-          displayName: "Proletariat",
+          entityType: "organization",
+          entityId: "org-workers-union",
+          displayName: "Workers Union",
           lensId: "political",
         },
       ],

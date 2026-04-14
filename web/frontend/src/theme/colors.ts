@@ -79,6 +79,16 @@ export function getColorScale(layer: MapLayer): (v: number) => RGBAColor {
       return biocapacityScale;
     case "population":
       return populationScale;
+    case "profit_rate":
+      return wealthScale;
+    case "exploitation_rate":
+      return rentScale;
+    case "occ":
+      return wealthScale;
+    case "imperial_rent":
+      return heatScale;
+    case "org_presence":
+      return consciousnessScale;
   }
 }
 

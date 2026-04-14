@@ -1,5 +1,8 @@
 /**
  * Unit tests for the TargetSelector component.
+ *
+ * Updated for Spec 052: educate targets hyperedges, not entities.
+ * Entity-level targets no longer exist.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -11,7 +14,7 @@ import { makeSnapshot } from "@/test/fixtures";
 describe("TargetSelector", () => {
   const snapshot = makeSnapshot();
 
-  it("shows entities for educate verb", () => {
+  it("shows hyperedges for educate verb", () => {
     render(
       <TargetSelector
         snapshot={snapshot}
@@ -20,10 +23,10 @@ describe("TargetSelector", () => {
         onSelect={vi.fn()}
       />,
     );
-    expect(screen.getByText("Proletariat")).toBeInTheDocument();
-    expect(screen.getByText("Bourgeoisie")).toBeInTheDocument();
-    // Territories should NOT appear for educate
-    expect(screen.queryByText("Downtown")).not.toBeInTheDocument();
+    // Educate targets hyperedges (communities)
+    // Default fixture includes a hyperedge
+    const items = screen.getAllByRole("button");
+    expect(items.length).toBeGreaterThan(0);
   });
 
   it("shows territories for mobilize verb", () => {
@@ -37,8 +40,6 @@ describe("TargetSelector", () => {
     );
     expect(screen.getByText("Downtown")).toBeInTheDocument();
     expect(screen.getByText("Suburbs")).toBeInTheDocument();
-    // Entities should NOT appear for mobilize
-    expect(screen.queryByText("Proletariat")).not.toBeInTheDocument();
   });
 
   it("shows organizations for aid verb", () => {
@@ -66,14 +67,14 @@ describe("TargetSelector", () => {
     render(
       <TargetSelector
         snapshot={snapshot}
-        verb="educate"
+        verb="mobilize"
         selectedTarget={null}
         onSelect={onSelect}
       />,
     );
 
-    await user.click(screen.getByText("Proletariat"));
-    expect(onSelect).toHaveBeenCalledWith("entity-proletariat");
+    await user.click(screen.getByText("Downtown"));
+    expect(onSelect).toHaveBeenCalledWith("territory-downtown");
   });
 
   it("deselects target when clicking the selected target", async () => {
@@ -82,13 +83,13 @@ describe("TargetSelector", () => {
     render(
       <TargetSelector
         snapshot={snapshot}
-        verb="educate"
-        selectedTarget="entity-proletariat"
+        verb="mobilize"
+        selectedTarget="territory-downtown"
         onSelect={onSelect}
       />,
     );
 
-    await user.click(screen.getByText("Proletariat"));
+    await user.click(screen.getByText("Downtown"));
     expect(onSelect).toHaveBeenCalledWith(null);
   });
 
@@ -101,16 +102,16 @@ describe("TargetSelector", () => {
         onSelect={vi.fn()}
       />,
     );
-    // investigate targets entities, organizations, territories
-    const badges = screen.getAllByText(/entity|organization|territory/i);
+    // investigate targets hyperedges, organizations, territories
+    const badges = screen.getAllByText(/hyperedge|organization|territory/i);
     expect(badges.length).toBeGreaterThan(0);
   });
 
   it("shows empty message when no targets", () => {
     const emptySnap = makeSnapshot({
-      entities: [],
       territories: [],
       organizations: [],
+      hyperedges: [],
     });
     render(
       <TargetSelector

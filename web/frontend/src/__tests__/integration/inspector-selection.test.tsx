@@ -3,6 +3,8 @@
  *
  * Tests that store selections drive Inspector content.
  * Inspector now uses Breadcrumbs (with "Overview" button) instead of "Clear".
+ *
+ * Updated for Spec 052: no entity nodes — orgs and territories only.
  */
 
 import { describe, it, expect } from "vitest";
@@ -21,11 +23,11 @@ describe("inspector selection routing", () => {
     expect(screen.getByText("Workers Union")).toBeInTheDocument();
   });
 
-  it("switches to NodeInspector when node selected via store", () => {
-    useUIStore.setState({ selectedNodeId: "entity-proletariat" });
+  it("switches to NodeInspector when org selected via store", () => {
+    useUIStore.setState({ selectedNodeId: "org-workers-union" });
     render(<Inspector snapshot={snapshot} />);
-    // Unique to entity detail — breadcrumbs also show "Proletariat"
-    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
+    // OrgDetail shows consciousness section
+    expect(screen.getByText("Revolutionary")).toBeInTheDocument();
   });
 
   it("switches to HexInspector when hex selected via store", () => {
@@ -37,30 +39,30 @@ describe("inspector selection routing", () => {
 
   it("node selection takes priority over hex selection", () => {
     useUIStore.setState({
-      selectedNodeId: "entity-proletariat",
+      selectedNodeId: "org-workers-union",
       selectedHexId: "territory-downtown",
     });
     render(<Inspector snapshot={snapshot} />);
-    // P(Acquiescence) is unique to entity detail view
-    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
+    // OrgDetail shows class character
+    expect(screen.getByText("proletarian")).toBeInTheDocument();
   });
 
   it("overview button returns to OrgDashboard", async () => {
     const user = userEvent.setup();
     useUIStore.setState({
-      selectedNodeId: "entity-proletariat",
+      selectedNodeId: "org-workers-union",
       breadcrumbs: [
         {
-          entityType: "entity",
-          entityId: "entity-proletariat",
-          displayName: "Proletariat",
+          entityType: "organization",
+          entityId: "org-workers-union",
+          displayName: "Workers Union",
           lensId: "political",
         },
       ],
     });
     render(<Inspector snapshot={snapshot} />);
 
-    expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
+    expect(screen.getByText("Revolutionary")).toBeInTheDocument();
     await user.click(screen.getByText("Overview"));
 
     // After clearing, should reset selection

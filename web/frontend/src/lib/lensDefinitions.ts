@@ -6,6 +6,12 @@
  *
  * Per research.md R-009: indicator thresholds use three tiers (normal/warning/
  * critical) with per-indicator configurable boundaries.
+ *
+ * Updated for **Spec 052 — WorldState Snapshot Contract v0**:
+ * - Indicators that previously read from `snap.entities` now read from
+ *   `snap.derived.class_aggregates` or `snap.organizations`.
+ * - Economy data reads from `snap.derived.economy` / `snap.derived.imperial_rent`.
+ * - Edge types use the new `mode` enum.
  */
 
 import type {
@@ -28,8 +34,7 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     format: "currency",
     thresholds: { warning: 0.5, critical: 0.8, invert: false },
     compute: (snap: GameSnapshot) => {
-      const rent = snap.economy?.imperial_rent;
-      return typeof rent === "number" ? rent : 0;
+      return snap.derived?.imperial_rent?.total ?? 0;
     },
   },
   avg_consciousness: {
@@ -39,8 +44,10 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     format: "decimal",
     thresholds: { warning: 0.3, critical: 0.7, invert: false },
     compute: (snap: GameSnapshot) => {
-      const e = snap.entities;
-      return e.length > 0 ? e.reduce((s, x) => s + x.consciousness, 0) / e.length : 0;
+      // Average revolutionary consciousness across all organizations
+      const orgs = snap.organizations;
+      if (orgs.length === 0) return 0;
+      return orgs.reduce((s, o) => s + (o.consciousness?.revolutionary ?? 0), 0) / orgs.length;
     },
   },
   avg_heat: {
@@ -61,8 +68,10 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     format: "decimal",
     thresholds: { warning: 0.5, critical: 0.3, invert: true },
     compute: (snap: GameSnapshot) => {
-      const e = snap.entities;
-      return e.length > 0 ? e.reduce((s, x) => s + x.organization, 0) / e.length : 0;
+      // Use cadre_level as proxy for organizational capacity
+      const orgs = snap.organizations;
+      if (orgs.length === 0) return 0;
+      return orgs.reduce((s, o) => s + o.cadre_level, 0) / orgs.length;
     },
   },
   total_wealth: {
@@ -71,7 +80,7 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     unit: "$",
     format: "currency",
     thresholds: { warning: 500, critical: 200, invert: true },
-    compute: (snap: GameSnapshot) => snap.entities.reduce((s, e) => s + e.wealth, 0),
+    compute: (snap: GameSnapshot) => snap.organizations.reduce((s, o) => s + o.budget, 0),
   },
   total_population: {
     id: "total_population",
@@ -79,7 +88,11 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     unit: "",
     format: "integer",
     thresholds: { warning: 0, critical: 0, invert: false },
-    compute: (snap: GameSnapshot) => snap.entities.reduce((s, e) => s + e.population, 0),
+    compute: (snap: GameSnapshot) => {
+      // Sum from derived class aggregates
+      const aggs = snap.derived?.class_aggregates ?? {};
+      return Object.values(aggs).reduce((s, c) => s + (c.population ?? 0), 0);
+    },
   },
   org_count: {
     id: "org_count",
@@ -125,8 +138,11 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     unit: "",
     format: "decimal",
     thresholds: { warning: 0.3, critical: 0.6, invert: false },
-    compute: (snap: GameSnapshot) =>
-      snap.entities.reduce((max, e) => Math.max(max, e.p_revolution), 0),
+    compute: (snap: GameSnapshot) => {
+      // Max p_revolution from per-hyperedge predictions
+      const preds = snap.derived?.predictions?.per_hyperedge ?? {};
+      return Object.values(preds).reduce((max, p) => Math.max(max, p.p_revolution ?? 0), 0);
+    },
   },
   p_acquiescence_min: {
     id: "p_acquiescence_min",
@@ -134,8 +150,13 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     unit: "",
     format: "decimal",
     thresholds: { warning: 0.5, critical: 0.3, invert: true },
-    compute: (snap: GameSnapshot) =>
-      snap.entities.reduce((min, e) => Math.min(min, e.p_acquiescence), 1),
+    compute: (snap: GameSnapshot) => {
+      // Min p_acquiescence from per-hyperedge predictions
+      const preds = snap.derived?.predictions?.per_hyperedge ?? {};
+      const vals = Object.values(preds);
+      if (vals.length === 0) return 1;
+      return vals.reduce((min, p) => Math.min(min, p.p_acquiescence ?? 1), 1);
+    },
   },
   repression_avg: {
     id: "repression_avg",
@@ -144,8 +165,10 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     format: "decimal",
     thresholds: { warning: 0.4, critical: 0.7, invert: false },
     compute: (snap: GameSnapshot) => {
-      const e = snap.entities;
-      return e.length > 0 ? e.reduce((s, x) => s + x.repression, 0) / e.length : 0;
+      // Average repression_flow across edges
+      const edges = snap.edges;
+      if (edges.length === 0) return 0;
+      return edges.reduce((s, e) => s + (e.repression_flow ?? 0), 0) / edges.length;
     },
   },
   agitation_avg: {
@@ -155,8 +178,11 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     format: "decimal",
     thresholds: { warning: 0.3, critical: 0.6, invert: false },
     compute: (snap: GameSnapshot) => {
-      const e = snap.entities;
-      return e.length > 0 ? e.reduce((s, x) => s + x.agitation, 0) / e.length : 0;
+      // Average agitation_proxy from derived class aggregates
+      const aggs = snap.derived?.class_aggregates ?? {};
+      const vals = Object.values(aggs);
+      if (vals.length === 0) return 0;
+      return vals.reduce((s, c) => s + (c.agitation_proxy ?? 0), 0) / vals.length;
     },
   },
   inequality_avg: {
@@ -166,8 +192,7 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     format: "decimal",
     thresholds: { warning: 0.4, critical: 0.7, invert: false },
     compute: (snap: GameSnapshot) => {
-      const e = snap.entities;
-      return e.length > 0 ? e.reduce((s, x) => s + x.inequality, 0) / e.length : 0;
+      return snap.derived?.economy?.gini ?? 0;
     },
   },
   solidarity_edges: {
@@ -176,7 +201,7 @@ export const INDICATOR_DEFINITIONS: Record<IndicatorId, IndicatorDefinition> = {
     unit: "",
     format: "integer",
     thresholds: { warning: 3, critical: 1, invert: true },
-    compute: (snap: GameSnapshot) => snap.edges.filter((e) => e.edge_type === "SOLIDARITY").length,
+    compute: (snap: GameSnapshot) => snap.edges.filter((e) => e.mode === "SOLIDARISTIC").length,
   },
 };
 
@@ -231,7 +256,7 @@ export const LENS_DEFINITIONS: Record<LensId, LensDefinition> = {
       "solidarity_edges",
       "org_count",
     ],
-    inspectorPriority: ["p_revolution", "p_acquiescence", "solidarity_strength", "cohesion"],
+    inspectorPriority: ["p_revolution", "p_acquiescence", "cohesion", "tension"],
     defaultChartMetrics: ["p_revolution_max", "p_acquiescence_min", "solidarity_edges"],
     description: "View revolutionary potential, solidarity, and strategic balance",
   },

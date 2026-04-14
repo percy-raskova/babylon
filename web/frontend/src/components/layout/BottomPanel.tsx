@@ -1,6 +1,7 @@
 /**
- * Collapsible bottom panel — holds TimeSeries, EventLog, GraphView, and Notifications tabs.
+ * Collapsible bottom panel — holds TimeSeries, EventLog, and Notifications tabs.
  * Height read from uiStore for resize persistence. Drag-to-resize via top-edge handle.
+ * Note: Graph tab moved to left peer panel (layout change per spatial rendering spec).
  */
 
 import { useCallback, useRef } from "react";
@@ -11,7 +12,6 @@ import type { BottomTab } from "@/stores/uiStore";
 const TABS: { id: BottomTab; label: string }[] = [
   { id: "timeseries", label: "Time Series" },
   { id: "events", label: "Events" },
-  { id: "graph", label: "Graph" },
   { id: "notifications", label: "Notifications" },
 ];
 

@@ -1,5 +1,8 @@
 /**
  * Unit tests for the NodeInspector component.
+ *
+ * Updated for Spec 052: entity views removed. Orgs have consciousness
+ * 3-vectors and OODA profiles. Institutions have factional_composition.
  */
 
 import { describe, it, expect } from "vitest";
@@ -10,41 +13,11 @@ import { makeSnapshot } from "@/test/fixtures";
 describe("NodeInspector", () => {
   const snapshot = makeSnapshot();
 
-  describe("entity view", () => {
-    it("shows entity name and role badge", () => {
-      render(<NodeInspector snapshot={snapshot} nodeId="entity-proletariat" />);
-      expect(screen.getByText("Proletariat")).toBeInTheDocument();
-      expect(screen.getByText("proletariat")).toBeInTheDocument();
-    });
-
-    it("shows survival probabilities", () => {
-      render(<NodeInspector snapshot={snapshot} nodeId="entity-proletariat" />);
-      expect(screen.getByText("P(Acquiescence)")).toBeInTheDocument();
-      expect(screen.getByText("P(Revolution)")).toBeInTheDocument();
-    });
-
-    it("shows economics section", () => {
-      render(<NodeInspector snapshot={snapshot} nodeId="entity-proletariat" />);
-      expect(screen.getByText("Wealth")).toBeInTheDocument();
-      expect(screen.getByText("Subsistence")).toBeInTheDocument();
-      expect(screen.getByText("Population")).toBeInTheDocument();
-    });
-
-    it("shows consciousness section", () => {
-      render(<NodeInspector snapshot={snapshot} nodeId="entity-proletariat" />);
-      // "Consciousness" appears twice: section header + stat label
-      const matches = screen.getAllByText("Consciousness");
-      expect(matches).toHaveLength(2);
-      expect(screen.getByText("Organization")).toBeInTheDocument();
-      expect(screen.getByText("Agitation")).toBeInTheDocument();
-    });
-  });
-
   describe("organization view", () => {
     it("shows org name and type", () => {
       render(<NodeInspector snapshot={snapshot} nodeId="org-workers-union" />);
       expect(screen.getByText("Workers Union")).toBeInTheDocument();
-      expect(screen.getByText("POLITICAL_FACTION")).toBeInTheDocument();
+      expect(screen.getByText("civil_society_org")).toBeInTheDocument();
     });
 
     it("shows capacity metrics", () => {
@@ -52,6 +25,13 @@ describe("NodeInspector", () => {
       expect(screen.getByText("Budget")).toBeInTheDocument();
       expect(screen.getByText("Cohesion")).toBeInTheDocument();
       expect(screen.getByText("Cadre Level")).toBeInTheDocument();
+    });
+
+    it("shows consciousness 3-vector", () => {
+      render(<NodeInspector snapshot={snapshot} nodeId="org-workers-union" />);
+      expect(screen.getByText("Revolutionary")).toBeInTheDocument();
+      expect(screen.getByText("Liberal")).toBeInTheDocument();
+      expect(screen.getByText("Fascist")).toBeInTheDocument();
     });
 
     it("shows territories as clickable rows with resolved names", () => {
@@ -65,7 +45,7 @@ describe("NodeInspector", () => {
     it("shows institution name and apparatus type", () => {
       render(<NodeInspector snapshot={snapshot} nodeId="inst-city-hall" />);
       expect(screen.getByText("City Hall")).toBeInTheDocument();
-      expect(screen.getByText("RSA")).toBeInTheDocument();
+      expect(screen.getByText("executive")).toBeInTheDocument();
     });
 
     it("shows internal balance faction bars", () => {

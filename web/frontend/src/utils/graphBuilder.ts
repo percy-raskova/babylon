@@ -1,8 +1,11 @@
 /**
  * Build a Graphology graph from a GameSnapshot.
  *
- * Converts entities, territories, organizations, and edges into
+ * Converts organizations, institutions, territories, and edges into
  * graph nodes and edges for Sigma.js visualization.
+ *
+ * Note: Entity nodes are NOT rendered — classes are derived aggregations,
+ * not graph-level agents (Spec 052 §3, invariant 1).
  */
 
 import Graph from "graphology";
@@ -15,7 +18,7 @@ export interface NodeAttrs {
   y: number;
   size: number;
   color: string;
-  nodeType: "entity" | "territory" | "organization" | "institution";
+  nodeType: "territory" | "organization" | "institution";
 }
 
 /** Edge attributes stored in the Graphology graph. */
@@ -36,20 +39,17 @@ function hashPosition(id: string, seed: number): number {
 }
 
 const NODE_COLORS: Record<NodeAttrs["nodeType"], string> = {
-  entity: "#6a9fdb", // royal-blue
   territory: "#d4a843", // gold
   organization: "#9b59b6", // grow-purple
   institution: "#b0b0c0", // silver
 };
 
 const EDGE_COLORS: Record<string, string> = {
-  EXPLOITATION: "#e63946", // crimson
-  SOLIDARITY: "#d4a843", // gold
-  WAGES: "#4ade80", // data-green
-  TRIBUTE: "#e63946",
-  TENANCY: "#b0b0c0",
-  ADJACENCY: "#3a3a4a",
-  HOUSES: "#9b59b6",
+  EXTRACTIVE: "#e63946", // crimson
+  TRANSACTIONAL: "#4ade80", // data-green
+  SOLIDARISTIC: "#d4a843", // gold
+  ANTAGONISTIC: "#ff6b35", // orange-red
+  CO_OPTIVE: "#9b59b6", // purple
 };
 
 /**
@@ -60,20 +60,6 @@ const EDGE_COLORS: Record<string, string> = {
  */
 export function buildGraph(snapshot: GameSnapshot): Graph<NodeAttrs, EdgeAttrs> {
   const graph = new Graph<NodeAttrs, EdgeAttrs>({ multi: true, type: "directed" });
-
-  // Add entity nodes
-  for (const e of snapshot.entities) {
-    if (!graph.hasNode(e.id)) {
-      graph.addNode(e.id, {
-        label: e.name,
-        x: hashPosition(e.id, 1) * 100,
-        y: hashPosition(e.id, 2) * 100,
-        size: 4 + Math.min(e.wealth / 10, 12),
-        color: NODE_COLORS.entity,
-        nodeType: "entity",
-      });
-    }
-  }
 
   // Add territory nodes
   for (const t of snapshot.territories) {
@@ -120,12 +106,12 @@ export function buildGraph(snapshot: GameSnapshot): Graph<NodeAttrs, EdgeAttrs> 
   // Add edges
   for (const edge of snapshot.edges) {
     if (!graph.hasNode(edge.source_id) || !graph.hasNode(edge.target_id)) continue;
-    const edgeColor = EDGE_COLORS[edge.edge_type] ?? "#3a3a4a";
+    const edgeColor = EDGE_COLORS[edge.mode] ?? "#3a3a4a";
     graph.addEdge(edge.source_id, edge.target_id, {
-      label: edge.edge_type,
+      label: edge.mode,
       color: edgeColor,
       size: 0.5 + Math.min(Math.abs(edge.value_flow) / 10, 2),
-      edgeType: edge.edge_type,
+      edgeType: edge.mode,
     });
   }
 

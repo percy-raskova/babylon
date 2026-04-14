@@ -29,15 +29,19 @@ export interface TickSummary {
 
 function extractSummary(snap: GameSnapshot): TickSummary {
   const territories = snap.territories;
-  const entities = snap.entities;
+  const orgs = snap.organizations;
 
   const avgHeat =
     territories.length > 0 ? territories.reduce((s, t) => s + t.heat, 0) / territories.length : 0;
 
+  // Use org revolutionary consciousness as the aggregate consciousness metric
   const avgConsciousness =
-    entities.length > 0 ? entities.reduce((s, e) => s + e.consciousness, 0) / entities.length : 0;
+    orgs.length > 0
+      ? orgs.reduce((s, o) => s + (o.consciousness?.revolutionary ?? 0), 0) / orgs.length
+      : 0;
 
-  const totalWealth = entities.reduce((s, e) => s + e.wealth, 0);
+  // Total wealth = sum of org budgets
+  const totalWealth = orgs.reduce((s, o) => s + o.budget, 0);
 
   return {
     tick: snap.tick,

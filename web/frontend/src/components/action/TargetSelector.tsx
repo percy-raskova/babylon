@@ -8,19 +8,21 @@
 import { useMemo } from "react";
 import type { GameSnapshot, PlayerVerb } from "@/types/game";
 
-/** Which entity types each verb can target. */
-const VERB_TARGET_TYPES: Record<PlayerVerb, ("entity" | "territory" | "organization" | "self")[]> =
-  {
-    educate: ["entity"],
-    reproduce: ["self"],
-    investigate: ["entity", "organization", "territory"],
-    attack: ["entity", "organization"],
-    mobilize: ["territory"],
-    campaign: ["territory", "entity"],
-    aid: ["organization"],
-    move: ["territory"],
-    negotiate: ["organization", "entity"],
-  };
+/** Which node types each verb can target (Spec 052 — no entities). */
+const VERB_TARGET_TYPES: Record<
+  PlayerVerb,
+  ("hyperedge" | "territory" | "organization" | "self")[]
+> = {
+  educate: ["hyperedge"],
+  reproduce: ["self"],
+  investigate: ["organization", "territory"],
+  attack: ["organization"],
+  mobilize: ["territory"],
+  campaign: ["territory"],
+  aid: ["organization"],
+  move: ["territory"],
+  negotiate: ["organization"],
+};
 
 interface TargetSelectorProps {
   snapshot: GameSnapshot;
@@ -45,9 +47,9 @@ export function TargetSelector({ snapshot, verb, selectedTarget, onSelect }: Tar
       return []; // Self-targeted verbs have no target
     }
 
-    if (targetTypes.includes("entity")) {
-      for (const e of snapshot.entities) {
-        result.push({ id: e.id, name: e.name, type: "entity" });
+    if (targetTypes.includes("hyperedge")) {
+      for (const hx of snapshot.hyperedges) {
+        result.push({ id: hx.id, name: hx.label, type: "hyperedge" });
       }
     }
     if (targetTypes.includes("territory")) {
@@ -82,7 +84,7 @@ export function TargetSelector({ snapshot, verb, selectedTarget, onSelect }: Tar
   }
 
   const TYPE_COLORS: Record<string, string> = {
-    entity: "text-royal-blue",
+    hyperedge: "text-royal-blue",
     territory: "text-gold",
     organization: "text-grow-purple",
   };

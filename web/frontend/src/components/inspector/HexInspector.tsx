@@ -71,9 +71,12 @@ function TerritoryDetail({
   snapshot: GameSnapshot;
 }) {
   const setSelectedNode = useUIStore((s) => s.setSelectedNode);
-  const host = territory.host_id ? snapshot.entities.find((e) => e.id === territory.host_id) : null;
+  // host_id / occupant_id — these are org IDs now, not entity IDs
+  const host = territory.host_id
+    ? snapshot.organizations.find((o) => o.id === territory.host_id)
+    : null;
   const occupant = territory.occupant_id
-    ? snapshot.entities.find((e) => e.id === territory.occupant_id)
+    ? snapshot.organizations.find((o) => o.id === territory.occupant_id)
     : null;
 
   // Find orgs present in this territory
@@ -182,10 +185,10 @@ function TerritoryDetail({
           <div className="flex flex-col gap-1">
             {connectedEdges.slice(0, 10).map((edge, i) => (
               <div
-                key={`${edge.source_id}-${edge.target_id}-${edge.edge_type}-${i}`}
+                key={edge.id ?? `${edge.source_id}-${edge.target_id}-${i}`}
                 className="flex items-center justify-between text-[11px]"
               >
-                <span className="text-ash">{edge.edge_type}</span>
+                <span className="text-ash">{edge.mode}</span>
                 <span className="font-mono text-bone">{edge.value_flow.toFixed(1)}</span>
               </div>
             ))}

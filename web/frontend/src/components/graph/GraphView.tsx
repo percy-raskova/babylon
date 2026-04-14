@@ -1,9 +1,11 @@
 /**
  * Network topology graph visualization using Sigma.js + Graphology.
  *
- * Renders entities, territories, organizations, and edges as an
+ * Renders organizations, institutions, territories, and edges as an
  * interactive force-directed graph. Nodes are color-coded by type,
- * edges by relationship type. Edge type filtering and node-click navigation.
+ * edges by mode. Edge mode filtering and node-click navigation.
+ *
+ * Note: Entity nodes are NOT rendered (Spec 052 — classes are derived).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -28,7 +30,7 @@ export function GraphView({ snapshot }: GraphViewProps) {
   const edgeTypes = useMemo(() => {
     const types = new Set<string>();
     for (const edge of snapshot.edges) {
-      types.add(edge.edge_type);
+      types.add(edge.mode);
     }
     return Array.from(types).sort();
   }, [snapshot.edges]);
@@ -186,7 +188,6 @@ function GraphEvents() {
 /** Visual legend for node and edge types. */
 function GraphLegend() {
   const NODE_LEGEND = [
-    { label: "Entity", color: "#6a9fdb" },
     { label: "Territory", color: "#d4a843" },
     { label: "Organization", color: "#9b59b6" },
     { label: "Institution", color: "#b0b0c0" },

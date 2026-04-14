@@ -27,20 +27,24 @@ export interface EndgameData {
   summary: string;
 }
 
-/** Full game state snapshot (from GET /api/games/{id}/state/). */
+/**
+ * Full game state snapshot (Spec 052 §5).
+ *
+ * Note what is absent: no ``entities`` array, no top-level ``economy``.
+ * Classes are derived aggregations, not agents.
+ */
 export interface GameSnapshot {
   tick: number;
   session_id: string;
-  entities: EntityState[];
-  territories: TerritoryState[];
   organizations: OrgState[];
   institutions: InstitutionState[];
+  territories: TerritoryState[];
+  hyperedges: HyperedgeState[];
   edges: EdgeState[];
-  economy: Record<string, unknown>;
   events: GameEvent[];
-  endgame?: EndgameData;
-  /** Trap detection results (Wayne County scenario). */
   traps?: TrapDetectionResult;
+  derived: DerivedBlock;
+  endgame?: EndgameData;
 }
 
 /** Trap detection output from the engine. */
@@ -52,39 +56,21 @@ export interface TrapDetectionResult {
   game_over_trap: "liberal" | "ultra_left" | "rightist" | null;
 }
 
-/** Status of a single trap detector. */
+/** Status of a single trap detector (Spec 052 §13). */
 export interface TrapStatus {
-  trap_type: "liberal" | "ultra_left" | "rightist";
   severity: "none" | "mild" | "moderate" | "severe";
   score: number;
   indicators: string[];
   ticks_at_moderate: number;
 }
 
-/** Social class entity with full visualization fields. */
-export interface EntityState {
-  id: string;
-  name: string;
-  role: string;
-  wealth: number;
-  consciousness: number;
-  national_identity: number;
-  agitation: number;
-  organization: number;
-  repression: number;
-  p_acquiescence: number;
-  p_revolution: number;
-  subsistence: number;
-  population: number;
-  inequality: number;
-  active: boolean;
-}
-
-/** Territory with full visualization fields. */
+/** Territory with full visualization fields (Spec 052 §8). */
 export interface TerritoryState {
   id: string;
   name: string;
   h3_index: string | null;
+  h3_resolution: number;
+  county_fips: string;
   heat: number;
   sector_type: string;
   territory_type: string;
@@ -97,21 +83,42 @@ export interface TerritoryState {
   occupant_id: string | null;
 }
 
-/** Organization with full visualization fields. */
+/** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */
+export interface ConsciousnessVector {
+  liberal: number;
+  fascist: number;
+  revolutionary: number;
+}
+
+/** OODA loop profile (Spec 052 §6). */
+export interface OodaProfile {
+  observe: number;
+  orient: number;
+  decide: number;
+  act: number;
+  cycle_ticks: number;
+}
+
+/** Organization — the only agent type (Spec 052 §6). */
 export interface OrgState {
   id: string;
   name: string;
-  org_type: string;
+  org_type: OrgType;
   class_character: string;
   cohesion: number;
   cadre_level: number;
   budget: number;
   heat: number;
   territory_ids: string[];
-  consciousness_tendency: string;
+  hyperedge_memberships: string[];
+  consciousness: ConsciousnessVector;
+  ooda: OodaProfile;
   /** Computed vanguard economy resources (player orgs only). */
-  vanguard?: VanguardResources;
+  vanguard?: VanguardResources | null;
 }
+
+/** Permitted org_type values (Spec 052 §6). */
+export type OrgType = "state_apparatus" | "business" | "political_faction" | "civil_society_org";
 
 /** Vanguard Economy resource snapshot for player organizations. */
 export interface VanguardResources {
@@ -124,7 +131,14 @@ export interface VanguardResources {
   max_sympathizer_labor: number;
 }
 
-/** Institution with full visualization fields. */
+/** Factional composition of an institution (Spec 052 §7). */
+export interface FactionalComposition {
+  liberal_technocratic: number;
+  revanchist_fascist: number;
+  institutionalist_bonapartist: number;
+}
+
+/** Institution (Spec 052 §7) — not an agent, no OODA. */
 export interface InstitutionState {
   id: string;
   name: string;
@@ -135,20 +149,99 @@ export interface InstitutionState {
   budget: number;
   housed_org_ids: string[];
   territory_ids: string[];
-  hegemonic_fraction: string;
-  liberal_technocratic: number;
-  revanchist_fascist: number;
-  institutionalist_bonapartist: number;
+  factional_composition: FactionalComposition;
 }
 
-/** Relationship edge. */
+/** Permitted edge mode values (Spec 052 §10). */
+export type EdgeMode =
+  | "EXTRACTIVE"
+  | "TRANSACTIONAL"
+  | "SOLIDARISTIC"
+  | "ANTAGONISTIC"
+  | "CO_OPTIVE";
+
+/** Dyadic edge between two nodes (Spec 052 §10). */
 export interface EdgeState {
+  id: string;
   source_id: string;
   target_id: string;
-  edge_type: string;
+  mode: EdgeMode;
   value_flow: number;
   tension: number;
-  solidarity_strength: number;
+  repression_flow: number;
+}
+
+/** Hyperedge category (Spec 052 §9). */
+export type HyperedgeCategory =
+  | "contradiction_pair"
+  | "institutional_exclusion"
+  | "lifecycle_phase";
+
+/** XGI hyperedge — community membership (Spec 052 §9). */
+export interface HyperedgeState {
+  id: string;
+  category: HyperedgeCategory;
+  label: string;
+  contradiction_partner_id: string | null;
+  member_ids: string[];
+  material_basis: {
+    description: string;
+    indicators: string[];
+  };
+  ideological_dimension: {
+    collective_identity_strength: number;
+    organizational_vehicles: string[];
+  };
+}
+
+/** Value tensor (Spec 052 §11). */
+export interface ValueTensor {
+  departments: string[];
+  components: string[];
+  values: number[][];
+  conservation_residual: number;
+}
+
+/** Three-component imperial rent (Spec 052 §11). */
+export interface ImperialRent {
+  unequal_exchange: number;
+  externalized_reproductive: number;
+  domestic_shadow: number;
+  total: number;
+}
+
+/** Class aggregate — derived, not an agent (Spec 052 §11). */
+export interface ClassAggregate {
+  population: number;
+  wage_share: number;
+  agitation_proxy: number;
+}
+
+/** Derived economy summary (Spec 052 §11). */
+export interface EconomyDerived {
+  gdp: number;
+  gini: number;
+  profit_rate: number;
+  exploitation_rate: number;
+}
+
+/** Per-hyperedge prediction (Spec 052 §11). */
+export interface HyperedgePrediction {
+  p_acquiescence: number;
+  p_revolution: number;
+  warsaw_ghetto_corollary_triggered: boolean;
+}
+
+/** Engine-computed derived block — read-only cache (Spec 052 §11). */
+export interface DerivedBlock {
+  value_tensor: ValueTensor;
+  imperial_rent: ImperialRent;
+  dept_iii_visibility: { g33: number };
+  class_aggregates: Record<string, ClassAggregate>;
+  economy: EconomyDerived;
+  predictions: {
+    per_hyperedge: Record<string, HyperedgePrediction>;
+  };
 }
 
 /** Simulation event. */
@@ -220,7 +313,21 @@ export interface AuthState {
 }
 
 /** Map layer type for hex visualization. */
-export type MapLayer = "heat" | "consciousness" | "wealth" | "rent" | "biocapacity" | "population";
+export type MapLayer =
+  | "heat"
+  | "consciousness"
+  | "wealth"
+  | "rent"
+  | "biocapacity"
+  | "population"
+  | "profit_rate"
+  | "exploitation_rate"
+  | "occ"
+  | "imperial_rent"
+  | "org_presence";
+
+/** Valid administrative framing levels for multi-scale spatial rendering. */
+export type AdminLevel = "state" | "county" | "cz" | "bea_ea" | "msa" | "hex";
 
 /** The 9 constitutional verbs from Article V. */
 export type PlayerVerb =
@@ -267,7 +374,7 @@ export interface ClassifiedEvent {
   tick: number;
   read: boolean;
   linkedEntityId: string | null;
-  linkedEntityType: "territory" | "organization" | "entity" | "institution" | null;
+  linkedEntityType: "territory" | "organization" | "institution" | "hyperedge" | null;
 }
 
 /** Grouped notification for display. */
@@ -282,7 +389,7 @@ export interface NotificationGroup {
 
 /** Single entry in the drill-down navigation stack. */
 export interface BreadcrumbEntry {
-  entityType: "overview" | "territory" | "organization" | "entity" | "institution";
+  entityType: "overview" | "territory" | "organization" | "institution" | "hyperedge";
   entityId: string | null;
   displayName: string;
   lensId: LensId;
@@ -346,4 +453,95 @@ export interface ActionPreviewResult {
   success_probability: number;
   affected_territory_ids: string[];
   warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Scale Spatial Rendering Types
+// ---------------------------------------------------------------------------
+
+/** Org-network graph payload from /api/games/{id}/orgs/network/. */
+export interface OrgNetworkPayload {
+  tick: number;
+  nodes: OrgNetworkNode[];
+  edges: OrgNetworkEdge[];
+}
+
+/** Node in the org-network graph. */
+export interface OrgNetworkNode {
+  id: string;
+  type: "organization" | "institution" | "territory";
+  attributes: Record<string, unknown>;
+}
+
+/** Edge in the org-network graph. */
+export interface OrgNetworkEdge {
+  source: string;
+  target: string;
+  mode: string;
+  attributes: Record<string, unknown>;
+}
+
+/** Hypergraph community payload from /api/games/{id}/hypergraph/communities/. */
+export interface HypergraphPayload {
+  tick: number;
+  hyperedges: HypergraphCommunity[];
+}
+
+/** Single hyperedge community. */
+export interface HypergraphCommunity {
+  id: string;
+  community_type: string;
+  category: string;
+  members: string[];
+}
+
+/** Infrastructure network payload from /api/games/{id}/infrastructure/. */
+export interface InfrastructurePayload {
+  tick: number;
+  nodes: InfrastructureNode[];
+  edges: InfrastructureEdge[];
+}
+
+/** Infrastructure hub node. */
+export interface InfrastructureNode {
+  id: string;
+  type: string;
+  coordinates: [number, number];
+  attributes: Record<string, unknown>;
+}
+
+/** Infrastructure corridor edge. */
+export interface InfrastructureEdge {
+  id: string;
+  geometry: unknown;
+  conductance: number;
+  type: string;
+}
+
+/** Aggregated admin-level feature from map snapshot. */
+export interface AdminFeatureProperties {
+  group_key: string;
+  group_name: string;
+  group_level: AdminLevel;
+  hex_count: number;
+  county_fips: string;
+  state_fips: string;
+  state_name: string;
+  cz_id: string;
+  cz_name: string;
+  bea_ea_code: string;
+  bea_ea_name: string;
+  msa_code: string;
+  msa_name: string;
+  heat: number;
+  consciousness: number;
+  wealth: number;
+  rent: number;
+  biocapacity: number;
+  population: number;
+  profit_rate: number;
+  exploitation_rate: number;
+  occ: number;
+  imperial_rent: number;
+  org_presence: number;
 }

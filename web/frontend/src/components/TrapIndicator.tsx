@@ -70,11 +70,11 @@ export function TrapIndicator({ traps }: TrapIndicatorProps) {
   const activeTrap = traps[activeTrapKey];
   if (!activeTrap || activeTrap.severity === "none") return null;
 
-  if (dismissed === activeTrap.trap_type && activeTrap.severity === "mild") {
+  if (dismissed === activeTrapKey && activeTrap.severity === "mild") {
     return null;
   }
 
-  const desc = TRAP_DESCRIPTIONS[activeTrap.trap_type];
+  const desc = TRAP_DESCRIPTIONS[activeTrapKey];
   if (!desc) return null;
 
   const isSevere = activeTrap.severity === "severe";
@@ -101,7 +101,7 @@ export function TrapIndicator({ traps }: TrapIndicatorProps) {
         </div>
         {!isSevere && (
           <button
-            onClick={() => setDismissed(activeTrap.trap_type)}
+            onClick={() => setDismissed(activeTrapKey)}
             className="shrink-0 rounded border border-wet-concrete px-2 py-1 text-xs text-ash hover:border-silver hover:text-silver"
           >
             Dismiss

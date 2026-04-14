@@ -154,6 +154,15 @@ interface UIState {
   /** Which indicators are pinned in the top bar. */
   pinnedIndicators: IndicatorId[];
 
+  /** Cross-renderer: org IDs selected in graph → highlight on map. */
+  selectedOrgIds: string[];
+  /** Cross-renderer: territory IDs selected on map → filter graph. */
+  selectedTerritoryIds: string[];
+  /** Whether the graph panel (left side) is visible. */
+  graphPanelOpen: boolean;
+  /** Width of the graph panel in pixels. */
+  graphPanelWidth: number;
+
   // Actions — existing
   setSelectedNode: (id: string | null) => void;
   setSelectedHex: (id: string | null) => void;
@@ -177,6 +186,13 @@ interface UIState {
   setBottomPanelHeight: (height: number) => void;
   setPinnedIndicators: (ids: IndicatorId[]) => void;
   resetPreferences: () => void;
+
+  // Actions — Cross-renderer coordination
+  setSelectedOrgIds: (ids: string[]) => void;
+  setSelectedTerritoryIds: (ids: string[]) => void;
+  clearCrossSelection: () => void;
+  toggleGraphPanel: () => void;
+  setGraphPanelWidth: (width: number) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -200,6 +216,10 @@ export const useUIStore = create<UIState>((set) => ({
   rightPanelWidth: 360,
   bottomPanelHeight: 260,
   pinnedIndicators: [...DEFAULT_PINNED],
+  selectedOrgIds: [],
+  selectedTerritoryIds: [],
+  graphPanelOpen: true,
+  graphPanelWidth: 340,
 
   // Existing actions
   setSelectedNode: (id) => set({ selectedNodeId: id }),
@@ -281,5 +301,14 @@ export const useUIStore = create<UIState>((set) => ({
       bottomTab: "timeseries",
       activeLens: "political",
       pinnedIndicators: [...DEFAULT_PINNED],
+      graphPanelOpen: true,
+      graphPanelWidth: 340,
     }),
+
+  // Cross-renderer coordination
+  setSelectedOrgIds: (ids) => set({ selectedOrgIds: ids }),
+  setSelectedTerritoryIds: (ids) => set({ selectedTerritoryIds: ids }),
+  clearCrossSelection: () => set({ selectedOrgIds: [], selectedTerritoryIds: [] }),
+  toggleGraphPanel: () => set((s) => ({ graphPanelOpen: !s.graphPanelOpen })),
+  setGraphPanelWidth: (width) => set({ graphPanelWidth: Math.max(240, Math.min(500, width)) }),
 }));

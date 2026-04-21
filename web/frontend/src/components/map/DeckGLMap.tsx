@@ -20,25 +20,15 @@ import { HexTooltip } from "@/components/map/HexTooltip";
 import { FramingSelector } from "@/components/map/FramingSelector";
 import type { GameSnapshot, TerritoryState, MapLayer } from "@/types/game";
 
-/** Dark basemap style — no external tiles, pure background. */
-const MAP_STYLE = {
-  version: 8 as const,
-  sources: {},
-  layers: [
-    {
-      id: "background",
-      type: "background" as const,
-      paint: { "background-color": "#0a0a14" },
-    },
-  ],
-};
+/** Dark basemap style with actual map tiles (Carto Dark Matter). */
+const MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
-/** Default view centered on continental US. */
+/** Default view centered on Southeast Michigan. */
 const INITIAL_VIEW_STATE = {
-  longitude: -95.7,
-  latitude: 37.1,
-  zoom: 4,
-  pitch: 0,
+  longitude: -83.2,
+  latitude: 42.5,
+  zoom: 8,
+  pitch: 30,
   bearing: 0,
 };
 

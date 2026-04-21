@@ -8,8 +8,8 @@
  * Note: Entity nodes are NOT rendered (Spec 052 — classes are derived).
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { SigmaContainer, useLoadGraph, useRegisterEvents, useSigma } from "@react-sigma/core";
+import { useEffect, useMemo, useState } from "react";
+import { SigmaContainer, useRegisterEvents, useSigma } from "@react-sigma/core";
 import "@react-sigma/core/lib/style.css";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import type { GameSnapshot } from "@/types/game";
@@ -92,32 +92,12 @@ export function GraphView({ snapshot }: GraphViewProps) {
           enableEdgeEvents: false,
         }}
       >
-        <GraphLoader graph={graph} />
         <GraphEvents />
         <EdgeFilter filter={activeFilter} graph={graph} />
         <GraphLegend />
       </SigmaContainer>
     </div>
   );
-}
-
-/** Loads/reloads the graph when snapshot changes. */
-function GraphLoader({ graph }: { graph: ReturnType<typeof buildGraph> }) {
-  const loadGraph = useLoadGraph();
-  const loadedRef = useRef(false);
-
-  useEffect(() => {
-    if (!loadedRef.current) {
-      loadGraph(graph);
-      loadedRef.current = true;
-    }
-  }, [graph, loadGraph]);
-
-  useEffect(() => {
-    loadedRef.current = false;
-  }, [graph]);
-
-  return null;
 }
 
 /** Applies edge type filtering via sigma nodeReducer/edgeReducer. */

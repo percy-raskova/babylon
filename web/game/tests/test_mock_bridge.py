@@ -1,11 +1,15 @@
 """Tests for MockEngineBridge deterministic progression.
 
 Verifies:
-- Initial snapshot shape matches GameSnapshot TypeScript interface
+- Initial snapshot shape matches Spec 052 WorldState Snapshot Contract v0
 - Tick resolution advances tick, decays heat, persists state
 - Verb effects (educate/mobilize/attack/campaign/aid/reproduce) apply correctly
 - Available actions are returned for player orgs
 - All data shapes feed 042 UI components
+
+.. note::
+    Entity-level tests have been removed — classes are derived aggregations,
+    not top-level agents (Spec 052 invariant 1).
 """
 
 from __future__ import annotations
@@ -21,49 +25,33 @@ from game.mock_defines import MockDefines
 from game.models import ActionResult, GameSession
 
 # --------------------------------------------------------------------------- #
-# Constants
+# Constants — Spec 052 contract compliance
 # --------------------------------------------------------------------------- #
-EXPECTED_ENTITY_COUNT = 5
 EXPECTED_TERRITORY_COUNT = 10
-EXPECTED_ORG_COUNT = 4
+EXPECTED_ORG_COUNT = 5
 EXPECTED_INSTITUTION_COUNT = 2
-EXPECTED_EDGE_COUNT = 11
+EXPECTED_EDGE_COUNT = 6
+EXPECTED_HYPEREDGE_COUNT = 5
 
 REQUIRED_SNAPSHOT_KEYS = {
     "tick",
     "session_id",
-    "entities",
-    "territories",
     "organizations",
     "institutions",
+    "territories",
+    "hyperedges",
     "edges",
-    "economy",
     "events",
     "traps",
-}
-
-REQUIRED_ENTITY_KEYS = {
-    "id",
-    "name",
-    "role",
-    "wealth",
-    "consciousness",
-    "national_identity",
-    "agitation",
-    "organization",
-    "repression",
-    "p_acquiescence",
-    "p_revolution",
-    "subsistence",
-    "population",
-    "inequality",
-    "active",
+    "derived",
 }
 
 REQUIRED_TERRITORY_KEYS = {
     "id",
     "name",
     "h3_index",
+    "h3_resolution",
+    "county_fips",
     "heat",
     "sector_type",
     "territory_type",
@@ -76,17 +64,65 @@ REQUIRED_TERRITORY_KEYS = {
     "occupant_id",
 }
 
+REQUIRED_ORG_KEYS = {
+    "id",
+    "name",
+    "org_type",
+    "class_character",
+    "cohesion",
+    "cadre_level",
+    "budget",
+    "heat",
+    "territory_ids",
+    "hyperedge_memberships",
+    "consciousness",
+    "ooda",
+}
+
+REQUIRED_CONSCIOUSNESS_KEYS = {"liberal", "fascist", "revolutionary"}
+
+REQUIRED_EDGE_KEYS = {
+    "id",
+    "source_id",
+    "target_id",
+    "mode",
+    "value_flow",
+    "tension",
+    "repression_flow",
+}
+
+REQUIRED_HYPEREDGE_KEYS = {
+    "id",
+    "category",
+    "label",
+    "contradiction_partner_id",
+    "member_ids",
+    "material_basis",
+    "ideological_dimension",
+}
+
+REQUIRED_DERIVED_KEYS = {
+    "value_tensor",
+    "imperial_rent",
+    "dept_iii_visibility",
+    "class_aggregates",
+    "economy",
+    "predictions",
+}
+
 
 class TestInitialSnapshot(TestCase):
-    """Verify the initial snapshot shape matches the GameSnapshot interface."""
+    """Verify the initial snapshot shape matches Spec 052."""
 
     def test_snapshot_has_all_required_keys(self) -> None:
         snap = _build_initial_snapshot("test-session")
         assert snap.keys() >= REQUIRED_SNAPSHOT_KEYS
 
-    def test_entity_count(self) -> None:
+    def test_snapshot_has_no_legacy_keys(self) -> None:
+        """Spec 052 invariant: no top-level 'entities' or 'economy'."""
         snap = _build_initial_snapshot("test-session")
-        assert len(snap["entities"]) == EXPECTED_ENTITY_COUNT
+        assert "entities" not in snap
+        assert "economy" not in snap
 
     def test_territory_count(self) -> None:
         snap = _build_initial_snapshot("test-session")
@@ -104,12 +140,9 @@ class TestInitialSnapshot(TestCase):
         snap = _build_initial_snapshot("test-session")
         assert len(snap["edges"]) == EXPECTED_EDGE_COUNT
 
-    def test_entities_have_required_keys(self) -> None:
+    def test_hyperedge_count(self) -> None:
         snap = _build_initial_snapshot("test-session")
-        for entity in snap["entities"]:
-            assert entity.keys() >= REQUIRED_ENTITY_KEYS, (
-                f"Entity {entity['id']} missing keys: {REQUIRED_ENTITY_KEYS - entity.keys()}"
-            )
+        assert len(snap["hyperedges"]) == EXPECTED_HYPEREDGE_COUNT
 
     def test_territories_have_required_keys(self) -> None:
         snap = _build_initial_snapshot("test-session")
@@ -123,6 +156,77 @@ class TestInitialSnapshot(TestCase):
         snap = _build_initial_snapshot("test-session")
         for t in snap["territories"]:
             assert t["h3_index"] is not None, f"Territory {t['id']} missing h3_index"
+
+    def test_orgs_have_required_keys(self) -> None:
+        snap = _build_initial_snapshot("test-session")
+        for org in snap["organizations"]:
+            assert org.keys() >= REQUIRED_ORG_KEYS, (
+                f"Org {org['id']} missing keys: {REQUIRED_ORG_KEYS - org.keys()}"
+            )
+
+    def test_org_consciousness_is_ternary_vector(self) -> None:
+        """Spec 052 §6 — consciousness is never a scalar."""
+        snap = _build_initial_snapshot("test-session")
+        for org in snap["organizations"]:
+            c = org["consciousness"]
+            assert isinstance(c, dict)
+            assert c.keys() >= REQUIRED_CONSCIOUSNESS_KEYS
+            total = c["liberal"] + c["fascist"] + c["revolutionary"]
+            assert abs(total - 1.0) < 1e-10, (
+                f"Org {org['id']} consciousness doesn't sum to 1.0: {total}"
+            )
+
+    def test_org_ooda_profile(self) -> None:
+        snap = _build_initial_snapshot("test-session")
+        for org in snap["organizations"]:
+            ooda = org["ooda"]
+            assert isinstance(ooda, dict)
+            for key in ("observe", "orient", "decide", "act", "cycle_ticks"):
+                assert key in ooda
+
+    def test_edges_have_required_keys(self) -> None:
+        snap = _build_initial_snapshot("test-session")
+        for edge in snap["edges"]:
+            assert edge.keys() >= REQUIRED_EDGE_KEYS, (
+                f"Edge {edge.get('id', '?')} missing keys: {REQUIRED_EDGE_KEYS - edge.keys()}"
+            )
+
+    def test_edges_use_mode_not_edge_type(self) -> None:
+        """Spec 052 §10 — edges use 'mode' enum."""
+        snap = _build_initial_snapshot("test-session")
+        for edge in snap["edges"]:
+            assert "mode" in edge
+            assert "edge_type" not in edge
+
+    def test_hyperedges_have_required_keys(self) -> None:
+        snap = _build_initial_snapshot("test-session")
+        for hx in snap["hyperedges"]:
+            assert hx.keys() >= REQUIRED_HYPEREDGE_KEYS, (
+                f"Hyperedge {hx['id']} missing keys: {REQUIRED_HYPEREDGE_KEYS - hx.keys()}"
+            )
+
+    def test_hyperedge_contradiction_pairs_are_symmetric(self) -> None:
+        """Each contradiction_pair should reference its partner."""
+        snap = _build_initial_snapshot("test-session")
+        pairs = [hx for hx in snap["hyperedges"] if hx["category"] == "contradiction_pair"]
+        for hx in pairs:
+            partner_id = hx["contradiction_partner_id"]
+            assert partner_id is not None, f"Contradiction pair {hx['id']} missing partner"
+            partner = next((p for p in pairs if p["id"] == partner_id), None)
+            assert partner is not None, f"Partner {partner_id} not found for {hx['id']}"
+
+    def test_derived_block_has_required_keys(self) -> None:
+        snap = _build_initial_snapshot("test-session")
+        assert snap["derived"].keys() >= REQUIRED_DERIVED_KEYS
+
+    def test_derived_class_aggregates_have_keys(self) -> None:
+        snap = _build_initial_snapshot("test-session")
+        aggs = snap["derived"]["class_aggregates"]
+        assert "proletariat" in aggs
+        assert "bourgeoisie" in aggs
+        for cls_data in aggs.values():
+            for key in ("population", "wage_share", "agitation_proxy"):
+                assert key in cls_data
 
     def test_player_orgs_have_vanguard(self) -> None:
         snap = _build_initial_snapshot("test-session")
@@ -209,7 +313,10 @@ class TestMockBridgeLifecycle(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class TestVerbEffects(TestCase):
-    """Test that verb effects mutate snapshot deterministically."""
+    """Test that verb effects mutate snapshot deterministically.
+
+    Verb effects now target organizations and derived data, not entities.
+    """
 
     def setUp(self) -> None:
         from django.contrib.auth.models import User
@@ -229,14 +336,17 @@ class TestVerbEffects(TestCase):
         )
         return self.bridge.resolve_tick(self.session_id)
 
-    def test_educate_raises_consciousness(self) -> None:
+    def test_educate_raises_revolutionary_consciousness(self) -> None:
+        """Educate shifts org consciousness toward revolutionary."""
         before = self.bridge.get_snapshot(self.session_id)
-        initial_c = before["entities"][0]["consciousness"]
+        org_before = next(o for o in before["organizations"] if o["id"] == "org-auto-union")
+        initial_rev = org_before["consciousness"]["revolutionary"]
 
         after = self._submit_and_resolve("educate")
-        new_c = after["entities"][0]["consciousness"]
+        org_after = next(o for o in after["organizations"] if o["id"] == "org-auto-union")
+        new_rev = org_after["consciousness"]["revolutionary"]
 
-        assert new_c > initial_c
+        assert new_rev > initial_rev
 
     def test_mobilize_raises_heat(self) -> None:
         before = self.bridge.get_snapshot(self.session_id)
@@ -249,24 +359,27 @@ class TestVerbEffects(TestCase):
         # Heat term = (initial * decay) + MOBILIZE_HEAT
         assert new_heat > initial_heat * MockDefines().HEAT_DECAY
 
-    def test_attack_reduces_wealth(self) -> None:
+    def test_attack_reduces_budget(self) -> None:
+        """Attack reduces org budget (wealth damage)."""
         before = self.bridge.get_snapshot(self.session_id)
-        initial_wealth = before["entities"][0]["wealth"]
+        org_before = next(o for o in before["organizations"] if o["id"] == "org-auto-union")
+        initial_budget = org_before["budget"]
 
         after = self._submit_and_resolve("attack")
-        new_wealth = after["entities"][0]["wealth"]
+        org_after = next(o for o in after["organizations"] if o["id"] == "org-auto-union")
+        new_budget = org_after["budget"]
 
-        assert new_wealth < initial_wealth
+        assert new_budget < initial_budget
 
-    def test_aid_increases_proletariat_wealth(self) -> None:
+    def test_aid_increases_proletariat_wage_share(self) -> None:
+        """Aid increases proletariat wage_share in derived.class_aggregates."""
         before = self.bridge.get_snapshot(self.session_id)
-        proletariat = next(e for e in before["entities"] if e["role"] == "PROLETARIAT")
-        initial_wealth = proletariat["wealth"]
+        initial_ws = before["derived"]["class_aggregates"]["proletariat"]["wage_share"]
 
         after = self._submit_and_resolve("aid")
-        new_proletariat = next(e for e in after["entities"] if e["role"] == "PROLETARIAT")
+        new_ws = after["derived"]["class_aggregates"]["proletariat"]["wage_share"]
 
-        assert new_proletariat["wealth"] > initial_wealth
+        assert new_ws > initial_ws
 
     def test_reproduce_increases_cohesion(self) -> None:
         before = self.bridge.get_snapshot(self.session_id)
@@ -345,11 +458,13 @@ class TestDeterminism(TestCase):
         s1 = bridge.resolve_tick(uuid.UUID(r1["id"]))
         s2 = bridge.resolve_tick(uuid.UUID(r2["id"]))
 
-        # Tick, entities, territories should be identical
+        # Tick, organizations, territories should be identical
         assert s1["tick"] == s2["tick"]
-        assert len(s1["entities"]) == len(s2["entities"])
-        for i in range(len(s1["entities"])):
-            assert s1["entities"][i]["consciousness"] == s2["entities"][i]["consciousness"]
-            assert s1["entities"][i]["wealth"] == s2["entities"][i]["wealth"]
+        assert len(s1["organizations"]) == len(s2["organizations"])
+        for i in range(len(s1["organizations"])):
+            assert (
+                s1["organizations"][i]["consciousness"] == s2["organizations"][i]["consciousness"]
+            )
+            assert s1["organizations"][i]["budget"] == s2["organizations"][i]["budget"]
         for i in range(len(s1["territories"])):
             assert s1["territories"][i]["heat"] == s2["territories"][i]["heat"]

@@ -233,12 +233,15 @@ describe("Wayne County Frontend Contract", () => {
       await useGameStore.getState().fetchState("wayne-county-001");
 
       const snapshot = useGameStore.getState().snapshot;
-      expect(snapshot).not.toBeNull();
-      expect(snapshot!.session_id).toBe("wayne-county-001");
-      expect(snapshot!.organizations).toHaveLength(1);
-      expect(snapshot!.organizations[0]!.name).toBe("Wayne County Organizing Committee");
-      expect(snapshot!.organizations[0]!.vanguard).not.toBeNull();
-      expect(snapshot!.organizations[0]!.vanguard!.cadre_labor).toBe(1.0);
+      if (!snapshot) throw new Error("snapshot is null");
+      expect(snapshot.session_id).toBe("wayne-county-001");
+      expect(snapshot.organizations).toHaveLength(1);
+      const org = snapshot.organizations[0];
+      if (!org) throw new Error("org is null");
+      expect(org.name).toBe("Wayne County Organizing Committee");
+      expect(org.vanguard).not.toBeNull();
+      if (!org.vanguard) throw new Error("vanguard is null");
+      expect(org.vanguard.cadre_labor).toBe(1.0);
     });
 
     it("submitAction with unaffordable verb sets error in store via MSW 400", async () => {
@@ -270,8 +273,10 @@ describe("Wayne County Frontend Contract", () => {
 
       // Re-fetch and check budget
       const snapshot = useGameStore.getState().snapshot;
-      expect(snapshot).not.toBeNull();
-      expect(snapshot!.organizations[0]!.vanguard!.budget).toBe(50);
+      if (!snapshot) throw new Error("snapshot is null");
+      const org = snapshot.organizations[0];
+      if (!org?.vanguard) throw new Error("org or vanguard is null");
+      expect(org.vanguard.budget).toBe(50);
     });
 
     it("resolveTick advances tick and escalates traps via MSW", async () => {
@@ -295,12 +300,13 @@ describe("Wayne County Frontend Contract", () => {
 
       // Store should have updated snapshot
       const snapshot = useGameStore.getState().snapshot;
-      expect(snapshot).not.toBeNull();
-      expect(snapshot!.tick).toBeGreaterThanOrEqual(1);
-      expect(snapshot!.traps).toBeDefined();
-      expect(snapshot!.traps!.liberal.score).toBeGreaterThan(0.5);
-      expect(snapshot!.traps!.liberal.severity).toBe("moderate");
-      expect(snapshot!.traps!.active_trap).toBe("liberal");
+      if (!snapshot) throw new Error("snapshot is null");
+      expect(snapshot.tick).toBeGreaterThanOrEqual(1);
+      expect(snapshot.traps).toBeDefined();
+      if (!snapshot.traps) throw new Error("traps is null");
+      expect(snapshot.traps.liberal.score).toBeGreaterThan(0.5);
+      expect(snapshot.traps.liberal.severity).toBe("moderate");
+      expect(snapshot.traps.active_trap).toBe("liberal");
     });
   });
 });

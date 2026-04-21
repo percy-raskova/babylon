@@ -105,32 +105,14 @@ class CampaignActionSerializer(BaseActionSerializer):
 # ---------------------------------------------------------------------- #
 
 
-class EntitySerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a social class entity with full visualization fields."""
-
-    id = serializers.CharField()
-    name = serializers.CharField()
-    role = serializers.CharField()
-    wealth = serializers.FloatField()
-    consciousness = serializers.FloatField()
-    national_identity = serializers.FloatField()
-    agitation = serializers.FloatField()
-    organization = serializers.FloatField()
-    repression = serializers.FloatField()
-    p_acquiescence = serializers.FloatField()
-    p_revolution = serializers.FloatField()
-    subsistence = serializers.FloatField()
-    population = serializers.IntegerField()
-    inequality = serializers.FloatField()
-    active = serializers.BooleanField()
-
-
 class TerritorySerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a territory with full visualization fields."""
+    """Serialize a territory with full visualization fields (Spec 052 §8)."""
 
     id = serializers.CharField()
     name = serializers.CharField()
     h3_index = serializers.CharField(allow_null=True)
+    h3_resolution = serializers.IntegerField()
+    county_fips = serializers.CharField()
     heat = serializers.FloatField()
     sector_type = serializers.CharField()
     territory_type = serializers.CharField()
@@ -141,6 +123,27 @@ class TerritorySerializer(serializers.Serializer[dict[str, Any]]):
     biocapacity = serializers.FloatField()
     host_id = serializers.CharField(allow_null=True)
     occupant_id = serializers.CharField(allow_null=True)
+
+
+class ConsciousnessVectorSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize the ternary consciousness vector (Spec 052 §6).
+
+    Always sums to 1.0.  Never a scalar, never a single enum.
+    """
+
+    liberal = serializers.FloatField()
+    fascist = serializers.FloatField()
+    revolutionary = serializers.FloatField()
+
+
+class OodaProfileSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize the OODA loop profile (Spec 052 §6)."""
+
+    observe = serializers.FloatField()
+    orient = serializers.FloatField()
+    decide = serializers.FloatField()
+    act = serializers.FloatField()
+    cycle_ticks = serializers.IntegerField()
 
 
 class VanguardResourcesSerializer(serializers.Serializer[dict[str, Any]]):
@@ -156,7 +159,7 @@ class VanguardResourcesSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class OrganizationSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize an organization with full visualization fields."""
+    """Serialize an organization — the only agent type (Spec 052 §6)."""
 
     id = serializers.CharField()
     name = serializers.CharField()
@@ -167,12 +170,22 @@ class OrganizationSerializer(serializers.Serializer[dict[str, Any]]):
     budget = serializers.FloatField()
     heat = serializers.FloatField()
     territory_ids = serializers.ListField(child=serializers.CharField())
-    consciousness_tendency = serializers.CharField()
+    hyperedge_memberships = serializers.ListField(child=serializers.CharField())
+    consciousness = ConsciousnessVectorSerializer()
+    ooda = OodaProfileSerializer()
     vanguard = VanguardResourcesSerializer(required=False, allow_null=True)
 
 
+class FactionalCompositionSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize the factional composition of an institution (Spec 052 §7)."""
+
+    liberal_technocratic = serializers.FloatField()
+    revanchist_fascist = serializers.FloatField()
+    institutionalist_bonapartist = serializers.FloatField()
+
+
 class InstitutionSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize an institution with full visualization fields."""
+    """Serialize an institution (Spec 052 §7)."""
 
     id = serializers.CharField()
     name = serializers.CharField()
@@ -183,21 +196,31 @@ class InstitutionSerializer(serializers.Serializer[dict[str, Any]]):
     budget = serializers.FloatField()
     housed_org_ids = serializers.ListField(child=serializers.CharField())
     territory_ids = serializers.ListField(child=serializers.CharField())
-    hegemonic_fraction = serializers.CharField()
-    liberal_technocratic = serializers.FloatField()
-    revanchist_fascist = serializers.FloatField()
-    institutionalist_bonapartist = serializers.FloatField()
+    factional_composition = FactionalCompositionSerializer()
 
 
 class EdgeSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a relationship edge."""
+    """Serialize a dyadic edge (Spec 052 §10)."""
 
+    id = serializers.CharField()
     source_id = serializers.CharField()
     target_id = serializers.CharField()
-    edge_type = serializers.CharField()
+    mode = serializers.CharField()
     value_flow = serializers.FloatField()
     tension = serializers.FloatField()
-    solidarity_strength = serializers.FloatField()
+    repression_flow = serializers.FloatField()
+
+
+class HyperedgeSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize an XGI hyperedge (Spec 052 §9)."""
+
+    id = serializers.CharField()
+    category = serializers.CharField()
+    label = serializers.CharField()  # type: ignore[assignment]
+    contradiction_partner_id = serializers.CharField(allow_null=True)
+    member_ids = serializers.ListField(child=serializers.CharField())
+    material_basis = serializers.DictField()
+    ideological_dimension = serializers.DictField()
 
 
 class EventSerializer(serializers.Serializer[dict[str, Any]]):
@@ -209,9 +232,8 @@ class EventSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class TrapStatusSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a single trap detector status."""
+    """Serialize a single trap detector status (Spec 052 §13)."""
 
-    trap_type = serializers.CharField()
     severity = serializers.CharField()
     score = serializers.FloatField()
     indicators = serializers.ListField(child=serializers.CharField())
@@ -228,19 +250,38 @@ class TrapDetectionResultSerializer(serializers.Serializer[dict[str, Any]]):
     game_over_trap = serializers.CharField(allow_null=True)
 
 
+class DerivedBlockSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize the engine-computed derived block (Spec 052 §11).
+
+    All fields are read-only caches.  The client MUST NOT write to them.
+    """
+
+    value_tensor = serializers.DictField()
+    imperial_rent = serializers.DictField()
+    dept_iii_visibility = serializers.DictField()
+    class_aggregates = serializers.DictField()
+    economy = serializers.DictField()
+    predictions = serializers.DictField()
+
+
 class GameSnapshotSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a full game state snapshot."""
+    """Serialize a full game state snapshot (Spec 052 §5).
+
+    Note what is absent: no ``entities``, no top-level ``economy``.
+    Class data lives under ``derived.class_aggregates``.
+    Economy data lives under ``derived.economy``.
+    """
 
     session_id = serializers.CharField()
     tick = serializers.IntegerField()
-    entities = EntitySerializer(many=True)
-    territories = TerritorySerializer(many=True)
     organizations = OrganizationSerializer(many=True)
     institutions = InstitutionSerializer(many=True)
+    territories = TerritorySerializer(many=True)
+    hyperedges = HyperedgeSerializer(many=True)
     edges = EdgeSerializer(many=True)
-    economy = serializers.DictField()
     events = EventSerializer(many=True)
     traps = TrapDetectionResultSerializer(required=False, allow_null=True)
+    derived = DerivedBlockSerializer()
 
 
 class GameSessionListSerializer(serializers.Serializer[dict[str, Any]]):

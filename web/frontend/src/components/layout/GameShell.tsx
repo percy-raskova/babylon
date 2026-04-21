@@ -169,10 +169,12 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
                 ◀
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-hidden p-2">
-              <ErrorBoundary fallbackLabel="Topology Graph">
-                <GraphView snapshot={snapshot} />
-              </ErrorBoundary>
+            <div className="relative min-h-0 flex-1 overflow-hidden">
+              <div className="absolute inset-0 p-2">
+                <ErrorBoundary fallbackLabel="Topology Graph">
+                  <GraphView snapshot={snapshot} />
+                </ErrorBoundary>
+              </div>
             </div>
           </div>
         )}

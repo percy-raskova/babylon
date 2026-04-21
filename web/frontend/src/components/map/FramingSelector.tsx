@@ -7,6 +7,7 @@
  */
 
 import { useMapStore } from "@/stores/mapStore";
+import { useGameStore } from "@/stores/gameStore";
 import type { AdminLevel } from "@/types/game";
 
 const FRAMING_OPTIONS: { level: AdminLevel; label: string; tooltip: string }[] = [
@@ -21,6 +22,15 @@ const FRAMING_OPTIONS: { level: AdminLevel; label: string; tooltip: string }[] =
 export function FramingSelector() {
   const activeFraming = useMapStore((s) => s.activeFraming);
   const setActiveFraming = useMapStore((s) => s.setActiveFraming);
+  const sessionId = useGameStore((s) => s.sessionId);
+  const fetchMapData = useGameStore((s) => s.fetchMapData);
+
+  const handleSelect = (level: AdminLevel) => {
+    setActiveFraming(level);
+    if (sessionId) {
+      void fetchMapData(sessionId, level);
+    }
+  };
 
   return (
     <div className="flex items-center gap-0.5 rounded-md border border-wet-concrete bg-void p-0.5">
@@ -32,7 +42,7 @@ export function FramingSelector() {
           key={level}
           title={tooltip}
           data-testid={`framing-${level}`}
-          onClick={() => setActiveFraming(level)}
+          onClick={() => handleSelect(level)}
           className={`rounded px-2 py-1 text-[11px] font-mono font-medium transition-colors ${
             activeFraming === level
               ? "bg-gold text-void"

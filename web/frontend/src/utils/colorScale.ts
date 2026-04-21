@@ -59,9 +59,9 @@ function interpolateColor(color1: string, color2: string, factor: number): strin
  */
 function interpolateGradient(colors: string[], factor: number): string {
   if (!colors.length) return "#808080";
-  if (colors.length === 1) return colors[0]!;
-  if (factor <= 0) return colors[0]!;
-  if (factor >= 1) return colors[colors.length - 1]!;
+  if (colors.length === 1) return colors[0] ?? "#808080";
+  if (factor <= 0) return colors[0] ?? "#808080";
+  if (factor >= 1) return colors[colors.length - 1] ?? "#808080";
 
   const numSegments = colors.length - 1;
   const segment = Math.floor(factor * numSegments);

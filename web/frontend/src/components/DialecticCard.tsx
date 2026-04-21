@@ -45,8 +45,8 @@ function WeightSparkline({ points, color }: { points: WeightHistoryPoint[]; colo
 
   const width = 80;
   const height = 20;
-  const maxTick = points[points.length - 1]!.tick;
-  const minTick = points[0]!.tick;
+  const maxTick = points[points.length - 1]?.tick ?? 0;
+  const minTick = points[0]?.tick ?? 0;
   const range = maxTick - minTick || 1;
 
   const path = points

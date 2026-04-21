@@ -7,6 +7,7 @@ import { get as apiGet, post as apiPost } from "@/api/client";
 import { createLogger } from "@/utils/logger";
 import { classifyEvents } from "@/lib/eventClassifier";
 import { useUIStore } from "./uiStore";
+import { useMapStore } from "./mapStore";
 
 const log = createLogger("GameStore");
 import type {
@@ -14,6 +15,7 @@ import type {
   AvailableAction,
   SubmitActionParams,
   ActionResultData,
+  AdminLevel,
 } from "@/types/game";
 
 /** Aggregated metrics for one tick, used for time series. */
@@ -76,6 +78,7 @@ interface GameState {
 
   setSession: (id: string | null) => void;
   fetchState: (gameId: string) => Promise<void>;
+  fetchMapData: (gameId: string, zoom: AdminLevel) => Promise<void>;
   submitAction: (gameId: string, params: SubmitActionParams) => Promise<void>;
   resolveTick: (gameId: string) => Promise<ActionResultData[] | null>;
   reset: () => void;
@@ -98,10 +101,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ loading: true, error: null });
     log.debug("Fetching game state", { gameId });
 
+    const zoom = useMapStore.getState().activeFraming;
     const [stateRes, actionsRes, mapRes] = await Promise.all([
       apiGet<GameSnapshot>(`/api/games/${gameId}/state/`),
       apiGet<AvailableAction[]>(`/api/games/${gameId}/actions/available/`),
-      apiGet<FeatureCollection>(`/api/games/${gameId}/map/`),
+      apiGet<FeatureCollection>(`/api/games/${gameId}/map/?zoom=${zoom}`),
     ]);
 
     if (stateRes.status === "ok") {
@@ -130,6 +134,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     set({ loading: false });
+  },
+
+  fetchMapData: async (gameId, zoom) => {
+    log.debug("Fetching map data", { gameId, zoom });
+    const res = await apiGet<FeatureCollection>(`/api/games/${gameId}/map/?zoom=${zoom}`);
+    if (res.status === "ok") {
+      set({ mapData: res.data });
+    }
   },
 
   submitAction: async (gameId, params) => {

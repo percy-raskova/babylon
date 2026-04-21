@@ -149,6 +149,28 @@ class World(BaseModel):
                     upstream[m.source_id] = source.observe()
         return TickInputs(upstream=upstream)
 
+    def get_one_or_none(self, type_tag: str) -> Any | None:
+        """Return a single dialectic matching the given type_tag, or None.
+
+        This is the defensive accessor for cyclical composition. When a
+        dialectic needs to read state from a peer that may or may not exist
+        (e.g. ConsumptionDialectic reading ProductionDialectic), it uses
+        ``get_one_or_none`` instead of assuming the peer is present.
+
+        If multiple dialectics of the same type exist, returns the first
+        found (iteration order).
+
+        Args:
+            type_tag: The type discriminator to search for.
+
+        Returns:
+            The first matching Dialectic, or None if none exist.
+        """
+        for d in self.dialectics.values():
+            if d.type_tag == type_tag:
+                return d
+        return None
+
     def get_live_dialectics(self) -> dict[UUID, Any]:
         """Return all dialectics that have not been sublated.
 

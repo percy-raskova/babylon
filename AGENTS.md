@@ -681,3 +681,10 @@ ADR0XX_descriptive_name:
     negative:
       - "Tradeoff 1"
 ```
+
+<!-- SPECKIT START -->
+
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+
+<!-- SPECKIT END -->

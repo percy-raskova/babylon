@@ -31,6 +31,9 @@ TODO.md
 # Speckit templates and governance (constitution, specs - prose-heavy)
 .specify/
 
+# Opencode command definitions (agent prompts, not documentation)
+.opencode/
+
 # GitHub templates and project files
 .github/
 

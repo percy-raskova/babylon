@@ -1,0 +1,6 @@
+{
+  "ai": "opencode",
+  "context_file": "AGENTS.md",
+  "integration": "opencode",
+  "script": "sh"
+}

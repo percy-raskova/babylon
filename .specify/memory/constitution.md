@@ -2,34 +2,26 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.10.0 → 1.10.1
-Bump Rationale: PATCH — added three spatial framing data sources to III.4
-  (USDA ERS CZs, BEA EAs, OMB CBSAs). No new principles or sections.
-  Required by Multi-Scale Spatial Rendering spec.
+Version Change: 2.0.0 → 2.1.0
+Bump Rationale: MINOR — material expansion of Article IV test case scope.
+  Ratifies Detroit→Michigan statewide expansion (83 counties, BEA EAs as
+  aggregation tier) and Detroit-Windsor cross-border boundary condition.
+  Tri-county Detroit sub-test preserved as backward-compat acceptance
+  criterion. No primitive redefinitions.
 
 Modified Principles:
-  - II: Added II.8 Client as Presentation Layer
+  - IV. Test Case: Metro Detroit (2010-2025) → IV. Test Case: Michigan
+    Statewide (2010-2025)
+    - Expanded from Wayne/Oakland counties to all 83 Michigan counties
+    - Added BEA Economic Areas as constitutional aggregation tier
+    - Added Detroit-Windsor boundary condition (Canada required)
+    - Tri-county Detroit preserved as backward-compat acceptance criterion
 
-Added Sections:
-  - II.8 Client as Presentation Layer (browser as viewport, JSON contracts,
-    disposable frontend, React pragmatic choice)
-  - X. Deployment Infrastructure (new article, 6 principles):
-    X.1 Bare Metal, Ansible-Managed
-    X.2 Terraform Provisions, cloud-init Bridges, Ansible Configures
-    X.3 Postgres Bare Metal from PGDG
-    X.4 systemd as Sole Supervisor
-    X.5 Cloudflare Edge, Hetzner Compute
-    X.6 Solo-Developer Constraint
+Added Principles: None
+
+Added Sections: None
 
 Removed Sections: None
-
-Cross-References Added:
-  - II.8 references II.5 (AI Observes — browser is third observer)
-  - II.8 references II.6 (State is Data — client-side complement)
-  - II.8 references VII.1 (UI Observes, Never Controls)
-  - X.3 references II.6 (Hydration Pattern — Postgres replaces SQLite for runtime)
-  - X.5 references II.5 (AI via Workers AI on Cloudflare edge)
-  - X.6 references IX (governance filter for infrastructure additions)
 
 Templates Requiring Updates:
   ✅ plan-template.md: No hardcoded principle numbers
@@ -39,40 +31,42 @@ Templates Requiring Updates:
   ✅ agent-file-template.md: No constitution references
 
 Follow-up TODOs:
-  - SPEC: Verify spec 038 section 2.4 aligns with II.8 (elevates to
-    constitutional commitment)
-  - CODE: Ensure all future frontend specs reference II.8 for JSON
-    contract requirement
-
-Previous Follow-up TODOs (1.8.2):
-  - CODE: Restructure CommunityType enum per three-category taxonomy:
-    Category 1 hegemonic: rename WHITE→SETTLER, add PATRIARCHAL
-    Category 1 marginalized: keep NEW_AFRIKAN, FIRST_NATIONS, CHICANO, WOMEN, TRANS
-    Category 2 exclusion: keep DISABLED, QUEER, UNDOCUMENTED; add INCARCERATED
-    Category 2 remove: ABLED, HETEROSEXUAL, CISGENDER (institutional defaults, not communities)
-    Category 3 lifecycle: add YOUTH, ADULT, ELDER
-  - CODE: Update tests to reflect new taxonomy
-  - SPEC: Update Feature 022 spec FR-003 with corrected community types
+  - AMENDMENT B: Four-node partition invariance proof under
+    morphism-preserving coarse-graining
+  - AMENDMENT C: OODA profile placement spec (three candidate homes:
+    PartyDialectic pole, morphism metadata, independent agent registry).
+    Decision required before v2.2.0.
+  - AMENDMENT D: Hyperedge reconciliation spec (preserve Anti-Pattern
+    VIII.9 under strictly-dyadic morphism constraint)
+  - CODE: Update AGENTS.md Embedded Trinity description to distinguish
+    runtime World from persistence layer
+  - SPEC: All specs referencing II.1 "Four-Node Recursive" must update
+    to II.1 "Partition Emergence"
+  - SPEC: Spec 038 (unified-class-system) references "fractal
+    consistency" — update per Amendment B
+  - SPEC: Spec 040 (michigan-statewide-scope) constitutional
+    ratification complete; implementation can proceed
 
 Previous Version History:
-  1.8.2 (2026-03-01): Added Natural Earth SQLite to III.4 approved data sources
-  1.8.1 (2026-02-27): Added Chetty Opportunity Atlas to III.4 approved data sources
-  1.8.0 (2026-02-26): Added I.16-I.18 (Organization, OODA, Material-Ideological),
-                      expanded II.7 with three hyperedge categories, added VIII.10
-  1.7.0 (2026-02-25): Added V. State AI Verbs (6 verbs, asymmetric)
-  1.6.1 (2026-02-25): Structural reorganization — annex architecture, core condensed ~78%
-  1.6.0 (2026-02-25): Added II.7 Edges vs Hyperedges, VIII.9 Community as Pairwise Edge
-  1.5.0 (2026-02-24): Added I.12-I.15 (Catastrophe Surface, Principal Contradiction,
-                      Contradiction Internals, Edge Mode Transition Topology)
-  1.4.0 (2026-02-24): Added V. Player Action Vocabulary (9 verbs, dual grouping)
-  1.3.2 (2026-02-05): Added dispossession data sources to III.4 table
-  1.3.1 (2026-02-05): Added PWT and Census Trade to III.4 approved sources
-  1.3.0 (2026-01-31): Added VIII. Visual Design Principles (new article)
-  1.2.0 (2026-01-30): Added I.8-I.11 (Tragedy, Metabolic Rift, Terminal Crisis, Pedagogy),
-                      II.5-II.6 (AI Observes, State/Engine separation)
-  1.1.0 (2026-01-30): Added I.7 Quantitative Accumulation → Qualitative Transformation
-  1.0.0 (2026-01-30): Initial ratification with 6 theoretical commitments,
-                      4 architecture principles, 5 methodological constraints
+  2.0.0 (2026-04-28): Amendment A — Dialectic as primitive, staged
+    amendment series framework, ValueTensor4x3 derived status
+  1.10.1 (2026-04-14): Added USDA ERS CZs, BEA EAs, OMB CBSAs to III.4
+  1.10.0 (2026-04-14): Added II.8 Client as Presentation Layer,
+    X Deployment Infrastructure
+  1.8.2 (2026-03-01): Added Natural Earth SQLite to III.4
+  1.8.1 (2026-02-27): Added Chetty Opportunity Atlas to III.4
+  1.8.0 (2026-02-26): Added I.16-I.18, expanded II.7, added VIII.10
+  1.7.0 (2026-02-25): Added V. State AI Verbs
+  1.6.1 (2026-02-25): Structural reorganization
+  1.6.0 (2026-02-25): Added II.7 Edges vs Hyperedges, VIII.9
+  1.5.0 (2026-02-24): Added I.12-I.15
+  1.4.0 (2026-02-24): Added V. Player Action Vocabulary
+  1.3.2 (2026-02-05): Added dispossession data sources to III.4
+  1.3.1 (2026-02-05): Added PWT and Census Trade to III.4
+  1.3.0 (2026-01-31): Added VIII. Visual Design Principles
+  1.2.0 (2026-01-30): Added I.8-I.11, II.5-II.6
+  1.1.0 (2026-01-30): Added I.7
+  1.0.0 (2026-01-30): Initial ratification
 ================================================================================
 -->
 
@@ -114,35 +108,37 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **15. Edge Mode Transitions** — State machine governs permissible transitions. Prohibited: EXTRACTIVE → SOLIDARISTIC (requires TRANSACTIONAL intermediate). Conditions reference contradiction internals. Topology versioned as constitutional amendment.
 
-**16. Organization vs Institution** — Organization = voluntary coordination, can be destroyed. Institution = crystallized social relations, survives member turnover. Organizations become institutions through formalization. The player builds organizations; the state operates institutions. Destroying an organization kills it. Destroying an institution requires replacing the social relations it crystallizes.
+**16. Organization vs Institution** — Organization = voluntary coordination, can be destroyed. Institution = crystallized social relations, survives member turnover. Organizations become institutions through formalization. The player builds organizations; the state operates institutions. Destroying an organization kills it. Destroying an institution requires replacing the social relations it crystallizes. Organizations ARE the agents — they are the entities that take action via verbs. SocialClass, Territory, and Community are substrate, not agents.
 
-**17. OODA Loop as Organizational Metabolism** — Every organization/institution has an OODA profile (Observe-Orient-Decide-Act) determining action capacity per turn. Trade-offs: speed vs coherence, autonomy vs coordination, democracy vs reaction time. Decentralized orgs observe fast but orient slowly. Hierarchical institutions decide fast but observe poorly. The profile constrains which verbs are available and how many per tick.
+**17. OODA Loop as Organizational Metabolism** — Every organization/institution has an OODA profile (Observe-Orient-Decide-Act) determining action capacity per turn. Trade-offs: speed vs coherence, autonomy vs coordination, democracy vs reaction time. Decentralized orgs observe fast but orient slowly. Hierarchical institutions decide fast but observe poorly. The profile constrains which verbs are available and how many per tick. [TRANSITION STATE — Pending Amendment C: OODA profiles are constitutional but their v2 architectural placement is unresolved. Candidate homes: (a) pole attribute on PartyDialectic, (b) morphism metadata, (c) independent agent registry. A spec with invariance proof must be ratified before v2.2.0.]
 
-**18. Material-Ideological Distinction on Hyperedges** — Every community hyperedge has two dimensions: material basis (objective structural position, exists regardless of member consciousness) and ideological dimension (whether members conceive of themselves as having collective interests opposed to hegemonic order). The GAP between material position and ideological consciousness is the terrain of political struggle. This is class-in-itself vs class-for-itself, generalized across all contradiction axes.
+**18. Material-Ideological Distinction** — Every dialectic has two dimensions: material basis (objective structural position, exists regardless of consciousness) and ideological dimension (whether actors conceive of collective interests opposed to hegemonic order). The GAP between material position and ideological consciousness is the terrain of political struggle. This is class-in-itself vs class-for-itself, generalized across all contradiction axes. [TRANSITION STATE — Pending Amendment D: v1 implementation expressed this on hyperedges. v2 reimplementation must preserve the distinction without violating the dyadic morphism constraint or Anti-Pattern VIII.9.]
+
+**19. Dialectic as Primitive** — The dialectic `D = (A, Ā, w, T, σ)` is the irreducible structural unit. `A` and `Ā` are typed poles; `w ∈ [-1, 1]` is the principal aspect weight; `T` is the motion operator (pure function `step`); `σ` is the sublation predicate. The ValueTensor4x3 is derived from dialectic structure, not primitive. All class partitions — including the {Core, Periphery} × {Bourgeoisie, Proletariat} schema — emerge from dialectic resolution patterns at specific scales. The engine enforces three universal invariants on every dialectic at every tick: weight ∈ [-1, 1], type stability across motion, and that `step` returns a Dialectic of the declared type.
 
 ## II. Architecture Principles
 
 > Full article: `constitution/article-ii-architecture.md`
 
-**1. Four-Node Recursive** — {Core, Periphery} × {Bourgeoisie, Proletariat}. Fractal at any resolution.
+**1. Partition Emergence from Dialectic Structure** — The {Core, Periphery} × {Bourgeoisie, Proletariat} schema is a derived partition of the dialectic graph at a specific resolution, not a primitive fractal. It emerges when the dialectical field is coarse-grained along the imperial rent and class-contradiction axes. At finer resolutions, the same structure resolves into more specific contradictions. Amendment B MUST provide an invariance proof that the partition is recoverable under morphism-preserving coarse-graining without loss of predictive power.
 
-**2. Primitives vs Derived** — Store: concrete labor time, physical substrate, reproduction requirements, topology. Compute: SNLT, value, c/v/s, Φ, r, s/v, OCC. NEVER store derived quantities.
+**2. Primitives vs Derived** — Store: dialectic poles (typed frozen BaseModel), morphism graph (source, target, relation, weight), reproduction requirements. Compute: ValueTensor4x3, SNLT, value, c/v/s, Φ, r, s/v, OCC. NEVER store derived quantities. The Dialectic is primitive; the tensor is derived.
 
-**3. NetworkX as Discretized Manifold** — Graph is the manifold. Tensors are field values. Connectivity determines information/value flow.
+**3. NetworkX as Discretized Manifold** — Graph is the manifold. Tensors are field values. Connectivity determines information/value flow. [TRANSITION STATE — Pending Amendment D: In v2, the morphism graph is strictly dyadic (II.9). The NetworkX+XGI dual-graph commitment must be reconciled with this constraint without collapsing hyperedges into pairwise edges (Anti-Pattern VIII.9).]
 
 **4. Quantities vs Coefficients** — Quantities flux per tick. Coefficients α-smooth. Crisis = discontinuous coefficient reset, not gradual drift.
 
-**5. AI Observes, Never Controls** — State calculated then narrated. AI read-only. Reproducibility paramount. AI failure non-fatal.
+**5. AI Observes, Never Controls** — State calculated then narrated. AI read-only. Reproducibility paramount. AI failure non-fatal. The AI layer consumes `observe()` projections, never invokes `step()` or mutates poles.
 
-**6. State is Data, Engine is Transformation** — WorldState: frozen Pydantic, `model_copy()` for changes. Engine: pure `step()`. Hydration: SQLite → WorldState → NetworkX → Systems → back. No DB I/O during tick.
+**6. State is Data, Engine is Transformation** — World: frozen Pydantic `World` model holding dialectics, morphisms, events. Engine: pure `tick(world, actions) → (new_world, events)`. The Embedded Trinity (SQLite Ledger, NetworkX Topology, ChromaDB Archive) provides persistence and serialization; the `World` is the single runtime structure for tick computation. No DB I/O during tick.
 
-**7. Edges vs Hyperedges (NetworkX + XGI)** — Dyadic flows between two entities → NetworkX edge. N-ary membership → XGI hyperedge. Two layers MUST remain separate. Hyperedge overlap = solidarity potential; edge = actuality. Edges per tick; hyperedges α-smooth. Three hyperedge categories:
+**7. Edges vs Hyperedges** — Dyadic flows between two entities → morphism graph (II.9). N-ary membership → XGI hyperedge. Two layers MUST remain separate. Hyperedge overlap = solidarity potential; morphism edge = actuality. Edges per tick; hyperedges α-smooth. [TRANSITION STATE — Pending Amendment D: The v2 morphism graph is strictly dyadic. Reconciliation required: either (a) hyperedges as higher-order structures with 1-skeleton in the morphism graph plus explicit consistency constraints, (b) simplicial representation, or (c) hyperedges migrate to pole structure. Anti-Pattern VIII.9 MUST be preserved.]
 
-- **Category 1 — Contradiction Pairs**: Both hegemonic and marginalized sides are real hyperedges with members, institutions, and political projects. SETTLER ↔ NEW_AFRIKAN/FIRST_NATIONS/CHICANO (land, imperial rent, carceral labor). PATRIARCHAL ↔ WOMEN/TRANS (unwaged reproductive labor, Dept III). Hegemonic hyperedges recruit, organize, and defend extraction positions.
-- **Category 2 — Institutional Exclusion**: Only the marginalized side exists as a real hyperedge. No paired oppressor community — oppression flows through institutional defaults. DISABLED (built environment assumes able-bodiedness), QUEER (institutional heteronormativity), UNDOCUMENTED (legal exclusion), INCARCERATED (carceral system, civil death).
-- **Category 3 — Lifecycle Phases (D-P-D' Circuit)**: Temporal positions in the intergenerational lifecycle. NOT identity communities — structural phases with distinct material conditions. YOUTH (D: pre-productive, dependent), ADULT (P: sells labor-power), ELDER (D': post-productive, legitimation bargain). Dependency ratio = (Pop_D + Pop_D') / Pop_P.
+**8. Client as Presentation Layer** — The browser is a viewport into server-computed state, not a participant in computation. The frontend receives game state via `observe()` projections as JSON, renders them, and emits player intents as JSON. It never runs simulation logic, never hydrates graphs, never resolves ticks. The `observe()` output is the durable contract; the frontend framework is disposable and replaceable without affecting the engine, the API, or the database. JSON is the interchange format at every system boundary.
 
-**8. Client as Presentation Layer** — The browser is a viewport into server-computed state, not a participant in computation. The frontend receives game state as JSON, renders it, and emits player intents as JSON. It never runs simulation logic, never hydrates graphs, never resolves ticks. The Django REST API is the durable contract; the frontend framework is disposable and replaceable without affecting the engine, the API, or the database. JSON is the interchange format at every system boundary.
+**9. Morphism as Dyadic Relation** — Morphisms are strictly dyadic: source dialectic → target dialectic with typed relation and coupling weight. Five canonical relations: `feeds`, `constrains`, `transforms`, `contains`, `antagonizes`. No N-ary morphisms at this layer. The morphism graph is the wiring diagram for tick-level data flow. `feeds` determines `TickInputs` for `step()`.
+
+**10. World as Runtime Single Structure** — At runtime, the World holds all dialectics, their morphism wiring, and per-tick events. This is the single structure for tick computation. Persistence (SQLite, ChromaDB) is a serialization concern, not a runtime partition. The Embedded Trinity is the durability layer; the World is the execution layer.
 
 ## III. Methodological Constraints
 
@@ -158,11 +154,19 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **5. Empirical vs Strategic Separation** — Material conditions from data (nodes, constraints, extractive edges). Strategic intervention NOT from data (solidaristic edges, organizing, consciousness-raising).
 
-## IV. Test Case: Metro Detroit (2010-2025)
+## IV. Test Case: Michigan Statewide (2010-2025)
 
-> Full article: `constitution/article-iv-detroit.md`
+> Full article: `constitution/article-iv-michigan.md`
 
-Wayne County vs Oakland County. Crisis → Devaluation → Recolonization → Displacement. Model MUST reproduce observed class transitions using only QCEW/Census data + theoretical mechanisms. Failure = theory or implementation wrong.
+The canonical test case is the State of Michigan, all 83 counties, 2010–2025. BEA Economic Areas (EAs) are the constitutional aggregation tier for regional analysis. The model MUST reproduce observed class transitions and inter-regional inequality using only QCEW/Census data + theoretical mechanisms. Failure = theory or implementation wrong.
+
+### IV.1 Detroit-Windsor Boundary Condition
+
+The Detroit-Windsor corridor is a required boundary condition, not an optional foreign node. Cross-border labor markets, trade flows, and imperial rent circuits (automotive supply chain, logistics, water rights) MUST be modeled. Canada is a first-class territorial substrate. The boundary itself is a contradiction surface: same labor, different citizenship regimes, different repression budgets.
+
+### IV.2 Tri-County Backward-Compat Acceptance Criterion
+
+The original Wayne County vs Oakland County tri-county sub-test (Crisis → Devaluation → Recolonization → Displacement) is preserved as a mandatory backward-compatibility acceptance criterion. Any statewide model MUST reproduce the tri-county results when coarse-grained to that resolution. Regression = implementation wrong.
 
 ## V. Action Vocabulary
 
@@ -222,9 +226,23 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 > Full article: `constitution/article-ix-governance.md`
 
-**Amendment**: Propose → demonstrate consistency → update artifacts → increment version.
-**Versioning**: MAJOR (removal/redefinition), MINOR (new principle), PATCH (clarification).
-**Compliance triggers**: New system, formula change, data source addition, scope expansion, UI implementation, infrastructure/deployment change.
+**1. Amendment Procedure** — Propose → demonstrate consistency → update artifacts → increment version.
+
+**Versioning**: MAJOR (removal/redefinition of primitive or principle), MINOR (new principle/section or material expansion), PATCH (clarification, wording, non-semantic refinement).
+
+**Compliance triggers**: New system, formula change, data source addition, scope expansion, UI implementation, infrastructure/deployment change, primitive redefinition.
+
+**2. Staged Amendment Series** — When a primitive changes, downstream principles MUST be translated through a numbered amendment series with invariance proofs. Each amendment in the series must demonstrate that affected principles are at least as constrained as their predecessors. No amendment in the series may be skipped. The series is complete only when all downstream principles are either re-grounded or explicitly superseded.
+
+**Amendment A — Dialectic Primitive** (ratified v2.0.0): Introduces `Dialectic[A, B]` as irreducible unit. Demotes Four-Node Recursive to derived partition. ValueTensor4x3 derived status.
+
+**Amendment B — Partition Invariance** (pending): Four-node schema as derived partition. Requirement: invariance proof under morphism-preserving coarse-graining.
+
+**Amendment C — OODA Placement** (pending): Architectural home for OODA profiles in v2. Requirement: spec with invariance proof before v2.2.0.
+
+**Amendment D — Hyperedge Reconciliation** (pending): NetworkX+XGI and strictly-dyadic morphism constraint. Requirement: spec preserving Anti-Pattern VIII.9.
+
+Additional amendments will be registered as they are identified during downstream translation.
 
 ## X. Deployment Infrastructure
 
@@ -244,4 +262,4 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 ______________________________________________________________________
 
-**Version**: 1.10.1 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-04-14
+**Version**: 2.1.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-04-28

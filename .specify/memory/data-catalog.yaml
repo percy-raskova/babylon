@@ -1,0 +1,285 @@
+---
+# Babylon Data Source Catalog
+# Canonical machine-readable catalog for III.4 Data Source Traceability.
+# Runtime data sources are fetched/updated during operation.
+# Fixtures are pinned snapshots for reproducible tests and NEVER runtime dependencies.
+version: "2.6.1"
+categories:
+  - name: Federal Economic
+    sources:
+      - id: QCEW
+        agency: BLS
+        dataset: Quarterly Census of Employment and Wages
+        vintage: Annual
+        granularity: County
+        cadence: Annual
+        class: Runtime
+      - id: BEA_GDP
+        agency: BEA
+        dataset: GDP by County
+        vintage: Annual
+        granularity: County
+        cadence: Annual
+        class: Runtime
+      - id: BEA_TiVA
+        agency: BEA
+        dataset: Trade in Value Added
+        vintage: Annual
+        granularity: State/Metro
+        cadence: Annual
+        class: Runtime
+      - id: BEA_EA
+        agency: BEA
+        dataset: Economic Areas (regional definitions)
+        vintage: Static
+        granularity: EA (county aggregate)
+        cadence: Static
+        class: Fixture
+      - id: FRED
+        agency: St. Louis Fed
+        dataset: Federal Reserve Economic Data
+        vintage: Varies
+        granularity: Varies
+        cadence: Daily
+        class: Runtime
+      - id: Fed_SCF
+        agency: Federal Reserve
+        dataset: Survey of Consumer Finances
+        vintage: Triennial
+        granularity: National/Region
+        cadence: Triennial
+        class: Runtime
+      - id: Fed_Z1
+        agency: Federal Reserve
+        dataset: Financial Accounts of the US
+        vintage: Quarterly
+        granularity: National/Sector
+        cadence: Quarterly
+        class: Runtime
+      - id: Census_Trade
+        agency: Census Bureau
+        dataset: USA Trade Online
+        vintage: Annual
+        granularity: Port/State
+        cadence: Annual
+        class: Runtime
+      - id: PWT
+        agency: University of Groningen
+        dataset: Penn World Table
+        vintage: Annual
+        granularity: Country
+        cadence: Annual
+        class: Runtime
+      - id: USAspending
+        agency: Treasury
+        dataset: USASpending.gov
+        vintage: Quarterly
+        granularity: Recipient/County
+        cadence: Quarterly
+        class: Runtime
+  - name: Federal Demographic
+    sources:
+      - id: Census_ACS
+        agency: Census Bureau
+        dataset: Decennial Census / ACS
+        vintage: Rolling
+        granularity: Tract/Block
+        cadence: Annual
+        class: Runtime
+      - id: CDC_WONDER
+        agency: CDC
+        dataset: Multiple cause of death, natality
+        vintage: Annual
+        granularity: County
+        cadence: Annual
+        class: Runtime
+      - id: NCHS
+        agency: CDC/NCHS
+        dataset: National Center for Health Statistics
+        vintage: Annual
+        granularity: County
+        cadence: Annual
+        class: Runtime
+      - id: SSA_Actuarial
+        agency: SSA
+        dataset: Life tables, beneficiary data
+        vintage: Annual
+        granularity: State/National
+        cadence: Annual
+        class: Runtime
+      - id: HHS_AHRF
+        agency: HHS
+        dataset: Area Health Resource File
+        vintage: Annual
+        granularity: County
+        cadence: Annual
+        class: Runtime
+      - id: HUD_USPS_Vacancy
+        agency: HUD
+        dataset: USPS Vacancy Data
+        vintage: Quarterly
+        granularity: Tract
+        cadence: Quarterly
+        class: Runtime
+      - id: ATUS
+        agency: BLS
+        dataset: American Time Use Survey
+        vintage: Annual
+        granularity: National/Region
+        cadence: Annual
+        class: Runtime
+  - name: Federal Infrastructure
+    sources:
+      - id: HIFLD
+        agency: DHS
+        dataset: Homeland Infrastructure Foundation-Level Data
+        vintage: Quarterly
+        granularity: Point/County
+        cadence: Quarterly
+        class: Runtime
+      - id: BTS
+        agency: DOT
+        dataset: Border Crossing Data, TranStats
+        vintage: Monthly
+        granularity: Port/County
+        cadence: Monthly
+        class: Runtime
+      - id: FCC_BDC
+        agency: FCC
+        dataset: Broadband Data Collection
+        vintage: Biannual
+        granularity: Address/Block
+        cadence: Biannual
+        class: Runtime
+      - id: NHPN
+        agency: FHWA
+        dataset: National Highway Planning Network
+        vintage: Annual
+        granularity: Segment
+        cadence: Annual
+        class: Fixture
+      - id: HPMS
+        agency: FHWA
+        dataset: Highway Performance Monitoring System
+        vintage: Annual
+        granularity: Segment
+        cadence: Annual
+        class: Fixture
+      - id: FAF5
+        agency: FHWA
+        dataset: Freight Analysis Framework
+        vintage: Annual
+        granularity: FAF Zone
+        cadence: Annual
+        class: Runtime
+      - id: CFS
+        agency: Census/AMS
+        dataset: Commodity Flow Survey
+        vintage: Quinquennial
+        granularity: CFS Area
+        cadence: Quinquennial
+        class: Runtime
+  - name: International Trade
+    sources:
+      - id: WID
+        agency: WID.world
+        dataset: World Inequality Database
+        vintage: Annual
+        granularity: Country/State
+        cadence: Annual
+        class: Runtime
+      - id: Comtrade
+        agency: UN
+        dataset: UN Comtrade Database
+        vintage: Annual
+        granularity: Country/HS Code
+        cadence: Annual
+        class: Runtime
+      - id: OECD_TiVA
+        agency: OECD
+        dataset: Trade in Value Added
+        vintage: Annual
+        granularity: Country/Sector
+        cadence: Annual
+        class: Runtime
+  - name: Land Cover / Spatial
+    sources:
+      - id: Natural_Earth
+        agency: Natural Earth
+        dataset: Vector/raster map data
+        vintage: Static
+        granularity: Various
+        cadence: Static
+        class: Fixture
+      - id: BIA_LAR
+        agency: BIA
+        dataset: Tribal Land Areas
+        vintage: Static
+        granularity: Polygon
+        cadence: Static
+        class: Fixture
+      - id: PAD_US
+        agency: USGS
+        dataset: Protected Areas Database
+        vintage: Annual
+        granularity: Polygon
+        cadence: Annual
+        class: Fixture
+      - id: NLCD
+        agency: USGS
+        dataset: National Land Cover Database
+        vintage: 5-year
+        granularity: 30m pixel
+        cadence: 5-year
+        class: Fixture
+      - id: EPA_FRS
+        agency: EPA
+        dataset: Facility Registry Service
+        vintage: Quarterly
+        granularity: Point
+        cadence: Quarterly
+        class: Runtime
+      - id: USDA_ERS_CZ
+        agency: USDA ERS
+        dataset: Commuting Zones (derived from Census JTW)
+        vintage: Static
+        granularity: County aggregate
+        cadence: Static
+        class: Fixture
+      - id: OMB_CBSA
+        agency: OMB
+        dataset: Core-Based Statistical Areas
+        vintage: Static
+        granularity: County aggregate
+        cadence: Static
+        class: Fixture
+  - name: Legal / Judicial / Housing
+    sources:
+      - id: US_Courts
+        agency: AO/US Courts
+        dataset: Federal judicial caseload
+        vintage: Annual
+        granularity: District
+        cadence: Annual
+        class: Runtime
+      - id: Eviction_Lab
+        agency: Princeton
+        dataset: Eviction filing records
+        vintage: Annual
+        granularity: Block/Tract
+        cadence: Annual
+        class: Runtime
+      - id: ATTOM_CoreLogic
+        agency: Commercial
+        dataset: Property/parcel data
+        vintage: Quarterly
+        granularity: Parcel
+        cadence: Quarterly
+        class: Runtime
+      - id: Chetty_Atlas
+        agency: Opportunity Insights
+        dataset: Opportunity Atlas / Social Mobility
+        vintage: Static
+        granularity: Tract
+        cadence: Static
+        class: Fixture

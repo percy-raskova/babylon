@@ -17,3 +17,21 @@ Chronological record of wiki ingests and maintenance operations.
 **Pages Updated**: .specify/memory/constitution.md, .specify/memory/data-catalog.yaml
 **Cross-references Added**: See Also annotations between I.21↔II.5↔I.16, I.18↔II.7↔VIII.9
 **Open Questions**: Amendment C deferred to v2.8.0; Amendments B and D still pending
+
+## [2026-04-29] ingest | Branch merge + Wiki lint + Skill documentation
+
+**Source**: feature/045-mvp-mock-progression merged into dev; main force-overwritten by dev; wiki lint pass
+**Pages Created**: `.opencode/skills/wiki-maintain/SKILL.md`
+**Pages Updated**:
+
+- `docs/agents/architecture.md` — added MetabolismSystem (8th system), fixed system count
+- `docs/agents/index.md` — added Agent Skills section with all 7 OpenCode skills; linked log.md properly
+- `docs/agents/log.md` — appended this entry
+  **Cross-references Added**:
+- index.md → log.md (proper link)
+- index.md → all 7 specification + wiki skills
+  **Lint Findings Resolved**:
+- Fixed contradiction: architecture.md now lists 8 systems (was 7)
+- Fixed orphan: log.md now properly linked from index.md
+- Added missing skill documentation to index
+  **Open Questions**: Should we add a dedicated `docs/agents/skills.md` page with detailed skill usage examples?

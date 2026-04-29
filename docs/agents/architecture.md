@@ -37,6 +37,7 @@ SimulationEngine.run_tick(graph, services, context)
      +-- 5. StruggleSystem       (struggle.py)
      +-- 6. ContradictionSystem  (contradiction.py)
      +-- 7. TerritorySystem      (territory.py)
+     +-- 8. MetabolismSystem     (metabolism.py)
 ```
 
 **Key principle**: State is pure data. Engine is pure transformation. They never mix.

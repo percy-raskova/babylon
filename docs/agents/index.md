@@ -30,6 +30,16 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 - Roadmap: `ai-docs/roadmap.md`
 - State: `ai-docs/state.yaml`
 
+## Agent Skills
+
+- `.opencode/skills/specification-discover/` — Problem decomposition and scope control
+- `.opencode/skills/specification-plan/` — Design artifacts and implementation planning
+- `.opencode/skills/specification-specify/` — API contracts and interface definitions
+- `.opencode/skills/specification-build/` — TDD implementation and code generation
+- `.opencode/skills/specification-validate/` — Tests, checklists, and acceptance criteria
+- `.opencode/skills/specification-govern/` — Constitutional compliance and amendment review
+- `.opencode/skills/wiki-maintain/` — Wiki ingest, query, and lint operations
+
 ## Changelog
 
-- `docs/agents/log.md`
+- [Wiki Log](log.md) — chronological ingest history

@@ -108,6 +108,7 @@ hypothesis = "^6.149.0"
 pytest-django = "^4.8"
 django-stubs = {version = ">=5.0", extras = ["compatible-mypy"]}
 djangorestframework-stubs = {version = ">=3.15", extras = ["compatible-mypy"]}
+testcontainers = {extras = ["postgres"], version = "^4.14.2"}
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -156,6 +157,7 @@ markers = [
     "empirical: Empirical validation tests requiring real QCEW data (deselect with '-m \"not empirical\"')",
     "benchmark: Performance and memory benchmarks for tensor operations",
     "requires_postgres: Tests requiring a running PostgreSQL instance (skipped if unavailable)",
+    "postgres: Tests using testcontainers ephemeral PostgreSQL (requires Docker)",
 ]
 addopts = [
     "-v",                      # Verbose output (already have)

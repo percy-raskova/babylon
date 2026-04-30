@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS game_session (
     status          VARCHAR(16) NOT NULL DEFAULT 'active',
     config_json     JSONB NOT NULL DEFAULT '{}'::jsonb,
     game_defines_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    snapshot_json   JSONB NOT NULL DEFAULT '{}'::jsonb,
     trace_level     VARCHAR(8) NOT NULL DEFAULT 'NONE',
     rng_seed        BIGINT NOT NULL DEFAULT 0,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),

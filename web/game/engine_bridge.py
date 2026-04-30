@@ -367,9 +367,16 @@ class EngineBridge:
         """Return the communities left-panel dashboard data."""
         return {}
 
-    def get_organizations_dashboard(self, _session_id: UUID) -> dict[str, Any]:
+    def get_organizations_dashboard(
+        self, session_id: UUID, player_only: bool = False
+    ) -> dict[str, Any]:
         """Return the organizations left-panel dashboard data."""
-        return {}
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        orgs = snap.get("organizations", [])
+        if player_only:
+            orgs = [o for o in orgs if o.get("vanguard") is not None]
+        return {"organizations": orgs}
 
     def get_edges_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         """Return the edges/relations left-panel dashboard data."""
@@ -1816,6 +1823,8 @@ def _serialize_territory(t: Any) -> dict[str, Any]:
         "id": t.id,
         "name": t.name,
         "h3_index": t.h3_index,
+        "h3_resolution": getattr(t, "h3_resolution", 7),
+        "county_fips": getattr(t, "county_fips", ""),
         "heat": float(t.heat),
         "sector_type": _enum_val(t.sector_type),
         "territory_type": _enum_val(t.territory_type),
@@ -1847,6 +1856,10 @@ def _serialize_organization(o: Any) -> dict[str, Any]:
         "territory_ids": list(o.territory_ids),
         "consciousness_tendency": _enum_val(o.consciousness_tendency),
         "vanguard": None,
+        # Stub missing Spec 052 fields to satisfy OrganizationSerializer
+        "hyperedge_memberships": [],
+        "consciousness": {"liberal": 0.33, "fascist": 0.33, "revolutionary": 0.34},
+        "ooda": {"observe": 0.5, "orient": 0.5, "decide": 0.5, "act": 0.5, "cycle_ticks": 4},
     }
 
     # Compute vanguard resources for player orgs
@@ -1879,22 +1892,24 @@ def _serialize_institution(inst: Any) -> dict[str, Any]:
         "budget": float(inst.budget),
         "housed_org_ids": list(inst.housed_org_ids),
         "territory_ids": list(inst.territory_ids),
-        "hegemonic_fraction": _enum_val(balance.hegemonic_fraction),
-        "liberal_technocratic": float(balance.liberal_technocratic),
-        "revanchist_fascist": float(balance.revanchist_fascist),
-        "institutionalist_bonapartist": float(balance.institutionalist_bonapartist),
+        "factional_composition": {
+            "liberal_technocratic": float(balance.liberal_technocratic),
+            "revanchist_fascist": float(balance.revanchist_fascist),
+            "institutionalist_bonapartist": float(balance.institutionalist_bonapartist),
+        },
     }
 
 
 def _serialize_edge(rel: Any) -> dict[str, Any]:
     """Serialize a Relationship edge."""
     return {
+        "id": f"{rel.source_id}-{rel.target_id}-{_enum_val(rel.edge_type)}",
         "source_id": rel.source_id,
         "target_id": rel.target_id,
-        "edge_type": _enum_val(rel.edge_type),
+        "mode": _enum_val(rel.edge_type),
         "value_flow": float(rel.value_flow),
         "tension": float(rel.tension),
-        "solidarity_strength": float(rel.solidarity_strength),
+        "repression_flow": float(getattr(rel, "solidarity_strength", 0.0)),
     }
 
 
@@ -1910,7 +1925,6 @@ def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
     Returns:
         Flat dict suitable for JSON encoding.
     """
-    entities = [_serialize_entity(e) for e in state.entities.values()]
     territories = [_serialize_territory(t) for t in state.territories.values()]
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
@@ -1930,13 +1944,20 @@ def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
     snapshot: dict[str, Any] = {
         "session_id": str(session_id),
         "tick": state.tick,
-        "entities": entities,
-        "territories": territories,
         "organizations": organizations,
         "institutions": institutions,
+        "territories": territories,
+        "hyperedges": [],
         "edges": edges,
-        "economy": state.economy.model_dump() if state.economy else {},
         "events": events_list,
+        "derived": {
+            "value_tensor": {},
+            "imperial_rent": {},
+            "dept_iii_visibility": {},
+            "class_aggregates": {},
+            "economy": state.economy.model_dump() if state.economy else {},
+            "predictions": {},
+        },
     }
 
     if traps_dict is not None:

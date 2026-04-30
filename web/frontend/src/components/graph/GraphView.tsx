@@ -12,9 +12,9 @@ import { useEffect, useMemo, useState } from "react";
 import { SigmaContainer, useRegisterEvents, useSigma } from "@react-sigma/core";
 import "@react-sigma/core/lib/style.css";
 import forceAtlas2 from "graphology-layout-forceatlas2";
+import { useNavigate, useParams } from "react-router";
 import type { GameSnapshot } from "@/types/game";
 import { buildGraph } from "@/utils/graphBuilder";
-import { useUIStore } from "@/stores/uiStore";
 
 interface GraphViewProps {
   snapshot: GameSnapshot;
@@ -148,19 +148,21 @@ function EdgeFilter({ filter }: { filter: string | null; graph: ReturnType<typeo
 /** Registers click events to sync with the UI store — pushes breadcrumbs for navigation. */
 function GraphEvents() {
   const sigma = useSigma();
-  const setSelectedNode = useUIStore((s) => s.setSelectedNode);
   const registerEvents = useRegisterEvents();
+  const navigate = useNavigate();
+  const { id: gameId = "" } = useParams<{ id: string }>();
 
   useEffect(() => {
     registerEvents({
       clickNode: (event) => {
-        setSelectedNode(event.node);
+        const type = sigma.getGraph().getNodeAttribute(event.node, "nodeType");
+        navigate(`/games/${gameId}/intel/${type}/${event.node}`);
       },
       clickStage: () => {
-        setSelectedNode(null);
+        // Clear selection, but GraphView doesn't manage global selection anymore
       },
     });
-  }, [registerEvents, setSelectedNode, sigma]);
+  }, [registerEvents, sigma, navigate, gameId]);
 
   return null;
 }

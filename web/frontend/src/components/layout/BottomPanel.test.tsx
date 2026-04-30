@@ -36,7 +36,7 @@ describe("BottomPanel", () => {
     );
     expect(screen.getByText("Time Series")).toBeInTheDocument();
     expect(screen.getByText("Events")).toBeInTheDocument();
-    expect(screen.getByText("Graph")).toBeInTheDocument();
+    expect(screen.queryByText("Graph")).not.toBeInTheDocument();
   });
 
   it("clicking tab switches active tab", async () => {
@@ -50,8 +50,8 @@ describe("BottomPanel", () => {
     await user.click(screen.getByText("Events"));
     expect(useUIStore.getState().bottomTab).toBe("events");
 
-    await user.click(screen.getByText("Graph"));
-    expect(useUIStore.getState().bottomTab).toBe("graph");
+    await user.click(screen.getByText("Notifications"));
+    expect(useUIStore.getState().bottomTab).toBe("notifications");
   });
 
   it("toggle button collapses panel", async () => {

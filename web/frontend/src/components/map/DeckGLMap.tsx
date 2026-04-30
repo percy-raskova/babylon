@@ -12,12 +12,12 @@ import { ScatterplotLayer } from "@deck.gl/layers";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useMapStore } from "@/stores/mapStore";
-import { useUIStore } from "@/stores/uiStore";
 import { getColorScale, type RGBAColor } from "@/theme/colors";
 import { LayerControls } from "@/components/map/LayerControls";
 import { MapLegend } from "@/components/map/MapLegend";
 import { HexTooltip } from "@/components/map/HexTooltip";
 import { FramingSelector } from "@/components/map/FramingSelector";
+import { useNavigate, useParams } from "react-router";
 import type { GameSnapshot, TerritoryState, MapLayer } from "@/types/game";
 
 /** Dark basemap style with actual map tiles (Carto Dark Matter). */
@@ -64,7 +64,8 @@ interface DeckGLMapProps {
 export function DeckGLMap({ snapshot }: DeckGLMapProps) {
   const activeLayer = useMapStore((s) => s.activeLayer);
   const layerOpacity = useMapStore((s) => s.layerOpacity);
-  const setSelectedHex = useUIStore((s) => s.setSelectedHex);
+  const navigate = useNavigate();
+  const { id: gameId = "" } = useParams<{ id: string }>();
   const [hoverInfo, setHoverInfo] = useState<{
     territory: TerritoryState;
     x: number;
@@ -170,7 +171,8 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
           }}
           onClick={(info) => {
             if (info.object) {
-              setSelectedHex((info.object as TerritoryState).id);
+              const territoryId = (info.object as TerritoryState).id;
+              navigate(`/games/${gameId}/intel/territory/${territoryId}`);
             }
           }}
           style={{ position: "relative", width: "100%", height: "100%" }}

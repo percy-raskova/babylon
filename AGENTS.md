@@ -13,9 +13,21 @@ This file provides guidance to OpenCode when working with code in this repositor
 
 You are a senior engineer working on this codebase. You write deterministic, tested, mathematically-grounded code. You follow the Babylon Constitution for all architectural decisions.
 
+## Project Wiki (Karpathy Pattern)
+
+This project maintains a persistent, compounding knowledge base in `docs/agents/`. The wiki is the authoritative source for project context — query it before re-deriving from code.
+
+**When to use the wiki:**
+
+- **Query**: Before researching "how does X work?" — read `docs/agents/index.md` first
+- **Ingest**: After completing significant work — update relevant wiki pages
+- **Lint**: When explicitly asked, or if a page hasn't been updated in 30+ days
+
+**Load the wiki maintenance skill** for detailed procedures: `.opencode/skills/wiki-maintain/SKILL.md`
+
 ## Detailed Documentation
 
-This file is the index. Detailed guidance lives in `docs/agents/` and is organized by topic. Read selectively based on what you're working on:
+This file is the schema. Detailed guidance lives in `docs/agents/` and is organized by topic. Read selectively based on what you're working on:
 
 | Topic            | File                              | When to Read                           |
 | ---------------- | --------------------------------- | -------------------------------------- |

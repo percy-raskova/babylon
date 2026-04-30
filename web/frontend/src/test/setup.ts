@@ -81,7 +81,14 @@ vi.mock("@react-sigma/core", () => ({
   SigmaContainer: vi.fn(({ children }: { children?: React.ReactNode }) => children),
   useLoadGraph: vi.fn(() => vi.fn()),
   useRegisterEvents: vi.fn(() => vi.fn()),
-  useSigma: vi.fn(() => ({})),
+  useSigma: vi.fn(() => ({
+    getGraph: vi.fn(() => ({
+      forEachEdge: vi.fn(),
+      getNodeAttribute: vi.fn(),
+    })),
+    setSetting: vi.fn(),
+    refresh: vi.fn(),
+  })),
 }));
 
 vi.mock("graphology-layout-forceatlas2", () => ({

@@ -14,7 +14,6 @@ import { LensBar } from "@/components/layout/LensBar";
 import { usePersistentUI } from "@/hooks/usePersistentUI";
 import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { ActionComposer } from "@/components/action/ActionComposer";
-import { Inspector } from "@/components/inspector/Inspector";
 import { ResourcePanel } from "@/components/ResourcePanel";
 import { TrapIndicator } from "@/components/TrapIndicator";
 import { TickResults } from "@/components/TickResults";
@@ -233,9 +232,6 @@ export function GameShell({ username, onBack, onLogout }: GameShellProps) {
         <RightPanel>
           <div className="max-h-[360px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">
             <ActionComposer snapshot={snapshot} onSubmit={submitAction} resolving={resolving} />
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-wet-concrete bg-dark-metal p-3">
-            <Inspector snapshot={snapshot} />
           </div>
           {results && results.length > 0 && (
             <div className="max-h-[300px] shrink-0 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-3">

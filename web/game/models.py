@@ -166,7 +166,7 @@ class HexState(models.Model):
         on_delete=models.CASCADE,
         db_column="game_id",
     )
-    h3_index = models.CharField(max_length=16)
+    h3_index = models.CharField(max_length=16, primary_key=True)
     tick = models.IntegerField()
 
     # Denormalized county economics
@@ -243,7 +243,7 @@ class TerritorySnapshot(models.Model):
         db_column="game_id",
     )
     tick = models.IntegerField()
-    county_fips = models.CharField(max_length=5)
+    county_fips = models.CharField(max_length=5, primary_key=True)
 
     # ValueTensor4x3 (Departments I/IIa/IIb/III × c/v/s)
     c_dept_i = models.DecimalField(max_digits=18, decimal_places=4, null=True)
@@ -308,7 +308,7 @@ class OrgSnapshot(models.Model):
         db_column="game_id",
     )
     tick = models.IntegerField()
-    org_id = models.CharField(max_length=64)
+    org_id = models.CharField(max_length=64, primary_key=True)
     org_type = models.CharField(max_length=24)
     home_county = models.CharField(max_length=5, null=True, blank=True)
     home_hex = models.CharField(max_length=16, null=True, blank=True)
@@ -362,7 +362,7 @@ class EdgeSnapshot(models.Model):
         db_column="game_id",
     )
     tick = models.IntegerField()
-    source_id = models.CharField(max_length=64)
+    source_id = models.CharField(max_length=64, primary_key=True)
     target_id = models.CharField(max_length=64)
     edge_type = models.CharField(max_length=32)
     edge_mode = models.CharField(max_length=16, null=True, blank=True)
@@ -397,7 +397,7 @@ class CommunitySnapshot(models.Model):
         db_column="game_id",
     )
     tick = models.IntegerField()
-    community_id = models.CharField(max_length=64)
+    community_id = models.CharField(max_length=64, primary_key=True)
     community_type = models.CharField(max_length=32)
     hyperedge_category = models.CharField(max_length=24)
     contradiction_axis = models.CharField(max_length=24, null=True, blank=True)
@@ -438,7 +438,7 @@ class EconomicSummary(models.Model):
         on_delete=models.CASCADE,
         db_column="game_id",
     )
-    tick = models.IntegerField()
+    tick = models.IntegerField(primary_key=True)
 
     avg_profit_rate = models.FloatField(null=True)
     avg_exploitation_rate = models.FloatField(null=True)

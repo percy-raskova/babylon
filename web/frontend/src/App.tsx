@@ -10,9 +10,13 @@ import { get, post } from "@/api/client";
 import { LoginPage } from "@/components/LoginPage";
 import { GameList } from "@/components/GameList";
 import { GameShell } from "@/components/layout/GameShell";
+import { OrganizationsPage } from "@/components/OrganizationsPage";
+import { ActionPage } from "@/components/ActionPage";
+import { IntelPage } from "@/components/IntelPage";
 import { DevHarness } from "@/DevHarness";
 import type { AuthState } from "@/types/game";
 
+// eslint-disable-next-line complexity -- router component has many route branches
 export default function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [checking, setChecking] = useState(true);
@@ -80,6 +84,38 @@ export default function App() {
               </nav>
               <GameList onSelectGame={(id) => navigate(`/games/${id}`)} />
             </div>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/games/:id/orgs"
+        element={
+          isAuthed ? (
+            <OrganizationsPage username={auth?.username ?? ""} onLogout={handleLogout} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      <Route
+        path="/games/:id/actions/:verb"
+        element={
+          isAuthed ? (
+            <ActionPage username={auth?.username ?? ""} onLogout={handleLogout} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      <Route
+        path="/games/:id/intel/:target_type/:target_id"
+        element={
+          isAuthed ? (
+            <IntelPage username={auth?.username ?? ""} onLogout={handleLogout} />
           ) : (
             <Navigate to="/login" replace />
           )

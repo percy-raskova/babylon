@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { GraphView } from "./GraphView";
 import { makeSnapshot, makeOrg, makeTerritory, makeEdge } from "@/test/fixtures";
 
@@ -17,6 +18,7 @@ vi.mock("@react-sigma/core", () => ({
   useSigma: vi.fn(() => ({
     getGraph: vi.fn(() => ({
       forEachEdge: vi.fn(),
+      getNodeAttribute: vi.fn(),
     })),
     setSetting: vi.fn(),
     refresh: vi.fn(),
@@ -32,7 +34,11 @@ describe("GraphView", () => {
       edges: [],
       hyperedges: [],
     });
-    const { container } = render(<GraphView snapshot={snapshot} />);
+    const { container } = render(
+      <MemoryRouter>
+        <GraphView snapshot={snapshot} />
+      </MemoryRouter>,
+    );
     expect(container.querySelector("div")).toBeTruthy();
   });
 
@@ -45,7 +51,11 @@ describe("GraphView", () => {
       territories: [makeTerritory({ id: "t1" })],
       edges: [makeEdge({ source_id: "o1", target_id: "o2", mode: "EXTRACTIVE" })],
     });
-    const { container } = render(<GraphView snapshot={snapshot} />);
+    const { container } = render(
+      <MemoryRouter>
+        <GraphView snapshot={snapshot} />
+      </MemoryRouter>,
+    );
     expect(container.querySelector("div")).toBeTruthy();
   });
 
@@ -65,7 +75,11 @@ describe("GraphView", () => {
         }),
       ],
     });
-    render(<GraphView snapshot={snapshot} />);
+    render(
+      <MemoryRouter>
+        <GraphView snapshot={snapshot} />
+      </MemoryRouter>,
+    );
     expect(screen.getByText("All")).toBeInTheDocument();
     expect(screen.getByText("EXTRACTIVE")).toBeInTheDocument();
     expect(screen.getByText("SOLIDARISTIC")).toBeInTheDocument();
@@ -73,7 +87,11 @@ describe("GraphView", () => {
 
   it("renders legend items (no Entity)", () => {
     const snapshot = makeSnapshot();
-    const { container } = render(<GraphView snapshot={snapshot} />);
+    const { container } = render(
+      <MemoryRouter>
+        <GraphView snapshot={snapshot} />
+      </MemoryRouter>,
+    );
     const legendText = container.textContent ?? "";
     expect(legendText).not.toContain("Entity");
     expect(legendText).toContain("Territory");

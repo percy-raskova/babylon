@@ -52,9 +52,9 @@ describe("panel layout interactions", () => {
       await user.click(screen.getByText("Events"));
       expect(useUIStore.getState().bottomTab).toBe("events");
 
-      // Switch to graph
-      await user.click(screen.getByText("Graph"));
-      expect(useUIStore.getState().bottomTab).toBe("graph");
+      // Switch to notifications
+      await user.click(screen.getByText("Notifications"));
+      expect(useUIStore.getState().bottomTab).toBe("notifications");
 
       // Switch back to time series
       await user.click(screen.getByText("Time Series"));

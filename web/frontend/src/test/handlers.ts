@@ -10,6 +10,8 @@ import {
   makeActionResult,
 } from "./fixtures";
 import { GameSnapshot } from "../types/game";
+import orgsFixture from "../mocks/organizations.json";
+import educateTargetsFixture from "../mocks/educate_targets.json";
 
 // In-memory state machine for the mock game loop
 let mockState: GameSnapshot = makeWayneCountySnapshot();
@@ -100,6 +102,20 @@ export const handlers = [
     }),
   ),
 
+  // Organizations
+  http.get("/api/games/:id/organizations/", ({ request }) => {
+    const url = new URL(request.url);
+    const playerOnly = url.searchParams.get("player_only") === "true";
+    let orgs = orgsFixture.organizations;
+    if (playerOnly) {
+      orgs = orgs.filter((o) => o.vanguard !== null && o.vanguard !== undefined);
+    }
+    return HttpResponse.json({
+      status: "ok",
+      data: { organizations: orgs },
+    });
+  }),
+
   // Available actions
   http.get("/api/games/:id/actions/available/", () =>
     HttpResponse.json({
@@ -110,6 +126,11 @@ export const handlers = [
         makeAvailableAction({ verb: "mobilize", targets: ["C001"], cost: 0 }),
       ],
     }),
+  ),
+
+  // Educate Targets
+  http.get("/api/games/:id/actions/educate/targets/", () =>
+    HttpResponse.json(educateTargetsFixture),
   ),
 
   // Submit action — per-verb endpoints (Spec 040)

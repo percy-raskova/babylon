@@ -7,7 +7,6 @@ import pytest
 from game.serializers import (
     CreateGameSerializer,
     EdgeSerializer,
-    EntitySerializer,
     GameSnapshotSerializer,
     SubmitActionSerializer,
     TerritorySerializer,
@@ -76,33 +75,6 @@ class TestSubmitActionSerializer:
 
 
 @pytest.mark.unit
-class TestEntitySerializer:
-    """Validate EntitySerializer output format."""
-
-    def test_serializes_entity(self) -> None:
-        s = EntitySerializer(
-            data={
-                "id": "class_1",
-                "name": "Proletariat",
-                "role": "WORKER",
-                "wealth": 10.0,
-                "consciousness": 0.5,
-                "national_identity": 0.3,
-                "agitation": 0.0,
-                "organization": 0.1,
-                "repression": 0.5,
-                "p_acquiescence": 0.7,
-                "p_revolution": 0.2,
-                "subsistence": 5.0,
-                "population": 1000,
-                "inequality": 0.4,
-                "active": True,
-            }
-        )
-        assert s.is_valid(), s.errors
-
-
-@pytest.mark.unit
 class TestTerritorySerializer:
     """Validate TerritorySerializer output format."""
 
@@ -154,7 +126,6 @@ class TestGameSnapshotSerializer:
             data={
                 "session_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
                 "tick": 0,
-                "entities": [],
                 "territories": [],
                 "organizations": [],
                 "institutions": [],

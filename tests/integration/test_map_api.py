@@ -32,6 +32,7 @@ def _create_unmanaged_tables(db: None) -> None:
                 status      VARCHAR(16) NOT NULL DEFAULT 'active',
                 config_json TEXT NOT NULL DEFAULT '{}',
                 game_defines_json TEXT NOT NULL DEFAULT '{}',
+                snapshot_json TEXT NOT NULL DEFAULT '{}',
                 trace_level VARCHAR(8) NOT NULL DEFAULT 'NONE',
                 rng_seed    BIGINT NOT NULL DEFAULT 0,
                 created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -93,7 +94,9 @@ class TestMapApi:
         assert "features" in payload
 
         # Check call args — now includes zoom='county' (default)
-        mock_bridge.get_map_snapshot.assert_called_once_with(session.id, tick=None, zoom="county")
+        mock_bridge.get_map_snapshot.assert_called_once_with(
+            session.id, tick=None, _layer=None, zoom="county"
+        )
 
     def test_get_map_snapshot_with_tick(self):
         client, session, mock_bridge = self._setup_bridge_and_session()
@@ -103,7 +106,9 @@ class TestMapApi:
         assert response.status_code == 200
 
         # Check call args — now includes zoom='county' (default)
-        mock_bridge.get_map_snapshot.assert_called_once_with(session.id, tick=10, zoom="county")
+        mock_bridge.get_map_snapshot.assert_called_once_with(
+            session.id, tick=10, _layer=None, zoom="county"
+        )
 
     def test_get_map_snapshot_unauthenticated(self):
         client = Client()
@@ -121,7 +126,9 @@ class TestMapApi:
         response = client.get(f"/api/games/{session.id}/map/?zoom=hex")
         assert response.status_code == 200
 
-        mock_bridge.get_map_snapshot.assert_called_once_with(session.id, tick=None, zoom="hex")
+        mock_bridge.get_map_snapshot.assert_called_once_with(
+            session.id, tick=None, _layer=None, zoom="hex"
+        )
 
     def test_get_map_with_zoom_bea(self):
         """zoom=bea should pass through to bridge."""
@@ -131,7 +138,9 @@ class TestMapApi:
         response = client.get(f"/api/games/{session.id}/map/?zoom=bea")
         assert response.status_code == 200
 
-        mock_bridge.get_map_snapshot.assert_called_once_with(session.id, tick=None, zoom="bea")
+        mock_bridge.get_map_snapshot.assert_called_once_with(
+            session.id, tick=None, _layer=None, zoom="bea"
+        )
 
     def test_get_map_with_zoom_state(self):
         """zoom=state should pass through to bridge."""
@@ -141,7 +150,9 @@ class TestMapApi:
         response = client.get(f"/api/games/{session.id}/map/?zoom=state")
         assert response.status_code == 200
 
-        mock_bridge.get_map_snapshot.assert_called_once_with(session.id, tick=None, zoom="state")
+        mock_bridge.get_map_snapshot.assert_called_once_with(
+            session.id, tick=None, _layer=None, zoom="state"
+        )
 
     def test_get_map_invalid_zoom_returns_400(self):
         """Invalid zoom parameter should return 400."""
@@ -163,4 +174,6 @@ class TestMapApi:
         response = client.get(f"/api/games/{session.id}/map/?tick=5&zoom=msa")
         assert response.status_code == 200
 
-        mock_bridge.get_map_snapshot.assert_called_once_with(session.id, tick=5, zoom="msa")
+        mock_bridge.get_map_snapshot.assert_called_once_with(
+            session.id, tick=5, _layer=None, zoom="msa"
+        )

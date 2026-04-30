@@ -560,8 +560,10 @@ class StubEngineBridge:
     def get_communities_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         return {}
 
-    def get_organizations_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        return {}
+    def get_organizations_dashboard(
+        self, _session_id: UUID, _player_only: bool = False
+    ) -> dict[str, Any]:
+        return {"organizations": []}
 
     def get_edges_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         return {}

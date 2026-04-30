@@ -413,7 +413,7 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     snapshot = bridge.get_map_snapshot(
         uuid.UUID(str(session.id)),
         tick=tick,
-        layer=lens,
+        _layer=lens,
         zoom=zoom,
     )
 
@@ -509,7 +509,8 @@ def game_organizations(request: Request, game_id: str) -> JsonResponse:
     if session is None:
         return _error("Game not found", http_status=404)
     bridge = _get_bridge()
-    data = bridge.get_organizations_dashboard(uuid.UUID(str(session.id)))
+    player_only = request.query_params.get("player_only", "false").lower() == "true"
+    data = bridge.get_organizations_dashboard(uuid.UUID(str(session.id)), player_only=player_only)
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 

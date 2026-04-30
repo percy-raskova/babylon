@@ -1432,8 +1432,14 @@ class MockEngineBridge:
     def get_communities_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
         return {}
 
-    def get_organizations_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
-        return {}
+    def get_organizations_dashboard(
+        self, session_id: uuid.UUID, player_only: bool = False
+    ) -> dict[str, Any]:
+        snap = self.get_snapshot(session_id)
+        orgs = snap.get("organizations", [])
+        if player_only:
+            orgs = [o for o in orgs if o.get("vanguard") is not None]
+        return {"organizations": orgs}
 
     def get_edges_dashboard(self, _session_id: uuid.UUID) -> dict[str, Any]:
         return {}

@@ -113,6 +113,10 @@ run = "poetry run pytest --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=
 description = "Run doctest examples in formulas module"
 run = "poetry run pytest --doctest-modules src/babylon/formulas -v"
 
+[tasks."test:pg"]
+description = "Run Postgres-backed contract tests (requires Docker)"
+run = "poetry run pytest tests/integration/web/test_pg_contract.py -v --tb=short"
+
 # =============================================================================
 # SIMULATION (Namespaced)
 # =============================================================================

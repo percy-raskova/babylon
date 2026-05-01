@@ -1,9 +1,8 @@
 /**
  * useLens — coordinates lens switching across stores.
  *
- * Per data-model.md Lens State Machine: switching a lens updates uiStore.activeLens,
- * sets mapStore.activeLayer to the lens's primaryLayer (unless user has manually
- * overridden the layer), and clears the lensOverride flag on explicit lens switch.
+ * Switching a lens updates uiStore.activeLens and mapStore.activeLayer
+ * to the lens's primaryLayer. LensBar is the sole control surface.
  */
 
 import { useCallback } from "react";
@@ -30,8 +29,7 @@ export function useLens(): UseLensReturn {
     // Update active lens in UI store
     useUIStore.getState().setActiveLens(lensId);
 
-    // Clear lens override and set the lens's primary layer
-    useMapStore.getState().clearLensOverride();
+    // Set the lens's primary layer
     useMapStore.setState({ activeLayer: lens.primaryLayer });
   }, []);
 

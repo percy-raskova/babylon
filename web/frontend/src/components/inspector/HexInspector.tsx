@@ -5,6 +5,9 @@
 
 import { useUIStore } from "@/stores/uiStore";
 import type { TerritoryState, GameSnapshot } from "@/types/game";
+import { BreakdownTooltip } from "@/components/inspector/BreakdownTooltip";
+import { selectors } from "@/lib/selectors";
+import type { Scope } from "@/lib/selectors/types";
 
 interface HexInspectorProps {
   snapshot: GameSnapshot;
@@ -105,12 +108,7 @@ function TerritoryDetail({
       {territory.h3_index && <Stat label="H3 Index" value={territory.h3_index} />}
 
       <SectionHeader label="Dynamics" />
-      <Stat label="Heat" value={territory.heat} color="text-crimson" />
-      <Bar value={territory.heat} color="#e63946" />
-      <Stat label="Rent Level" value={territory.rent_level} color="text-gold" />
-      <Stat label="Population" value={territory.population} />
-      <Stat label="Biocapacity" value={territory.biocapacity} color="text-data-green" />
-      <Bar value={territory.biocapacity} color="#4ade80" />
+      <HexDynamics territory={territory} snapshot={snapshot} />
 
       {territory.under_eviction && (
         <div className="mt-1 rounded border border-crimson/30 bg-crimson/10 px-2 py-1 text-[11px] font-semibold text-crimson">
@@ -199,5 +197,38 @@ function TerritoryDetail({
         </>
       )}
     </div>
+  );
+}
+
+function HexDynamics({
+  territory,
+  snapshot,
+}: {
+  territory: TerritoryState;
+  snapshot: GameSnapshot;
+}) {
+  const hexScope: Scope = {
+    snapshot,
+    this: { kind: "hex", id: territory.id },
+  };
+
+  return (
+    <>
+      <BreakdownTooltip selector={selectors.get("hex.heat")} scope={hexScope}>
+        <Stat label="Heat" value={territory.heat} color="text-crimson" />
+      </BreakdownTooltip>
+      <Bar value={territory.heat} color="#e63946" />
+
+      <BreakdownTooltip selector={selectors.get("hex.rent_level")} scope={hexScope}>
+        <Stat label="Rent Level" value={territory.rent_level} color="text-gold" />
+      </BreakdownTooltip>
+
+      <Stat label="Population" value={territory.population} />
+
+      <BreakdownTooltip selector={selectors.get("hex.biocapacity")} scope={hexScope}>
+        <Stat label="Biocapacity" value={territory.biocapacity} color="text-data-green" />
+      </BreakdownTooltip>
+      <Bar value={territory.biocapacity} color="#4ade80" />
+    </>
   );
 }

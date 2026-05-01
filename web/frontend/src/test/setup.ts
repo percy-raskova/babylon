@@ -115,10 +115,14 @@ afterEach(() => {
   useGameStore.setState({
     sessionId: null,
     snapshot: null,
+    mapData: null,
     available: [],
     tickSummaries: [],
     loading: false,
     error: null,
+    playerOrgs: [],
+    playerOrgsLoaded: false,
+    verbTargets: {},
   });
   useUIStore.setState({
     selectedNodeId: null,
@@ -150,6 +154,5 @@ afterEach(() => {
     activeLayer: "heat" as const,
     layerOpacity: 0.8,
     showEdges: false,
-    lensOverride: false,
   });
 });

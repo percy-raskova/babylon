@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
-import { get } from "@/api/client";
 import { OrgDashboard } from "@/components/OrgDashboard";
 import { TopBar } from "@/components/layout/TopBar";
 import { useGameState } from "@/hooks/useGameState";
-import type { OrgState } from "@/types/game";
+import { useGameStore } from "@/stores/gameStore";
 
 export function OrganizationsPage({
   username,
@@ -15,34 +14,16 @@ export function OrganizationsPage({
 }) {
   const { id: gameId = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [orgs, setOrgs] = useState<OrgState[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // We can fetch the snapshot for the TopBar, but we fetch the orgs separately from the new endpoint.
-  // Actually, we might just use the TopBar from the snapshot or we can just fetch the orgs alone.
-  // The instructions specify its own API endpoint and contract.
   const { snapshot, resolveTick, loading: resolving } = useGameState(gameId);
 
+  const playerOrgs = useGameStore((s) => s.playerOrgs);
+  const playerOrgsLoaded = useGameStore((s) => s.playerOrgsLoaded);
+  const fetchPlayerOrgs = useGameStore((s) => s.fetchPlayerOrgs);
+  const error = useGameStore((s) => s.error);
+
   useEffect(() => {
-    async function fetchOrgs() {
-      try {
-        const res = await get<{ organizations: OrgState[] }>(
-          `/api/games/${gameId}/organizations/?player_only=true`,
-        );
-        if (res.status === "ok") {
-          setOrgs(res.data.organizations);
-        } else {
-          setError(res.message ?? "Failed to fetch organizations");
-        }
-      } catch {
-        setError("Error fetching organizations");
-      } finally {
-        setLoading(false);
-      }
-    }
-    void fetchOrgs();
-  }, [gameId]);
+    void fetchPlayerOrgs(gameId);
+  }, [gameId, fetchPlayerOrgs]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-void">
@@ -74,12 +55,12 @@ export function OrganizationsPage({
         </div>
 
         {error && <p className="text-crimson mb-4">{error}</p>}
-        {loading ? (
+        {!playerOrgsLoaded ? (
           <p className="text-silver">Loading organizations...</p>
         ) : (
           <div className="flex-1 overflow-auto rounded-lg border border-wet-concrete bg-dark-metal p-4">
             {snapshot ? (
-              <OrgDashboard snapshot={{ ...snapshot, organizations: orgs }} />
+              <OrgDashboard snapshot={{ ...snapshot, organizations: playerOrgs }} />
             ) : (
               <p className="text-silver">Loading game data...</p>
             )}

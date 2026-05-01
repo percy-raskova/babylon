@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { DeckGLMap } from "./DeckGLMap";
 import { makeSnapshot, makeTerritory } from "@/test/fixtures";
@@ -34,15 +34,14 @@ describe("DeckGLMap", () => {
     expect(container.querySelector("div")).toBeTruthy();
   });
 
-  it("renders layer controls", () => {
+  it("renders map controls container", () => {
     const snapshot = makeSnapshot();
-    render(
+    const { container } = render(
       <MemoryRouter>
         <DeckGLMap snapshot={snapshot} />
       </MemoryRouter>,
     );
-    // Should render LayerControls (mocked) and MapLegendr selector UI
-    // Since DeckGL and Map are mocked, we verify the container renders
-    expect(screen.getByText(/Layer/i).closest("div")).toBeTruthy();
+    // LayerControls removed in Phase 7 — verify map renders with legend container
+    expect(container.querySelector("div")).toBeTruthy();
   });
 });

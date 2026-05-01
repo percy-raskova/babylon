@@ -1,6 +1,8 @@
 /**
  * Map state store — manages view state, active layer, overlays,
  * and multi-scale spatial framing.
+ *
+ * Phase 7: lensOverride removed. LensBar is the sole layer selector.
  */
 
 import { create } from "zustand";
@@ -13,8 +15,6 @@ interface MapState {
   layerOpacity: number;
   /** Show edge overlay lines on map. */
   showEdges: boolean;
-  /** True when user manually changed layer (overrides lens default). */
-  lensOverride: boolean;
 
   /** Active administrative framing level for aggregation. */
   activeFraming: AdminLevel;
@@ -26,8 +26,6 @@ interface MapState {
   setActiveLayer: (layer: MapLayer) => void;
   setLayerOpacity: (opacity: number) => void;
   toggleEdges: () => void;
-  /** Reset lens override (called when user explicitly switches lens). */
-  clearLensOverride: () => void;
   /** Switch admin framing level. */
   setActiveFraming: (level: AdminLevel) => void;
   /** Update viewport bbox from DeckGL onViewStateChange. */
@@ -40,15 +38,13 @@ export const useMapStore = create<MapState>((set) => ({
   activeLayer: "heat",
   layerOpacity: 0.8,
   showEdges: false,
-  lensOverride: false,
   activeFraming: "county",
   viewportBbox: null,
   hexResolution: 7,
 
-  setActiveLayer: (layer) => set({ activeLayer: layer, lensOverride: true }),
+  setActiveLayer: (layer) => set({ activeLayer: layer }),
   setLayerOpacity: (opacity) => set({ layerOpacity: opacity }),
   toggleEdges: () => set((s) => ({ showEdges: !s.showEdges })),
-  clearLensOverride: () => set({ lensOverride: false }),
   setActiveFraming: (level) => set({ activeFraming: level }),
   setViewportBbox: (bbox) => set({ viewportBbox: bbox }),
   setHexResolution: (resolution) => set({ hexResolution: resolution }),

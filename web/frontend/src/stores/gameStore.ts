@@ -12,10 +12,12 @@ import { useMapStore } from "./mapStore";
 const log = createLogger("GameStore");
 import type {
   GameSnapshot,
+  OrgState,
   AvailableAction,
   SubmitActionParams,
   ActionResultData,
   AdminLevel,
+  PlayerVerb,
 } from "@/types/game";
 
 /** Aggregated metrics for one tick, used for time series. */
@@ -76,11 +78,21 @@ interface GameState {
   loading: boolean;
   error: string | null;
 
+  /** Player-owned organizations (from /organizations/?player_only=true). */
+  playerOrgs: OrgState[];
+  /** Whether playerOrgs have been fetched at least once. */
+  playerOrgsLoaded: boolean;
+  /** Verb target data cache, keyed by `${verb}:${orgId}`. */
+  verbTargets: Record<string, unknown>;
+
   setSession: (id: string | null) => void;
   fetchState: (gameId: string) => Promise<void>;
   fetchMapData: (gameId: string, zoom: AdminLevel) => Promise<void>;
   submitAction: (gameId: string, params: SubmitActionParams) => Promise<void>;
   resolveTick: (gameId: string) => Promise<ActionResultData[] | null>;
+  fetchPlayerOrgs: (gameId: string) => Promise<void>;
+  fetchVerbTargets: (gameId: string, verb: PlayerVerb, orgId: string) => Promise<void>;
+  invalidateVerbTargets: () => void;
   reset: () => void;
 }
 
@@ -92,6 +104,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   tickSummaries: [],
   loading: false,
   error: null,
+  playerOrgs: [],
+  playerOrgsLoaded: false,
+  verbTargets: {},
 
   // (omitting setSession code modification by replacing only the relevant section)
 
@@ -166,19 +181,62 @@ export const useGameStore = create<GameState>((set, get) => ({
       return null;
     }
     log.info("Tick resolved", { gameId, newTick: res.tick });
+    // Targets are tick-stale — invalidate before re-fetching state.
+    get().invalidateVerbTargets();
     await get().fetchState(gameId);
     const tick = res.tick ?? 0;
     const resultsRes = await apiGet<ActionResultData[]>(`/api/games/${gameId}/results/${tick}/`);
     return resultsRes.status === "ok" ? resultsRes.data : null;
   },
 
+  fetchPlayerOrgs: async (gameId) => {
+    log.debug("Fetching player orgs", { gameId });
+    const res = await apiGet<{ organizations: OrgState[] }>(
+      `/api/games/${gameId}/organizations/?player_only=true`,
+    );
+    if (res.status === "ok") {
+      set({ playerOrgs: res.data.organizations, playerOrgsLoaded: true });
+    } else {
+      log.error("Failed to fetch player orgs", { gameId, message: res.message });
+      set({ error: res.message ?? "Failed to fetch player organizations" });
+    }
+  },
+
+  fetchVerbTargets: async (gameId, verb, orgId) => {
+    const cacheKey = `${verb}:${orgId}`;
+    log.debug("Fetching verb targets", { gameId, verb, orgId });
+    const res = await apiGet<Record<string, unknown>>(
+      `/api/games/${gameId}/actions/${verb}/targets/?org_id=${orgId}`,
+    );
+    if (res.status === "ok") {
+      // Verb target endpoints return flat responses (targets, cost, etc.
+      // at top level) rather than using the standard {status, data} envelope.
+      // Store res.data if present, otherwise store the full response body.
+      const payload = res.data ?? res;
+      set((s) => ({
+        verbTargets: { ...s.verbTargets, [cacheKey]: payload },
+      }));
+    } else {
+      log.error("Failed to fetch verb targets", { gameId, verb, orgId, message: res.message });
+      set({ error: res.message ?? "Failed to fetch action targets" });
+    }
+  },
+
+  invalidateVerbTargets: () => {
+    set({ verbTargets: {} });
+  },
+
   reset: () =>
     set({
       sessionId: null,
       snapshot: null,
+      mapData: null,
       available: [],
       tickSummaries: [],
       loading: false,
       error: null,
+      playerOrgs: [],
+      playerOrgsLoaded: false,
+      verbTargets: {},
     }),
 }));

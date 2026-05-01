@@ -13,7 +13,7 @@ import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useMapStore } from "@/stores/mapStore";
 import { getColorScale, type RGBAColor } from "@/theme/colors";
-import { LayerControls } from "@/components/map/LayerControls";
+
 import { MapLegend } from "@/components/map/MapLegend";
 import { HexTooltip } from "@/components/map/HexTooltip";
 import { FramingSelector } from "@/components/map/FramingSelector";
@@ -142,8 +142,7 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
   return (
     <div className="relative flex h-full flex-col">
       {/* Controls */}
-      <div className="absolute left-3 top-3 z-10 flex flex-col gap-2 rounded-md bg-void/80 p-2 backdrop-blur-sm">
-        <LayerControls />
+      <div className="absolute left-3 top-3 z-10 rounded-md bg-void/80 p-2 backdrop-blur-sm">
         <MapLegend />
       </div>
 

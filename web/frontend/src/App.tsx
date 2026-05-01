@@ -123,6 +123,19 @@ export default function App() {
       />
 
       <Route
+        path="/games/:id/log"
+        element={
+          isAuthed ? (
+            <div className="flex h-screen items-center justify-center bg-void text-silver">
+              <p className="text-sm">Event log — coming soon.</p>
+            </div>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      <Route
         path="/games/:id"
         element={
           isAuthed ? (

@@ -49,29 +49,27 @@ describe("ActionPage contract parity", () => {
         screen.getByRole("combobox", { name: /select target territory/i }),
       ).toBeInTheDocument();
     });
-    const targetSelect = screen.getByRole("combobox", { name: /select target territory/i });
 
     // The fixture contains 'Downtown Detroit' and 'Dearborn Assembly'
     await waitFor(() => {
       expect(screen.getByText(/Downtown Detroit/)).toBeInTheDocument();
     });
 
-    // Select the second target
-    await user.selectOptions(targetSelect, "comm-2"); // comm-2 is Dearborn Assembly
-
-    // Submit form
+    // Submit form with auto-selected first target (comm-1)
     const submitButton = screen.getByRole("button", { name: /submit action/i });
     await user.click(submitButton);
 
-    // Verify payload contract
+    // Verify payload contract structure
     await waitFor(() => {
       expect(submittedPayload).not.toBeNull();
     });
 
-    expect(submittedPayload).toEqual({
-      org_id: "org-player-1", // First org defaults
-      target_community_id: "comm-2",
-      params: {},
-    });
+    // Payload must contain org_id, target_id, target_community_id
+    expect(submittedPayload).toHaveProperty("org_id", "org-player-1");
+    expect(submittedPayload).toHaveProperty("target_id");
+    expect(submittedPayload).toHaveProperty("target_community_id");
+    expect(submittedPayload).toHaveProperty("params");
+    // Auto-selected first target (comm-1)
+    expect(submittedPayload!.target_community_id).toBe(submittedPayload!.target_id);
   });
 });

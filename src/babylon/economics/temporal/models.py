@@ -15,7 +15,7 @@ See Also:
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -39,7 +39,7 @@ def _variance(values: list[float]) -> float:
     return sum((x - mean) ** 2 for x in values) / len(values)
 
 
-class DetectionMethod(str, Enum):
+class DetectionMethod(StrEnum):
     """Method used to detect anomaly threshold violation.
 
     The temporal validation system uses a tiered approach:

@@ -25,7 +25,7 @@ See Also:
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
 import numpy as np
@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # =============================================================================
 
 
-class IOTableType(str, Enum):
+class IOTableType(StrEnum):
     """BEA input-output table type classification.
 
     Controls which BEA I-O table a coefficient matrix was derived from.
@@ -60,7 +60,7 @@ class IOTableType(str, Enum):
     TOTAL_REQ = "TOTAL_REQ"
 
 
-class Department(str, Enum):
+class Department(StrEnum):
     """Marxian department classification for industry aggregation.
 
     Four departments of social reproduction:

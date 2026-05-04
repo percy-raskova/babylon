@@ -7506,14 +7506,14 @@ files = [
 
 [[package]]
 name = "types-ratelimit"
-version = "2.2.0.20250501"
+version = "2.2.0.20260408"
 description = "Typing stubs for ratelimit"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "types_ratelimit-2.2.0.20250501-py3-none-any.whl", hash = "sha256:1f3c0a8839a9b26081fc9fa8fe5f0b4ea5323d92b48664f6c0db2d98e7848170"},
-    {file = "types_ratelimit-2.2.0.20250501.tar.gz", hash = "sha256:91205c6efb648bef1979921ac5782213affac8d99dc645706fd0a8e2d40b58f5"},
+    {file = "types_ratelimit-2.2.0.20260408-py3-none-any.whl", hash = "sha256:cfb2e633c231f734bc721159c82dc2400b2b9bd55d249a76e34b77056b7f8f26"},
+    {file = "types_ratelimit-2.2.0.20260408.tar.gz", hash = "sha256:34ff18a85147be38377fd75520185107afc8a9b1018801b341ba19d27609cf49"},
 ]
 
 [[package]]

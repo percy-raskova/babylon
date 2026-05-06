@@ -1,20 +1,15 @@
 """Hypothesis configuration and shared fixtures for property-based tests.
 
-Spec 040: ``dev`` / ``ci`` / ``nightly`` profiles balance speed vs coverage
-per environment.
+Spec 040: ``dev`` / ``ci`` / ``nightly`` profiles for environment-specific
+sweeps (registered here, locally scoped to property tests).
 
-Spec 053: ``default`` / ``slow`` profiles for conservation-invariant tests.
-``default`` runs in the unit-test gate (~100 examples, derandomized for
-deterministic CI replay, satisfies SC-001 baseline and FR-014). ``slow`` runs
-out-of-band for exhaustive exploration (500 examples, non-derandomized so the
-example database grows). Load via ``HYPOTHESIS_PROFILE=slow`` env var.
-
-Spec 053 T014b: ``service_container_fixture`` and ``tick_context_fixture``
-provide minimal harness for full-pipeline tests that invoke
+Spec 053: ``default`` / ``slow`` profiles are registered project-wide in
+``tests/conftest.py`` so that ``HYPOTHESIS_PROFILE=slow pytest …`` resolves
+before any per-package conftest runs. The ``T014b`` fixtures
+(``service_container_fixture`` / ``tick_context_fixture``) provide a minimal
+harness for full-pipeline tests that invoke
 ``SimulationEngine.run_tick(graph, services, context)``.
 """
-
-import os
 
 import pytest
 from hypothesis import HealthCheck, Verbosity, settings
@@ -41,24 +36,6 @@ settings.register_profile(
     max_examples=5000,
     deadline=None,
 )
-
-settings.register_profile(
-    "default",
-    max_examples=100,
-    derandomize=True,
-    deadline=None,
-    suppress_health_check=[HealthCheck.too_slow],
-)
-
-settings.register_profile(
-    "slow",
-    max_examples=500,
-    derandomize=False,
-    deadline=None,
-    suppress_health_check=[HealthCheck.too_slow],
-)
-
-settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "default"))
 
 
 @pytest.fixture

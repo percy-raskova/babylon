@@ -35,3 +35,27 @@ Chronological record of wiki ingests and maintenance operations.
 - Fixed orphan: log.md now properly linked from index.md
 - Added missing skill documentation to index
   **Open Questions**: Should we add a dedicated `docs/agents/skills.md` page with detailed skill usage examples?
+
+## [2026-05-05] ingest | ADR sequence from knowledge-graph analysis
+
+**Source**: `/understand-anything:understand` knowledge-graph build (commit `7710461b`, 1685 nodes, 3733 edges) + `/understand-anything:understand-chat` architectural review.
+**Pages Created**:
+
+- `docs/agents/adrs/README.md` — ADR index, format template, provenance.
+- `docs/agents/adrs/ADR-001-mechanical-file-splits.md` — split `defines.py` (4157 LOC) + `enums.py` (1298 LOC); dedup `_compute_membership_overlap`.
+- `docs/agents/adrs/ADR-002-protocol-kit-and-source-registry.md` — generic `CachedSource` ABC + `SourceRegistry` to replace 7 hand-rolled `create_*_services()` and 61 `Default*` boilerplates.
+- `docs/agents/adrs/ADR-003-system-abc.md` — `SystemBase` ABC for the 23 engine Systems with shared `_read`/`_write`/`_publish` helpers.
+- `docs/agents/adrs/ADR-004-discriminated-event-union.md` — Pydantic 2 discriminated union over the 22 Event variants; remove `deserialize_event`.
+- `docs/agents/adrs/ADR-005-god-class-decomposition.md` — composition decomposition of `postgres_runtime.py` (1955 LOC, 1 class, 53 methods) and `engine/simulation.py` (1048 LOC).
+- `docs/agents/adrs/ADR-006-cleanup-batch.md` — `Scenario` ABC, remaining splits (`circulation/types.py`, `tick/system.py`, `edge_transition.py`), typed BEA mapping, orphan-schema audit.
+  **Pages Updated**:
+- `docs/agents/index.md` — added "Architecture Decision Records" section linking the ADR index + all six ADRs.
+- `docs/agents/log.md` — appended this entry.
+  **Cross-references Added**:
+- ADRs 002–006 each cite ADR-001's package-split shape; ADR-005 + ADR-006 cite ADR-003's `SystemBase`.
+- Each ADR cross-references CLAUDE.md "Common Gotchas" and "Coding Standards" sections relevant to the change.
+- Each ADR cites specific knowledge-graph node IDs (file paths + LOC + in-degree) so the evidence is auditable.
+  **Open Questions**:
+- Should accepted/implemented ADRs eventually mirror into `ai-docs/decisions.yaml` (the immutable history file), or stay in markdown?
+- Recommended capture flow when an ADR ships: append `ai-docs/decisions.yaml` entry + flip ADR status header to `Implemented`.
+- ADRs are meant to be picked up by spec-kit (`/speckit.specify` → `.../implement`) one phase at a time; first candidate is ADR-001.

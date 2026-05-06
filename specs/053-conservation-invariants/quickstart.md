@@ -13,13 +13,19 @@ poetry run pytest tests/property/invariants/        # runs only the property tes
 poetry run pytest tests/property/invariants/test_value_conservation.py  # one invariant
 ```
 
-## Run a single invariant against a specific system
+## Run a single invariant against a specific substrate computer
 
 ```bash
-poetry run pytest "tests/property/invariants/test_value_conservation.py::test_per_system[ImperialRentSystem]"
+poetry run pytest "tests/property/invariants/test_value_conservation.py::TestPerSubstrateComputerConservation::test_per_computer_cvs_conservation[DefaultHexProductionComputer-<lambda>]"
 ```
 
-The `parametrize` id is the system's class name. Use this when you suspect a specific system is the culprit for a regression.
+The `parametrize` id is the substrate-computer class name. Use this when you suspect a specific computer is the culprit for a regression. Available ids: `DefaultHexProductionComputer`, `DefaultHexEqualizationComputer`, `DefaultHexCirculationComputer-_circulate`.
+
+You can also filter by substring:
+
+```bash
+poetry run pytest tests/property/invariants/test_value_conservation.py -k "Equalization"
+```
 
 ## Run with the slow profile (more examples, longer run)
 
@@ -31,13 +37,22 @@ HYPOTHESIS_PROFILE=slow poetry run pytest tests/property/invariants/
 
 ## Replay a saved counterexample
 
-Hypothesis automatically replays anything in `.hypothesis/examples/` at the start of every run. After a regression is fixed, the test should pass on the next run *without* re-shrinking — that is the regression-prevention guarantee. The example database is preserved by the CI cache.
+Hypothesis automatically replays anything in `.hypothesis/examples/` at the start of every run. After a regression is fixed, the test should pass on the next run *without* re-shrinking — that is the regression-prevention guarantee.
 
 To delete the cache (e.g., after a constitutional change to the invariant tolerance):
 
 ```bash
 rm -rf .hypothesis/
 ```
+
+### CI cache requirement
+
+When CI is wired up for this repo (no CI config currently present), the
+`.hypothesis/` directory MUST be cached between runs so the example
+database accumulates failing inputs. Suggested cache key:
+`hypothesis-${{ python-version }}-${{ hashFiles('pyproject.toml') }}`.
+Without this cache, the SC-004 "DB accumulates across runs" guarantee
+is not honored on a fresh CI runner.
 
 ## Interpret a failure
 
@@ -50,9 +65,9 @@ A failed property test prints:
 Example:
 
 ```text
-FAILED tests/property/invariants/test_value_conservation.py::test_per_system[StruggleSystem]
-   Falsifying example: pre=WorldState(hexes={'872830899ffffff': HexEconomicState(c=0.0, v=0.0, s=1.0)})
-   System StruggleSystem mutated sum(c+v+s) by -0.5 > tol=1e-10; pre=1.0, post=0.5
+FAILED tests/property/invariants/test_value_conservation.py::TestPerSubstrateComputerConservation::test_per_computer_cvs_conservation[DefaultHexEqualizationComputer-<lambda>]
+   Falsifying example: grid=HexGrid(hexes={'872830828ffffff': HexEconomicState(c=100.0, v=50.0, s=25.0)})
+   INV-001: substrate computer DefaultHexEqualizationComputer mutated sum(c+v+s) by 1.667e-01 > tol=1.000e-10 (N=1, pre=175.0, post=174.833333)
 ```
 
 The fix workflow is:

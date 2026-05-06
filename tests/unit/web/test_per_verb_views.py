@@ -19,7 +19,15 @@ from django.urls import resolve, reverse
 # ---------------------------------------------------------------------- #
 
 VERBS = [
+    "educate",
+    "aid",
+    "attack",
+    "mobilize",
     "campaign",
+    "move",
+    "investigate",
+    "reproduce",
+    "negotiate",
 ]
 
 GAME_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -31,14 +39,14 @@ class TestPerVerbURLRouting:
 
     @pytest.mark.parametrize("verb", VERBS)
     def test_verb_url_resolves(self, verb: str) -> None:
-        url = reverse(f"game:action-{verb}", kwargs={"game_id": GAME_ID})
+        url = reverse(f"game:verb-{verb}-submit", kwargs={"game_id": GAME_ID})
         assert f"/actions/{verb}/" in url
 
     @pytest.mark.parametrize("verb", VERBS)
     def test_verb_url_resolves_to_correct_view_name(self, verb: str) -> None:
-        url = reverse(f"game:action-{verb}", kwargs={"game_id": GAME_ID})
+        url = reverse(f"game:verb-{verb}-submit", kwargs={"game_id": GAME_ID})
         match = resolve(url)
-        assert match.view_name == f"game:action-{verb}"
+        assert match.view_name == f"game:verb-{verb}-submit"
 
     def test_actions_available_still_resolves(self) -> None:
         """Unchanged endpoint: GET /api/games/{id}/actions/available/."""
@@ -55,30 +63,40 @@ class TestPerVerbURLRouting:
 # Per-Verb View Integration Tests
 # ---------------------------------------------------------------------- #
 
-# Minimal valid request bodies for each verb
+# Minimal valid request bodies for each verb.
+# Each payload satisfies the corresponding *SubmitSerializer in web/game/serializers.py.
+# Nested params dicts satisfy the corresponding *ParamsSerializer.
 VERB_PAYLOADS: dict[str, dict] = {
     "educate": {
         "org_id": "org_1",
-        "target_id": "community_a",
-        "consciousness_strategy": "REVOLUTIONARY",
+        "target_community_id": "community_a",
+        "params": {},
     },
     "aid": {
         "org_id": "org_1",
         "target_id": "org_2",
-        "resource_type": "MATERIAL",
-        "amount": 5.0,
+        "params": {
+            "transfer_amount": 5.0,
+            "org_id": "org_1",
+            "target_id": "org_2",
+        },
     },
     "attack": {
         "org_id": "org_1",
         "target_id": "org_2",
         "params": {
             "mode": "targeted",
+            "org_id": "org_1",
         },
     },
     "mobilize": {
         "org_id": "org_1",
         "target_id": "hex_abc",
-        "action_type": "PROTEST",
+        "params": {
+            "sl_committed": 5.0,
+            "org_id": "org_1",
+            "target_id": "hex_abc",
+        },
     },
     "campaign": {
         "org_id": "org_1",
@@ -88,21 +106,38 @@ VERB_PAYLOADS: dict[str, dict] = {
     "move": {
         "org_id": "org_1",
         "target_id": "hex_dest",
+        "params": {
+            "mode": "expand",
+            "org_id": "org_1",
+            "target_id": "hex_dest",
+        },
     },
     "investigate": {
         "org_id": "org_1",
         "target_id": "territory_1",
-        "depth": "SURFACE",
+        "params": {
+            "scan_type": "territory_scan",
+            "org_id": "org_1",
+            "target_id": "territory_1",
+        },
     },
     "reproduce": {
         "org_id": "org_1",
         "target_id": "community_a",
-        "method": "CADRE",
+        "params": {
+            "mode": "cadre_training",
+            "org_id": "org_1",
+            "target_id": "community_a",
+        },
     },
     "negotiate": {
         "org_id": "org_1",
         "target_id": "org_2",
-        "offer_type": "ALLIANCE",
+        "params": {
+            "proposal": "coordination_pact",
+            "org_id": "org_1",
+            "target_id": "org_2",
+        },
     },
 }
 
@@ -157,7 +192,7 @@ class TestPerVerbEndpoints:
     def test_verb_endpoint_accepts_post(self, verb: str) -> None:
         """POST to /api/games/{id}/actions/{verb}/ returns 201."""
         client, session, mock_bridge = self._setup()
-        url = reverse(f"game:action-{verb}", kwargs={"game_id": str(session.id)})
+        url = reverse(f"game:verb-{verb}-submit", kwargs={"game_id": str(session.id)})
 
         response = client.post(
             url,
@@ -168,16 +203,19 @@ class TestPerVerbEndpoints:
         assert response.status_code == 201, (
             f"Verb '{verb}' failed: {response.status_code} {response.content}"
         )
-        data = json.loads(response.content)
-        assert data["status"] == "ok"
-        assert data["data"]["verb"] == verb
+        body = json.loads(response.content)
+        assert body["status"] == "ok"
+        # Per-verb views return a flat envelope: {status, tick, verb, action_id, ...}.
+        # The legacy CampaignActionView wraps fields in a nested "data" key.
+        verb_value = body.get("verb") or body.get("data", {}).get("verb")
+        assert verb_value == verb, f"Expected verb={verb!r}, got body={body!r}"
 
     @pytest.mark.parametrize("verb", VERBS)
     def test_verb_endpoint_creates_player_action(self, verb: str) -> None:
         """PlayerAction row is created with correct verb from URL."""
 
         client, session, mock_bridge = self._setup()
-        url = reverse(f"game:action-{verb}", kwargs={"game_id": str(session.id)})
+        url = reverse(f"game:verb-{verb}-submit", kwargs={"game_id": str(session.id)})
 
         client.post(
             url,
@@ -193,11 +231,18 @@ class TestPerVerbEndpoints:
             len(call_kwargs.args) >= 4 and call_kwargs.args[3] == verb
         )
 
-    @pytest.mark.parametrize("verb", VERBS)
+    # Verbs whose VerbView only accepts POST. The 8 newer per-verb VerbViews
+    # (educate/aid/attack/mobilize/move/investigate/reproduce/negotiate) define
+    # both GET (returns available targets) and POST (submits action), so GET on
+    # them returns 200/400 — not 405. Only the legacy CampaignActionView is
+    # POST-only.
+    POST_ONLY_VERBS = ["campaign"]
+
+    @pytest.mark.parametrize("verb", POST_ONLY_VERBS)
     def test_verb_endpoint_rejects_get(self, verb: str) -> None:
-        """Per-verb endpoints only accept POST."""
+        """POST-only per-verb endpoints reject GET with 405."""
         client, session, _ = self._setup()
-        url = reverse(f"game:action-{verb}", kwargs={"game_id": str(session.id)})
+        url = reverse(f"game:verb-{verb}-submit", kwargs={"game_id": str(session.id)})
 
         response = client.get(url)
         assert response.status_code == 405  # Method Not Allowed
@@ -254,7 +299,7 @@ class TestPerVerbEndpoints:
         game.api._bridge_instance = MagicMock()
 
         url = reverse(
-            "game:action-campaign",
+            "game:verb-campaign-submit",
             kwargs={"game_id": str(paused_session.id)},
         )
         response = client.post(
@@ -316,7 +361,7 @@ class TestVerbResponseFormat:
     def test_response_contains_required_fields(self) -> None:
         """Response envelope matches spec §5."""
         client, session = self._setup()
-        url = reverse("game:action-campaign", kwargs={"game_id": str(session.id)})
+        url = reverse("game:verb-campaign-submit", kwargs={"game_id": str(session.id)})
 
         response = client.post(
             url,
@@ -340,7 +385,7 @@ class TestVerbResponseFormat:
     def test_response_includes_warnings(self) -> None:
         """Warnings from preview_action appear in response."""
         client, session = self._setup()
-        url = reverse("game:action-campaign", kwargs={"game_id": str(session.id)})
+        url = reverse("game:verb-campaign-submit", kwargs={"game_id": str(session.id)})
 
         response = client.post(
             url,
@@ -419,7 +464,7 @@ class TestEducateVerbView:
     def test_educate_get(self) -> None:
         """GET /api/games/{id}/verbs/educate/ returns available targets."""
         client, session, mock_bridge = self._setup()
-        url = reverse("game:verb-educate", kwargs={"game_id": str(session.id)})
+        url = reverse("game:verb-educate-submit", kwargs={"game_id": str(session.id)})
         url += "?org_id=org_1"
 
         response = client.get(url)
@@ -432,7 +477,7 @@ class TestEducateVerbView:
     def test_educate_post(self) -> None:
         """POST /api/games/{id}/verbs/educate/ creates Educate action."""
         client, session, mock_bridge = self._setup()
-        url = reverse("game:verb-educate", kwargs={"game_id": str(session.id)})
+        url = reverse("game:verb-educate-submit", kwargs={"game_id": str(session.id)})
 
         payload = {"org_id": "org_1", "target_community_id": "community_a", "params": {}}
 
@@ -527,7 +572,7 @@ class TestAttackVerbView:
     def test_attack_get(self) -> None:
         """GET /api/games/{id}/verbs/attack/ returns available targets."""
         client, session, mock_bridge = self._setup()
-        url = reverse("game:verb-attack", kwargs={"game_id": str(session.id)})
+        url = reverse("game:verb-attack-submit", kwargs={"game_id": str(session.id)})
         url += "?org_id=org_1"
 
         response = client.get(url)
@@ -540,7 +585,7 @@ class TestAttackVerbView:
     def test_attack_post(self) -> None:
         """POST /api/games/{id}/verbs/attack/ creates Attack action."""
         client, session, mock_bridge = self._setup()
-        url = reverse("game:verb-attack", kwargs={"game_id": str(session.id)})
+        url = reverse("game:verb-attack-submit", kwargs={"game_id": str(session.id)})
 
         payload = {"org_id": "org_1", "target_id": "target_a", "params": {"mode": "mass"}}
 

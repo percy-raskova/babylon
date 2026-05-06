@@ -13,7 +13,7 @@ See Also:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from babylon.economics.substrate.types import HexGrid
@@ -25,6 +25,10 @@ class DefaultResolutionAggregator:
     Uses the res6_children / res5_children mappings in HexGrid
     to sum child hex values into parent resolution totals.
     """
+
+    # Spec 053 INV-001: substrate computer; conservation-preserving by
+    # construction. Opt-out marker (default-deny per FR-004a).
+    creates_value: ClassVar[bool] = False
 
     def aggregate(self, grid: HexGrid, target_resolution: int) -> dict[str, float]:
         """Sum hex total capital to parent resolution.

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any
+from typing import Any, ClassVar
 
 import networkx as nx
 import xgi  # type: ignore[import-untyped]
@@ -306,6 +306,9 @@ class CommunitySystem:
     """
 
     name = "community"
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     def step(
         self,

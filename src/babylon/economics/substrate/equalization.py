@@ -25,7 +25,7 @@ See Also:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from babylon.config.defines import RentCircuitDefines
@@ -42,6 +42,10 @@ class DefaultHexEqualizationComputer:
     When ``rent_defines`` is supplied, ground rent is extracted from
     hexes with ``tenure_composition`` before the capital migration step.
     """
+
+    # Spec 053 INV-001: substrate computer; conservation-preserving by
+    # construction. Opt-out marker (default-deny per FR-004a).
+    creates_value: ClassVar[bool] = False
 
     def equalize_capital(
         self,

@@ -56,6 +56,8 @@ class TerritorySystem:
 
     name = "Territory"
 
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
     # Priority order for sink node selection by displacement mode
     # Sprint 3.7.1: Dynamic Displacement Priority Modes
     _PRIORITY_BY_MODE: ClassVar[dict[DisplacementPriorityMode, list[TerritoryType]]] = {

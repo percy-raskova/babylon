@@ -13,7 +13,7 @@ See Also:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from babylon.economics.lifecycle.cohort_dynamics import DefaultCohortDynamicsCalculator
 from babylon.economics.lifecycle.inheritance import DefaultInheritanceCalculator
@@ -44,6 +44,9 @@ class LifecycleSystem:
     """
 
     name = "Lifecycle Circuit"
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     def __init__(self) -> None:
         self._cohort_calc = DefaultCohortDynamicsCalculator()

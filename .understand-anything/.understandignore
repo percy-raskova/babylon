@@ -1,0 +1,89 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+
+# === Scope: src/ + curated top-level project context only ===
+# Top-level directories — exclude everything except src/.
+ai-docs/
+antigravity-babylon/
+assets/
+data/
+datagaps/
+deploy/
+docs/
+hack/
+htmlcov/
+logs/
+mutants/
+reports/
+results/
+scripts/
+specs/
+tests/
+thoughts/
+tools/
+web/
+
+# === Hidden top-level dirs (tooling, caches, runtime data) ===
+.agents/
+.claude/
+.continue/
+.github/
+.cache/
+.hypothesis/
+.markdownlintignore
+.mypy_cache/
+.node/
+.opencode/
+.pgdata/
+.playwright-mcp/
+.pre-commit-cache/
+.pytest_cache/
+.ruff_cache/
+.serena/
+.specify/
+.venv/
+.vscode/
+.web-pids/
+
+# === Hidden top-level files ===
+# Linter/formatter configs and env-related files (low orientation value).
+.coverage
+.env
+.env.example
+.envrc
+.markdownlint.yaml
+.markdownlintignore
+.mdformat.toml
+.pre-commit-config.yaml
+.semgrep.yml
+.yamllint.yaml
+
+# === Top-level docs we don't want as nodes (low signal) ===
+DEBT.md
+CONTRIBUTORS.md
+CHANGELOG.md
+hexmap_contract.md
+
+# === Top-level junk/transient files ===
+test_hang.py
+pytest_out.txt
+ast_usages.txt
+dev_harness.png
+babylon.code-workspace
+logging.yaml
+setup.cfg
+package.json
+package-lock.json
+
+# === Within src/: noise without structural value ===
+src/babylon/reference/data/
+src/**/py.typed
+src/**/__pycache__/
+
+# === Test files (none currently in src/, but guard) ===
+src/**/test_*.py
+src/**/*_test.py

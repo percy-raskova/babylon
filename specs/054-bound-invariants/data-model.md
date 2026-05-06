@@ -26,10 +26,29 @@ dataclass in `src/babylon/engine/invariants.py`. They sit alongside
 
 **Method**: `check(pre: WorldState, post: WorldState) -> InvariantResult`.
 
-**Predicate**: For every `(ModelClass, field_name)` and every entity in
-`post.entities` that is an instance of `ModelClass`, the field value
-satisfies `0.0 <= value <= 1.0`. Edge `solidarity_strength` on every
-`EdgeType.SOLIDARITY` edge in the post-graph satisfies the same bound.
+**Predicate**: For every `(ModelClass, field_name)` pair, the harness
+walks **every collection on the `WorldState` model** that can hold an
+instance of `ModelClass` and asserts `0.0 <= value <= 1.0` on the named
+field. As of `WorldState` v2.6, those collections are:
+
+| Collection | Element type | Likely Probability fields |
+|-----------|--------------|---------------------------|
+| `entities: dict[str, SocialClass]` | `SocialClass` | `p_acquiescence`, `p_revolution`, `organization`, `repression_faced` |
+| `territories: dict[str, Territory]` | `Territory` | `p_acquiescence`, `p_revolution` (computed fields) |
+| `relationships: list[Relationship]` | `Relationship` | `solidarity_strength` (on `EdgeType.SOLIDARITY` edges) |
+| `organizations: dict[str, OrganizationType]` | discriminated union | discovery walker reports per-subtype |
+| `key_figures: dict[str, KeyFigure]` | `KeyFigure` | discovery walker reports |
+| `institutions: dict[str, Institution]` | `Institution` | discovery walker reports |
+| `state_finances: dict[str, StateFinance]` | `StateFinance` | discovery walker reports |
+| `contradiction_frames: dict[str, ContradictionFrame]` | `ContradictionFrame` | discovery walker reports |
+| `industries: dict[str, IndustryHyperedge]` | `IndustryHyperedge` | discovery walker reports |
+
+The walker enumerates collections by reading
+`WorldState.model_fields` and selecting fields whose annotation is a
+`dict`/`list` of a Pydantic model. **Sentinel rule**: if a future
+`WorldState` field appears whose value is a Pydantic model collection
+and is *not* surveyed, the harness MUST emit a warning at collection
+time so coverage gaps surface explicitly.
 
 **Failure message format**: `f"Field {ModelClass.__name__}.{field_name}
 on entity {entity_id} = {value:.6f} (out of [0, 1])"`.
@@ -122,8 +141,7 @@ Module-level helpers in `harness/probability_discovery.py`.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `discover_probability_fields` | `() -> list[tuple[type[BaseModel], str]]` | Walks every Pydantic model under `src/babylon/models/`; returns `(ModelClass, field_name)` pairs whose annotation is `Probability` per research §1. |
-| `discover_probability_formulas` | `() -> list[Callable[..., float]]` | Returns the canonical probability formulas allow-list per research §2. |
-| `_warn_drift` | `(formula_module: ModuleType) -> None` | Logs a warning if a formula whose name matches `*probability*` or `*credibility*` appears in `formula_module` but is not in the allow-list. |
+| `discover_probability_formulas` | `() -> list[Callable[..., Probability]]` | Walks every public callable in `babylon.formulas.*`; returns each one whose `typing.get_type_hints(fn).get("return") is Probability` per research §2. Type-driven, no allow-list. |
 
 ### 2.6 `AlphaCoefficientDiscovery`
 

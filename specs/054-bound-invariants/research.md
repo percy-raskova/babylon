@@ -64,43 +64,56 @@ def is_probability_field(annotation: type) -> bool:
 
 ## §2. Probability-returning formulas — discovery pattern
 
-**Decision**: Use a **two-layer hybrid**: (a) a hardcoded allow-list of the
-canonical probability formulas (`calculate_acquiescence_probability`,
-`calculate_revolution_probability`, etc.) maintained in
-`tests/property/strategies/probability_field.py`, AND (b) an automated scan
-that warns when a new formula in `src/babylon/formulas/` has "probability"
-or "credibility" in its name but is not in the allow-list. The harness uses
-the allow-list for assertion; the warning surfaces drift.
+**Decision**: Use **type-driven discovery**:
+`typing.get_type_hints(formula).get("return") is Probability` — the harness
+walks every public callable in `babylon.formulas.*` and yields each one
+whose declared return type is the `Probability` alias. No hand-maintained
+allow-list. The discovery rule matches FR-002(b) literally.
 
-**Rationale**: A grep for `-> Probability` in `src/babylon/formulas/`
-returns **zero hits**. Probability formulas all currently return `-> float`:
+This decision required a precondition refactor in this branch: the two
+canonical probability formulas in `src/babylon/formulas/survival_calculus.py`
+were narrowed from `-> float` to `-> Probability`:
 
+```diff
+-def calculate_acquiescence_probability(...) -> float:
++def calculate_acquiescence_probability(...) -> Probability:
+
+-def calculate_revolution_probability(cohesion: float, repression: float) -> float:
++def calculate_revolution_probability(cohesion: float, repression: float) -> Probability:
 ```
-src/babylon/formulas/survival_calculus.py:24:    ) -> float:
-src/babylon/formulas/survival_calculus.py:44:def calculate_revolution_probability(cohesion: float, repression: float) -> float:
-```
 
-The formulas mathematically produce values in `[0, 1]`, but the Pydantic
-constrained type is only applied at the *field* boundary (when the float is
-stored on a `SocialClass.p_acquiescence` slot). FR-002(b) as worded would
-silently discover zero formulas — which would pass vacuously but provide no
-falsification. The two-layer approach honors the spec's intent (every
-formula whose mathematical contract is "returns a probability") while being
-robust to current code that uses `float`.
+`Probability = Annotated[float, Field(ge=0.0, le=1.0, ...), SnapToGrid]` is
+identity-equal to `float` at runtime — the narrowing is purely a static
+type and discovery hook. No call sites needed updating because Pydantic
+runs the actual validation at the storage boundary (when the result is
+written to a `SocialClass.p_acquiescence` field), not at the function
+return. mypy strict + ruff + the existing 17 survival_calculus tests all
+pass after the refactor.
 
-The allow-list can be retired once formula return annotations are
-narrowed to `Probability` in a separate refactor (out of scope).
+**Out of scope for this spec — future formula narrowing**: there are likely
+additional formulas elsewhere in `babylon.formulas.*` whose mathematical
+contract is "returns a probability" but whose declared return type is
+still `float` (e.g., probability components inside larger calculator
+modules). These will be picked up by the harness automatically as their
+return types are narrowed. The discovery walker is the engine that
+*makes* the contract enforceable; widening coverage is a matter of
+narrowing more annotations as those formulas are touched, not of adding
+to a registry.
 
 **Alternatives considered**:
 
-- **Strict literal rule**: discover only `-> Probability` formulas. Rejected
-  because the discovery set is currently empty; tests would pass vacuously.
-- **Docstring scan** for "Returns Probability [0, 1]" or "P(S|...)": fragile
-  because docstrings drift and Sphinx-cross-references add noise.
-- **Annotate the formulas**: refactor every probability formula to return
-  `Probability`. Out of scope for this spec; would touch ~20 formulas and
-  require their callers to handle the constrained type. Tracked as a
-  follow-up in `quickstart.md`.
+- **Hardcoded allow-list** (`{calculate_acquiescence_probability,
+  calculate_revolution_probability, ...}`): drifts as new formulas
+  are added; explicitly forbidden by Q1 clarification ("no
+  hand-maintained registry"). Rejected.
+- **Docstring scan** for "Returns Probability [0, 1]" or "P(S|...)":
+  fragile because docstrings drift and Sphinx-cross-references add
+  noise. Rejected.
+- **Name-based heuristic** (any function with `*probability*` or
+  `*credibility*` in its name): false-positives on
+  `_probability_measure` (a graph-distance helper that returns
+  `dict[node, float]`) and `calculate_crossover_threshold` (returns
+  a wealth level, not a probability). Rejected.
 
 ---
 

@@ -10,7 +10,7 @@ When wages FALL, crisis creates "agitation energy" that channels into:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.formulas.consciousness_routing import (
     compute_agitation_delta,
@@ -85,6 +85,9 @@ class ConsciousnessSystem:
     """
 
     name = "Consciousness Drift"
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     def step(
         self,

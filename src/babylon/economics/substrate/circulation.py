@@ -21,7 +21,7 @@ See Also:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from scipy import sparse  # type: ignore[import-untyped]
@@ -39,6 +39,10 @@ class DefaultHexCirculationComputer:
     Builds a sparse OD matrix from county-level LODES flows,
     disaggregated to hex-to-hex using tract employment weights.
     """
+
+    # Spec 053 INV-001: substrate computer; conservation-preserving by
+    # construction. Opt-out marker (default-deny per FR-004a).
+    creates_value: ClassVar[bool] = False
 
     def build_od_matrix(
         self,

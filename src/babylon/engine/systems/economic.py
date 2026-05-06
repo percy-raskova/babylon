@@ -5,7 +5,7 @@ See :doc:`/reference/systems` for full theory (PPP Model, Iron Lung, Decision Ma
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.engine.event_bus import Event
 from babylon.formulas import BourgeoisieDecision
@@ -53,6 +53,11 @@ class ImperialRentSystem:
     """
 
     name = "Imperial Rent"
+    # Spec 053 INV-001: ImperialRentSystem mutates `wealth` via extraction
+    # phase (`graph.update_node(node.id, wealth=max(0.0, wealth - cost))`).
+    # Opt out of c+v+s conservation per-system check; recorded deltas are
+    # subtracted in the full-pipeline test.
+    creates_value: ClassVar[bool] = True
 
     def step(
         self,

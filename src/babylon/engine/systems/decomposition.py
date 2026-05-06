@@ -12,7 +12,7 @@ See ai-docs/terminal-crisis-dynamics.md for full theory.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.engine.event_bus import Event
 from babylon.models.entity_registry import CORE_BOURGEOISIE_ID
@@ -76,6 +76,10 @@ class DecompositionSystem:
     """
 
     name = "Decomposition"
+    # Spec 053 INV-001: DecompositionSystem transfers wealth proportionally
+    # during LA decomposition. Default-deny while audit pending; flip to
+    # False once internal redistribution is proven sum-preserving.
+    creates_value: ClassVar[bool] = True
 
     def step(
         self,

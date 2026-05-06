@@ -7,7 +7,7 @@ Publishes RESERVE_ARMY_PRESSURE events via the event bus.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Union
 
 import networkx as nx
 
@@ -32,6 +32,9 @@ class ReserveArmySystem:
 
     Position: #17 in _DEFAULT_SYSTEMS (after TickDynamicsSystem).
     """
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     @property
     def name(self) -> str:

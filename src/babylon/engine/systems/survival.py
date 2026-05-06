@@ -12,7 +12,7 @@ This makes organization a function of class solidarity infrastructure, not just 
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from babylon.models.enums import EdgeType
 
@@ -80,6 +80,9 @@ class SurvivalSystem:
     """
 
     name = "Survival Calculus"
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     def step(
         self,

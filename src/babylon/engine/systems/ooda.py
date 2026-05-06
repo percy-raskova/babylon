@@ -12,7 +12,7 @@ See Also:
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.models.enums import EventType, OrgType
 from babylon.ooda.cycle_time import compute_cycle_time
@@ -41,6 +41,9 @@ class OODASystem:
     2. Action Phase — initiative-ordered actions for all orgs
     3. Layer 3 — consequence propagation
     """
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     @property
     def name(self) -> str:

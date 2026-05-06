@@ -46,7 +46,27 @@ settings.register_profile(
     "mutmut",
     suppress_health_check=[HealthCheck.differing_executors],
 )
-# Activate mutmut profile when HYPOTHESIS_PROFILE=mutmut is set
+
+# Spec 053: register `default` and `slow` profiles here (project-wide) so
+# `HYPOTHESIS_PROFILE=slow pytest …` resolves before the per-package
+# conftest in tests/property/conftest.py runs. Registration must precede
+# `load_profile` below.
+settings.register_profile(
+    "default",
+    max_examples=100,
+    derandomize=True,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+settings.register_profile(
+    "slow",
+    max_examples=500,
+    derandomize=False,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+
+# Activate the requested profile (mutmut/slow/default/etc).
 settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "default"))
 
 # NOTE: babylon imports are done lazily inside fixtures to support mutmut.

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -39,7 +39,7 @@ H3_INDEX_PATTERN = re.compile(r"^[0-9a-f]{15}$")
 FIPS_PATTERN = re.compile(r"^[0-9]{5}$")
 
 
-class SnapshotEdgeType(str, Enum):
+class SnapshotEdgeType(StrEnum):
     """Edge types for simulation snapshots.
 
     Maps to constitution I.6 edge modes.

@@ -74,7 +74,7 @@ describe("App", () => {
     renderAt("/games");
 
     await waitFor(() => {
-      expect(screen.getByText("Your Games")).toBeInTheDocument();
+      expect(screen.getByText("Your Operations")).toBeInTheDocument();
     });
     expect(screen.getByText("alice")).toBeInTheDocument();
   });
@@ -121,10 +121,10 @@ describe("App", () => {
 
     await user.type(screen.getByPlaceholderText("Username"), "bob");
     await user.type(screen.getByPlaceholderText("Password"), "secret");
-    await user.click(screen.getByText("Log In"));
+    await user.click(screen.getByText("Enter"));
 
     await waitFor(() => {
-      expect(screen.getByText("Your Games")).toBeInTheDocument();
+      expect(screen.getByText("Your Operations")).toBeInTheDocument();
     });
   });
 
@@ -161,7 +161,7 @@ describe("App", () => {
       renderAt("/games");
 
       await waitFor(() => {
-        expect(screen.getByText("Your Games")).toBeInTheDocument();
+        expect(screen.getByText("Your Operations")).toBeInTheDocument();
       });
       expect(screen.getByText("carol")).toBeInTheDocument();
     });
@@ -200,7 +200,7 @@ describe("App", () => {
       renderAt("/unknown-path");
 
       await waitFor(() => {
-        expect(screen.getByText("Your Games")).toBeInTheDocument();
+        expect(screen.getByText("Your Operations")).toBeInTheDocument();
       });
     });
   });

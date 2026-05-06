@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Babylon · Frontend v2 — Canvas</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0a0f;
+                color: #e0e0e0; font-family: var(--font-sans); overflow: hidden; }
+  #root { height: 100vh; width: 100vw; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #0a0a0f; }
+  ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #c8a860; }
+  button:focus { outline: 1px solid #c8a860; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="mock-data.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="pages-pregame.jsx"></script>
+<script type="text/babel" src="pages-core.jsx"></script>
+<script type="text/babel" src="pages-verbs.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+// ============================================================================
+// Babylon Frontend v2 — Design Canvas
+// Shows all 16 routes side-by-side as artboards in a pan/zoom canvas.
+// ----------------------------------------------------------------------------
+
+// Wrapper to render any in-game route inside the GameRouteShell.
+const RouteArtboard = ({ routeKey, navOverride }) => {
+  const tick = TICK;
+  const currentOrgId = "ORG001";
+  const currentOrg = ORGS.find(o => o.id === currentOrgId);
+  const username = "percy";
+  const navigate = navOverride || (() => {});
+
+  let body = null;
+  if (routeKey === "briefing")  body = <BriefingPage tick={tick} onNavigate={navigate}/>;
+  else if (routeKey === "orgs")     body = <OrgsPage onNavigate={navigate} currentOrgId={currentOrgId} onSelectOrg={() => {}}/>;
+  else if (routeKey === "intel")    body = <IntelPage onNavigate={navigate} intelTarget={{type:"org",id:"ORG-NPC-001"}} onSelectIntel={() => {}}/>;
+  else if (routeKey === "intel_t")  body = <IntelPage onNavigate={navigate} intelTarget={{type:"territory",id:"T-DETROIT-CENTRAL"}} onSelectIntel={() => {}}/>;
+  else if (routeKey === "intel_e")  body = <IntelPage onNavigate={navigate} intelTarget={{type:"edge",id:"E001"}} onSelectIntel={() => {}}/>;
+  else if (routeKey === "intel_c")  body = <IntelPage onNavigate={navigate} intelTarget={{type:"community",id:"C-DEARBORN-PROLE"}} onSelectIntel={() => {}}/>;
+  else if (routeKey === "results")  body = <ResultsPage tick={tick}/>;
+  else if (routeKey === "analysis") body = <AnalysisPage tick={tick}/>;
+  else if (routeKey.startsWith("v_")) {
+    const map = { v_educate:"educate", v_aid:"aid", v_attack:"attack",
+      v_mobilize:"mobilize", v_campaign:"campaign", v_move:"move",
+      v_invest:"investigate", v_reproduce:"reproduce", v_negotiate:"negotiate" };
+    const verb = VERBS.find(v => v.verb === map[routeKey]);
+    body = <VerbPage verb={verb} onNavigate={navigate} currentOrgId={currentOrgId} onSelectOrg={() => {}}/>;
+  }
+
+  return (
+    <GameRouteShell currentRoute={routeKey} onNavigate={navigate} badges={{intel:2}}
+      tick={tick} sessionId={SESSION_ID} currentOrg={currentOrg}
+      onResolve={() => {}} onLogout={() => {}} username={username}>
+      {body}
+    </GameRouteShell>
+  );
+};
+
+const PreRouteArtboard = ({ kind }) => {
+  if (kind === "login") return <LoginPage onLogin={() => {}}/>;
+  if (kind === "lobby") return <GamesLobbyPage username="percy"
+                                  onOpenGame={() => {}} onLogout={() => {}}/>;
+};
+
+// ============================================================================
+function CanvasApp() {
+  // All artboards are 1280×800 (one design viewport)
+  const W = 1280, H = 800;
+  return (
+    <DesignCanvas title="Babylon · Frontend v2"
+      subtitle="Multi-page React Router architecture · 16 canonical routes · Paradox-derived UX patterns">
+      <DCSection id="brief" title="Architectural Brief">
+        <DCArtboard id="brief-0" label="Constitution & Reset Notes" width={1280} height={520}>
+          <BriefArtboard/>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="pregame" title="Pre-Game Routes">
+        <DCArtboard id="r-login" label="/login" width={W} height={H}>
+          <PreRouteArtboard kind="login"/>
+        </DCArtboard>
+        <DCArtboard id="r-lobby" label="/games (Lobby)" width={W} height={H}>
+          <PreRouteArtboard kind="lobby"/>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="core" title="Core Game Loop · 4 Routes">
+        <DCArtboard id="r-briefing" label="/games/:id (Briefing)" width={W} height={H}>
+          <RouteArtboard routeKey="briefing"/>
+        </DCArtboard>
+        <DCArtboard id="r-orgs" label="/games/:id/orgs" width={W} height={H}>
+          <RouteArtboard routeKey="orgs"/>
+        </DCArtboard>
+        <DCArtboard id="r-intel" label="/games/:id/intel/org/:id" width={W} height={H}>
+          <RouteArtboard routeKey="intel"/>
+        </DCArtboard>
+        <DCArtboard id="r-intel-t" label="/games/:id/intel/territory/:id" width={W} height={H}>
+          <RouteArtboard routeKey="intel_t"/>
+        </DCArtboard>
+        <DCArtboard id="r-intel-e" label="/games/:id/intel/edge/:id" width={W} height={H}>
+          <RouteArtboard routeKey="intel_e"/>
+        </DCArtboard>
+        <DCArtboard id="r-intel-c" label="/games/:id/intel/community/:id" width={W} height={H}>
+          <RouteArtboard routeKey="intel_c"/>
+        </DCArtboard>
+        <DCArtboard id="r-results" label="/games/:id/results" width={W} height={H}>
+          <RouteArtboard routeKey="results"/>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="verbs" title="Verb Pages · Constitution Article V (9 atomic verbs)">
+        <DCArtboard id="r-educate" label="/actions/educate · target: community" width={W} height={H}>
+          <RouteArtboard routeKey="v_educate"/>
+        </DCArtboard>
+        <DCArtboard id="r-mobilize" label="/actions/mobilize · target: community" width={W} height={H}>
+          <RouteArtboard routeKey="v_mobilize"/>
+        </DCArtboard>
+        <DCArtboard id="r-campaign" label="/actions/campaign · target: territory or community" width={W} height={H}>
+          <RouteArtboard routeKey="v_campaign"/>
+        </DCArtboard>
+        <DCArtboard id="r-aid" label="/actions/aid · target: org or territory" width={W} height={H}>
+          <RouteArtboard routeKey="v_aid"/>
+        </DCArtboard>
+        <DCArtboard id="r-attack" label="/actions/attack · target: org or territory" width={W} height={H}>
+          <RouteArtboard routeKey="v_attack"/>
+        </DCArtboard>
+        <DCArtboard id="r-move" label="/actions/move · target: territory" width={W} height={H}>
+          <RouteArtboard routeKey="v_move"/>
+        </DCArtboard>
+        <DCArtboard id="r-invest" label="/actions/investigate · target: any" width={W} height={H}>
+          <RouteArtboard routeKey="v_invest"/>
+        </DCArtboard>
+        <DCArtboard id="r-reproduce" label="/actions/reproduce · target: org" width={W} height={H}>
+          <RouteArtboard routeKey="v_reproduce"/>
+        </DCArtboard>
+        <DCArtboard id="r-negotiate" label="/actions/negotiate · target: org" width={W} height={H}>
+          <RouteArtboard routeKey="v_negotiate"/>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="post" title="Post-MVP · Analysis">
+        <DCArtboard id="r-analysis" label="/games/:id/analysis (read-only)" width={W} height={H}>
+          <RouteArtboard routeKey="analysis"/>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+// ============================================================================
+// Brief / cover artboard — explains the architectural choices on canvas
+// ============================================================================
+const BriefArtboard = () => (
+  <div style={{ height: "100%", padding: 36, background: "#0a0a0f",
+                 fontFamily: "var(--font-sans)", color: "#e0e0e0",
+                 display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: 32 }}>
+    <div>
+      <div style={{ display: "inline-block", padding: "4px 10px", marginBottom: 12,
+                     border: "1px solid #c8a860", borderRadius: 9999 }}>
+        <BblLabel color="#c8a860">Frontend Reset · April 2026</BblLabel>
+      </div>
+      <h1 style={{ fontSize: 38, fontWeight: 700, letterSpacing: ".04em",
+                    lineHeight: 1.1, margin: 0, color: "#e0e0e0" }}>
+        16 routes,<br/>
+        not <span style={{ textDecoration: "line-through", color: "#404040" }}>one war room</span>
+      </h1>
+      <p style={{ fontSize: 14, color: "#a0a0a0", lineHeight: 1.6, marginTop: 18 }}>
+        A multi-page React Router prototype matching the spec hand-off in
+        <i> babylon-frontend-reset-prompt.md</i>. Every route owns its own data
+        contract, its own primary task, its own performance envelope. The map,
+        graph, and Zustand stores synchronize across routes — but they
+        don't fuse into one god-page.
+      </p>
+      <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 8 }}>
+        <Pillar n="01" title="Pre-game · 2 routes"
+          body="/login · /games. No game chrome, no viz libs."/>
+        <Pillar n="02" title="Core loop · 4 routes"
+          body="Briefing (newspaper), Orgs (3×3 verb grid), Intel (inspector for enemy orgs / edges / territories / communities), Results (mechanical)."/>
+        <Pillar n="03" title="Verbs · 9 routes"
+          body="One page per atomic verb. Target lists are GATED by target_type — never one big dropdown."/>
+        <Pillar n="04" title="Analysis · 1 post-MVP route"
+          body="Full-bleed time series, UpSet plot, tick scrubber. Read-only."/>
+      </div>
+    </div>
+
+    <div>
+      <BblLabel color="#c8a860">Paradox UX Patterns Adopted</BblLabel>
+      <ul style={{ paddingLeft: 16, fontSize: 12, color: "#a0a0a0", lineHeight: 1.7, marginTop: 8 }}>
+        <li><b style={{color:"#e0e0e0"}}>Tooltip breakdowns</b> — every aggregate stat (Heat, Cohesion, Consciousness)
+            opens a "Base + contributors" provenance, mirroring <code>GetScriptValueBreakdown</code>.</li>
+        <li><b style={{color:"#e0e0e0"}}>Datacontext / scopes</b> — <code>Scope.getOrg</code>,
+            <code>getCommunity</code>, <code>getTerritory</code> chain promotes from a single registry.</li>
+        <li><b style={{color:"#e0e0e0"}}>Datamodel iteration</b> — verb target lists are server-shaped
+            arrays, not bespoke per-verb fetches.</li>
+        <li><b style={{color:"#e0e0e0"}}>Slot pattern</b> — every panel has named slots (<code>title</code>,
+            <code>right</code>, body) so scenario authors can override one section without forking the whole panel.</li>
+        <li><b style={{color:"#e0e0e0"}}>Persistent shell</b> — TopBar (tick, vanguard, RESOLVE) and the
+            left icon rail mount once and stay across all in-game routes.</li>
+      </ul>
+      <BblLabel color="#c8a860" style={{marginTop:18, display:"block"}}>Constitution Anchors</BblLabel>
+      <ul style={{ paddingLeft: 16, fontSize: 12, color: "#a0a0a0", lineHeight: 1.7, marginTop: 8 }}>
+        <li><b style={{color:"#80b0e0"}}>Article III</b> — LLM is observer-only. The composer queues a
+            schema-validated <code>{"{verb, target_id, params}"}</code>; the server resolves.</li>
+        <li><b style={{color:"#80b0e0"}}>Article IV</b> — Dyadic vs hyperedge separation enforced at the
+            target picker. Educate/Mobilize/Campaign target hyperedges; Aid/Attack/Move/Negotiate target nodes.</li>
+        <li><b style={{color:"#80b0e0"}}>Article V</b> — All nine verbs always available; no phase-gated tabs.</li>
+        <li><b style={{color:"#80b0e0"}}>Article VII</b> — Color encodes meaning (class, edge type), luminosity
+            encodes magnitude. CRIMSON/SAFFRON/GREY/BLACK palette.</li>
+        <li><b style={{color:"#80b0e0"}}>Article VIII.9</b> — Hyperedges render as choropleth on hexes,
+            badges on inspector panels, hulls (BubbleSets) in topology, UpSet in analysis.
+            <i> Never as pairwise edges.</i></li>
+      </ul>
+    </div>
+
+    <div>
+      <BblLabel color="#e04040">Anti-Patterns Excised</BblLabel>
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        <Cross txt='9 verbs in a right-rail accordion under invented "BUILD ORG / PROJECT PWR" tabs'/>
+        <Cross txt="Single target list mixing hyperedges with dyadic nodes"/>
+        <Cross txt="Enemy orgs (WCSD, DFB, S3) on the player's action surface"/>
+        <Cross txt="Mini org-graph duplicating the right-rail org list"/>
+        <Cross txt="Three full-size time series on the briefing page"/>
+        <Cross txt="LAYER + LENS selectors competing on the same map"/>
+        <Cross txt='"Avg Organization 0.50" — averaging discrete agents'/>
+      </div>
+      <BblLabel color="#40c040" style={{marginTop:18, display:"block"}}>What Replaced Them</BblLabel>
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        <Check txt="3×3 verb grid in /orgs, each tile linking to its own page"/>
+        <Check txt="Per-verb target list, gated by target_type (community / territory / org / any)"/>
+        <Check txt="Enemy orgs in /intel/org/:id only — never on actor-org surfaces"/>
+        <Check txt="Persistent left NavRail with Paradox-style icon vocabulary"/>
+        <Check txt="Sparkline strip on Briefing → full-size charts on /analysis"/>
+        <Check txt="One framing chip per route (Layer or Lens, not both)"/>
+        <Check txt="Per-org Cohesion / Legitimacy / Opacity / Heat — never averaged"/>
+      </div>
+    </div>
+  </div>
+);
+
+const Pillar = ({ n, title, body }) => (
+  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 12,
+                 padding: "10px 0", borderTop: "1px solid #1a1a2a" }}>
+    <span style={{ fontFamily: "var(--font-mono)", color: "#c8a860", fontSize: 14, fontWeight: 700 }}>{n}</span>
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0e0" }}>{title}</div>
+      <div style={{ fontSize: 11, color: "#787878", marginTop: 2, lineHeight: 1.5 }}>{body}</div>
+    </div>
+  </div>
+);
+const Cross = ({ txt }) => (
+  <div style={{ fontSize: 11, color: "#a0a0a0", display: "grid",
+                 gridTemplateColumns: "auto 1fr", gap: 8, lineHeight: 1.5 }}>
+    <span style={{ color: "#e04040" }}>✕</span><span>{txt}</span>
+  </div>
+);
+const Check = ({ txt }) => (
+  <div style={{ fontSize: 11, color: "#a0a0a0", display: "grid",
+                 gridTemplateColumns: "auto 1fr", gap: 8, lineHeight: 1.5 }}>
+    <span style={{ color: "#40c040" }}>✓</span><span>{txt}</span>
+  </div>
+);
+
+ReactDOM.createRoot(document.getElementById("root")).render(<CanvasApp/>);
+</script>
+</body>
+</html>

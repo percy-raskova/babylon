@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class MetaphorFamily(str, Enum):
+class MetaphorFamily(StrEnum):
     """Categories of metaphorical language in narratives.
 
     Narratives about economic crisis tend to cluster around certain

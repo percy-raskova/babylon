@@ -94,6 +94,13 @@ def _build_grid_from_cells(
 
     for cell, (c, v, s) in zip(cells, cvs_values, strict=True):
         fips = _CELL_TO_FIPS[cell]
+        # Compute derived rates so the grid represents a valid post-Production
+        # state. Equalization (and other downstream computers) read the stored
+        # ``profit_rate`` field; leaving it at default 0.0 breaks the
+        # capital-weighted-mean conservation proof in equalize_capital.
+        cv = c + v
+        profit_rate = s / cv if cv > 0 else 0.0
+        exploitation_rate = s / v if v > 0 else 0.0
         hexes[cell] = HexEconomicState(
             h3_index=cell,
             county_fips=fips,
@@ -102,6 +109,8 @@ def _build_grid_from_cells(
             surplus_value=s,
             employment=0.0,
             dept_shares=(0.25, 0.25, 0.25, 0.25),
+            profit_rate=profit_rate,
+            exploitation_rate=exploitation_rate,
         )
         county_hex_ids[fips].add(cell)
         r6 = h3.cell_to_parent(cell, 6)

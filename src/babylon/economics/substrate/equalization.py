@@ -25,11 +25,78 @@ See Also:
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from babylon.config.defines import RentCircuitDefines
     from babylon.economics.substrate.types import HexEconomicState, HexGrid
+
+# Numerical-stability threshold: a hex contributes to the rate gradient only
+# if its (c+v) basis is large enough to compute a well-defined profit rate
+# without float overflow. ``s/(c+v)`` with subnormal cv can produce ``inf``,
+# which then propagates to NaN via ``inf - inf`` in the gradient, breaking
+# conservation. The threshold is well above the subnormal range so the
+# c-weighted product won't overflow.
+_MIN_RATE_BASIS: float = math.ldexp(1.0, -1000)  # ~9.3e-302
+
+
+def _compute_capital_weighted_rates(
+    hexes: dict[str, HexEconomicState],
+) -> tuple[dict[str, float], float]:
+    """Compute per-hex profit rate and the c-weighted average rate.
+
+    Returns ``(per_hex_r, r_avg)`` where ``per_hex_r[h] = s/(c+v)`` (computed
+    inline; not read from any stored field) and ``r_avg = sum(r_i*c_i) /
+    sum(c_i)``. The c-weighted form is required by the conservation proof:
+
+        sum_i delta_c_i = alpha * (sum_i r_i*c_i  -  r_avg * sum_i c_i) = 0
+        ⇔   r_avg = sum_i (r_i * c_i) / sum_i c_i
+
+    Hexes whose ``c+v`` is below ``_MIN_RATE_BASIS`` (subnormal range) are
+    treated as ``r_i = 0`` to avoid intermediate overflow producing NaN.
+    """
+    per_hex_r: dict[str, float] = {}
+    weighted_r_numer = 0.0
+    c_total = 0.0
+    for h3_id, hex_state in hexes.items():
+        cv = hex_state.constant_capital + hex_state.variable_capital
+        if cv > _MIN_RATE_BASIS:
+            r_i = hex_state.surplus_value / cv
+            if not math.isfinite(r_i):
+                r_i = 0.0
+        else:
+            r_i = 0.0
+        per_hex_r[h3_id] = r_i
+        weighted_r_numer += r_i * hex_state.constant_capital
+        c_total += hex_state.constant_capital
+    r_avg = weighted_r_numer / c_total if c_total > 0 else 0.0
+    return per_hex_r, r_avg
+
+
+def _compute_non_negative_scale(
+    proposed_deltas: dict[str, float],
+    hexes: dict[str, HexEconomicState],
+) -> float:
+    """Compute the scale factor that keeps every post-step c >= 0.
+
+    Returns the largest ``scale ∈ (0, 1]`` such that
+    ``c_i + scale * proposed_deltas[i] >= 0`` for every hex. Linearity of
+    scaling preserves ``sum(scale * delta) = scale * sum(delta) = 0``, so
+    sum-conservation is maintained. Returns 0.0 if any negative delta
+    targets a hex with ``c == 0`` (no flow possible from an empty hex).
+    """
+    scale = 1.0
+    for h3_id, d in proposed_deltas.items():
+        if d >= 0.0:
+            continue
+        c_i = hexes[h3_id].constant_capital
+        if c_i == 0.0:
+            return 0.0
+        cap = c_i / (-d)
+        if cap < scale:
+            scale = cap
+    return scale
 
 
 class DefaultHexEqualizationComputer:
@@ -118,33 +185,36 @@ class DefaultHexEqualizationComputer:
             working_hexes = dict(grid.hexes)
 
         # ==============================================================
-        # Phase 2: Capital migration (original equalization logic)
+        # Phase 2: Capital migration (conservation-preserving formulation)
         # ==============================================================
-        # Re-compute capital-weighted average profit rate post-rent
-        total_s_post = 0.0
-        total_cv_post = 0.0
-        for hex_state in working_hexes.values():
-            total_s_post += hex_state.surplus_value
-            total_cv_post += hex_state.constant_capital + hex_state.variable_capital
+        # See _compute_capital_weighted_rates for the conservation proof
+        # (the proof requires r_avg = sum(r_i*c_i)/sum(c_i), the c-weighted
+        # mean — not the totals ratio sum(s_i)/sum(c_i+v_i)).
+        per_hex_r, r_avg_post = _compute_capital_weighted_rates(working_hexes)
 
-        r_avg_post = total_s_post / total_cv_post if total_cv_post > 0 else 0.0
+        # Compute proposed delta_c for each hex
+        proposed_deltas: dict[str, float] = {
+            h3_id: alpha * (per_hex_r[h3_id] - r_avg_post) * hex_state.constant_capital
+            for h3_id, hex_state in working_hexes.items()
+        }
 
-        # Compute delta_c for each hex
-        deltas: dict[str, float] = {}
-        for h3_id, hex_state in working_hexes.items():
-            r_i = hex_state.profit_rate
-            c_i = hex_state.constant_capital
-            deltas[h3_id] = alpha * (r_i - r_avg_post) * c_i
+        # Non-negativity scaling: if any proposed delta would push c_i
+        # negative, scale ALL deltas down proportionally. Linearity preserves
+        # sum(delta) = 0; non-negativity is guaranteed without the
+        # value-destroying ``max(0.0, c_i + delta)`` floor used previously.
+        scale = _compute_non_negative_scale(proposed_deltas, working_hexes)
+        deltas: dict[str, float] = {h: scale * d for h, d in proposed_deltas.items()}
 
-        # Apply deltas with floor at zero
+        # Apply deltas; no floor needed because scaling guarantees non-neg.
+        # The tiny-negative guard catches float-rounding noise (capped at
+        # 1e-12 absolute so we don't silently destroy real value).
         updated_hexes: dict[str, HexEconomicState] = {}
         for h3_id, hex_state in working_hexes.items():
-            new_c = max(0.0, hex_state.constant_capital + deltas[h3_id])
-
-            # Recompute profit rate with new c
+            new_c = hex_state.constant_capital + deltas[h3_id]
+            if -1e-12 < new_c < 0.0:
+                new_c = 0.0
             total_cv_new = new_c + hex_state.variable_capital
             new_profit_rate = hex_state.surplus_value / total_cv_new if total_cv_new > 0 else 0.0
-
             updated_hexes[h3_id] = hex_state.model_copy(
                 update={
                     "constant_capital": new_c,

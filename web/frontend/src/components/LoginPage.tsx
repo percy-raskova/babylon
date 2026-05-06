@@ -1,7 +1,8 @@
 /**
- * Login page component.
+ * Login page — Bunker Constructivism v2.
  *
  * Posts credentials to Django's session auth endpoint.
+ * Full-viewport centered card with CRT overlay.
  */
 
 import { type FormEvent, useState } from "react";
@@ -38,18 +39,39 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-void to-blood-void">
-      <div className="w-full max-w-[400px] rounded-xl border border-wet-concrete bg-dark-metal p-12 text-center">
-        <h1 className="mb-1 text-[32px] font-bold tracking-[6px] text-gold">BABYLON</h1>
-        <p className="mb-8 text-sm uppercase tracking-[2px] text-ash">The Fall of America</p>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-void">
+      {/* Radial vignette */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,.7) 100%)",
+        }}
+      />
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* CRT scanline overlay */}
+      <div className="crt-overlay pointer-events-none absolute inset-0" />
+
+      <div className="relative z-10 w-full max-w-[400px] rounded-xl border border-soot bg-dark-metal p-12 text-center shadow-[0_0_60px_rgba(0,0,0,.8),0_0_4px_rgba(200,168,96,.15)]">
+        {/* Brand block */}
+        <div className="mb-1 text-[36px] font-bold tracking-[8px] text-gold bloom-gold">
+          BABYLON
+        </div>
+        <p className="mb-2 text-[11px] uppercase tracking-[3px] text-ash">The Fall of America</p>
+        <div className="mx-auto mb-8 h-px w-24 bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
+
+        {/* Subtitle */}
+        <p className="mb-6 text-[10px] leading-relaxed text-chassis">
+          Geopolitical simulation engine modeling the collapse of American hegemony through MLM-TW
+          theory. <span className="text-ash">Graph + Math = History</span>.
+        </p>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <input
             type="text"
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="rounded-lg border border-wet-concrete bg-void px-4 py-3 text-sm text-bone outline-none focus:border-gold"
+            className="rounded-lg border border-wet-concrete bg-void px-4 py-3 text-sm text-bone outline-none transition-colors placeholder:text-chassis focus:border-gold"
             autoComplete="username"
             required
           />
@@ -58,19 +80,26 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-lg border border-wet-concrete bg-void px-4 py-3 text-sm text-bone outline-none focus:border-gold"
+            className="rounded-lg border border-wet-concrete bg-void px-4 py-3 text-sm text-bone outline-none transition-colors placeholder:text-chassis focus:border-gold"
             autoComplete="current-password"
             required
           />
-          {error && <p className="m-0 text-[13px] text-crimson">{error}</p>}
+          {error && <p className="m-0 text-[12px] text-crimson">{error}</p>}
           <button
             type="submit"
             disabled={submitting}
-            className="mt-2 rounded-lg bg-gold px-3 py-3 text-sm font-semibold uppercase tracking-wider text-void hover:brightness-110 disabled:opacity-50"
+            className="mt-2 rounded-lg bg-gold px-3 py-3 text-[12px] font-bold uppercase tracking-[3px] text-void transition-all hover:brightness-110 disabled:opacity-50"
           >
-            {submitting ? "Logging in..." : "Log In"}
+            {submitting ? "Authenticating..." : "Enter"}
           </button>
         </form>
+
+        {/* Footer */}
+        <div className="mt-8 flex items-center justify-center gap-2 text-[8px] uppercase tracking-widest text-chassis">
+          <span>◐</span>
+          <span>Constitution VII · Visual Vocabulary</span>
+          <span>◐</span>
+        </div>
       </div>
     </div>
   );

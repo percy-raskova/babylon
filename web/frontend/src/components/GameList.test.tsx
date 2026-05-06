@@ -32,7 +32,7 @@ describe("GameList", () => {
     render(<GameList onSelectGame={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("No games yet. Create one to begin.")).toBeInTheDocument();
+      expect(screen.getByText(/No operations yet/)).toBeInTheDocument();
     });
   });
 
@@ -48,8 +48,8 @@ describe("GameList", () => {
       expect(screen.getByText("Detroit Scenario")).toBeInTheDocument();
     });
     expect(screen.getByText("National Crisis")).toBeInTheDocument();
-    expect(screen.getByText("Tick 5")).toBeInTheDocument();
-    expect(screen.getByText("Tick 12")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
   });
 
   it("calls onSelectGame when clicking a game", async () => {

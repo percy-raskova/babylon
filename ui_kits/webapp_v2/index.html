@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Babylon · Frontend v2</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0a0f;
+                color: #e0e0e0; font-family: var(--font-sans); overflow: hidden; }
+  #root { height: 100vh; width: 100vw; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #0a0a0f; }
+  ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #c8a860; }
+  button { font-family: var(--font-sans); }
+  button:focus { outline: 1px solid #c8a860; outline-offset: 2px; }
+  /* CRT subtle scanlines on the whole app */
+  .crt-scanlines::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 9000;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.04) 0, rgba(0,0,0,.04) 1px, transparent 1px, transparent 3px);
+  }
+</style>
+</head>
+<body class="crt-scanlines">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="mock-data.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="pages-pregame.jsx"></script>
+<script type="text/babel" src="pages-core.jsx"></script>
+<script type="text/babel" src="pages-verbs.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+// ============================================================================
+// Babylon Frontend v2 — App Router
+// Single-file React Router emulator. Owns nav state, current org, intel target.
+// ----------------------------------------------------------------------------
+function App() {
+  const [route, setRoute] = React.useState("login");      // route key from ROUTES
+  const [tick, setTick] = React.useState(TICK);
+  const [currentOrgId, setCurrentOrgId] = React.useState("ORG001");
+  const [intelTarget, setIntelTarget] = React.useState({ type: "org", id: "ORG-NPC-001" });
+  const username = "percy";
+
+  function navigate(routeKey) {
+    setRoute(routeKey);
+  }
+  function resolveTick() {
+    setTick(t => t + 1);
+    setRoute("briefing");
+  }
+
+  const currentOrg = ORGS.find(o => o.id === currentOrgId) || ORGS[0];
+  const badges = { intel: 2 };
+
+  // -- Pre-game routes (no game chrome) --
+  if (route === "login") return <LoginPage onLogin={() => setRoute("games")} />;
+  if (route === "games") return <GamesLobbyPage username={username}
+                                  onOpenGame={() => setRoute("briefing")}
+                                  onLogout={() => setRoute("login")} />;
+
+  // -- In-game routes (shared shell) --
+  let body = null;
+  if (route === "briefing") body = <BriefingPage tick={tick} onNavigate={navigate}/>;
+  else if (route === "orgs") body = <OrgsPage onNavigate={navigate}
+                                       currentOrgId={currentOrgId}
+                                       onSelectOrg={setCurrentOrgId}/>;
+  else if (route === "intel") body = <IntelPage onNavigate={navigate}
+                                       intelTarget={intelTarget}
+                                       onSelectIntel={setIntelTarget}/>;
+  else if (route === "results") body = <ResultsPage tick={tick}/>;
+  else if (route === "analysis") body = <AnalysisPage tick={tick}/>;
+  else if (route.startsWith("v_")) {
+    // Resolve verb key → verb object
+    const map = {
+      v_educate: "educate", v_aid: "aid", v_attack: "attack",
+      v_mobilize: "mobilize", v_campaign: "campaign", v_move: "move",
+      v_invest: "investigate", v_reproduce: "reproduce", v_negotiate: "negotiate",
+    };
+    const verb = VERBS.find(v => v.verb === map[route]);
+    body = <VerbPage verb={verb} onNavigate={navigate}
+                     currentOrgId={currentOrgId}
+                     onSelectOrg={setCurrentOrgId}/>;
+  }
+
+  return (
+    <GameRouteShell currentRoute={route} onNavigate={navigate} badges={badges}
+      tick={tick} sessionId={SESSION_ID} currentOrg={currentOrg}
+      onResolve={resolveTick} onLogout={() => setRoute("login")} username={username}>
+      {body}
+    </GameRouteShell>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

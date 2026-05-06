@@ -1,0 +1,209 @@
+# How Paradox UI Is Actually Made
+
+## 1. Files and Format
+
+Three file kinds compose the UI, all plaintext:
+
+- **`.gui`** — widget tree definitions. Nested key-value blocks, same lexer as `.txt` content files. Lives under `game/gui/`.
+- **`.gfx`** — sprite/texture registry. Maps named `spriteType` entries to `.dds` paths and frame counts. Lives under `game/gfx/interface/`.
+- **`.shader`** — HLSL shader definitions, default is `pdxgui_default.shader`. A widget can override its shader via `shaderfile = "..."` and apply named pixel effects via `effectname = "GuiSaturate"`.
+
+Localization (`.yml`) is technically separate but uses the same bracket-expression sub-language for variable substitution, which is what makes the system feel unified.
+
+## 2. The Widget Tree
+
+Every `.gui` file contains widget instances or template/type declarations. Widget types are **registered in C++** — modders cannot invent new ones, only compose existing ones. The core set is:
+
+- Containers: `window`, `widget`, `container`, `hbox`, `vbox`, `flowcontainer`, `scrollbox`, `overlappingitembox`
+- Leaves: `text_single`, `textbox`, `icon`, `button`, `button_group`, `progressbar`
+- Iterators: `datamodel` (binds a list and instantiates `item = { ... }` per element)
+
+A real example from CK3's federation panel:
+
+```paradox
+container = {
+    name = "federation_members"
+    parentanchor = top|center
+    size = { 850 80 }
+    position = { 0 55 }
+    layoutpolicy_horizontal = expanding
+
+    sub_header = {
+        size = { 400 32 }
+        blockoverride "Title_text" { text = "Member states" }
+    }
+
+    overlappingitembox = {
+        size = { 850 78 }
+        position = { 0 30 }
+        datamodel = "[Province.MakeScope.GetList('list_of_members')]"
+        item = {
+            country_flag = {
+                tooltip = "[Scope.GetCountry.GetName]"
+                datacontext = "[Scope.GetCountry]"
+            }
+        }
+    }
+}
+```
+
+Layout is anchor-based (`parentanchor`, `position`, `size`) with HTML-flexbox-like policies (`layoutpolicy_horizontal = expanding`). Coordinates can be pixel ints or percentages (`size = { 100% 100% }`).
+
+## 3. Templates, Types, and the `block`/`blockoverride` Slot System
+
+This is the actual reuse mechanism. There are two related primitives:
+
+**`template`** — a named bundle of properties applied via `using = template_name`. Like a CSS class.
+
+**`type`** — defines a new widget kind by extending an existing one. Stored under `types BlockName { ... }`. Every type has a base widget it inherits from (`widget`, `button`, `container`).
+
+```paradox
+types MyTypes {
+    type my_custom_button = button {
+        size = { 200 50 }
+        using = default_button
+        block "onclick" {
+            onclick = "[Default.OnClickHandler]"
+        }
+        block "tooltip_content" {
+            text = "DEFAULT_TOOLTIP_KEY"
+        }
+    }
+}
+```
+
+Then anywhere in the codebase:
+
+```paradox
+my_custom_button = {
+    blockoverride "onclick" {
+        onclick = "[Country.OpenCustomPanel]"
+    }
+    blockoverride "tooltip_content" {
+        text = "MY_SPECIFIC_TOOLTIP"
+    }
+}
+```
+
+`block` defines a named slot with default content. `blockoverride` replaces just that slot when instantiating, leaving everything else intact. This is how the same `default_button` widget appears 200 places in CK3 with different click handlers and tooltips, all sharing one visual definition.
+
+The community's biggest pain point: Paradox's vanilla `.gui` files often don't expose enough `block`s, so two mods that want to modify the same character window collide. The Customizable GUI mod exists specifically to add slots Paradox forgot.
+
+## 4. The Data System: `datacontext`, Promotes, Functions
+
+This is the actual binding layer. Every widget can declare a `datacontext` — an expression that resolves to a scope, against which all child expressions are evaluated.
+
+```paradox
+window_my_realm = {
+    datacontext = "[GetPlayer]"             # establishes Country scope
+    text_single = {
+        text = "[Country.GetName]"           # resolved against datacontext
+    }
+}
+```
+
+Bracket expressions are written in **GUI script**, a CamelCase dot-chained mini-language ([EU5 Wiki — GUI script](https://eu5.paradoxwikis.com/GUI_script)). It has two callable kinds:
+
+- **Promotes** — zero-arg accessors that move from one type to another. `Country.GetCapital` returns a Province. `Province.GetOwner` returns a Country. Promotes can chain: `[GetPlayer.GetCapital.GetOwner.GetName]`.
+- **Functions** — take args, often used for tests: `Country.HasModifier('foo')`, `Battle.IsNavalBattle`.
+
+There are also combinator functions for boolean composition:
+
+```paradox
+visible = "[And3(
+    ScriptedGui.IsShown(GuiScope.SetRoot(GetPlayer.MakeScope).End),
+    Not(Technology.HasResearchedTech(GetPlayer.Self)),
+    Or(...)
+)]"
+```
+
+The full registry of promotes and functions is generated by the console command **`DumpDataTypes`**, which writes every registered C++ binding to a log file. That dump is the authoritative API surface for UI modders — the wiki always lags it.
+
+`datamodel = "[expr_returning_list]"` is the loop primitive. The engine calls the expression, iterates the result, instantiates one copy of `item = { ... }` per element with `Scope` bound to that element. There is no synthesized list construction in script — datamodels are hardcoded list accessors registered in C++, which is the single biggest moddability constraint the community hits.
+
+## 5. Tooltips
+
+Two flavors:
+
+- `tooltip = "LOC_KEY"` — simple text tooltip from localization, with `[bracket]` expressions evaluated.
+- `tooltipwidget = my_tooltip_widget` — full custom widget rendered as the tooltip, gets its own datacontext from the parent.
+
+The breakdown tooltips you see ("Prestige: 4.2 = Base 1.0 + Court 2.0 + Culture 0.5 + Legend 0.7") are produced by **`GetScriptValueBreakdown(name, scope)`**, exposed in CK3 1.5 and used by mods to show provenance for their custom values the same way native code does. Underneath, a `script_value` is a named calculation tree in `common/script_values/`, and the breakdown call walks the tree emitting one labeled line per contributor.
+
+## 6. The `.gfx` Layer
+
+Textures aren't referenced by raw path from `.gui` files — they're referenced through named sprite types defined in `.gfx`:
+
+```paradox
+spriteTypes = {
+    spriteType = {
+        name = "GFX_icon_gold"
+        texturefile = "gfx/interface/icons/gold.dds"
+        noOfFrames = 1
+    }
+}
+```
+
+Then in `.gui`: `texture = "GFX_icon_gold"`. The indirection lets mods retexture without touching widget definitions, and lets the engine pack atlases. Texture format is `.dds` throughout.
+
+## 7. The Dev Tooling Loop
+
+What designers and modders actually use:
+
+- Launch with `-debug_mode -develop` and `.gui` files **hot-reload** on save.
+- An in-game **GUI editor** (toggleable widget) lets you click any element to inspect its properties, edit them live, and write back to disk. CK3 ships it; it has known performance and usability issues but it works.
+- **Release Mode** in console reveals a "UI Library" button that shows all registered templates and types as a palette.
+- **`DumpDataTypes`** writes the full promote/function registry to a log file.
+- **Error Dawg** (an in-game widget) surfaces script errors as they happen — including UI binding errors like "datamodel returned null on tick 12345".
+
+The CWTools VSCode extension (community) provides syntax highlighting, go-to-definition, and validation across `.gui`, `.gfx`, `.txt`, and `.yml`.
+
+## 8. The End-to-End Pipeline
+
+1. Engineer registers a widget type in C++ (rare — done once per engine version).
+1. Engineer registers promote/function bindings on game-object classes (e.g., `Country::GetCapital`) — this is the API surface.
+1. Designer authors `.gui` files declaratively, references promotes via `datacontext`, composes via templates + `blockoverride`.
+1. Designer authors `script_values` and localization keys; tooltips reference both.
+1. Game loads, parses `.gui` tree, hydrates each widget by evaluating its `datacontext` against the live gamestate.
+1. Each tick, after the engine's release point, dirty scopes propagate to bound widgets and re-resolve their expressions.
+1. Hot reload during development: edit `.gui`, save, the engine re-parses just that file and rebuilds the affected subtree without restarting.
+
+______________________________________________________________________
+
+## Translation to Babylon
+
+The Paradox UI architecture maps cleanly onto your stack with one substitution per layer:
+
+| Paradox layer                              | Babylon equivalent                                                                                                | Confidence                                                                                      |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `.gui` widget tree                         | React component tree                                                                                              | 95%                                                                                             |
+| Registered C++ widget types                | React component primitives (`<Window>`, `<HBox>`, `<DataModel>`)                                                  | 95%                                                                                             |
+| `template` + `using`                       | Component variants (props-based) or compound components                                                           | 90%                                                                                             |
+| `block` / `blockoverride`                  | Named slot props or `children` render-props                                                                       | 85% — React's slot pattern is less ergonomic than blockoverride; consider a typed slots library |
+| `datacontext`                              | React Context per scope, nested for sub-scopes                                                                    | 95%                                                                                             |
+| Promotes & Functions                       | Server-registered selectors exposed as a typed GraphQL/tRPC schema                                                | 90%                                                                                             |
+| `datamodel`                                | `<For each={selector}>` with suspense                                                                             | 95%                                                                                             |
+| `DumpDataTypes` log                        | Auto-generated TypeScript types from the selector registry, shipped to clients                                    | 95%                                                                                             |
+| `script_value` + `GetScriptValueBreakdown` | `BabylonScriptValue` + `/api/script_value/{name}/breakdown` returning a tree                                      | 95%                                                                                             |
+| `.gfx` sprite registry                     | A static asset manifest (JSON) mapping logical names to URLs                                                      | 95%                                                                                             |
+| Hot-reload via `-debug_mode`               | Vite HMR + `POST /admin/reload-content`                                                                           | 95%                                                                                             |
+| GUI editor                                 | Storybook + a runtime "Inspect Widget" overlay that shows the React component, its scope, and its bound selectors | 80% — Storybook covers static; you'd build the runtime inspector                                |
+| Error Dawg                                 | Toast feed of the last N selector evaluation errors, dev-mode only                                                | 95%                                                                                             |
+
+**The most important thing to copy verbatim**: the unification of one expression language across UI binding, localization, tooltips, and event text. In Paradox, `[Country.GetCapital.GetName]` works in a `.gui` `text=`, in a `.yml` localization string, in an event description, and in a tooltip. That uniformity is why their UI feels coherent across systems.
+
+For Babylon, this means: do not invent separate selector mini-languages for each surface. Define one — call it BabylonScript or whatever — that resolves dot-chained accessors against a Scope, and use it identically in:
+
+- React component bindings (`<Text>{eval('org.tensor.s_rate', scope)}</Text>`)
+- Localization templates (`"{org.name} reached {org.tensor.s_rate|percent}"`)
+- Event text bodies
+- Tooltip breakdowns
+- Scenario YAML triggers and effects
+
+The single registry of promotes/functions becomes your typed surface area. Generate TypeScript types from it for the React side, generate a JSON Schema for scenario authors, and feed the same registry to LLM prompts as the canonical "what can you reference."
+
+**The most important thing not to copy**: the hardcoded-datamodel constraint. Paradox's choice that only C++-registered list accessors can drive a `datamodel` is what forces mods like the GUI Modding Framework to route everything through fake character scopes. In Babylon, every selector — including list selectors — should be registrable from Python without an engine release. A scenario pack should be able to add `top_n_orgs_by_rate_of_profit` declaratively and have it usable in React, localization, and triggers immediately.
+
+**The slot system is worth thinking about hard.** `block`/`blockoverride` is genuinely better than what React gives you natively. React's `children` prop is single-slot; named slots require either compound components (verbose) or a third-party slot library. If you expect heavy scenario-author UI customization, build a `<Slot name="title">` primitive early — retrofitting it later is painful.
+
+**Confidence note**: I'm at ~95% on the Paradox-side facts (cross-checked CK3 wiki, Imperator wiki, EU5 wiki, and dev diaries 37/87). The Babylon-side translations are ~85% — they're judgment calls about React/Django ergonomics where I haven't built the equivalent system. Validate the slot pattern choice with a small prototype before committing.

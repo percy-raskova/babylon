@@ -28,7 +28,7 @@ alongside the existing `NonNegativeWealth` / `HeatNonNegativity`.
 **Project Type**: Testing infrastructure extending the existing `tests/property/` module
 **Performance Goals**: 4 invariant test files complete in ≤ 30 s on default profile (max_examples=100, derandomize=True); ≤ 5 min on slow profile (max_examples=500); per-System trace fits in standard pytest verbose output
 **Constraints**: Must reuse Spec 053's harness style (magnitude-aware tolerance helper, profile pattern, `@composite` strategies, opt-out ClassVar markers); zero new third-party dependencies; deterministic on default profile; failure messages must point at offending field, entity ID, and System / formula
-**Scale/Scope**: 22 Systems × random `WorldState` (US2); ≈ 10–20 `Probability`-typed fields auto-discovered across `src/babylon/models/` (US1); ≈ 17 formulas in `src/babylon/formulas/` filtered by return type (US1); ≈ 8–12 α-smoothed coefficients auto-discovered from `defines.py` (US4); 5 consecutive ticks for simplex drift (US3)
+**Scale/Scope**: 21 Systems × random `WorldState` (US2); ≈ 10–20 `Probability`-typed fields auto-discovered across `src/babylon/models/` (US1); ≈ 17 formulas in `src/babylon/formulas/` filtered by return type (US1); ≈ 8–12 α-smoothed coefficients auto-discovered from `defines.py` (US4); 5 consecutive ticks for simplex drift (US3)
 
 ## Constitution Check
 

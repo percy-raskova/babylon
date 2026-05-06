@@ -128,10 +128,10 @@ Module-level singleton (cached at import time).
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `all_systems` (function) | `() -> list[type[System]]` | Returns all 22 Systems discovered under `src/babylon/engine/systems/`, excluding `__init__` and `protocol`. Cached on first call. |
+| `all_systems` (function) | `() -> list[type[System]]` | Returns all 21 Systems discovered under `src/babylon/engine/systems/`, excluding `__init__` and `protocol`. Cached on first call. |
 | `non_bypassed_systems` (function) | `(invariant_name: str) -> list[type[System]]` | Returns all Systems whose `bypasses_bound_invariant` dict does NOT contain `invariant_name` as a key. |
 
-**Validation rule**: `len(all_systems()) >= 22` at the time of writing
+**Validation rule**: `len(all_systems()) >= 21` at the time of writing
 (adding new Systems extends the count automatically).
 
 ### 2.5 `ProbabilityFieldDiscovery`

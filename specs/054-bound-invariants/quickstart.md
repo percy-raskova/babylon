@@ -64,7 +64,7 @@ shows which System or formula produced it.
 
 Runs after every code change that touches:
 
-- Any of the 22 Systems in `src/babylon/engine/systems/`
+- Any of the 21 Systems in `src/babylon/engine/systems/`
 - `ImperialRentSystem`, `SurvivalSystem`, `StruggleSystem` (most-likely
   Wealth offenders)
 - `TerritorySystem`, `ContradictionSystem` (most-likely Heat offenders)

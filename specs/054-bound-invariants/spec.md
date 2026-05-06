@@ -27,6 +27,15 @@ The four invariants in scope are independent: each can be implemented and
 shipped separately, and each by itself meaningfully reduces the "silent
 violation" surface area.
 
+## Clarifications
+
+### Session 2026-05-06
+
+- Q: How should the Probability-bound test discover which Pydantic fields to check? → A: Static introspection of `model_fields[name].annotation` matching the `Probability` constrained type — auto-discovery across `src/babylon/models/`, zero hand-maintenance.
+- Q: How should US2 (Wealth/Heat) test isolation handle Systems whose `step` cannot run standalone? → A: Per-System with feasibility fallback — synthesize minimal pre-state per System; if preconditions cannot be built in isolation, skip with an explicit reason recorded in the per-System trace.
+- Q: How should US4 capture the (prev, raw, post) triples it tests against? → A: Hybrid — synthesized triples for the bulk Hypothesis sweep across every α-smoothed coefficient, plus one observed end-to-end smoke check (one canonical coefficient, real `SimulationEngine.run_tick`, real `crisis_phase` classification) to catch wiring bugs.
+- Q: What shape should the `bypasses_bound_invariant` opt-out marker take? → A: `ClassVar[dict[str, str]]` keyed by predicate name with the justification as the value — makes SC-006 machine-checkable via a one-line CI assertion (`all(v.strip() for v in marker.values())`).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Probability values stay in [0, 1] (Priority: P1)
@@ -271,10 +280,23 @@ for float64 round-off. Independent of US1 / US2 / US3.
   `src/babylon/models/`, (b) every formula in `src/babylon/formulas/`
   whose declared return type is `Probability`, and (c) every
   `solidarity_strength` value on `EdgeType.SOLIDARITY` edges in the
-  post-graph.
+  post-graph. Field discovery for (a) MUST use static introspection of
+  `model_fields[name].annotation` — the harness walks every Pydantic
+  model under `src/babylon/models/` and yields each `(ModelClass,
+  field_name)` pair whose annotation resolves to the `Probability`
+  constrained type. No hand-maintained registry is permitted; adding
+  a new `Probability` field anywhere in `src/babylon/models/`
+  automatically extends test coverage.
 - **FR-003**: The Wealth/Heat test (US2) MUST exercise all 22 Systems
   in `src/babylon/engine/systems/` and report a per-System pass/fail
-  trace.
+  trace. For each System, the harness MUST attempt to synthesize a
+  minimal pre-state via factories that satisfy that System's
+  preconditions and run `S.step` in isolation. When isolation is not
+  feasible (e.g., the System reads state populated by an upstream
+  System and no factory can produce that state alone), the per-System
+  result MUST be `SKIPPED` with an explicit reason string (e.g.,
+  `"requires post-ImperialRentSystem state"`); a `SKIPPED` System MUST
+  still appear in the trace so coverage gaps are visible.
 - **FR-004**: The simplex test (US3) MUST run against the full
   `SimulationEngine.run_tick` pipeline (not only per-formula), and MUST
   also validate preservation across at least 5 consecutive ticks.
@@ -282,7 +304,17 @@ for float64 round-off. Independent of US1 / US2 / US3.
   α-smoothed coefficients automatically by introspecting `defines.py`
   for fields whose names match `*_alpha`, `alpha_smoothing_rate`, or
   `*_decay_alpha`, AND MUST suspend the inequality assertion in crisis
-  ticks identified by `crisis_phase is not None`.
+  ticks identified by `crisis_phase is not None`. The harness MUST
+  use a **hybrid** test strategy: (a) a *synthesized* Hypothesis
+  sweep that constructs random `(prev, raw, alpha)` triples for every
+  α-smoothed coefficient and asserts the EMA inequality directly
+  against the formula, AND (b) an *observed* end-to-end smoke check
+  that runs at least one multi-tick `SimulationEngine.run_tick`
+  simulation, captures `(prev, raw, post)` for one canonical
+  coefficient (e.g., the gamma EMA in `economics/tick/smoothing.py`),
+  classifies each tick via `crisis_phase`, and asserts the inequality
+  on every steady-state pair. The synthesized sweep falsifies the
+  formula; the observed smoke check falsifies the wiring.
 - **FR-006**: All four tests MUST use the same Hypothesis profile
   registration pattern as Spec 053 (default / slow registered
   project-wide in `tests/conftest.py`; dev / ci / nightly registered in
@@ -304,10 +336,15 @@ for float64 round-off. Independent of US1 / US2 / US3.
 - **FR-010**: Systems and formulas that **legitimately** produce
   out-of-range intermediate values (if any are discovered during
   implementation) MUST be flagged with an explicit
-  `bypasses_bound_invariant: ClassVar[set[str]] = {…}` marker; the
-  test harness MUST consume this marker and skip the corresponding
-  predicate for that System or formula. This mirrors the
-  `creates_value: ClassVar[bool]` pattern from Spec 053.
+  `bypasses_bound_invariant: ClassVar[dict[str, str]] = {…}` marker
+  whose keys are predicate names (e.g.,
+  `"probability_in_range"`, `"non_negative_wealth"`) and whose values
+  are non-empty justification strings (one sentence each). The test
+  harness MUST consume this marker and skip the named predicate for
+  that System or formula, AND MUST assert at collection time that
+  every value is non-empty (machine-enforced SC-006). This mirrors
+  the `creates_value: ClassVar[bool]` pattern from Spec 053 while
+  extending it with auditable justification.
 - **FR-011**: The α-smoothing test MUST distinguish between
   coefficient *values* (which can drift by at most α · raw_delta) and
   coefficient *parameters* (the α rate itself, which is a configuration
@@ -332,8 +369,11 @@ for float64 round-off. Independent of US1 / US2 / US3.
   `CountyEconomicState` (or equivalent) and answers "is this tick
   steady state?". Drives the suspend-in-crisis logic for US4.
 - **`bypasses_bound_invariant` ClassVar**: Per-System and per-formula
-  opt-out marker for predicates that the System legitimately violates
-  (mirrors `creates_value: ClassVar[bool]` from Spec 053).
+  opt-out marker shaped as `ClassVar[dict[str, str]]` — predicate
+  name → justification string. The harness skips the named predicate
+  for the marked System / formula and machine-asserts that every
+  value is a non-empty justification (mirrors and extends Spec 053's
+  `creates_value: ClassVar[bool]` pattern).
 
 ## Success Criteria *(mandatory)*
 
@@ -346,8 +386,9 @@ for float64 round-off. Independent of US1 / US2 / US3.
   pointing at the offending field, entity ID, and System or formula.
 - **SC-002**: All 22 Systems in `src/babylon/engine/systems/` are
   exercised by the Wealth/Heat invariant test, with a per-System
-  pass/fail trace visible in test output; adding a new System to the
-  directory automatically extends the test coverage (no manual list
+  pass / fail / skip trace visible in test output (skips MUST carry
+  an explicit reason string); adding a new System to the directory
+  automatically extends the test coverage (no manual list
   maintenance).
 - **SC-003**: The simplex constraint test detects any drift larger
   than `1e-4` after 5 consecutive ticks of full-pipeline execution
@@ -355,8 +396,11 @@ for float64 round-off. Independent of US1 / US2 / US3.
   `TernaryConsciousness`-bearing entity.
 - **SC-004**: The α-smoothing test detects any non-crisis tick on
   which any α-smoothed coefficient violates the EMA inequality
-  `|c_{t+1} - c_t| ≤ α · |raw_{t+1} - c_t| + 1e-12`; tests that
-  touch crisis-phase ticks pass silently.
+  `|c_{t+1} - c_t| ≤ α · |raw_{t+1} - c_t| + 1e-12`, both in the
+  synthesized Hypothesis sweep (formula correctness, every coefficient)
+  and in the observed end-to-end smoke check (wiring correctness, one
+  canonical coefficient through real `run_tick`); tests that touch
+  crisis-phase ticks pass silently.
 - **SC-005**: The four invariant test files together complete in
   under 30 seconds on the default profile (max_examples=100,
   derandomize=True) and under 5 minutes on the slow profile
@@ -364,9 +408,12 @@ for float64 round-off. Independent of US1 / US2 / US3.
   baseline (≈1 minute for the conservation suite).
 - **SC-006**: `bypasses_bound_invariant` markers are present on any
   System or formula that the implementation discovers legitimately
-  violates a predicate; every such marker is paired with a one-line
-  comment explaining *why* the violation is legitimate (e.g., "rounds
-  intermediate to 0.0 + ε before re-clipping").
+  violates a predicate; every such marker carries a non-empty
+  justification string in the marker's `dict[str, str]` value (e.g.,
+  `{"probability_in_range": "rounds intermediate to 0.0 + ε before
+  re-clipping"}`). The harness machine-enforces this at collection
+  time so empty or missing justifications fail CI rather than slipping
+  through review.
 
 ## Assumptions
 

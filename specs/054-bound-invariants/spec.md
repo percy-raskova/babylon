@@ -72,7 +72,7 @@ declared domain strategy. Independent of US2 / US3 / US4.
 1. **Given** a `WorldState` with `SocialClass` entities holding randomly
    drawn `p_acquiescence`, `p_revolution`, `organization`,
    `repression_faced` values, **When**
-   `SimulationEngine.run_tick(graph, services, context)` runs all 22
+   `SimulationEngine.run_tick(graph, services, context)` runs all 21
    Systems in their declared order, **Then** every `Probability`-typed
    field on every entity in the post-state is in `[0.0, 1.0]` and the
    round-trip `WorldState.from_graph(state.to_graph())` does not raise
@@ -92,7 +92,7 @@ declared domain strategy. Independent of US2 / US3 / US4.
 
 ---
 
-### User Story 2 — Wealth ≥ 0 and Heat ≥ 0 across all 22 Systems (Priority: P2)
+### User Story 2 — Wealth ≥ 0 and Heat ≥ 0 across all 21 Systems (Priority: P2)
 
 A maintainer extends a System (e.g., adds a new economic transfer to
 `ImperialRentSystem` or a new repression dynamic to `TerritorySystem`)
@@ -105,11 +105,11 @@ nothing today actually runs them against every System with random states.
 
 **Why this priority**: P2. Wealth/Heat negativity bugs are usually caught
 by example-based tests with deliberately stressed inputs, but the failure
-surface is large — there are 22 Systems × N entities × random
+surface is large — there are 21 Systems × N entities × random
 configurations. A property-based runner is the right tool to land here,
 and the work is mechanical (the protocol is already in place).
 
-**Independent Test**: Parametrize over all 22 Systems in
+**Independent Test**: Parametrize over all 21 Systems in
 `src/babylon/engine/systems/`. For each System, generate random
 `WorldState` instances with valid pre-conditions for that System's inputs.
 Run the System's `step` (or its System-equivalent in
@@ -120,7 +120,7 @@ US1 / US3 / US4.
 
 **Acceptance Scenarios**:
 
-1. **Given** a System `S` from the 22 Systems in
+1. **Given** a System `S` from the 21 Systems in
    `src/babylon/engine/systems/` and a random `WorldState` with
    non-negative pre-state wealth and heat, **When** `S.step` runs,
    **Then** `NonNegativeWealth().check(pre, post).ok is True`.
@@ -129,7 +129,7 @@ US1 / US3 / US4.
    **When** `S.step` runs, **Then**
    `HeatNonNegativity().check(pre, post).ok is True`.
 
-3. **Given** the full 22-System pipeline run via
+3. **Given** the full 21-System pipeline run via
    `SimulationEngine.run_tick`, **When** the pipeline runs to completion,
    **Then** both invariants hold against the final post-state for any
    random initial `WorldState` whose pre-state satisfies them.
@@ -170,7 +170,7 @@ incremental drift. Independent of US1 / US2 / US4.
 1. **Given** a `WorldState` with `SocialClass` entities each holding a
    valid `TernaryConsciousness(r, l, f)` drawn from the existing
    `simplex_points()` strategy, **When** `SimulationEngine.run_tick`
-   runs the full 22-System pipeline, **Then** for every entity in the
+   runs the full 21-System pipeline, **Then** for every entity in the
    post-state: `abs(r + l + f - 1.0) <= 1e-4` and each of
    `r, l, f ∈ [0.0, 1.0 + 1e-4]`.
 
@@ -291,7 +291,7 @@ for float64 round-off. Independent of US1 / US2 / US3.
   No hand-maintained registry is permitted for either (a) or (b); adding
   a new `Probability` field or narrowing a formula's return annotation
   to `Probability` automatically extends test coverage.
-- **FR-003**: The Wealth/Heat test (US2) MUST exercise all 22 Systems
+- **FR-003**: The Wealth/Heat test (US2) MUST exercise all 21 Systems
   in `src/babylon/engine/systems/` and report a per-System pass/fail
   trace. For each System, the harness MUST attempt to synthesize a
   minimal pre-state via factories that satisfy that System's
@@ -393,7 +393,7 @@ for float64 round-off. Independent of US1 / US2 / US3.
   regression caught by `mise run test:unit` in the same run that
   ships the change, with a Hypothesis-shrunk minimal failing example
   pointing at the offending field, entity ID, and System or formula.
-- **SC-002**: All 22 Systems in `src/babylon/engine/systems/` are
+- **SC-002**: All 21 Systems in `src/babylon/engine/systems/` are
   exercised by the Wealth/Heat invariant test, with a per-System
   pass / fail / skip trace visible in test output (skips MUST carry
   an explicit reason string); adding a new System to the directory
@@ -433,7 +433,7 @@ for float64 round-off. Independent of US1 / US2 / US3.
   `src/babylon/engine/invariants.py` is the canonical interface for
   declaring bound invariants. New invariants implement the same
   protocol.
-- The 22 Systems listed in `src/babylon/engine/systems/` (excluding
+- The 21 Systems listed in `src/babylon/engine/systems/` (excluding
   `__init__.py` and `protocol.py`) are the canonical System set. If
   a new System is added during implementation, the harness picks it
   up via directory introspection rather than a hand-maintained list.

@@ -35,10 +35,10 @@ Single-project layout per `plan.md`:
 **Purpose**: Confirm reusable Spec 053 plumbing is present and create the
 new `harness/` directory + tolerance helper.
 
-- [ ] T001 Verify Hypothesis `default` and `slow` profiles are registered project-wide in `tests/conftest.py` lines 54–67 (no edit needed; halt if missing — spec 053 should have added them)
-- [ ] T002 Verify per-package `dev` / `ci` / `nightly` profiles AND the `service_container_fixture` / `tick_context_fixture` (Spec 053 T014b) are present in `tests/property/conftest.py:20-62` (no edit needed; halt if any are missing — every Phase 3+ task depends on the fixtures)
-- [ ] T003 [P] Create `tests/property/harness/__init__.py` exporting the magnitude-aware `_tol(n: int, magnitude: float = 0.0) -> float` helper extracted verbatim from `tests/property/invariants/test_value_conservation.py:58-77`
-- [ ] T004 [P] Create empty stub files `tests/property/invariants/test_probability_bounds.py`, `test_wealth_heat_bounds.py`, `test_simplex_pipeline.py`, `test_alpha_smoothing.py`, each containing only the module docstring referencing the corresponding contract markdown file
+- [X] T001 Verify Hypothesis `default` and `slow` profiles are registered project-wide in `tests/conftest.py` lines 54–67 (no edit needed; halt if missing — spec 053 should have added them)
+- [X] T002 Verify per-package `dev` / `ci` / `nightly` profiles AND the `service_container_fixture` / `tick_context_fixture` (Spec 053 T014b) are present in `tests/property/conftest.py:20-62` (no edit needed; halt if any are missing — every Phase 3+ task depends on the fixtures)
+- [X] T003 [P] Create `tests/property/harness/__init__.py` exporting the magnitude-aware `_tol(n: int, magnitude: float = 0.0) -> float` helper extracted verbatim from `tests/property/invariants/test_value_conservation.py:58-77`
+- [X] T004 [P] Create empty stub files `tests/property/invariants/test_probability_bounds.py`, `test_wealth_heat_bounds.py`, `test_simplex_pipeline.py`, `test_alpha_smoothing.py`, each containing only the module docstring referencing the corresponding contract markdown file
 
 **Checkpoint**: Setup complete — foundational phase can begin.
 
@@ -54,23 +54,23 @@ test strategies. Every user story phase depends on these.
 
 ### Production code (engine invariants)
 
-- [ ] T005 Add `ProbabilityInRange` class to `src/babylon/engine/invariants.py` per `data-model.md §1.1` — implements `Invariant` Protocol; `name = "probability_in_range"`; takes `field_pairs: Sequence[tuple[type, str]]` defaulting to `discover_probability_fields()`; checks `0.0 <= value <= 1.0` exactly; failure message names `ModelClass.field_name`, `entity_id`, value
-- [ ] T006 Add `SimplexPreserved` class to `src/babylon/engine/invariants.py` per `data-model.md §1.2` — implements `Invariant` Protocol; `name = "simplex_preserved"`; takes `tolerance: float = 1e-4`; checks `abs(c.r + c.l + c.f - 1.0) <= tolerance` AND each component in `[-tol, 1.0 + tol]`; failure message names entity ID, `(r, l, f)` triple, simplex error magnitude — depends on T005 (same file, sequential edit)
+- [X] T005 Add `ProbabilityInRange` class to `src/babylon/engine/invariants.py` per `data-model.md §1.1` — implements `Invariant` Protocol; `name = "probability_in_range"`; takes `field_pairs: Sequence[tuple[type, str]]` defaulting to `discover_probability_fields()`; checks `0.0 <= value <= 1.0` exactly; failure message names `ModelClass.field_name`, `entity_id`, value
+- [X] T006 Add `SimplexPreserved` class to `src/babylon/engine/invariants.py` per `data-model.md §1.2` — implements `Invariant` Protocol; `name = "simplex_preserved"`; takes `tolerance: float = 1e-4`; checks `abs(c.r + c.l + c.f - 1.0) <= tolerance` AND each component in `[-tol, 1.0 + tol]`; failure message names entity ID, `(r, l, f)` triple, simplex error magnitude — depends on T005 (same file, sequential edit)
 
 ### Harness modules
 
-- [ ] T007 [P] Create `tests/property/harness/system_registry.py` per `data-model.md §2.4` — extracts `_discover_non_opt_out_engine_systems` from `tests/property/invariants/test_value_conservation.py:79-99`, generalizes to `all_systems() -> list[type[System]]` (cached) and `non_bypassed_systems(invariant_name: str) -> list[type[System]]` (filters by `bypasses_bound_invariant` marker dict keys); raises `RuntimeError` if `len(all_systems()) < 22`
-- [ ] T008 [P] Create `tests/property/harness/crisis_inspector.py` per `data-model.md §2.3` and `research.md §5` — defines `CrisisStateInspector` class with `is_steady_state(state) -> bool` returning `True` iff `phase is None or phase == CrisisPhase.NORMAL`; falls back to attribute lookup via `getattr(state, "crisis_phase", None)` and `getattr(getattr(state, "crisis_state", None), "phase", None)`; treats missing attributes as steady-state per spec edge case
-- [ ] T009 [P] Create `tests/property/harness/probability_discovery.py` per `data-model.md §2.5` and `research.md §1, §2` — provides (a) `discover_probability_fields() -> list[tuple[type[BaseModel], str]]` walking every Pydantic model in `src/babylon/models/` via `pkgutil.iter_modules` and yielding `(cls, name)` pairs whose `model_fields[name].annotation is Probability` (identity check via direct import of the `Probability` alias), and (b) `discover_probability_formulas() -> list[Callable[..., Probability]]` walking every public callable in `babylon.formulas.*` and yielding each one whose `typing.get_type_hints(fn).get("return") is Probability`. **Type-driven discovery — no allow-list.** The precondition refactor narrowing `calculate_acquiescence_probability` and `calculate_revolution_probability` from `-> float` to `-> Probability` is already complete on this branch (commit landing alongside this spec); future probability formulas extend coverage automatically as their return types are narrowed
-- [ ] T010 [P] Create `tests/property/harness/alpha_discovery.py` per `data-model.md §2.6` and `research.md §4` — defines `AlphaCoefficient` frozen dataclass `(containing_class, field_name, default_alpha)`; `discover_alpha_coefficients() -> list[AlphaCoefficient]` walks `babylon.config.defines` recursively through nested Pydantic models, matches field names against regex `r"(?:.*_alpha|alpha_smoothing_rate|.*_decay_alpha)$"`, excludes `_NOT_EMA_ALPHAS = frozenset({"pareto_alpha", "curvature_alpha"})` (each entry MUST carry a one-line `# why this is not EMA` comment per FR-005), validates `0.0 < default_alpha <= 1.0`
-- [ ] T011 Create `tests/property/harness/bound_harness.py` per `data-model.md §2.1` and `§2.2` — defines `BoundInvariantHarness` (frozen dataclass with `system`, `invariants`, `bypass_marker_attr="bypasses_bound_invariant"`) and `HarnessResult` (with `system_name`, `outcomes`, `skip_reasons`); implements `run(pre, services, ctx) -> HarnessResult` and `_filter_invariants() -> Sequence[Invariant]`; AT IMPORT TIME calls `from .system_registry import all_systems` (T007) and asserts `all(v.strip() for v in getattr(cls, "bypasses_bound_invariant", {}).values())` for every `cls in all_systems()` — machine-enforces SC-006. Depends on T005, T006, T007
+- [X] T007 [P] Create `tests/property/harness/system_registry.py` per `data-model.md §2.4` — extracts `_discover_non_opt_out_engine_systems` from `tests/property/invariants/test_value_conservation.py:79-99`, generalizes to `all_systems() -> list[type[System]]` (cached) and `non_bypassed_systems(invariant_name: str) -> list[type[System]]` (filters by `bypasses_bound_invariant` marker dict keys); raises `RuntimeError` if `len(all_systems()) < 22`
+- [X] T008 [P] Create `tests/property/harness/crisis_inspector.py` per `data-model.md §2.3` and `research.md §5` — defines `CrisisStateInspector` class with `is_steady_state(state) -> bool` returning `True` iff `phase is None or phase == CrisisPhase.NORMAL`; falls back to attribute lookup via `getattr(state, "crisis_phase", None)` and `getattr(getattr(state, "crisis_state", None), "phase", None)`; treats missing attributes as steady-state per spec edge case
+- [X] T009 [P] Create `tests/property/harness/probability_discovery.py` per `data-model.md §2.5` and `research.md §1, §2` — provides (a) `discover_probability_fields() -> list[tuple[type[BaseModel], str]]` walking every Pydantic model in `src/babylon/models/` via `pkgutil.iter_modules` and yielding `(cls, name)` pairs whose `model_fields[name].annotation is Probability` (identity check via direct import of the `Probability` alias), and (b) `discover_probability_formulas() -> list[Callable[..., Probability]]` walking every public callable in `babylon.formulas.*` and yielding each one whose `typing.get_type_hints(fn).get("return") is Probability`. **Type-driven discovery — no allow-list.** The precondition refactor narrowing `calculate_acquiescence_probability` and `calculate_revolution_probability` from `-> float` to `-> Probability` is already complete on this branch (commit landing alongside this spec); future probability formulas extend coverage automatically as their return types are narrowed
+- [X] T010 [P] Create `tests/property/harness/alpha_discovery.py` per `data-model.md §2.6` and `research.md §4` — defines `AlphaCoefficient` frozen dataclass `(containing_class, field_name, default_alpha)`; `discover_alpha_coefficients() -> list[AlphaCoefficient]` walks `babylon.config.defines` recursively through nested Pydantic models, matches field names against regex `r"(?:.*_alpha|alpha_smoothing_rate|.*_decay_alpha)$"`, excludes `_NOT_EMA_ALPHAS = frozenset({"pareto_alpha", "curvature_alpha"})` (each entry MUST carry a one-line `# why this is not EMA` comment per FR-005), validates `0.0 < default_alpha <= 1.0`
+- [X] T011 Create `tests/property/harness/bound_harness.py` per `data-model.md §2.1` and `§2.2` — defines `BoundInvariantHarness` (frozen dataclass with `system`, `invariants`, `bypass_marker_attr="bypasses_bound_invariant"`) and `HarnessResult` (with `system_name`, `outcomes`, `skip_reasons`); implements `run(pre, services, ctx) -> HarnessResult` and `_filter_invariants() -> Sequence[Invariant]`; AT IMPORT TIME calls `from .system_registry import all_systems` (T007) and asserts `all(v.strip() for v in getattr(cls, "bypasses_bound_invariant", {}).values())` for every `cls in all_systems()` — machine-enforces SC-006. Depends on T005, T006, T007
 
 ### Test strategies
 
-- [ ] T012 [P] Create `tests/property/strategies/probability_field.py` per `data-model.md §3.1` — exports `worldstate_with_probability_fields_strategy()` `@composite` strategy that draws values from `st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False)` for each Probability-typed field discovered by `harness.probability_discovery.discover_probability_fields()`; honors `max_entities=200`, `max_edges=2000` per `research.md §7`
-- [ ] T013 [P] Create `tests/property/strategies/alpha_coefficient.py` per `data-model.md §3.3` — exports `alpha_coefficient_triple_strategy()` `@composite` strategy returning `(prev: float, raw: float, alpha: float | None)` triples where `prev, raw ∈ [-1e9, 1e9]`, `alpha ∈ (0.0, 1.0]`; the `alpha` slot is `None` to mean "use the coefficient's `default_alpha`" or a draw to override
-- [ ] T014 [P] Create `tests/property/strategies/consciousness_simplex.py` per `data-model.md §3.4` — re-exports `simplex_points()` from `tests.test_simplex_invariants` so US3 can import it from a stable path under `tests/property/`
-- [ ] T015 Extend `tests/property/strategies/worldstate.py` (which already exports the base `worldstate_strategy()` and `worldstate_with_hexes_strategy()` from Spec 053) with `worldstate_with_simplex_consciousness_strategy()` (US3) and `worldstate_with_solidarity_edges_strategy()` (US1 Predicate C) and `worldstate_with_consecutive_ticks_strategy(n_ticks: int)` (US4 Predicate B), each layering on `worldstate_strategy()` — sequential edit, same file. Depends on T014 for `simplex_points()` import
+- [X] T012 [P] Create `tests/property/strategies/probability_field.py` per `data-model.md §3.1` — exports `worldstate_with_probability_fields_strategy()` `@composite` strategy that draws values from `st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False)` for each Probability-typed field discovered by `harness.probability_discovery.discover_probability_fields()`; honors `max_entities=200`, `max_edges=2000` per `research.md §7`
+- [X] T013 [P] Create `tests/property/strategies/alpha_coefficient.py` per `data-model.md §3.3` — exports `alpha_coefficient_triple_strategy()` `@composite` strategy returning `(prev: float, raw: float, alpha: float | None)` triples where `prev, raw ∈ [-1e9, 1e9]`, `alpha ∈ (0.0, 1.0]`; the `alpha` slot is `None` to mean "use the coefficient's `default_alpha`" or a draw to override
+- [X] T014 [P] Create `tests/property/strategies/consciousness_simplex.py` per `data-model.md §3.4` — re-exports `simplex_points()` from `tests.test_simplex_invariants` so US3 can import it from a stable path under `tests/property/`
+- [X] T015 Extend `tests/property/strategies/worldstate.py` (which already exports the base `worldstate_strategy()` and `worldstate_with_hexes_strategy()` from Spec 053) with `worldstate_with_simplex_consciousness_strategy()` (US3) and `worldstate_with_solidarity_edges_strategy()` (US1 Predicate C) and `worldstate_with_consecutive_ticks_strategy(n_ticks: int)` (US4 Predicate B), each layering on `worldstate_strategy()` — sequential edit, same file. Depends on T014 for `simplex_points()` import
 
 **Checkpoint**: Foundation ready — all four user stories can now begin in parallel.
 
@@ -101,14 +101,14 @@ slice is shippable from this point.
 
 ---
 
-## Phase 4: User Story 2 — Wealth ≥ 0 and Heat ≥ 0 across all 22 Systems (Priority: P2)
+## Phase 4: User Story 2 — Wealth ≥ 0 and Heat ≥ 0 across all 21 Systems (Priority: P2)
 
 **Goal**: Falsify any negative-wealth or negative-heat post-state across
-all 22 Systems via per-System isolation harness; surface coverage gaps as
+all 21 Systems via per-System isolation harness; surface coverage gaps as
 explicit `SKIPPED` outcomes with reasons.
 
 **Independent Test**: `poetry run pytest tests/property/invariants/test_wealth_heat_bounds.py -v`
-should produce 22 parametrized runs (one per System), each emitting
+should produce 21 parametrized runs (one per System), each emitting
 `PASSED` or `SKIPPED` (with reason) — never silently omitted. The
 full-pipeline composition test passes against random `WorldState`. A
 regression that drives wealth or heat below 0 produces a per-System
@@ -267,7 +267,7 @@ terminals.
 | Increment | Adds | Cumulative tasks |
 |-----------|------|------------------|
 | MVP (US1) | Probability bounds | 25 |
-| +US2 | Wealth/Heat across 22 Systems | 28 |
+| +US2 | Wealth/Heat across 21 Systems | 28 |
 | +US3 | Simplex pipeline | 31 |
 | +US4 | α-smoothing | 34 |
 

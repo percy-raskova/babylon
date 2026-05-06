@@ -2,7 +2,7 @@
 
 **Predicate ID**: INV-007
 **User Story**: US2 (P2)
-**Source**: [spec.md §US2](../spec.md#user-story-2--wealth--0-and-heat--0-across-all-22-systems-priority-p2)
+**Source**: [spec.md §US2](../spec.md#user-story-2--wealth--0-and-heat--0-across-all-21-systems-priority-p2)
 **Tests**: `tests/property/invariants/test_wealth_heat_bounds.py`
 **Invariant classes**: `babylon.engine.invariants.NonNegativeWealth`,
 `babylon.engine.invariants.HeatNonNegativity` (both pre-existing)

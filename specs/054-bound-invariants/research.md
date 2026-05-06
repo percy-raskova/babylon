@@ -139,7 +139,7 @@ purely additive.
 
 **Alternatives considered**:
 
-- **Hardcoded list of 22 Systems**: explicitly forbidden by SC-002.
+- **Hardcoded list of 21 Systems**: explicitly forbidden by SC-002.
 - **Decorator-based discovery** (`@bound_invariant_target` on each System):
   requires touching every System file. Rejected as lower-yield than the
   introspection pattern.
@@ -266,7 +266,7 @@ because:
   predicate); raw cost is dominated by graph mutation, not invariant
   evaluation.
 - The default profile budget is 30 s for the entire bound suite (4 test
-  files × ~100 examples × 22 Systems for US2 = 8,800 trial runs in
+  files × ~100 examples × 21 Systems for US2 = 8,800 trial runs in
   budget). At larger N the budget overflows.
 - Falsification quality saturates well below `N=200`: bound violations are
   almost always single-entity / single-edge bugs that shrink to `N=1`

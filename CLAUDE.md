@@ -724,6 +724,8 @@ ADR0XX_descriptive_name:
 - PostgreSQL 16+ (runtime state via `postgres_runtime.py`), SQLite (reference data) (041-mvp-nationwide-sim)
 - TypeScript 5.7 (frontend), Python 3.12+ (backend — minimal changes) + React 19, Zustand 5, deck.gl 9, MapLibre GL 5, Recharts 2, Sigma.js 3, Tailwind CSS v4, Vite 6, lucide-react, react-router-dom 7 (042-game-ui-overhaul)
 - PostgreSQL 16+ (runtime state via Django), localStorage (UI preferences) (042-game-ui-overhaul)
+- Python 3.12+ + Hypothesis ^6.149.0 (already in `[tool.poetry.group.dev.dependencies]`), pytest 8.x, NetworkX 3.x, SciPy (sparse matrices for OD), Pydantic 2.x (frozen models). XGI 0.10 is available but not required for this work. (053-conservation-invariants)
+- N/A at runtime. The Hypothesis example database persists generated counterexamples under `.hypothesis/` (already in `.gitignore` via `[tool.pytest.ini_options]` `cache_dir` settings). (053-conservation-invariants)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

@@ -38,12 +38,16 @@
   they pin the predicate domain ("which Systems?", "which constrained types?", "which
   field signals crisis?"). The implementation language and harness internals are not
   prescribed.
-- Ambiguity-budget candidates likely surfaced by `/speckit.clarify`:
-  1. Whether the slow-profile example multiplier should be 5× (current spec) or
-     match Spec 053's project-wide 5× exactly.
-  2. Whether US4 should require a new dedicated `crisis_phase` accessor protocol
-     or read directly from `CountyEconomicState` (assumption documented).
-  3. Whether `bypasses_bound_invariant` should be a `set[str]` keyed on invariant
-     name (current spec) or a `dict[str, str]` keyed on invariant name with
-     justification value (would let the comment-explanation requirement be
-     machine-readable).
+- `/speckit.clarify` session 2026-05-06 resolved 4 ambiguities:
+  1. Pydantic `Probability`-field discovery → static `model_fields` introspection
+     (no hand-maintained registry).
+  2. US2 per-System isolation strategy → per-System with feasibility fallback;
+     non-isolatable Systems report `SKIPPED` with reason.
+  3. US4 (prev, raw, post) capture → hybrid (synthesized sweep + one observed
+     end-to-end smoke check on the gamma EMA).
+  4. `bypasses_bound_invariant` shape → `ClassVar[dict[str, str]]` keyed by
+     predicate name with justification string; machine-enforces SC-006.
+- Remaining low-impact items deferred to `/speckit.plan`: harness file layout
+  (under `tests/property/invariants/` per Spec 053 convention is the obvious
+  default), generated WorldState scale (max_entities / max_edges defaults),
+  and the slow-profile multiplier (already pinned at 5× in FR-007).

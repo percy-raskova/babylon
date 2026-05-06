@@ -21,7 +21,7 @@ See Also:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from scipy import sparse  # type: ignore[import-untyped]
@@ -39,6 +39,10 @@ class DefaultHexCirculationComputer:
     Builds a sparse OD matrix from county-level LODES flows,
     disaggregated to hex-to-hex using tract employment weights.
     """
+
+    # Spec 053 INV-001: substrate computer; conservation-preserving by
+    # construction. Opt-out marker (default-deny per FR-004a).
+    creates_value: ClassVar[bool] = False
 
     def build_od_matrix(
         self,
@@ -141,15 +145,31 @@ class DefaultHexCirculationComputer:
 
         pre_total_v = float(v_vec.sum())
 
-        # Redistribute: v_residence = od_matrix.T @ v_production
+        # Redistribute: v_residence = od_matrix.T @ v_production.
+        #
+        # Domain note: a row of zeros in the OD matrix means "this hex has
+        # no commute outflow." The correct semantics is that those workers
+        # stay home, so the hex's v stays in place. Without this treatment
+        # the matrix multiply silently drops v[k] for any zero-row k,
+        # violating the spec-053 INV-003 conservation invariant.
         if od_matrix.shape[0] == n and od_matrix.shape[1] == n:
-            v_new = od_matrix.T @ v_vec
+            row_sums = np.asarray(od_matrix.sum(axis=1)).flatten()
+            zero_row_mask = row_sums == 0.0
+            if zero_row_mask.any():
+                # Patch zero rows with an identity row so v[k] flows to k.
+                identity_patch = sparse.diags(zero_row_mask.astype(np.float64))
+                od_effective = od_matrix + identity_patch
+            else:
+                od_effective = od_matrix
+            v_new = od_effective.T @ v_vec
         else:
             v_new = v_vec.copy()
 
         post_total_v = float(v_new.sum())
 
-        # Rescale to conserve variable capital
+        # Rescale to conserve variable capital. The identity-patch above
+        # eliminates the only systematic mass-loss source; the remaining
+        # drift here is purely sparse-multiply round-off (~ULP per element).
         if post_total_v > 0 and abs(pre_total_v - post_total_v) > 1e-15:
             scale = pre_total_v / post_total_v
             v_new *= scale

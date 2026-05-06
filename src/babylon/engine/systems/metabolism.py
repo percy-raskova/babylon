@@ -13,7 +13,7 @@ Key formulas (from src/babylon/formulas/formulas):
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
@@ -44,6 +44,9 @@ class MetabolismSystem:
     Events emitted:
     - ECOLOGICAL_OVERSHOOT: When overshoot_ratio > 1.0
     """
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     @property
     def name(self) -> str:

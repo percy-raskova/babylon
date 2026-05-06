@@ -10,7 +10,7 @@ Sprint: Event Template System
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.engine.event_bus import Event
 from babylon.engine.event_evaluator import (
@@ -48,6 +48,9 @@ class EventTemplateSystem:
     """
 
     name = "Event Template"
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     def __init__(self, templates: list[EventTemplate] | None = None) -> None:
         """Initialize with optional list of templates.

@@ -32,7 +32,7 @@ creating revolutionary conditions through collective action.
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.engine.event_bus import Event
 from babylon.models.enums import EdgeType, EventType, SocialRole
@@ -253,6 +253,9 @@ class StruggleSystem:
     """
 
     name = "Struggle"
+    # Spec 053 INV-001: StruggleSystem destroys wealth during uprisings
+    # (`new_wealth = current_wealth * (1.0 - wealth_destruction)`).
+    creates_value: ClassVar[bool] = True
 
     def step(
         self,

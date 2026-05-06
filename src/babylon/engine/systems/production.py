@@ -27,7 +27,7 @@ Historical Materialist Principle:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from babylon.economics.tensor import NoDataSentinel
 from babylon.models.enums import EdgeType, SocialRole
@@ -63,6 +63,11 @@ class ProductionSystem:
     Only active workers with TENANCY edges to territories can produce.
     Bourgeoisie classes extract value but do not produce it.
     """
+
+    # Spec 053 INV-001: ProductionSystem observes already-hydrated value-in-hours
+    # from capital stocks rather than generating fresh value. Opted in to per-system
+    # c+v+s conservation check by default-deny.
+    creates_value: ClassVar[bool] = False
 
     # Spec 040, Discipline 1: Declared invariants preserved by this system
     invariants: list[object] = []  # populated in __init__

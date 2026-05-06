@@ -14,7 +14,7 @@ Reference: R-006 (system ordering — position 16)
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -544,6 +544,9 @@ class EdgeTransitionSystem:
     """
 
     name = "edge_transition"
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     def step(
         self,

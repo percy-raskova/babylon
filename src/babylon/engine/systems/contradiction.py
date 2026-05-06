@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from babylon.engine.event_bus import Event
 from babylon.models.enums import EventType
@@ -20,6 +20,9 @@ class ContradictionSystem:
     """Phase 4: Accumulation of Tension and Ruptures."""
 
     name = "Contradiction Tension"
+
+    # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
+    creates_value: ClassVar[bool] = False
 
     def step(
         self,

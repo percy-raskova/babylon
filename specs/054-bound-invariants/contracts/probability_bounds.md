@@ -48,18 +48,59 @@ def test_probability_post_runtick_in_range(state, service_container_fixture, tic
     assert result.ok, result.msg
 ```
 
-### Predicate B — Per-formula domain (allow-list scan)
+### Predicate B — Per-formula domain (type-driven discovery)
+
+`discover_probability_formulas()` returns every callable in
+`babylon.formulas.*` whose declared return type is `Probability` (per
+research §2's type-driven rule). Per-formula input strategies are
+hand-written in this test file because (a) the discovery set is small —
+two formulas as of this spec, growing as more annotations are narrowed —
+and (b) introspecting parameter type hints to auto-generate strategies
+adds harness complexity without yielding signal that the explicit map
+doesn't already provide.
 
 ```python
-@pytest.mark.parametrize("formula", discover_probability_formulas(), ids=lambda f: f.__name__)
+# Per-formula input strategies. Add a new entry here when a new formula
+# is narrowed to `-> Probability`. Discovery surfaces the formula via
+# parametrize; this map provides the generators it needs.
+_FORMULA_INPUT_STRATEGIES: dict[str, st.SearchStrategy[dict]] = {
+    "calculate_acquiescence_probability": st.fixed_dictionaries({
+        "wealth": st.floats(min_value=0.0, max_value=1e6, allow_nan=False),
+        "subsistence_threshold": st.floats(min_value=1e-3, max_value=1e6, allow_nan=False),
+        "steepness_k": st.floats(min_value=1e-3, max_value=10.0, allow_nan=False),
+    }),
+    "calculate_revolution_probability": st.fixed_dictionaries({
+        "cohesion": st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+        "repression": st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+    }),
+}
+
+@pytest.mark.parametrize(
+    "formula", discover_probability_formulas(), ids=lambda f: f.__name__
+)
+@settings(max_examples=100)
 def test_probability_formula_in_range(formula):
-    @given(args=formula_input_strategy(formula))
-    @settings(max_examples=100)
+    strategy = _FORMULA_INPUT_STRATEGIES.get(formula.__name__)
+    if strategy is None:
+        pytest.fail(
+            f"Formula {formula.__name__} discovered as Probability-returning "
+            f"but no input strategy registered in _FORMULA_INPUT_STRATEGIES. "
+            f"Add an entry mapping the formula name to a Hypothesis strategy "
+            f"that draws valid inputs."
+        )
+    @given(args=strategy)
     def _check(args):
         result = formula(**args)
         assert 0.0 <= result <= 1.0, f"{formula.__name__}({args}) = {result}"
     _check()
 ```
+
+**Discovery-input drift safety**: when the discovery walker yields a
+formula that has no entry in `_FORMULA_INPUT_STRATEGIES`, the test
+*fails* (rather than skipping silently) with an explicit message asking
+the maintainer to register a strategy. This makes the input map
+self-policing — narrowing a new formula's return type to `Probability`
+without registering inputs is a CI failure, not a silent coverage gap.
 
 ### Predicate C — SOLIDARITY edge strength (post-`SolidaritySystem.step`)
 

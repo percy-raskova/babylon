@@ -284,9 +284,13 @@ for float64 round-off. Independent of US1 / US2 / US3.
   `model_fields[name].annotation` — the harness walks every Pydantic
   model under `src/babylon/models/` and yields each `(ModelClass,
   field_name)` pair whose annotation resolves to the `Probability`
-  constrained type. No hand-maintained registry is permitted; adding
-  a new `Probability` field anywhere in `src/babylon/models/`
-  automatically extends test coverage.
+  constrained type. Formula discovery for (b) MUST use static
+  introspection of `typing.get_type_hints(formula).get("return")` — the
+  harness walks every public function in `babylon.formulas.*` and yields
+  each callable whose declared return type is the `Probability` alias.
+  No hand-maintained registry is permitted for either (a) or (b); adding
+  a new `Probability` field or narrowing a formula's return annotation
+  to `Probability` automatically extends test coverage.
 - **FR-003**: The Wealth/Heat test (US2) MUST exercise all 22 Systems
   in `src/babylon/engine/systems/` and report a per-System pass/fail
   trace. For each System, the harness MUST attempt to synthesize a
@@ -304,7 +308,12 @@ for float64 round-off. Independent of US1 / US2 / US3.
   α-smoothed coefficients automatically by introspecting `defines.py`
   for fields whose names match `*_alpha`, `alpha_smoothing_rate`, or
   `*_decay_alpha`, AND MUST suspend the inequality assertion in crisis
-  ticks identified by `crisis_phase is not None`. The harness MUST
+  ticks identified by `crisis_phase is not None`. The discovery walker
+  MAY exclude documented false-positive fields (e.g., power-law
+  exponents that share the `_alpha` suffix but are not EMA rates) via
+  an explicit, named exclusion set maintained in the harness module
+  alongside the discovery walker. Each exclusion entry MUST carry a
+  one-line comment explaining why the field is not an EMA rate. The harness MUST
   use a **hybrid** test strategy: (a) a *synthesized* Hypothesis
   sweep that constructs random `(prev, raw, alpha)` triples for every
   α-smoothed coefficient and asserts the EMA inequality directly

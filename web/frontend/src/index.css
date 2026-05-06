@@ -1,34 +1,87 @@
 @import "tailwindcss";
 
 /* ================================================================
-   Constitution VII — Babylon Design System
+   Constitution VII — Babylon Design System (v2 Full Token Set)
+   Merged from ui_kits/webapp_v2/colors_and_type.css
    ================================================================ */
 
 @theme {
-  /* Core palette */
+  /* -------- Backgrounds — The Void to The Chassis -------- */
   --color-void: #0a0a0f;
   --color-blood-void: #1a0a1a;
   --color-dark-metal: #141420;
   --color-soot: #1a1a2a;
   --color-wet-concrete: #2a2a3a;
-  --color-ash: #787878;
-  --color-silver: #888;
+  --color-chassis: #404040;
+
+  /* -------- Text — Bone to Ash -------- */
   --color-bone: #e0e0e0;
+  --color-silver: #888888;
+  --color-ash: #787878;
+  --color-dim-gray: #696969;
 
-  /* Accent colors */
+  /* -------- Accent — Emitted Light -------- */
   --color-gold: #c8a860;
+  --color-gold-bright: #ffd700;
   --color-crimson: #e04040;
+  --color-deep-crimson: #8b0a1a;
+  --color-blood-crimson: #dc143c;
 
-  /* Data visualization */
+  /* -------- Data Visualization -------- */
   --color-data-green: #40c040;
+  --color-phosphor-green: #39ff14;
   --color-phosphor-red: #e06060;
   --color-royal-blue: #80b0e0;
   --color-grow-purple: #a070d0;
   --color-warning-amber: #e0a030;
+  --color-bio-green: #7ab038;
 
-  /* Typography */
-  --font-mono: "Roboto Mono", "Fira Code", ui-monospace, monospace;
+  /* -------- Typography -------- */
+  --font-mono: "Roboto Mono", "Fira Code", ui-monospace, "Courier New", monospace;
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-system: "DIN Alternate", "DIN Next", "Futura", var(--font-sans);
+}
+
+/* ================================================================
+   CSS Custom Properties — Extended tokens not in Tailwind @theme
+   ================================================================ */
+:root {
+  /* Semantic backgrounds */
+  --bg-primary: var(--color-void);
+  --bg-surface: var(--color-dark-metal);
+  --bg-elevated: var(--color-soot);
+  --bg-input: var(--color-void);
+
+  /* Semantic borders */
+  --border-subtle: var(--color-soot);
+  --border-default: var(--color-wet-concrete);
+  --border-active: var(--color-gold);
+  --border-error: var(--color-crimson);
+
+  /* Semantic text */
+  --text-primary: var(--color-bone);
+  --text-secondary: var(--color-silver);
+  --text-muted: var(--color-ash);
+  --text-accent: var(--color-gold);
+  --text-danger: var(--color-crimson);
+  --text-success: var(--color-data-green);
+  --text-warning: var(--color-warning-amber);
+  --text-info: var(--color-royal-blue);
+
+  /* Urgency tints (TopBar background shifts) */
+  --urgency-normal: transparent;
+  --urgency-warning: rgba(224, 160, 48, 0.05);
+  --urgency-critical: rgba(224, 64, 64, 0.08);
+
+  /* Glow effects */
+  --glow-gold: 0 0 8px rgba(200, 168, 96, 0.4), 0 0 16px rgba(200, 168, 96, 0.2);
+  --glow-crimson: 0 0 8px rgba(224, 64, 64, 0.5), 0 0 16px rgba(224, 64, 64, 0.2);
+  --glow-green: 0 0 8px rgba(64, 192, 64, 0.4), 0 0 16px rgba(64, 192, 64, 0.15);
+
+  /* CRT effect constants */
+  --scanline-spacing: 4px;
+  --scanline-opacity: 0.05;
+  --vignette-spread: 60%;
 }
 
 /* ================================================================
@@ -45,6 +98,10 @@
     @apply m-0 min-h-screen;
   }
 
+  button {
+    font-family: var(--font-sans);
+  }
+
   /* Scrollbar styling for dark theme */
   ::-webkit-scrollbar {
     @apply w-2 h-2;
@@ -56,6 +113,68 @@
     @apply bg-wet-concrete rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-ash;
+    @apply bg-gold;
   }
+}
+
+/* ================================================================
+   CRT / Bunker Effects — Utility classes
+   ================================================================ */
+
+/* Subtle CRT scanlines overlay */
+.crt-scanlines::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9000;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.04) 0,
+    rgba(0, 0, 0, 0.04) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* CRT vignette */
+.crt-vignette::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 90% 90% at center, transparent 50%, rgba(0, 0, 0, 0.7) 100%);
+}
+
+/* Glow bloom classes */
+.bloom-gold {
+  text-shadow: var(--glow-gold);
+}
+.bloom-crimson {
+  text-shadow: var(--glow-crimson);
+}
+.bloom-green {
+  text-shadow: var(--glow-green);
+}
+
+/* Flicker animation */
+@keyframes bbl-flicker {
+  0% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.97;
+  }
+  50% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.bbl-flicker {
+  animation: bbl-flicker 1.5s ease-in-out infinite;
 }

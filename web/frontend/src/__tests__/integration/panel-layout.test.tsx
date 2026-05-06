@@ -1,79 +1,45 @@
 /**
- * Integration test: panel layout interactions.
+ * Integration test: v2 layout interactions.
  *
- * Tests right panel collapse/expand, bottom panel tab switching,
- * and content visibility changes.
+ * Tests NavRail navigation links and GameRouteShell layout structure.
+ * Replaces the v1 RightPanel/BottomPanel interaction tests.
  */
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { RightPanel } from "@/components/layout/RightPanel";
-import { BottomPanel } from "@/components/layout/BottomPanel";
-import { useUIStore } from "@/stores/uiStore";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { NavRail } from "@/components/layout/NavRail";
 
-describe("panel layout interactions", () => {
-  describe("right panel", () => {
-    it("collapse hides content and expand shows it", async () => {
-      const user = userEvent.setup();
+describe("v2 layout interactions", () => {
+  describe("NavRail", () => {
+    it("renders all three nav groups", () => {
       render(
-        <RightPanel>
-          <div>Inspector Content</div>
-        </RightPanel>,
+        <MemoryRouter initialEntries={["/games/g1"]}>
+          <Routes>
+            <Route path="/games/:id" element={<NavRail gameId="g1" />} />
+          </Routes>
+        </MemoryRouter>,
       );
 
-      expect(screen.getByText("Inspector Content")).toBeInTheDocument();
-
-      // Collapse
-      await user.click(screen.getByTitle("Collapse sidebar"));
-      expect(screen.queryByText("Inspector Content")).not.toBeInTheDocument();
-      expect(useUIStore.getState().rightPanelOpen).toBe(false);
-
-      // Expand
-      await user.click(screen.getByTitle("Expand sidebar"));
-      expect(screen.getByText("Inspector Content")).toBeInTheDocument();
-      expect(useUIStore.getState().rightPanelOpen).toBe(true);
-    });
-  });
-
-  describe("bottom panel", () => {
-    it("tab switching updates store and content visibility", async () => {
-      const user = userEvent.setup();
-      render(
-        <BottomPanel>
-          <div>Tab Content</div>
-        </BottomPanel>,
-      );
-
-      // Default tab is timeseries
-      expect(useUIStore.getState().bottomTab).toBe("timeseries");
-
-      // Switch to events
-      await user.click(screen.getByText("Events"));
-      expect(useUIStore.getState().bottomTab).toBe("events");
-
-      // Switch to notifications
-      await user.click(screen.getByText("Notifications"));
-      expect(useUIStore.getState().bottomTab).toBe("notifications");
-
-      // Switch back to time series
-      await user.click(screen.getByText("Time Series"));
-      expect(useUIStore.getState().bottomTab).toBe("timeseries");
+      // Group labels are lowercase in DOM, uppercase via CSS
+      expect(screen.getByText("Play")).toBeInTheDocument();
+      expect(screen.getByText("Verbs")).toBeInTheDocument();
+      expect(screen.getByText("Analyze")).toBeInTheDocument();
     });
 
-    it("collapse hides content and tab area", async () => {
-      const user = userEvent.setup();
+    it("renders nav links with correct aria-labels", () => {
       render(
-        <BottomPanel>
-          <div>Chart Content</div>
-        </BottomPanel>,
+        <MemoryRouter initialEntries={["/games/g1"]}>
+          <Routes>
+            <Route path="/games/:id" element={<NavRail gameId="g1" />} />
+          </Routes>
+        </MemoryRouter>,
       );
 
-      expect(screen.getByText("Chart Content")).toBeInTheDocument();
-
-      await user.click(screen.getByTitle("Collapse panel"));
-      expect(screen.queryByText("Chart Content")).not.toBeInTheDocument();
-      expect(useUIStore.getState().bottomPanelOpen).toBe(false);
+      expect(screen.getByLabelText("Briefing")).toBeInTheDocument();
+      expect(screen.getByLabelText("Orgs")).toBeInTheDocument();
+      expect(screen.getByLabelText("Intel")).toBeInTheDocument();
+      expect(screen.getByLabelText("Results")).toBeInTheDocument();
     });
   });
 });

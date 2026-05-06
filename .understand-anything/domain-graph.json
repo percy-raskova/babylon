@@ -1,0 +1,5663 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "babylon",
+    "languages": [
+      "python",
+      "json",
+      "markdown",
+      "toml"
+    ],
+    "frameworks": [
+      "Pydantic",
+      "NetworkX",
+      "SQLAlchemy",
+      "NumPy",
+      "XGI",
+      "h3",
+      "ChromaDB",
+      "Django",
+      "PostgreSQL",
+      "pgvector",
+      "SciPy",
+      "GeoPandas"
+    ],
+    "description": "Babylon is a deterministic geopolitical simulation engine that models the collapse of American hegemony through Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory. It treats class struggle as the output of material conditions evolving on a topological phase space: a NetworkX/XGI graph of social classes, territories, and communities under per-tick transformations driven by formulas drawn from Capital Volumes I/II/III, Emmanuel/Amin unequal exchange, Kahneman-Tversky survival calculus, and Gramscian legitimation theory.",
+    "analyzedAt": "2026-05-06T01:31:36Z",
+    "gitCommitHash": "7710461b64801f4a2eee499c2e7e07d469d7b5c6"
+  },
+  "nodes": [
+    {
+      "id": "domain:simulation-tick-pipeline",
+      "type": "domain",
+      "name": "Simulation Tick Pipeline",
+      "summary": "The orchestration backbone that advances WorldState by one discrete tick. Runs 23 modular Systems in strict canonical order via SimulationEngine.run_tick(graph, services, context), so each System sees the in-place graph mutations of every prior System. This is where state, math, and orchestration meet.",
+      "tags": [
+        "orchestration",
+        "tick",
+        "pipeline",
+        "engine",
+        "core"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "SimulationEngine",
+          "ServiceContainer",
+          "TickContext",
+          "EventBus",
+          "FormulaRegistry",
+          "GraphProtocol"
+        ],
+        "businessRules": [
+          "Systems execute in strict canonical order: ImperialRent -> Solidarity -> Consciousness -> Survival -> Struggle -> Contradiction -> Territory -> Metabolism (and 15 others)",
+          "Each System mutates the shared graph in-place; later Systems read prior mutations",
+          "WorldState is frozen Pydantic; tick boundary uses model_copy(update=...) for new immutable state",
+          "WorldState.events is per-tick (NOT cumulative): empty list means 'no events this tick'",
+          "to_graph() / from_graph() round-trip is the seam between Pydantic Ledger and NetworkX Topology"
+        ],
+        "crossDomainInteractions": [
+          "Drives every other simulation domain by invoking their Systems each tick",
+          "Publishes 12+ EventTypes via EventBus that observers (narrative AI, metrics, persistence) consume",
+          "Reads constants from GameDefines configuration tree"
+        ]
+      }
+    },
+    {
+      "id": "domain:imperial-rent-extraction",
+      "type": "domain",
+      "name": "Imperial Rent & Unequal Exchange",
+      "summary": "The Marxist heart of the simulation: when core wages exceed the value produced (W_c > V_c), the difference represents Imperial Rent (Phi) extracted from periphery workers via unequal exchange. This domain implements the Fundamental Theorem of MLM-TW, MELT (Monetary Expression of Labor Time), gamma visibility, and Emmanuel/Amin value-transfer formulas.",
+      "tags": [
+        "imperial-rent",
+        "fundamental-theorem",
+        "mlm-tw",
+        "exploitation",
+        "unequal-exchange",
+        "economics"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "ImperialRentSystem",
+          "MELTCalculator",
+          "ValueTensor4x3",
+          "LaborAristocracyRatio",
+          "Phi",
+          "GammaVisibility"
+        ],
+        "businessRules": [
+          "Revolution in core impossible when W_c > V_c (the Fundamental Theorem)",
+          "Imperial rent (Phi) flows from periphery to core each tick",
+          "MELT (tau) bridges dollar prices and labor hours: tau = GDP / total labor hours",
+          "Labor aristocracy classified when wages_received exceeds value_produced for sustained ticks",
+          "Six-phase economic tick: subsistence -> extraction -> tribute -> wages -> subsidy -> decision"
+        ],
+        "crossDomainInteractions": [
+          "Emits wage flows that Solidarity Transmission Domain reads to compute consciousness drift",
+          "Drives Class Consciousness Domain via consciousness_drift bifurcation (fascism vs revolution)",
+          "Triggers DecompositionSystem when imperial rent collapses and labor aristocracy converts to periphery worker"
+        ]
+      }
+    },
+    {
+      "id": "domain:survival-calculus",
+      "type": "domain",
+      "name": "Survival Calculus & Rupture",
+      "summary": "Core decision mechanism for whether agents acquiesce or rebel. Computes P(S|A) = Sigmoid(Wealth - Subsistence) for survival via acquiescence and P(S|R) = Organization / Repression for survival via revolution. Rupture occurs when P(S|R) > P(S|A), with Kahneman-Tversky loss aversion (lambda=2.25) shaping risk-tolerance.",
+      "tags": [
+        "survival-calculus",
+        "rupture",
+        "probability",
+        "decision-theory",
+        "loss-aversion"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "SurvivalSystem",
+          "SurvivalProfile",
+          "AcquiescenceProbability",
+          "RevolutionProbability",
+          "LossAversion"
+        ],
+        "businessRules": [
+          "P(S|A) = Sigmoid(Wealth - Subsistence): acquiescence increases as wealth exceeds subsistence",
+          "P(S|R) = Organization / Repression: revolution success scales with organization strength",
+          "Rupture condition: P(S|R) > P(S|A) for sustained period",
+          "Loss aversion: losses weighted 2.25x gains (Kahneman-Tversky)",
+          "Solidarity multipliers from neighborhood aggregation amplify P(S|R)"
+        ],
+        "crossDomainInteractions": [
+          "Reads wealth, subsistence, organization, repression set by Imperial Rent Domain and OODA Action Domain",
+          "Hands rupture signals to Class Struggle & Agency Domain for UPRISING event resolution",
+          "Crossover threshold consumed by EndgameDetector observer"
+        ]
+      }
+    },
+    {
+      "id": "domain:consciousness-and-solidarity",
+      "type": "domain",
+      "name": "Consciousness & Solidarity Transmission",
+      "summary": "Models class consciousness as a ternary simplex (revolutionary / liberal / fascist) propagated across SOLIDARITY edges. Encodes the bifurcation logic: when wages fall, agitation routes to Fascism (+1 ideology) or Revolution (-1 ideology) depending on whether SOLIDARITY edges are present, with a reification buffer attenuating exploitation visibility.",
+      "tags": [
+        "consciousness",
+        "solidarity",
+        "bifurcation",
+        "ternary",
+        "ideology",
+        "transmission"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "SolidaritySystem",
+          "ConsciousnessSystem",
+          "TernaryConsciousness",
+          "IdeologyProfile",
+          "ReificationBuffer",
+          "ConsciousnessDialectic"
+        ],
+        "businessRules": [
+          "Ternary consciousness simplex must sum to 1.0 (revolutionary + liberal + fascist)",
+          "Bifurcation routing: agitation deltas split into ideology buckets via SOLIDARITY edge presence",
+          "Solidarity transmission propagates consciousness gradient across edges above an activation threshold",
+          "Substrate floor on consciousness baseline; weighted blending across community types",
+          "Reification buffer attenuates direct visibility of exploitation"
+        ],
+        "crossDomainInteractions": [
+          "Receives wage/wealth deltas from Imperial Rent Domain to compute agitation pressure",
+          "Feeds organization strength downstream to Survival Calculus Domain (boosts P(S|R))",
+          "CommunitySystem amplifies SOLIDARITY edges via XGI hypergraph community memberships"
+        ]
+      }
+    },
+    {
+      "id": "domain:class-struggle-agency",
+      "type": "domain",
+      "name": "Class Struggle & Agency",
+      "summary": "The agency layer (George Floyd Dynamic) that converts material conditions and consciousness state into discrete revolutionary or counter-revolutionary events. Resolves EXCESSIVE_FORCE rolls into UPRISING events, applies revolutionary-offensive and fascist-revanchism follow-on logic, and detects power vacuums plus peripheral revolts.",
+      "tags": [
+        "struggle",
+        "agency",
+        "george-floyd-dynamic",
+        "uprising",
+        "rupture-event"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "StruggleSystem",
+          "ExcessiveForceRoll",
+          "UprisingEvent",
+          "RevolutionaryOffensive",
+          "FascistRevanchism",
+          "PowerVacuum"
+        ],
+        "businessRules": [
+          "EXCESSIVE_FORCE rolls trigger UPRISING events stochastically",
+          "Revolutionary-offensive follow-on: cascading uprisings spread along solidarity subgraph",
+          "Fascist-revanchism follow-on: backlash repression intensifies with state-apparatus repression heat",
+          "Power vacuums detected when state legitimation falls below threshold in territory",
+          "Peripheral revolts can trigger imperial-core retraction"
+        ],
+        "crossDomainInteractions": [
+          "Triggered by Survival Calculus rupture conditions and Consciousness state",
+          "Emits events to Carceral Geography Domain that drive heat dynamics",
+          "Feeds OODA State Apparatus AI Domain triggering repression escalation"
+        ]
+      }
+    },
+    {
+      "id": "domain:carceral-geography",
+      "type": "domain",
+      "name": "Carceral Geography & Heat Dynamics",
+      "summary": "Implements territory-level state attention through heat dynamics, eviction pipelines, and necropolitical mortality. HIGH_PROFILE territories accumulate heat (state attention); LOW_PROFILE territories decay heat. Heat >= 0.8 triggers an eviction pipeline with sink-node routing, spillover, organization suppression, and dispossession events.",
+      "tags": [
+        "carceral-geography",
+        "heat-dynamics",
+        "territory",
+        "eviction",
+        "necropolitics"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "TerritorySystem",
+          "OperationalProfile",
+          "HeatLevel",
+          "EvictionPipeline",
+          "DispossessionEvent",
+          "ControlRatioSystem"
+        ],
+        "businessRules": [
+          "Heat accumulates per-tick by OperationalProfile (HIGH_PROFILE +, LOW_PROFILE decays)",
+          "Heat >= 0.8 triggers eviction pipeline routing displaced agents to sink nodes",
+          "Spillover propagates heat to adjacent H3 hex cells",
+          "Necropolitical mortality applied via VitalitySystem when subsistence shortfall persists",
+          "Control ratio = enforcers / (prisoners + organized labor) drives CRISIS events"
+        ],
+        "crossDomainInteractions": [
+          "Reads agency events (uprisings) from Class Struggle Domain to bump heat",
+          "DispossessionEventSystem emits events that drive Lifecycle & Reproduction cohort downgrade cascades",
+          "Heat scores consumed by OODA State Apparatus AI for escalation-ladder scoring"
+        ]
+      }
+    },
+    {
+      "id": "domain:capital-circulation",
+      "type": "domain",
+      "name": "Capital Circulation (Capital Volumes I/II/III)",
+      "summary": "Encodes Marx's three Volumes of Capital as 24 dialectic subclasses operating over a World container of contradictions. Volume I: commodity, labor process, production, wage, accumulation, primitive accumulation. Volume II: M-C-M' circulation, consumption, distribution, reproduction, turnover. Volume III: credit, ground rent, surplus distribution, transformation problem, TRPF, imperial.",
+      "tags": [
+        "capital-volumes",
+        "dialectics",
+        "circulation",
+        "marx",
+        "value-theory"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "Dialectic[A,B]",
+          "World",
+          "TickInputs",
+          "Morphism",
+          "SublationRule",
+          "DepartmentRow",
+          "CirculationCircuit"
+        ],
+        "businessRules": [
+          "Each Dialectic[A, B] holds two opposing poles with weight invariants summing to 1.0",
+          "Sublation rules fire when threshold predicates met, producing successor Dialectic via factory",
+          "Circulation Volume II sublates into RealizationCrisisDialectic on realization failure",
+          "Reproduction Vol II sublates into DisproportionalityCrisisDialectic when D-I/D-II balance fails",
+          "Credit dialectic sublates into FinancialCrisisDialectic when leverage exceeds threshold",
+          "Per-dialectic and universal invariants validated each tick"
+        ],
+        "crossDomainInteractions": [
+          "Provides theoretical scaffolding for Imperial Rent Domain (imperial.py dialectic)",
+          "Crisis dialectics emit events into TRPF & Counter-Tendencies Domain",
+          "Class struggle dialectic sublates into PartyDialectic at vanguard threshold, feeding Class Struggle Domain"
+        ]
+      }
+    },
+    {
+      "id": "domain:trpf-and-crisis",
+      "type": "domain",
+      "name": "TRPF, Crisis & Counter-Tendencies",
+      "summary": "Models the Tendency of the Rate of Profit to Fall (TRPF) and the counter-tendencies that offset it. Tracks rate of profit s/(c+v), organic composition c/v, fictitious capital, financialization index, credit cycles, and the four crisis dialectics (realization, disproportionality, debt spiral, financial) that emerge when counter-tendencies fail.",
+      "tags": [
+        "trpf",
+        "crisis",
+        "rate-of-profit",
+        "counter-tendencies",
+        "fictitious-capital",
+        "financialization"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "TRPFDialectic",
+          "CounterTendencyCalculator",
+          "FictitiousCapitalStock",
+          "CreditCyclePhase",
+          "FinancialCrisisAssessment"
+        ],
+        "businessRules": [
+          "Rate of profit r = s / (c + v); falls as organic composition c/v rises",
+          "Counter-tendencies (foreign trade, cheapening of constant capital, etc.) offset TRPF",
+          "Time-decaying multiplier on rent pool encodes diminishing-returns dynamics",
+          "Credit cycle phase machine: expansion -> overextension -> crisis -> recovery",
+          "Financialization index = claims / real output; > threshold triggers crisis"
+        ],
+        "crossDomainInteractions": [
+          "Reads c, v, s tensors from Imperial Rent Domain (ValueTensor4x3)",
+          "Crisis events feed Bifurcation & Phase Transitions Domain for ceiling effects",
+          "Wage compression dynamics modulate Survival Calculus subsistence shortfall"
+        ]
+      }
+    },
+    {
+      "id": "domain:metabolic-rift",
+      "type": "domain",
+      "name": "Metabolic Rift & Ecology",
+      "summary": "Implements ecological limits on capital accumulation via Marx's metabolic rift concept. Computes per-territory Biocapacity Delta = R - (E * eta) where R is regeneration, E is extraction, eta is entropy. Aggregate Overshoot Ratio = Consumption / Biocapacity exceeds 1.0 in ecological overshoot, publishing METABOLIC_RIFT events.",
+      "tags": [
+        "metabolic-rift",
+        "ecology",
+        "biocapacity",
+        "overshoot",
+        "marx"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": [
+          "MetabolismSystem",
+          "BiocapacityStock",
+          "OvershootRatio",
+          "BiocapacityDelta",
+          "TerrainClassifier"
+        ],
+        "businessRules": [
+          "Biocapacity Delta dB = R - (E * eta) per territory per tick",
+          "Overshoot Ratio O = Consumption / Biocapacity; O > 1 = ecological overshoot",
+          "METABOLIC_RIFT event emitted when overshoot crosses threshold",
+          "Per-hex biocapacity stock with extraction history and depletion tracking",
+          "Terrain classification (water, resource zones) modulates regeneration rate"
+        ],
+        "crossDomainInteractions": [
+          "Consumes extraction signals from Imperial Rent Domain",
+          "Ecological collapse outcome detected by EndgameDetector observer",
+          "Feeds Spatial Substrate Domain via per-hex biocapacity stock updates"
+        ]
+      }
+    },
+    {
+      "id": "domain:bifurcation-and-phase-transitions",
+      "type": "domain",
+      "name": "Bifurcation & Phase Transitions",
+      "summary": "Detects qualitative phase transitions in the simulation using percolation theory and Betti-number topology analysis on the solidarity subgraph. Combines per-axis tendency, bridge detection, ceiling effects, legitimation amplifier, and resilience metrics into a BifurcationResult that classifies the system trajectory as fascist convergence vs revolutionary rupture via a weakest-link model.",
+      "tags": [
+        "bifurcation",
+        "percolation",
+        "phase-transition",
+        "topology",
+        "betti",
+        "ceiling-effect"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "BifurcationMonitor",
+          "TopologyMonitor",
+          "AxisTendency",
+          "BridgeInfo",
+          "SolidarityCeiling",
+          "LegitimationAmplifier",
+          "BifurcationResult"
+        ],
+        "businessRules": [
+          "Solidarity subgraph giant-component crossing threshold = phase transition",
+          "Material solidarity ceiling computed from wage-gap ratio interpolation",
+          "Consciousness-weighted sigmoid transform on collective identity creates breakage cliff",
+          "Legitimation crisis amplifier: 1.0 + (1.0 - mean_legitimation) * (scale - 1.0)",
+          "Weakest-link classifier across axes (colonial, patriarchal, etc.) predicts fascism vs revolution"
+        ],
+        "crossDomainInteractions": [
+          "Observes solidarity edges produced by Consciousness & Solidarity Domain",
+          "Reads legitimation index from Lifecycle & Reproduction Domain",
+          "BifurcationTendencyEvent triggers state-apparatus AI fascist-convergence override"
+        ]
+      }
+    },
+    {
+      "id": "domain:state-apparatus-ai",
+      "type": "domain",
+      "name": "State Apparatus AI & OODA",
+      "summary": "OODA-loop AI controlling the state apparatus and player/NPC organizations. State AI scores candidate actions across three faction objectives (finance capital, security state, settler populist) weighted by current FactionBalance and territory heat. Resolves verb categories (Legislate, Repress, Co-opt, Administer, Territory, Escalate) with stochastic effects and observability tracking.",
+      "tags": [
+        "state-ai",
+        "ooda",
+        "faction-balance",
+        "repression",
+        "agency",
+        "decision"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "RuleBasedStateAI",
+          "FactionBalance",
+          "OODASystem",
+          "OODAProfile",
+          "ActionResult",
+          "AttentionThread",
+          "EscalationLadder"
+        ],
+        "businessRules": [
+          "OODA loop per-tick: Observe (build G_observed) -> Orient -> Decide -> Act -> propagate effects",
+          "Decision scoring: candidate actions vs three faction objectives weighted by FactionBalance",
+          "Faction balance shifts on player-action / repression-failure / material-condition deltas",
+          "Repression escalation ladder: infiltrate -> raid -> prosecute -> liquidate, gated by heat & ladder rank",
+          "Co-opt vs administer vs repress chosen based on heat, legitimacy, and faction objective weighting",
+          "Initiative score determines action ordering each tick"
+        ],
+        "crossDomainInteractions": [
+          "Reads heat from Carceral Geography Domain to bias escalation",
+          "Action effects propagate to Class Consciousness (propagandize, divide) and Class Struggle Domains",
+          "Counter-intel against State AI's recent action log enables player intelligence gathering"
+        ]
+      }
+    },
+    {
+      "id": "domain:contradiction-field",
+      "type": "domain",
+      "name": "Contradiction Field Dynamics",
+      "summary": "Field-theoretic layer that computes named field values per node from the formula registry, tracks per-edge tension, identifies the principal contradiction by gradient magnitude, and runs declarative ContradictionFrames. EdgeTransitionSystem moves relationships between EdgeMode states (e.g. exploitation -> co-optive -> rupture) using compound predicate conditions.",
+      "tags": [
+        "contradiction",
+        "field-theory",
+        "tension",
+        "principal-contradiction",
+        "edge-transition"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "ContradictionSystem",
+          "ContradictionFieldSystem",
+          "FieldDerivativeSystem",
+          "EdgeTransitionSystem",
+          "ContradictionFrame",
+          "PrincipalContradiction"
+        ],
+        "businessRules": [
+          "Contradiction intensity = sigmoid(ideological_divergence * dual_centrality), clamped [0, 1]",
+          "Principal contradiction identified per-tick by maximum gradient magnitude",
+          "Edges transition states via compound predicates over field values and derivatives",
+          "Sliding-window history of field values used for derivative computation",
+          "CONTRADICTION_INTENSIFIED, RUPTURE, and qualitative-leap events published to event bus"
+        ],
+        "crossDomainInteractions": [
+          "Reads ideology from Consciousness Domain and centrality from graph topology",
+          "Drives Class Struggle agency events through RUPTURE event publication",
+          "Field derivatives feed Bifurcation & Phase Transitions Domain"
+        ]
+      }
+    },
+    {
+      "id": "domain:lifecycle-and-reproduction",
+      "type": "domain",
+      "name": "Lifecycle, Reproduction & Mobility",
+      "summary": "Demographic and political lifecycle dynamics: cohort transitions (D->P->D' dispossession circuit), legitimation index calculation, intergenerational wealth transfer via Pareto-Gini inheritance, class mobility (promotion/demotion probabilities), and shadow-subsidy of unwaged labor through dual-circuit modeling. Composed from four pluggable calculator dependencies.",
+      "tags": [
+        "lifecycle",
+        "demographics",
+        "mobility",
+        "legitimation",
+        "inheritance",
+        "reproduction"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "LifecycleSystem",
+          "CohortDynamicsCalculator",
+          "LegitimationStateCalculator",
+          "InheritanceCalculator",
+          "ClassMobilityCalculator",
+          "DPDState"
+        ],
+        "businessRules": [
+          "Cohort flow D->P->D': dispossessed -> proletarianized -> displaced",
+          "Legitimation index in [0, 1] computed per-territory; drives bifurcation routing",
+          "Inheritance via Pareto-Gini distribution reproduces class structure across cohorts",
+          "Class mobility transitions parameterized by ClassMobilityParams per cohort",
+          "Dual circuit: shadow-labor subsidy from informal to formal economic circuits",
+          "Vitality mortality scales with inequality and wealth-to-subsistence shortfall"
+        ],
+        "crossDomainInteractions": [
+          "Receives DISPOSSESSION events from Carceral Geography Domain",
+          "Legitimation index consumed by Bifurcation Domain (legitimation amplifier)",
+          "Mortality rates feed VitalitySystem in Tick Pipeline"
+        ]
+      }
+    },
+    {
+      "id": "domain:narrative-ai-archive",
+      "type": "domain",
+      "name": "Narrative AI & Archive (Persephone)",
+      "summary": "The third pillar of the Embedded Trinity: a read-only narrative observer that watches state changes and generates dual-perspective narrative log entries via an LLM. NarrativeDirector translates simulation events into RAG queries against the ChromaDB Archive (Marxist corpus), then produces narrative through the Persephone persona. The Archive observes; it never writes back to the Ledger.",
+      "tags": [
+        "narrative",
+        "ai",
+        "rag",
+        "chromadb",
+        "persephone",
+        "observer",
+        "llm"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": [
+          "NarrativeDirector",
+          "NarrativeCommissar",
+          "Persona",
+          "RagPipeline",
+          "DocumentChunker",
+          "EmbeddingManager",
+          "Retriever",
+          "ContextWindowManager"
+        ],
+        "businessRules": [
+          "AI observes state changes; never controls mechanics (one-way coupling)",
+          "Each tick event maps to a RAG query against the Marxist corpus in ChromaDB",
+          "Persona renders into a system prompt for the LLM (DeepSeek or MockLLM)",
+          "NarrativeCommissar judges narrative outputs along ominousness, certainty, drama, metaphor-family",
+          "Context window manager honors token budgets and reserve allocations",
+          "Narrative frames validated against JSON Schema Draft 2020-12"
+        ],
+        "crossDomainInteractions": [
+          "Subscribes as SimulationObserver to all 12+ EventTypes from the Tick Pipeline",
+          "CausalChainObserver feeds shock-doctrine causal frames into narrative pipeline",
+          "Reads Marxist theory corpus from ChromaDB persisted via embeddings layer"
+        ]
+      }
+    },
+    {
+      "id": "domain:spatial-substrate",
+      "type": "domain",
+      "name": "Spatial Substrate (H3 Hex Grid)",
+      "summary": "The geospatial backbone: a Resolution-8 H3 hex grid generated via Uber's H3 library, snapped to Natural Earth polygons (lakes, roads, railroads, airports, ports). Each hex carries terrain classification, biocapacity stock, infrastructure links/junctions/vertices, and FCC broadband internet coverage. End-to-end r8 pipeline produces the spatial substrate that all territory-aware systems read.",
+      "tags": [
+        "spatial",
+        "h3",
+        "r8-mesh",
+        "natural-earth",
+        "infrastructure",
+        "geospatial"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "R8Mesh",
+          "H3Mesh",
+          "NaturalEarthReader",
+          "InfrastructureLink",
+          "JunctionState",
+          "BiocapacityStock",
+          "InternetAccessManager"
+        ],
+        "businessRules": [
+          "H3 resolution-8 hex grid is the canonical spatial unit",
+          "Natural Earth shapefiles snapped onto R8 hexes via shapely intersection + haversine vertex matching",
+          "Per-hex biocapacity, terrain, utility coverage, linear features validated by Pydantic",
+          "Nonlocal edges (airport routes, shipping lanes) connect distant H3 cells with capacity weights",
+          "FCC broadband data drives internet access modeling per hex",
+          "Parent-child resolution consistency validated for H3 indices"
+        ],
+        "crossDomainInteractions": [
+          "Provides Territory entities consumed by Carceral Geography and Lifecycle Domains",
+          "Biocapacity stocks read by Metabolic Rift Domain for ecological accounting",
+          "Infrastructure capacity edges power Capital Circulation throughput calculations"
+        ]
+      }
+    },
+    {
+      "id": "flow:run-canonical-tick",
+      "type": "flow",
+      "name": "Run Canonical Tick",
+      "summary": "Drive WorldState forward one tick by walking the canonical 23-System pipeline (ImperialRent -> Solidarity -> Consciousness -> Survival -> Struggle -> Contradiction -> Territory -> Metabolism + 15 others) in strict order.",
+      "tags": [
+        "tick",
+        "pipeline",
+        "orchestration",
+        "engine"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "SimulationEngine.run_tick(graph, services, context)",
+        "entryType": "manual"
+      }
+    },
+    {
+      "id": "flow:dispatch-events-via-bus",
+      "type": "flow",
+      "name": "Dispatch Events via EventBus",
+      "summary": "Publish events through the pub/sub EventBus interceptor chain to fan out to subscribers (observers, narrative AI, persistence).",
+      "tags": [
+        "event-bus",
+        "pub-sub",
+        "orchestration"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "EventBus.publish(event)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:hydrate-from-reference-data",
+      "type": "flow",
+      "name": "Hydrate From Reference Data",
+      "summary": "Load reference data (counties, hex claims, class shares, profit rates, reserve army, territories, industries) from the SQLite reference DB into initial simulation state.",
+      "tags": [
+        "hydration",
+        "initialization",
+        "sqlalchemy",
+        "reference-data"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "hydrate_from_reference(db_path)",
+        "entryType": "manual"
+      }
+    },
+    {
+      "id": "flow:extract-imperial-rent",
+      "type": "flow",
+      "name": "Extract Imperial Rent (Phi)",
+      "summary": "Run the six-phase economic tick (subsistence -> extraction -> tribute -> wages -> subsidy -> decision) implementing the Fundamental Theorem of MLM-TW: rent flows from periphery to core when W_c > V_c.",
+      "tags": [
+        "imperial-rent",
+        "fundamental-theorem",
+        "extraction",
+        "phi"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "ImperialRentSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:compute-melt-tau",
+      "type": "flow",
+      "name": "Compute MELT (tau)",
+      "summary": "Compute Monetary Expression of Labor Time tau = GDP / total labor hours, bridging dollar prices and Marxian labor values for downstream class-position classification.",
+      "tags": [
+        "melt",
+        "tau",
+        "monetary-expression",
+        "calculator"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "DefaultMELTCalculator.compute(year)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:transfer-value-unequal-exchange",
+      "type": "flow",
+      "name": "Transfer Value via Unequal Exchange",
+      "summary": "Apply Emmanuel/Amin unequal exchange formulas to compute exchange ratio between core/periphery labor, exploitation rate, value transfer per production unit, and Prebisch-Singer terms-of-trade decline.",
+      "tags": [
+        "unequal-exchange",
+        "value-transfer",
+        "prebisch-singer",
+        "emmanuel-amin"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "calculate_exchange_ratio / calculate_value_transfer",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:decompose-labor-aristocracy",
+      "type": "flow",
+      "name": "Decompose Labor Aristocracy",
+      "summary": "When imperial rent collapses, convert labor-aristocracy entities toward periphery-worker status and reweight enforcer/comprador populations accordingly.",
+      "tags": [
+        "decomposition",
+        "labor-aristocracy",
+        "imperial-rent"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "DecompositionSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:compute-survival-probabilities",
+      "type": "flow",
+      "name": "Compute Survival Probabilities",
+      "summary": "Compute per-node P(S|A) = Sigmoid(Wealth - Subsistence) for survival via acquiescence and P(S|R) = Organization / Repression for survival via revolution, with Kahneman-Tversky loss aversion applied.",
+      "tags": [
+        "survival-calculus",
+        "probability",
+        "sigmoid",
+        "loss-aversion"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "SurvivalSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:detect-rupture-crossover",
+      "type": "flow",
+      "name": "Detect Rupture Crossover",
+      "summary": "Compare P(S|R) vs P(S|A) per agent to detect the rupture condition (revolutionary survival probability now exceeds acquiescence probability).",
+      "tags": [
+        "rupture",
+        "crossover-threshold",
+        "survival-calculus"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "calculate_crossover_threshold(p_a, p_r)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:propagate-solidarity-transmission",
+      "type": "flow",
+      "name": "Propagate Solidarity Transmission",
+      "summary": "Walk SOLIDARITY edges to propagate class consciousness via calculate_solidarity_transmission, updating per-node ideology profiles and publishing CONSCIOUSNESS_DRIFT events.",
+      "tags": [
+        "solidarity",
+        "transmission",
+        "consciousness-drift"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "SolidaritySystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:bifurcate-consciousness-routing",
+      "type": "flow",
+      "name": "Bifurcate Consciousness Routing",
+      "summary": "Apply bifurcation logic: when wages fall, route agitation deltas via solidarity edge presence into ternary ideology buckets (revolutionary / liberal / fascist), attenuated by reification buffer.",
+      "tags": [
+        "bifurcation",
+        "consciousness",
+        "routing",
+        "ternary"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "ConsciousnessSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:amplify-via-community-hyperedges",
+      "type": "flow",
+      "name": "Amplify via Community Hyperedges",
+      "summary": "Build XGI hypergraph of community memberships, aggregate ternary consciousness across communities, and amplify SOLIDARITY edges through community-overlap scoring.",
+      "tags": [
+        "community",
+        "hypergraph",
+        "xgi",
+        "amplification"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "CommunitySystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:resolve-uprising-event",
+      "type": "flow",
+      "name": "Resolve UPRISING Event (George Floyd Dynamic)",
+      "summary": "Roll EXCESSIVE_FORCE events with seeded RNG; on success trigger UPRISING events that publish to the event bus and seed downstream offensive/revanchism logic.",
+      "tags": [
+        "uprising",
+        "george-floyd-dynamic",
+        "excessive-force",
+        "rupture-event"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "StruggleSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:cascade-revolutionary-offensive",
+      "type": "flow",
+      "name": "Cascade Revolutionary Offensive",
+      "summary": "Walk the solidarity subgraph from each uprising node to cascade follow-on uprising effects; apply opposing fascist-revanchism backlash where state-apparatus repression heat dominates.",
+      "tags": [
+        "cascade",
+        "revolutionary-offensive",
+        "fascist-revanchism",
+        "agency"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "StruggleSystem._apply_revolutionary_offensive",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:detect-power-vacuum",
+      "type": "flow",
+      "name": "Detect Power Vacuum",
+      "summary": "Read territory legitimation indices and emit POWER_VACUUM events when legitimation falls below threshold, signaling that state authority has effectively withdrawn.",
+      "tags": [
+        "power-vacuum",
+        "legitimation",
+        "agency"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "StruggleSystem._detect_power_vacuum",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:apply-territory-heat-dynamics",
+      "type": "flow",
+      "name": "Apply Territory Heat Dynamics",
+      "summary": "For each territory, accumulate or decay heat based on OperationalProfile (HIGH_PROFILE +, LOW_PROFILE decays), propagate heat spillover to adjacent hexes, and apply necropolitical mortality.",
+      "tags": [
+        "heat-dynamics",
+        "operational-profile",
+        "spillover",
+        "necropolitics"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "TerritorySystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:run-eviction-pipeline",
+      "type": "flow",
+      "name": "Run Eviction Pipeline",
+      "summary": "When heat >= 0.8, route displaced agents to sink-node territories, propagate spillover to adjacent hexes, and emit EVICTION events that feed lifecycle dispossession cascades.",
+      "tags": [
+        "eviction",
+        "sink-node",
+        "displacement"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "TerritorySystem._run_eviction_pipeline",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:emit-dispossession-events",
+      "type": "flow",
+      "name": "Emit Dispossession Events",
+      "summary": "Compute per-territory dispossession intensity and value-transfer magnitudes via DispossessionIntensityCalculator, publishing DISPOSSESSION events for downstream observers and the ledger.",
+      "tags": [
+        "dispossession",
+        "intensity",
+        "value-transfer"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "DispossessionEventSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:track-control-ratio",
+      "type": "flow",
+      "name": "Track Control Ratio",
+      "summary": "Track ratio of state enforcers to controlled population (prisoners + organized labor), emitting CRISIS and TERMINAL_DECISION events when ratios cross thresholds defined by the state-apparatus AI.",
+      "tags": [
+        "control-ratio",
+        "state-apparatus",
+        "carceral"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "ControlRatioSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:advance-volume-i-dialectics",
+      "type": "flow",
+      "name": "Advance Capital Volume I Dialectics",
+      "summary": "Step the Vol I dialectics (commodity, labor process, production, wage, accumulation, primitive accumulation), enforcing law-of-value invariants on each.",
+      "tags": [
+        "capital-volume-i",
+        "dialectic",
+        "value-form"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "World.advance_volume_i(tick_inputs)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:advance-volume-ii-circulation",
+      "type": "flow",
+      "name": "Advance Capital Volume II (Circulation & Reproduction)",
+      "summary": "Step the Vol II dialectics (M-C-M' circulation, consumption, distribution, reproduction, turnover); sublate to RealizationCrisis or DisproportionalityCrisis when invariants fail.",
+      "tags": [
+        "capital-volume-ii",
+        "dialectic",
+        "circulation",
+        "reproduction"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "World.advance_volume_ii(tick_inputs)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:advance-volume-iii-credit-rent",
+      "type": "flow",
+      "name": "Advance Capital Volume III (Credit, Rent, TRPF)",
+      "summary": "Step the Vol III dialectics (credit, rent, surplus distribution, transformation problem, TRPF, imperial); sublate to FinancialCrisis or DebtSpiralCrisis on threshold breach.",
+      "tags": [
+        "capital-volume-iii",
+        "dialectic",
+        "credit",
+        "rent",
+        "trpf"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "World.advance_volume_iii(tick_inputs)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:apply-sublation-rules",
+      "type": "flow",
+      "name": "Apply Sublation Rules",
+      "summary": "Per-tick, evaluate each Dialectic's SublationRule threshold predicates; on fire, invoke the successor-Dialectic factory and replace the original in the World container.",
+      "tags": [
+        "sublation",
+        "rule",
+        "dialectic",
+        "factory"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "World.apply_sublation_rules(tick_inputs)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:compute-rate-of-profit-trajectory",
+      "type": "flow",
+      "name": "Compute Rate of Profit Trajectory",
+      "summary": "Compute rate of profit r = s / (c + v) and organic composition c / v, then apply counter-tendency multipliers to determine net TRPF trajectory each tick.",
+      "tags": [
+        "trpf",
+        "rate-of-profit",
+        "organic-composition",
+        "counter-tendencies"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "TRPFDialectic.step(tick_inputs)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:detect-credit-cycle-phase",
+      "type": "flow",
+      "name": "Detect Credit Cycle Phase",
+      "summary": "Read FRED federal-funds and credit-aggregate data, classify the credit cycle phase (expansion / overextension / crisis / recovery) per Marx's Volume III credit theory, and emit phase-transition events.",
+      "tags": [
+        "credit-cycle",
+        "fred",
+        "phase-detection",
+        "volume-iii"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "CreditCyclePhaseDetector.detect(state)",
+        "entryType": "cron"
+      }
+    },
+    {
+      "id": "flow:assess-financial-crisis",
+      "type": "flow",
+      "name": "Assess Financial Crisis",
+      "summary": "Compute Marx's fictitious capital stocks (government debt, equity market cap, derivatives notional), derive financialization index = claims / real output, and emit FinancialCrisisDialectic when threshold breached.",
+      "tags": [
+        "financial-crisis",
+        "fictitious-capital",
+        "financialization"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "FinancialCrisisAssessment.assess(state)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:compute-biocapacity-delta",
+      "type": "flow",
+      "name": "Compute Biocapacity Delta",
+      "summary": "For each territory, compute Biocapacity Delta dB = R - (E * eta) where R = regeneration, E = extraction, eta = entropy. Write delta to the per-hex biocapacity stock.",
+      "tags": [
+        "biocapacity",
+        "metabolic-rift",
+        "ecology"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "MetabolismSystem._compute_biocapacity_delta",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:detect-ecological-overshoot",
+      "type": "flow",
+      "name": "Detect Ecological Overshoot",
+      "summary": "Compute aggregate Overshoot Ratio O = Consumption / Biocapacity; when O > 1 and crosses threshold, publish METABOLIC_RIFT event and contribute to ecological-collapse endgame condition.",
+      "tags": [
+        "overshoot",
+        "metabolic-rift",
+        "ecology",
+        "endgame"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "MetabolismSystem._detect_overshoot",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:run-bifurcation-analysis",
+      "type": "flow",
+      "name": "Run Bifurcation Analysis",
+      "summary": "Combine per-axis tendency, bridge detection, ceiling effects, legitimation amplifier, and Betti/resilience metrics into a BifurcationResult; classify trajectory as fascist convergence vs revolutionary rupture via weakest-link model.",
+      "tags": [
+        "bifurcation",
+        "topology-analysis",
+        "weakest-link"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "bifurcation_tendency(graph, communities)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:detect-percolation-phase-transition",
+      "type": "flow",
+      "name": "Detect Percolation Phase Transition",
+      "summary": "Extract solidarity subgraph, compute giant-component metrics; when the giant component crosses critical percolation threshold, a qualitative phase change has occurred.",
+      "tags": [
+        "percolation",
+        "topology",
+        "phase-transition",
+        "giant-component"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "TopologyMonitor.observe_tick(state)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:detect-endgame-outcome",
+      "type": "flow",
+      "name": "Detect Endgame Outcome",
+      "summary": "Three terminal-outcome detectors: revolutionary victory (solidarity percolation + class consciousness threshold), ecological collapse (overshoot + biocapacity), fascist consolidation (national identity + repression).",
+      "tags": [
+        "endgame",
+        "outcome",
+        "terminal-condition"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "EndgameDetector.observe_tick(state)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:execute-ooda-cycle",
+      "type": "flow",
+      "name": "Execute OODA Cycle",
+      "summary": "Walk the OODA loop for organizations: scan organization nodes (Layer 0), build observed subgraph via attention threads (Observe), compute initiative scores, apply action budget, resolve actions, propagate effects (Layer 3).",
+      "tags": [
+        "ooda",
+        "decision-cycle",
+        "organization",
+        "agency"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "OODASystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:decide-state-action",
+      "type": "flow",
+      "name": "Decide State Action",
+      "summary": "RuleBasedStateAI scores candidate actions against three faction objectives (finance capital, security state, settler populist) weighted by FactionBalance and modulated by territory heat; selects the highest-scoring action.",
+      "tags": [
+        "state-ai",
+        "decision",
+        "faction-balance",
+        "scoring"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "RuleBasedStateAI.decide(world_view, npc_state)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:resolve-repression-verb",
+      "type": "flow",
+      "name": "Resolve Repression Verb",
+      "summary": "Resolve Repress-verb State AI sub-actions (infiltrate / raid / prosecute / liquidate), each gated by escalation-ladder constraints and territorial conditions; create observable-action records with heat-modulated visibility.",
+      "tags": [
+        "state-ai",
+        "repression",
+        "escalation-ladder",
+        "observability"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "resolve_repress_action(action, world)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:shift-faction-balance",
+      "type": "flow",
+      "name": "Shift Faction Balance",
+      "summary": "Apply FactionBalance shift dynamics from player-action / repression-failure / material-condition deltas; renormalize and check for fascist override behavior at convergence threshold.",
+      "tags": [
+        "state-ai",
+        "faction-dynamics",
+        "balance-shift",
+        "renormalization"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "FactionDynamics.shift(balance, action_results)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:update-contradiction-tension",
+      "type": "flow",
+      "name": "Update Contradiction Tension",
+      "summary": "Per-edge, compute calculate_contradiction_intensity from ideological divergence and dual centrality; sigmoid-clamped to [0, 1] and emitted as CONTRADICTION_INTENSIFIED events.",
+      "tags": [
+        "contradiction",
+        "tension",
+        "intensity"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "ContradictionSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:identify-principal-contradiction",
+      "type": "flow",
+      "name": "Identify Principal Contradiction",
+      "summary": "Compute per-node temporal and spatial derivatives over registered fields; identify the principal contradiction by maximum gradient magnitude for downstream predicate evaluation.",
+      "tags": [
+        "principal-contradiction",
+        "field-derivative",
+        "ranking"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "FieldDerivativeSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:transition-edge-modes",
+      "type": "flow",
+      "name": "Transition Edge Modes",
+      "summary": "Apply declarative state machine moving relationship edges between EdgeMode states (e.g. exploitation -> co-optive -> rupture) using compound predicate conditions over field values and derivatives.",
+      "tags": [
+        "edge-transition",
+        "state-machine",
+        "predicate-engine"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "EdgeTransitionSystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:advance-cohort-lifecycle",
+      "type": "flow",
+      "name": "Advance Cohort Lifecycle",
+      "summary": "Cohort-based DPD (dual-process dispossession) lifecycle calculator tracking promotion, demotion, and reproduction flows across class cohorts each tick.",
+      "tags": [
+        "cohort",
+        "lifecycle",
+        "dpd"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "CohortDynamicsCalculator.advance(state)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:compute-legitimation-index",
+      "type": "flow",
+      "name": "Compute Legitimation Index",
+      "summary": "Compute the [0, 1] state-legitimacy score per territory; classify legitimation crisis levels and feed the bifurcation legitimation amplifier.",
+      "tags": [
+        "legitimation",
+        "index",
+        "calculator",
+        "gramsci"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "LegitimationStateCalculator.compute(territory_state)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:apply-class-mobility",
+      "type": "flow",
+      "name": "Apply Class Mobility",
+      "summary": "Compute inter-class promotion/demotion probabilities per cohort using ClassMobilityParams; apply transitions to update population counts in each class.",
+      "tags": [
+        "class-mobility",
+        "promotion",
+        "demotion",
+        "cohort"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "ClassMobilityCalculator.compute_transitions(cohort)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:apply-mortality",
+      "type": "flow",
+      "name": "Apply Mortality",
+      "summary": "Compute per-class mortality rate scaled by inequality and the wealth-to-subsistence shortfall, clamped to [0, 1]; emit DEATHS events to metrics and persistence observers.",
+      "tags": [
+        "vitality",
+        "mortality",
+        "subsistence-shortfall"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "VitalitySystem.step(graph, services, context)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:generate-tick-narrative",
+      "type": "flow",
+      "name": "Generate Tick Narrative",
+      "summary": "NarrativeDirector subscribes to tick events, translates each event to a RAG query, renders the Persephone persona prompt, invokes the LLM, and judges the narrative output for ominousness/certainty/drama.",
+      "tags": [
+        "narrative",
+        "llm",
+        "persephone",
+        "director"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "NarrativeDirector.observe_tick(state)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:retrieve-marxist-corpus-rag",
+      "type": "flow",
+      "name": "Retrieve Marxist Corpus (RAG)",
+      "summary": "End-to-end retrieval pipeline: embed query via Ollama, search ChromaDB vectors, assemble bounded context window honoring token budgets and reserve allocations, return QueryResponse to the narrative director.",
+      "tags": [
+        "rag",
+        "chromadb",
+        "retrieval",
+        "context-window"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "RagPipeline.query(text, top_k)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:detect-shock-doctrine-pattern",
+      "type": "flow",
+      "name": "Detect Shock Doctrine Pattern",
+      "summary": "CausalChainObserver maintains a sliding-window TickSnapshot history and detects shock-doctrine patterns (wage crash followed by repression spike), emitting structured causal frames for narrative generation.",
+      "tags": [
+        "causal",
+        "shock-doctrine",
+        "pattern-detection",
+        "narrative"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "CausalChainObserver.observe_tick(state)",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "flow:build-r8-substrate",
+      "type": "flow",
+      "name": "Build R8 Substrate",
+      "summary": "End-to-end pipeline that builds the r8 substrate (mesh + classification + aggregation + edges) from Natural Earth and FCC sources for the simulation's geospatial backbone.",
+      "tags": [
+        "r8-mesh",
+        "h3",
+        "substrate",
+        "pipeline"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "build_r8_substrate(config)",
+        "entryType": "manual"
+      }
+    },
+    {
+      "id": "flow:snap-natural-earth-features",
+      "type": "flow",
+      "name": "Snap Natural Earth Features",
+      "summary": "Snap Natural Earth shapefiles (lakes, roads, railroads, airports, ports) onto the R8 H3 hex mesh using shapely intersection and haversine vertex matching, creating InfrastructureLinkState and JunctionState entities.",
+      "tags": [
+        "natural-earth",
+        "snapping",
+        "shapefile",
+        "spatial"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "snap_features(mesh, ne_features)",
+        "entryType": "manual"
+      }
+    },
+    {
+      "id": "flow:generate-nonlocal-edges",
+      "type": "flow",
+      "name": "Generate Nonlocal Edges",
+      "summary": "Generate nonlocal infrastructure edges (airport routes, shipping lanes) connecting distant H3 cells with capacity weights, enabling cross-territory throughput in the topology graph.",
+      "tags": [
+        "nonlocal-edges",
+        "routing",
+        "capacity",
+        "spatial"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "generate_nonlocal_edges(mesh, inventory)",
+        "entryType": "manual"
+      }
+    },
+    {
+      "id": "step:run-canonical-tick:bootstrap-services",
+      "type": "step",
+      "name": "Bootstrap ServiceContainer",
+      "summary": "Construct ServiceContainer with GameDefines, SimulationConfig, EventBus, FormulaRegistry, and DatabaseConnection.",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/services.py"
+    },
+    {
+      "id": "step:run-canonical-tick:to-graph-bridge",
+      "type": "step",
+      "name": "WorldState.to_graph()",
+      "summary": "Serialize WorldState (Pydantic) into NetworkX DiGraph that Systems mutate in place.",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/models/world_state.py"
+    },
+    {
+      "id": "step:run-canonical-tick:invoke-imperial-rent",
+      "type": "step",
+      "name": "Invoke ImperialRentSystem",
+      "summary": "Run the first system in the pipeline: six-phase economic tick computing Phi flows.",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/economic.py"
+    },
+    {
+      "id": "step:run-canonical-tick:invoke-solidarity",
+      "type": "step",
+      "name": "Invoke SolidaritySystem",
+      "summary": "Propagate consciousness across SOLIDARITY edges following ImperialRent's wage updates.",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/solidarity.py"
+    },
+    {
+      "id": "step:run-canonical-tick:invoke-consciousness",
+      "type": "step",
+      "name": "Invoke ConsciousnessSystem",
+      "summary": "Apply bifurcation logic routing agitation deltas into ternary ideology buckets.",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/ideology.py"
+    },
+    {
+      "id": "step:run-canonical-tick:invoke-survival",
+      "type": "step",
+      "name": "Invoke SurvivalSystem",
+      "summary": "Compute P(S|A) and P(S|R) per node, the central rupture-condition formula.",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/survival.py"
+    },
+    {
+      "id": "step:run-canonical-tick:invoke-struggle-contradiction-territory-metabolism",
+      "type": "step",
+      "name": "Invoke remaining canonical systems",
+      "summary": "Run StruggleSystem, ContradictionSystem, TerritorySystem, MetabolismSystem, and remaining 15 systems in canonical order.",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/simulation_engine.py"
+    },
+    {
+      "id": "step:run-canonical-tick:from-graph-bridge",
+      "type": "step",
+      "name": "WorldState.from_graph()",
+      "summary": "Deserialize the mutated NetworkX DiGraph back into a frozen WorldState Pydantic instance.",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/models/world_state.py"
+    },
+    {
+      "id": "step:run-canonical-tick:emit-tick-events",
+      "type": "step",
+      "name": "Emit per-tick events",
+      "summary": "Collect this tick's events into the new WorldState (per-tick, NOT cumulative).",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/simulation_engine.py"
+    },
+    {
+      "id": "step:run-canonical-tick:notify-observers",
+      "type": "step",
+      "name": "Notify SimulationObservers",
+      "summary": "Fan out to attached SimulationObserver instances (SessionRecorder, EndgameDetector, Metrics, Persistence, etc.).",
+      "tags": [
+        "step",
+        "tick",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/observer.py"
+    },
+    {
+      "id": "step:dispatch-events-via-bus:assemble-event",
+      "type": "step",
+      "name": "Assemble event payload",
+      "summary": "Construct typed Event with EventType, payload, and tick metadata.",
+      "tags": [
+        "step",
+        "event-bus",
+        "pub-sub"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/event_bus.py"
+    },
+    {
+      "id": "step:dispatch-events-via-bus:run-interceptor-chain",
+      "type": "step",
+      "name": "Run interceptor chain",
+      "summary": "Pass event through the ordered interceptor chain that may transform or veto.",
+      "tags": [
+        "step",
+        "event-bus",
+        "pub-sub"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/event_bus.py"
+    },
+    {
+      "id": "step:dispatch-events-via-bus:fanout-to-subscribers",
+      "type": "step",
+      "name": "Fan out to subscribers",
+      "summary": "Deliver final event to all registered subscribers for that EventType.",
+      "tags": [
+        "step",
+        "event-bus",
+        "pub-sub"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/event_bus.py"
+    },
+    {
+      "id": "step:hydrate-from-reference-data:open-sqlite-reference-db",
+      "type": "step",
+      "name": "Open SQLite reference DB",
+      "summary": "Open marxist-data-3NF.sqlite via SQLAlchemy 2.0 declarative session.",
+      "tags": [
+        "step",
+        "hydration",
+        "initialization"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/hydration/reference.py"
+    },
+    {
+      "id": "step:hydrate-from-reference-data:load-counties-and-hex-claims",
+      "type": "step",
+      "name": "Load counties + hex claims",
+      "summary": "Read county FIPS codes and their H3 hex-cell claims into Territory entities.",
+      "tags": [
+        "step",
+        "hydration",
+        "initialization"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/hydration/reference.py"
+    },
+    {
+      "id": "step:hydrate-from-reference-data:load-class-shares",
+      "type": "step",
+      "name": "Load class shares",
+      "summary": "Load FRED DFA-derived class shares for proletariat, petit-bourgeoisie, bourgeoisie, labor aristocracy.",
+      "tags": [
+        "step",
+        "hydration",
+        "initialization"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/hydration/reference.py"
+    },
+    {
+      "id": "step:hydrate-from-reference-data:load-territories-and-industries",
+      "type": "step",
+      "name": "Load territories + industry hyperedges",
+      "summary": "Load Territory entities and the XGI hypergraph of industry memberships.",
+      "tags": [
+        "step",
+        "hydration",
+        "initialization"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/hydration/reference.py"
+    },
+    {
+      "id": "step:hydrate-from-reference-data:emit-initial-worldstate",
+      "type": "step",
+      "name": "Emit initial WorldState",
+      "summary": "Construct the frozen Pydantic WorldState that the engine consumes for tick 0.",
+      "tags": [
+        "step",
+        "hydration",
+        "initialization"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/hydration/reference.py"
+    },
+    {
+      "id": "step:extract-imperial-rent:read-wages-and-value-produced",
+      "type": "step",
+      "name": "Read wages and value produced",
+      "summary": "Per node, read W_c (core wages) and V_c (value produced) from the graph.",
+      "tags": [
+        "step",
+        "fundamental-theorem",
+        "imperial-rent"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/economic.py"
+    },
+    {
+      "id": "step:extract-imperial-rent:compute-labor-aristocracy-ratio",
+      "type": "step",
+      "name": "Compute labor aristocracy ratio",
+      "summary": "Compute LAR = W_c / V_c; classify as labor aristocracy when LAR > 1.",
+      "tags": [
+        "step",
+        "fundamental-theorem",
+        "imperial-rent"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/fundamental_theorem.py"
+    },
+    {
+      "id": "step:extract-imperial-rent:run-six-phase-economic-tick",
+      "type": "step",
+      "name": "Run six-phase economic tick",
+      "summary": "Execute subsistence -> extraction -> tribute -> wages -> subsidy -> decision in order.",
+      "tags": [
+        "step",
+        "fundamental-theorem",
+        "imperial-rent"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/economic.py"
+    },
+    {
+      "id": "step:extract-imperial-rent:apply-extraction-to-periphery",
+      "type": "step",
+      "name": "Apply extraction to periphery",
+      "summary": "Debit periphery wealth equal to imperial rent (Phi) extracted by core in this tick.",
+      "tags": [
+        "step",
+        "fundamental-theorem",
+        "imperial-rent"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/economic.py"
+    },
+    {
+      "id": "step:extract-imperial-rent:credit-tribute-to-core",
+      "type": "step",
+      "name": "Credit tribute to core",
+      "summary": "Credit core entities with the Phi tribute flowing in from periphery.",
+      "tags": [
+        "step",
+        "fundamental-theorem",
+        "imperial-rent"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/economic.py"
+    },
+    {
+      "id": "step:extract-imperial-rent:emit-rent-flow-on-graph",
+      "type": "step",
+      "name": "Emit rent flow on graph",
+      "summary": "Update WAGES and TRIBUTE edges with the per-tick Phi flow magnitudes.",
+      "tags": [
+        "step",
+        "fundamental-theorem",
+        "imperial-rent"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/economic.py"
+    },
+    {
+      "id": "step:compute-melt-tau:fetch-bea-gdp",
+      "type": "step",
+      "name": "Fetch BEA GDP series",
+      "summary": "Pull annual GDP from the BEA data source via the protocol-driven adapter.",
+      "tags": [
+        "step",
+        "melt",
+        "tau"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/melt/melt_calculator.py"
+    },
+    {
+      "id": "step:compute-melt-tau:fetch-qcew-labor-hours",
+      "type": "step",
+      "name": "Fetch QCEW labor hours",
+      "summary": "Pull total annual labor hours from the QCEW data source.",
+      "tags": [
+        "step",
+        "melt",
+        "tau"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/melt/melt_calculator.py"
+    },
+    {
+      "id": "step:compute-melt-tau:divide-tau",
+      "type": "step",
+      "name": "Divide tau = GDP / labor hours",
+      "summary": "Compute tau (MELT) and emit; downstream calculators convert dollars <-> labor time using this scalar.",
+      "tags": [
+        "step",
+        "melt",
+        "tau"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/melt/melt_calculator.py"
+    },
+    {
+      "id": "step:transfer-value-unequal-exchange:compute-exchange-ratio",
+      "type": "step",
+      "name": "Compute exchange ratio",
+      "summary": "Compute exchange ratio between core and periphery labor per Emmanuel/Amin.",
+      "tags": [
+        "step",
+        "unequal-exchange",
+        "value-transfer"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/unequal_exchange.py"
+    },
+    {
+      "id": "step:transfer-value-unequal-exchange:apply-prebisch-singer-decline",
+      "type": "step",
+      "name": "Apply Prebisch-Singer decline",
+      "summary": "Apply terms-of-trade decline factor to periphery commodity exports.",
+      "tags": [
+        "step",
+        "unequal-exchange",
+        "value-transfer"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/unequal_exchange.py"
+    },
+    {
+      "id": "step:transfer-value-unequal-exchange:write-value-transfer-flow",
+      "type": "step",
+      "name": "Write value transfer flow",
+      "summary": "Update graph edges with the per-tick value transfer magnitude from periphery to core.",
+      "tags": [
+        "step",
+        "unequal-exchange",
+        "value-transfer"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/unequal_exchange.py"
+    },
+    {
+      "id": "step:decompose-labor-aristocracy:detect-imperial-rent-collapse",
+      "type": "step",
+      "name": "Detect imperial rent collapse",
+      "summary": "Check if Phi has fallen below the configured collapse threshold this tick.",
+      "tags": [
+        "step",
+        "decomposition",
+        "labor-aristocracy"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/decomposition.py"
+    },
+    {
+      "id": "step:decompose-labor-aristocracy:reduce-aristocracy-population",
+      "type": "step",
+      "name": "Reduce aristocracy population",
+      "summary": "Convert a fraction of labor-aristocracy population back to periphery-worker status.",
+      "tags": [
+        "step",
+        "decomposition",
+        "labor-aristocracy"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/decomposition.py"
+    },
+    {
+      "id": "step:decompose-labor-aristocracy:reweight-enforcer-pool",
+      "type": "step",
+      "name": "Reweight enforcer pool",
+      "summary": "Update enforcer/comprador population counts to reflect the shifted class structure.",
+      "tags": [
+        "step",
+        "decomposition",
+        "labor-aristocracy"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/decomposition.py"
+    },
+    {
+      "id": "step:compute-survival-probabilities:read-wealth-and-subsistence",
+      "type": "step",
+      "name": "Read wealth and subsistence",
+      "summary": "Per node, read wealth and the subsistence floor from SurvivalProfile.",
+      "tags": [
+        "step",
+        "probability",
+        "survival-calculus"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/survival.py"
+    },
+    {
+      "id": "step:compute-survival-probabilities:apply-sigmoid-acquiescence",
+      "type": "step",
+      "name": "Apply Sigmoid for P(S|A)",
+      "summary": "Compute P(S|A) = Sigmoid(Wealth - Subsistence).",
+      "tags": [
+        "step",
+        "probability",
+        "survival-calculus"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/survival_calculus.py"
+    },
+    {
+      "id": "step:compute-survival-probabilities:read-organization-and-repression",
+      "type": "step",
+      "name": "Read organization and repression",
+      "summary": "Per node, read Organization strength and Repression intensity from neighborhood aggregation.",
+      "tags": [
+        "step",
+        "probability",
+        "survival-calculus"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/survival.py"
+    },
+    {
+      "id": "step:compute-survival-probabilities:divide-revolution-probability",
+      "type": "step",
+      "name": "Divide for P(S|R)",
+      "summary": "Compute P(S|R) = Organization / Repression scaled by aggregated solidarity multipliers.",
+      "tags": [
+        "step",
+        "probability",
+        "survival-calculus"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/survival_calculus.py"
+    },
+    {
+      "id": "step:compute-survival-probabilities:apply-loss-aversion",
+      "type": "step",
+      "name": "Apply loss aversion",
+      "summary": "Apply Kahneman-Tversky lambda = 2.25 loss aversion to risk-tolerance for both probabilities.",
+      "tags": [
+        "step",
+        "probability",
+        "survival-calculus"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/survival_calculus.py"
+    },
+    {
+      "id": "step:detect-rupture-crossover:compare-psr-vs-psa",
+      "type": "step",
+      "name": "Compare P(S|R) vs P(S|A)",
+      "summary": "Per node, check whether P(S|R) > P(S|A).",
+      "tags": [
+        "step",
+        "rupture",
+        "crossover-threshold"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/survival.py"
+    },
+    {
+      "id": "step:detect-rupture-crossover:check-crossover-threshold",
+      "type": "step",
+      "name": "Check crossover threshold",
+      "summary": "Apply the crossover threshold and persistence requirement before flagging.",
+      "tags": [
+        "step",
+        "rupture",
+        "crossover-threshold"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/survival_calculus.py"
+    },
+    {
+      "id": "step:detect-rupture-crossover:flag-rupture-condition",
+      "type": "step",
+      "name": "Flag rupture condition",
+      "summary": "Mark the node with rupture flag in the graph; downstream Struggle System reads.",
+      "tags": [
+        "step",
+        "rupture",
+        "crossover-threshold"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/survival.py"
+    },
+    {
+      "id": "step:propagate-solidarity-transmission:enumerate-solidarity-edges",
+      "type": "step",
+      "name": "Enumerate SOLIDARITY edges",
+      "summary": "List all SOLIDARITY edges in the graph as the transmission backbone.",
+      "tags": [
+        "step",
+        "solidarity",
+        "transmission"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/solidarity.py"
+    },
+    {
+      "id": "step:propagate-solidarity-transmission:compute-consciousness-gradient",
+      "type": "step",
+      "name": "Compute consciousness gradient",
+      "summary": "For each edge, compute the consciousness delta between source and target ideology profiles.",
+      "tags": [
+        "step",
+        "solidarity",
+        "transmission"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/solidarity.py"
+    },
+    {
+      "id": "step:propagate-solidarity-transmission:apply-activation-threshold",
+      "type": "step",
+      "name": "Apply activation threshold",
+      "summary": "Filter edges where edge solidarity strength exceeds the activation threshold.",
+      "tags": [
+        "step",
+        "solidarity",
+        "transmission"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/solidarity.py"
+    },
+    {
+      "id": "step:propagate-solidarity-transmission:update-ideology-profiles",
+      "type": "step",
+      "name": "Update ideology profiles",
+      "summary": "Write new ideology profile values back to graph nodes.",
+      "tags": [
+        "step",
+        "solidarity",
+        "transmission"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/solidarity.py"
+    },
+    {
+      "id": "step:propagate-solidarity-transmission:emit-consciousness-drift-event",
+      "type": "step",
+      "name": "Emit CONSCIOUSNESS_DRIFT event",
+      "summary": "Publish CONSCIOUSNESS_DRIFT event with magnitude and node ID for observers.",
+      "tags": [
+        "step",
+        "solidarity",
+        "transmission"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/solidarity.py"
+    },
+    {
+      "id": "step:bifurcate-consciousness-routing:read-wage-deltas",
+      "type": "step",
+      "name": "Read wage deltas",
+      "summary": "Per node, read wage and wealth deltas from prior ImperialRent step.",
+      "tags": [
+        "step",
+        "consciousness",
+        "bifurcation"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/ideology.py"
+    },
+    {
+      "id": "step:bifurcate-consciousness-routing:compute-agitation-energy",
+      "type": "step",
+      "name": "Compute agitation energy",
+      "summary": "Convert wage deltas into agitation energy magnitude.",
+      "tags": [
+        "step",
+        "consciousness",
+        "bifurcation"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/consciousness_routing.py"
+    },
+    {
+      "id": "step:bifurcate-consciousness-routing:check-solidarity-edge-presence",
+      "type": "step",
+      "name": "Check SOLIDARITY edge presence",
+      "summary": "Determine bifurcation direction by whether the node has incoming SOLIDARITY edges.",
+      "tags": [
+        "step",
+        "consciousness",
+        "bifurcation"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/ideology.py"
+    },
+    {
+      "id": "step:bifurcate-consciousness-routing:route-into-ternary-simplex",
+      "type": "step",
+      "name": "Route into ternary simplex",
+      "summary": "Distribute agitation energy across (revolutionary, liberal, fascist) buckets summing to 1.0.",
+      "tags": [
+        "step",
+        "consciousness",
+        "bifurcation"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/consciousness_routing.py"
+    },
+    {
+      "id": "step:bifurcate-consciousness-routing:attenuate-via-reification-buffer",
+      "type": "step",
+      "name": "Attenuate via reification buffer",
+      "summary": "Apply reification-buffer attenuation to dampen direct exploitation visibility.",
+      "tags": [
+        "step",
+        "consciousness",
+        "bifurcation"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/consciousness_routing.py"
+    },
+    {
+      "id": "step:amplify-via-community-hyperedges:build-xgi-hypergraph",
+      "type": "step",
+      "name": "Build XGI hypergraph",
+      "summary": "Construct the hypergraph of community memberships from graph data.",
+      "tags": [
+        "step",
+        "community",
+        "hypergraph"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/community.py"
+    },
+    {
+      "id": "step:amplify-via-community-hyperedges:aggregate-ternary-consciousness",
+      "type": "step",
+      "name": "Aggregate ternary consciousness",
+      "summary": "Aggregate ternary consciousness across community members using community-type weights.",
+      "tags": [
+        "step",
+        "community",
+        "hypergraph"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/community.py"
+    },
+    {
+      "id": "step:amplify-via-community-hyperedges:apply-solidarity-amplification",
+      "type": "step",
+      "name": "Apply solidarity amplification",
+      "summary": "Boost SOLIDARITY edge strengths between members sharing a community.",
+      "tags": [
+        "step",
+        "community",
+        "hypergraph"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/community.py"
+    },
+    {
+      "id": "step:resolve-uprising-event:roll-excessive-force",
+      "type": "step",
+      "name": "Roll EXCESSIVE_FORCE",
+      "summary": "Per heat-eligible territory, roll EXCESSIVE_FORCE event with seeded RNG.",
+      "tags": [
+        "step",
+        "uprising",
+        "george-floyd-dynamic"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:resolve-uprising-event:trigger-uprising",
+      "type": "step",
+      "name": "Trigger uprising",
+      "summary": "On EXCESSIVE_FORCE success, mark territory and adjacent solidarity neighbors with uprising flag.",
+      "tags": [
+        "step",
+        "uprising",
+        "george-floyd-dynamic"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:resolve-uprising-event:emit-uprising-event",
+      "type": "step",
+      "name": "Emit UPRISING event",
+      "summary": "Publish UPRISING event with territory ID, magnitude, and seed for downstream cascade.",
+      "tags": [
+        "step",
+        "uprising",
+        "george-floyd-dynamic"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:cascade-revolutionary-offensive:traverse-solidarity-subgraph",
+      "type": "step",
+      "name": "Traverse solidarity subgraph",
+      "summary": "BFS traversal from each uprising node along SOLIDARITY edges within reach.",
+      "tags": [
+        "step",
+        "cascade",
+        "revolutionary-offensive"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:cascade-revolutionary-offensive:apply-revolutionary-offensive",
+      "type": "step",
+      "name": "Apply revolutionary offensive",
+      "summary": "Boost organization and revolutionary consciousness for nodes touched by cascade.",
+      "tags": [
+        "step",
+        "cascade",
+        "revolutionary-offensive"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:cascade-revolutionary-offensive:apply-fascist-revanchism",
+      "type": "step",
+      "name": "Apply fascist revanchism",
+      "summary": "Apply opposite-direction backlash where state repression heat dominates.",
+      "tags": [
+        "step",
+        "cascade",
+        "revolutionary-offensive"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:detect-power-vacuum:read-territory-legitimation",
+      "type": "step",
+      "name": "Read territory legitimation",
+      "summary": "Read legitimation index for each territory from prior LifecycleSystem step.",
+      "tags": [
+        "step",
+        "legitimation",
+        "power-vacuum"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:detect-power-vacuum:check-vacuum-threshold",
+      "type": "step",
+      "name": "Check vacuum threshold",
+      "summary": "Determine territories where legitimation falls below configured threshold.",
+      "tags": [
+        "step",
+        "legitimation",
+        "power-vacuum"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:detect-power-vacuum:emit-vacuum-event",
+      "type": "step",
+      "name": "Emit POWER_VACUUM event",
+      "summary": "Publish POWER_VACUUM event for state-apparatus AI and narrative subsystems.",
+      "tags": [
+        "step",
+        "legitimation",
+        "power-vacuum"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/struggle.py"
+    },
+    {
+      "id": "step:apply-territory-heat-dynamics:read-operational-profile",
+      "type": "step",
+      "name": "Read OperationalProfile",
+      "summary": "Per territory, read OperationalProfile (HIGH_PROFILE, LOW_PROFILE, etc.).",
+      "tags": [
+        "step",
+        "operational-profile",
+        "heat-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/territory.py"
+    },
+    {
+      "id": "step:apply-territory-heat-dynamics:accumulate-or-decay-heat",
+      "type": "step",
+      "name": "Accumulate or decay heat",
+      "summary": "Apply per-tick heat accumulation or decay based on profile.",
+      "tags": [
+        "step",
+        "operational-profile",
+        "heat-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/territory.py"
+    },
+    {
+      "id": "step:apply-territory-heat-dynamics:propagate-spillover",
+      "type": "step",
+      "name": "Propagate heat spillover",
+      "summary": "Diffuse a fraction of heat to ADJACENCY-edge neighbors.",
+      "tags": [
+        "step",
+        "operational-profile",
+        "heat-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/territory.py"
+    },
+    {
+      "id": "step:apply-territory-heat-dynamics:apply-necropolitical-mortality",
+      "type": "step",
+      "name": "Apply necropolitical mortality",
+      "summary": "When subsistence shortfall persists, apply additional mortality via VitalitySystem hand-off.",
+      "tags": [
+        "step",
+        "operational-profile",
+        "heat-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/territory.py"
+    },
+    {
+      "id": "step:apply-territory-heat-dynamics:suppress-organizations",
+      "type": "step",
+      "name": "Suppress organizations",
+      "summary": "Apply suppression to organizations operating in high-heat territories.",
+      "tags": [
+        "step",
+        "operational-profile",
+        "heat-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/territory.py"
+    },
+    {
+      "id": "step:run-eviction-pipeline:check-heat-threshold",
+      "type": "step",
+      "name": "Check heat >= 0.8 threshold",
+      "summary": "Filter territories whose heat has crossed the eviction threshold.",
+      "tags": [
+        "step",
+        "sink-node",
+        "eviction"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/territory.py"
+    },
+    {
+      "id": "step:run-eviction-pipeline:route-to-sink-node",
+      "type": "step",
+      "name": "Route to sink node",
+      "summary": "Route displaced agents to designated sink-node territories.",
+      "tags": [
+        "step",
+        "sink-node",
+        "eviction"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/territory.py"
+    },
+    {
+      "id": "step:run-eviction-pipeline:emit-eviction-event",
+      "type": "step",
+      "name": "Emit EVICTION event",
+      "summary": "Publish EVICTION event with source/sink IDs and population magnitude.",
+      "tags": [
+        "step",
+        "sink-node",
+        "eviction"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/territory.py"
+    },
+    {
+      "id": "step:emit-dispossession-events:compute-dispossession-intensity",
+      "type": "step",
+      "name": "Compute dispossession intensity",
+      "summary": "Compute per-territory dispossession intensity via DispossessionIntensityCalculator.",
+      "tags": [
+        "step",
+        "intensity",
+        "dispossession"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/dispossession_events.py"
+    },
+    {
+      "id": "step:emit-dispossession-events:compute-value-transfer",
+      "type": "step",
+      "name": "Compute value transfer",
+      "summary": "Compute the value-transfer magnitude flowing from dispossessed to absentee landlords.",
+      "tags": [
+        "step",
+        "intensity",
+        "dispossession"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/dispossession/intensity.py"
+    },
+    {
+      "id": "step:emit-dispossession-events:publish-dispossession-event",
+      "type": "step",
+      "name": "Publish DISPOSSESSION event",
+      "summary": "Publish DISPOSSESSION event for downstream LifecycleSystem and observers.",
+      "tags": [
+        "step",
+        "intensity",
+        "dispossession"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/dispossession_events.py"
+    },
+    {
+      "id": "step:track-control-ratio:count-state-enforcers",
+      "type": "step",
+      "name": "Count state enforcers",
+      "summary": "Sum enforcer population across state-aligned organizations.",
+      "tags": [
+        "step",
+        "control-ratio",
+        "state-apparatus"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/control_ratio.py"
+    },
+    {
+      "id": "step:track-control-ratio:count-controlled-population",
+      "type": "step",
+      "name": "Count controlled population",
+      "summary": "Sum prisoners and organized labor as the controlled denominator.",
+      "tags": [
+        "step",
+        "control-ratio",
+        "state-apparatus"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/control_ratio.py"
+    },
+    {
+      "id": "step:track-control-ratio:emit-crisis-event-if-unbalanced",
+      "type": "step",
+      "name": "Emit CRISIS event if unbalanced",
+      "summary": "If the ratio crosses configured threshold, emit CRISIS or TERMINAL_DECISION event.",
+      "tags": [
+        "step",
+        "control-ratio",
+        "state-apparatus"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/control_ratio.py"
+    },
+    {
+      "id": "step:advance-volume-i-dialectics:advance-commodity-dialectic",
+      "type": "step",
+      "name": "Advance commodity dialectic",
+      "summary": "Step the use-value vs exchange-value contradiction; enforce the law of value.",
+      "tags": [
+        "step",
+        "capital-volume-i",
+        "dialectic"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/commodity.py"
+    },
+    {
+      "id": "step:advance-volume-i-dialectics:advance-labor-process",
+      "type": "step",
+      "name": "Advance labor process dialectic",
+      "summary": "Step concrete labor vs abstract labor (socially necessary labor time).",
+      "tags": [
+        "step",
+        "capital-volume-i",
+        "dialectic"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/labor_process.py"
+    },
+    {
+      "id": "step:advance-volume-i-dialectics:advance-production",
+      "type": "step",
+      "name": "Advance production dialectic",
+      "summary": "Step production process over DepartmentRow tensors with c-v-s invariants.",
+      "tags": [
+        "step",
+        "capital-volume-i",
+        "dialectic"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/production.py"
+    },
+    {
+      "id": "step:advance-volume-i-dialectics:advance-wage-form",
+      "type": "step",
+      "name": "Advance wage form dialectic",
+      "summary": "Step value of labor power vs price of labor power (nominal/real/relative wage).",
+      "tags": [
+        "step",
+        "capital-volume-i",
+        "dialectic"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/wage.py"
+    },
+    {
+      "id": "step:advance-volume-i-dialectics:advance-accumulation",
+      "type": "step",
+      "name": "Advance accumulation dialectic",
+      "summary": "Step centralization of capital vs reserve army expansion.",
+      "tags": [
+        "step",
+        "capital-volume-i",
+        "dialectic"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/accumulation.py"
+    },
+    {
+      "id": "step:advance-volume-ii-circulation:advance-mcm-circuit",
+      "type": "step",
+      "name": "Advance M-C-M' circuit",
+      "summary": "Step the circulation circuit advancing turnover state.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-ii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/circulation.py"
+    },
+    {
+      "id": "step:advance-volume-ii-circulation:advance-turnover",
+      "type": "step",
+      "name": "Advance turnover dialectic",
+      "summary": "Compute annual surplus value from circulation turnover speed.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-ii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/turnover.py"
+    },
+    {
+      "id": "step:advance-volume-ii-circulation:advance-reproduction-schema",
+      "type": "step",
+      "name": "Advance reproduction schema",
+      "summary": "Step Department-I/Department-II simple-reproduction balance.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-ii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/reproduction.py"
+    },
+    {
+      "id": "step:advance-volume-ii-circulation:check-realization-failure",
+      "type": "step",
+      "name": "Check realization failure",
+      "summary": "Sublate to RealizationCrisisDialectic when realization fails.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-ii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/circulation.py"
+    },
+    {
+      "id": "step:advance-volume-ii-circulation:check-disproportionality",
+      "type": "step",
+      "name": "Check disproportionality",
+      "summary": "Sublate to DisproportionalityCrisisDialectic when D-I/D-II balance fails.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-ii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/reproduction.py"
+    },
+    {
+      "id": "step:advance-volume-iii-credit-rent:advance-credit-dialectic",
+      "type": "step",
+      "name": "Advance credit dialectic",
+      "summary": "Step real capital vs fictitious capital, computing financialization index.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-iii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/credit.py"
+    },
+    {
+      "id": "step:advance-volume-iii-credit-rent:advance-rent-dialectic",
+      "type": "step",
+      "name": "Advance rent dialectic",
+      "summary": "Step ground/resource/urban rent as deduction from surplus.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-iii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/rent.py"
+    },
+    {
+      "id": "step:advance-volume-iii-credit-rent:apply-transformation-problem",
+      "type": "step",
+      "name": "Apply transformation problem",
+      "summary": "Convert sectoral surplus values into prices of production via average profit rate.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-iii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/transformation.py"
+    },
+    {
+      "id": "step:advance-volume-iii-credit-rent:distribute-surplus-value",
+      "type": "step",
+      "name": "Distribute surplus value",
+      "summary": "Split aggregate surplus into interest, ground rent, taxes, profit-of-enterprise.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-iii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/surplus_distribution.py"
+    },
+    {
+      "id": "step:advance-volume-iii-credit-rent:advance-imperial-dialectic",
+      "type": "step",
+      "name": "Advance imperial dialectic",
+      "summary": "Step the core/periphery imperial contradiction with LAR computation.",
+      "tags": [
+        "step",
+        "dialectic",
+        "capital-volume-iii"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/imperial.py"
+    },
+    {
+      "id": "step:apply-sublation-rules:evaluate-threshold-predicate",
+      "type": "step",
+      "name": "Evaluate threshold predicate",
+      "summary": "Per Dialectic, evaluate its declarative SublationRule's threshold predicate.",
+      "tags": [
+        "step",
+        "sublation",
+        "rule"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/sublation.py"
+    },
+    {
+      "id": "step:apply-sublation-rules:invoke-successor-factory",
+      "type": "step",
+      "name": "Invoke successor factory",
+      "summary": "On predicate fire, call the rule's successor-Dialectic factory callback.",
+      "tags": [
+        "step",
+        "sublation",
+        "rule"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/sublation.py"
+    },
+    {
+      "id": "step:apply-sublation-rules:replace-dialectic-in-world",
+      "type": "step",
+      "name": "Replace Dialectic in World",
+      "summary": "Swap the original Dialectic for the successor in the World container.",
+      "tags": [
+        "step",
+        "sublation",
+        "rule"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/dialectics/world.py"
+    },
+    {
+      "id": "step:compute-rate-of-profit-trajectory:compute-rate-of-profit",
+      "type": "step",
+      "name": "Compute rate of profit r = s/(c+v)",
+      "summary": "Compute rate of profit using standard Marxian formula.",
+      "tags": [
+        "step",
+        "trpf",
+        "rate-of-profit"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/trpf.py"
+    },
+    {
+      "id": "step:compute-rate-of-profit-trajectory:compute-organic-composition",
+      "type": "step",
+      "name": "Compute organic composition c/v",
+      "summary": "Compute organic composition of capital.",
+      "tags": [
+        "step",
+        "trpf",
+        "rate-of-profit"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/trpf.py"
+    },
+    {
+      "id": "step:compute-rate-of-profit-trajectory:apply-counter-tendencies",
+      "type": "step",
+      "name": "Apply counter-tendencies",
+      "summary": "Apply CounterTendencyCalculator to offset TRPF.",
+      "tags": [
+        "step",
+        "trpf",
+        "rate-of-profit"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/counter_tendencies/calculator.py"
+    },
+    {
+      "id": "step:detect-credit-cycle-phase:fetch-fred-interest-rates",
+      "type": "step",
+      "name": "Fetch FRED interest rates",
+      "summary": "Pull federal funds rate and credit aggregates from FRED API.",
+      "tags": [
+        "step",
+        "credit-cycle",
+        "fred"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/credit/data_sources.py"
+    },
+    {
+      "id": "step:detect-credit-cycle-phase:classify-cycle-phase",
+      "type": "step",
+      "name": "Classify cycle phase",
+      "summary": "Classify expansion / overextension / crisis / recovery from interest-rate state.",
+      "tags": [
+        "step",
+        "credit-cycle",
+        "fred"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/credit/credit_cycle.py"
+    },
+    {
+      "id": "step:detect-credit-cycle-phase:emit-phase-transition",
+      "type": "step",
+      "name": "Emit phase transition",
+      "summary": "Publish CREDIT_CYCLE_PHASE_TRANSITION event when phase changes.",
+      "tags": [
+        "step",
+        "credit-cycle",
+        "fred"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/credit/credit_cycle.py"
+    },
+    {
+      "id": "step:assess-financial-crisis:compute-fictitious-capital-stocks",
+      "type": "step",
+      "name": "Compute fictitious capital stocks",
+      "summary": "Compute government debt, equity market cap, and derivatives notional.",
+      "tags": [
+        "step",
+        "financial-crisis",
+        "fictitious-capital"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/credit/fictitious_capital.py"
+    },
+    {
+      "id": "step:assess-financial-crisis:compute-financialization-index",
+      "type": "step",
+      "name": "Compute financialization index",
+      "summary": "Compute claims/real-output ratio.",
+      "tags": [
+        "step",
+        "financial-crisis",
+        "fictitious-capital"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/credit/fictitious_capital.py"
+    },
+    {
+      "id": "step:assess-financial-crisis:emit-financial-crisis-dialectic",
+      "type": "step",
+      "name": "Emit FinancialCrisisDialectic",
+      "summary": "Sublate the credit dialectic to FinancialCrisisDialectic when threshold breached.",
+      "tags": [
+        "step",
+        "financial-crisis",
+        "fictitious-capital"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/financial_crisis/assessment.py"
+    },
+    {
+      "id": "step:compute-biocapacity-delta:read-territory-regeneration",
+      "type": "step",
+      "name": "Read territory regeneration",
+      "summary": "Read R (regeneration rate) per territory from BiocapacityStock.",
+      "tags": [
+        "step",
+        "metabolic-rift",
+        "biocapacity"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/metabolism.py"
+    },
+    {
+      "id": "step:compute-biocapacity-delta:read-extraction-with-entropy",
+      "type": "step",
+      "name": "Read extraction with entropy",
+      "summary": "Read E (extraction) and apply eta entropy multiplier from prior tick.",
+      "tags": [
+        "step",
+        "metabolic-rift",
+        "biocapacity"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/metabolic_rift.py"
+    },
+    {
+      "id": "step:compute-biocapacity-delta:write-delta-to-stock",
+      "type": "step",
+      "name": "Write delta to stock",
+      "summary": "Update per-hex BiocapacityStock with the dB = R - (E * eta) delta.",
+      "tags": [
+        "step",
+        "metabolic-rift",
+        "biocapacity"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/terrain.py"
+    },
+    {
+      "id": "step:detect-ecological-overshoot:compute-overshoot-ratio",
+      "type": "step",
+      "name": "Compute overshoot ratio O = C/B",
+      "summary": "Compute aggregate Consumption / Biocapacity ratio.",
+      "tags": [
+        "step",
+        "metabolic-rift",
+        "overshoot"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/metabolic_rift.py"
+    },
+    {
+      "id": "step:detect-ecological-overshoot:check-overshoot-threshold",
+      "type": "step",
+      "name": "Check overshoot threshold",
+      "summary": "Check whether O > 1 and crosses configured threshold.",
+      "tags": [
+        "step",
+        "metabolic-rift",
+        "overshoot"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/metabolism.py"
+    },
+    {
+      "id": "step:detect-ecological-overshoot:emit-metabolic-rift-event",
+      "type": "step",
+      "name": "Emit METABOLIC_RIFT event",
+      "summary": "Publish METABOLIC_RIFT event with magnitude and contributor breakdown.",
+      "tags": [
+        "step",
+        "metabolic-rift",
+        "overshoot"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/metabolism.py"
+    },
+    {
+      "id": "step:run-bifurcation-analysis:compute-axis-tendencies",
+      "type": "step",
+      "name": "Compute axis tendencies",
+      "summary": "Per contradiction axis (colonial, patriarchal, etc.), classify solidarity and antagonism.",
+      "tags": [
+        "step",
+        "bifurcation",
+        "topology-analysis"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/bifurcation/axis.py"
+    },
+    {
+      "id": "step:run-bifurcation-analysis:detect-cross-line-bridges",
+      "type": "step",
+      "name": "Detect cross-line bridges",
+      "summary": "Detect INSTITUTIONAL_EXCLUSION hyperedge communities spanning contradiction axes.",
+      "tags": [
+        "step",
+        "bifurcation",
+        "topology-analysis"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/bifurcation/bridges.py"
+    },
+    {
+      "id": "step:run-bifurcation-analysis:apply-legitimation-amplifier",
+      "type": "step",
+      "name": "Apply legitimation amplifier",
+      "summary": "Compute 1.0 + (1.0 - mean_legitimation) * (scale - 1.0) over territory legitimation.",
+      "tags": [
+        "step",
+        "bifurcation",
+        "topology-analysis"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/bifurcation/legitimation.py"
+    },
+    {
+      "id": "step:run-bifurcation-analysis:compute-betti-resilience",
+      "type": "step",
+      "name": "Compute Betti resilience",
+      "summary": "Compute Betti numbers, articulation points, minimum edge cuts on solidarity subgraph.",
+      "tags": [
+        "step",
+        "bifurcation",
+        "topology-analysis"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/bifurcation/resilience.py"
+    },
+    {
+      "id": "step:run-bifurcation-analysis:apply-weakest-link-classifier",
+      "type": "step",
+      "name": "Apply weakest-link classifier",
+      "summary": "Apply weakest-link model across axes to classify trajectory.",
+      "tags": [
+        "step",
+        "bifurcation",
+        "topology-analysis"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/bifurcation/analysis.py"
+    },
+    {
+      "id": "step:run-bifurcation-analysis:emit-bifurcation-tendency-event",
+      "type": "step",
+      "name": "Emit BifurcationTendencyEvent",
+      "summary": "Publish BifurcationTendencyEvent (FASCIST_CONVERGENCE or REVOLUTIONARY_RUPTURE).",
+      "tags": [
+        "step",
+        "bifurcation",
+        "topology-analysis"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/bifurcation_monitor.py"
+    },
+    {
+      "id": "step:detect-percolation-phase-transition:extract-solidarity-subgraph",
+      "type": "step",
+      "name": "Extract solidarity subgraph",
+      "summary": "Extract subgraph containing only SOLIDARITY edges.",
+      "tags": [
+        "step",
+        "topology",
+        "percolation"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/topology_monitor.py"
+    },
+    {
+      "id": "step:detect-percolation-phase-transition:compute-giant-component",
+      "type": "step",
+      "name": "Compute giant component",
+      "summary": "Compute giant connected component size and clustering metrics.",
+      "tags": [
+        "step",
+        "topology",
+        "percolation"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/topology_monitor.py"
+    },
+    {
+      "id": "step:detect-percolation-phase-transition:check-percolation-threshold",
+      "type": "step",
+      "name": "Check percolation threshold",
+      "summary": "Determine whether the giant component crosses critical percolation threshold.",
+      "tags": [
+        "step",
+        "topology",
+        "percolation"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/topology_monitor.py"
+    },
+    {
+      "id": "step:detect-endgame-outcome:check-revolutionary-victory",
+      "type": "step",
+      "name": "Check revolutionary victory",
+      "summary": "Detect solidarity percolation + class consciousness threshold for revolutionary victory.",
+      "tags": [
+        "step",
+        "outcome",
+        "endgame"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/observers/endgame_detector.py"
+    },
+    {
+      "id": "step:detect-endgame-outcome:check-ecological-collapse",
+      "type": "step",
+      "name": "Check ecological collapse",
+      "summary": "Detect overshoot + biocapacity-floor breach for ecological-collapse outcome.",
+      "tags": [
+        "step",
+        "outcome",
+        "endgame"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/observers/endgame_detector.py"
+    },
+    {
+      "id": "step:detect-endgame-outcome:check-fascist-consolidation",
+      "type": "step",
+      "name": "Check fascist consolidation",
+      "summary": "Detect national-identity + repression-saturation for fascist-consolidation outcome.",
+      "tags": [
+        "step",
+        "outcome",
+        "endgame"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/observers/endgame_detector.py"
+    },
+    {
+      "id": "step:execute-ooda-cycle:layer0-scan-organizations",
+      "type": "step",
+      "name": "Layer 0: scan organizations",
+      "summary": "Pre-scan world graph for organization nodes; seed tick-local action results.",
+      "tags": [
+        "step",
+        "decision-cycle",
+        "ooda"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/layer0.py"
+    },
+    {
+      "id": "step:execute-ooda-cycle:observe-via-attention-threads",
+      "type": "step",
+      "name": "Observe via attention threads",
+      "summary": "Build G_observed subgraph via attention thread coverage with method-based distortions.",
+      "tags": [
+        "step",
+        "decision-cycle",
+        "ooda"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/attention/observation.py"
+    },
+    {
+      "id": "step:execute-ooda-cycle:compute-initiative-scores",
+      "type": "step",
+      "name": "Compute initiative scores",
+      "summary": "Compute initiative scores combining cycle-time, institutional bonuses, momentum.",
+      "tags": [
+        "step",
+        "decision-cycle",
+        "ooda"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/initiative.py"
+    },
+    {
+      "id": "step:execute-ooda-cycle:apply-action-budget",
+      "type": "step",
+      "name": "Apply action budget",
+      "summary": "Enforce per-tick action-point budgets, coordination range, autonomy modifiers.",
+      "tags": [
+        "step",
+        "decision-cycle",
+        "ooda"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/constraints.py"
+    },
+    {
+      "id": "step:execute-ooda-cycle:resolve-actions",
+      "type": "step",
+      "name": "Resolve actions",
+      "summary": "Resolve action ordering and dispatch to per-action handlers (aid, mobilize, negotiate, etc.).",
+      "tags": [
+        "step",
+        "decision-cycle",
+        "ooda"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/ooda.py"
+    },
+    {
+      "id": "step:execute-ooda-cycle:layer3-propagate-effects",
+      "type": "step",
+      "name": "Layer 3: propagate effects",
+      "summary": "Propagate action results back to world graph as heat changes, edge transitions, infrastructure damage.",
+      "tags": [
+        "step",
+        "decision-cycle",
+        "ooda"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/layer3.py"
+    },
+    {
+      "id": "step:decide-state-action:read-faction-balance",
+      "type": "step",
+      "name": "Read FactionBalance",
+      "summary": "Read current FactionBalance (finance / security / settler-populist weights).",
+      "tags": [
+        "step",
+        "state-ai",
+        "decision"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/decision.py"
+    },
+    {
+      "id": "step:decide-state-action:enumerate-candidate-actions",
+      "type": "step",
+      "name": "Enumerate candidate actions",
+      "summary": "List all eligible verb-actions for the state apparatus this tick.",
+      "tags": [
+        "step",
+        "state-ai",
+        "decision"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/decision.py"
+    },
+    {
+      "id": "step:decide-state-action:score-vs-faction-objectives",
+      "type": "step",
+      "name": "Score vs faction objectives",
+      "summary": "Score each candidate action against the three faction objectives weighted by FactionBalance.",
+      "tags": [
+        "step",
+        "state-ai",
+        "decision"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/decision.py"
+    },
+    {
+      "id": "step:decide-state-action:apply-heat-modulation",
+      "type": "step",
+      "name": "Apply heat modulation",
+      "summary": "Modulate scores by territory heat to prefer proportionate responses.",
+      "tags": [
+        "step",
+        "state-ai",
+        "decision"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/escalation.py"
+    },
+    {
+      "id": "step:decide-state-action:select-highest-scoring",
+      "type": "step",
+      "name": "Select highest-scoring action",
+      "summary": "Select the action with the maximum modulated score for execution.",
+      "tags": [
+        "step",
+        "state-ai",
+        "decision"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/decision.py"
+    },
+    {
+      "id": "step:resolve-repression-verb:check-escalation-ladder",
+      "type": "step",
+      "name": "Check escalation ladder",
+      "summary": "Verify the chosen sub-verb does not exceed current escalation rank.",
+      "tags": [
+        "step",
+        "state-ai",
+        "repression"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/escalation.py"
+    },
+    {
+      "id": "step:resolve-repression-verb:run-infiltrate-resolver",
+      "type": "step",
+      "name": "Run infiltrate resolver",
+      "summary": "Execute infiltrate sub-verb effects.",
+      "tags": [
+        "step",
+        "state-ai",
+        "repression"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/repress_effects.py"
+    },
+    {
+      "id": "step:resolve-repression-verb:run-raid-resolver",
+      "type": "step",
+      "name": "Run raid resolver",
+      "summary": "Execute raid sub-verb effects with key-figure capture.",
+      "tags": [
+        "step",
+        "state-ai",
+        "repression"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/repress_effects.py"
+    },
+    {
+      "id": "step:resolve-repression-verb:run-prosecute-or-liquidate",
+      "type": "step",
+      "name": "Run prosecute or liquidate",
+      "summary": "Execute prosecute or liquidate sub-verb effects.",
+      "tags": [
+        "step",
+        "state-ai",
+        "repression"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/repress_effects.py"
+    },
+    {
+      "id": "step:resolve-repression-verb:create-observable-record",
+      "type": "step",
+      "name": "Create observable record",
+      "summary": "Create observable-action record with heat-modulated visibility for player counter-intel.",
+      "tags": [
+        "step",
+        "state-ai",
+        "repression"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/observability.py"
+    },
+    {
+      "id": "step:shift-faction-balance:apply-player-action-shift",
+      "type": "step",
+      "name": "Apply player-action shift",
+      "summary": "Apply FactionBalance shift triggered by player actions.",
+      "tags": [
+        "step",
+        "state-ai",
+        "faction-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/faction_dynamics.py"
+    },
+    {
+      "id": "step:shift-faction-balance:apply-repression-failure-shift",
+      "type": "step",
+      "name": "Apply repression-failure shift",
+      "summary": "Apply shift triggered by failed repression actions.",
+      "tags": [
+        "step",
+        "state-ai",
+        "faction-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/faction_dynamics.py"
+    },
+    {
+      "id": "step:shift-faction-balance:apply-material-condition-shift",
+      "type": "step",
+      "name": "Apply material-condition shift",
+      "summary": "Apply shift triggered by changes in material conditions (Phi, profit rate, etc.).",
+      "tags": [
+        "step",
+        "state-ai",
+        "faction-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/faction_dynamics.py"
+    },
+    {
+      "id": "step:shift-faction-balance:renormalize",
+      "type": "step",
+      "name": "Renormalize FactionBalance",
+      "summary": "Renormalize so faction weights sum to 1.0.",
+      "tags": [
+        "step",
+        "state-ai",
+        "faction-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/faction_dynamics.py"
+    },
+    {
+      "id": "step:shift-faction-balance:check-fascist-override",
+      "type": "step",
+      "name": "Check fascist override",
+      "summary": "Check if settler-populist faction crossed override threshold; if so, lock in fascist convergence.",
+      "tags": [
+        "step",
+        "state-ai",
+        "faction-dynamics"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ooda/state_ai/faction_dynamics.py"
+    },
+    {
+      "id": "step:update-contradiction-tension:read-edge-state",
+      "type": "step",
+      "name": "Read edge state",
+      "summary": "Read each contradiction edge's current state (intensity, divergence).",
+      "tags": [
+        "step",
+        "tension",
+        "contradiction"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/contradiction.py"
+    },
+    {
+      "id": "step:update-contradiction-tension:compute-intensity",
+      "type": "step",
+      "name": "Compute intensity",
+      "summary": "Compute new intensity = sigmoid(divergence * dual_centrality), clamped [0, 1].",
+      "tags": [
+        "step",
+        "tension",
+        "contradiction"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/contradiction.py"
+    },
+    {
+      "id": "step:update-contradiction-tension:emit-contradiction-event",
+      "type": "step",
+      "name": "Emit CONTRADICTION_INTENSIFIED event",
+      "summary": "Publish CONTRADICTION_INTENSIFIED, RUPTURE, or qualitative-leap event.",
+      "tags": [
+        "step",
+        "tension",
+        "contradiction"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/contradiction.py"
+    },
+    {
+      "id": "step:identify-principal-contradiction:compute-field-derivatives",
+      "type": "step",
+      "name": "Compute field derivatives",
+      "summary": "Compute per-node temporal and spatial derivatives over registered fields.",
+      "tags": [
+        "step",
+        "principal-contradiction",
+        "field-derivative"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/field_derivative.py"
+    },
+    {
+      "id": "step:identify-principal-contradiction:rank-by-gradient-magnitude",
+      "type": "step",
+      "name": "Rank by gradient magnitude",
+      "summary": "Rank candidate contradictions by gradient magnitude.",
+      "tags": [
+        "step",
+        "principal-contradiction",
+        "field-derivative"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/field_derivative.py"
+    },
+    {
+      "id": "step:identify-principal-contradiction:flag-principal",
+      "type": "step",
+      "name": "Flag principal contradiction",
+      "summary": "Mark the maximum-magnitude contradiction as principal for downstream predicates.",
+      "tags": [
+        "step",
+        "principal-contradiction",
+        "field-derivative"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/field_derivative.py"
+    },
+    {
+      "id": "step:transition-edge-modes:evaluate-compound-predicate",
+      "type": "step",
+      "name": "Evaluate compound predicate",
+      "summary": "Evaluate compound predicate condition over field values and derivatives for each edge.",
+      "tags": [
+        "step",
+        "edge-transition",
+        "state-machine"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/edge_transition.py"
+    },
+    {
+      "id": "step:transition-edge-modes:transition-state",
+      "type": "step",
+      "name": "Transition state",
+      "summary": "Move edge between EdgeMode states (e.g. exploitation -> co-optive -> rupture).",
+      "tags": [
+        "step",
+        "edge-transition",
+        "state-machine"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/edge_transition.py"
+    },
+    {
+      "id": "step:transition-edge-modes:emit-aspect-flip-event",
+      "type": "step",
+      "name": "Emit aspect flip event",
+      "summary": "Publish edge-aspect flip event for observers (notable for narrative AI).",
+      "tags": [
+        "step",
+        "edge-transition",
+        "state-machine"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/edge_transition.py"
+    },
+    {
+      "id": "step:advance-cohort-lifecycle:advance-cohort-promotion",
+      "type": "step",
+      "name": "Advance cohort promotion",
+      "summary": "Apply per-cohort promotion probabilities (D->P or P->upper class).",
+      "tags": [
+        "step",
+        "lifecycle",
+        "cohort"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/lifecycle/cohort_dynamics.py"
+    },
+    {
+      "id": "step:advance-cohort-lifecycle:advance-cohort-demotion",
+      "type": "step",
+      "name": "Advance cohort demotion",
+      "summary": "Apply per-cohort demotion probabilities (D'->D or downward class flow).",
+      "tags": [
+        "step",
+        "lifecycle",
+        "cohort"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/lifecycle/cohort_dynamics.py"
+    },
+    {
+      "id": "step:advance-cohort-lifecycle:apply-reproduction-flows",
+      "type": "step",
+      "name": "Apply reproduction flows",
+      "summary": "Apply intergenerational reproduction flows (D->P->D' arc) to update cohort sizes.",
+      "tags": [
+        "step",
+        "lifecycle",
+        "cohort"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/lifecycle/cohort_dynamics.py"
+    },
+    {
+      "id": "step:compute-legitimation-index:aggregate-territory-state",
+      "type": "step",
+      "name": "Aggregate territory state",
+      "summary": "Aggregate per-territory metrics (services delivered, repression heat, etc.).",
+      "tags": [
+        "step",
+        "legitimation",
+        "index"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/lifecycle/legitimation.py"
+    },
+    {
+      "id": "step:compute-legitimation-index:compute-index",
+      "type": "step",
+      "name": "Compute index in [0, 1]",
+      "summary": "Compute the legitimation index in [0, 1].",
+      "tags": [
+        "step",
+        "legitimation",
+        "index"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/lifecycle.py"
+    },
+    {
+      "id": "step:compute-legitimation-index:classify-legitimation-crisis",
+      "type": "step",
+      "name": "Classify legitimation crisis",
+      "summary": "Classify into stable / strained / crisis / interregnum levels.",
+      "tags": [
+        "step",
+        "legitimation",
+        "index"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/lifecycle/legitimation.py"
+    },
+    {
+      "id": "step:apply-class-mobility:read-mobility-params",
+      "type": "step",
+      "name": "Read mobility params",
+      "summary": "Read ClassMobilityParams (per-class transition probabilities) from defines.",
+      "tags": [
+        "step",
+        "class-mobility",
+        "promotion"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/lifecycle/mobility.py"
+    },
+    {
+      "id": "step:apply-class-mobility:compute-promotion-probabilities",
+      "type": "step",
+      "name": "Compute promotion probabilities",
+      "summary": "Compute per-class promotion/demotion probabilities for the cohort.",
+      "tags": [
+        "step",
+        "class-mobility",
+        "promotion"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/lifecycle/mobility.py"
+    },
+    {
+      "id": "step:apply-class-mobility:apply-class-transitions",
+      "type": "step",
+      "name": "Apply class transitions",
+      "summary": "Apply transitions to update population counts in each class.",
+      "tags": [
+        "step",
+        "class-mobility",
+        "promotion"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/economics/lifecycle/mobility.py"
+    },
+    {
+      "id": "step:apply-mortality:compute-mortality-rate",
+      "type": "step",
+      "name": "Compute mortality rate",
+      "summary": "Compute base mortality rate from subsistence shortfall.",
+      "tags": [
+        "step",
+        "vitality",
+        "mortality"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/vitality.py"
+    },
+    {
+      "id": "step:apply-mortality:scale-by-inequality",
+      "type": "step",
+      "name": "Scale by inequality",
+      "summary": "Scale mortality by Gini coefficient; clamp to [0, 1].",
+      "tags": [
+        "step",
+        "vitality",
+        "mortality"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/formulas/vitality.py"
+    },
+    {
+      "id": "step:apply-mortality:emit-deaths-event",
+      "type": "step",
+      "name": "Emit DEATHS event",
+      "summary": "Publish DEATHS event with cohort breakdown for metrics and persistence.",
+      "tags": [
+        "step",
+        "vitality",
+        "mortality"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/systems/vitality.py"
+    },
+    {
+      "id": "step:generate-tick-narrative:subscribe-to-tick-events",
+      "type": "step",
+      "name": "Subscribe to tick events",
+      "summary": "Register NarrativeDirector as a SimulationObserver to receive tick events.",
+      "tags": [
+        "step",
+        "narrative",
+        "llm"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ai/director.py"
+    },
+    {
+      "id": "step:generate-tick-narrative:translate-event-to-rag-query",
+      "type": "step",
+      "name": "Translate event to RAG query",
+      "summary": "Map each EventType to a corresponding RAG query template.",
+      "tags": [
+        "step",
+        "narrative",
+        "llm"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ai/director.py"
+    },
+    {
+      "id": "step:generate-tick-narrative:render-persona-prompt",
+      "type": "step",
+      "name": "Render Persephone prompt",
+      "summary": "Render the Persephone Persona system prompt for the LLM.",
+      "tags": [
+        "step",
+        "narrative",
+        "llm"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ai/persona.py"
+    },
+    {
+      "id": "step:generate-tick-narrative:invoke-llm",
+      "type": "step",
+      "name": "Invoke LLM",
+      "summary": "Invoke the LLMProvider (DeepSeek or MockLLM) with the assembled prompt.",
+      "tags": [
+        "step",
+        "narrative",
+        "llm"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ai/llm_provider.py"
+    },
+    {
+      "id": "step:generate-tick-narrative:judge-narrative-output",
+      "type": "step",
+      "name": "Judge narrative output",
+      "summary": "NarrativeCommissar scores narrative on ominousness/certainty/drama/metaphor-family.",
+      "tags": [
+        "step",
+        "narrative",
+        "llm"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/ai/judge.py"
+    },
+    {
+      "id": "step:retrieve-marxist-corpus-rag:embed-query",
+      "type": "step",
+      "name": "Embed query",
+      "summary": "Embed the query text via the embedding provider (Ollama).",
+      "tags": [
+        "step",
+        "rag",
+        "chromadb"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/rag/embeddings.py"
+    },
+    {
+      "id": "step:retrieve-marxist-corpus-rag:search-chromadb-vectors",
+      "type": "step",
+      "name": "Search ChromaDB vectors",
+      "summary": "Vector-similarity search against the ChromaDB collection.",
+      "tags": [
+        "step",
+        "rag",
+        "chromadb"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/rag/retrieval.py"
+    },
+    {
+      "id": "step:retrieve-marxist-corpus-rag:assemble-context-window",
+      "type": "step",
+      "name": "Assemble context window",
+      "summary": "Bound prompt context from retrieved chunks via ContextWindowManager.",
+      "tags": [
+        "step",
+        "rag",
+        "chromadb"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/rag/context_window/manager.py"
+    },
+    {
+      "id": "step:retrieve-marxist-corpus-rag:enforce-token-budget",
+      "type": "step",
+      "name": "Enforce token budget",
+      "summary": "Honor token budgets and reserve allocations.",
+      "tags": [
+        "step",
+        "rag",
+        "chromadb"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/rag/context_window/manager.py"
+    },
+    {
+      "id": "step:retrieve-marxist-corpus-rag:return-query-response",
+      "type": "step",
+      "name": "Return QueryResponse",
+      "summary": "Return QueryResponse to NarrativeDirector.",
+      "tags": [
+        "step",
+        "rag",
+        "chromadb"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/rag/rag_pipeline.py"
+    },
+    {
+      "id": "step:detect-shock-doctrine-pattern:capture-tick-snapshot",
+      "type": "step",
+      "name": "Capture tick snapshot",
+      "summary": "CausalChainObserver captures TickSnapshot into sliding-window history.",
+      "tags": [
+        "step",
+        "shock-doctrine",
+        "causal"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/observers/causal.py"
+    },
+    {
+      "id": "step:detect-shock-doctrine-pattern:scan-for-wage-crash-then-repression",
+      "type": "step",
+      "name": "Scan for wage crash then repression",
+      "summary": "Scan window for wage-crash-followed-by-repression-spike pattern.",
+      "tags": [
+        "step",
+        "shock-doctrine",
+        "causal"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/observers/causal.py"
+    },
+    {
+      "id": "step:detect-shock-doctrine-pattern:emit-causal-frame",
+      "type": "step",
+      "name": "Emit causal frame",
+      "summary": "Emit structured causal frame for downstream narrative generation.",
+      "tags": [
+        "step",
+        "shock-doctrine",
+        "causal"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/engine/observers/causal.py"
+    },
+    {
+      "id": "step:build-r8-substrate:generate-r8-mesh",
+      "type": "step",
+      "name": "Generate R8 mesh",
+      "summary": "Generate the R8 H3 mesh at resolution 8 covering the simulation extent.",
+      "tags": [
+        "step",
+        "r8-mesh",
+        "h3"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/r8_mesh.py"
+    },
+    {
+      "id": "step:build-r8-substrate:classify-terrain",
+      "type": "step",
+      "name": "Classify terrain",
+      "summary": "Classify terrain types (water, resource zones) per R8 hex via Natural Earth polygon intersection.",
+      "tags": [
+        "step",
+        "r8-mesh",
+        "h3"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/terrain.py"
+    },
+    {
+      "id": "step:build-r8-substrate:aggregate-utility-coverage",
+      "type": "step",
+      "name": "Aggregate utility coverage",
+      "summary": "Aggregate FCC broadband and other utility coverage per R8 hex.",
+      "tags": [
+        "step",
+        "r8-mesh",
+        "h3"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/r8_aggregation.py"
+    },
+    {
+      "id": "step:build-r8-substrate:assign-biocapacity-stock",
+      "type": "step",
+      "name": "Assign biocapacity stock",
+      "summary": "Assign initial biocapacity stock per R8 hex based on terrain and resource layers.",
+      "tags": [
+        "step",
+        "r8-mesh",
+        "h3"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/terrain.py"
+    },
+    {
+      "id": "step:build-r8-substrate:emit-r8-substrate-state",
+      "type": "step",
+      "name": "Emit R8 substrate state",
+      "summary": "Emit the validated R8 substrate state for use by territory-aware systems.",
+      "tags": [
+        "step",
+        "r8-mesh",
+        "h3"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/r8_pipeline.py"
+    },
+    {
+      "id": "step:snap-natural-earth-features:load-shapefiles",
+      "type": "step",
+      "name": "Load Natural Earth shapefiles",
+      "summary": "Load lakes, roads, railroads, airports, ports shapefiles via NaturalEarthReader.",
+      "tags": [
+        "step",
+        "snapping",
+        "natural-earth"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/natural_earth_reader.py"
+    },
+    {
+      "id": "step:snap-natural-earth-features:intersect-with-hexes",
+      "type": "step",
+      "name": "Intersect with hexes",
+      "summary": "Intersect linear features with R8 hex polygons via shapely.",
+      "tags": [
+        "step",
+        "snapping",
+        "natural-earth"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/snapping.py"
+    },
+    {
+      "id": "step:snap-natural-earth-features:create-link-and-junction-states",
+      "type": "step",
+      "name": "Create Link/Junction states",
+      "summary": "Create InfrastructureLinkState and JunctionState entities at intersections and vertices.",
+      "tags": [
+        "step",
+        "snapping",
+        "natural-earth"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/snapping.py"
+    },
+    {
+      "id": "step:generate-nonlocal-edges:scan-airport-port-pairs",
+      "type": "step",
+      "name": "Scan airport/port pairs",
+      "summary": "Enumerate candidate airport-airport and port-port pairs across the mesh.",
+      "tags": [
+        "step",
+        "routing",
+        "nonlocal-edges"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/nonlocal_edges.py"
+    },
+    {
+      "id": "step:generate-nonlocal-edges:compute-capacity-weights",
+      "type": "step",
+      "name": "Compute capacity weights",
+      "summary": "Compute capacity weights per nonlocal edge using DefaultEdgeCapacity.",
+      "tags": [
+        "step",
+        "routing",
+        "nonlocal-edges"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/capacity.py"
+    },
+    {
+      "id": "step:generate-nonlocal-edges:add-nonlocal-edges-to-graph",
+      "type": "step",
+      "name": "Add nonlocal edges to graph",
+      "summary": "Add the nonlocal edges to the topology graph for cross-territory throughput.",
+      "tags": [
+        "step",
+        "routing",
+        "nonlocal-edges"
+      ],
+      "complexity": "moderate",
+      "filePath": "src/babylon/infrastructure/nonlocal_edges.py"
+    }
+  ],
+  "edges": [
+    {
+      "source": "domain:simulation-tick-pipeline",
+      "target": "flow:run-canonical-tick",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:simulation-tick-pipeline",
+      "target": "flow:dispatch-events-via-bus",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:simulation-tick-pipeline",
+      "target": "flow:hydrate-from-reference-data",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:imperial-rent-extraction",
+      "target": "flow:extract-imperial-rent",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:imperial-rent-extraction",
+      "target": "flow:compute-melt-tau",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:imperial-rent-extraction",
+      "target": "flow:transfer-value-unequal-exchange",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:imperial-rent-extraction",
+      "target": "flow:decompose-labor-aristocracy",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:survival-calculus",
+      "target": "flow:compute-survival-probabilities",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:survival-calculus",
+      "target": "flow:detect-rupture-crossover",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:consciousness-and-solidarity",
+      "target": "flow:propagate-solidarity-transmission",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:consciousness-and-solidarity",
+      "target": "flow:bifurcate-consciousness-routing",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:consciousness-and-solidarity",
+      "target": "flow:amplify-via-community-hyperedges",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:class-struggle-agency",
+      "target": "flow:resolve-uprising-event",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:class-struggle-agency",
+      "target": "flow:cascade-revolutionary-offensive",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:class-struggle-agency",
+      "target": "flow:detect-power-vacuum",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:carceral-geography",
+      "target": "flow:apply-territory-heat-dynamics",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:carceral-geography",
+      "target": "flow:run-eviction-pipeline",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:carceral-geography",
+      "target": "flow:emit-dispossession-events",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:carceral-geography",
+      "target": "flow:track-control-ratio",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:capital-circulation",
+      "target": "flow:advance-volume-i-dialectics",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:capital-circulation",
+      "target": "flow:advance-volume-ii-circulation",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:capital-circulation",
+      "target": "flow:advance-volume-iii-credit-rent",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:capital-circulation",
+      "target": "flow:apply-sublation-rules",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:trpf-and-crisis",
+      "target": "flow:compute-rate-of-profit-trajectory",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:trpf-and-crisis",
+      "target": "flow:detect-credit-cycle-phase",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:trpf-and-crisis",
+      "target": "flow:assess-financial-crisis",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:metabolic-rift",
+      "target": "flow:compute-biocapacity-delta",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:metabolic-rift",
+      "target": "flow:detect-ecological-overshoot",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:bifurcation-and-phase-transitions",
+      "target": "flow:run-bifurcation-analysis",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:bifurcation-and-phase-transitions",
+      "target": "flow:detect-percolation-phase-transition",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:bifurcation-and-phase-transitions",
+      "target": "flow:detect-endgame-outcome",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:state-apparatus-ai",
+      "target": "flow:execute-ooda-cycle",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:state-apparatus-ai",
+      "target": "flow:decide-state-action",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:state-apparatus-ai",
+      "target": "flow:resolve-repression-verb",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:state-apparatus-ai",
+      "target": "flow:shift-faction-balance",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:contradiction-field",
+      "target": "flow:update-contradiction-tension",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:contradiction-field",
+      "target": "flow:identify-principal-contradiction",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:contradiction-field",
+      "target": "flow:transition-edge-modes",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:lifecycle-and-reproduction",
+      "target": "flow:advance-cohort-lifecycle",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:lifecycle-and-reproduction",
+      "target": "flow:compute-legitimation-index",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:lifecycle-and-reproduction",
+      "target": "flow:apply-class-mobility",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:lifecycle-and-reproduction",
+      "target": "flow:apply-mortality",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:narrative-ai-archive",
+      "target": "flow:generate-tick-narrative",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:narrative-ai-archive",
+      "target": "flow:retrieve-marxist-corpus-rag",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:narrative-ai-archive",
+      "target": "flow:detect-shock-doctrine-pattern",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:spatial-substrate",
+      "target": "flow:build-r8-substrate",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:spatial-substrate",
+      "target": "flow:snap-natural-earth-features",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:spatial-substrate",
+      "target": "flow:generate-nonlocal-edges",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:bootstrap-services",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.1
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:to-graph-bridge",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:invoke-imperial-rent",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:invoke-solidarity",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:invoke-consciousness",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:invoke-survival",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:invoke-struggle-contradiction-territory-metabolism",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:from-graph-bridge",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:emit-tick-events",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "flow:run-canonical-tick",
+      "target": "step:run-canonical-tick:notify-observers",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:dispatch-events-via-bus",
+      "target": "step:dispatch-events-via-bus:assemble-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:dispatch-events-via-bus",
+      "target": "step:dispatch-events-via-bus:run-interceptor-chain",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:dispatch-events-via-bus",
+      "target": "step:dispatch-events-via-bus:fanout-to-subscribers",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "flow:hydrate-from-reference-data",
+      "target": "step:hydrate-from-reference-data:open-sqlite-reference-db",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:hydrate-from-reference-data",
+      "target": "step:hydrate-from-reference-data:load-counties-and-hex-claims",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:hydrate-from-reference-data",
+      "target": "step:hydrate-from-reference-data:load-class-shares",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:hydrate-from-reference-data",
+      "target": "step:hydrate-from-reference-data:load-territories-and-industries",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:hydrate-from-reference-data",
+      "target": "step:hydrate-from-reference-data:emit-initial-worldstate",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:extract-imperial-rent",
+      "target": "step:extract-imperial-rent:read-wages-and-value-produced",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:extract-imperial-rent",
+      "target": "step:extract-imperial-rent:compute-labor-aristocracy-ratio",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:extract-imperial-rent",
+      "target": "step:extract-imperial-rent:run-six-phase-economic-tick",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:extract-imperial-rent",
+      "target": "step:extract-imperial-rent:apply-extraction-to-periphery",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "flow:extract-imperial-rent",
+      "target": "step:extract-imperial-rent:credit-tribute-to-core",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:extract-imperial-rent",
+      "target": "step:extract-imperial-rent:emit-rent-flow-on-graph",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:compute-melt-tau",
+      "target": "step:compute-melt-tau:fetch-bea-gdp",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:compute-melt-tau",
+      "target": "step:compute-melt-tau:fetch-qcew-labor-hours",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:compute-melt-tau",
+      "target": "step:compute-melt-tau:divide-tau",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:transfer-value-unequal-exchange",
+      "target": "step:transfer-value-unequal-exchange:compute-exchange-ratio",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:transfer-value-unequal-exchange",
+      "target": "step:transfer-value-unequal-exchange:apply-prebisch-singer-decline",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:transfer-value-unequal-exchange",
+      "target": "step:transfer-value-unequal-exchange:write-value-transfer-flow",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:decompose-labor-aristocracy",
+      "target": "step:decompose-labor-aristocracy:detect-imperial-rent-collapse",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:decompose-labor-aristocracy",
+      "target": "step:decompose-labor-aristocracy:reduce-aristocracy-population",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:decompose-labor-aristocracy",
+      "target": "step:decompose-labor-aristocracy:reweight-enforcer-pool",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:compute-survival-probabilities",
+      "target": "step:compute-survival-probabilities:read-wealth-and-subsistence",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:compute-survival-probabilities",
+      "target": "step:compute-survival-probabilities:apply-sigmoid-acquiescence",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:compute-survival-probabilities",
+      "target": "step:compute-survival-probabilities:read-organization-and-repression",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:compute-survival-probabilities",
+      "target": "step:compute-survival-probabilities:divide-revolution-probability",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:compute-survival-probabilities",
+      "target": "step:compute-survival-probabilities:apply-loss-aversion",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:detect-rupture-crossover",
+      "target": "step:detect-rupture-crossover:compare-psr-vs-psa",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:detect-rupture-crossover",
+      "target": "step:detect-rupture-crossover:check-crossover-threshold",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:detect-rupture-crossover",
+      "target": "step:detect-rupture-crossover:flag-rupture-condition",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:propagate-solidarity-transmission",
+      "target": "step:propagate-solidarity-transmission:enumerate-solidarity-edges",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:propagate-solidarity-transmission",
+      "target": "step:propagate-solidarity-transmission:compute-consciousness-gradient",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:propagate-solidarity-transmission",
+      "target": "step:propagate-solidarity-transmission:apply-activation-threshold",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:propagate-solidarity-transmission",
+      "target": "step:propagate-solidarity-transmission:update-ideology-profiles",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:propagate-solidarity-transmission",
+      "target": "step:propagate-solidarity-transmission:emit-consciousness-drift-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:bifurcate-consciousness-routing",
+      "target": "step:bifurcate-consciousness-routing:read-wage-deltas",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:bifurcate-consciousness-routing",
+      "target": "step:bifurcate-consciousness-routing:compute-agitation-energy",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:bifurcate-consciousness-routing",
+      "target": "step:bifurcate-consciousness-routing:check-solidarity-edge-presence",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:bifurcate-consciousness-routing",
+      "target": "step:bifurcate-consciousness-routing:route-into-ternary-simplex",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:bifurcate-consciousness-routing",
+      "target": "step:bifurcate-consciousness-routing:attenuate-via-reification-buffer",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:amplify-via-community-hyperedges",
+      "target": "step:amplify-via-community-hyperedges:build-xgi-hypergraph",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:amplify-via-community-hyperedges",
+      "target": "step:amplify-via-community-hyperedges:aggregate-ternary-consciousness",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:amplify-via-community-hyperedges",
+      "target": "step:amplify-via-community-hyperedges:apply-solidarity-amplification",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:resolve-uprising-event",
+      "target": "step:resolve-uprising-event:roll-excessive-force",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:resolve-uprising-event",
+      "target": "step:resolve-uprising-event:trigger-uprising",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:resolve-uprising-event",
+      "target": "step:resolve-uprising-event:emit-uprising-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:cascade-revolutionary-offensive",
+      "target": "step:cascade-revolutionary-offensive:traverse-solidarity-subgraph",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:cascade-revolutionary-offensive",
+      "target": "step:cascade-revolutionary-offensive:apply-revolutionary-offensive",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:cascade-revolutionary-offensive",
+      "target": "step:cascade-revolutionary-offensive:apply-fascist-revanchism",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:detect-power-vacuum",
+      "target": "step:detect-power-vacuum:read-territory-legitimation",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:detect-power-vacuum",
+      "target": "step:detect-power-vacuum:check-vacuum-threshold",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:detect-power-vacuum",
+      "target": "step:detect-power-vacuum:emit-vacuum-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:apply-territory-heat-dynamics",
+      "target": "step:apply-territory-heat-dynamics:read-operational-profile",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:apply-territory-heat-dynamics",
+      "target": "step:apply-territory-heat-dynamics:accumulate-or-decay-heat",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:apply-territory-heat-dynamics",
+      "target": "step:apply-territory-heat-dynamics:propagate-spillover",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:apply-territory-heat-dynamics",
+      "target": "step:apply-territory-heat-dynamics:apply-necropolitical-mortality",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:apply-territory-heat-dynamics",
+      "target": "step:apply-territory-heat-dynamics:suppress-organizations",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:run-eviction-pipeline",
+      "target": "step:run-eviction-pipeline:check-heat-threshold",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:run-eviction-pipeline",
+      "target": "step:run-eviction-pipeline:route-to-sink-node",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:run-eviction-pipeline",
+      "target": "step:run-eviction-pipeline:emit-eviction-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:emit-dispossession-events",
+      "target": "step:emit-dispossession-events:compute-dispossession-intensity",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:emit-dispossession-events",
+      "target": "step:emit-dispossession-events:compute-value-transfer",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:emit-dispossession-events",
+      "target": "step:emit-dispossession-events:publish-dispossession-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:track-control-ratio",
+      "target": "step:track-control-ratio:count-state-enforcers",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:track-control-ratio",
+      "target": "step:track-control-ratio:count-controlled-population",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:track-control-ratio",
+      "target": "step:track-control-ratio:emit-crisis-event-if-unbalanced",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:advance-volume-i-dialectics",
+      "target": "step:advance-volume-i-dialectics:advance-commodity-dialectic",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:advance-volume-i-dialectics",
+      "target": "step:advance-volume-i-dialectics:advance-labor-process",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:advance-volume-i-dialectics",
+      "target": "step:advance-volume-i-dialectics:advance-production",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:advance-volume-i-dialectics",
+      "target": "step:advance-volume-i-dialectics:advance-wage-form",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:advance-volume-i-dialectics",
+      "target": "step:advance-volume-i-dialectics:advance-accumulation",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:advance-volume-ii-circulation",
+      "target": "step:advance-volume-ii-circulation:advance-mcm-circuit",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:advance-volume-ii-circulation",
+      "target": "step:advance-volume-ii-circulation:advance-turnover",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:advance-volume-ii-circulation",
+      "target": "step:advance-volume-ii-circulation:advance-reproduction-schema",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:advance-volume-ii-circulation",
+      "target": "step:advance-volume-ii-circulation:check-realization-failure",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:advance-volume-ii-circulation",
+      "target": "step:advance-volume-ii-circulation:check-disproportionality",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:advance-volume-iii-credit-rent",
+      "target": "step:advance-volume-iii-credit-rent:advance-credit-dialectic",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:advance-volume-iii-credit-rent",
+      "target": "step:advance-volume-iii-credit-rent:advance-rent-dialectic",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:advance-volume-iii-credit-rent",
+      "target": "step:advance-volume-iii-credit-rent:apply-transformation-problem",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:advance-volume-iii-credit-rent",
+      "target": "step:advance-volume-iii-credit-rent:distribute-surplus-value",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:advance-volume-iii-credit-rent",
+      "target": "step:advance-volume-iii-credit-rent:advance-imperial-dialectic",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:apply-sublation-rules",
+      "target": "step:apply-sublation-rules:evaluate-threshold-predicate",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:apply-sublation-rules",
+      "target": "step:apply-sublation-rules:invoke-successor-factory",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:apply-sublation-rules",
+      "target": "step:apply-sublation-rules:replace-dialectic-in-world",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:compute-rate-of-profit-trajectory",
+      "target": "step:compute-rate-of-profit-trajectory:compute-rate-of-profit",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:compute-rate-of-profit-trajectory",
+      "target": "step:compute-rate-of-profit-trajectory:compute-organic-composition",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:compute-rate-of-profit-trajectory",
+      "target": "step:compute-rate-of-profit-trajectory:apply-counter-tendencies",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:detect-credit-cycle-phase",
+      "target": "step:detect-credit-cycle-phase:fetch-fred-interest-rates",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:detect-credit-cycle-phase",
+      "target": "step:detect-credit-cycle-phase:classify-cycle-phase",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:detect-credit-cycle-phase",
+      "target": "step:detect-credit-cycle-phase:emit-phase-transition",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:assess-financial-crisis",
+      "target": "step:assess-financial-crisis:compute-fictitious-capital-stocks",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:assess-financial-crisis",
+      "target": "step:assess-financial-crisis:compute-financialization-index",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:assess-financial-crisis",
+      "target": "step:assess-financial-crisis:emit-financial-crisis-dialectic",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:compute-biocapacity-delta",
+      "target": "step:compute-biocapacity-delta:read-territory-regeneration",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:compute-biocapacity-delta",
+      "target": "step:compute-biocapacity-delta:read-extraction-with-entropy",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:compute-biocapacity-delta",
+      "target": "step:compute-biocapacity-delta:write-delta-to-stock",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:detect-ecological-overshoot",
+      "target": "step:detect-ecological-overshoot:compute-overshoot-ratio",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:detect-ecological-overshoot",
+      "target": "step:detect-ecological-overshoot:check-overshoot-threshold",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:detect-ecological-overshoot",
+      "target": "step:detect-ecological-overshoot:emit-metabolic-rift-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:run-bifurcation-analysis",
+      "target": "step:run-bifurcation-analysis:compute-axis-tendencies",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:run-bifurcation-analysis",
+      "target": "step:run-bifurcation-analysis:detect-cross-line-bridges",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:run-bifurcation-analysis",
+      "target": "step:run-bifurcation-analysis:apply-legitimation-amplifier",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:run-bifurcation-analysis",
+      "target": "step:run-bifurcation-analysis:compute-betti-resilience",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "flow:run-bifurcation-analysis",
+      "target": "step:run-bifurcation-analysis:apply-weakest-link-classifier",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:run-bifurcation-analysis",
+      "target": "step:run-bifurcation-analysis:emit-bifurcation-tendency-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:detect-percolation-phase-transition",
+      "target": "step:detect-percolation-phase-transition:extract-solidarity-subgraph",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:detect-percolation-phase-transition",
+      "target": "step:detect-percolation-phase-transition:compute-giant-component",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:detect-percolation-phase-transition",
+      "target": "step:detect-percolation-phase-transition:check-percolation-threshold",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:detect-endgame-outcome",
+      "target": "step:detect-endgame-outcome:check-revolutionary-victory",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:detect-endgame-outcome",
+      "target": "step:detect-endgame-outcome:check-ecological-collapse",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:detect-endgame-outcome",
+      "target": "step:detect-endgame-outcome:check-fascist-consolidation",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:execute-ooda-cycle",
+      "target": "step:execute-ooda-cycle:layer0-scan-organizations",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:execute-ooda-cycle",
+      "target": "step:execute-ooda-cycle:observe-via-attention-threads",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:execute-ooda-cycle",
+      "target": "step:execute-ooda-cycle:compute-initiative-scores",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:execute-ooda-cycle",
+      "target": "step:execute-ooda-cycle:apply-action-budget",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "flow:execute-ooda-cycle",
+      "target": "step:execute-ooda-cycle:resolve-actions",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:execute-ooda-cycle",
+      "target": "step:execute-ooda-cycle:layer3-propagate-effects",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:decide-state-action",
+      "target": "step:decide-state-action:read-faction-balance",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:decide-state-action",
+      "target": "step:decide-state-action:enumerate-candidate-actions",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:decide-state-action",
+      "target": "step:decide-state-action:score-vs-faction-objectives",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:decide-state-action",
+      "target": "step:decide-state-action:apply-heat-modulation",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:decide-state-action",
+      "target": "step:decide-state-action:select-highest-scoring",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:resolve-repression-verb",
+      "target": "step:resolve-repression-verb:check-escalation-ladder",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:resolve-repression-verb",
+      "target": "step:resolve-repression-verb:run-infiltrate-resolver",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:resolve-repression-verb",
+      "target": "step:resolve-repression-verb:run-raid-resolver",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:resolve-repression-verb",
+      "target": "step:resolve-repression-verb:run-prosecute-or-liquidate",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:resolve-repression-verb",
+      "target": "step:resolve-repression-verb:create-observable-record",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:shift-faction-balance",
+      "target": "step:shift-faction-balance:apply-player-action-shift",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:shift-faction-balance",
+      "target": "step:shift-faction-balance:apply-repression-failure-shift",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:shift-faction-balance",
+      "target": "step:shift-faction-balance:apply-material-condition-shift",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:shift-faction-balance",
+      "target": "step:shift-faction-balance:renormalize",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:shift-faction-balance",
+      "target": "step:shift-faction-balance:check-fascist-override",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:update-contradiction-tension",
+      "target": "step:update-contradiction-tension:read-edge-state",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:update-contradiction-tension",
+      "target": "step:update-contradiction-tension:compute-intensity",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:update-contradiction-tension",
+      "target": "step:update-contradiction-tension:emit-contradiction-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:identify-principal-contradiction",
+      "target": "step:identify-principal-contradiction:compute-field-derivatives",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:identify-principal-contradiction",
+      "target": "step:identify-principal-contradiction:rank-by-gradient-magnitude",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:identify-principal-contradiction",
+      "target": "step:identify-principal-contradiction:flag-principal",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:transition-edge-modes",
+      "target": "step:transition-edge-modes:evaluate-compound-predicate",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:transition-edge-modes",
+      "target": "step:transition-edge-modes:transition-state",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:transition-edge-modes",
+      "target": "step:transition-edge-modes:emit-aspect-flip-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:advance-cohort-lifecycle",
+      "target": "step:advance-cohort-lifecycle:advance-cohort-promotion",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:advance-cohort-lifecycle",
+      "target": "step:advance-cohort-lifecycle:advance-cohort-demotion",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:advance-cohort-lifecycle",
+      "target": "step:advance-cohort-lifecycle:apply-reproduction-flows",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:compute-legitimation-index",
+      "target": "step:compute-legitimation-index:aggregate-territory-state",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:compute-legitimation-index",
+      "target": "step:compute-legitimation-index:compute-index",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:compute-legitimation-index",
+      "target": "step:compute-legitimation-index:classify-legitimation-crisis",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:apply-class-mobility",
+      "target": "step:apply-class-mobility:read-mobility-params",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:apply-class-mobility",
+      "target": "step:apply-class-mobility:compute-promotion-probabilities",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:apply-class-mobility",
+      "target": "step:apply-class-mobility:apply-class-transitions",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:apply-mortality",
+      "target": "step:apply-mortality:compute-mortality-rate",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:apply-mortality",
+      "target": "step:apply-mortality:scale-by-inequality",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:apply-mortality",
+      "target": "step:apply-mortality:emit-deaths-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:generate-tick-narrative",
+      "target": "step:generate-tick-narrative:subscribe-to-tick-events",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:generate-tick-narrative",
+      "target": "step:generate-tick-narrative:translate-event-to-rag-query",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:generate-tick-narrative",
+      "target": "step:generate-tick-narrative:render-persona-prompt",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:generate-tick-narrative",
+      "target": "step:generate-tick-narrative:invoke-llm",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:generate-tick-narrative",
+      "target": "step:generate-tick-narrative:judge-narrative-output",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:retrieve-marxist-corpus-rag",
+      "target": "step:retrieve-marxist-corpus-rag:embed-query",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:retrieve-marxist-corpus-rag",
+      "target": "step:retrieve-marxist-corpus-rag:search-chromadb-vectors",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:retrieve-marxist-corpus-rag",
+      "target": "step:retrieve-marxist-corpus-rag:assemble-context-window",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:retrieve-marxist-corpus-rag",
+      "target": "step:retrieve-marxist-corpus-rag:enforce-token-budget",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:retrieve-marxist-corpus-rag",
+      "target": "step:retrieve-marxist-corpus-rag:return-query-response",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:detect-shock-doctrine-pattern",
+      "target": "step:detect-shock-doctrine-pattern:capture-tick-snapshot",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:detect-shock-doctrine-pattern",
+      "target": "step:detect-shock-doctrine-pattern:scan-for-wage-crash-then-repression",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:detect-shock-doctrine-pattern",
+      "target": "step:detect-shock-doctrine-pattern:emit-causal-frame",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:build-r8-substrate",
+      "target": "step:build-r8-substrate:generate-r8-mesh",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:build-r8-substrate",
+      "target": "step:build-r8-substrate:classify-terrain",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:build-r8-substrate",
+      "target": "step:build-r8-substrate:aggregate-utility-coverage",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:build-r8-substrate",
+      "target": "step:build-r8-substrate:assign-biocapacity-stock",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:build-r8-substrate",
+      "target": "step:build-r8-substrate:emit-r8-substrate-state",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:snap-natural-earth-features",
+      "target": "step:snap-natural-earth-features:load-shapefiles",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:snap-natural-earth-features",
+      "target": "step:snap-natural-earth-features:intersect-with-hexes",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:snap-natural-earth-features",
+      "target": "step:snap-natural-earth-features:create-link-and-junction-states",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "flow:generate-nonlocal-edges",
+      "target": "step:generate-nonlocal-edges:scan-airport-port-pairs",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:generate-nonlocal-edges",
+      "target": "step:generate-nonlocal-edges:compute-capacity-weights",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:generate-nonlocal-edges",
+      "target": "step:generate-nonlocal-edges:add-nonlocal-edges-to-graph",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "domain:simulation-tick-pipeline",
+      "target": "domain:imperial-rent-extraction",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Tick pipeline invokes ImperialRentSystem first in the canonical 23-system order",
+      "weight": 0.9
+    },
+    {
+      "source": "domain:imperial-rent-extraction",
+      "target": "domain:consciousness-and-solidarity",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Wage and wealth deltas from extraction route into agitation pressure that feeds consciousness drift bifurcation",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:consciousness-and-solidarity",
+      "target": "domain:survival-calculus",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Solidarity multipliers from neighborhood aggregation amplify P(S|R) revolution probability",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:survival-calculus",
+      "target": "domain:class-struggle-agency",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Rupture conditions (P(S|R) > P(S|A)) trigger UPRISING events in the agency layer",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:class-struggle-agency",
+      "target": "domain:carceral-geography",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Uprising and revolutionary-offensive events bump territory heat scores",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:carceral-geography",
+      "target": "domain:state-apparatus-ai",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Heat scores consumed by State AI escalation-ladder scoring to bias repression decisions",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:state-apparatus-ai",
+      "target": "domain:carceral-geography",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "State AI repression actions (raid, prosecute, liquidate) and territory verbs (displace, scorched-earth) feed heat dynamics",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:state-apparatus-ai",
+      "target": "domain:consciousness-and-solidarity",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "State AI co-opt verbs (propagandize, divide) shape consciousness via narrative routing and edge degradation",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:imperial-rent-extraction",
+      "target": "domain:capital-circulation",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Imperial dialectic in Volume III consumes Phi flows; ValueTensor4x3 feeds production dialectic",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:capital-circulation",
+      "target": "domain:trpf-and-crisis",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Crisis dialectics (realization, disproportionality, debt spiral, financial) emit events into TRPF domain",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:trpf-and-crisis",
+      "target": "domain:bifurcation-and-phase-transitions",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Crisis events feed ceiling effects and legitimation amplifier in bifurcation analysis",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:imperial-rent-extraction",
+      "target": "domain:metabolic-rift",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Extraction signals from imperial rent drive per-territory biocapacity depletion",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:metabolic-rift",
+      "target": "domain:bifurcation-and-phase-transitions",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Ecological collapse outcome detected by EndgameDetector observer in bifurcation domain",
+      "weight": 0.5
+    },
+    {
+      "source": "domain:consciousness-and-solidarity",
+      "target": "domain:bifurcation-and-phase-transitions",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Solidarity subgraph topology (giant component, Betti numbers) drives percolation phase-transition detection",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:contradiction-field",
+      "target": "domain:class-struggle-agency",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "RUPTURE events from contradiction field trigger struggle-system follow-on logic",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:contradiction-field",
+      "target": "domain:bifurcation-and-phase-transitions",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Field derivatives identify principal contradiction that feeds bifurcation axis tendency analysis",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:lifecycle-and-reproduction",
+      "target": "domain:bifurcation-and-phase-transitions",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Legitimation index per territory feeds the legitimation amplifier in bifurcation analysis (Gramscian interregnum)",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:carceral-geography",
+      "target": "domain:lifecycle-and-reproduction",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "DISPOSSESSION events from heat-driven evictions trigger cohort downgrade cascades in lifecycle dynamics",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:spatial-substrate",
+      "target": "domain:carceral-geography",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "H3 hex grid provides Territory entities and adjacency for heat spillover propagation",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:spatial-substrate",
+      "target": "domain:metabolic-rift",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Per-hex biocapacity stocks read by metabolic-rift calculator for ecological accounting",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:simulation-tick-pipeline",
+      "target": "domain:narrative-ai-archive",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "EventBus publishes tick events that NarrativeDirector observer consumes (one-way: narrative reads, never writes)",
+      "weight": 0.5
+    },
+    {
+      "source": "domain:simulation-tick-pipeline",
+      "target": "domain:bifurcation-and-phase-transitions",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "BifurcationMonitor and TopologyMonitor are SimulationObservers attached to the tick pipeline",
+      "weight": 0.6
+    }
+  ],
+  "layers": [],
+  "tour": []
+}

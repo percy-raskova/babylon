@@ -7,32 +7,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
 import { LoginPage } from "@/components/LoginPage";
 import { GameList } from "@/components/GameList";
-import { GameShell } from "@/components/layout/GameShell";
-import { useGameStore } from "@/stores/gameStore";
-import { makeSnapshot } from "@/test/fixtures";
 import { server } from "@/test/server";
 import { http, HttpResponse } from "msw";
-
-// Mock useGameState to avoid polling
-vi.mock("@/hooks/useGameState", () => ({
-  useGameState: (_gameId: string) => {
-    const snapshot = useGameStore.getState().snapshot;
-    const loading = useGameStore.getState().loading;
-    const error = useGameStore.getState().error;
-    return {
-      snapshot,
-      available: [],
-      loading,
-      error,
-      submitAction: vi.fn().mockResolvedValue(undefined),
-      resolveTick: vi.fn().mockResolvedValue([]),
-      refresh: vi.fn().mockResolvedValue(undefined),
-    };
-  },
-}));
 
 describe("error handling", () => {
   it("login error shows message on form", async () => {
@@ -50,7 +28,7 @@ describe("error handling", () => {
     render(<LoginPage onLogin={vi.fn()} />);
     await user.type(screen.getByPlaceholderText("Username"), "locked");
     await user.type(screen.getByPlaceholderText("Password"), "pass");
-    await user.click(screen.getByText("Log In"));
+    await user.click(screen.getByText("Enter"));
 
     await waitFor(() => {
       expect(screen.getByText("Account locked")).toBeInTheDocument();
@@ -98,25 +76,5 @@ describe("error handling", () => {
     await waitFor(() => {
       expect(screen.getByText("Max games reached")).toBeInTheDocument();
     });
-  });
-
-  it("game shell shows error banner from store", () => {
-    useGameStore.setState({
-      snapshot: makeSnapshot(),
-      error: "Connection lost",
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/games/game-001"]}>
-        <Routes>
-          <Route
-            path="/games/:id"
-            element={<GameShell username="player" onBack={vi.fn()} onLogout={vi.fn()} />}
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText("Connection lost")).toBeInTheDocument();
   });
 });

@@ -17,6 +17,16 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 
 - [Governance](governance.md) — Git workflow, session continuity, ai-docs maintenance
 
+## Architecture Decision Records
+
+- [ADR Index](adrs/README.md) — refactoring sequence proposed against the knowledge graph
+  - [ADR-001](adrs/ADR-001-mechanical-file-splits.md) — Mechanical splits (defines.py, enums.py, OODA dedup)
+  - [ADR-002](adrs/ADR-002-protocol-kit-and-source-registry.md) — protocol_kit + SourceRegistry
+  - [ADR-003](adrs/ADR-003-system-abc.md) — Lift `System` Protocol to ABC
+  - [ADR-004](adrs/ADR-004-discriminated-event-union.md) — Discriminated `TickEvent` union
+  - [ADR-005](adrs/ADR-005-god-class-decomposition.md) — Decompose `postgres_runtime.py` + `simulation.py`
+  - [ADR-006](adrs/ADR-006-cleanup-batch.md) — Scenario ABC + remaining splits + orphan schemas
+
 ## Specifications
 
 - Plans: `.specify/plans/`

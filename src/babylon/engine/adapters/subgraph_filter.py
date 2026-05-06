@@ -8,7 +8,7 @@ Uses the Builder pattern to chain filter operations.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import networkx as nx
 
@@ -145,7 +145,7 @@ class SubgraphFilterBuilder:
         nodes = self._filter_nodes()
 
         # Build subgraph with filtered nodes
-        subgraph: nx.DiGraph[str] = cast("nx.DiGraph[str]", self._graph.subgraph(nodes).copy())
+        subgraph = self._graph.subgraph(nodes).copy()
 
         # Remove edges that don't match filter
         self._filter_edges(subgraph)

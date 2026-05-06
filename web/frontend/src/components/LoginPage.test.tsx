@@ -14,7 +14,7 @@ describe("LoginPage", () => {
     render(<LoginPage onLogin={vi.fn()} />);
     expect(screen.getByPlaceholderText("Username")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
-    expect(screen.getByText("Log In")).toBeInTheDocument();
+    expect(screen.getByText("Enter")).toBeInTheDocument();
   });
 
   it("renders title", () => {
@@ -30,7 +30,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByPlaceholderText("Username"), "testuser");
     await user.type(screen.getByPlaceholderText("Password"), "secret");
-    await user.click(screen.getByText("Log In"));
+    await user.click(screen.getByText("Enter"));
 
     await waitFor(() => {
       expect(onLogin).toHaveBeenCalledWith({
@@ -56,7 +56,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByPlaceholderText("Username"), "wrong");
     await user.type(screen.getByPlaceholderText("Password"), "wrong");
-    await user.click(screen.getByText("Log In"));
+    await user.click(screen.getByText("Enter"));
 
     await waitFor(() => {
       expect(screen.getByText("Invalid credentials")).toBeInTheDocument();
@@ -80,9 +80,9 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByPlaceholderText("Username"), "test");
     await user.type(screen.getByPlaceholderText("Password"), "pass");
-    await user.click(screen.getByText("Log In"));
+    await user.click(screen.getByText("Enter"));
 
     // Button should show "Logging in..." briefly
-    expect(screen.getByText("Logging in...")).toBeInTheDocument();
+    expect(screen.getByText("Authenticating...")).toBeInTheDocument();
   });
 });

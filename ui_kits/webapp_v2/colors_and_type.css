@@ -1,0 +1,341 @@
+/**
+ * Babylon Design System — colors_and_type.css
+ * Constitution VII — Bunker Constructivism
+ *
+ * Base tokens + semantic aliases for the web UI.
+ * Used by web/frontend/src/index.css (Tailwind @theme layer).
+ */
+
+/* ================================================================
+   BASE COLOR TOKENS — "Light emissions in a dark room"
+   ================================================================ */
+:root {
+  /* Backgrounds — The Void to The Chassis */
+  --babylon-void:         #0a0a0f;   /* Primary background — deepest black */
+  --babylon-blood-void:   #1a0a1a;   /* Deep burgundy-black — login gradient */
+  --babylon-dark-metal:   #141420;   /* Card / panel fills */
+  --babylon-soot:         #1a1a2a;   /* Structural dividers, nav borders */
+  --babylon-wet-concrete: #2a2a3a;   /* Card borders, input borders */
+  --babylon-chassis:      #404040;   /* Inactive panels, inactive borders */
+
+  /* Text — Bone to Ash */
+  --babylon-bone:         #e0e0e0;   /* Primary text (never pure white) */
+  --babylon-silver:       #888888;   /* Secondary text */
+  --babylon-ash:          #787878;   /* Labels, placeholders, inactive */
+  --babylon-dim-gray:     #696969;   /* Page numbers, very muted */
+
+  /* Accent — Emitted Light */
+  --babylon-gold:         #c8a860;   /* Exposed Circuitry — primary CTA, active */
+  --babylon-gold-bright:  #ffd700;   /* Pure gold — docs/PDF version */
+  --babylon-crimson:      #e04040;   /* Phosphor Burn — alerts, errors, critical */
+  --babylon-deep-crimson: #8b0a1a;   /* Thermal warning — system stress */
+  --babylon-blood-crimson:#dc143c;   /* Docs/PDF structural crimson */
+
+  /* Data Visualization */
+  --babylon-data-green:   #40c040;   /* Positive states, revolutionary orgs, success */
+  --babylon-phosphor-green:#39ff14;  /* Pure phosphor — docs: revolutionary content only */
+  --babylon-phosphor-red: #e06060;   /* Warning/danger values in charts */
+  --babylon-royal-blue:   #80b0e0;   /* Labor aristocracy, cadre labor gauge */
+  --babylon-grow-purple:  #a070d0;   /* Population scale */
+  --babylon-warning-amber:#e0a030;   /* Degraded states, WARN urgency tint */
+
+  /* Docs / PDF — "Luxe Gothic" palette */
+  --babylon-luxe-bg-dark: #1a0000;   /* Cover background — deep burgundy-black */
+  --babylon-luxe-body:    #2d2d2d;   /* Body text — near-black on white pages */
+  --babylon-luxe-warm-gray:#f7f5f3;  /* Code backgrounds, blockquote fills */
+  --babylon-buried-hope:  #1a3a1a;   /* Cover decorative line — barely visible */
+  --babylon-forest-dim:   #2a6b2a;   /* Revolutionary section headings */
+
+  /* ================================================================
+     SEMANTIC ALIASES — UI component roles
+     ================================================================ */
+
+  /* Backgrounds */
+  --bg-primary:     var(--babylon-void);
+  --bg-surface:     var(--babylon-dark-metal);
+  --bg-elevated:    var(--babylon-soot);
+  --bg-input:       var(--babylon-void);
+  --bg-login:       linear-gradient(135deg, var(--babylon-void), var(--babylon-blood-void));
+
+  /* Borders */
+  --border-subtle:  var(--babylon-soot);
+  --border-default: var(--babylon-wet-concrete);
+  --border-active:  var(--babylon-gold);
+  --border-error:   var(--babylon-crimson);
+
+  /* Text */
+  --text-primary:   var(--babylon-bone);
+  --text-secondary: var(--babylon-silver);
+  --text-muted:     var(--babylon-ash);
+  --text-accent:    var(--babylon-gold);
+  --text-danger:    var(--babylon-crimson);
+  --text-success:   var(--babylon-data-green);
+  --text-warning:   var(--babylon-warning-amber);
+  --text-info:      var(--babylon-royal-blue);
+
+  /* Interactive */
+  --interactive-primary:     var(--babylon-gold);
+  --interactive-primary-text:var(--babylon-void);
+  --interactive-hover:       brightness(1.1);
+  --interactive-disabled:    0.5;
+
+  /* Urgency tints (top bar background shifts) */
+  --urgency-normal:   transparent;
+  --urgency-warning:  rgba(224, 160, 48, 0.05);
+  --urgency-critical: rgba(224, 64, 64, 0.08);
+
+  /* ================================================================
+     TYPOGRAPHY TOKENS
+     ================================================================ */
+
+  /* Font stacks */
+  --font-mono: "Roboto Mono", "Fira Code", ui-monospace, "Courier New", monospace;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  /* Futura/DIN equiv for system alerts — use sans as fallback */
+  --font-system: "DIN Alternate", "DIN Next", "Futura", var(--font-sans);
+
+  /* Type scale */
+  --text-xs:   10px;
+  --text-sm:   11px;
+  --text-base: 13px;
+  --text-md:   14px;
+  --text-lg:   16px;
+  --text-xl:   18px;
+  --text-2xl:  24px;
+  --text-3xl:  32px;
+
+  /* Font weights */
+  --weight-normal:   400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* Letter spacing */
+  --tracking-label:   0.08em;   /* Uppercase labels: 2px at 13px */
+  --tracking-title:   0.25em;   /* Hero titles: 6px at 24px */
+  --tracking-widest:  0.4em;    /* Extreme: 4px tracking */
+
+  /* Line heights */
+  --leading-tight:  1.2;
+  --leading-normal: 1.4;   /* CRT readability */
+  --leading-relaxed:1.6;
+
+  /* ================================================================
+     SEMANTIC TYPE ROLES
+     ================================================================ */
+
+  /* Headings */
+  --h1-font:   var(--font-sans);
+  --h1-size:   var(--text-3xl);
+  --h1-weight: var(--weight-bold);
+  --h1-color:  var(--babylon-gold);
+  --h1-tracking: var(--tracking-title);
+
+  --h2-font:   var(--font-sans);
+  --h2-size:   var(--text-2xl);
+  --h2-weight: var(--weight-semibold);
+  --h2-color:  var(--babylon-bone);
+  --h2-tracking: normal;
+
+  --h3-font:   var(--font-sans);
+  --h3-size:   var(--text-xl);
+  --h3-weight: var(--weight-semibold);
+  --h3-color:  var(--babylon-gold);
+  --h3-tracking: var(--tracking-label);
+
+  /* Body */
+  --body-font:   var(--font-sans);
+  --body-size:   var(--text-base);
+  --body-weight: var(--weight-normal);
+  --body-color:  var(--babylon-bone);
+  --body-leading:var(--leading-normal);
+
+  /* Labels (uppercase UI labels) */
+  --label-font:    var(--font-sans);
+  --label-size:    var(--text-xs);
+  --label-weight:  var(--weight-medium);
+  --label-color:   var(--babylon-ash);
+  --label-tracking:var(--tracking-widest);
+  --label-transform:uppercase;
+
+  /* Data / Mono */
+  --data-font:   var(--font-mono);
+  --data-size:   var(--text-sm);
+  --data-weight: var(--weight-semibold);
+  --data-color:  var(--babylon-gold);
+
+  /* Code blocks */
+  --code-font:   var(--font-mono);
+  --code-size:   var(--text-sm);
+  --code-bg:     var(--babylon-soot);
+  --code-color:  var(--babylon-data-green);
+  --code-border: var(--babylon-wet-concrete);
+
+  /* ================================================================
+     SPACING TOKENS
+     ================================================================ */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Border radii */
+  --radius-sm:   4px;    /* Small elements, checkboxes */
+  --radius-md:   6px;    /* Buttons (rounded-md) */
+  --radius-lg:   8px;    /* Cards, panels (rounded-lg) */
+  --radius-xl:   12px;   /* Large cards (rounded-xl) — login card */
+  --radius-full: 9999px; /* Pills, badges, scrollbar thumb */
+
+  /* Border widths */
+  --border-width: 1px;
+
+  /* ================================================================
+     ELEVATION / SHADOW
+     ================================================================ */
+  --shadow-card:   0 4px 24px rgba(0, 0, 0, 0.6);
+  --shadow-panel:  0 8px 32px rgba(0, 0, 0, 0.8);
+  --shadow-hover:  0 8px 24px rgba(10, 10, 15, 0.5);
+
+  /* Glow effects for phosphor elements */
+  --glow-gold:    0 0 8px rgba(200, 168, 96, 0.4),  0 0 16px rgba(200, 168, 96, 0.2);
+  --glow-crimson: 0 0 8px rgba(224, 64, 64, 0.5),   0 0 16px rgba(224, 64, 64, 0.2);
+  --glow-green:   0 0 8px rgba(64, 192, 64, 0.4),   0 0 16px rgba(64, 192, 64, 0.15);
+  --glow-text:    0 0 2px rgba(224, 224, 224, 0.3); /* Phosphor text glow */
+
+  /* ================================================================
+     CRT EFFECT CONSTANTS
+     ================================================================ */
+  --scanline-spacing:  4px;
+  --scanline-opacity:  0.05;
+  --grain-opacity:     0.03;
+  --vignette-spread:   60%;
+  --flicker-range:     0.05;   /* ±5% opacity */
+  --flicker-speed:     1.5s;   /* 0.5–2Hz */
+}
+
+/* ================================================================
+   BASE ELEMENT STYLES
+   ================================================================ */
+.babylon-root {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--body-size);
+  line-height: var(--body-leading);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Headings */
+.bbl-h1 {
+  font-family: var(--h1-font);
+  font-size: var(--h1-size);
+  font-weight: var(--h1-weight);
+  color: var(--h1-color);
+  letter-spacing: var(--h1-tracking);
+}
+.bbl-h2 {
+  font-family: var(--h2-font);
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  color: var(--h2-color);
+}
+.bbl-h3 {
+  font-family: var(--h3-font);
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  color: var(--h3-color);
+  letter-spacing: var(--h3-tracking);
+  text-transform: uppercase;
+}
+
+/* UI Label */
+.bbl-label {
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  color: var(--label-color);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+/* Data value (monospace) */
+.bbl-data {
+  font-family: var(--data-font);
+  font-size: var(--data-size);
+  font-weight: var(--data-weight);
+  color: var(--data-color);
+}
+
+/* ================================================================
+   CRT OVERLAY EFFECTS
+   ================================================================ */
+
+/* Scanlines via pseudo-element */
+.bbl-crt::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, var(--scanline-opacity)),
+    rgba(0, 0, 0, var(--scanline-opacity)) 1px,
+    transparent 1px,
+    transparent var(--scanline-spacing)
+  );
+  z-index: 10;
+}
+
+/* Vignette */
+.bbl-vignette::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse var(--vignette-spread) var(--vignette-spread) at center,
+    transparent 50%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
+  z-index: 9;
+}
+
+/* Bloom on active elements */
+.bbl-bloom-gold  { text-shadow: var(--glow-gold);    filter: drop-shadow(0 0 4px rgba(200, 168, 96, 0.5)); }
+.bbl-bloom-red   { text-shadow: var(--glow-crimson); filter: drop-shadow(0 0 4px rgba(224, 64, 64, 0.5)); }
+.bbl-bloom-green { text-shadow: var(--glow-green);   filter: drop-shadow(0 0 4px rgba(64, 192, 64, 0.4)); }
+
+/* Flicker animation */
+@keyframes bbl-flicker {
+  0%   { opacity: 1.00; }
+  25%  { opacity: 0.97; }
+  50%  { opacity: 1.00; }
+  75%  { opacity: 0.95; }
+  100% { opacity: 1.00; }
+}
+.bbl-flicker {
+  animation: bbl-flicker var(--flicker-speed) ease-in-out infinite;
+}
+
+/* Cursor blink */
+@keyframes bbl-cursor {
+  0%, 49%  { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.bbl-cursor::after {
+  content: "█";
+  color: var(--babylon-crimson);
+  animation: bbl-cursor 1s step-end infinite;
+}
+
+/* Scrollbar styling */
+.babylon-root ::-webkit-scrollbar       { width: 8px; height: 8px; }
+.babylon-root ::-webkit-scrollbar-track { background: var(--babylon-void); }
+.babylon-root ::-webkit-scrollbar-thumb { background: var(--babylon-wet-concrete); border-radius: var(--radius-full); }
+.babylon-root ::-webkit-scrollbar-thumb:hover { background: var(--babylon-ash); }

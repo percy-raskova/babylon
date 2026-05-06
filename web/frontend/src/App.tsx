@@ -1,7 +1,8 @@
 /**
- * Root application component.
+ * Root application component — v2 16-route architecture.
  *
- * Manages auth state and defines URL-based routes between Login, GameList, and GameShell.
+ * Pre-game routes (login, games) render without game chrome.
+ * In-game routes nest under GameRouteShell for persistent TopBar + NavRail.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -9,14 +10,16 @@ import { Routes, Route, Navigate, useNavigate } from "react-router";
 import { get, post } from "@/api/client";
 import { LoginPage } from "@/components/LoginPage";
 import { GameList } from "@/components/GameList";
-import { GameShell } from "@/components/layout/GameShell";
-import { OrganizationsPage } from "@/components/OrganizationsPage";
-import { ActionPage } from "@/components/ActionPage";
-import { IntelPage } from "@/components/IntelPage";
+import { GameRouteShell } from "@/components/layout/GameRouteShell";
+import { BriefingPage } from "@/components/pages/BriefingPage";
+import { OrgsPage } from "@/components/pages/OrgsPage";
+import { VerbPage } from "@/components/pages/VerbPage";
+import { ResultsPage } from "@/components/pages/ResultsPage";
+import { IntelPageV2 } from "@/components/pages/IntelPageV2";
+import { AnalysisPage } from "@/components/pages/AnalysisPage";
 import { DevHarness } from "@/DevHarness";
 import type { AuthState } from "@/types/game";
 
-// eslint-disable-next-line complexity -- router component has many route branches
 export default function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [checking, setChecking] = useState(true);
@@ -60,11 +63,11 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Pre-game routes — no game chrome */}
       <Route
         path="/login"
         element={isAuthed ? <Navigate to="/games" replace /> : <LoginPage onLogin={handleLogin} />}
       />
-
       <Route
         path="/games"
         element={
@@ -89,69 +92,45 @@ export default function App() {
           )
         }
       />
-      <Route
-        path="/games/:id/orgs"
-        element={
-          isAuthed ? (
-            <OrganizationsPage username={auth?.username ?? ""} onLogout={handleLogout} />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
 
-      <Route
-        path="/games/:id/actions/:verb"
-        element={
-          isAuthed ? (
-            <ActionPage username={auth?.username ?? ""} onLogout={handleLogout} />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      <Route
-        path="/games/:id/intel/:target_type/:target_id"
-        element={
-          isAuthed ? (
-            <IntelPage username={auth?.username ?? ""} onLogout={handleLogout} />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      <Route
-        path="/games/:id/log"
-        element={
-          isAuthed ? (
-            <div className="flex h-screen items-center justify-center bg-void text-silver">
-              <p className="text-sm">Event log — coming soon.</p>
-            </div>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
+      {/* In-game routes — nested under GameRouteShell */}
       <Route
         path="/games/:id"
         element={
           isAuthed ? (
-            <GameShell
-              username={auth?.username ?? ""}
-              onBack={() => navigate("/games")}
-              onLogout={handleLogout}
-            />
+            <GameRouteShell username={auth?.username ?? ""} onLogout={handleLogout} />
           ) : (
             <Navigate to="/login" replace />
           )
         }
-      />
+      >
+        {/* Core game-loop routes */}
+        <Route index element={<BriefingPage />} />
+        <Route path="orgs" element={<OrgsPage />} />
+        <Route path="results" element={<ResultsPage />} />
+
+        {/* Intel routes — powered by IntelPageV2 */}
+        <Route path="intel" element={<IntelPageV2 />} />
+        <Route path="intel/:targetType/:targetId" element={<IntelPageV2 />} />
+
+        {/* 9 verb routes — all handled by VerbPage */}
+        <Route path="actions/:verb" element={<VerbPage />} />
+
+        {/* Analysis page */}
+        <Route path="analysis" element={<AnalysisPage />} />
+
+        {/* Event log */}
+        <Route
+          path="log"
+          element={
+            <div className="flex h-full items-center justify-center text-sm text-ash">
+              Event log — coming soon
+            </div>
+          }
+        />
+      </Route>
 
       <Route path="/dev/hexmap" element={<DevHarness />} />
-
       <Route path="*" element={<Navigate to={isAuthed ? "/games" : "/login"} replace />} />
     </Routes>
   );

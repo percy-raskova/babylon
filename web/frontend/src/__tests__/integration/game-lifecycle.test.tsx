@@ -53,11 +53,11 @@ describe("game lifecycle", () => {
     // Log in
     await user.type(screen.getByPlaceholderText("Username"), "alice");
     await user.type(screen.getByPlaceholderText("Password"), "secret");
-    await user.click(screen.getByText("Log In"));
+    await user.click(screen.getByText("Enter"));
 
     // Should navigate to game list
     await waitFor(() => {
-      expect(screen.getByText("Your Games")).toBeInTheDocument();
+      expect(screen.getByText("Your Operations")).toBeInTheDocument();
     });
     expect(screen.getByText("Detroit")).toBeInTheDocument();
   });

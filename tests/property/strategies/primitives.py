@@ -6,6 +6,8 @@ instances constrained to their Pydantic domain types.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from hypothesis import strategies as st
 from hypothesis.strategies import SearchStrategy
 
@@ -110,12 +112,17 @@ def territory_strategy() -> SearchStrategy[Territory]:
 def relationship_strategy(
     source_ids: SearchStrategy[str] | None = None,
     target_ids: SearchStrategy[str] | None = None,
+    edge_types: Sequence[EdgeType] | None = None,
 ) -> SearchStrategy[Relationship]:
     """Generate valid Relationship instances.
 
     Args:
         source_ids: Strategy for source IDs (default: entity IDs).
         target_ids: Strategy for target IDs (default: entity IDs).
+        edge_types: Optional sequence of EdgeType values to sample from.
+            Defaults to ``list(EdgeType)`` (all legal types). Used by
+            spec-055 US4 acceptance scenario 3 to drive every legal
+            EdgeType through the round-trip.
 
     Returns:
         Hypothesis strategy producing Relationship instances.
@@ -124,6 +131,8 @@ def relationship_strategy(
         source_ids = _entity_id_strategy()
     if target_ids is None:
         target_ids = _entity_id_strategy()
+    if edge_types is None:
+        edge_types = list(EdgeType)
 
     # Ensure no self-loops by drawing two distinct IDs
     return (
@@ -134,7 +143,7 @@ def relationship_strategy(
                 Relationship,
                 source_id=st.just(pair[0]),
                 target_id=st.just(pair[1]),
-                edge_type=st.sampled_from(list(EdgeType)),
+                edge_type=st.sampled_from(list(edge_types)),
                 value_flow=_currency(),
                 tension=_probability(),
             )

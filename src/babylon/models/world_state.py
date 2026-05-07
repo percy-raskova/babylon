@@ -17,7 +17,7 @@ Sprint 3.5.3: Territory integration for Layer 0.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -45,31 +45,21 @@ if TYPE_CHECKING:
     pass
 
 
-def _reconstruct_institution(node_data: dict[str, Any]) -> Institution:
-    """Reconstruct an Institution from graph node data (Feature 040).
+# ---------------------------------------------------------------------------
+# from_graph exclude rules — single source of truth (Spec 055 T006 / FR-010)
+# ---------------------------------------------------------------------------
+# Computed / non-reconstructable fields per node-type. Lifted to module scope
+# so external consumers (the Spec 055 round-trip property test) can read them
+# at runtime without re-grepping for in-method literals.
 
-    Excludes computed fields and converts list-serialized frozenset fields
-    back to frozenset for Pydantic validation.
+SOCIAL_CLASS_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "consumption_needs",
+    }
+)
 
-    Args:
-        node_data: Node attribute dict without _node_type key.
-
-    Returns:
-        Reconstructed Institution instance.
-    """
-    institution_excluded = {"hegemonic_fraction", "reproduction_capacity"}
-    inst_data = {k: v for k, v in node_data.items() if k not in institution_excluded}
-    # Convert list back to frozenset for frozenset fields
-    if "legal_authorities" in inst_data and isinstance(inst_data["legal_authorities"], list):
-        inst_data["legal_authorities"] = frozenset(inst_data["legal_authorities"])
-    if "jurisdiction" in inst_data and isinstance(inst_data["jurisdiction"], list):
-        inst_data["jurisdiction"] = frozenset(inst_data["jurisdiction"])
-    return Institution(**inst_data)
-
-
-def _reconstruct_territory(node_data: dict[str, Any]) -> Territory:
-    """Reconstruct a Territory from graph node data."""
-    territory_excluded = {
+TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
         "p_acquiescence",
         "p_revolution",
         "dpd_state",
@@ -82,7 +72,47 @@ def _reconstruct_territory(node_data: dict[str, Any]) -> Territory:
         "transmitted_ideology",
         "differential_p_to_d_prime",
     }
-    territory_data = {k: v for k, v in node_data.items() if k not in territory_excluded}
+)
+
+INSTITUTION_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "hegemonic_fraction",
+        "reproduction_capacity",
+    }
+)
+
+ORGANIZATION_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "effective_capacity",
+        "composition_cache",
+    }
+)
+
+
+def _reconstruct_institution(node_data: dict[str, Any]) -> Institution:
+    """Reconstruct an Institution from graph node data (Feature 040).
+
+    Excludes computed fields and converts list-serialized frozenset fields
+    back to frozenset for Pydantic validation.
+
+    Args:
+        node_data: Node attribute dict without _node_type key.
+
+    Returns:
+        Reconstructed Institution instance.
+    """
+    inst_data = {k: v for k, v in node_data.items() if k not in INSTITUTION_EXCLUDED_FIELDS}
+    # Convert list back to frozenset for frozenset fields
+    if "legal_authorities" in inst_data and isinstance(inst_data["legal_authorities"], list):
+        inst_data["legal_authorities"] = frozenset(inst_data["legal_authorities"])
+    if "jurisdiction" in inst_data and isinstance(inst_data["jurisdiction"], list):
+        inst_data["jurisdiction"] = frozenset(inst_data["jurisdiction"])
+    return Institution(**inst_data)
+
+
+def _reconstruct_territory(node_data: dict[str, Any]) -> Territory:
+    """Reconstruct a Territory from graph node data."""
+    territory_data = {k: v for k, v in node_data.items() if k not in TERRITORY_EXCLUDED_FIELDS}
     sector_type = territory_data.get("sector_type")
     if isinstance(sector_type, str):
         territory_data["sector_type"] = SectorType(sector_type)
@@ -102,8 +132,7 @@ def _reconstruct_organization(node_data: dict[str, Any]) -> OrganizationType:
         StateApparatus,
     )
 
-    organization_excluded = {"effective_capacity", "composition_cache"}
-    org_data = {k: v for k, v in node_data.items() if k not in organization_excluded}
+    org_data = {k: v for k, v in node_data.items() if k not in ORGANIZATION_EXCLUDED_FIELDS}
 
     org_type_raw = org_data.get("org_type")
     if org_type_raw is None:
@@ -372,9 +401,6 @@ class WorldState(BaseModel):
         institutions_dict: dict[str, Institution] = {}
         industries_dict: dict[str, IndustryHyperedge] = {}
 
-        # Computed fields to exclude during reconstruction (Slice 1.4)
-        social_class_computed = {"consumption_needs"}
-
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
             # Create a copy without _node_type for model construction
@@ -393,7 +419,9 @@ class WorldState(BaseModel):
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
                 # Filter out computed fields that shouldn't be passed to constructor
-                entity_data = {k: v for k, v in node_data.items() if k not in social_class_computed}
+                entity_data = {
+                    k: v for k, v in node_data.items() if k not in SOCIAL_CLASS_COMPUTED_FIELDS
+                }
                 entities[node_id] = SocialClass(**entity_data)
 
         # Reconstruct relationships from edges

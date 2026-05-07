@@ -11,6 +11,7 @@ Core formulas for revolutionary decision-making:
 import math
 
 from babylon.config.defines import GameDefines
+from babylon.models.types import Probability
 
 _DEFINES = GameDefines()
 EPSILON = _DEFINES.precision.epsilon
@@ -21,7 +22,7 @@ def calculate_acquiescence_probability(
     wealth: float,
     subsistence_threshold: float,
     steepness_k: float,
-) -> float:
+) -> Probability:
     """P(S|A) sigmoid. At threshold, probability = 0.5.
 
     Args:
@@ -30,7 +31,8 @@ def calculate_acquiescence_probability(
         steepness_k: Curve steepness.
 
     Returns:
-        Probability [0, 1].
+        Survival probability via acquiescence, in [0, 1]. The sigmoid is
+        mathematically bounded by construction.
 
     Examples:
         >>> calculate_acquiescence_probability(100.0, 100.0, 0.1)
@@ -41,7 +43,7 @@ def calculate_acquiescence_probability(
     return 1.0 / (1.0 + math.exp(exponent))
 
 
-def calculate_revolution_probability(cohesion: float, repression: float) -> float:
+def calculate_revolution_probability(cohesion: float, repression: float) -> Probability:
     """P(S|R) = Cohesion / (Repression + eps). Capped at 1.0.
 
     Args:
@@ -49,7 +51,8 @@ def calculate_revolution_probability(cohesion: float, repression: float) -> floa
         repression: State violence capacity [0, 1].
 
     Returns:
-        Probability [0, 1].
+        Survival probability via revolution, in [0, 1]. Bounded below by
+        the early-return for non-positive cohesion and above by ``min(1.0, ...)``.
 
     Examples:
         >>> calculate_revolution_probability(0.8, 0.2)

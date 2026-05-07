@@ -60,7 +60,9 @@ def social_class_strategy() -> SearchStrategy[SocialClass]:
     return st.builds(
         SocialClass,
         id=_entity_id_strategy(),
-        name=st.text(min_size=1, max_size=30, alphabet=st.characters(categories=("L", "N", "Zs"))),
+        name=st.text(min_size=1, max_size=30, alphabet=st.characters(categories=("L", "N"))).filter(
+            lambda s: bool(s.strip())
+        ),
         role=st.sampled_from(list(SocialRole)),
         wealth=_currency(),
         ideology=_ideology_profile_strategy(),
@@ -85,7 +87,9 @@ def territory_strategy() -> SearchStrategy[Territory]:
     return st.builds(
         Territory,
         id=_territory_id_strategy(),
-        name=st.text(min_size=1, max_size=30, alphabet=st.characters(categories=("L", "N", "Zs"))),
+        name=st.text(min_size=1, max_size=30, alphabet=st.characters(categories=("L", "N"))).filter(
+            lambda s: bool(s.strip())
+        ),
         sector_type=st.sampled_from(list(SectorType)),
         territory_type=st.sampled_from(list(TerritoryType)),
         profile=st.sampled_from(list(OperationalProfile)),

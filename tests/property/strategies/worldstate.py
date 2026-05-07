@@ -71,13 +71,19 @@ def worldstate_strategy(
             territory = territory.model_copy(update={"id": unique_id})
             territories[unique_id] = territory
 
-        # Generate relationships between existing entities
+        # Generate relationships between existing entities. Dedupe by
+        # (source, target) because nx.DiGraph (used by
+        # WorldState.to_graph/from_graph) is strictly single-edge-per-pair
+        # — even relationships of *different* edge_type collapse to one
+        # edge during the round-trip. This is the real graph semantics,
+        # not a bug. (Multi-edge support would require nx.MultiDiGraph.)
         relationships = []
         if len(entities) >= 2:
             entity_ids = list(entities.keys())
             n_rels = draw(
                 st.integers(min_value=0, max_value=min(max_relationships, len(entity_ids)))
             )
+            seen_pairs: set[tuple[str, str]] = set()
             for _ in range(n_rels):
                 rel = draw(
                     relationship_strategy(
@@ -85,6 +91,10 @@ def worldstate_strategy(
                         target_ids=st.sampled_from(entity_ids),
                     )
                 )
+                pair = (rel.source_id, rel.target_id)
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
                 relationships.append(rel)
 
         return WorldState(
@@ -209,15 +219,24 @@ def worldstate_with_community_node_strategy() -> SearchStrategy[tuple[WorldState
 
     @st.composite
     def _build(draw: st.DrawFn) -> tuple[WorldState, frozenset[str]]:
+        from babylon.models.enums import EdgeType
+
         state = draw(worldstate_strategy(min_entities=2))
         entity_ids = list(state.entities.keys())
-        if not entity_ids:
+        # Exclude entities that are MEMBERSHIP edge sources — marking them as
+        # community would create a pre-existing test-side violation that the
+        # linter rightly flags. Community markings here are about filtering
+        # for legitimate test scenarios, not about introducing seeded bugs.
+        membership_sources = {
+            rel.source_id for rel in state.relationships if rel.edge_type == EdgeType.MEMBERSHIP
+        }
+        candidates = [eid for eid in entity_ids if eid not in membership_sources]
+        if not candidates:
             return state, frozenset()
-        # Draw a non-empty subset of entity IDs to mark as community nodes.
-        n_to_mark = draw(st.integers(min_value=1, max_value=len(entity_ids)))
+        n_to_mark = draw(st.integers(min_value=1, max_value=len(candidates)))
         community_ids = draw(
             st.lists(
-                st.sampled_from(entity_ids),
+                st.sampled_from(candidates),
                 min_size=n_to_mark,
                 max_size=n_to_mark,
                 unique=True,

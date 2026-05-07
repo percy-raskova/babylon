@@ -450,19 +450,25 @@ class NoCommunityFanOut:
         """Invariant identifier."""
         return "no_community_fan_out"
 
-    def check(self, _pre: WorldState, post: WorldState) -> InvariantResult:
-        """Check that no MEMBERSHIP edge has a community source.
+    def check_graph(self, graph: Any) -> InvariantResult:
+        """Walk an explicit graph for community-fan-out MEMBERSHIP edges.
+
+        Preferred entry point. Tests that inject ``_node_type='community'``
+        markers via ``_inject_community_markers`` MUST pass the live
+        marked graph here — calling ``check(pre, post)`` instead would
+        round-trip through ``post.to_graph()`` and strip the markers
+        because community is not yet a first-class WorldState field.
 
         Args:
-            _pre: WorldState before step (unused for this invariant).
-            post: WorldState after step.
+            graph: NetworkX directed graph carrying the live ``_node_type``
+                markers (typically the post-tick graph from a fixture or
+                test setup).
 
         Returns:
             InvariantResult — violated on first community-fan-out edge.
         """
         from babylon.models.enums import EdgeType
 
-        graph = post.to_graph()
         for source_id, target_id, data in graph.edges(data=True):
             edge_type_raw = data.get("edge_type")
             if edge_type_raw is None:
@@ -487,3 +493,13 @@ class NoCommunityFanOut:
                     f"the XGI hyperedge layer (Anti-Pattern VIII.9)."
                 )
         return InvariantResult.success()
+
+    def check(self, _pre: WorldState, post: WorldState) -> InvariantResult:
+        """Default Invariant Protocol entry — walks ``post.to_graph()``.
+
+        Best-effort fallback: ``WorldState.to_graph()`` does not preserve
+        test-injected ``_node_type='community'`` markers, so this entry
+        point only catches violations that survive the round-trip. For
+        full coverage, callers should use ``check_graph(live_graph)``.
+        """
+        return self.check_graph(post.to_graph())

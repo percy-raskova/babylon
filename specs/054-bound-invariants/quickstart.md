@@ -204,6 +204,19 @@ The bound suites run inside `mise run test:unit`. CI must:
 3. Fail-fast on any bound-invariant failure — these are correctness
    bugs, not flakes.
 
+### Empirically observed wall-clock (2026-05-06 baseline)
+
+Measured at implementation time with 37 collected tests:
+
+| Profile | max_examples | Wall-clock | Per-test mean |
+|---------|--------------|-----------|---------------|
+| default | 100          | 41.4 s    | ~1.1 s        |
+| slow    | 500          | 216.3 s (3:36) | ~5.8 s    |
+
+US2's per-System parametrize is the dominant cost (21 Systems ×
+~1.5 s on default, ~8 s on slow). All other suites complete in
+under 5 s default / under 30 s slow.
+
 ---
 
 ## Future work (out of scope for this spec)

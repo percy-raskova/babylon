@@ -26,6 +26,7 @@ from babylon.persistence.archival import (
 from babylon.persistence.pgvector_store import PgVectorStore
 from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.persistence.protocols import (
+    MonotonicityViolationError,
     PostgresRuntimeExtensions,
     RuntimePersistence,
     TraceCollector,
@@ -37,6 +38,7 @@ from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
 from babylon.persistence.trace_recorder import TraceRecorder
 
 __all__ = [
+    "MonotonicityViolationError",
     "PgVectorStore",
     "PostgresRuntime",
     "PostgresRuntimeExtensions",

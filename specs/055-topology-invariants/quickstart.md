@@ -25,6 +25,13 @@ combined. The combined `tests/property/` suite (Spec 053 + 054 + 055) is
 budgeted to ≤ 3 min on default — Spec 053 + 054 baseline is 83 s, leaving
 ~97 s of headroom for Spec 055 within the 3-min cap.
 
+**Measured at implementation time (2026-05-07)**:
+
+- Spec 055 alone (4 test files): **6.33 s** (well under 60 s cap)
+- Combined Spec 053 + 054 + 055: **87.83 s** (under 180 s cap)
+- 112 passed, 19 skipped (frozen-discipline pre-existing debt — see
+  `_PRE_EXISTING_NON_FROZEN_DEBT` in `test_frozen_discipline.py`)
+
 ## What each test catches
 
 | Test file | Catches | Failure mode |

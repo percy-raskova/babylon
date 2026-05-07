@@ -728,6 +728,7 @@ ADR0XX_descriptive_name:
 - N/A at runtime. The Hypothesis example database persists generated counterexamples under `.hypothesis/` (already in `.gitignore` via `[tool.pytest.ini_options]` `cache_dir` settings). (053-conservation-invariants)
 - Python 3.12+ (existing project standard) + Hypothesis ^6.149.0 (in `[tool.poetry.group.dev.dependencies]` since Spec 053), pytest 8.x, Pydantic 2.x (frozen models), NetworkX 3.x (graph protocol) (054-bound-invariants)
 - N/A — `.hypothesis/` example DB persists generated counterexamples (already in `.gitignore`) (054-bound-invariants)
+- Python 3.12+ (existing project standard) + Hypothesis ^6.149.0 (in `[tool.poetry.group.dev.dependencies]` since Spec 053), pytest 8.x, Pydantic 2.x (frozen models), NetworkX 3.x (graph protocol). XGI 0.10 is available but not required for the chosen US2 detector (`_node_type == "community"` graph attribute, per the 2026-05-06 clarification). (055-topology-invariants)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

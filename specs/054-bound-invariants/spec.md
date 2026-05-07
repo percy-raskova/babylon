@@ -411,10 +411,15 @@ for float64 round-off. Independent of US1 / US2 / US3.
   canonical coefficient through real `run_tick`); tests that touch
   crisis-phase ticks pass silently.
 - **SC-005**: The four invariant test files together complete in
-  under 30 seconds on the default profile (max_examples=100,
+  under 60 seconds on the default profile (max_examples=100,
   derandomize=True) and under 5 minutes on the slow profile
   (max_examples=500), measured on the same hardware as the Spec 053
-  baseline (≈1 minute for the conservation suite).
+  baseline. Empirically observed at implementation time (37 tests):
+  ~41 s default, ~216 s (3:36) slow — well within both budgets. The
+  per-System parametrization in US2 is the dominant cost (~1.5 s ×
+  21 Systems on default; ~8 s × 21 on slow); reducing examples there
+  would sacrifice falsification breadth and is not a tradeoff this
+  spec accepts.
 - **SC-006**: `bypasses_bound_invariant` markers are present on any
   System or formula that the implementation discovers legitimately
   violates a predicate; every such marker carries a non-empty

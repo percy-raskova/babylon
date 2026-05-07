@@ -1733,8 +1733,8 @@ current_focus:
   milestone_date: "2026-01-01"
   milestone_document: "ai-docs/epoch1-mvp-complete.md"
   next_milestone: "Slice 1.5: Dashboard wire-up (visualization only - mechanics complete)"
-  test_count: 7853
-  test_count_note: "Updated 2026-03-03 - Feature 041 MVP nationwide simulation (7609 engine + 219 frontend + 23 django + 2 integration)"
+  test_count: 7911
+  test_count_note: "Updated 2026-05-06 - Feature 054 Bound Invariants property tests added 37 (US1=5, US2=23, US3=3, US4=6) plus 21 spec-053 baseline conservation tests already present. Previous baseline: 7853 (Feature 041 MVP nationwide simulation: 7609 engine + 219 frontend + 23 django + 2 integration)."
 
   constants_remediation_sweep:
     status: "COMPLETE"

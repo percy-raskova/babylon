@@ -1,0 +1,146 @@
+# Contract: Probability Bounds (US1 — INV-006)
+
+**Predicate ID**: INV-006
+**User Story**: US1 (P1)
+**Source**: [spec.md §US1](../spec.md#user-story-1--probability-values-stay-in-0-1-priority-p1)
+**Tests**: `tests/property/invariants/test_probability_bounds.py`
+**Invariant class**: `babylon.engine.invariants.ProbabilityInRange`
+
+## Predicate
+
+For every `(ModelClass, field_name)` pair returned by
+`discover_probability_fields()`, every instance of `ModelClass` in the
+post-state, and every `EdgeType.SOLIDARITY` edge in the post-graph:
+
+```text
+∀ entity ∈ post.entities, ∀ (Cls, field_name) where isinstance(entity, Cls):
+    0.0 <= getattr(entity, field_name) <= 1.0
+
+∀ edge ∈ post.graph.edges where edge.type == EdgeType.SOLIDARITY:
+    0.0 <= edge.solidarity_strength <= 1.0
+```
+
+**Tolerance**: Exact comparison (`tolerance=0.0`). The `Probability`
+constrained type's contract is the closed interval `[0, 1]`; values at
+the boundary are legal.
+
+## Inputs (Hypothesis strategies)
+
+| Strategy | Source |
+|----------|--------|
+| `worldstate_with_probability_fields_strategy()` | `tests/property/strategies/worldstate.py` |
+
+The strategy populates every Probability-typed field with a draw from
+`st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False)`.
+
+## Test predicates
+
+### Predicate A — Per-entity field bound (post-`run_tick`)
+
+```python
+@given(state=worldstate_with_probability_fields_strategy())
+@settings()
+def test_probability_post_runtick_in_range(state, service_container_fixture, tick_context_fixture):
+    post = SimulationEngine.run_tick(state.to_graph(), service_container_fixture, tick_context_fixture)
+    post_state = WorldState.from_graph(post)
+    invariant = ProbabilityInRange(field_pairs=discover_probability_fields())
+    result = invariant.check(state, post_state)
+    assert result.ok, result.msg
+```
+
+### Predicate B — Per-formula domain (type-driven discovery)
+
+`discover_probability_formulas()` returns every callable in
+`babylon.formulas.*` whose declared return type is `Probability` (per
+research §2's type-driven rule). Per-formula input strategies are
+hand-written in this test file because (a) the discovery set is small —
+two formulas as of this spec, growing as more annotations are narrowed —
+and (b) introspecting parameter type hints to auto-generate strategies
+adds harness complexity without yielding signal that the explicit map
+doesn't already provide.
+
+```python
+# Per-formula input strategies. Add a new entry here when a new formula
+# is narrowed to `-> Probability`. Discovery surfaces the formula via
+# parametrize; this map provides the generators it needs.
+_FORMULA_INPUT_STRATEGIES: dict[str, st.SearchStrategy[dict]] = {
+    "calculate_acquiescence_probability": st.fixed_dictionaries({
+        "wealth": st.floats(min_value=0.0, max_value=1e6, allow_nan=False),
+        "subsistence_threshold": st.floats(min_value=1e-3, max_value=1e6, allow_nan=False),
+        "steepness_k": st.floats(min_value=1e-3, max_value=10.0, allow_nan=False),
+    }),
+    "calculate_revolution_probability": st.fixed_dictionaries({
+        "cohesion": st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+        "repression": st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+    }),
+}
+
+@pytest.mark.parametrize(
+    "formula", discover_probability_formulas(), ids=lambda f: f.__name__
+)
+@settings(max_examples=100)
+def test_probability_formula_in_range(formula):
+    strategy = _FORMULA_INPUT_STRATEGIES.get(formula.__name__)
+    if strategy is None:
+        pytest.fail(
+            f"Formula {formula.__name__} discovered as Probability-returning "
+            f"but no input strategy registered in _FORMULA_INPUT_STRATEGIES. "
+            f"Add an entry mapping the formula name to a Hypothesis strategy "
+            f"that draws valid inputs."
+        )
+    @given(args=strategy)
+    def _check(args):
+        result = formula(**args)
+        assert 0.0 <= result <= 1.0, f"{formula.__name__}({args}) = {result}"
+    _check()
+```
+
+**Discovery-input drift safety**: when the discovery walker yields a
+formula that has no entry in `_FORMULA_INPUT_STRATEGIES`, the test
+*fails* (rather than skipping silently) with an explicit message asking
+the maintainer to register a strategy. This makes the input map
+self-policing — narrowing a new formula's return type to `Probability`
+without registering inputs is a CI failure, not a silent coverage gap.
+
+### Predicate C — SOLIDARITY edge strength (post-`SolidaritySystem.step`)
+
+```python
+@given(state=worldstate_with_solidarity_edges_strategy())
+@settings()
+def test_solidarity_strength_in_range(state, service_container_fixture, tick_context_fixture):
+    harness = BoundInvariantHarness(
+        system=SolidaritySystem,
+        invariants=[ProbabilityInRange(field_pairs=[(Relationship, "solidarity_strength")])],
+    )
+    result = harness.run(state, service_container_fixture, tick_context_fixture)
+    assert result.outcomes["probability_in_range"].ok
+```
+
+### Predicate D — Round-trip preservation (FR-012)
+
+```python
+@given(state=worldstate_with_probability_fields_strategy())
+def test_probability_round_trip_preserves_bound(state):
+    graph = state.to_graph()
+    rehydrated = WorldState.from_graph(graph)  # must not raise ValidationError
+    invariant = ProbabilityInRange(field_pairs=discover_probability_fields())
+    assert invariant.check(state, rehydrated).ok
+```
+
+## Failure modes
+
+| Cause | Symptom | Remediation |
+|-------|---------|-------------|
+| A System writes a raw float > 1.0 to a Probability field via `update_node` | Predicate A fails on the System; failure msg names the field and entity | Either clip the write OR add `bypasses_bound_invariant: ClassVar[dict[str, str]] = {"probability_in_range": "<reason>"}` to the System |
+| A formula returns a value outside `[0, 1]` due to numerical overflow | Predicate B fails on the formula | Fix the formula; do not paper over with clipping unless the math is correct |
+| Round-trip re-validates a stored value as out-of-bounds | Predicate D fails | The graph node carries an illegal value — find which System wrote it |
+
+## Out of scope
+
+- Pydantic constructor validation (already covered by Pydantic itself; the
+  test would always pass and add no signal).
+- `Coefficient`, `Intensity`, `Ideology` constrained types (these are
+  semantically distinct types whose bounds may have different meaning;
+  could be a sister spec).
+- Probability values inside `pyo3` / Cython extensions (none in this
+  codebase).

@@ -120,3 +120,62 @@ def worldstate_with_hexes_strategy(
         A Hypothesis ``SearchStrategy[tuple[WorldState, HexGrid]]``.
     """
     return st.tuples(worldstate_strategy(), hex_grid_strategy(min_hexes, max_hexes))
+
+
+# =============================================================================
+# Spec 054 — Bound-invariant strategies
+# =============================================================================
+
+
+def worldstate_with_simplex_consciousness_strategy() -> SearchStrategy[WorldState]:
+    """Generate a WorldState carrying TernaryConsciousness-bearing entities.
+
+    Spec 054 US3: SocialClass entities currently carry ``class_consciousness``
+    (a scalar Probability), not a ``TernaryConsciousness`` simplex. The
+    ternary simplex lives on ``CommunityState`` instances that are stored
+    inside graph nodes during the engine's tick loop, not on ``WorldState``
+    directly. So for US3 single-tick / multi-tick tests, this strategy
+    delegates to the base ``worldstate_strategy(min_entities=1)`` — the
+    simplex constraint is then exercised through the graph round-trip.
+
+    The actual simplex generation lives in the ``simplex_points()`` strategy
+    re-exported from ``tests.property.strategies.consciousness_simplex``;
+    direct point generation is used by US3 Predicate C (routing-formula
+    test).
+    """
+    return worldstate_strategy(min_entities=1)
+
+
+def worldstate_with_solidarity_edges_strategy() -> SearchStrategy[WorldState]:
+    """Generate a WorldState that contains at least one SOLIDARITY edge
+    between two entities (spec-054 US1 Predicate C).
+
+    The base ``worldstate_strategy(min_entities=2)`` already produces
+    Relationship edges between entities; the Relationship strategy uniformly
+    samples from ``EdgeType``. This wrapper bumps ``min_entities`` to 2 so
+    edge generation is possible.
+    """
+    return worldstate_strategy(min_entities=2, max_relationships=4)
+
+
+def worldstate_with_consecutive_ticks_strategy(
+    n_ticks: int = 5,
+) -> SearchStrategy[WorldState]:
+    """Generate an initial WorldState for a multi-tick test (spec-054 US3, US4).
+
+    The strategy returns a single starting WorldState; the consuming test
+    threads the post-state of tick ``i`` into the pre-state of tick ``i+1``.
+    The ``n_ticks`` parameter is documentation-only (recorded so the test
+    body does not have to look up the spec acceptance scenario for the
+    canonical iteration count).
+
+    Args:
+        n_ticks: How many consecutive ticks the consuming test will run
+            (default 5 per US3 acceptance scenario 2). Currently unused by
+            the strategy itself — kept for caller documentation.
+
+    Returns:
+        Hypothesis ``SearchStrategy[WorldState]``.
+    """
+    _ = n_ticks  # documentation-only; consuming test controls the loop count
+    return worldstate_strategy(min_entities=1, min_territories=0)

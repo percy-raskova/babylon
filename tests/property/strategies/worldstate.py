@@ -179,3 +179,50 @@ def worldstate_with_consecutive_ticks_strategy(
     """
     _ = n_ticks  # documentation-only; consuming test controls the loop count
     return worldstate_strategy(min_entities=1, min_territories=0)
+
+
+# =============================================================================
+# Spec 055 — Topology-invariant strategies
+# =============================================================================
+
+
+def worldstate_with_community_node_strategy() -> SearchStrategy[tuple[WorldState, frozenset[str]]]:
+    """Generate ``(WorldState, frozenset[str])`` for spec-055 US2 tests.
+
+    Returns a tuple where the second element is the set of node IDs the
+    consuming test should mark with ``_node_type == "community"`` after
+    calling ``state.to_graph()`` (per data-model.md §3.3 and the F1
+    remediation). Mirrors the tuple-return shape of
+    ``worldstate_with_hexes_strategy(...) -> tuple[WorldState, HexGrid]``.
+
+    Marker injection happens at test time via
+    ``tests.property.harness.topology_harness._inject_community_markers``;
+    this strategy never mutates the frozen ``WorldState`` itself.
+
+    The strategy guarantees ``len(community_node_ids) >= 1`` so the US2
+    linter has at least one community-marked node to walk past per
+    example.
+
+    Returns:
+        Strategy producing ``(WorldState, frozenset[str])``.
+    """
+
+    @st.composite
+    def _build(draw: st.DrawFn) -> tuple[WorldState, frozenset[str]]:
+        state = draw(worldstate_strategy(min_entities=2))
+        entity_ids = list(state.entities.keys())
+        if not entity_ids:
+            return state, frozenset()
+        # Draw a non-empty subset of entity IDs to mark as community nodes.
+        n_to_mark = draw(st.integers(min_value=1, max_value=len(entity_ids)))
+        community_ids = draw(
+            st.lists(
+                st.sampled_from(entity_ids),
+                min_size=n_to_mark,
+                max_size=n_to_mark,
+                unique=True,
+            )
+        )
+        return state, frozenset(community_ids)
+
+    return _build()

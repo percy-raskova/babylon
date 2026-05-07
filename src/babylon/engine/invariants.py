@@ -314,3 +314,176 @@ class SimplexPreserved:
                         f"{label}={value:.6f} out of [0, 1]"
                     )
         return InvariantResult.success()
+
+
+# =============================================================================
+# Spec 055 — Topological invariants
+# =============================================================================
+#
+# Two new ``Invariant`` implementations supporting the spec-055 topology
+# property test harness. See ``specs/055-topology-invariants/data-model.md``
+# and ``specs/055-topology-invariants/contracts/`` for the predicate specs.
+
+
+def _default_valid_arcs() -> frozenset[tuple[Any, Any]]:
+    """Return the canonical legal-arc set from edge_transition.py.
+
+    Lazy import to avoid an engine-systems → engine-invariants cycle.
+    Single source of truth per spec-055 FR-002 and research §1.
+    """
+    from babylon.engine.systems.edge_transition import _VALID_TRANSITIONS
+
+    return frozenset(_VALID_TRANSITIONS)
+
+
+@dataclass(frozen=True)
+class EdgeModeTrajectoryLegal:
+    """Every edge-mode transition along a tick boundary is in the legal arc set.
+
+    Spec 055 US1 (INV-009). For every relationship in the post-state that
+    carries an ``edge_mode`` attribute, the pair ``(pre_mode, post_mode)``
+    is either in ``valid_arcs`` (a real transition) OR equal (trivial
+    no-transition). Trivial pairs are not counted as transitions; the
+    explicit ``(ANTAGONISTIC, ANTAGONISTIC)`` persistence arc is in
+    ``valid_arcs`` already.
+
+    Args:
+        valid_arcs: Frozen set of legal ``(EdgeMode, EdgeMode)`` arcs.
+            Defaults to ``_VALID_TRANSITIONS`` from
+            ``babylon.engine.systems.edge_transition`` — single source of
+            truth. Tests that want to constrain the arc set can pass an
+            explicit subset.
+    """
+
+    valid_arcs: frozenset[tuple[Any, Any]] = field(default_factory=_default_valid_arcs)
+
+    @property
+    def name(self) -> str:
+        """Invariant identifier."""
+        return "edge_mode_trajectory_legal"
+
+    def check(self, pre: WorldState, post: WorldState) -> InvariantResult:
+        """Check that every (pre_mode, post_mode) pair is legal.
+
+        Args:
+            pre: WorldState before step (provides previous edge modes).
+            post: WorldState after step.
+
+        Returns:
+            InvariantResult — violated on first illegal arc encountered.
+        """
+        from babylon.models.enums import EdgeMode
+
+        # Build pre-state edge_mode lookup keyed by (source, target, edge_type)
+        pre_modes: dict[tuple[str, str, str], EdgeMode] = {}
+        for rel in pre.relationships:
+            mode_value = getattr(rel, "edge_mode", None)
+            if mode_value is None:
+                continue
+            try:
+                pre_modes[(rel.source_id, rel.target_id, str(rel.edge_type))] = EdgeMode(mode_value)
+            except ValueError:
+                return InvariantResult.violated(
+                    f"Pre-state edge ({rel.source_id} -> {rel.target_id}, "
+                    f"{rel.edge_type}): edge_mode={mode_value!r} is not a "
+                    f"legal EdgeMode enum value"
+                )
+
+        for rel in post.relationships:
+            post_mode_value = getattr(rel, "edge_mode", None)
+            if post_mode_value is None:
+                continue
+            try:
+                post_mode = EdgeMode(post_mode_value)
+            except ValueError:
+                return InvariantResult.violated(
+                    f"Post-state edge ({rel.source_id} -> {rel.target_id}, "
+                    f"{rel.edge_type}): edge_mode={post_mode_value!r} is "
+                    f"not a legal EdgeMode enum value"
+                )
+
+            key = (rel.source_id, rel.target_id, str(rel.edge_type))
+            pre_mode = pre_modes.get(key)
+            if pre_mode is None:
+                # New edge introduced this tick — no arc to check
+                continue
+            if pre_mode == post_mode:
+                # Trivial no-transition tick; legal by definition
+                continue
+            if (pre_mode, post_mode) not in self.valid_arcs:
+                return InvariantResult.violated(
+                    f"Edge ({rel.source_id} -> {rel.target_id}, "
+                    f"{rel.edge_type}): illegal arc ({pre_mode} -> "
+                    f"{post_mode}) — not in _VALID_TRANSITIONS and "
+                    f"pre_mode != post_mode"
+                )
+        return InvariantResult.success()
+
+
+def _is_community_node_attr(node_attrs: dict[str, Any]) -> bool:
+    """Return True iff the graph-node attribute ``_node_type == 'community'``.
+
+    Inlined private helper per spec-055 T005 / F7. The test-side
+    ``is_community_node(graph, node_id)`` helper in
+    ``tests/property/harness/topology_harness.py`` shares this rule by
+    convention, NOT by import — production code never depends on test code.
+    """
+    return node_attrs.get("_node_type") == "community"
+
+
+@dataclass(frozen=True)
+class NoCommunityFanOut:
+    """No ``EdgeType.MEMBERSHIP`` edge has a community-node source.
+
+    Spec 055 US2 (INV-010). Constitutional commitment II.7 (Edges vs
+    Hyperedges) plus Anti-Pattern VIII.9 (Community as Pairwise Edge):
+    community membership lives in the XGI hyperedge layer; the morphism
+    graph MUST NOT carry community-to-member fan-outs.
+
+    Walks every ``EdgeType.MEMBERSHIP`` edge in the post-graph
+    (constructed via ``post.to_graph()``) and asserts that the source
+    node's ``_node_type != "community"``.
+    """
+
+    @property
+    def name(self) -> str:
+        """Invariant identifier."""
+        return "no_community_fan_out"
+
+    def check(self, _pre: WorldState, post: WorldState) -> InvariantResult:
+        """Check that no MEMBERSHIP edge has a community source.
+
+        Args:
+            _pre: WorldState before step (unused for this invariant).
+            post: WorldState after step.
+
+        Returns:
+            InvariantResult — violated on first community-fan-out edge.
+        """
+        from babylon.models.enums import EdgeType
+
+        graph = post.to_graph()
+        for source_id, target_id, data in graph.edges(data=True):
+            edge_type_raw = data.get("edge_type")
+            if edge_type_raw is None:
+                continue
+            try:
+                edge_type = (
+                    edge_type_raw
+                    if isinstance(edge_type_raw, EdgeType)
+                    else EdgeType(edge_type_raw)
+                )
+            except ValueError:
+                continue
+            if edge_type != EdgeType.MEMBERSHIP:
+                continue
+
+            source_attrs = graph.nodes.get(source_id, {})
+            if _is_community_node_attr(source_attrs):
+                return InvariantResult.violated(
+                    f"Community fan-out edge detected: ({source_id} -> "
+                    f"{target_id}, MEMBERSHIP) — source node "
+                    f"_node_type='community'. Membership MUST live in "
+                    f"the XGI hyperedge layer (Anti-Pattern VIII.9)."
+                )
+        return InvariantResult.success()

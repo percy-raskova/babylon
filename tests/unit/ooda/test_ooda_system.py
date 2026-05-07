@@ -122,10 +122,25 @@ class TestSystemRegistration:
         system_names = [s.name for s in _DEFAULT_SYSTEMS]
         assert "ooda" in system_names
 
-    def test_registered_after_edge_transition(self) -> None:
+    def test_registered_between_metabolism_and_survival(self) -> None:
+        """Spec 056 (F6=α) reordered OODASystem from last (after
+        edge_transition) to position 14 — between MetabolismSystem
+        and SurvivalSystem — so the engine's actual execution order
+        matches ADR032's documented Material Base → Action Phase →
+        Consequences partition.
+
+        Pre-spec-056 contract was ``ooda_idx > edge_idx`` (OODA last).
+        Post-spec-056 contract is ``metabolism_idx < ooda_idx <
+        survival_idx`` (OODA between Material Base and Consequences).
+        """
         from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
 
         system_names = [s.name for s in _DEFAULT_SYSTEMS]
-        edge_idx = system_names.index("edge_transition")
+        metabolism_idx = system_names.index("Metabolism")
         ooda_idx = system_names.index("ooda")
-        assert ooda_idx > edge_idx
+        survival_idx = system_names.index("Survival Calculus")
+        assert metabolism_idx < ooda_idx < survival_idx, (
+            f"OODA must run between Material Base (Metabolism, idx "
+            f"{metabolism_idx}) and Consequences (Survival, idx "
+            f"{survival_idx}); got OODA at idx {ooda_idx}"
+        )

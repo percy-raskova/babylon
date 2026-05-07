@@ -5,6 +5,14 @@ historical materialism: material conditions (biological, spatial, economic)
 must be computed before social/ideological effects can be derived.
 
 ADR032: Materialist Causality System Order
+
+Spec 056 (F6=α, 2026-05-07) reordered OODASystem from the last position
+(formerly position 21) to position 14, immediately between MetabolismSystem
+and SurvivalSystem. This makes the engine's actual execution order match
+ADR032's documented Material Base → Action Phase → Consequences partition.
+The expected_order list below was updated accordingly; all other ordering
+assertions (Vitality first, Survival after Metabolism, etc.) hold under
+the new layout because OODA was inserted between two adjacent groups.
 """
 
 from __future__ import annotations
@@ -38,33 +46,35 @@ class TestMaterialistCausalityOrder:
     """
 
     def test_system_order_is_materialist(self) -> None:
-        """Verify DEFAULT_SYSTEMS follows materialist causality order."""
-        # System names as defined by each system's `name` property
+        """Verify DEFAULT_SYSTEMS follows materialist causality order
+        (per ADR032 + spec-056 F6=α reorder)."""
+        # System names as defined by each system's `name` property.
+        # Position 14 is OODASystem per spec-056 F6=α (was last/21 before).
         expected_order = [
-            "vitality",  # VitalitySystem
-            "Territory",  # TerritorySystem
-            "production",  # ProductionSystem
-            "tick_dynamics",  # TickDynamicsSystem
-            # Capital Volume I (Feature 021)
-            "reserve_army",  # ReserveArmySystem - wage pressure
-            "community",  # CommunitySystem - hypergraph layer (Feature 022)
-            "Lifecycle Circuit",  # LifecycleSystem - D-P-D' circuit (Feature 030)
-            "Solidarity",  # SolidaritySystem
-            "Imperial Rent",  # ImperialRentSystem
-            "dispossession_events",  # DispossessionEventSystem - value transfer
-            "Decomposition",  # DecompositionSystem (Terminal Crisis)
-            "ControlRatio",  # ControlRatioSystem (Terminal Crisis)
-            "Metabolism",  # MetabolismSystem
-            "Survival Calculus",  # SurvivalSystem
-            "Struggle",  # StruggleSystem
-            "Consciousness Drift",  # ConsciousnessSystem
-            "Contradiction Tension",  # ContradictionSystem
-            # Dialectical Field Topology (Feature 002)
-            "contradiction_field",  # ContradictionFieldSystem
-            "field_derivative",  # FieldDerivativeSystem
-            "edge_transition",  # EdgeTransitionSystem
-            # OODA Loop System (Feature 032)
-            "ooda",  # OODASystem - organizational action resolution
+            # --- Material Base (positions 1-13) ---
+            "vitality",  # 1.  VitalitySystem
+            "Territory",  # 2.  TerritorySystem
+            "production",  # 3.  ProductionSystem
+            "tick_dynamics",  # 4.  TickDynamicsSystem
+            "reserve_army",  # 5.  ReserveArmySystem (Feature 021)
+            "community",  # 6.  CommunitySystem (Feature 022)
+            "Lifecycle Circuit",  # 7.  LifecycleSystem (Feature 030)
+            "Solidarity",  # 8.  SolidaritySystem
+            "Imperial Rent",  # 9.  ImperialRentSystem
+            "dispossession_events",  # 10. DispossessionEventSystem (Feature 021)
+            "Decomposition",  # 11. DecompositionSystem
+            "ControlRatio",  # 12. ControlRatioSystem
+            "Metabolism",  # 13. MetabolismSystem
+            # --- Action Phase (position 14) — Spec 056 F6=α reorder ---
+            "ooda",  # 14. OODASystem (Feature 032)
+            # --- Consequences (positions 15-21) ---
+            "Survival Calculus",  # 15. SurvivalSystem
+            "Struggle",  # 16. StruggleSystem
+            "Consciousness Drift",  # 17. ConsciousnessSystem
+            "Contradiction Tension",  # 18. ContradictionSystem
+            "contradiction_field",  # 19. ContradictionFieldSystem (Feature 002)
+            "field_derivative",  # 20. FieldDerivativeSystem (Feature 002)
+            "edge_transition",  # 21. EdgeTransitionSystem (Feature 002)
         ]
         actual_order = [s.name for s in _DEFAULT_SYSTEMS]
         assert actual_order == expected_order, (

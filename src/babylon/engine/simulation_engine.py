@@ -33,7 +33,7 @@ ADR032: Reordered systems for materialist causality.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 
 from babylon.config.defines import GameDefines
@@ -166,46 +166,127 @@ class SimulationEngine:
 # The order encodes strict materialist causality: base before superstructure.
 # Each system sees mutations from all previous systems in the sequence.
 #
-# Material Base (biological, spatial, economic):
+# Spec 056 (F6=α, 2026-05-07) reordered OODA from position 21 (last) to
+# position 14 — between Material Base and Consequences — so the engine's
+# actual execution order matches ADR032's documented partition. See
+# `MATERIAL_BASE_SYSTEMS` / `ACTION_PHASE_SYSTEMS` / `CONSEQUENCE_SYSTEMS`
+# below for the canonical partition.
+#
+# Material Base (biological, spatial, economic) — positions 1–13:
 # 1. VitalitySystem - Dead entities don't work (The Drain + The Reaper)
 # 2. TerritorySystem - Land conditions affect production (Carceral Geography)
 # 3. ProductionSystem - Value creation from labor × biocapacity (The Labor)
-# 4. SolidaritySystem - Organization affects bargaining (Political Organization)
-# 5. ImperialRentSystem - Value extraction (The Extraction)
-# 6. DecompositionSystem - LA decomposes on super-wage crisis (Terminal Crisis)
-# 7. ControlRatioSystem - Guard:prisoner ratio + terminal decision (Terminal Crisis)
-# 8. MetabolismSystem - Ecological residue of production (The Consequence)
+# 4. TickDynamicsSystem - Economic State Evolution (Feature 017)
+# 5. ReserveArmySystem - Reserve army wage pressure (Feature 021)
+# 6. CommunitySystem - Community hypergraph layer (Feature 022)
+# 7. LifecycleSystem - D-P-D' lifecycle circuit (Feature 030)
+# 8. SolidaritySystem - Organization affects bargaining
+# 9. ImperialRentSystem - Value extraction (The Extraction)
+# 10. DispossessionEventSystem - Dispossession events (Feature 021)
+# 11. DecompositionSystem - LA decomposes on super-wage crisis (Terminal Crisis)
+# 12. ControlRatioSystem - Guard:prisoner ratio + terminal decision
+# 13. MetabolismSystem - Ecological residue of production
 #
-# Superstructure (social, ideological):
-# 9. SurvivalSystem - Risk assessment from material state (P(S|A), P(S|R))
-# 10. StruggleSystem - Agency responds to survival odds (George Floyd Dynamic)
-# 11. ConsciousnessSystem - Ideology responds to material (Bifurcation)
-# 12. ContradictionSystem - Final systemic tension accounting (The Reckoning)
+# Action Phase (organization deliberation) — position 14:
+# 14. OODASystem - Organizations observe Material Base, then act (Feature 032)
+#
+# Consequences (social, ideological, dialectical-field) — positions 15–21:
+# 15. SurvivalSystem - Risk assessment from material state (P(S|A), P(S|R))
+# 16. StruggleSystem - Agency responds to survival odds (George Floyd Dynamic)
+# 17. ConsciousnessSystem - Ideology responds to material (Bifurcation)
+# 18. ContradictionSystem - Systemic tension accounting (The Reckoning)
+# 19. ContradictionFieldSystem - Contradiction field computation (Feature 002)
+# 20. FieldDerivativeSystem - Spatial/temporal derivatives + principal (Feature 002)
+# 21. EdgeTransitionSystem - Compound predicates + edge mode transitions (Feature 002)
 _DEFAULT_SYSTEMS: list[System] = [
-    VitalitySystem(),  # 1. Biological cost + death (The Drain + The Reaper)
-    TerritorySystem(),  # 2. Land state updates (Carceral Geography)
-    ProductionSystem(),  # 3. Value creation (The Labor)
-    TickDynamicsSystem(),  # 4. Tick dynamics (Economic State Evolution)
+    # --- Material Base (positions 1–13) ---
+    VitalitySystem(),  # 1. Biological cost + death
+    TerritorySystem(),  # 2. Land state updates
+    ProductionSystem(),  # 3. Value creation
+    TickDynamicsSystem(),  # 4. Tick dynamics (Feature 017)
     ReserveArmySystem(),  # 5. Reserve army wage pressure (Feature 021)
     CommunitySystem(),  # 6. Community hypergraph layer (Feature 022)
     LifecycleSystem(),  # 7. D-P-D' lifecycle circuit (Feature 030)
-    SolidaritySystem(),  # 8. Organization calculation (Political Organization)
-    ImperialRentSystem(),  # 7. Value extraction (The Extraction)
-    DispossessionEventSystem(),  # 8. Dispossession events + value transfer (Feature 021)
-    DecompositionSystem(),  # 9. LA decomposition (Terminal Crisis Dynamics)
-    ControlRatioSystem(),  # 10. Guard:prisoner ratio (Terminal Crisis Dynamics)
-    MetabolismSystem(),  # 11. Environmental degradation (The Consequence)
-    SurvivalSystem(),  # 12. Risk assessment (Survival Calculus)
-    StruggleSystem(),  # 13. Action/Revolt (George Floyd Dynamic)
-    ConsciousnessSystem(),  # 14. Ideological drift (Bifurcation)
-    ContradictionSystem(),  # 15. Tension aggregation (The Reckoning)
-    # Dialectical Field Topology (Feature 002)
-    ContradictionFieldSystem(),  # 16. Contradiction field computation
-    FieldDerivativeSystem(),  # 17. Spatial/temporal derivatives + principal
-    EdgeTransitionSystem(),  # 18. Compound predicates + edge mode transitions
-    # OODA Loop System (Feature 032)
-    OODASystem(),  # 19. Organizational action resolution
+    SolidaritySystem(),  # 8. Organization calculation
+    ImperialRentSystem(),  # 9. Value extraction
+    DispossessionEventSystem(),  # 10. Dispossession events (Feature 021)
+    DecompositionSystem(),  # 11. LA decomposition
+    ControlRatioSystem(),  # 12. Guard:prisoner ratio
+    MetabolismSystem(),  # 13. Environmental degradation
+    # --- Action Phase (position 14) — Spec 056 F6=α reorder ---
+    OODASystem(),  # 14. Organizations observe + act (Feature 032)
+    # --- Consequences (positions 15–21) ---
+    SurvivalSystem(),  # 15. Risk assessment
+    StruggleSystem(),  # 16. Action/Revolt
+    ConsciousnessSystem(),  # 17. Ideological drift
+    ContradictionSystem(),  # 18. Tension aggregation
+    ContradictionFieldSystem(),  # 19. Contradiction field computation (Feature 002)
+    FieldDerivativeSystem(),  # 20. Spatial/temporal derivatives + principal (Feature 002)
+    EdgeTransitionSystem(),  # 21. Compound predicates + edge mode transitions (Feature 002)
 ]
+
+
+# Spec 056 (FR-002): three canonical sets partitioning _DEFAULT_SYSTEMS
+# into Material Base / Action Phase / Consequences. Single source of
+# truth for spec-056 US1 + US2 invariants. Adding a new System to
+# _DEFAULT_SYSTEMS MUST also add it to exactly one of these sets;
+# the import-time assertion below catches drift.
+MATERIAL_BASE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
+    {
+        VitalitySystem,
+        TerritorySystem,
+        ProductionSystem,
+        TickDynamicsSystem,
+        ReserveArmySystem,
+        CommunitySystem,
+        LifecycleSystem,
+        SolidaritySystem,
+        ImperialRentSystem,
+        DispossessionEventSystem,
+        DecompositionSystem,
+        ControlRatioSystem,
+        MetabolismSystem,
+    }
+)
+
+ACTION_PHASE_SYSTEMS: Final[frozenset[type[System]]] = frozenset({OODASystem})
+
+CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
+    {
+        SurvivalSystem,
+        StruggleSystem,
+        ConsciousnessSystem,
+        ContradictionSystem,
+        ContradictionFieldSystem,
+        FieldDerivativeSystem,
+        EdgeTransitionSystem,
+    }
+)
+
+
+# T005: import-time partition integrity assertion.
+# A new System added to _DEFAULT_SYSTEMS without classification raises
+# AssertionError on the next test collection.
+_ALL_PARTITIONED: Final[frozenset[type[System]]] = (
+    MATERIAL_BASE_SYSTEMS | ACTION_PHASE_SYSTEMS | CONSEQUENCE_SYSTEMS
+)
+_DEFAULT_SYSTEM_TYPES: Final[frozenset[type[System]]] = frozenset(type(s) for s in _DEFAULT_SYSTEMS)
+assert _ALL_PARTITIONED == _DEFAULT_SYSTEM_TYPES, (
+    f"Spec 056 partition drift: System(s) "
+    f"{_DEFAULT_SYSTEM_TYPES ^ _ALL_PARTITIONED} are in _DEFAULT_SYSTEMS "
+    f"but not classified into MATERIAL_BASE_SYSTEMS / ACTION_PHASE_SYSTEMS "
+    f"/ CONSEQUENCE_SYSTEMS (or vice versa). Add the new System(s) to "
+    f"exactly one of the three sets in simulation_engine.py."
+)
+assert MATERIAL_BASE_SYSTEMS.isdisjoint(ACTION_PHASE_SYSTEMS), (
+    "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and ACTION_PHASE_SYSTEMS overlap"
+)
+assert MATERIAL_BASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS), (
+    "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
+)
+assert ACTION_PHASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS), (
+    "Spec 056 partition violation: ACTION_PHASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
+)
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)
 

@@ -213,24 +213,65 @@ class TestGraphPersistence:
             latest = db.hydrate_graph(tick=None)
             assert latest.nodes["test"]["tick_value"] == 4
 
-    def test_persist_overwrites_same_tick(self) -> None:
-        """Persisting same tick twice should update, not duplicate."""
+    def test_persist_same_payload_is_idempotent(self) -> None:
+        """Spec 056 (F7=B): re-persisting the same tick with the SAME
+        payload succeeds idempotently — preserves the canonical
+        UPSERT-retry pattern used by ``persistence_observer.py:146``
+        and ``session_recorder.py:168``.
+
+        Pre-spec-056 contract was "INSERT OR REPLACE" (silent upsert
+        on any re-persist). The contract is now monotonic-idempotent:
+        same payload OK, different payload raises (see the paired
+        ``test_persist_different_payload_raises`` below).
+        """
         with RuntimeDatabase(in_memory=True) as db:
             graph: nx.DiGraph = nx.DiGraph()
             graph.add_node("node1", type="Test", value=1)
             db.persist_tick(tick=0, graph=graph)
 
-            # Update same tick
-            graph2: nx.DiGraph = nx.DiGraph()
-            graph2.add_node("node1", type="Test", value=2)
-            db.persist_tick(tick=0, graph=graph2)
+            # Re-persist with IDENTICAL payload — must succeed silently
+            graph_identical: nx.DiGraph = nx.DiGraph()
+            graph_identical.add_node("node1", type="Test", value=1)
+            db.persist_tick(tick=0, graph=graph_identical)  # no exception
 
             loaded = db.hydrate_graph(tick=0)
-            assert loaded.nodes["node1"]["value"] == 2
+            assert loaded.nodes["node1"]["value"] == 1
 
-            # Verify only one row in database
+            # Verify only one row in database (no duplication)
             count = db.con.execute("SELECT COUNT(*) FROM node_history WHERE tick = 0").fetchone()[0]
             assert count == 1
+
+    def test_persist_different_payload_raises(self) -> None:
+        """Spec 056 (F7=B): re-persisting the same tick with a
+        DIFFERENT payload raises ``MonotonicityViolationError`` —
+        blocks silent rewrite of historical state per Constitution
+        II.6 + III.7.
+
+        This replaces the pre-spec-056 ``test_persist_overwrites_same_tick``
+        test (which asserted UPSERT semantics that the new monotonic
+        contract forbids).
+        """
+        import pytest
+
+        from babylon.persistence import MonotonicityViolationError
+
+        with RuntimeDatabase(in_memory=True) as db:
+            graph: nx.DiGraph = nx.DiGraph()
+            graph.add_node("node1", type="Test", value=1)
+            db.persist_tick(tick=0, graph=graph)
+
+            # Re-persist with DIFFERENT payload — must raise
+            graph_different: nx.DiGraph = nx.DiGraph()
+            graph_different.add_node("node1", type="Test", value=2)
+
+            with pytest.raises(MonotonicityViolationError) as exc_info:
+                db.persist_tick(tick=0, graph=graph_different)
+
+            assert exc_info.value.tick == 0
+
+            # After the failed write, original payload must still be returned
+            loaded = db.hydrate_graph(tick=0)
+            assert loaded.nodes["node1"]["value"] == 1  # original, not 2
 
 
 class TestEventPersistence:

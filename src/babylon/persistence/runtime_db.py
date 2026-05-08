@@ -250,9 +250,20 @@ class RuntimeDatabase:
         for ``tick``. Inverse of :meth:`_canonical_payload` for the
         already-stored state. Used by the monotonic-idempotent equality
         check in :meth:`persist_tick`.
+
+        Re-canonicalizes the stored JSON via ``json.dumps(...,
+        sort_keys=True)`` so the comparison against a freshly-canonicalized
+        new payload is order-insensitive (the stored JSON was written in
+        Python dict-insertion order, not sort-order).
         """
+
+        def _re_canonical(json_str: str | None) -> str:
+            if not json_str:
+                return "{}"
+            return json.dumps(json.loads(json_str), sort_keys=True)
+
         nodes = sorted(
-            (str(node_id), str(node_type), str(attrs_json) if attrs_json else "{}")
+            (str(node_id), str(node_type), _re_canonical(attrs_json))
             for node_id, node_type, attrs_json in self.con.execute(
                 "SELECT node_id, node_type, attributes FROM node_history WHERE tick = ?",
                 (tick,),
@@ -263,7 +274,7 @@ class RuntimeDatabase:
                 str(source),
                 str(target),
                 str(edge_type),
-                str(attrs_json) if attrs_json else "{}",
+                _re_canonical(attrs_json),
             )
             for source, target, edge_type, attrs_json in self.con.execute(
                 "SELECT source, target, edge_type, attributes FROM edge_history WHERE tick = ?",
@@ -271,7 +282,7 @@ class RuntimeDatabase:
             )
         )
         events_list = sorted(
-            str(details) if details else "{}"
+            _re_canonical(details)
             for (details,) in self.con.execute("SELECT details FROM events WHERE tick = ?", (tick,))
         )
         return {"nodes": nodes, "edges": edges, "events": events_list}

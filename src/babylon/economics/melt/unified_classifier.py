@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from babylon.core.protocol_kit import CachedSource
 from babylon.economics.melt.class_position import DefaultClassPositionClassifier
 from babylon.economics.melt.types import ClassPosition, PrecarityStatus
 
@@ -149,13 +150,14 @@ def _accounting_criterion(v_produced: float, v_reproduction: float) -> ClassPosi
     return ClassPosition.LUMPENPROLETARIAT
 
 
-class DefaultUnifiedClassifier:
+class DefaultUnifiedClassifier(CachedSource[float]):
     """Default implementation wrapping DefaultClassPositionClassifier.
 
     Backward compatible: no memberships -> same result as base classifier.
     """
 
     def __init__(self) -> None:
+        super().__init__()
         self._base = DefaultClassPositionClassifier()
 
     def classify_with_filtration(

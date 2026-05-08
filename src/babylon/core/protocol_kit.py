@@ -25,9 +25,15 @@ missing-data signal is *transient* — DPD lifecycle, MELT recomputation, etc.).
 from __future__ import annotations
 
 from collections.abc import Callable, Hashable
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from babylon.economics.tensor import NoDataSentinel
+if TYPE_CHECKING:
+    # Lazy import only at type-check time. The runtime import lives inside
+    # CachedSource._resolve to break the import cycle that arises once the
+    # 10 melt+gamma Default* classes inherit from CachedSource[T] (their
+    # package __init__.py would otherwise re-enter protocol_kit before its
+    # module body finishes loading).
+    from babylon.economics.tensor import NoDataSentinel
 
 __all__ = ["CachedSource", "DataSource", "SourceRegistry"]
 
@@ -97,6 +103,10 @@ class CachedSource[T]:
 
         FIFO eviction at :attr:`_max_entries`.
         """
+        # Lazy import — see TYPE_CHECKING comment at module top for circular-
+        # import context. Python caches the import; runtime cost is negligible.
+        from babylon.economics.tensor import NoDataSentinel
+
         if key in self._cache:
             return self._cache[key]
 

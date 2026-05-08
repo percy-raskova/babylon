@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from typing import Protocol
 
+from babylon.core.protocol_kit import CachedSource
 from babylon.economics.gamma.types import GammaBasket
 from babylon.economics.gamma.validation import validate_gamma_basket
 from babylon.economics.tensor import NoDataSentinel
@@ -62,7 +63,7 @@ class GammaBasketCalculator(Protocol):
         ...
 
 
-class DefaultGammaBasketCalculator:
+class DefaultGammaBasketCalculator(CachedSource[float]):
     """Default implementation of GammaBasketCalculator.
 
     Uses the harmonic mean formula from TVT Axiom D3. This is the same

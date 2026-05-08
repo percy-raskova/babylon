@@ -131,6 +131,13 @@ class EventType(StrEnum):
     INSTITUTION_FACTION_SHIFT = "institution_faction_shift"  # Hegemonic fraction changed
     INSTITUTION_REPRODUCTION = "institution_reproduction"  # Institution spawned replacement org
     INSTITUTION_BONAPARTIST_MODE = "institution_bonapartist_mode"  # Bonapartist threshold crossed
+    # Spec 057 — Leontief Imperial Rent Integration: CalibrationWarning event family
+    CALIBRATION_AXIOM_VIOLATION = "calibration_warning.axiom_violation"
+    """Periphery-wage source published a ratio < 1.0 (FR-002, Clarifications 2026-05-08)."""
+    CALIBRATION_QCEW_CARRY_FORWARD = "calibration_warning.qcew_carry_forward"
+    """QCEW data missing for (county, year); employment shares carried forward (FR-004)."""
+    CALIBRATION_PHI_HOUR_OUTLIER = "calibration_warning.phi_hour_outlier"
+    """Per-county phi_hour fell outside the LeontiefRentDefines plausibility bounds (FR-008)."""
 
 
 class GameOutcome(StrEnum):

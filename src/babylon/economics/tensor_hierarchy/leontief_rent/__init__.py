@@ -9,6 +9,9 @@ See ``specs/057-leontief-rent-integration/`` for the design.
 
 from __future__ import annotations
 
+from babylon.economics.tensor_hierarchy.leontief_rent.final_demand import (
+    DefaultFinalDemandSource,
+)
 from babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients import (
     DefaultPeripheryLaborCoefficientsSource,
     PeripheryLaborCoefficientsSource,
@@ -16,6 +19,7 @@ from babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficien
 )
 
 __all__: list[str] = [
+    "DefaultFinalDemandSource",
     "DefaultPeripheryLaborCoefficientsSource",
     "PeripheryLaborCoefficientsSource",
     "PeripheryWageMetadata",

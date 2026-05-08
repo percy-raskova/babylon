@@ -109,6 +109,8 @@ pytest-django = "^4.8"
 django-stubs = {version = ">=5.0", extras = ["compatible-mypy"]}
 djangorestframework-stubs = {version = ">=3.15", extras = ["compatible-mypy"]}
 testcontainers = {extras = ["postgres"], version = "^4.14.2"}
+pytest-json-report = "^1.5.0"
+pytest-html = "^4.1.0"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -180,6 +182,15 @@ addopts = [
     "-l",                      # Show locals (shorter alias)
 
 ]
+
+# JUnit XML reporting (no-ops unless --junit-xml is passed; the test:* mise
+# tasks pass --junit-xml=reports/test-results/<task>/junit.xml).
+# Verbose, machine-readable defaults for AI-agent consumption.
+junit_suite_name = "babylon"
+junit_family = "xunit2"            # Modern schema with richer per-testcase metadata
+junit_logging = "all"              # Embed stdout, stderr, AND log records into the XML
+junit_log_passing_tests = true     # Capture logs even for passing tests
+junit_duration_report = "call"     # Test-call duration only (excludes setup/teardown noise)
 
 [tool.ruff]
 line-length = 100

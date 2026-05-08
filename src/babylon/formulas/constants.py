@@ -1,14 +1,19 @@
 """Shared constants for formula calculations.
 
-These constants are loaded from GameDefines (YAML-first architecture).
-The canonical source is src/babylon/data/defines.yaml.
+These constants are loaded from :class:`~babylon.config.defines.GameDefines`.
+``GameDefines.load_default()`` reads ``src/babylon/data/defines.yaml`` if
+present (optional override) and otherwise returns the dataclass defaults
+compiled into ``GameDefines``. The repository ships without the YAML, so
+the dataclass defaults are the canonical source today; the YAML is a
+calibration override callers may add.
 """
 
 from typing import Final
 
 from babylon.config.defines import GameDefines
 
-# Load defaults from YAML
+# Load defaults: reads src/babylon/data/defines.yaml if present, otherwise
+# falls back to the dataclass defaults compiled into GameDefines.
 _DEFINES: Final[GameDefines] = GameDefines.load_default()
 
 # Kahneman-Tversky loss aversion coefficient

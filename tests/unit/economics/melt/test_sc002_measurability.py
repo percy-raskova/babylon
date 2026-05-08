@@ -361,6 +361,15 @@ class TestSC002IncomeBased:
         )
 
 
+@pytest.mark.skip(
+    reason=(
+        "Blocked on spec 057-leontief-rent-integration. References the "
+        "babylon.economics.melt.imperial_rent module deleted in commit "
+        "a5f73139 ('feat(economics): implement Leontief production chain "
+        "imperial rent'). Spec 057's FR-009 will decide whether to delete "
+        "or rewrite this class against the new pipeline."
+    )
+)
 class TestImperialRentVsClassPosition:
     """Test that imperial rent (Φ_hour) and class position are separate.
 

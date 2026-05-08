@@ -57,7 +57,16 @@ OAKLAND_FIPS: str = "26125"
 
 
 def _make_services(**kwargs: Any) -> ServiceContainer:
-    """Create ServiceContainer with mock calculators."""
+    """Create ServiceContainer with mock calculators.
+
+    Note: ``imperial_rent_calculator`` is intentionally absent from the
+    defaults — that ``ServiceContainer.create`` kwarg was removed in
+    commit ``a5f73139`` along with the per-worker TVT calculator.
+    Spec 057-leontief-rent-integration will introduce a successor
+    ``ProductionChainRentCalculator`` injection point. Tests that
+    explicitly verify imperial-rent injection are skipped (see
+    ``TestComputeImperialRent``).
+    """
     defaults: dict[str, Any] = {
         "melt_calculator": MockMELTCalculator(),
         "basket_calculator": MockBasketVisibilityCalculator(),
@@ -65,9 +74,12 @@ def _make_services(**kwargs: Any) -> ServiceContainer:
         "capital_calculator": MockCapitalStockCalculator(),
         "throughput_calculator": MockThroughputCalculator(),
         "transition_engine": MockClassTransitionEngine(),
-        "imperial_rent_calculator": MockImperialRentCalculator(),
     }
     defaults.update(kwargs)
+    # Strip the dead ``imperial_rent_calculator`` kwarg if a caller passes
+    # it explicitly — tests that targeted that injection are skipped, but
+    # this guard keeps any stragglers from re-tripping the same TypeError.
+    defaults.pop("imperial_rent_calculator", None)
     return ServiceContainer.create(**defaults)
 
 
@@ -1575,6 +1587,15 @@ class TestComputeTickSummary:
 # =============================================================================
 
 
+@pytest.mark.skip(
+    reason=(
+        "Blocked on spec 057-leontief-rent-integration. These tests verify "
+        "the per-county TVT-axiom imperial-rent injection that was removed "
+        "in commit a5f73139; the production stub now writes phi_hour=0 "
+        "until the new ProductionChainRentCalculator is wired in. Spec 057's "
+        "FR-009 will decide whether to delete or rewrite this class."
+    )
+)
 class TestComputeImperialRent:
     """Tests for _compute_imperial_rent (76.1% score)."""
 

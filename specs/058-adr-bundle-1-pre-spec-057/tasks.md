@@ -35,7 +35,7 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 - [X] T005 [US5] action_costs.py: imports from `_helpers`, local def deleted (now uses richer fallback — semantic upgrade per spec acceptance scenario 1)
 - [X] T006 [US5] action_effects.py: imports from `_helpers`, local def deleted, `EdgeType` removed from imports (no longer used here)
 - [X] T007 [US5] GREEN: 310 passed / 1 skipped in OODA + canonicalization suites
-- [ ] T008 [US5] Run `mise run check`; commit: `refactor(ooda): extract _compute_membership_overlap helper`
+- [X] T008 [US5] Pre-commit hooks (lint+format+mypy+commitizen) all passed; committed `2a114617 refactor(ooda): extract _compute_membership_overlap helper` (5 files, +183/-100)
 
 ---
 
@@ -49,15 +49,15 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 
 ### Sub-phase US3a — `enums.py` split (commit 2)
 
-- [ ] T009 [US3] Run import-graph clustering analysis on `enums.py` per R2: `git grep -E "from babylon.models.enums import" src/ tests/ > /tmp/058_enums_imports.txt`; build co-occurrence matrix in a one-off Python script; output proposed clustering to `/tmp/058_enums_clustering.json` (planning artifact, not committed)
-- [ ] T010 Create `tests/unit/test_public_import_surface.py` per SC-006: assert `set(babylon.models.enums.__all__)` matches the pre-split symbol set (extract baseline via `python -c "from babylon.models import enums; print(sorted(n for n in dir(enums) if not n.startswith('_')))"`); initially RED until commit 2 declares `__all__`
-- [ ] T011 [US3] Create `src/babylon/models/enums/` package skeleton: empty `__init__.py` and one `*.py` file per cluster from T009 (~7-9 files); each sub-module starts as an empty stub
-- [ ] T012 [US3] Move enum classes from the old `enums.py` into their cluster sub-modules per T009's mapping; declare `__all__` in each sub-module enumerating its public classes
-- [ ] T013 [US3] Wire `src/babylon/models/enums/__init__.py` to re-export every symbol via `from .topology import *`-style imports; declare aggregate `__all__` matching the pre-split symbol set baseline from T010
-- [ ] T014 [US3] Delete `src/babylon/models/enums.py` (the old monolith)
-- [ ] T015 [US3] Verify per-file LOC cap: `find src/babylon/models/enums -name "*.py" -exec wc -l {} \;` reports no file over 600 LOC (SC-002); if any over, split further into nested sub-packages per R2 escape hatch
-- [ ] T016 [US3] Verify `git grep` byte-equality: `git grep -hn "from babylon.models.enums import" src/ tests/ | sort | uniq -c | sort -rn > /tmp/058_enums_imports_after.txt`; compare with pre-split snapshot from T009 — same line count and same import sets
-- [ ] T017 [US3] Verify T010's regression test now passes (GREEN); run `mise run check && mise run test:unit`; baseline tally preserved
+- [X] T009 [US3] Co-occurrence clustering produced 22 clusters (informative; pivoted to semantic clustering — 9 sub-modules + _resolution.py per ADR-001 priors with the 600-LOC cap as the binding constraint). Integration-gap audit added as polish-phase follow-up note.
+- [X] T010 Wrote 5 RED public-import-surface tests at `tests/unit/test_public_import_surface.py` (covers all 46 baseline symbols: 45 enums + resolve_edge_type)
+- [X] T011 [US3] Wrote `/tmp/058_split_enums.py` AST-driven splitter; produces 11 files (9 categories + _resolution + __init__) preserving every comment, docstring, and section header verbatim
+- [X] T012 [US3] Splitter ran cleanly: 45 classes distributed across 9 sub-modules (topology=6, social=7, consciousness=4, territory=7, events=3, actions=2, legal=6, community=2, organizations=8); each sub-module declares __all__
+- [X] T013 [US3] __init__.py re-exports all 46 symbols via grouped `from babylon.models.enums.<sub> import (...)` blocks; aggregate __all__ matches baseline
+- [X] T014 [US3] Old `enums.py` monolith deleted
+- [X] T015 [US3] Per-file LOC cap holds: largest is `organizations.py` at 260 LOC; all others <200 LOC; cap of 600 not approached
+- [X] T016 [US3] Public-import-surface verified: 5/5 import-surface tests pass; flat imports + star imports + module.attr access all work
+- [X] T017 [US3] Full fast-gate: 8995p / 186s / 1xf / 1f (1f is pre-existing flake unchanged). +5 passed from new import-surface tests. mypy on enums/ clean (1 pre-existing error in engine/hydration/reference.py:726 unrelated to this commit). ruff autofixed 11 I001 (import sorting).
 - [ ] T018 [US3] Commit: `refactor(models): split enums.py into enums/ package`
 
 ### Sub-phase US3b — `defines.py` split (commit 3)

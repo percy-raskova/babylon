@@ -79,11 +79,16 @@ class TestTerritorySerializer:
     """Validate TerritorySerializer output format."""
 
     def test_serializes_territory(self) -> None:
+        """Per Spec 052 §8, TerritorySerializer requires ``h3_resolution`` and
+        ``county_fips`` alongside the older fields. Both were added when
+        the serializer was extended for the hex visualisation layer."""
         s = TerritorySerializer(
             data={
                 "id": "t_detroit",
                 "name": "Detroit",
                 "h3_index": None,
+                "h3_resolution": 0,
+                "county_fips": "26163",
                 "heat": 0.3,
                 "sector_type": "INDUSTRIAL",
                 "territory_type": "CORE",
@@ -104,14 +109,18 @@ class TestEdgeSerializer:
     """Validate EdgeSerializer output format."""
 
     def test_serializes_edge(self) -> None:
+        """Per Spec 052 §10, EdgeSerializer fields are ``id``, ``source_id``,
+        ``target_id``, ``mode`` (not ``edge_type``), ``value_flow``,
+        ``tension``, and ``repression_flow``."""
         s = EdgeSerializer(
             data={
+                "id": "edge_C001_C002",
                 "source_id": "C001",
                 "target_id": "C002",
-                "edge_type": "EXPLOITATION",
+                "mode": "EXPLOITATION",
                 "value_flow": 5.0,
                 "tension": 0.3,
-                "solidarity_strength": 0.0,
+                "repression_flow": 0.0,
             }
         )
         assert s.is_valid(), s.errors
@@ -122,6 +131,9 @@ class TestGameSnapshotSerializer:
     """Validate GameSnapshotSerializer output format."""
 
     def test_serializes_snapshot(self) -> None:
+        """Per Spec 052 §5, GameSnapshotSerializer requires ``hyperedges``
+        and a ``derived`` block, and does NOT have a top-level ``economy``
+        (economy lives under ``derived.economy`` per Spec 052 §11)."""
         s = GameSnapshotSerializer(
             data={
                 "session_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
@@ -129,9 +141,17 @@ class TestGameSnapshotSerializer:
                 "territories": [],
                 "organizations": [],
                 "institutions": [],
+                "hyperedges": [],
                 "edges": [],
-                "economy": {},
                 "events": [],
+                "derived": {
+                    "value_tensor": {},
+                    "imperial_rent": {},
+                    "dept_iii_visibility": {},
+                    "class_aggregates": {},
+                    "economy": {},
+                    "predictions": {},
+                },
             }
         )
         assert s.is_valid(), s.errors

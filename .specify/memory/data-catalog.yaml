@@ -3,7 +3,7 @@
 # Canonical machine-readable catalog for III.4 Data Source Traceability.
 # Runtime data sources are fetched/updated during operation.
 # Fixtures are pinned snapshots for reproducible tests and NEVER runtime dependencies.
-version: "2.6.1"
+version: "2.6.2"
 categories:
   - name: Federal Economic
     sources:
@@ -202,6 +202,16 @@ categories:
         granularity: Country/Sector
         cadence: Annual
         class: Runtime
+      - id: Hickel_HSZ_Drain
+        agency: Hickel/Sullivan/Zoomkawala
+        dataset: Global South Value Drain time series 1960-2017 (annual_drain_usd_billions, ERDI, alpha)
+        vintage: Static (2021 publication; data through 2017)
+        granularity: National-aggregate (Global North vs Global South)
+        cadence: Static (no updates planned)
+        class: Fixture
+        provenance_url: https://doi.org/10.1016/j.gloenvcha.2021.102467
+        local_path: /media/user/data/babylon-data/babylon_hickel_final.csv
+        added_by: Spec 057 (Leontief Imperial Rent Integration) — research.md §R9
   - name: Land Cover / Spatial
     sources:
       - id: Natural_Earth

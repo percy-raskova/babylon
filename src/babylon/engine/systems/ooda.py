@@ -24,7 +24,7 @@ from babylon.ooda.initiative import (
 from babylon.ooda.layer0 import process_layer0
 from babylon.ooda.layer3 import process_layer3
 from babylon.ooda.npc_stub import select_npc_actions
-from babylon.ooda.types import ActionResult, OODAProfile, TurnResolution
+from babylon.ooda.types import ActionResult, InitiativeScore, OODAProfile, TurnResolution
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -121,49 +121,21 @@ class OODASystem:
             pd = getattr(context, "persistent_data", {})
             player_actions = pd.get("player_actions", {}) if isinstance(pd, dict) else {}
 
+        # Lift org_data_lookup outside the loop (was reconstructed per-iteration
+        # in the original inline loop body; identical result, smaller alloc).
+        org_data_lookup = dict(org_nodes)
+
         max_actions_total = 500
         for score in initiative_order:
             if len(action_phase_results) >= max_actions_total:
                 break
-
-            org_data_lookup = dict(org_nodes)
-            org_data = org_data_lookup.get(score.org_id, {})
-
-            # Skip Business orgs (handled in Layer 0)
-            if org_data.get("org_type") == OrgType.BUSINESS.value:
-                continue
-
-            # Check for player-provided actions
-            org_player_actions = player_actions.get(score.org_id)
-            if org_player_actions:
-                # Player actions are pre-validated Action dicts
-                for action_data in org_player_actions:
-                    result = ActionResult(
-                        action=action_data
-                        if not isinstance(action_data, dict)
-                        else _action_from_dict(action_data, score.org_id),
-                        success=True,
-                        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
-                    )
-                    action_phase_results.append(result)
-            else:
-                # NPC action selection
-                territory_ids: list[str] = org_data.get("territory_ids", [])
-                target_id = territory_ids[0] if territory_ids else score.org_id
-
-                npc_actions = select_npc_actions(
-                    org_id=score.org_id,
-                    org_attrs=org_data,
-                    target_id=target_id,
-                    defines=defines,
-                )
-                for action in npc_actions:
-                    result = ActionResult(
-                        action=action,
-                        success=True,
-                        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
-                    )
-                    action_phase_results.append(result)
+            new_results = self._resolve_for_organization(
+                score=score,
+                org_data_lookup=org_data_lookup,
+                player_actions=player_actions,
+                defines=defines,
+            )
+            action_phase_results.extend(new_results)
 
         # --- Phase 3: Layer 3 (consequence propagation) ---
         all_results = layer0_results + action_phase_results
@@ -193,6 +165,79 @@ class OODASystem:
                     },
                 )
             )
+
+    def _resolve_for_organization(
+        self,
+        score: InitiativeScore,
+        org_data_lookup: dict[str, dict[str, Any]],
+        player_actions: dict[str, Any],
+        defines: Any,
+    ) -> list[ActionResult]:
+        """Resolve one organization's action(s) for the current tick.
+
+        Extracted from ``step`` body for test-time instrumentation
+        (Spec 056 US2 ``OrganizationActionSpy``). Behavior preserved;
+        the refactor is purely structural — the inline loop body became
+        a named method. ``unittest.mock.patch.object(OODASystem,
+        "_resolve_for_organization", ...)`` is the canonical seam for
+        per-organization action spying / interleaving simulations.
+
+        Args:
+            score: Initiative score for the organization being resolved.
+            org_data_lookup: Pre-computed mapping of org_id → org_data
+                dict (lifted out of the action-phase loop for efficiency).
+            player_actions: Player-provided actions per org_id from the
+                context's persistent_data.
+            defines: OODA defines from services.defines.ooda.
+
+        Returns:
+            List of ``ActionResult`` produced for this organization
+            (empty if the org is a Business — those are handled in
+            Layer 0 — or if it produced no actions this tick).
+        """
+        org_data = org_data_lookup.get(score.org_id, {})
+
+        # Skip Business orgs (handled in Layer 0)
+        if org_data.get("org_type") == OrgType.BUSINESS.value:
+            return []
+
+        results: list[ActionResult] = []
+
+        # Check for player-provided actions
+        org_player_actions = player_actions.get(score.org_id)
+        if org_player_actions:
+            # Player actions are pre-validated Action dicts
+            for action_data in org_player_actions:
+                results.append(
+                    ActionResult(
+                        action=action_data
+                        if not isinstance(action_data, dict)
+                        else _action_from_dict(action_data, score.org_id),
+                        success=True,
+                        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+                    )
+                )
+        else:
+            # NPC action selection
+            territory_ids: list[str] = org_data.get("territory_ids", [])
+            target_id = territory_ids[0] if territory_ids else score.org_id
+
+            npc_actions = select_npc_actions(
+                org_id=score.org_id,
+                org_attrs=org_data,
+                target_id=target_id,
+                defines=defines,
+            )
+            for action in npc_actions:
+                results.append(
+                    ActionResult(
+                        action=action,
+                        success=True,
+                        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+                    )
+                )
+
+        return results
 
 
 def _collect_org_nodes(graph: nx.DiGraph[str]) -> list[tuple[str, dict[str, Any]]]:

@@ -54,21 +54,40 @@ class TestBridgeSnapshotShape:
     """Verify _state_to_snapshot output matches frontend GameSnapshot interface."""
 
     def test_snapshot_has_all_required_fields(self, wayne_state) -> None:
-        """Snapshot dict has every field the frontend GameSnapshot expects."""
+        """Snapshot dict has every field the Spec 052 §5 GameSnapshot contract expects.
+
+        Per ``specs/052-worldstate-snapshot-contract`` and the
+        ``GameSnapshotSerializer`` docstring, the snapshot does NOT have a
+        top-level ``entities`` key (entities are split across
+        ``organizations`` / ``institutions`` / ``territories``) and does
+        NOT have a top-level ``economy`` key (economy lives under
+        ``derived.economy``). The pre-Spec-052 shape was changed in
+        commit 6eeb7bd6.
+        """
         snap = _state_to_snapshot(wayne_state, TEST_SESSION)
 
         required = {
             "session_id",
             "tick",
-            "entities",
             "territories",
             "organizations",
             "institutions",
+            "hyperedges",
             "edges",
-            "economy",
             "events",
+            "derived",
         }
         assert required.issubset(snap.keys()), f"Missing: {required - snap.keys()}"
+
+        # Spec 052 negative assertions: these keys MUST be absent.
+        assert "entities" not in snap, "Spec 052 §5: snapshot has no top-level 'entities' key"
+        assert "economy" not in snap, (
+            "Spec 052 §5: snapshot has no top-level 'economy' key — "
+            "economy lives under derived.economy"
+        )
+
+        # The derived block MUST itself contain economy per Spec 052 §11.
+        assert "economy" in snap["derived"], "Spec 052 §11: derived block must contain 'economy'"
 
     def test_snapshot_includes_traps(self, wayne_state) -> None:
         """Wayne County snapshot includes trap detection results."""

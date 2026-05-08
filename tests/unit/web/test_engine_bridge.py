@@ -222,7 +222,10 @@ class TestEngineBridgeResolveTick:
         assert isinstance(result, dict)
         assert result["tick"] == 1
         assert result["session_id"] == str(sid)
-        assert "entities" in result
+        # Spec 052 §5: snapshot has organizations/institutions/territories,
+        # not a top-level "entities" key.
+        assert "organizations" in result
+        assert "institutions" in result
         assert "territories" in result
 
 
@@ -231,24 +234,41 @@ class TestEngineBridgeSnapshot:
     """Verify get_snapshot returns properly structured dict."""
 
     def test_snapshot_keys(self) -> None:
+        """Snapshot has the keys defined by Spec 052 §5.
+
+        Spec 052 (and ``GameSnapshotSerializer`` docstring at
+        ``web/game/serializers.py:267``) explicitly forbids a top-level
+        ``entities`` key and a top-level ``economy`` key. Class data
+        lives under ``derived.class_aggregates``; economy data lives
+        under ``derived.economy``. Hyperedges and the derived block were
+        added in commit 6eeb7bd6.
+        """
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
         snapshot = bridge.get_snapshot(sid)
 
-        expected_keys = {
+        # ``traps`` is optional (only present for snapshots whose session
+        # ran trap detection) — assert subset, not equality.
+        required_keys = {
             "session_id",
             "tick",
-            "entities",
             "territories",
             "organizations",
             "institutions",
+            "hyperedges",
             "edges",
-            "economy",
             "events",
+            "derived",
         }
-        assert set(snapshot.keys()) == expected_keys
+        assert required_keys.issubset(snapshot.keys()), (
+            f"Missing Spec 052 keys: {required_keys - snapshot.keys()}"
+        )
+
+        # Spec 052 negative assertions.
+        assert "entities" not in snapshot
+        assert "economy" not in snapshot
 
     def test_snapshot_session_id_is_string(self) -> None:
         mock_persistence = _make_mock_persistence()
@@ -258,13 +278,20 @@ class TestEngineBridgeSnapshot:
         snapshot = bridge.get_snapshot(sid)
         assert snapshot["session_id"] == str(sid)
 
-    def test_snapshot_entities_is_list(self) -> None:
+    def test_snapshot_entity_collections_are_lists(self) -> None:
+        """Spec 052 §5: organizations/institutions/territories/edges are lists.
+
+        Replaces the pre-Spec-052 assertion that ``snapshot["entities"]``
+        is a list; Spec 052 split the single ``entities`` collection into
+        these per-type lists.
+        """
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
         snapshot = bridge.get_snapshot(sid)
-        assert isinstance(snapshot["entities"], list)
+        for key in ("organizations", "institutions", "territories", "edges", "hyperedges"):
+            assert isinstance(snapshot[key], list), f"snapshot[{key!r}] is not a list"
 
 
 @pytest.mark.unit
@@ -306,7 +333,13 @@ class TestStateToSnapshot:
     """Test the _state_to_snapshot helper function."""
 
     def test_empty_state_produces_valid_snapshot(self) -> None:
-        """An empty WorldState should produce a snapshot with empty lists."""
+        """An empty WorldState produces a Spec-052-shaped snapshot with empty collections.
+
+        Per Spec 052 §5 there is no top-level ``entities`` key; collections
+        are split by type. The ``derived`` block (Spec 052 §11) is always
+        present with its six sub-fields, and each is empty for an empty
+        WorldState.
+        """
         mock_state = MagicMock()
         mock_state.tick = 0
         mock_state.entities = {}
@@ -322,12 +355,18 @@ class TestStateToSnapshot:
         result = _state_to_snapshot(mock_state, sid)
 
         assert result["tick"] == 0
-        assert result["entities"] == []
         assert result["territories"] == []
         assert result["organizations"] == []
         assert result["institutions"] == []
+        assert result["hyperedges"] == []
         assert result["edges"] == []
         assert result["events"] == []
+        assert "entities" not in result, "Spec 052 §5 forbids a top-level 'entities' key"
+
+        # Spec 052 §11 derived block.
+        assert "derived" in result
+        assert result["derived"]["economy"] == {}
+        assert result["derived"]["class_aggregates"] == {}
 
 
 # ---------------------------------------------------------------------- #

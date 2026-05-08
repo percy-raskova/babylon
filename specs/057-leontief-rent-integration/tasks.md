@@ -29,7 +29,7 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 **Purpose**: Branch hygiene, baseline capture, package skeleton.
 
-- [ ] T001 Confirm working tree is clean and on branch `057-leontief-rent-integration`; verify Spec 058 infrastructure present (`src/babylon/core/protocol_kit.py`, `src/babylon/economics/tensor_hierarchy/mappings/_models.py`, `src/babylon/economics/tick/system/__init__.py`, `src/babylon/config/defines/`, `src/babylon/models/enums/`)
+- [ ] T001 Confirm working tree is clean and on branch `057-leontief-rent-integration`; verify Spec 058 infrastructure present (`src/babylon/core/protocol_kit.py`, `src/babylon/economics/tensor_hierarchy/mappings/_models.py`, `src/babylon/economics/tick/system/__init__.py`, `src/babylon/config/defines/`, `src/babylon/models/enums/`); confirm legacy module absent: `! test -d src/babylon/economics/reproduction || echo "WARN: reproduction module still exists; FR-009 narrative may need update"` (analyze pre-confirmed absent on 2026-05-08, per analyze U4 finding)
 - [ ] T002 Capture baseline test tally: `mise run test:unit && mise run test:int && mise run test:summary` → record `passed/skipped/xfailed/failures` in a scratch file (used to verify SC-001 at end)
 - [ ] T003 Verify spec-057 quarantine markers are still in place: `grep -rln "Blocked on spec 057-leontief" src/ tests/ | wc -l` → expect ≥9 (these UNSKIP in Phase 7 / US5)
 - [ ] T004 Verify trove data accessibility: `ls /media/user/data/babylon-data/babylon_hickel_final.csv /media/user/data/babylon-data/concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx /media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` (per research.md §R8)
@@ -114,7 +114,7 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### Implementation for User Story 3
 
-- [ ] T035 [US3] Verify whether `fact_bea_use_table` (or equivalent Summary-level Use Table) exists in `data/sqlite/marxist-data-3NF.sqlite`: `sqlite3 data/sqlite/marxist-data-3NF.sqlite ".schema" | grep -iE "use_table|final_use|final_demand"`. If absent → add a small ingestion task that reads `/media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` and inserts into the appropriate fact table (per research.md §R2)
+- [ ] T035 [US3] Schema check confirmed (analyze 2026-05-08): no `fact_bea_use_table` in `marxist-data-3NF.sqlite` BUT `fact_bea_national_industry` (gross_output_millions) + `fact_bea_io_coefficient` ARE present. **DEFAULT path: derive `y = x − A·x`** from those two tables — the existing `FinalDemandSource` Protocol explicitly allows "or derived" per `production_chain_rent.py:82`. **FALLBACK path** (if derived accuracy is insufficient at SC-004 calibration): ingest `/media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` into a new `fact_bea_use_table`. See analyze finding C4 for the strategy decision
 - [ ] T036 [US3] Implement `DefaultFinalDemandSource(CachedSource[np.ndarray])` in `src/babylon/economics/tensor_hierarchy/leontief_rent/final_demand.py`:
   - `_fetch(year) -> np.ndarray | NoDataSentinel` — query `fact_bea_use_table` for `year`, return `np.asarray(rows, dtype=np.float64)` ordered to match `DefaultInterIndustryFlowSource(year).industries`
   - `get_final_demand(year) -> np.ndarray` — adapter for the existing `FinalDemandSource` Protocol; calls `self._resolve(year)` and raises `ValueError` if `NoDataSentinel`
@@ -144,7 +144,7 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### Implementation for User Story 4
 
-- [ ] T047 [US4] Verify NAICS-BEA crosswalk table exists in `data/sqlite/marxist-data-3NF.sqlite`: `sqlite3 data/sqlite/marxist-data-3NF.sqlite ".schema" | grep -iE "naics.*bea|bea.*naics|concordance"`. If absent → ingest from `/media/user/data/babylon-data/concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx` (per research.md §R4) into `xref_naics_bea_summary` or equivalent
+- [ ] T047 [US4] NAICS-BEA crosswalk confirmed (analyze 2026-05-08): table is `bridge_naics_bea` in `marxist-data-3NF.sqlite` with columns `(industry_id, bea_industry_id, mapping_quality, weight)`. Use the `weight` column (NUMERIC(5, 4)) for proper apportionment of `mapping_quality='split'` NAICS codes — this is richer than the original "missing-code → cell-zero" assumption. The `mapping_quality` discriminator (`exact|aggregated|split|estimated`) lets the allocator distinguish high-confidence from estimated cells; allocator MAY emit a `CalibrationWarning(QcewCarryForward, ...)` variant or ignore quality at v1. Schema verified: `dim_industry` ↔ `bridge_naics_bea` ↔ `dim_bea_industry`
 - [ ] T048 [US4] Implement `IndustryToCountyAllocator(Protocol)` + `DefaultIndustryToCountyAllocator(CachedSource[dict[str, float]])` in `src/babylon/economics/tensor_hierarchy/leontief_rent/industry_to_county_allocator.py` per the algorithm in `contracts/industry_to_county_allocator.md`:
   - Iterate sorted county FIPS for determinism (per Constitution III.7)
   - For each county, find most recent QCEW year `y' ≤ year` in look-back window `[year - max_years, year]`
@@ -172,11 +172,13 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 - [ ] T052 [P] [US1] Write failing integration test `tests/integration/economics/tick/test_imperial_rent_pipeline.py::test_wayne_baseline_nonzero_phi_hour` (AC1, SC-002) — run one Wayne County baseline tick; assert `any(c.phi_hour > 1e-6 for c in result.values())`
 - [ ] T053 [P] [US1] Write failing test `test_reproducibility_same_seed` (AC2, SC-002) — run same tick twice; assert `result1 == result2` AND `event_bus_history1 == event_bus_history2`
+- [ ] T053b [P] [US1] **(C1 — SC-006 coverage)** Write failing test `tests/integration/economics/tick/test_imperial_rent_pipeline.py::test_savings_accumulation_picks_up_phi_hour` — run a 3-tick Wayne County simulation; assert that at least one (county, tick) pair produces `phi_adjustment > 0` in `savings_schedule.py`'s output (verify via `services.event_bus.get_history()` for ExtractionEvent or by inspecting `CountyEconomicState.savings_state` if exposed). This closes SC-006 ("savings_and_accumulation downstream shows non-trivial phi_adjustment values during a multi-tick run")
 - [ ] T054 [P] [US1] Write failing test `test_per_county_proportionality_high_gap` (AC3) — fabricate two counties with high vs low wage-gap industry mix; assert `phi_hour[high_gap] > phi_hour[low_gap]`
 - [ ] T055 [P] [US1] Write failing test `test_industry_misalignment_raises` (AC4, FR-006, R7) — fabricate three sources with mismatched industry lists; `pytest.raises(ValueError, match=r"BEA industry list mismatch")`
 - [ ] T056 [P] [US1] Write failing test `test_sentinel_periphery_wage_skips_step` (AC5, FR-007) — wire mock periphery source to return `NoDataSentinel`; assert (a) all input `phi_hour` unchanged, (b) exactly one `QcewCarryForwardEvent(county_fips="*", look_back_distance=-1)` in history
 - [ ] T057 [P] [US1] Write failing test `test_facade_returns_dict_str_county_state` (AC6, FR-001 + Spec 058 FR-007) — assert `isinstance(result, dict)`, all values `isinstance(CountyEconomicState)`
 - [ ] T058 [P] [US1] Extend the existing `tests/integration/economics/tick/test_facade_behavioral_fence.py` (Spec 058) to assert event-bus emission ordering preserved with the new pipeline wired (AC7) — existing snapshot fixture continues to pass after the wiring
+- [ ] T058b [P] [US1] **(C2 — FR-011 coverage)** Add explicit assertion to the behavioral fence test (or as a separate `test_phi_hour_field_shape_preserved` in same file): `from babylon.economics.tick.types import CountyEconomicState; assert CountyEconomicState.model_fields["phi_hour"].annotation is float; assert any(m.metadata == {"ge": 0} for m in CountyEconomicState.model_fields["phi_hour"].metadata)` — closes FR-011 ("preserve `CountyEconomicState.phi_hour` field shape and downstream reads")
 - [ ] T059 [P] [US1] Write failing test `tests/unit/economics/test_factory.py::test_factory_registers_all_four_sources` (AC8, FR-005) — assert `registry.get(PeripheryLaborCoefficientsSource) is not None` and same for `FinalDemandSource`, `IndustryToCountyAllocator`, `ProductionChainRentCalculator`
 - [ ] T060 [P] [US1] Write failing test `test_conservation_within_one_percent_for_2015` (AC9, SC-003) — wire all real sources for 2015; assert `abs(allocation_total - national_total) / national_total < 0.01` for 2015
 
@@ -202,6 +204,7 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 - [ ] T065 [US1] Run `poetry run pytest tests/integration/economics/tick/test_imperial_rent_pipeline.py tests/integration/economics/tick/test_facade_behavioral_fence.py tests/unit/economics/test_factory.py -v -k "not skip"` → all GREEN (10 tests across the 3 files)
 - [ ] T066 [US1] Doctest examples in `src/babylon/economics/tick/system/imperial_rent.py` module docstring — show one minimal pipeline invocation; verify with `mise run test:doctest`
+- [ ] T066b [US1] **(U3 — FR-012 verification)** Verify the FR-012 chain documentation lands in the module docstring: `grep -E "BEA I-O.*Leontief.*periphery wage.*industry rent.*county" src/babylon/economics/tick/system/imperial_rent.py` returns at least one match. The module docstring MUST include the chain "BEA I-O → import-share decomposition → Leontief inverse → periphery wage coefficients → industry rent → QCEW employment-share allocation → per-county phi_hour" with one sentence per step naming the data source (per spec.md FR-012)
 - [ ] T067 [US1] Commit boundary: `feat(spec-057): imperial_rent.compute() pipeline + ServiceContainer wiring + facade delegation — US1`
 
 **Checkpoint**: US1 — the central deliverable — fully functional. Wayne County tick produces non-zero `phi_hour`; reproducibility verified; behavioral fence preserved.
@@ -226,7 +229,7 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### Delete orphan tests (per FR-009 — tests against removed API)
 
-- [ ] T075 [US5] Audit each unquarantined test for orphans: any test that still references `babylon.economics.melt.imperial_rent`, `babylon.economics.reproduction`, `MockImperialRentCalculator`, or `imperial_rent_calculator` as a `ServiceContainer` field is an orphan. Delete the orphan test functions (NOT entire files unless every test in the file is an orphan); document the deletions in the commit message per FR-009. Expected scope: ≤10 stale test functions across the 7 files
+- [ ] T075 [US5] **(U1 — pre-listed orphan candidates)** Audit each unquarantined test for orphans. Pre-list the candidates by running: `grep -rnE "MockImperialRentCalculator|babylon\\.economics\\.reproduction|babylon\\.economics\\.melt\\.imperial_rent|imperial_rent_calculator" tests/unit/ tests/integration/ > /tmp/orphan_candidates.txt`, then for each match decide: DELETE if the test exclusively asserts behavior of the removed per-worker API (no path forward post-Spec 057), or UPDATE if the test asserts a still-valid behavior (e.g., ServiceContainer field expectations — update the field name to one of the 4 new Spec 057 fields). Document each deletion in the commit message per FR-009. Expected scope: ≤10 stale test functions across the 7 files
 - [ ] T076 [US5] Run `poetry run pytest tests/unit tests/integration -m "not ai" -v --tb=short` → all GREEN, no collection errors, skipped count drops by ~9 from baseline (matching SC-001 invariant: same-or-better tally)
 - [ ] T077 [US5] Commit boundary: `test(spec-057): unquarantine spec-057 markers + delete orphan per-worker tests — US5, FR-009`
 
@@ -263,6 +266,7 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 - [ ] T084 Run full `mise run check` — confirm lint + format + typecheck + test:unit all pass with zero new findings (SC-008)
 - [ ] T085 Run `mise run test:all` — confirm tally matches expected: passed `+N` (per-user-story new tests) / skipped down by ~9 (quarantines lifted) / 0 failures / 1 xfailed (pre-existing spec-054 flake) — per SC-001
+- [ ] T085b **(C3 — Constitution IV.2 Tri-County backward-compat)** Run the tri-county scenario regression: `mise run test:scenario -k "tri_county or wayne_oakland"` (or equivalent — the test exists per Constitution IV.2 as a mandatory backward-compat acceptance criterion). Assert: pre-Spec-057 tri-county results (Crisis → Devaluation → Recolonization → Displacement) reproduce identically. If the scenario test does not exist by this scenario name, the implementer MUST create or locate it before final commit. This is constitutionally mandated per IV.2: "Any statewide model MUST reproduce the tri-county results when coarse-grained to that resolution. Regression = implementation wrong."
 - [ ] T086 Run `mise run test:cov` — confirm new modules have ≥90% line coverage (browse `mise run test:show`); documented in commit message
 - [ ] T087 Run quickstart.md Phase 2 + Phase 3 scripts manually — verify Wayne County non-zero check (SC-002), reproducibility check (SC-002), Hickel calibration check (SC-004), and constitution III.4 / III.7 / III.1 cross-checks all pass
 - [ ] T088 Update spec.md status from `Draft` to `Implemented` (manual edit at top of spec.md)
@@ -399,15 +403,15 @@ US1 is the MVP but is the *integration* of US2/US3/US4. Two valid strategies:
 
 ---
 
-**Total task count**: 89 tasks across 8 phases.
+**Total task count**: 93 tasks across 8 phases (89 original + 4 added during analyze remediation: T053b SC-006 multi-tick coverage, T058b FR-011 field-shape regression, T066b FR-012 docstring verification, T085b Constitution IV.2 tri-county backward-compat).
 
-**Per-user-story counts**:
+**Per-user-story counts** (post-analyze):
 
 - US2 (Phase 3): 10 tasks (5 RED tests + 4 implementation + 1 commit)
 - US3 (Phase 4): 11 tasks (6 RED tests + 4 implementation + 1 commit)
 - US4 (Phase 5): 12 tasks (7 RED tests + 4 implementation + 1 commit)
-- US1 (Phase 6): 16 tasks (9 RED tests + 6 implementation + 1 commit)
+- US1 (Phase 6): 19 tasks (10 RED tests including T053b multi-tick + 8 implementation including T058b FR-011 + T066b FR-012 + 1 commit)
 - US5 (Phase 7): 10 tasks (7 file edits + 1 audit + 1 verify + 1 commit)
 - Setup (Phase 1): 6 tasks
 - Foundational (Phase 2): 12 tasks
-- Polish (Phase 8): 12 tasks
+- Polish (Phase 8): 13 tasks (T085b Constitution IV.2 added)

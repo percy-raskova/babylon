@@ -7,7 +7,7 @@ principal and secondary contradictions operate at various zoom levels.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.models.enums import ContradictionType, EdgeMode
 from babylon.models.types import Intensity
@@ -53,7 +53,7 @@ class Contradiction(BaseModel):
         description="Whether this contradiction is irreconcilable within the current mode of production",
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class ContradictionFrame(BaseModel):
@@ -69,4 +69,4 @@ class ContradictionFrame(BaseModel):
         ..., description="The secondary contradiction operating in the background"
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)

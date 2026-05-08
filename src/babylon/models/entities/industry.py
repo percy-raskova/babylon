@@ -1,10 +1,12 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.models.types import Currency
 
 
 class IndustryHyperedge(BaseModel):
     """Pydantic representation of an ECONOMIC_SECTOR hyperedge in XGI."""
+
+    model_config = ConfigDict(frozen=True)
 
     naics_2digit: str = Field(..., description="The 2-digit NAICS code (e.g., '62', '31-33')")
     naics_label: str = Field(..., description="Human-readable sector title")
@@ -13,9 +15,9 @@ class IndustryHyperedge(BaseModel):
     )
 
     # Topology Memberships
-    member_business_ids: set[str] = Field(default_factory=set)
-    member_worker_block_ids: set[str] = Field(default_factory=set)
-    county_fips: set[str] = Field(default_factory=set)
+    member_business_ids: frozenset[str] = Field(default_factory=frozenset)
+    member_worker_block_ids: frozenset[str] = Field(default_factory=frozenset)
+    county_fips: frozenset[str] = Field(default_factory=frozenset)
 
     # Derived Economic State (Aggregated during Layer 0 tick)
     total_employment: int = Field(default=0)

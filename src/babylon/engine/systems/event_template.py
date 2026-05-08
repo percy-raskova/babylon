@@ -108,24 +108,38 @@ class EventTemplateSystem:
         # Extract tick from context
         tick = context.tick if hasattr(context, "tick") else context.get("tick", 0)
 
-        # Sort by priority (higher first)
+        # Sort by priority (higher first). Sort works on object references,
+        # so the same instances appear in self._templates and sorted_templates.
         sorted_templates = sorted(
             self._templates,
             key=lambda t: t.priority,
             reverse=True,
         )
 
+        # Track which template ids fired this tick — EventTemplate is frozen
+        # (Spec 056 / Constitution III.7), so mark_triggered() returns a new
+        # instance. We collect the ids fired here, then rebuild self._templates
+        # below with the updated instances substituted in place.
+        triggered_ids: set[str] = set()
+
         for template in sorted_templates:
             resolution = evaluate_template(template, graph, tick)
             if resolution is not None:
                 self._apply_resolution(template, resolution, graph, services, tick)
-                template.mark_triggered(tick)
+                triggered_ids.add(template.id)
                 logger.debug(
                     "Template %s triggered resolution %s at tick %d",
                     template.id,
                     resolution.id,
                     tick,
                 )
+
+        # Replace any triggered template with its mark_triggered(tick) result.
+        # Order is preserved; non-triggered templates are passed through.
+        if triggered_ids:
+            self._templates = [
+                t.mark_triggered(tick) if t.id in triggered_ids else t for t in self._templates
+            ]
 
     def _apply_resolution(
         self,

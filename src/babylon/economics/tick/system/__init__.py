@@ -606,23 +606,31 @@ class TickDynamicsSystem:
     def _compute_imperial_rent(
         self,
         county_states: dict[str, CountyEconomicState],
-        _national_params: NationalTickParameters,
-        _services: ServiceContainer,
+        national_params: NationalTickParameters,
+        services: ServiceContainer,
     ) -> dict[str, CountyEconomicState]:
         """Step 4: Compute imperial rent flows.
 
+        Per Spec 057 / FR-001: thin delegation to the
+        :func:`babylon.economics.tick.system.imperial_rent.compute` orchestration
+        module (≤400 LOC, completing Spec 058's deferred US2 decomposition).
+        Behavioral fence preserved per Spec 058 / FR-007 (return-type class,
+        exception class hierarchy, event-bus emission ordering).
+
         Args:
             county_states: Current county states.
-            national_params: National parameters.
-            services: ServiceContainer with formulas.
+            national_params: National parameters (provides tick year).
+            services: ServiceContainer with the 4 Spec 057 fields wired
+                (graceful degradation to stub behavior if not).
 
         Returns:
-            Updated county states with phi_hour (now 0.0 until tensor integration).
+            Updated county states with phi_hour set from the Leontief pipeline,
+            or unchanged county states if the pipeline isn't wired (graceful
+            degradation per data-model.md).
         """
-        updated: dict[str, CountyEconomicState] = {}
-        for fips, county in county_states.items():
-            updated[fips] = county.model_copy(update={"phi_hour": 0.0})
-        return updated
+        from babylon.economics.tick.system.imperial_rent import compute
+
+        return compute(county_states, national_params, services)
 
     def _check_crisis_triggers(
         self,

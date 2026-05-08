@@ -172,23 +172,23 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### Tests for User Story 1 (RED — write first)
 
-- [ ] T052 [P] [US1] Write failing integration test `tests/integration/economics/tick/test_imperial_rent_pipeline.py::test_wayne_baseline_nonzero_phi_hour` (AC1, SC-002) — run one Wayne County baseline tick; assert `any(c.phi_hour > 1e-6 for c in result.values())`
-- [ ] T053 [P] [US1] Write failing test `test_reproducibility_same_seed` (AC2, SC-002) — run same tick twice; assert `result1 == result2` AND `event_bus_history1 == event_bus_history2`
-- [ ] T053b [P] [US1] **(C1 — SC-006 coverage)** Write failing test `tests/integration/economics/tick/test_imperial_rent_pipeline.py::test_savings_accumulation_picks_up_phi_hour` — run a 3-tick Wayne County simulation; assert that at least one (county, tick) pair produces `phi_adjustment > 0` in `savings_schedule.py`'s output (verify via `services.event_bus.get_history()` for ExtractionEvent or by inspecting `CountyEconomicState.savings_state` if exposed). This closes SC-006 ("savings_and_accumulation downstream shows non-trivial phi_adjustment values during a multi-tick run")
-- [ ] T054 [P] [US1] Write failing test `test_per_county_proportionality_high_gap` (AC3) — fabricate two counties with high vs low wage-gap industry mix; assert `phi_hour[high_gap] > phi_hour[low_gap]`
-- [ ] T055 [P] [US1] Write failing test `test_industry_misalignment_raises` (AC4, FR-006, R7) — fabricate three sources with mismatched industry lists; `pytest.raises(ValueError, match=r"BEA industry list mismatch")`
-- [ ] T056 [P] [US1] Write failing test `test_sentinel_periphery_wage_skips_step` (AC5, FR-007) — wire mock periphery source to return `NoDataSentinel`; assert (a) all input `phi_hour` unchanged, (b) exactly one `QcewCarryForwardEvent(county_fips="*", look_back_distance=-1)` in history
-- [ ] T057 [P] [US1] Write failing test `test_facade_returns_dict_str_county_state` (AC6, FR-001 + Spec 058 FR-007) — assert `isinstance(result, dict)`, all values `isinstance(CountyEconomicState)`
-- [ ] T058 [P] [US1] Extend the existing `tests/integration/economics/tick/test_facade_behavioral_fence.py` (Spec 058) to assert event-bus emission ordering preserved with the new pipeline wired (AC7) — existing snapshot fixture continues to pass after the wiring
-- [ ] T058b [P] [US1] **(C2 — FR-011 coverage)** Add explicit assertion to the behavioral fence test (or as a separate `test_phi_hour_field_shape_preserved` in same file): `from babylon.economics.tick.types import CountyEconomicState; assert CountyEconomicState.model_fields["phi_hour"].annotation is float; assert any(m.metadata == {"ge": 0} for m in CountyEconomicState.model_fields["phi_hour"].metadata)` — closes FR-011 ("preserve `CountyEconomicState.phi_hour` field shape and downstream reads")
-- [ ] T059 [P] [US1] Write failing test `tests/unit/economics/test_factory.py::test_factory_registers_all_four_sources` (AC8, FR-005) — assert `registry.get(PeripheryLaborCoefficientsSource) is not None` and same for `FinalDemandSource`, `IndustryToCountyAllocator`, `ProductionChainRentCalculator`
-- [ ] T060 [P] [US1] Write failing test `test_conservation_within_one_percent_for_2015` (AC9, SC-003) — wire all real sources for 2015; assert `abs(allocation_total - national_total) / national_total < 0.01` for 2015
+- [X] T052 [P] [US1] Write failing integration test `tests/integration/economics/tick/test_imperial_rent_pipeline.py::test_wayne_baseline_nonzero_phi_hour` (AC1, SC-002) — run one Wayne County baseline tick; assert `any(c.phi_hour > 1e-6 for c in result.values())`
+- [X] T053 [P] [US1] Write failing test `test_reproducibility_same_seed` (AC2, SC-002) — run same tick twice; assert `result1 == result2` AND `event_bus_history1 == event_bus_history2`
+- [X] T053b [P] [US1] **(C1 — SC-006 coverage)** Write failing test `tests/integration/economics/tick/test_imperial_rent_pipeline.py::test_savings_accumulation_picks_up_phi_hour` — run a 3-tick Wayne County simulation; assert that at least one (county, tick) pair produces `phi_adjustment > 0` in `savings_schedule.py`'s output (verify via `services.event_bus.get_history()` for ExtractionEvent or by inspecting `CountyEconomicState.savings_state` if exposed). This closes SC-006 ("savings_and_accumulation downstream shows non-trivial phi_adjustment values during a multi-tick run")
+- [X] T054 [P] [US1] Write failing test `test_per_county_proportionality_high_gap` (AC3) — fabricate two counties with high vs low wage-gap industry mix; assert `phi_hour[high_gap] > phi_hour[low_gap]`
+- [X] T055 [P] [US1] Write failing test `test_industry_misalignment_raises` (AC4, FR-006, R7) — fabricate three sources with mismatched industry lists; `pytest.raises(ValueError, match=r"BEA industry list mismatch")`
+- [X] T056 [P] [US1] Write failing test `test_sentinel_periphery_wage_skips_step` (AC5, FR-007) — wire mock periphery source to return `NoDataSentinel`; assert (a) all input `phi_hour` unchanged, (b) exactly one `QcewCarryForwardEvent(county_fips="*", look_back_distance=-1)` in history
+- [X] T057 [P] [US1] Write failing test `test_facade_returns_dict_str_county_state` (AC6, FR-001 + Spec 058 FR-007) — assert `isinstance(result, dict)`, all values `isinstance(CountyEconomicState)`
+- [X] T058 [P] [US1] Extend the existing `tests/integration/economics/tick/test_facade_behavioral_fence.py` (Spec 058) to assert event-bus emission ordering preserved with the new pipeline wired (AC7) — existing snapshot fixture continues to pass after the wiring
+- [X] T058b [P] [US1] **(C2 — FR-011 coverage)** Add explicit assertion to the behavioral fence test (or as a separate `test_phi_hour_field_shape_preserved` in same file): `from babylon.economics.tick.types import CountyEconomicState; assert CountyEconomicState.model_fields["phi_hour"].annotation is float; assert any(m.metadata == {"ge": 0} for m in CountyEconomicState.model_fields["phi_hour"].metadata)` — closes FR-011 ("preserve `CountyEconomicState.phi_hour` field shape and downstream reads")
+- [X] T059 [P] [US1] Write failing test `tests/unit/economics/test_factory.py::test_factory_registers_all_four_sources` (AC8, FR-005) — assert `registry.get(PeripheryLaborCoefficientsSource) is not None` and same for `FinalDemandSource`, `IndustryToCountyAllocator`, `ProductionChainRentCalculator`
+- [X] T060 [P] [US1] Write failing test `test_conservation_within_one_percent_for_2015` (AC9, SC-003) — wire all real sources for 2015; assert `abs(allocation_total - national_total) / national_total < 0.01` for 2015
 
 ### Implementation for User Story 1
 
-- [ ] T061 [US1] Add four new optional fields to `ServiceContainer` in `src/babylon/engine/services.py`: `periphery_labor_source`, `final_demand_source`, `industry_county_allocator`, `production_chain_calculator` (all `field(default=None)`); update docstring comment block per data-model.md
-- [ ] T062 [US1] Edit `src/babylon/economics/factory.py` — extend `SourceRegistry.builtin_economics()` to register the four new components (per FR-005 + research.md §R6 + data-model.md ServiceContainer modifications); register parameterless variants where possible, document constructor-dependency variants for the rest
-- [ ] T063 [US1] Implement `src/babylon/economics/tick/system/imperial_rent.py` (≤400 LOC per Spec 058 SC-002 — completing Spec 058's deferred US2 decomposition):
+- [X] T061 [US1] Add four new optional fields to `ServiceContainer` in `src/babylon/engine/services.py`: `periphery_labor_source`, `final_demand_source`, `industry_county_allocator`, `production_chain_calculator` (all `field(default=None)`); update docstring comment block per data-model.md
+- [X] T062 [US1] Edit `src/babylon/economics/factory.py` — extend `SourceRegistry.builtin_economics()` to register the four new components (per FR-005 + research.md §R6 + data-model.md ServiceContainer modifications); register parameterless variants where possible, document constructor-dependency variants for the rest
+- [X] T063 [US1] Implement `src/babylon/economics/tick/system/imperial_rent.py` (≤400 LOC per Spec 058 SC-002 — completing Spec 058's deferred US2 decomposition):
   - Module docstring with the BEA I-O → import-share → Leontief inverse → periphery wages → industry rent → county allocation chain (per FR-012)
   - `def compute(county_states, national_params, services) -> dict[str, CountyEconomicState]:` per `contracts/imperial_rent_pipeline.md` "Function signature" + pipeline stages
   - Fallback path: if any of the 4 Spec 057 services fields is `None`, write `phi_hour=0.0` everywhere + emit one `QcewCarryForwardEvent(county_fips="*", look_back_distance=-1)` (per data-model.md ServiceContainer "Validation invariant")
@@ -196,7 +196,7 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
   - Sentinel propagation: if any source returns `NoDataSentinel`, skip step + emit signal event
   - Outlier detection on each `phi_hour` against `services.defines.economy.leontief_rent.phi_hour_outlier_threshold_*`
   - Deterministic ordering: sort county FIPS, sort BEA industries
-- [ ] T064 [US1] Edit `src/babylon/economics/tick/system/__init__.py:_compute_imperial_rent` (currently the no-op stub at line ~606) — replace body with 3-line delegation:
+- [X] T064 [US1] Edit `src/babylon/economics/tick/system/__init__.py:_compute_imperial_rent` (currently the no-op stub at line ~606) — replace body with 3-line delegation:
 
   ```python
   def _compute_imperial_rent(self, county_states, national_params, services):
@@ -204,10 +204,10 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
       return compute(county_states, national_params, services)
   ```
 
-- [ ] T065 [US1] Run `poetry run pytest tests/integration/economics/tick/test_imperial_rent_pipeline.py tests/integration/economics/tick/test_facade_behavioral_fence.py tests/unit/economics/test_factory.py -v -k "not skip"` → all GREEN (10 tests across the 3 files)
-- [ ] T066 [US1] Doctest examples in `src/babylon/economics/tick/system/imperial_rent.py` module docstring — show one minimal pipeline invocation; verify with `mise run test:doctest`
-- [ ] T066b [US1] **(U3 — FR-012 verification)** Verify the FR-012 chain documentation lands in the module docstring: `grep -E "BEA I-O.*Leontief.*periphery wage.*industry rent.*county" src/babylon/economics/tick/system/imperial_rent.py` returns at least one match. The module docstring MUST include the chain "BEA I-O → import-share decomposition → Leontief inverse → periphery wage coefficients → industry rent → QCEW employment-share allocation → per-county phi_hour" with one sentence per step naming the data source (per spec.md FR-012)
-- [ ] T067 [US1] Commit boundary: `feat(spec-057): imperial_rent.compute() pipeline + ServiceContainer wiring + facade delegation — US1`
+- [X] T065 [US1] Run `poetry run pytest tests/integration/economics/tick/test_imperial_rent_pipeline.py tests/integration/economics/tick/test_facade_behavioral_fence.py tests/unit/economics/test_factory.py -v -k "not skip"` → all GREEN (10 tests across the 3 files)
+- [X] T066 [US1] Doctest examples in `src/babylon/economics/tick/system/imperial_rent.py` module docstring — show one minimal pipeline invocation; verify with `mise run test:doctest`
+- [X] T066b [US1] **(U3 — FR-012 verification)** Verify the FR-012 chain documentation lands in the module docstring: `grep -E "BEA I-O.*Leontief.*periphery wage.*industry rent.*county" src/babylon/economics/tick/system/imperial_rent.py` returns at least one match. The module docstring MUST include the chain "BEA I-O → import-share decomposition → Leontief inverse → periphery wage coefficients → industry rent → QCEW employment-share allocation → per-county phi_hour" with one sentence per step naming the data source (per spec.md FR-012)
+- [X] T067 [US1] Commit boundary: `feat(spec-057): imperial_rent.compute() pipeline + ServiceContainer wiring + facade delegation — US1`
 
 **Checkpoint**: US1 — the central deliverable — fully functional. Wayne County tick produces non-zero `phi_hour`; reproducibility verified; behavioral fence preserved.
 

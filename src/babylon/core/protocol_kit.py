@@ -201,16 +201,60 @@ class SourceRegistry:
         return (protocol, variant) in self._impls
 
     def builtin_economics(self) -> SourceRegistry:
-        """Register all migrated ``melt/`` + ``gamma/`` ``Default*`` classes.
+        """Register the parameterless subset of migrated ``melt/`` + ``gamma/``
+        ``Default*`` classes.
 
-        Returns ``self`` for fluent chaining. This method is filled in at
-        commit 6 (Spec 058 / US1.3 / T053) — at commits 4-5 it is a no-op
-        stub returning self so the new ``protocol_kit`` module integrates
-        cleanly without forcing the factory.py refactor mid-bundle.
+        Per Spec 058 / FR-006 / commit 6 (the SC-004-reformulation pass): only
+        the 7 classes whose constructors take no required arguments (or
+        all-default arguments) can be registered against the
+        ``Callable[[], object]`` factory contract. The remaining 3 dep-laden
+        classes (``DefaultMELTCalculator``, ``DefaultRentDifferentialCalculator``,
+        ``DefaultGammaIIICalculator``) require explicit topological dependency
+        resolution and stay constructed in :mod:`babylon.economics.factory`.
+
+        See ``factory.py`` and the SC-004 not-met-by-design note in
+        ``specs/058-adr-bundle-1-pre-spec-057/plan.md`` §R5 for the rationale.
+
+        Returns ``self`` for fluent chaining: ``SourceRegistry().builtin_economics()``.
         """
-        # NOTE (Spec 058 / T034 → T053): body filled in commit 6 with
-        # ``self.register(BEADataSource, DefaultBEASource)`` etc. for each of
-        # the 10 migrated melt+gamma Default* classes. Until commit 6, the
-        # method exists as a no-op so callers (the factory.py shims, future
-        # spec-057 code) can wire against the contract.
+        # Imports kept inside the method to keep `core/` package free of any
+        # downstream-domain dependency at import time, and to avoid the
+        # protocol_kit-circular-import we resolved in commit 5.
+        from babylon.economics.gamma.gamma_basket import (
+            DefaultGammaBasketCalculator,
+            GammaBasketCalculator,
+        )
+        from babylon.economics.gamma.gamma_import import (
+            DefaultGammaImportCalculator,
+            GammaImportCalculator,
+        )
+        from babylon.economics.gamma.shadow_subsidy import (
+            DefaultShadowSubsidyCalculator,
+            ShadowSubsidyCalculator,
+        )
+        from babylon.economics.melt.basket_visibility import (
+            BasketVisibilityCalculator,
+            DefaultBasketVisibilityCalculator,
+        )
+        from babylon.economics.melt.class_position import (
+            ClassPositionClassifier,
+            DefaultClassPositionClassifier,
+        )
+        from babylon.economics.melt.unified_classifier import (
+            DefaultUnifiedClassifier,
+            UnifiedClassifier,
+        )
+        from babylon.economics.melt.wealth_proxy import (
+            DefaultWealthProxyCalculator,
+            WealthProxyCalculator,
+        )
+
+        # 7 registrations — parameterless / all-default-args Default* classes
+        self.register(BasketVisibilityCalculator, DefaultBasketVisibilityCalculator)
+        self.register(ClassPositionClassifier, DefaultClassPositionClassifier)
+        self.register(UnifiedClassifier, DefaultUnifiedClassifier)
+        self.register(WealthProxyCalculator, DefaultWealthProxyCalculator)
+        self.register(GammaBasketCalculator, DefaultGammaBasketCalculator)
+        self.register(GammaImportCalculator, DefaultGammaImportCalculator)
+        self.register(ShadowSubsidyCalculator, DefaultShadowSubsidyCalculator)
         return self

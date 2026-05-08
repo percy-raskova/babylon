@@ -46,29 +46,15 @@ from tests.property.strategies.worldstate import worldstate_strategy
 # To reduce the debt: pick a class, add ``model_config = ConfigDict(frozen=True)``,
 # fix any callers that mutate it in place, remove the entry from this set,
 # and watch this test go from SKIPPED to PASSED for that class.
-_PRE_EXISTING_NON_FROZEN_DEBT: frozenset[str] = frozenset(
-    {
-        "Contradiction",
-        "ContradictionFrame",
-        "EdgeCondition",
-        "Effect",
-        "EventEmission",
-        "EventTemplate",
-        "GraphCondition",
-        "IndustryHyperedge",
-        "NarrativeHooks",
-        "NodeCondition",
-        "NodeFilter",
-        "PreconditionSet",
-        "Relationship",
-        "Resolution",
-        "SocialClass",
-        "TemplateEffect",
-        "Territory",
-        "Trigger",
-        "TriggerCondition",
-    }
-)
+#
+# Reconciliation (2026-05-07, refactor/frozen-discipline-debt branch): all
+# 19 originally-listed classes are now frozen. The set is kept as an empty
+# frozenset to preserve the import contract for downstream consumers and to
+# document the reconciliation history. Any *new* state-bearing model class
+# that needs to defer freezing for a justified reason should be added here
+# with a brief comment explaining the deferral, NOT silently shipped
+# without ``frozen=True``.
+_PRE_EXISTING_NON_FROZEN_DEBT: frozenset[str] = frozenset()
 
 
 @pytest.mark.unit

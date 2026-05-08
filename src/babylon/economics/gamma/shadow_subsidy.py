@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Protocol
 
+from babylon.core.protocol_kit import CachedSource
 from babylon.economics.gamma.types import GammaBasket, GammaIII, ShadowSubsidy
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ class ShadowSubsidyCalculator(Protocol):
         ...
 
 
-class DefaultShadowSubsidyCalculator:
+class DefaultShadowSubsidyCalculator(CachedSource[float]):
     """Default implementation of ShadowSubsidyCalculator.
 
     Computes shadow subsidies from gamma visibility coefficients.

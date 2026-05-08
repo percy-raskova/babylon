@@ -1024,6 +1024,7 @@ current_focus:
     outcome: "Win (solidarity) or Lose (fascism) based on solidarity_strength"
 
   recently_completed:
+    - "ADR Bundle 1 / Spec 058 — structural prep for Spec 057 (2026-05-08): OODA dedup; enums.py + defines.py + tick/system.py packages; core/protocol_kit.py with DataSource + CachedSource[T] + SourceRegistry; 10 melt+gamma Default* migrated to CachedSource[T]; SourceRegistry.builtin_economics() registers 7 parameterless classes; BEAMappings typed Pydantic loader. 7 implementation commits; 9039 passed in fast gate (+51 new tests). Three SC reformulations documented as not-met-by-design: SC-002 facade<200LOC (tick/system Phase B deferred — existing 33-method class too self-coupled for safe under-pressure decomposition), SC-004 factory.py<150LOC (topological dep resolution is real domain work, not boilerplate), and the BEAMappings TOML schema (actual file uses {departments: {I, IIA, IIB, III: [codes]}}, not row-array with weights). Spec 057 unblocked."
     - "Shadow Labor Visibility Sprint (2026-01-29)"
     - "Imperial Rent Calculation (Emmanuel-Amin) (2026-01-29)"
     - "Marxian Value Tensor BEA/CEX Calibration (2026-01-28)"

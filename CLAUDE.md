@@ -731,6 +731,8 @@ ADR0XX_descriptive_name:
 - Python 3.12+ (existing project standard) + Hypothesis ^6.149.0 (in `[tool.poetry.group.dev.dependencies]` since Spec 053), pytest 8.x, Pydantic 2.x (frozen models), NetworkX 3.x (graph protocol). XGI 0.10 is available but not required for the chosen US2 detector (`_node_type == "community"` graph attribute, per the 2026-05-06 clarification). (055-topology-invariants)
 - Python 3.12+ (existing project standard) + Hypothesis ^6.149.0 (in `[tool.poetry.group.dev.dependencies]` since Spec 053), pytest 8.x, Pydantic 2.x (frozen models). For US4's PostgresRuntime branch (gated under `mise run test:integration`): psycopg 3.x + psycopg_pool (already in `pyproject.toml` since Spec 037). No new third-party dependencies are required for the default fast gate. (056-causal-invariants)
 - For US4: in-memory `RuntimeDatabase` (default fast gate) + `PostgresRuntime` against a transient test database (`mise run test:integration` only). For US1 / US2 / US3: N/A — pure in-memory `WorldState` exercised by the engine. (056-causal-invariants)
+- Python 3.12+ (project standard) (058-adr-bundle-1-pre-spec-057)
+- N/A — this is a refactor; no schema changes, no new persistence (058-adr-bundle-1-pre-spec-057)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

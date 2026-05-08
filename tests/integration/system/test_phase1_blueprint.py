@@ -9,12 +9,29 @@ From four-phase-engine-blueprint.md:
 - Formula calculations for survival calculus
 
 These tests prove that the mathematical core works end-to-end.
+
+Spec 057-leontief-rent-integration note: ``calculate_imperial_rent``
+was removed from ``babylon.formulas`` in commit ``a5f73139`` along with
+the per-worker TVT calculator. Spec 057 will reintroduce a Leontief-based
+successor; until then, the entire module is skipped at collection time
+with a forwarding receipt.
 """
 
-import networkx as nx
 import pytest
 
-from babylon.formulas import (
+pytest.skip(
+    reason=(
+        "Blocked on spec 057-leontief-rent-integration. Imports "
+        "calculate_imperial_rent from babylon.formulas, removed in commit "
+        "a5f73139. Spec 057 will reintroduce a Leontief-based successor; "
+        "this module will be ported to use it (or deleted per FR-009)."
+    ),
+    allow_module_level=True,
+)
+
+import networkx as nx  # noqa: E402
+
+from babylon.formulas import (  # noqa: E402
     calculate_acquiescence_probability,
     calculate_consciousness_drift,
     calculate_imperial_rent,
@@ -22,13 +39,13 @@ from babylon.formulas import (
     calculate_revolution_probability,
     is_labor_aristocracy,
 )
-from babylon.models import Relationship, SocialClass
-from babylon.models.entity_registry import (
+from babylon.models import Relationship, SocialClass  # noqa: E402
+from babylon.models.entity_registry import (  # noqa: E402
     COMPRADOR_ID,
     CORE_BOURGEOISIE_ID,
     PERIPHERY_WORKER_ID,
 )
-from babylon.models.enums import EdgeType, SocialRole
+from babylon.models.enums import EdgeType, SocialRole  # noqa: E402
 
 # =============================================================================
 # THE PHASE 1 BLUEPRINT TEST

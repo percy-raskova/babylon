@@ -307,31 +307,20 @@ class DefaultDepartmentAggregator:
     _DEPT_ORDER = [Department.I, Department.IIA, Department.IIB, Department.III]
 
     def get_default_mapping(self) -> dict[str, str]:
-        """Load the BEA-to-department mapping from TOML data file.
+        """Return the BEA-to-department flat mapping.
+
+        Spec 058 / FR-009 (commit 7): consumes the typed
+        :data:`babylon.economics.tensor_hierarchy.mappings.BEA_TO_DEPARTMENT`
+        singleton instead of reparsing the TOML on every call. The output
+        shape is unchanged for callers (``dict[str, str]``).
 
         Returns:
             Dict mapping BEA Summary industry code -> Department value string
             (e.g. "111CA" -> "I", "621" -> "III").
         """
-        try:
-            import tomllib
-        except ImportError:
-            import tomli as tomllib  # type: ignore[no-redef]
+        from babylon.economics.tensor_hierarchy.mappings import BEA_TO_DEPARTMENT
 
-        if not _TOML_PATH.exists():
-            logger.warning("TOML mapping not found at %s", _TOML_PATH)
-            return {}
-
-        with _TOML_PATH.open("rb") as f:
-            data = tomllib.load(f)
-
-        mapping: dict[str, str] = {}
-        departments = data.get("departments", {})
-        for dept_key, codes in departments.items():
-            for code in codes:
-                mapping[code] = dept_key
-
-        return mapping
+        return BEA_TO_DEPARTMENT.as_flat_dict()
 
     def aggregate(self, flow: InterIndustryFlow, mapping: dict[str, str]) -> InterIndustryFlow:
         """Produce a 4x4 department-level I-O matrix.

@@ -510,6 +510,15 @@ class TestNationalParametersValidation:
         assert any("V_reproduction" in w for w in warnings)
 
 
+@pytest.mark.skip(
+    reason=(
+        "Blocked on spec 057-leontief-rent-integration. References the "
+        "babylon.economics.melt.imperial_rent module deleted in commit "
+        "a5f73139 ('feat(economics): implement Leontief production chain "
+        "imperial rent'). Spec 057's FR-009 will decide whether to delete "
+        "or rewrite this class against the new pipeline."
+    )
+)
 class TestImperialRentSeparateFromClass:
     """Test that Φ_hour (imperial rent) and class position are independent.
 

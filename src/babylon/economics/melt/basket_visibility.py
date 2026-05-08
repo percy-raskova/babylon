@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from babylon.core.protocol_kit import CachedSource
+
 # MVP constants (derived from Hickel et al. methodology)
 # α ≈ 0.25: Import share per Hickel et al. (2022) unequal exchange analysis
 # γ_import ≈ 0.35: Trade-weighted average ERDI of US trading partners
@@ -169,7 +171,7 @@ class BasketVisibilityCalculator(Protocol):
         ...
 
 
-class DefaultBasketVisibilityCalculator:
+class DefaultBasketVisibilityCalculator(CachedSource[float]):
     """Default implementation of BasketVisibilityCalculator.
 
     This calculator supports both MVP mode (hardcoded values) and computed

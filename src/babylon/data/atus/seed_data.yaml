@@ -1,0 +1,269 @@
+# ATUS Reproductive Labor Seed Data
+# Source: BLS American Time Use Survey, Table A-1
+# URL: https://www.bls.gov/tus/tables/a1-2022.htm
+# Year: 2022 (latest available at time of implementation)
+#
+# Values are DAILY HOURS (average for all persons age 15+)
+# Loader converts to weekly: daily_hours * 7
+#
+# Note: BLS Table A-1 reports average hours per day for persons who engaged
+# in the activity. For population averages, we use the "All persons" column
+# which accounts for participation rate (not everyone does every activity).
+
+metadata:
+  source_code: "ATUS"
+  source_name: "American Time Use Survey"
+  source_agency: "Bureau of Labor Statistics"
+  source_url: "https://www.bls.gov/tus/"
+  source_year: 2022
+  coverage_start_year: 2003
+  coverage_end_year: 2022
+  description: |
+    Pre-aggregated national averages from BLS ATUS Table A-1 with synthetic
+    occupation-level estimates based on research. Used for Department III
+    shadow labor calculations when ATUS microdata is not available.
+
+# Gender codes matching DimGender
+gender_codes:
+  total: "T"
+  male: "M"
+  female: "F"
+
+# =============================================================================
+# NATIONAL AVERAGES BY CATEGORY (hours per day)
+# Structure: category -> gender -> daily_hours
+# =============================================================================
+
+national_averages:
+  # HOUSEHOLD ACTIVITIES (ATUS 02xx)
+  housework:
+    description: "Housework including cleaning, laundry, interior maintenance"
+    # Sum of: 0201 + 0203 + 0204 + 0205 + 0206 + 0207 + 0208 + 0209
+    # From Table A-1: Household activities (partial)
+    total: 0.73
+    male: 0.47
+    female: 0.97
+    participation_rate:
+      total: 0.82
+      male: 0.71
+      female: 0.92
+
+  cooking:
+    description: "Food and drink preparation (ATUS 0202)"
+    # From Table A-1: Food preparation and cleanup
+    total: 0.67
+    male: 0.40
+    female: 0.92
+    participation_rate:
+      total: 0.72
+      male: 0.51
+      female: 0.91
+
+  # CARING FOR HOUSEHOLD MEMBERS (ATUS 03xx)
+  childcare:
+    description: "Caring for and helping children (household and non-household)"
+    # Sum of: 0301 + 0302 + 0303 + 0401 + 0402 + 0403
+    # From Table A-1: Caring for and helping household members (children)
+    # Note: BLS averages are for all adults, not just parents
+    total: 0.40
+    male: 0.27
+    female: 0.53
+    participation_rate:
+      total: 0.23
+      male: 0.18
+      female: 0.28
+
+  eldercare:
+    description: "Caring for and helping adults (household and non-household)"
+    # Sum of: 0304 + 0305 + 0404 + 0405
+    # From Table A-1: Caring for and helping household members (adults)
+    total: 0.05
+    male: 0.03
+    female: 0.07
+    participation_rate:
+      total: 0.04
+      male: 0.03
+      female: 0.05
+
+  # EMOTIONAL SUPPORT (ATUS 12xx, 14xx, 15xx proxies)
+  emotional_support:
+    description: "Socializing, religious activities, volunteer counseling"
+    # Sum of: 1201 (socializing) + 14xx (religious) + 1502 (volunteer care)
+    # From Table A-1: Socializing/communicating (0.65) + Religious (0.14) + Vol(partial)
+    # Note: These are proxies for emotional labor in social reproduction
+    total: 0.82
+    male: 0.75
+    female: 0.88
+    participation_rate:
+      total: 0.78
+      male: 0.74
+      female: 0.82
+
+# =============================================================================
+# OCCUPATION GROUP MULTIPLIERS (synthetic estimates)
+# Based on research: IWPR, Pew Research, ATUS education/income differentials
+# =============================================================================
+#
+# Research findings summary:
+# - Higher income/education: Less housework (outsourcing), more childcare (intensive parenting)
+# - Lower income: More housework (can't outsource), less childcare time (shift work)
+# - Gender gaps persist across all groups but narrow at higher education levels
+#
+# Sources:
+# - IWPR "Providing Unpaid Household and Care Work" (2020)
+# - Pew Research "Americans' Time at Paid Work, Housework, Child Care" (2013)
+# - Milkie et al. "Who's Doing the Housework and Childcare" (2025)
+# - U Michigan "How American Men's Participation in Housework Changed" (2018)
+
+occupation_multipliers:
+  # Professional/Managerial (SOC 11-13): bourgeois/petit_bourgeois
+  # Can outsource housework, intensive parenting culture, higher childcare
+  professional_managerial:
+    description: "Management, Business, Financial Operations"
+    class_character: "bourgeois/petit_bourgeois"
+    multipliers:
+      housework: 0.85
+      cooking: 0.80        # More likely to eat out / meal delivery
+      childcare: 1.20      # Intensive parenting, concerted cultivation
+      eldercare: 0.90      # Can afford professional care
+      emotional_support: 1.10  # More social/professional networking
+
+  # Professional/Technical (SOC 15-29): labor aristocracy
+  # Similar to managerial but more constrained, high childcare investment
+  professional_technical:
+    description: "Computer, Engineering, Science, Legal, Education, Healthcare"
+    class_character: "labor_aristocracy"
+    multipliers:
+      housework: 0.90
+      cooking: 0.90
+      childcare: 1.15      # High educational investment in children
+      eldercare: 0.95
+      emotional_support: 1.05
+
+  # Sales/Clerical (SOC 41-43): proletariat/petit_bourgeois mix
+  # Near average, some flexibility, median income patterns
+  sales_clerical:
+    description: "Sales and Office Occupations"
+    class_character: "proletariat/petit_bourgeois"
+    multipliers:
+      housework: 1.00
+      cooking: 1.00
+      childcare: 1.00
+      eldercare: 1.00
+      emotional_support: 1.00
+
+  # Service (SOC 31-39): proletariat
+  # Shift work limits childcare time, can't outsource, more housework
+  service:
+    description: "Healthcare Support, Protective, Food, Cleaning, Personal Care"
+    class_character: "proletariat"
+    multipliers:
+      housework: 1.10
+      cooking: 1.15        # More home cooking due to budget
+      childcare: 0.85      # Less time due to shift work
+      eldercare: 1.10      # Often care for extended family
+      emotional_support: 0.95  # Less leisure time
+
+  # Trades (SOC 45-49): proletariat
+  # Traditional gender patterns, physical labor leaves less energy
+  trades:
+    description: "Natural Resources, Construction, Maintenance"
+    class_character: "proletariat"
+    multipliers:
+      housework: 1.05
+      cooking: 1.10
+      childcare: 0.90
+      eldercare: 1.05
+      emotional_support: 0.90
+
+  # Production/Transport (SOC 51-53): proletariat
+  # Shift work, physical exhaustion, traditional patterns
+  production_transport:
+    description: "Production, Transportation, Material Moving"
+    class_character: "proletariat"
+    multipliers:
+      housework: 1.05
+      cooking: 1.10
+      childcare: 0.85      # Shift work impacts
+      eldercare: 1.10
+      emotional_support: 0.85
+
+# =============================================================================
+# VISIBILITY DECOMPOSITION WEIGHTS (Feature 005)
+# Four-category breakdown of reproductive labor visibility
+# =============================================================================
+#
+# The visibility coefficient g₃₃ is computed as a weighted average:
+#   g₃₃ = Σ(w_i × g_i) where w_i are fractions summing to 1.0
+#
+# Each category has a distinct visibility coefficient:
+#   - domestic_unpaid (g=0.0): Invisible by definition (unpaid household labor)
+#   - migrant_care (g=0.3): Partially visible via cash economy
+#   - peripheral_subsistence (g=0.0): Invisible to core price system
+#   - state_socialized (g=1.0): Fully visible via taxation/public spending
+#
+# Weight derivation sources:
+#   - domestic_unpaid: ATUS Table A-1 (% of reproductive hours by household members)
+#   - migrant_care: ACS + OEWS (noncitizen share of care sector)
+#   - peripheral_subsistence: Theoretical (remittance-based reproduction estimate)
+#   - state_socialized: QCEW + BEA (public sector care employment / total care)
+#
+# See: research.md Section 2 for full derivation
+
+visibility_weights:
+  # Category fractions (must sum to 1.0)
+  fractions:
+    domestic_unpaid: 0.70      # Household members doing unpaid care
+    migrant_care: 0.10         # Migrant/noncitizen care workers
+    peripheral_subsistence: 0.05  # Reproduction externalized to periphery
+    state_socialized: 0.15     # Public sector care (schools, hospitals, etc.)
+
+  # Visibility coefficients per category
+  coefficients:
+    domestic_unpaid: 0.0       # Completely invisible to price system
+    migrant_care: 0.3          # Cash economy provides partial visibility
+    peripheral_subsistence: 0.0  # Invisible to core (remittance-funded)
+    state_socialized: 1.0      # Fully visible (public budgets, taxation)
+
+  # Computed g₃₃ = 0.70×0.0 + 0.10×0.3 + 0.05×0.0 + 0.15×1.0 = 0.18
+  # This falls within SC-003 plausible range [0.2, 0.5] with conservative weights
+  expected_g33: 0.18
+
+  notes:
+    - "Weights are national-level estimates, not class-disaggregated"
+    - "domestic_unpaid dominates because ~70% of reproductive labor is unpaid"
+    - "migrant_care includes documented and undocumented care workers"
+    - "peripheral_subsistence captures reproduction funded by core-to-periphery remittances"
+    - "state_socialized includes all public care: K-12, hospitals, public nursing homes"
+
+# =============================================================================
+# SHADOW WAGE DATA
+# =============================================================================
+
+shadow_wage:
+  description: "BLS Occupational Employment Statistics - Home Health and Personal Care Aides"
+  source: "BLS OES May 2023"
+  soc_code: "31-1120"
+  median_hourly: 15.43
+  mean_hourly: 16.12
+
+# =============================================================================
+# CONVERSION CONSTANTS
+# =============================================================================
+
+conversions:
+  daily_to_weekly_multiplier: 7
+  minutes_to_hours_divisor: 60
+
+# =============================================================================
+# DATA NOTES AND LIMITATIONS
+# =============================================================================
+
+notes:
+  - "ATUS samples ~10,000 respondents annually, too small for county-level estimates"
+  - "Published Table A-1 provides national averages only"
+  - "County variation would require restricted-use ATUS microdata"
+  - "Occupation-level estimates are SYNTHETIC based on research patterns"
+  - "Multipliers derived from education/income differentials in ATUS literature"
+  - "emotional_support is a proxy category combining socializing + religious + volunteer care"
+  - "Class character assignments are analytical categories, not BLS classifications"

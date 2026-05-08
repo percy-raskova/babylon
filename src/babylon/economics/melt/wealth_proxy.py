@@ -36,6 +36,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+from babylon.core.protocol_kit import CachedSource
+
 if TYPE_CHECKING:
     from babylon.config.defines import ClassSystemDefines
 
@@ -117,7 +119,7 @@ class WealthProxyCalculator(Protocol):
         ...
 
 
-class DefaultWealthProxyCalculator:
+class DefaultWealthProxyCalculator(CachedSource[float]):
     """Default implementation of WealthProxyCalculator.
 
     Uses ACS home ownership rate as primary proxy for Labor Aristocracy
@@ -253,6 +255,7 @@ class DefaultWealthProxyCalculator:
             reservation_fips: Optional set of FIPS codes for reservation counties
                 where trust_land_discount applies to homeownership rates.
         """
+        super().__init__()
         self._homeownership = (
             homeownership_data if homeownership_data else self._HOMEOWNERSHIP_BY_FIPS.copy()
         )

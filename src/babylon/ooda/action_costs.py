@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from babylon.config.defines import OODADefines
 from babylon.models.enums import ActionType, CommunityType, EdgeType
+from babylon.ooda._helpers import _compute_membership_overlap
 from babylon.ooda.types import ActionCostModifier
 
 if TYPE_CHECKING:
@@ -80,48 +81,6 @@ def compute_action_cost(
         effective_cost=effective_cost,
         reason=reason,
     )
-
-
-def _compute_membership_overlap(
-    org_id: str,
-    community_id: str,
-    graph: nx.DiGraph[str],
-) -> float:
-    """Compute membership overlap between org and target community.
-
-    Args:
-        org_id: Organization node ID.
-        community_id: Community node ID.
-        graph: World graph.
-
-    Returns:
-        Overlap ratio in [0, 1].
-    """
-    # Get org members via MEMBERSHIP edges
-    org_members: set[str] = set()
-    max_edges = 1000
-    edge_count = 0
-    for _, target, data in graph.out_edges(org_id, data=True):
-        edge_type = data.get("edge_type", "")
-        if edge_type == EdgeType.MEMBERSHIP.value or edge_type == EdgeType.MEMBERSHIP:
-            org_members.add(target)
-        edge_count += 1  # noqa: SIM113 — enumerate breaks mypy with EdgeView unpacking
-        if edge_count >= max_edges:
-            break
-
-    if not org_members:
-        return 0.0
-
-    # Get community members
-    community_data = graph.nodes.get(community_id, {})
-    community_member_ids: list[str] = community_data.get("member_node_ids", [])
-
-    if not community_member_ids:
-        return 0.0
-
-    community_members = set(community_member_ids)
-    overlap_count = len(org_members & community_members)
-    return overlap_count / max(len(community_members), 1)
 
 
 def _get_org_community_types(

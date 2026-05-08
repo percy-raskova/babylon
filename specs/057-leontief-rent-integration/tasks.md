@@ -107,22 +107,22 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### Tests for User Story 3 (RED — write first)
 
-- [ ] T029 [P] [US3] Write failing test `test_get_final_demand_shape` (AC1) — assert returned array shape `(n_industries,)`, dtype float64, all entries non-negative
-- [ ] T030 [P] [US3] Write failing test `test_fetch_missing_year_sentinel` (AC2) — assert `isinstance(source._fetch(1900), NoDataSentinel)`
-- [ ] T031 [P] [US3] Write failing test `test_get_final_demand_missing_year_raises` (AC3) — `pytest.raises(ValueError, match=r"No final-demand data for year 1900")`
-- [ ] T032 [P] [US3] Write failing test `test_national_total_matches_bea_gdp` (AC4) — soft check using a fixture year; `assert abs(result.sum() - expected_gdp) / expected_gdp < 0.05`
-- [ ] T033 [P] [US3] Write failing test `test_industry_order_matches_flow_source` (AC5) — given `flow_source.industries(year) == [...ordered...]`, assert `final_demand` returned in same positional order
-- [ ] T034 [P] [US3] Write failing test `test_determinism_repeat_query` (AC6) — `assert np.array_equal(source.get_final_demand(2015), source.get_final_demand(2015))`
+- [X] T029 [P] [US3] Write failing test `test_get_final_demand_shape` (AC1) — assert returned array shape `(n_industries,)`, dtype float64, all entries non-negative
+- [X] T030 [P] [US3] Write failing test `test_fetch_missing_year_sentinel` (AC2) — assert `isinstance(source._fetch(1900), NoDataSentinel)`
+- [X] T031 [P] [US3] Write failing test `test_get_final_demand_missing_year_raises` (AC3) — `pytest.raises(ValueError, match=r"No final-demand data for year 1900")`
+- [X] T032 [P] [US3] Write failing test `test_national_total_matches_bea_gdp` (AC4) — soft check using a fixture year; `assert abs(result.sum() - expected_gdp) / expected_gdp < 0.05`
+- [X] T033 [P] [US3] Write failing test `test_industry_order_matches_flow_source` (AC5) — given `flow_source.industries(year) == [...ordered...]`, assert `final_demand` returned in same positional order
+- [X] T034 [P] [US3] Write failing test `test_determinism_repeat_query` (AC6) — `assert np.array_equal(source.get_final_demand(2015), source.get_final_demand(2015))`
 
 ### Implementation for User Story 3
 
-- [ ] T035 [US3] Schema check confirmed (analyze 2026-05-08): no `fact_bea_use_table` in `marxist-data-3NF.sqlite` BUT `fact_bea_national_industry` (gross_output_millions) + `fact_bea_io_coefficient` ARE present. **DEFAULT path: derive `y = x − A·x`** from those two tables — the existing `FinalDemandSource` Protocol explicitly allows "or derived" per `production_chain_rent.py:82`. **FALLBACK path** (if derived accuracy is insufficient at SC-004 calibration): ingest `/media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` into a new `fact_bea_use_table`. See analyze finding C4 for the strategy decision
-- [ ] T036 [US3] Implement `DefaultFinalDemandSource(CachedSource[np.ndarray])` in `src/babylon/economics/tensor_hierarchy/leontief_rent/final_demand.py`:
+- [X] T035 [US3] Schema check confirmed (analyze 2026-05-08): no `fact_bea_use_table` in `marxist-data-3NF.sqlite` BUT `fact_bea_national_industry` (gross_output_millions) + `fact_bea_io_coefficient` ARE present. **DEFAULT path: derive `y = x − A·x`** from those two tables — the existing `FinalDemandSource` Protocol explicitly allows "or derived" per `production_chain_rent.py:82`. **FALLBACK path** (if derived accuracy is insufficient at SC-004 calibration): ingest `/media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` into a new `fact_bea_use_table`. See analyze finding C4 for the strategy decision
+- [X] T036 [US3] Implement `DefaultFinalDemandSource(CachedSource[np.ndarray])` in `src/babylon/economics/tensor_hierarchy/leontief_rent/final_demand.py`:
   - `_fetch(year) -> np.ndarray | NoDataSentinel` — query `fact_bea_use_table` for `year`, return `np.asarray(rows, dtype=np.float64)` ordered to match `DefaultInterIndustryFlowSource(year).industries`
   - `get_final_demand(year) -> np.ndarray` — adapter for the existing `FinalDemandSource` Protocol; calls `self._resolve(year)` and raises `ValueError` if `NoDataSentinel`
-- [ ] T037 [US3] Add to `src/babylon/economics/tensor_hierarchy/leontief_rent/__init__.py` re-exports + `__all__`
-- [ ] T038 [US3] Run `poetry run pytest tests/unit/economics/tensor_hierarchy/leontief_rent/test_final_demand_source.py -v` → all 6 GREEN
-- [ ] T039 [US3] Commit boundary: `feat(spec-057): DefaultFinalDemandSource — US3, BEA Use Table Summary level`
+- [X] T037 [US3] Add to `src/babylon/economics/tensor_hierarchy/leontief_rent/__init__.py` re-exports + `__all__`
+- [X] T038 [US3] Run `poetry run pytest tests/unit/economics/tensor_hierarchy/leontief_rent/test_final_demand_source.py -v` → all 6 GREEN
+- [X] T039 [US3] Commit boundary: `feat(spec-057): DefaultFinalDemandSource — US3, BEA Use Table Summary level`
 
 **Checkpoint**: US3 fully functional and unit-tested independently.
 

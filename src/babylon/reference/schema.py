@@ -2439,6 +2439,45 @@ class FactHickelERDIAnnual(NormalizedBase):
     )
 
 
+class FactBEAFinalDemandAnnual(NormalizedBase):
+    """BEA Use Table — per-industry "Total Final Uses (GDP)" annual time series.
+
+    Spec 057: ingested from
+    ``/media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx``
+    via ``tools/ingest/bea_final_demand.py``. Provides the final-demand
+    vector ``y`` consumed by ``DefaultFinalDemandSource`` and (downstream)
+    by :func:`babylon.economics.tensor_hierarchy.production_chain_rent.ProductionChainRentCalculator.calculate`.
+
+    Constitutional III.4: the BEA Use Table source is covered by the existing
+    BEA_GDP / BEA_TiVA catalog entries (under ``Federal Economic``); no
+    additional III.4 amendment required.
+    """
+
+    __tablename__ = "fact_bea_final_demand_annual"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    bea_industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_industry.bea_industry_id"), nullable=False
+    )
+    total_final_uses_millions: Mapped[float] = mapped_column(Float, nullable=False)
+    """The "Total Final Uses (GDP)" column from the BEA Use Table for this
+    (year, industry). Sum of: PCE + Private Fixed Investment + Change in
+    Private Inventories + Government Consumption Expenditures + Net Exports.
+    Units: millions of dollars."""
+
+    __table_args__ = (
+        Index("idx_bea_fd_time", "time_id"),
+        Index("idx_bea_fd_industry", "bea_industry_id"),
+        Index(
+            "idx_bea_fd_time_industry",
+            "time_id",
+            "bea_industry_id",
+            unique=True,
+        ),
+    )
+
+
 class FactRicciUnequalExchange(NormalizedBase):
     """Ricci (2021) Unequal Exchange tracking metrics.
 
@@ -2580,6 +2619,7 @@ __all__ = [
     "DimBEAIOTableType",
     "FactBEAIOCoefficient",
     "FactFAFCommodityFlow",
+    "FactBEAFinalDemandAnnual",
     "FactHickelDrain",
     "FactHickelERDIAnnual",
     "FactRicciUnequalExchange",

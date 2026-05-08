@@ -4135,21 +4135,32 @@ class GameDefines(BaseModel):
 
     @classmethod
     def default_yaml_path(cls) -> Path:
-        """Return the default path to defines.yaml.
+        """Return the conventional path for an optional ``defines.yaml`` override.
+
+        The repository does not ship a ``defines.yaml`` (the file was removed
+        in commit ``4ce7c96a`` when the data layer was extracted). Callers
+        may drop a YAML at this path to override the dataclass defaults
+        compiled into :class:`GameDefines`; if the file is absent,
+        :meth:`load_default` returns the dataclass defaults unchanged.
 
         Returns:
-            Path to src/babylon/data/defines.yaml
+            ``Path`` pointing at ``src/babylon/data/defines.yaml`` (which
+            may or may not exist on disk).
         """
         return Path(__file__).parent.parent / "data" / "defines.yaml"
 
     @classmethod
     def load_default(cls) -> GameDefines:
-        """Load GameDefines from the default YAML location.
+        """Load :class:`GameDefines`, preferring the optional YAML override.
 
-        Falls back to default values if file doesn't exist.
+        If ``src/babylon/data/defines.yaml`` exists, it is loaded as a
+        full override of the dataclass defaults. Otherwise the dataclass
+        defaults are returned. The repository ships without the YAML, so
+        the dataclass defaults are the canonical values today.
 
         Returns:
-            GameDefines instance
+            ``GameDefines`` instance — YAML-loaded if present, otherwise
+            the dataclass defaults.
         """
         default_path = cls.default_yaml_path()
         if default_path.exists():

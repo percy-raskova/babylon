@@ -1733,8 +1733,8 @@ current_focus:
   milestone_date: "2026-01-01"
   milestone_document: "ai-docs/epoch1-mvp-complete.md"
   next_milestone: "Slice 1.5: Dashboard wire-up (visualization only - mechanics complete)"
-  test_count: 7976
-  test_count_note: "Updated 2026-05-07 - Feature 055 Topology Invariants property tests added 65 (US1=2 edge-mode trajectory, US2=3 community-membership lint, US3=57 frozen-discipline parametrized [38 pass + 19 skipped pre-existing debt + 1 per-tick + 1 seeded], US4=3 round-trip identity). Combined property/ suite (Spec 053 + 054 + 055) runs in 87.83s on default profile. Previous baseline: 7911 (Feature 054 Bound Invariants)."
+  test_count: 7990
+  test_count_note: "Updated 2026-05-07 - Feature 056 Causal/Temporal Invariants property tests added 14 (US1=4 material-base ordering, US2=3 consequence-after-actions, US3=3 no-DB-I/O-during-tick, US4=4 monotonic-idempotent persistence [in-memory; +4 PostgresRuntime in tests/integration gated by mise run test:integration]). Combined property/ suite (Spec 053 + 054 + 055 + 056) runs in 89.97s on default profile (deterministic order via -p no:randomly). Previous baseline: 7976 (Feature 055 Topology Invariants). Spec 056 also reordered _DEFAULT_SYSTEMS so OODA runs at position 14 between MetabolismSystem and SurvivalSystem (per F6=α clarification, matching ADR032's documented Material Base → Action Phase → Consequences partition), refined RuntimePersistence.persist_tick contract from UPSERT to monotonic-idempotent (per F7=B), and extracted OODASystem._resolve_for_organization helper (per F1) for test-time instrumentation."
 
   constants_remediation_sweep:
     status: "COMPLETE"

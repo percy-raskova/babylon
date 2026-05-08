@@ -33,6 +33,7 @@ from babylon.persistence.postgres_schema import (
     TRACE_PARTITION_CREATE_TEMPLATE,
     TRACE_PARTITION_DROP_TEMPLATE,
 )
+from babylon.persistence.protocols import MonotonicityViolationError
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,18 @@ def _json_default(obj: object) -> str:
     if isinstance(obj, UUID):
         return str(obj)
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def _is_json_serializable(value: Any) -> bool:
+    """Predicate: can ``value`` round-trip through ``json.dumps`` /
+    ``json.loads``? Used by :meth:`PostgresRuntime._canonical_payload`
+    to filter graph-node / edge attributes before canonicalization
+    (Spec 056 monotonic-idempotent comparison)."""
+    try:
+        json.dumps(value, default=_json_default)
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 class PostgresRuntime:
@@ -107,21 +120,147 @@ class PostgresRuntime:
     ) -> None:
         """Persist a complete state snapshot at the given tick.
 
+        Monotonic-idempotent semantics (Spec 056 F7=B): if
+        ``(session_id, tick)`` is already persisted, compare the new
+        payload to the existing one. Same payload → return silently
+        (idempotent retry preserves observer/recorder semantics).
+        Different payload → raise :exc:`MonotonicityViolationError`.
+
         Args:
             tick: The tick number.
             graph: Full simulation graph.
             events: Optional simulation events.
             session_id: Required session scope.
+
+        Raises:
+            ValueError: If session_id is None.
+            MonotonicityViolationError: If ``(session_id, tick)`` is
+                already persisted with a different payload.
         """
         if session_id is None:
             msg = "session_id is required for PostgresRuntime.persist_tick"
             raise ValueError(msg)
+
+        new_payload = self._canonical_payload(graph, events)
+
+        # Spec 056 monotonic-idempotent check: is this (session, tick) already persisted?
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM node_state WHERE session_id = %s AND tick = %s LIMIT 1",
+                (session_id, tick),
+            )
+            if cur.fetchone() is not None:
+                existing_payload = self._canonical_payload_for_tick(conn, session_id, tick)
+                if existing_payload == new_payload:
+                    return  # idempotent — same payload
+                raise MonotonicityViolationError(
+                    tick=tick,
+                    existing_payload=existing_payload,
+                    attempted_payload=new_payload,
+                )
 
         with self._pool.connection() as conn, conn.transaction():
             self._persist_nodes(conn, session_id, tick, graph)
             self._persist_edges(conn, session_id, tick, graph)
             if events:
                 self._persist_events(conn, session_id, tick, events)
+
+    @staticmethod
+    def _canonical_payload(
+        graph: nx.DiGraph[str],
+        events: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Return a canonical-serialized representation of (graph, events).
+
+        Used by :meth:`persist_tick` to compare a new payload against
+        an already-persisted one for the spec-056 monotonic-idempotent
+        contract. Stable under dict-key iteration order.
+        """
+        nodes = sorted(
+            (
+                str(node_id),
+                str(attrs.get("_node_type", attrs.get("type", "unknown"))),
+                json.dumps(
+                    {k: v for k, v in attrs.items() if _is_json_serializable(v)},
+                    sort_keys=True,
+                ),
+            )
+            for node_id, attrs in graph.nodes(data=True)
+        )
+        edges = sorted(
+            (
+                str(source),
+                str(target),
+                str(attrs.get("edge_type", attrs.get("type", "UNKNOWN"))),
+                json.dumps(
+                    {k: v for k, v in attrs.items() if _is_json_serializable(v)},
+                    sort_keys=True,
+                ),
+            )
+            for source, target, attrs in graph.edges(data=True)
+        )
+        events_list = sorted(json.dumps(event, sort_keys=True) for event in (events or []))
+        return {"nodes": nodes, "edges": edges, "events": events_list}
+
+    @staticmethod
+    def _canonical_payload_for_tick(
+        conn: Connection,
+        session_id: UUID,
+        tick: int,
+    ) -> dict[str, Any]:
+        """Reconstruct the canonical payload from rows already persisted
+        for ``(session_id, tick)``. Inverse of
+        :meth:`_canonical_payload` for the already-stored state.
+        """
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT node_id, node_type, attributes FROM node_state "
+                "WHERE session_id = %s AND tick = %s",
+                (session_id, tick),
+            )
+            nodes = sorted(
+                (
+                    str(row["node_id"]),
+                    str(row["node_type"]),
+                    json.dumps(
+                        row["attributes"] if isinstance(row["attributes"], dict) else {},
+                        sort_keys=True,
+                    ),
+                )
+                for row in cur.fetchall()
+            )
+
+            cur.execute(
+                "SELECT source_id, target_id, edge_type, attributes FROM edge_state "
+                "WHERE session_id = %s AND tick = %s",
+                (session_id, tick),
+            )
+            edges = sorted(
+                (
+                    str(row["source_id"]),
+                    str(row["target_id"]),
+                    str(row["edge_type"]),
+                    json.dumps(
+                        row["attributes"] if isinstance(row["attributes"], dict) else {},
+                        sort_keys=True,
+                    ),
+                )
+                for row in cur.fetchall()
+            )
+
+            cur.execute(
+                "SELECT details FROM events WHERE session_id = %s AND tick = %s",
+                (session_id, tick),
+            )
+            events_list = sorted(
+                json.dumps(
+                    row["details"] if isinstance(row["details"], dict) else {},
+                    sort_keys=True,
+                )
+                for row in cur.fetchall()
+            )
+
+        return {"nodes": nodes, "edges": edges, "events": events_list}
 
     def hydrate_graph(
         self,

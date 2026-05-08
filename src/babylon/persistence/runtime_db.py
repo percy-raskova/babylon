@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from babylon.persistence.protocols import MonotonicityViolationError
 from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
 
 if TYPE_CHECKING:
@@ -121,15 +122,38 @@ class RuntimeDatabase:
     ) -> None:
         """Persist full graph snapshot at end of tick (ADR032).
 
-        Stores nodes, edges, and events for the given tick. This creates
-        a complete snapshot enabling temporal queries and replay.
+        Monotonic-idempotent semantics (Spec 056 F7=B): if ``tick`` is
+        already persisted, compare the new payload to the existing one:
+        same → return silently (idempotent retry preserves observer/
+        recorder semantics); different → raise
+        :exc:`MonotonicityViolationError`.
 
         Args:
             tick: Simulation tick number.
             graph: NetworkX graph with current simulation state.
             events: Optional list of event dicts for this tick.
             session_id: Session scope (ignored for SQLite, required for Postgres).
+
+        Raises:
+            MonotonicityViolationError: If ``tick`` is already persisted
+                with a different payload.
         """
+        new_payload = self._canonical_payload(graph, events)
+
+        # Spec 056 monotonic-idempotent check: is this tick already persisted?
+        existing = self.con.execute(
+            "SELECT 1 FROM node_history WHERE tick = ? LIMIT 1", (tick,)
+        ).fetchone()
+        if existing is not None:
+            existing_payload = self._canonical_payload_for_tick(tick)
+            if existing_payload == new_payload:
+                return  # idempotent — same payload
+            raise MonotonicityViolationError(
+                tick=tick,
+                existing_payload=existing_payload,
+                attempted_payload=new_payload,
+            )
+
         with self.transaction() as con:
             # Persist nodes
             for node_id, attrs in graph.nodes(data=True):
@@ -182,6 +206,86 @@ class RuntimeDatabase:
                             json.dumps(event),
                         ),
                     )
+
+    def _canonical_payload(
+        self,
+        graph: nx.DiGraph[str],
+        events: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Return a canonical-serialized representation of (graph, events).
+
+        Used by :meth:`persist_tick` to compare a new payload against an
+        already-persisted one for the spec-056 monotonic-idempotent
+        contract. Stable under dict-key iteration order, set iteration
+        order, and node/edge enumeration order.
+        """
+        nodes = sorted(
+            (
+                str(node_id),
+                attrs.get("type", "unknown"),
+                json.dumps(
+                    {k: v for k, v in attrs.items() if self._is_json_serializable(v)},
+                    sort_keys=True,
+                ),
+            )
+            for node_id, attrs in graph.nodes(data=True)
+        )
+        edges = sorted(
+            (
+                str(source),
+                str(target),
+                str(attrs.get("type", attrs.get("edge_type", "UNKNOWN"))),
+                json.dumps(
+                    {k: v for k, v in attrs.items() if self._is_json_serializable(v)},
+                    sort_keys=True,
+                ),
+            )
+            for source, target, attrs in graph.edges(data=True)
+        )
+        events_list = sorted(json.dumps(event, sort_keys=True) for event in (events or []))
+        return {"nodes": nodes, "edges": edges, "events": events_list}
+
+    def _canonical_payload_for_tick(self, tick: int) -> dict[str, Any]:
+        """Reconstruct the canonical payload from rows already persisted
+        for ``tick``. Inverse of :meth:`_canonical_payload` for the
+        already-stored state. Used by the monotonic-idempotent equality
+        check in :meth:`persist_tick`.
+
+        Re-canonicalizes the stored JSON via ``json.dumps(...,
+        sort_keys=True)`` so the comparison against a freshly-canonicalized
+        new payload is order-insensitive (the stored JSON was written in
+        Python dict-insertion order, not sort-order).
+        """
+
+        def _re_canonical(json_str: str | None) -> str:
+            if not json_str:
+                return "{}"
+            return json.dumps(json.loads(json_str), sort_keys=True)
+
+        nodes = sorted(
+            (str(node_id), str(node_type), _re_canonical(attrs_json))
+            for node_id, node_type, attrs_json in self.con.execute(
+                "SELECT node_id, node_type, attributes FROM node_history WHERE tick = ?",
+                (tick,),
+            )
+        )
+        edges = sorted(
+            (
+                str(source),
+                str(target),
+                str(edge_type),
+                _re_canonical(attrs_json),
+            )
+            for source, target, edge_type, attrs_json in self.con.execute(
+                "SELECT source, target, edge_type, attributes FROM edge_history WHERE tick = ?",
+                (tick,),
+            )
+        )
+        events_list = sorted(
+            _re_canonical(details)
+            for (details,) in self.con.execute("SELECT details FROM events WHERE tick = ?", (tick,))
+        )
+        return {"nodes": nodes, "edges": edges, "events": events_list}
 
     def _is_json_serializable(self, value: Any) -> bool:
         """Check if a value can be JSON serialized."""

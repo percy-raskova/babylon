@@ -28,6 +28,52 @@ class TraceLevel(IntEnum):
     TRACE = 3
 
 
+class MonotonicityViolationError(Exception):
+    """Raised when ``persist_tick`` is called with a DIFFERENT payload for
+    an already-persisted ``(session_id, tick)`` pair.
+
+    Per Constitution II.6 (State is Data) and III.7 (Determinism), the
+    persisted record for tick N is immutable once written *with respect
+    to its content*. Implementations of
+    :meth:`RuntimePersistence.persist_tick` MUST raise this exception
+    when a re-persist supplies a payload that differs from the
+    already-stored payload for the same ``(session_id, tick)`` pair.
+
+    A re-persist with the **same** payload (the canonical UPSERT-retry
+    pattern used by ``persistence_observer.py:146`` and
+    ``session_recorder.py:168``) succeeds idempotently and does NOT
+    raise. This preserves existing retry semantics while blocking
+    silent rewrite of historical state.
+
+    Spec 056 (US4 / INV-016): payload comparison is on the
+    canonical-serialized form (the final dict / JSON / bytes that would
+    be written), not the in-memory object — avoids spurious mismatches
+    from non-deterministic ordering of dict keys / set iteration / etc.
+
+    Args:
+        tick: The tick number that an overwrite was attempted on.
+        existing_payload: The payload currently persisted for that tick,
+            if available (in-memory backends populate this; Postgres may
+            populate it post-SELECT).
+        attempted_payload: The differing payload that the caller tried
+            to persist.
+    """
+
+    def __init__(
+        self,
+        tick: int,
+        existing_payload: Any | None = None,
+        attempted_payload: Any | None = None,
+    ) -> None:
+        self.tick = tick
+        self.existing_payload = existing_payload
+        self.attempted_payload = attempted_payload
+        super().__init__(
+            f"Cannot overwrite already-persisted tick {tick} with different "
+            f"payload (use identical payload for idempotent retry)"
+        )
+
+
 @runtime_checkable
 class RuntimePersistence(Protocol):
     """Backend-agnostic simulation state persistence.
@@ -47,13 +93,37 @@ class RuntimePersistence(Protocol):
     ) -> None:
         """Persist a complete state snapshot at the given tick.
 
-        Full snapshot, not diff. Idempotent via UPSERT semantics.
+        Full snapshot, not diff. **Monotonic-idempotent semantics**
+        (refined by Spec 056 F7=B clarification, 2026-05-07):
+
+        - If ``(session_id, tick)`` is not yet persisted, the payload
+          is written and the method returns successfully.
+        - If ``(session_id, tick)`` IS already persisted, the
+          implementation MUST compare the new payload against the
+          existing payload (canonical-serialized equality):
+
+          - **Same payload**: succeed silently (idempotent retry —
+            preserves the existing observer / recorder retry semantics
+            in ``persistence_observer.py:146`` and
+            ``session_recorder.py:168``).
+          - **Different payload**: raise
+            :exc:`MonotonicityViolationError` with ``existing_payload``,
+            ``attempted_payload``, and ``tick`` populated.
+
+        Silent overwrite of differing payloads is forbidden — it
+        would silently rewrite history and break the audit trail
+        invariant required by Constitution II.6 (State is Data) and
+        III.7 (Determinism — replay from any tick).
 
         Args:
             tick: The tick number to persist.
             graph: The full simulation graph with all node/edge attributes.
             events: Optional list of simulation events from this tick.
             session_id: Session scope (required for Postgres, optional for SQLite).
+
+        Raises:
+            MonotonicityViolationError: If ``(session_id, tick)`` is
+                already persisted with a different payload.
         """
         ...
 

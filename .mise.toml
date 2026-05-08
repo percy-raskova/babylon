@@ -73,49 +73,214 @@ depends = ["lint", "format", "typecheck", "test:unit"]
 # TESTING (Namespaced)
 # =============================================================================
 
+# -----------------------------------------------------------------------------
+# Verbose machine-readable test runs.
+# Every test:* task writes JUnit XML + JSON + self-contained HTML to
+# reports/test-results/<task>/ for AI-agent and tool consumption.
+# Verbose flags (per pytest C7 docs, max standard expressiveness):
+#   -vv                      full assertion diffs (no truncation)
+#   --tb=long                long tracebacks
+#   --showlocals             include local variables in tracebacks
+#   --show-capture=all       captured stdout/stderr/log on failure
+#   --capture=tee-sys        capture stdout/stderr AND pass through to console
+#   -r aR                    summary of all outcomes (incl. xfailed/xpassed reasons)
+#   --durations=25           top 25 slowest tests
+# JUnit XML config (pyproject.toml [tool.pytest.ini_options]):
+#   junit_family=xunit2, junit_logging=all, junit_log_passing_tests=true,
+#   junit_duration_report=call, junit_suite_name="babylon"
+# See CLAUDE.md "Test Reports for AI Agents" section for the JSON schema.
+# -----------------------------------------------------------------------------
+
 [tasks."test:unit"]
-description = "Run unit tests only (fast)"
-run = "poetry run pytest tests/unit -v --tb=short"
+description = "Unit tests (fast) → reports/test-results/unit/"
+run = """
+mkdir -p reports/test-results/unit
+poetry run pytest tests/unit \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/unit/junit.xml \
+  --json-report --json-report-file=reports/test-results/unit/report.json --json-report-indent=2 \
+  --html=reports/test-results/unit/report.html --self-contained-html
+"""
 
 [tasks."test:fast"]
-description = "Run fast unit tests only (excludes slow-marked tests)"
-run = "poetry run pytest tests/unit -v --tb=short -m 'not slow'"
+description = "Unit tests excluding slow-marked → reports/test-results/fast/"
+run = """
+mkdir -p reports/test-results/fast
+poetry run pytest tests/unit -m 'not slow' \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/fast/junit.xml \
+  --json-report --json-report-file=reports/test-results/fast/report.json --json-report-indent=2 \
+  --html=reports/test-results/fast/report.html --self-contained-html
+"""
 
 [tasks."test:slow"]
-description = "Run slow-marked tests only"
-run = "poetry run pytest -v --tb=short -m 'slow'"
+description = "Slow-marked tests only → reports/test-results/slow/"
+run = """
+mkdir -p reports/test-results/slow
+poetry run pytest -m 'slow' \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/slow/junit.xml \
+  --json-report --json-report-file=reports/test-results/slow/report.json --json-report-indent=2 \
+  --html=reports/test-results/slow/report.html --self-contained-html
+"""
 
 [tasks."test:int"]
-description = "Run integration tests (mechanics & systems)"
-run = "poetry run pytest tests/integration -v --tb=short"
+description = "Integration tests (mechanics & systems) → reports/test-results/int/"
+run = """
+mkdir -p reports/test-results/int
+poetry run pytest tests/integration \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/int/junit.xml \
+  --json-report --json-report-file=reports/test-results/int/report.json --json-report-indent=2 \
+  --html=reports/test-results/int/report.html --self-contained-html
+"""
 
 [tasks."test:scenario"]
-description = "Run scenario tests (slow, full arcs)"
-run = "poetry run pytest tests/scenarios -v --tb=short"
+description = "Scenario tests (slow, full arcs) → reports/test-results/scenario/"
+run = """
+mkdir -p reports/test-results/scenario
+poetry run pytest tests/scenarios \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/scenario/junit.xml \
+  --json-report --json-report-file=reports/test-results/scenario/report.json --json-report-indent=2 \
+  --html=reports/test-results/scenario/report.html --self-contained-html
+"""
 
 [tasks."test:all"]
-description = "Run all non-AI tests"
-run = "poetry run pytest --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=tests/integration/ui --tb=short"
+description = "All non-AI tests → reports/test-results/all/"
+run = """
+mkdir -p reports/test-results/all
+poetry run pytest \
+  --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=tests/integration/ui \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/all/junit.xml \
+  --json-report --json-report-file=reports/test-results/all/report.json --json-report-indent=2 \
+  --html=reports/test-results/all/report.html --self-contained-html
+"""
 
 [tasks."test:ai"]
-description = "Run AI/narrative evaluation tests (slow)"
-run = "poetry run pytest tests/unit/ai --tb=short"
+description = "AI/narrative evaluation tests (slow) → reports/test-results/ai/"
+run = """
+mkdir -p reports/test-results/ai
+poetry run pytest tests/unit/ai \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/ai/junit.xml \
+  --json-report --json-report-file=reports/test-results/ai/report.json --json-report-indent=2 \
+  --html=reports/test-results/ai/report.html --self-contained-html
+"""
 
 [tasks."test:ui"]
-description = "Run UI tests (unit + integration UI suites)"
-run = "QT_QPA_PLATFORM=offscreen poetry run pytest tests/unit/ui tests/integration/ui --tb=short"
+description = "UI tests (unit + integration UI suites) → reports/test-results/ui/"
+run = """
+mkdir -p reports/test-results/ui
+QT_QPA_PLATFORM=offscreen poetry run pytest tests/unit/ui tests/integration/ui \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/ui/junit.xml \
+  --json-report --json-report-file=reports/test-results/ui/report.json --json-report-indent=2 \
+  --html=reports/test-results/ui/report.html --self-contained-html
+"""
 
 [tasks."test:cov"]
-description = "Run tests with coverage report"
-run = "poetry run pytest --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=tests/integration/ui --cov=src/babylon --cov-report=term-missing"
+description = "Tests + coverage (XML + JSON + HTML) → reports/test-results/cov/"
+run = """
+mkdir -p reports/test-results/cov
+poetry run pytest \
+  --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=tests/integration/ui \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --cov=src/babylon --cov-branch \
+  --cov-report=xml:reports/test-results/cov/coverage.xml \
+  --cov-report=json:reports/test-results/cov/coverage.json \
+  --cov-report=html:reports/test-results/cov/htmlcov \
+  --cov-report=term-missing:skip-covered \
+  --junit-xml=reports/test-results/cov/junit.xml \
+  --json-report --json-report-file=reports/test-results/cov/report.json --json-report-indent=2 \
+  --html=reports/test-results/cov/report.html --self-contained-html
+"""
 
 [tasks."test:doctest"]
-description = "Run doctest examples in formulas module"
-run = "poetry run pytest --doctest-modules src/babylon/formulas -v"
+description = "Doctest examples in formulas module → reports/test-results/doctest/"
+run = """
+mkdir -p reports/test-results/doctest
+poetry run pytest --doctest-modules src/babylon/formulas \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/doctest/junit.xml \
+  --json-report --json-report-file=reports/test-results/doctest/report.json --json-report-indent=2 \
+  --html=reports/test-results/doctest/report.html --self-contained-html
+"""
 
 [tasks."test:pg"]
-description = "Run Postgres-backed contract tests (requires Docker)"
-run = "poetry run pytest tests/integration/web/test_pg_contract.py -v --tb=short"
+description = "Postgres-backed contract tests (requires Docker) → reports/test-results/pg/"
+run = """
+mkdir -p reports/test-results/pg
+poetry run pytest tests/integration/web/test_pg_contract.py \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/pg/junit.xml \
+  --json-report --json-report-file=reports/test-results/pg/report.json --json-report-indent=2 \
+  --html=reports/test-results/pg/report.html --self-contained-html
+"""
+
+# -----------------------------------------------------------------------------
+# Test report helpers
+# -----------------------------------------------------------------------------
+
+[tasks."test:clean"]
+description = "Wipe test artifacts: reports/, .pytest_cache, htmlcov, .coverage*, __pycache__ (idempotent)"
+run = """
+# Test reports + per-task subdirectories
+rm -rf reports/test-results
+# Pytest's own cache
+rm -rf .pytest_cache
+# Coverage HTML + state files (.coverage and .coverage.<host>.<pid>.<rand>)
+rm -rf htmlcov
+rm -f .coverage .coverage.*
+# Bytecode caches across the project — but NOT inside .venv (preserves
+# venv-compiled stdlib/dep bytecode so the next test run isn't slow)
+find . -type d -name __pycache__ \
+  -not -path './.venv/*' \
+  -not -path './node_modules/*' \
+  -not -path './web/frontend/node_modules/*' \
+  -exec rm -rf {} + 2>/dev/null || true
+# Recreate the reports root for next run
+mkdir -p reports/test-results
+echo "Cleaned: reports/test-results/, .pytest_cache/, htmlcov/, .coverage*, __pycache__/ (excluding .venv, node_modules)"
+echo "Preserved: .hypothesis/ (counterexample DB), .mypy_cache, .ruff_cache (use 'mise run clean' for those)"
+"""
+
+[tasks."test:show"]
+description = "Open the most recent HTML test report in the default browser"
+run = """
+report=$(ls -t reports/test-results/*/report.html 2>/dev/null | head -1)
+if [ -z "$report" ]; then
+  echo "No HTML report found. Run mise run test:unit (or another test:* task) first." >&2
+  exit 1
+fi
+xdg-open "$report" 2>/dev/null || open "$report"
+"""
+
+[tasks."test:summary"]
+description = "Print a one-screen text summary of the most recent JSON test report"
+run = """
+report=$(ls -t reports/test-results/*/report.json 2>/dev/null | head -1)
+if [ -z "$report" ]; then
+  echo "No JSON report found. Run mise run test:unit first." >&2
+  exit 1
+fi
+poetry run python -c "
+import json, sys
+r = json.load(open('$report'))
+s = r.get('summary', {})
+print(f\\"Report:   $report\\")
+print(f\\"Created:  {r.get('created', 'unknown')}\\")
+print(f\\"Duration: {r.get('duration', 0):.2f}s\\")
+print(f\\"Exitcode: {r.get('exitcode', '?')}\\")
+print(f\\"Counts:   pass={s.get('passed', 0)}  fail={s.get('failed', 0)}  skip={s.get('skipped', 0)}  xfail={s.get('xfailed', 0)}  xpass={s.get('xpassed', 0)}  err={s.get('error', 0)}\\")
+fails = [t for t in r.get('tests', []) if t.get('outcome') in ('failed', 'error')]
+if fails:
+    print(f'\\\\nFailures ({len(fails)}, showing up to 10):')
+    for t in fails[:10]:
+        print(f\\\"  {t['outcome']:7s} {t['nodeid']}\\\")
+"
+"""
 
 # =============================================================================
 # SIMULATION (Namespaced)

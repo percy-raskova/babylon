@@ -184,14 +184,25 @@ class ConsciousnessSystem:
             )
             new_agitation = current_profile["agitation"] + agitation_increment
 
-            # Route agitation through solidarity → class/nation split
-            delta_r, delta_l, _delta_f = route_agitation_to_ternary(
+            # Route agitation through solidarity → class/nation split.
+            # The ternary router (Spec 043) returns shifts in (revolutionary,
+            # liberal, fascist). The legacy two-axis IdeologicalProfile maps
+            #   class_consciousness  ← revolutionary (delta_r)
+            #   national_identity    ← fascist       (delta_f)
+            # liberal drain (delta_l) is the *backpressure* on the liberal
+            # tendency and intentionally has no projection onto either
+            # legacy axis. Until the Spec 043 refactor was completed, this
+            # block discarded delta_f and added abs(delta_l) to
+            # national_identity, which made every wage cut grow
+            # national_identity by the same amount as class_consciousness
+            # under any solidarity level — defeating the bifurcation.
+            delta_r, _delta_l, delta_f = route_agitation_to_ternary(
                 agitation=new_agitation,
                 solidarity_factor=min(1.0, solidarity_pressure),
                 education_pressure=0.0,  # Education pressure handled in community system
             )
             new_class = min(1.0, current_profile["class_consciousness"] + delta_r)
-            new_nation = min(1.0, current_profile["national_identity"] + abs(delta_l))
+            new_nation = min(1.0, current_profile["national_identity"] + delta_f)
             # Decay agitation after routing
             decay_rate = services.defines.consciousness.agitation_decay_rate
             new_agitation = max(0.0, new_agitation * (1.0 - decay_rate))

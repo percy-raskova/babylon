@@ -15,7 +15,6 @@ from tests.unit.economics.tick.conftest import (
     MockCapitalStockCalculator,
     MockClassTransitionEngine,
     MockGammaIIICalculator,
-    MockImperialRentCalculator,
     MockMELTCalculator,
     MockThroughputCalculator,
 )
@@ -26,7 +25,14 @@ from babylon.engine.services import ServiceContainer
 
 
 def _make_services(**kwargs: Any) -> ServiceContainer:
-    """Create ServiceContainer with mock calculators."""
+    """Create ServiceContainer with mock calculators.
+
+    Note: ``imperial_rent_calculator`` is intentionally absent — the
+    ``ServiceContainer.create`` kwarg was removed in commit ``a5f73139``.
+    Spec 057-leontief-rent-integration will add a successor injection
+    point. The kwarg is stripped defensively below in case any caller
+    still passes it.
+    """
     defaults = {
         "melt_calculator": MockMELTCalculator(),
         "basket_calculator": MockBasketVisibilityCalculator(),
@@ -34,9 +40,9 @@ def _make_services(**kwargs: Any) -> ServiceContainer:
         "capital_calculator": MockCapitalStockCalculator(),
         "throughput_calculator": MockThroughputCalculator(),
         "transition_engine": MockClassTransitionEngine(),
-        "imperial_rent_calculator": MockImperialRentCalculator(),
     }
     defaults.update(kwargs)
+    defaults.pop("imperial_rent_calculator", None)
     return ServiceContainer.create(**defaults)
 
 

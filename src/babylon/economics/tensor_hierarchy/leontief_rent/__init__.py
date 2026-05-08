@@ -9,4 +9,14 @@ See ``specs/057-leontief-rent-integration/`` for the design.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients import (
+    DefaultPeripheryLaborCoefficientsSource,
+    PeripheryLaborCoefficientsSource,
+    PeripheryWageMetadata,
+)
+
+__all__: list[str] = [
+    "DefaultPeripheryLaborCoefficientsSource",
+    "PeripheryLaborCoefficientsSource",
+    "PeripheryWageMetadata",
+]

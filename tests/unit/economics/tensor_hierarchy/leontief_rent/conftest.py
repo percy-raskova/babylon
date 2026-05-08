@@ -101,9 +101,7 @@ class FakePeripheryLaborCoefficientsSource:
 
     def get_coefficients(self, year: int) -> PeripheryLaborCoefficients | NoDataSentinel:
         if year not in self._ratios_by_year:
-            return NoDataSentinel(
-                fips=None, year=year, reason="missing periphery wage data for year"
-            )
+            return NoDataSentinel(fips="", year=year, reason="missing periphery wage data for year")
         return PeripheryLaborCoefficients(
             year=year,
             industries=self._industries,

@@ -11,8 +11,8 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm baseline tests pass on branch `058-adr-bundle-1-pre-spec-057`: run `mise run check && mise run test:int`; verify tally matches 8988p / 186s / 1xf / 0f / 0e
-- [ ] T002 Verify all spec/plan artifacts present: `ls specs/058-adr-bundle-1-pre-spec-057/` shows `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`, `checklists/`
+- [X] T001 Baseline run: actual = 8987p / 186s / 1xf / 1f (pre-existing order-dependent flake in `tests/property/invariants/test_wealth_heat_bounds.py::test_per_system_coverage_complete` from spec 054 — unrelated to Bundle 1; treating as working baseline; bundle invariant: hold this constant, don't make worse)
+- [X] T002 Artifacts present and committed (`154f71bc docs(spec-058): planning artifacts`)
 
 ---
 
@@ -30,11 +30,11 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 
 **Why this story first**: Per FR-011, US5 has the smallest blast radius; it's the safe warm-up commit and verifies the per-commit gate is functioning before larger commits land.
 
-- [ ] T003 [US5] Write failing test in `tests/unit/ooda/test_membership_overlap_canonicalization.py` that asserts `git grep -c "def _compute_membership_overlap" src/` returns 1 (currently returns 2 — RED)
-- [ ] T004 [US5] Create `src/babylon/ooda/_helpers.py` with the canonical `_compute_membership_overlap` function, extracted verbatim from `src/babylon/ooda/action_effects.py:249` (the longer of the two duplicates per ADR-001 references); declare `__all__ = ["_compute_membership_overlap"]`
-- [ ] T005 [US5] Update `src/babylon/ooda/action_costs.py` to `from babylon.ooda._helpers import _compute_membership_overlap`; delete the local definition at line 85
-- [ ] T006 [US5] Update `src/babylon/ooda/action_effects.py` to `from babylon.ooda._helpers import _compute_membership_overlap`; delete the local definition at line 249
-- [ ] T007 [US5] Verify T003's test now passes (GREEN); run `poetry run pytest tests/unit/ooda/ tests/integration/test_ooda_*.py`; full OODA suite green
+- [X] T003 [US5] Wrote 3 RED canonicalization tests at `tests/unit/ooda/test_membership_overlap_canonicalization.py` (count=1, importable, both call sites import from _helpers)
+- [X] T004 [US5] Created `src/babylon/ooda/_helpers.py` with action_effects.py's richer impl (cross-reference fallback when `member_node_ids` empty); `__all__ = ["_compute_membership_overlap"]`
+- [X] T005 [US5] action_costs.py: imports from `_helpers`, local def deleted (now uses richer fallback — semantic upgrade per spec acceptance scenario 1)
+- [X] T006 [US5] action_effects.py: imports from `_helpers`, local def deleted, `EdgeType` removed from imports (no longer used here)
+- [X] T007 [US5] GREEN: 310 passed / 1 skipped in OODA + canonicalization suites
 - [ ] T008 [US5] Run `mise run check`; commit: `refactor(ooda): extract _compute_membership_overlap helper`
 
 ---

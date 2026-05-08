@@ -62,16 +62,16 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 
 ### Sub-phase US3b — `defines.py` split (commit 3)
 
-- [ ] T019 [US3] Run import-graph clustering analysis on `defines.py` per R2: same algorithm as T009 but `git grep -E "from babylon.config.defines import" src/ tests/`; output to `/tmp/058_defines_clustering.json`
-- [ ] T020 [US3] Create `src/babylon/config/defines/` package skeleton: empty `__init__.py`, `_assembler.py`, and one `*.py` file per cluster from T019 (~7-10 files); each sub-module starts as an empty stub
-- [ ] T021 [US3] Move `*Defines` Pydantic classes from the old `defines.py` into their cluster sub-modules per T019's mapping; declare `__all__` in each sub-module
-- [ ] T022 [US3] Move `GameDefines` assembler logic from the old `defines.py` into `src/babylon/config/defines/_assembler.py` (composition + `pyproject.toml [tool.babylon]` loading)
-- [ ] T023 [US3] Wire `src/babylon/config/defines/__init__.py` to re-export `GameDefines` + every `*Defines` class; declare aggregate `__all__` matching the pre-split symbol set
-- [ ] T024 [US3] Delete `src/babylon/config/defines.py` (the old monolith)
-- [ ] T025 [US3] Update `tests/unit/test_public_import_surface.py` to add `babylon.config.defines.__all__` assertions (parallel to the enums assertions added in T010)
-- [ ] T026 [US3] Verify per-file LOC cap: `find src/babylon/config/defines -name "*.py" -exec wc -l {} \;` reports no file over 600 LOC; if any over (likely candidates per ADR-001: `OODADefines` at 441 LOC and `StateApparatusAIDefines` at 480 LOC, both well under cap when alone in a file), split per R2 escape hatch
-- [ ] T027 [US3] Verify GameDefines wiring intact: `python -c "from babylon.config.defines import GameDefines; gd = GameDefines(); print(gd.economy.extraction_efficiency)"` returns `0.8`
-- [ ] T028 [US3] Verify import equivalence and run `mise run check && mise run test:unit`; baseline tally preserved
+- [X] T019 [US3] LOC analysis showed `economy` semantic cluster at 755 LOC and `organizations+ooda+lifecycle` at 1002 LOC — both over 600 cap. Per R2 escape hatch, expanded to 12 sub-modules (split economy into 3 sub-clusters; split ooda alone)
+- [X] T020 [US3] Wrote `/tmp/058_split_defines.py` AST-driven splitter; produces 14 files (12 categories + _assembler + __init__)
+- [X] T021 [US3] Splitter ran cleanly: 41 child Defines distributed; each sub-module declares __all__; common imports header added (BaseModel, ConfigDict, Field, model_validator, Any)
+- [X] T022 [US3] _assembler.py contains GameDefines + 4 classmethods (load_from_yaml, _from_yaml_dict, default_yaml_path, load_default) + 8 legacy @property accessors; default_yaml_path Path(__file__) reference patched to navigate up one extra level
+- [X] T023 [US3] __init__.py re-exports all 42 symbols (41 child Defines + GameDefines)
+- [X] T024 [US3] Old `defines.py` monolith deleted
+- [X] T025 [US3] Extended `tests/unit/test_public_import_surface.py` with `TestDefinesPublicSurface` class — 6 tests covering __all__ declaration, baseline match, flat import, star import, module.attr access, GameDefines instantiation smoke
+- [X] T026 [US3] Per-file LOC cap holds: largest is `organizations.py` at 581 LOC (under 600); 12 sub-modules range 98–581 LOC
+- [X] T027 [US3] GameDefines() wiring verified: `gd.economy.extraction_efficiency == 0.8`
+- [X] T028 [US3] Full fast-gate: 9001p / 186s / 1xf / 1f (1f pre-existing flake unchanged); +6 passed from new defines surface tests. Two mid-refactor mypy fixes applied to ooda.py: `import warnings` + `TYPE_CHECKING` import of GameDefines (uses string forward-reference for `validate_derivations(self, game_defines: GameDefines)`). ruff autofixed 49 I001 issues. mypy on defines/: clean.
 - [ ] T029 [US3] Commit: `refactor(config): split defines.py into defines/ package`
 
 ---

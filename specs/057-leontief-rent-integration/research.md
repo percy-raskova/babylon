@@ -197,16 +197,70 @@ class PhiHourOutlierEvent(EconomicEvent):
 
 ---
 
+## R8: Data trove location and downstream refinements (2026-05-08)
+
+**Discovery (mid-Phase-0)**: All source data lives at **`/media/user/data/babylon-data/`** — confirmed by user. The in-repo `data/sqlite/marxist-data-3NF.sqlite` (8.8 GB) is what code reads (`src/babylon/engine/simdb/database.py:37`, `src/babylon/reference/database.py:54`). The trove also has its own copy of the SQLite kept in sync.
+
+**Inventory of items relevant to Spec 057** (verified via `ls`):
+
+| Item | Trove path | Relevant to |
+|------|-----------|-------------|
+| Reference DB | `marxist-data-3NF.sqlite` (mirror of in-repo copy) | All sources |
+| Hickel time series 1960–2017 | `babylon_hickel_final.csv` | SC-004 calibration |
+| BEA Use Table Summary | `input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` | R2 (`DefaultFinalDemandSource`) |
+| BEA Make Table Summary | `input-output/make-use/IOMake_Before_Redefinitions_PRO_Summary.xlsx` | (calculator already uses; verifies vintage) |
+| BEA Import Matrices Summary | `input-output/make-use/ImportMatrices_Before_Redefinitions_Summary.xlsx` | (DBImportShareSource verifies vintage) |
+| NAICS-BEA concordance | `concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx` | R4 (`IndustryToCountyAllocator`) |
+| QCEW (annual) | `employment_industry/2024.annual.by_area/`, `2024.annual.by_industry/` | R4 (allocator); verify multi-year coverage at impl time |
+| BEA Regional GDP | `bea/regional/CAGDP2__ALL_AREAS_2001_2023.csv` | (potential SC-004 cross-check) |
+| Michigan BEA EAs | `bea/michigan_bea_ea.csv` | Constitution IV.1 (Michigan test case) |
+| LAUS county unemployment | `bls/laus/la.data.64.County` | NOT QCEW — different series |
+
+### Refinement to R1: PWT remains primary periphery-wage source; Hickel is calibration only
+
+`babylon_hickel_final.csv` provides drain values in the form `annual_drain_usd_billions` + `erdi` (Exchange Rate Distortion Index) + `alpha` + `scale_type`. ERDI is conceptually adjacent to a wage-distortion factor but is not itself a per-industry wage ratio — it's a national price-distortion measure. Using ERDI as the periphery-wage input would conflate price distortion with wage gap and weaken the structural derivation.
+
+**Decision (refining R1)**: PWT v10.x via SQLite remains the periphery-wage source per FR-002. Hickel CSV is reserved for the SC-004 calibration anchor only — see R8.4 below.
+
+### Refinement to R2: BEA Use Table source confirmed available
+
+`input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` is the canonical Summary-level Use Table at "Producer prices, Before Redefinitions" — the standard form for I-O analysis. The "Total Final Uses (GDP)" column is one of the trailing columns of that table.
+
+**Decision (refining R2)**: If `fact_bea_use_table` (or equivalent Summary-level table) does not yet exist in `marxist-data-3NF.sqlite`, an ingestion task lands as the first commit of Spec 057's implementation phase, reading from `input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx`. Tabled at `tasks.md` time (verified during Phase 2).
+
+### Refinement to R4: NAICS-BEA crosswalk source confirmed available
+
+`concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx` is BEA's official concordance, expected to already be loaded into `marxist-data-3NF.sqlite` as part of the Spec 025 tensor-hierarchy ingestion. If not, ingestion lands as part of Spec 057's setup phase.
+
+**Decision (refining R4)**: Reuse the existing ingestion if present (table name `xref_naics_bea_summary` or equivalent — confirmed at impl time); fall back to ingesting from the concordance XLSX otherwise.
+
+### R8.4 — SC-004 calibration anchor refinement
+
+**Discovery**: The Hickel CSV uses two scale types — `Extensive` (raw dollar drain) for years 1960–~2008 and `Intensive` (ERDI-corrected drain) for years ~2009–2017. The 2015 value differs by scale type:
+
+- 2015 Intensive: `9750.0` (i.e., $9.75 trillion)
+- 2015 Extensive (often-cited figure): ~$2.8T
+
+The single-year `$2.8T (2015)` anchor in SC-004 is a defensible Extensive-scale figure but does NOT directly match what the CSV provides for 2015 (which is Intensive). Two ways to reconcile:
+
+- **Single-year, scale-explicit**: SC-004 specifies "within an order of magnitude of $2.8T (Hickel Extensive, 2015)" OR "within an order of magnitude of $9.75T (Hickel Intensive, 2015)". Either is defensible; the wider OOM range covers both.
+- **Year-resolved time series**: SC-004 references the full `babylon_hickel_final.csv` time series. For each tick year that has both a computed `phi_hour` total and a Hickel row, assert OOM agreement (1/10 ≤ ratio ≤ 10) with the matching scale-type entry. More rigorous, more useful for ongoing calibration.
+
+**Decision**: Adopt the year-resolved interpretation. SC-004 is updated to: *"For at least one tick year with both complete BEA + QCEW data and a `babylon_hickel_final.csv` row, the computed national-total `phi_hour · employment-hours` is within an order of magnitude of the `annual_drain_usd_billions` value for that year, with the implementer documenting which `scale_type` (Intensive or Extensive) is used as the comparison anchor."* This is operationalized as `tests/integration/economics/tick/test_imperial_rent_calibration.py::test_oom_against_hickel_csv[year]` parameterized by the years where both sources have data.
+
+The single-year $2.8T (2015) figure remains a valid anchor in spec narrative; the test mechanism adds the year-resolved CSV-driven check.
+
 ## Summary of Phase 0 outputs
 
 | Item | Decision | Affects |
 |------|----------|---------|
-| R1 — Periphery-wage source | PWT v10.x country-aggregate, applied uniformly across BEA industries (v1) | `DefaultPeripheryLaborCoefficientsSource` implementation, FR-002 metadata |
-| R2 — Final-demand source | BEA Use Table Summary level, "Total Final Uses (GDP)" column | `DefaultFinalDemandSource` implementation, FR-003 |
+| R1 — Periphery-wage source | PWT v10.x country-aggregate, applied uniformly across BEA industries (v1). Hickel CSV reserved for calibration only (R8.4) | `DefaultPeripheryLaborCoefficientsSource` implementation, FR-002 metadata |
+| R2 — Final-demand source | BEA Use Table Summary level, "Total Final Uses (GDP)" column. Source XLSX confirmed at `input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` (R8) | `DefaultFinalDemandSource` implementation, FR-003 |
 | R3 — Performance budget | ≤100ms warm / ≤250ms cold per-tick; smoke test in `test_imperial_rent_perf.py` | New test file, SC-005 |
-| R4 — NAICS-BEA crosswalk | Reuse Spec 025 ingestion's `xref_naics_bea_summary` (table name confirmed at impl time); missing-code → cell-zero + warning | `IndustryToCountyAllocator` implementation |
+| R4 — NAICS-BEA crosswalk | Reuse Spec 025 ingestion's `xref_naics_bea_summary` (or ingest from `concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx` per R8); missing-code → cell-zero + warning | `IndustryToCountyAllocator` implementation |
 | R5 — Calculator clamp | Preserve clamp; spec Q3 language updated to two-layer pattern | Spec edit (docs-only); no code change |
 | R6 — `CalibrationWarning` placement | 3 new `EconomicEvent` subclasses in `models/events.py`; published via existing `EventBus` | `models/events.py` edits; FR-002, FR-004, FR-008 |
 | R7 — Industry-list alignment | List-equality validation in `imperial_rent.compute()`; bounded diagnostic | `imperial_rent.py` implementation, FR-006 |
+| R8 — Data trove + SC-004 refinement | All source data at `/media/user/data/babylon-data/`; in-repo `data/sqlite/marxist-data-3NF.sqlite` is what code reads. SC-004 promoted from single-year `$2.8T (2015)` to year-resolved comparison against `babylon_hickel_final.csv` time series | spec edit to SC-004; new test `test_imperial_rent_calibration.py`; downstream refinements to R1/R2/R4 sources |
 
 **No remaining NEEDS CLARIFICATION items.** Ready for Phase 1.

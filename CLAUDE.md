@@ -126,12 +126,20 @@ mise run typecheck                                # MyPy strict mode
 mise run clean                                    # Clean build artifacts
 
 # Testing (test:* namespace)
-mise run test:unit                                # Unit tests only (fast)
-mise run test:int                                 # Integration tests (mechanics & systems)
-mise run test:scenario                            # Scenario tests (slow, full arcs)
-mise run test:all                                 # All non-AI tests
-mise run test:cov                                 # Tests with coverage report
-mise run test:doctest                             # Doctest examples in formulas
+# Every test:* task writes verbose machine-readable artifacts to
+# reports/test-results/<task>/{junit.xml,report.json,report.html}.
+# See "Test Reports for AI Agents" section below for the JSON schema.
+mise run test:unit                                # Unit tests (fast) → reports/test-results/unit/
+mise run test:int                                 # Integration tests → reports/test-results/int/
+mise run test:scenario                            # Scenario tests (slow, full arcs) → reports/test-results/scenario/
+mise run test:all                                 # All non-AI tests → reports/test-results/all/
+mise run test:cov                                 # Tests + coverage (XML+JSON+HTML) → reports/test-results/cov/
+mise run test:doctest                             # Doctest examples in formulas → reports/test-results/doctest/
+
+# Test report helpers
+mise run test:clean                               # Wipe reports + .pytest_cache + htmlcov + .coverage* + __pycache__
+mise run test:show                                # Open the most recent HTML report in a browser
+mise run test:summary                             # Print one-screen summary of the most recent JSON report
 
 # Simulation (sim:* namespace)
 mise run sim:run                                  # Main simulation entry point
@@ -281,6 +289,90 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 @pytest.mark.unit        # Unit tests (default)
 @pytest.mark.red_phase   # TDD RED phase (intentionally failing until GREEN)
 ```
+
+## Test Reports for AI Agents
+
+Every `mise run test:*` task writes verbose machine-readable artifacts to
+`reports/test-results/<task>/` (gitignored). Three formats per run, every time:
+
+- **`junit.xml`** — JUnit XML, `xunit2` schema. Includes captured stdout, stderr,
+  AND log records per `<testcase>` (via `junit_logging = "all"`). Compatible with
+  GitHub Actions test-reporter, IDE integrations, most CI tooling.
+- **`report.json`** — `pytest-json-report` output, indented for diff-readability.
+  **Best format for AI parsing** — see schema below.
+- **`report.html`** — `pytest-html`, self-contained (single file, viewable
+  offline). Open via `mise run test:show`.
+
+`test:cov` additionally writes `coverage.xml` (Cobertura), `coverage.json`
+(machine-readable), and `htmlcov/` (interactive HTML) into the same directory.
+
+### Verbose flags applied to every test:* task
+
+`-vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25`
+
+Per the pytest docs (max standard expressiveness), this produces:
+
+- Full assertion diffs (no truncation)
+- Long tracebacks with **local variables** at each frame
+- Captured stdout/stderr/logs for every test (passing AND failing)
+- Live console output passes through (via `tee-sys`) AND is captured
+- All-outcome summary including `xfailed`/`xpassed`/`skipped` reasons
+- Top 25 slowest tests reported per run
+
+### JUnit ini settings (`pyproject.toml [tool.pytest.ini_options]`)
+
+| Setting | Value | Effect |
+|---|---|---|
+| `junit_family` | `"xunit2"` | Modern schema with richer per-testcase metadata |
+| `junit_logging` | `"all"` | Embeds stdout, stderr, AND log records into the XML |
+| `junit_log_passing_tests` | `true` | Logs captured even for passing tests |
+| `junit_duration_report` | `"call"` | Test-call duration only (excludes setup/teardown) |
+| `junit_suite_name` | `"babylon"` | Suite name for multi-project test aggregators |
+
+These are no-ops unless `--junit-xml` is passed (so raw `poetry run pytest`
+behaves identically to today; CI is unaffected).
+
+### Reading reports in a future session — recommended pattern
+
+```python
+import json
+from pathlib import Path
+
+# Load a specific task's most recent JSON report
+report = json.loads(Path("reports/test-results/unit/report.json").read_text())
+
+# Top-level fields
+report["created"]    # ISO timestamp (UTC) when the run started
+report["duration"]   # total wall time (seconds, float)
+report["summary"]    # {"passed": N, "failed": N, "skipped": N, "error": N,
+                     #  "xfailed": N, "xpassed": N, "total": N, "collected": N}
+report["exitcode"]   # 0=all pass, 1=tests failed, 2=collection error, ...
+
+# Per-test details
+for test in report["tests"]:
+    test["nodeid"]     # e.g., "tests/unit/test_foo.py::TestBar::test_baz"
+    test["outcome"]    # "passed" | "failed" | "skipped" | "error" | "xfailed" | "xpassed"
+    test["duration"]   # call duration (seconds)
+    if test["outcome"] in ("failed", "error"):
+        test["call"]["longrepr"]  # full traceback w/ locals (--tb=long --showlocals)
+        test["call"]["stdout"]    # captured stdout (--capture=tee-sys)
+        test["call"]["stderr"]
+        test["call"]["log"]       # captured log records (level, message, ...)
+```
+
+### Quick checks
+
+- `mise run test:summary` — one-screen text summary of the most recent run
+  (counts, exit code, list of failures)
+- `mise run test:show` — open most recent HTML report in a browser
+- `mise run test:clean` — wipe `reports/test-results/`, `.pytest_cache/`,
+  `htmlcov/`, `.coverage*`, and project `__pycache__/` directories (preserves
+  `.hypothesis/` counterexample DB, `.venv/`, and `node_modules/`)
+
+### CI is unaffected
+
+`.github/workflows/ci.yml` uses raw `poetry run pytest -q --tb=short`, never
+`mise run`. The mise tasks are dev/AI-agent ergonomics only — no CI changes.
 
 ## Coding Standards
 

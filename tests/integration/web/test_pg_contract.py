@@ -1,7 +1,13 @@
 """Postgres-backed contract tests for unmanaged Django models.
 
 These tests run against a real PostgreSQL container (via testcontainers)
-to verify that:
+registered as the ``"postgres"`` Django database alias. The default alias
+remains SQLite to keep unit tests in the same pytest session isolated
+from Postgres state. Tests therefore opt in via
+``@pytest.mark.django_db(databases=[POSTGRES_ALIAS])`` and route ORM
+calls through ``Manager.using(POSTGRES_ALIAS)``.
+
+These tests verify that:
 
 1. The canonical DDL creates tables that Django can actually query.
 2. ``managed=False`` models with ``primary_key=True`` map correctly
@@ -22,11 +28,13 @@ import uuid
 
 import pytest
 
+from tests.integration.web.conftest import POSTGRES_ALIAS
+
 # ─── All tests in this module require the real Postgres container ───
 pytestmark = [pytest.mark.postgres]
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=[POSTGRES_ALIAS])
 class TestGameSessionOnPostgres:
     """Verify GameSession CRUD against real Postgres DDL."""
 
@@ -34,14 +42,14 @@ class TestGameSessionOnPostgres:
         from game.models import GameSession
 
         session_id = uuid.uuid4()
-        GameSession.objects.create(
+        GameSession.objects.using(POSTGRES_ALIAS).create(
             id=session_id,
             scenario="wayne_county",
             current_tick=0,
             status="active",
         )
 
-        retrieved = GameSession.objects.get(id=session_id)
+        retrieved = GameSession.objects.using(POSTGRES_ALIAS).get(id=session_id)
         assert retrieved.scenario == "wayne_county"
         assert retrieved.current_tick == 0
         assert retrieved.status == "active"
@@ -50,15 +58,15 @@ class TestGameSessionOnPostgres:
         from game.models import GameSession
 
         session_id = uuid.uuid4()
-        GameSession.objects.create(
+        GameSession.objects.using(POSTGRES_ALIAS).create(
             id=session_id,
             scenario="two_node",
             current_tick=0,
             status="active",
         )
 
-        GameSession.objects.filter(id=session_id).update(current_tick=5)
-        refreshed = GameSession.objects.get(id=session_id)
+        GameSession.objects.using(POSTGRES_ALIAS).filter(id=session_id).update(current_tick=5)
+        refreshed = GameSession.objects.using(POSTGRES_ALIAS).get(id=session_id)
         assert refreshed.current_tick == 5
 
     def test_snapshot_json_is_jsonb(self) -> None:
@@ -69,13 +77,13 @@ class TestGameSessionOnPostgres:
 
         session_id = uuid.uuid4()
         snapshot = {"tick": 3, "orgs": [{"name": "Detroit Workers' Council"}]}
-        GameSession.objects.create(
+        GameSession.objects.using(POSTGRES_ALIAS).create(
             id=session_id,
             scenario="wayne_county",
             snapshot_json=json.dumps(snapshot),
         )
 
-        retrieved = GameSession.objects.get(id=session_id)
+        retrieved = GameSession.objects.using(POSTGRES_ALIAS).get(id=session_id)
         stored = retrieved.snapshot_json
         if isinstance(stored, str):
             stored = json.loads(stored)
@@ -83,7 +91,7 @@ class TestGameSessionOnPostgres:
         assert stored["orgs"][0]["name"] == "Detroit Workers' Council"
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=[POSTGRES_ALIAS])
 class TestHexStateOnPostgres:
     """Verify HexState queries against real Postgres with composite PK."""
 
@@ -91,7 +99,7 @@ class TestHexStateOnPostgres:
         from game.models import GameSession
 
         session_id = uuid.uuid4()
-        GameSession.objects.create(
+        GameSession.objects.using(POSTGRES_ALIAS).create(
             id=session_id,
             scenario="wayne_county",
             current_tick=1,
@@ -104,7 +112,7 @@ class TestHexStateOnPostgres:
         from game.models import HexState
 
         game_id = self._create_session()
-        HexState.objects.create(
+        HexState.objects.using(POSTGRES_ALIAS).create(
             game_id=game_id,
             tick=1,
             h3_index="872a10000ffffff",
@@ -116,7 +124,7 @@ class TestHexStateOnPostgres:
             heat=0.5,
         )
 
-        hexes = HexState.objects.filter(game_id=game_id)
+        hexes = HexState.objects.using(POSTGRES_ALIAS).filter(game_id=game_id)
         assert hexes.count() == 1
         assert hexes.first().county_name == "Wayne"  # type: ignore[union-attr]
 
@@ -137,13 +145,13 @@ class TestHexStateOnPostgres:
             "center_lat": 42.3314,
             "center_lng": -83.0458,
         }
-        HexState.objects.create(**kwargs)
+        HexState.objects.using(POSTGRES_ALIAS).create(**kwargs)
 
         with pytest.raises(IntegrityError):
-            HexState.objects.create(**kwargs)
+            HexState.objects.using(POSTGRES_ALIAS).create(**kwargs)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=[POSTGRES_ALIAS])
 class TestPlayerActionOnPostgres:
     """Verify PlayerAction (game_turn) against real Postgres."""
 
@@ -151,14 +159,14 @@ class TestPlayerActionOnPostgres:
         from game.models import GameSession, PlayerAction
 
         session_id = uuid.uuid4()
-        GameSession.objects.create(
+        GameSession.objects.using(POSTGRES_ALIAS).create(
             id=session_id,
             scenario="wayne_county",
             current_tick=1,
             status="active",
         )
 
-        PlayerAction.objects.create(
+        PlayerAction.objects.using(POSTGRES_ALIAS).create(
             session_id=session_id,
             tick=1,
             org_id="wayne_county_organizing_committee",
@@ -166,12 +174,12 @@ class TestPlayerActionOnPostgres:
             target_id="detroit",
         )
 
-        actions = PlayerAction.objects.filter(session_id=session_id)
+        actions = PlayerAction.objects.using(POSTGRES_ALIAS).filter(session_id=session_id)
         assert actions.count() == 1
         assert actions.first().verb == "educate"  # type: ignore[union-attr]
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=[POSTGRES_ALIAS])
 class TestDDLColumnCoverage:
     """Verify Django model fields match real Postgres columns at runtime.
 

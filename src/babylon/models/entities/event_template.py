@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.models.enums import EdgeType, SocialRole
 
@@ -50,7 +50,7 @@ class NodeFilter(BaseModel):
         description="Regex pattern for node IDs",
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     def matches(self, node_id: str, node_data: dict[str, Any]) -> bool:
         """Check if a node matches this filter.
@@ -106,7 +106,7 @@ class NodeCondition(BaseModel):
         description="How to aggregate across matched nodes",
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class EdgeCondition(BaseModel):
@@ -137,7 +137,7 @@ class EdgeCondition(BaseModel):
         description="Filter to select nodes whose edges to count",
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class GraphCondition(BaseModel):
@@ -165,7 +165,7 @@ class GraphCondition(BaseModel):
     )
     threshold: float = Field(..., description="Value to compare against")
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class PreconditionSet(BaseModel):
@@ -188,7 +188,7 @@ class PreconditionSet(BaseModel):
         description="Logic for combining conditions: all (AND) or any (OR)",
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     def is_empty(self) -> bool:
         """Check if precondition set has no conditions.
@@ -223,7 +223,7 @@ class NarrativeHooks(BaseModel):
     flavor_text_key: str | None = Field(default=None, description="Key for localized flavor text")
     entity_refs: list[str] = Field(default_factory=list, description="Entity IDs for narrative")
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class EventEmission(BaseModel):
@@ -242,7 +242,7 @@ class EventEmission(BaseModel):
         description="Payload template with ${var} substitution",
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class TemplateEffect(BaseModel):
@@ -267,7 +267,7 @@ class TemplateEffect(BaseModel):
     magnitude: float = Field(..., description="Amount of change")
     description: str = Field(default="", description="Why this effect occurs")
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     def apply_to(self, current_value: float) -> float:
         """Calculate the new value after applying this effect.
@@ -318,7 +318,7 @@ class Resolution(BaseModel):
         default=None, description="Resolution-specific narrative"
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class EventTemplate(BaseModel):
@@ -359,7 +359,7 @@ class EventTemplate(BaseModel):
         default=None, exclude=True, description="Last tick this was triggered"
     )
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     @model_validator(mode="after")
     def validate_resolutions_have_effects_or_events(self) -> EventTemplate:
@@ -383,10 +383,19 @@ class EventTemplate(BaseModel):
             return False
         return current_tick - self.last_triggered_tick < self.cooldown_ticks
 
-    def mark_triggered(self, tick: int) -> None:
-        """Mark this template as having been triggered.
+    def mark_triggered(self, tick: int) -> EventTemplate:
+        """Return a new EventTemplate with ``last_triggered_tick`` set to ``tick``.
+
+        Per Constitution III.7 (Determinism), EventTemplate is a frozen
+        Pydantic model; this method returns a new instance via
+        ``model_copy(update=...)`` rather than mutating in place. Callers
+        MUST replace the original template in their containing list/dict
+        with the returned instance.
 
         Args:
             tick: The tick at which this was triggered.
+
+        Returns:
+            A new ``EventTemplate`` with ``last_triggered_tick=tick``.
         """
-        self.last_triggered_tick = tick
+        return self.model_copy(update={"last_triggered_tick": tick})

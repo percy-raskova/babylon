@@ -13,7 +13,7 @@ This document resolves the items deferred from `/speckit.clarify` to plan-phase 
 **Rationale**:
 
 - **Constitutional fit**: PWT is already listed in `data-catalog.yaml` (id: `PWT`) per Constitution III.4. No new constitutional addition required. The alternative candidates (Hickel/Sullivan/Zoomkawala 2022; ILO Global Wage Database; BLS International Labor Comparisons (discontinued 2014)) would require either a constitutional amendment or a custom ingestion pipeline that the spec's Assumptions section explicitly defers.
-- **Variable choice**: PWT v10.x provides `cgdpe` (real GDP, expenditure side, in 2017USD), `emp` (employment count), and `labsh` (labor share of GDP). The wage proxy is computed as `cgdpe · labsh / emp` — real labor compensation per worker per country. The periphery-aggregate value is the population-weighted average of `cgdpe · labsh / emp` across the Hickel et al. 2022 "Global South" country list (151 countries).
+- **Variable choice**: PWT v10.01 provides `cgdpe` (real GDP, expenditure side, in 2017USD), `emp` (employment count), and `labsh` (labor share of GDP). The wage proxy is computed as `cgdpe · labsh / emp` — real labor compensation per worker per country. The periphery-aggregate value is the population-weighted average of `cgdpe · labsh / emp` across the Hickel et al. 2022 "Global South" country list (151 countries).
 - **Industry uniformity tradeoff (v1 simplification)**: PWT is country-aggregate, not industry-disaggregated. The v1 source applies the *same* country-level ratio (`w_us_avg / w_periphery_avg`) to every BEA industry. This is empirically conservative — it understates rent extraction in low-wage manufacturing (where the actual wage gap is wider than the country average) and overstates rent in high-wage US service industries (where the actual gap is narrower). The order-of-magnitude check against Hickel 2022 ($2.8T drain, 2015) per SC-004 is the calibration anchor that catches gross misalignment.
 - **Per-industry refinement deferred**: A v2 follow-up may refine industry-specific ratios using a hybrid (PWT national ratio + ILO ILOSTAT manufacturing-sector adjustments + UNIDO INDSTAT4 industrial statistics where available). Out of scope for this spec per the Assumptions section ("the industry-to-county allocation strategy is treated as the default... a follow-up spec can refine the allocation weight; this spec does not block on it").
 
@@ -220,7 +220,7 @@ class PhiHourOutlierEvent(EconomicEvent):
 
 `babylon_hickel_final.csv` provides drain values in the form `annual_drain_usd_billions` + `erdi` (Exchange Rate Distortion Index) + `alpha` + `scale_type`. ERDI is conceptually adjacent to a wage-distortion factor but is not itself a per-industry wage ratio — it's a national price-distortion measure. Using ERDI as the periphery-wage input would conflate price distortion with wage gap and weaken the structural derivation.
 
-**Decision (refining R1)**: PWT v10.x via SQLite remains the periphery-wage source per FR-002. Hickel CSV is reserved for the SC-004 calibration anchor only — see R8.4 below.
+**Decision (refining R1)**: PWT v10.01 via SQLite remains the periphery-wage source per FR-002. Hickel CSV is reserved for the SC-004 calibration anchor only — see R8.4 below.
 
 ### Refinement to R2: BEA Use Table source confirmed available
 
@@ -254,7 +254,7 @@ The single-year $2.8T (2015) figure remains a valid anchor in spec narrative; th
 
 | Item | Decision | Affects |
 |------|----------|---------|
-| R1 — Periphery-wage source | PWT v10.x country-aggregate, applied uniformly across BEA industries (v1). Hickel CSV reserved for calibration only (R8.4) | `DefaultPeripheryLaborCoefficientsSource` implementation, FR-002 metadata |
+| R1 — Periphery-wage source | PWT v10.01 country-aggregate, applied uniformly across BEA industries (v1). Hickel CSV reserved for calibration only (R8.4) | `DefaultPeripheryLaborCoefficientsSource` implementation, FR-002 metadata |
 | R2 — Final-demand source | BEA Use Table Summary level, "Total Final Uses (GDP)" column. Source XLSX confirmed at `input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` (R8) | `DefaultFinalDemandSource` implementation, FR-003 |
 | R3 — Performance budget | ≤100ms warm / ≤250ms cold per-tick; smoke test in `test_imperial_rent_perf.py` | New test file, SC-005 |
 | R4 — NAICS-BEA crosswalk | Reuse Spec 025 ingestion's `xref_naics_bea_summary` (or ingest from `concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx` per R8); missing-code → cell-zero + warning | `IndustryToCountyAllocator` implementation |

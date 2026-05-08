@@ -8,7 +8,7 @@ This replaces the old dataclass in data/models/contradiction.py.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Effect(BaseModel):
@@ -35,7 +35,7 @@ class Effect(BaseModel):
     magnitude: float = Field(..., description="Amount of change")
     description: str = Field(default="", description="Why this effect occurs")
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     def apply_to(self, current_value: float) -> float:
         """Calculate the new value after applying this effect.

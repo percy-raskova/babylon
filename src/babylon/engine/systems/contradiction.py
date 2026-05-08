@@ -196,7 +196,7 @@ class ContradictionSystem:
                 getattr(graph, "graph", {})["contradiction_frames"] = frames_data
 
         from babylon.formulas.contradiction import calculate_contradiction_intensity
-        from babylon.models.entities.contradiction import ContradictionFrame
+        from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
 
         aspect_flip_threshold = getattr(services.defines.tension, "aspect_flip_threshold", 1.0)
         antagonistic_threshold = getattr(
@@ -206,16 +206,21 @@ class ContradictionSystem:
         for scope, frame_dict in frames_data.items():
             frame = ContradictionFrame(**frame_dict)
 
-            for contradiction in [frame.principal, frame.secondary]:
+            # Spec 056 / III.7: Contradiction + ContradictionFrame are frozen.
+            # We accumulate field updates and produce new instances via
+            # model_copy() rather than mutating in place.
+            updated_slots: dict[str, Contradiction] = {}
+            for slot, contradiction in (
+                ("principal", frame.principal),
+                ("secondary", frame.secondary),
+            ):
                 mass_a, cent_a = self._calculate_macro_aspect_metrics(graph, contradiction.aspect_a)
                 mass_b, cent_b = self._calculate_macro_aspect_metrics(graph, contradiction.aspect_b)
 
                 total_mass = mass_a + mass_b
                 if total_mass > 0:
                     divergence = abs(mass_a - mass_b) / total_mass
-                    balance_shift = (
-                        mass_b - mass_a
-                    ) / total_mass  # Towards marginalized ideally, depending on structure
+                    balance_shift = (mass_b - mass_a) / total_mass
                 else:
                     divergence = 0.0
                     balance_shift = 0.0
@@ -227,19 +232,25 @@ class ContradictionSystem:
                     sensitivity=tension_accumulation_rate * 0.05,
                 )
 
-                contradiction.aspect_balance += balance_shift * 0.01 * tension_accumulation_rate
-                contradiction.intensity += intensity_delta
-
-                contradiction.intensity = min(1.0, max(0.0, float(contradiction.intensity)))
-                contradiction.aspect_balance = min(
-                    1.0, max(-1.0, float(contradiction.aspect_balance))
+                new_intensity = min(
+                    1.0,
+                    max(0.0, float(contradiction.intensity + intensity_delta)),
+                )
+                new_balance = min(
+                    1.0,
+                    max(
+                        -1.0,
+                        float(
+                            contradiction.aspect_balance
+                            + balance_shift * 0.01 * tension_accumulation_rate
+                        ),
+                    ),
                 )
 
-                if (
-                    not contradiction.is_antagonistic
-                    and contradiction.intensity >= antagonistic_threshold
-                ):
-                    contradiction.is_antagonistic = True
+                # Antagonistic transition (one-way: False → True)
+                new_is_antagonistic = contradiction.is_antagonistic
+                if not contradiction.is_antagonistic and new_intensity >= antagonistic_threshold:
+                    new_is_antagonistic = True
                     services.event_bus.publish(
                         Event(
                             type=EventType.EDGE_MODE_TRANSITION,
@@ -252,13 +263,16 @@ class ContradictionSystem:
                         )
                     )
 
-            for contradiction in [frame.principal, frame.secondary]:
-                if abs(contradiction.aspect_balance) >= aspect_flip_threshold:
-                    temp = contradiction.aspect_a
-                    contradiction.aspect_a = contradiction.aspect_b
-                    contradiction.aspect_b = temp
-                    contradiction.aspect_balance = 0.0
-
+                # Aspect-flip on balance threshold
+                new_aspect_a = contradiction.aspect_a
+                new_aspect_b = contradiction.aspect_b
+                new_balance_after_flip = new_balance
+                if abs(new_balance) >= aspect_flip_threshold:
+                    new_aspect_a, new_aspect_b = (
+                        contradiction.aspect_b,
+                        contradiction.aspect_a,
+                    )
+                    new_balance_after_flip = 0.0
                     services.event_bus.publish(
                         Event(
                             type=EventType.ASPECT_REVERSAL,
@@ -267,17 +281,31 @@ class ContradictionSystem:
                         )
                     )
 
-            if frame.secondary.intensity > frame.principal.intensity:
-                temp_c = frame.principal
-                frame.principal = frame.secondary
-                frame.secondary = temp_c
+                updated_slots[slot] = contradiction.model_copy(
+                    update={
+                        "intensity": new_intensity,
+                        "aspect_balance": new_balance_after_flip,
+                        "is_antagonistic": new_is_antagonistic,
+                        "aspect_a": new_aspect_a,
+                        "aspect_b": new_aspect_b,
+                    }
+                )
 
+            new_principal = updated_slots["principal"]
+            new_secondary = updated_slots["secondary"]
+
+            # Principal/secondary swap when secondary's intensity exceeds principal's
+            if new_secondary.intensity > new_principal.intensity:
+                new_principal, new_secondary = new_secondary, new_principal
                 services.event_bus.publish(
                     Event(
                         type=EventType.PRINCIPAL_CONTRADICTION_SHIFT,
                         tick=tick,
-                        payload={"scope": scope, "new_principal": frame.principal.id},
+                        payload={"scope": scope, "new_principal": new_principal.id},
                     )
                 )
 
-            frames_data[scope] = frame.model_dump()
+            new_frame = frame.model_copy(
+                update={"principal": new_principal, "secondary": new_secondary}
+            )
+            frames_data[scope] = new_frame.model_dump()

@@ -209,7 +209,11 @@ class TestStepEvaluation:
         assert graph.nodes["worker"]["wealth"] == pytest.approx(110.0)
 
     def test_step_marks_triggered(self) -> None:
-        """step() marks triggered templates with the current tick."""
+        """step() marks triggered templates with the current tick.
+
+        Spec 056 / III.7: EventTemplate is frozen; mark_triggered returns
+        a new instance. Read from system.templates (the post-step list).
+        """
         t = _make_template()
         graph = _make_graph(("worker", {"wealth": 0.0}))
         system = EventTemplateSystem(templates=[t])
@@ -217,12 +221,16 @@ class TestStepEvaluation:
 
         system.step(graph, services, {"tick": 5})
 
-        assert t.last_triggered_tick == 5
+        assert system.templates[0].last_triggered_tick == 5
 
     def test_step_respects_cooldown(self) -> None:
-        """Template on cooldown is skipped."""
+        """Template on cooldown is skipped.
+
+        Spec 056 / III.7: mark_triggered now returns a new instance;
+        rebind the local variable before passing to the system.
+        """
         t = _make_template(cooldown_ticks=3)
-        t.mark_triggered(1)
+        t = t.mark_triggered(1)
 
         graph = _make_graph(("worker", {"wealth": 0.0}))
         system = EventTemplateSystem(templates=[t])
@@ -236,7 +244,7 @@ class TestStepEvaluation:
     def test_step_triggers_after_cooldown(self) -> None:
         """Template triggers after cooldown expires."""
         t = _make_template(cooldown_ticks=3)
-        t.mark_triggered(1)
+        t = t.mark_triggered(1)
 
         graph = _make_graph(("worker", {"wealth": 0.0}))
         system = EventTemplateSystem(templates=[t])

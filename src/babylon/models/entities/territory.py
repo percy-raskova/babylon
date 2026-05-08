@@ -49,7 +49,7 @@ class Territory(BaseModel):
 
     model_config = ConfigDict(
         extra="forbid",  # Reject unknown fields
-        validate_assignment=True,  # Validate on attribute mutation
+        frozen=True,  # Spec 056 / Constitution III.7 — immutable state
         str_strip_whitespace=True,  # Clean string inputs
     )
 

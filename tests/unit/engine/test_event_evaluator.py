@@ -510,7 +510,9 @@ class TestEvaluateTemplate:
             ],
             cooldown_ticks=5,
         )
-        template.mark_triggered(tick=3)
+        # Spec 056 / III.7: EventTemplate is frozen; mark_triggered returns
+        # a new instance — rebind the local variable to use it.
+        template = template.mark_triggered(tick=3)
 
         result = evaluate_template(template, simple_graph, current_tick=5)
         assert result is None

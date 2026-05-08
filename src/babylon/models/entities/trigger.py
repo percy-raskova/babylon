@@ -12,7 +12,7 @@ condition specification that can be evaluated and serialized.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TriggerCondition(BaseModel):
@@ -35,7 +35,7 @@ class TriggerCondition(BaseModel):
     threshold: float = Field(..., description="Value to compare against")
     description: str = Field(default="", description="Human-readable explanation")
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     def evaluate(self, game_state: dict[str, Any]) -> bool:
         """Evaluate this condition against the game state.
@@ -135,7 +135,7 @@ class Trigger(BaseModel):
     cooldown_turns: int = Field(default=0, ge=0, description="Minimum turns between activations")
     last_triggered_turn: int | None = Field(default=None, description="Turn when last triggered")
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     def evaluate(self, game_state: dict[str, Any], current_turn: int = 0) -> bool:
         """Evaluate if the trigger condition is met.
@@ -163,10 +163,19 @@ class Trigger(BaseModel):
         else:  # any
             return any(cond.evaluate(game_state) for cond in self.conditions)
 
-    def mark_triggered(self, current_turn: int) -> None:
-        """Mark this trigger as having been triggered.
+    def mark_triggered(self, current_turn: int) -> "Trigger":
+        """Return a new Trigger with ``last_triggered_turn`` set to ``current_turn``.
+
+        Per Constitution III.7 (Determinism), Trigger is a frozen
+        Pydantic model; this method returns a new instance via
+        ``model_copy(update=...)`` rather than mutating in place.
+        Callers MUST replace the original trigger in their containing
+        collection with the returned instance.
 
         Args:
-            current_turn: The current turn number
+            current_turn: The current turn number.
+
+        Returns:
+            A new ``Trigger`` with ``last_triggered_turn=current_turn``.
         """
-        self.last_triggered_turn = current_turn
+        return self.model_copy(update={"last_triggered_turn": current_turn})

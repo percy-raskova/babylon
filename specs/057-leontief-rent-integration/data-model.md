@@ -314,7 +314,7 @@ class LeontiefRentDefines(BaseModel):
 
 **Location**: `src/babylon/models/events.py` (additions to existing file)
 
-**All inherit from existing `EconomicEvent(SimulationEvent)` per research.md §R6.**
+**All inherit from `SimulationEvent` directly** (REVISED at implementation time from the original R6 plan to subclass `EconomicEvent`). Rationale: `EconomicEvent` mandates a `Currency amount` field for value-transfer events; calibration warnings are infrastructural data-quality signals that carry no monetary `amount`. The semantic distinction (value-transfer vs metadata) outweighs the original R6 reasoning about subscriber inheritance ergonomics. Subscribers can still filter via `event.type.startswith("calibration_warning.")` at the EventBus level — no inheritance-based dispatch is required.
 
 ```python
 class AxiomViolationEvent(EconomicEvent):

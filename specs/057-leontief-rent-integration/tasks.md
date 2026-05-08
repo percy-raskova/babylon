@@ -29,12 +29,12 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 **Purpose**: Branch hygiene, baseline capture, package skeleton.
 
-- [ ] T001 Confirm working tree is clean and on branch `057-leontief-rent-integration`; verify Spec 058 infrastructure present (`src/babylon/core/protocol_kit.py`, `src/babylon/economics/tensor_hierarchy/mappings/_models.py`, `src/babylon/economics/tick/system/__init__.py`, `src/babylon/config/defines/`, `src/babylon/models/enums/`); confirm legacy module absent: `! test -d src/babylon/economics/reproduction || echo "WARN: reproduction module still exists; FR-009 narrative may need update"` (analyze pre-confirmed absent on 2026-05-08, per analyze U4 finding)
-- [ ] T002 Capture baseline test tally: `mise run test:unit && mise run test:int && mise run test:summary` → record `passed/skipped/xfailed/failures` in a scratch file (used to verify SC-001 at end)
-- [ ] T003 Verify spec-057 quarantine markers are still in place: `grep -rln "Blocked on spec 057-leontief" src/ tests/ | wc -l` → expect ≥9 (these UNSKIP in Phase 7 / US5)
-- [ ] T004 Verify trove data accessibility: `ls /media/user/data/babylon-data/babylon_hickel_final.csv /media/user/data/babylon-data/concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx /media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` (per research.md §R8)
-- [ ] T005 [P] Create empty package directory `src/babylon/economics/tensor_hierarchy/leontief_rent/` with `__init__.py` declaring `__all__: list[str] = []` (will populate in Phases 3–6)
-- [ ] T006 [P] Create empty test directory `tests/unit/economics/tensor_hierarchy/leontief_rent/` with `__init__.py` and shared `conftest.py` for fixtures (mock sources implementing the Protocols per research.md §R6 and project pattern from `melt/conftest.py`)
+- [X] T001 Confirm working tree is clean and on branch `057-leontief-rent-integration`; verify Spec 058 infrastructure present (`src/babylon/core/protocol_kit.py`, `src/babylon/economics/tensor_hierarchy/mappings/_models.py`, `src/babylon/economics/tick/system/__init__.py`, `src/babylon/config/defines/`, `src/babylon/models/enums/`); confirm legacy module absent: `! test -d src/babylon/economics/reproduction || echo "WARN: reproduction module still exists; FR-009 narrative may need update"` (analyze pre-confirmed absent on 2026-05-08, per analyze U4 finding)
+- [X] T002 Capture baseline test tally: `mise run test:unit && mise run test:int && mise run test:summary` → record `passed/skipped/xfailed/failures` in a scratch file (used to verify SC-001 at end)
+- [X] T003 Verify spec-057 quarantine markers are still in place: `grep -rln "Blocked on spec 057-leontief" src/ tests/ | wc -l` → expect ≥9 (these UNSKIP in Phase 7 / US5)
+- [X] T004 Verify trove data accessibility: `ls /media/user/data/babylon-data/babylon_hickel_final.csv /media/user/data/babylon-data/concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx /media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` (per research.md §R8)
+- [X] T005 [P] Create empty package directory `src/babylon/economics/tensor_hierarchy/leontief_rent/` with `__init__.py` declaring `__all__: list[str] = []` (will populate in Phases 3–6)
+- [X] T006 [P] Create empty test directory `tests/unit/economics/tensor_hierarchy/leontief_rent/` with `__init__.py` and shared `conftest.py` for fixtures (mock sources implementing the Protocols per research.md §R6 and project pattern from `melt/conftest.py`)
 
 ---
 
@@ -46,21 +46,21 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### LeontiefRentDefines (FR-001, R3, R4)
 
-- [ ] T007 Write failing test `tests/unit/config/defines/test_economy_basic.py::test_leontief_rent_defines_defaults` asserting `GameDefines().economy.leontief_rent.qcew_carry_forward_max_years == 5`, `phi_hour_outlier_threshold_low == -1000.0`, `phi_hour_outlier_threshold_high == 1000.0`
-- [ ] T008 Write failing test `test_leontief_rent_defines_validation` asserting `pydantic.ValidationError` raised for `qcew_carry_forward_max_years=-1` and `=21` (bounds `[0, 20]` per data-model.md)
-- [ ] T009 Implement `LeontiefRentDefines(BaseModel)` Pydantic class in `src/babylon/config/defines/economy_basic.py` with the three fields per data-model.md "DefaultIndustryToCountyAllocator → Constants" section; register on the `EconomyDefines` (or appropriate parent) per Spec 058's `_assembler.py` pattern; export via `__all__`
-- [ ] T010 Run `poetry run pytest tests/unit/config/defines/test_economy_basic.py -v -k leontief` → all green
+- [X] T007 Write failing test `tests/unit/config/defines/test_economy_basic.py::test_leontief_rent_defines_defaults` asserting `GameDefines().economy.leontief_rent.qcew_carry_forward_max_years == 5`, `phi_hour_outlier_threshold_low == -1000.0`, `phi_hour_outlier_threshold_high == 1000.0`
+- [X] T008 Write failing test `test_leontief_rent_defines_validation` asserting `pydantic.ValidationError` raised for `qcew_carry_forward_max_years=-1` and `=21` (bounds `[0, 20]` per data-model.md)
+- [X] T009 Implement `LeontiefRentDefines(BaseModel)` Pydantic class in `src/babylon/config/defines/economy_basic.py` with the three fields per data-model.md "DefaultIndustryToCountyAllocator → Constants" section; register on the `EconomyDefines` (or appropriate parent) per Spec 058's `_assembler.py` pattern; export via `__all__`
+- [X] T010 Run `poetry run pytest tests/unit/config/defines/test_economy_basic.py -v -k leontief` → all green
 
 ### CalibrationWarning event family (FR-002, FR-004, FR-008, R6)
 
-- [ ] T011 [P] Write failing test `tests/unit/models/test_events.py::test_axiom_violation_event_roundtrip` asserting `AxiomViolationEvent(tick=1, industry="X", year=2015, ratio=0.95).model_dump()` round-trips through `Event(type="calibration_warning.axiom_violation", payload=...)` per `contracts/calibration_warning.md` AC1
-- [ ] T012 [P] Write failing test `test_qcew_carry_forward_event_boundary` per `contracts/calibration_warning.md` AC2 + AC4 (boundary values `look_back_distance ∈ [0, 20]`, `=21` raises)
-- [ ] T013 [P] Write failing test `test_phi_hour_outlier_event_default_thresholds` per `contracts/calibration_warning.md` AC3 (defaults `±1000.0`)
-- [ ] T014 [P] Write failing test `test_event_type_strings_match_discriminator_pattern` per `contracts/calibration_warning.md` AC5 asserting `EventType.CALIBRATION_AXIOM_VIOLATION.value == "calibration_warning.axiom_violation"` (and the other two)
-- [ ] T015 Implement three new entries in the `EventType` StrEnum in `src/babylon/models/events.py`: `CALIBRATION_AXIOM_VIOLATION`, `CALIBRATION_QCEW_CARRY_FORWARD`, `CALIBRATION_PHI_HOUR_OUTLIER` (values per data-model.md "Required additions" section)
-- [ ] T016 Implement three new `EconomicEvent` subclasses in `src/babylon/models/events.py`: `AxiomViolationEvent`, `QcewCarryForwardEvent`, `PhiHourOutlierEvent` with field shapes per `contracts/calibration_warning.md` "Three event types" tables; export via `__all__`
-- [ ] T017 Run `poetry run pytest tests/unit/models/test_events.py -v -k "axiom or qcew or outlier or calibration"` → 4 tests green
-- [ ] T018 Commit boundary: `feat(spec-057): LeontiefRentDefines + CalibrationWarning event family (Phase 2 foundational)`
+- [X] T011 [P] Write failing test `tests/unit/models/test_events.py::test_axiom_violation_event_roundtrip` asserting `AxiomViolationEvent(tick=1, industry="X", year=2015, ratio=0.95).model_dump()` round-trips through `Event(type="calibration_warning.axiom_violation", payload=...)` per `contracts/calibration_warning.md` AC1
+- [X] T012 [P] Write failing test `test_qcew_carry_forward_event_boundary` per `contracts/calibration_warning.md` AC2 + AC4 (boundary values `look_back_distance ∈ [0, 20]`, `=21` raises)
+- [X] T013 [P] Write failing test `test_phi_hour_outlier_event_default_thresholds` per `contracts/calibration_warning.md` AC3 (defaults `±1000.0`)
+- [X] T014 [P] Write failing test `test_event_type_strings_match_discriminator_pattern` per `contracts/calibration_warning.md` AC5 asserting `EventType.CALIBRATION_AXIOM_VIOLATION.value == "calibration_warning.axiom_violation"` (and the other two)
+- [X] T015 Implement three new entries in the `EventType` StrEnum in `src/babylon/models/events.py`: `CALIBRATION_AXIOM_VIOLATION`, `CALIBRATION_QCEW_CARRY_FORWARD`, `CALIBRATION_PHI_HOUR_OUTLIER` (values per data-model.md "Required additions" section)
+- [X] T016 Implement three new `EconomicEvent` subclasses in `src/babylon/models/events.py`: `AxiomViolationEvent`, `QcewCarryForwardEvent`, `PhiHourOutlierEvent` with field shapes per `contracts/calibration_warning.md` "Three event types" tables; export via `__all__`
+- [X] T017 Run `poetry run pytest tests/unit/models/test_events.py -v -k "axiom or qcew or outlier or calibration"` → 4 tests green
+- [X] T018 Commit boundary: `feat(spec-057): LeontiefRentDefines + CalibrationWarning event family (Phase 2 foundational)`
 
 **Checkpoint**: Foundation ready — US2, US3, US4 can begin in parallel.
 

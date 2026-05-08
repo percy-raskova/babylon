@@ -6,6 +6,8 @@ Re-exported via :mod:`babylon.config.defines.__init__`; composed into :class:`Ga
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -315,8 +317,55 @@ class EconomyDefines(BaseModel):
         description="Minimum extraction efficiency after TRPF decay",
     )
 
+    # Spec 057 — Leontief imperial-rent pipeline tunables
+    leontief_rent: LeontiefRentDefines = Field(
+        default_factory=lambda: LeontiefRentDefines(),
+        description="Tunables for the Leontief imperial-rent integration (Spec 057)",
+    )
+
+
+class LeontiefRentDefines(BaseModel):
+    """Tunables for the Spec 057 Leontief imperial-rent pipeline.
+
+    Lifted to GameDefines per Constitution III.1 (No Magic Constants):
+    every numeric tunable in the new ``imperial_rent.compute()`` pipeline
+    must trace to a configured constant rather than a literal in code.
+
+    See ``specs/057-leontief-rent-integration/data-model.md`` for the
+    field-level rationale.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    qcew_carry_forward_max_years: Annotated[int, Field(ge=0, le=20)] = 5
+    """Maximum look-back window (in years) for QCEW carry-forward fallback in
+    :class:`babylon.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator.IndustryToCountyAllocator`
+    (per Spec 057 / FR-004 + Clarifications 2026-05-08). ``0`` disables
+    carry-forward (strict no-data semantics).
+    """
+
+    phi_hour_outlier_threshold_low: float = Field(
+        default=-1000.0,
+        description=(
+            "Per-county phi_hour values below this trigger a "
+            "PhiHourOutlierEvent via EventBus (Spec 057 / FR-008). "
+            "Pre-clamp negative values cannot reach phi_hour because of the "
+            "two-layer axiom enforcement (research.md §R5); this threshold "
+            "is defense-in-depth and validation only."
+        ),
+    )
+
+    phi_hour_outlier_threshold_high: float = Field(
+        default=1000.0,
+        description=(
+            "Per-county phi_hour values above this trigger a "
+            "PhiHourOutlierEvent via EventBus (Spec 057 / FR-008)."
+        ),
+    )
+
 
 __all__ = [
     "CrisisDefines",
     "EconomyDefines",
+    "LeontiefRentDefines",
 ]

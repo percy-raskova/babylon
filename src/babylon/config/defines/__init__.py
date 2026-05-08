@@ -22,6 +22,7 @@ from babylon.config.defines.consciousness import (
 from babylon.config.defines.economy_basic import (
     CrisisDefines,
     EconomyDefines,
+    LeontiefRentDefines,
 )
 from babylon.config.defines.economy_class import (
     ClassDynamicsDefines,
@@ -98,6 +99,7 @@ __all__ = [
     "InfrastructureDefines",
     "InitialDefines",
     "InstitutionDefines",
+    "LeontiefRentDefines",
     "LifecycleDefines",
     "MetabolismDefines",
     "MobilizeDefines",

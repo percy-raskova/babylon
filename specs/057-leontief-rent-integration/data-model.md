@@ -113,45 +113,51 @@ class PeripheryLaborCoefficientsSource(Protocol):
 
 **Inherits**: `CachedSource[PeripheryLaborCoefficients]` (Spec 058's `babylon.core.protocol_kit`)
 
-**Source data**: PWT v10.x via `marxist-data-3NF.sqlite` (per research.md §R1)
+**Source data (REVISED 2026-05-08 post-analyze C4)**: Hickel/Sullivan/Zoomkawala (2021) ERDI time series via `fact_hickel_erdi_annual` in `marxist-data-3NF.sqlite` (ingested at setup from `/media/user/data/babylon-data/babylon_hickel_final.csv` per task T024d). Original PWT plan rejected because PWT data is not loaded — see research.md §R1 (revised) and §R9 (catalog amendment).
 
 ```python
 from babylon.core.protocol_kit import CachedSource
 
 class DefaultPeripheryLaborCoefficientsSource(CachedSource[PeripheryLaborCoefficients]):
-    """PWT-based periphery-wage source. Country-aggregate ratio applied uniformly
-    across BEA industries (v1 simplification per research.md §R1)."""
+    """Hickel ERDI-based periphery-wage source. Country-aggregate ERDI broadcast
+    uniformly across BEA Summary industries (v1 simplification per research.md §R1).
+    """
 
-    cache_negative_results: bool = True  # Spec 058 default — PWT is stable within session
+    cache_negative_results: bool = True  # Spec 058 default — Hickel CSV is static
 
-    def __init__(self, db_session, event_bus, bea_industries_source) -> None:
+    def __init__(self, db_session, event_bus, bea_industries_source, scale_type: str = "Intensive") -> None:
         super().__init__()
         self._db = db_session
         self._bus = event_bus
         self._industries = bea_industries_source
+        self._scale_type = scale_type  # "Intensive" or "Extensive" per Hickel CSV
 
     def _fetch(self, year: int) -> PeripheryLaborCoefficients | NoDataSentinel:
-        """Query PWT for `year`, compute country-aggregate wage ratio,
-        broadcast across BEA industries, emit CalibrationWarning for any
-        ratio < 1.0 (which for the v1 uniform-broadcast case means: emit
-        once per year if the country-aggregate ratio < 1.0, which would
-        be unusual but not impossible)."""
-        # Implementation details in tasks.md
+        """Query fact_hickel_erdi_annual for `year` + scale_type, return
+        PeripheryLaborCoefficients with wage_ratios uniformly = ERDI[year]
+        broadcast across the BEA Summary industries.
+
+        Emits CalibrationWarning(AxiomViolation) if ERDI < 1.0 (would be
+        unusual — would mean periphery wages exceed core wages at PPP,
+        which contradicts the structural axiom)."""
+        # Query: SELECT erdi FROM fact_hickel_erdi_annual
+        #        WHERE year = ? AND scale_type = ? LIMIT 1;
         ...
 
     @property
     def metadata(self) -> "PeripheryWageMetadata":
         return PeripheryWageMetadata(
-            publication="PWT v10.01",
-            publication_url="https://www.rug.nl/ggdc/productivity/pwt/",
-            periphery_definition="Hickel/Sullivan/Zoomkawala 2022 Global South country list (151 countries)",
-            units="USD/worker (2017 PPP-adjusted, real)",
+            publication="Hickel, Sullivan & Zoomkawala (2021) — ERDI time series",
+            publication_url="https://doi.org/10.1016/j.gloenvcha.2021.102467",
+            periphery_definition="Global South per Hickel 2021 (effectively the high-income / low-and-middle-income split per World Bank classification)",
+            units="ERDI — dimensionless ratio (market exchange rate / PPP exchange rate)",
             base_year=2017,
-            industry_disaggregation="None — country-aggregate ratio applied uniformly across BEA industries",
-            calibration_anchor="Hickel et al. 2022 — drain from Global South ≈ $2.8T (2015)",
+            industry_disaggregation="None — ERDI broadcast uniformly across BEA Summary industries (v1)",
+            calibration_anchor="babylon_hickel_final.csv `annual_drain_usd_billions` column (different field of same publication; year-resolved per SC-004 + research.md §R8.4)",
             v1_simplification_caveats=[
-                "Country-level ratio applied uniformly across all BEA industries",
-                "Underestimates rent in low-wage manufacturing; overstates in high-wage services",
+                "Country-level ERDI broadcast uniformly across all BEA industries",
+                "Industry-disaggregated periphery wage data not used; QCEW US-side industry resolution deferred to v1.5",
+                "Source publication (ERDI) and calibration target (annual_drain_usd_billions) come from the same Hickel CSV — orthogonality is at the column level, not the dataset level (research.md §R9)",
             ],
         )
 ```

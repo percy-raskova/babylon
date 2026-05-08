@@ -8,39 +8,43 @@ This document resolves the items deferred from `/speckit.clarify` to plan-phase 
 
 ## R1: Periphery-wage source — concrete publication and extraction methodology
 
-**Decision**: Penn World Tables (PWT) v10.x, used at the **country-aggregate level applied uniformly across BEA industries** for v1.
+**Decision (REVISED 2026-05-08 post-analyze)**: **Hickel/Sullivan/Zoomkawala (2021) ERDI time series** from `babylon_hickel_final.csv`, ingested into `marxist-data-3NF.sqlite` as `fact_hickel_erdi_annual`. Per-industry wage ratio = `ERDI[year]` applied uniformly across BEA industries for v1.
 
-**Rationale**:
+**Rationale (post-analyze C4 pivot from PWT)**:
 
-- **Constitutional fit**: PWT is already listed in `data-catalog.yaml` (id: `PWT`) per Constitution III.4. No new constitutional addition required. The alternative candidates (Hickel/Sullivan/Zoomkawala 2022; ILO Global Wage Database; BLS International Labor Comparisons (discontinued 2014)) would require either a constitutional amendment or a custom ingestion pipeline that the spec's Assumptions section explicitly defers.
-- **Variable choice**: PWT v10.01 provides `cgdpe` (real GDP, expenditure side, in 2017USD), `emp` (employment count), and `labsh` (labor share of GDP). The wage proxy is computed as `cgdpe · labsh / emp` — real labor compensation per worker per country. The periphery-aggregate value is the population-weighted average of `cgdpe · labsh / emp` across the Hickel et al. 2022 "Global South" country list (151 countries).
-- **Industry uniformity tradeoff (v1 simplification)**: PWT is country-aggregate, not industry-disaggregated. The v1 source applies the *same* country-level ratio (`w_us_avg / w_periphery_avg`) to every BEA industry. This is empirically conservative — it understates rent extraction in low-wage manufacturing (where the actual wage gap is wider than the country average) and overstates rent in high-wage US service industries (where the actual gap is narrower). The order-of-magnitude check against Hickel 2022 ($2.8T drain, 2015) per SC-004 is the calibration anchor that catches gross misalignment.
-- **Per-industry refinement deferred**: A v2 follow-up may refine industry-specific ratios using a hybrid (PWT national ratio + ILO ILOSTAT manufacturing-sector adjustments + UNIDO INDSTAT4 industrial statistics where available). Out of scope for this spec per the Assumptions section ("the industry-to-county allocation strategy is treated as the default... a follow-up spec can refine the allocation weight; this spec does not block on it").
+- **Empirical schema discovery**: A schema check during `/speckit.analyze` revealed (a) PWT data is NOT loaded in `marxist-data-3NF.sqlite` and (b) PWT files are NOT in `/media/user/data/babylon-data/`. The original PWT-broadcast plan had no implementation path. (See R9 below for the constitutional handling.)
+- **Project-documented intent**: `/media/user/data/babylon-data/notebooklm_to_babylon_mapping.csv` documents the project's actual approach for `Imperial_Rent_Phi`: "ERDI from Hickel; wage data from QCEW" — pivoting to ERDI matches existing project convention.
+- **Variable choice**: `babylon_hickel_final.csv` provides annual ERDI (Exchange Rate Distortion Index) values 1960–2017. ERDI = market_exchange_rate / PPP_exchange_rate, conceptually the multiplicative wage-distortion factor between the Global North and Global South in price-adjusted terms. The 2015 Intensive ERDI value is `8.25` (i.e., core wages are ~8.25× periphery wages at PPP-adjusted rates); 2015 Extensive is comparable. The implementer chooses one `scale_type` (Intensive recommended for post-2009 data per the CSV's typing).
+- **v1 broadcast formula**: `wage_ratio_i = ERDI[year]` for all `i ∈ bea_industries` — uniform broadcast across BEA Summary industries. This is a v1 simplification per the spec's Assumptions section. The order-of-magnitude calibration check (SC-004) against the same publication's `annual_drain_usd_billions` column catches gross misalignment.
+- **Why ERDI broadcast is defensible at v1**: ERDI is derived from the same global price-distortion framework that underlies the drain calculation in Hickel et al. 2021. Using ERDI as the periphery-wage-gap proxy means the input wage ratio is structurally consistent with the calibration target (different columns of the same publication, but they measure related-but-distinct quantities — see orthogonality note in R8.4 and R9).
+- **Per-industry refinement (v1.5 refinement, deferred)**: Industry resolution can be added via `wage_ratio_i = ERDI[year] · qcew_us_wage[i] / qcew_us_avg_wage` — using `fact_qcew_annual` aggregated to BEA Summary via `bridge_naics_bea`. This adds industry resolution without requiring industry-disaggregated periphery wage data. Deferred to follow-up per the spec's Assumptions section.
 
 **Metadata payload (recorded per FR-002 in `DefaultPeripheryLaborCoefficientsSource.metadata`)**:
 
 ```python
 PeripheryWageMetadata(
-    publication="PWT v10.01",
-    publication_url="https://www.rug.nl/ggdc/productivity/pwt/",
-    periphery_definition="Hickel/Sullivan/Zoomkawala 2022 Global South country list (151 countries)",
-    units="USD/worker (2017 PPP-adjusted, real)",
+    publication="Hickel, Sullivan & Zoomkawala (2021) — ERDI time series",
+    publication_url="https://doi.org/10.1016/j.gloenvcha.2021.102467",
+    periphery_definition="Global South per Hickel 2021 (effectively the high-income / low-and-middle-income split per World Bank classification)",
+    units="ERDI — dimensionless ratio (market exchange rate / PPP exchange rate)",
     base_year=2017,
-    industry_disaggregation="None — country-aggregate ratio applied uniformly across BEA industries",
-    calibration_anchor="Hickel et al. 2022 — drain from Global South ≈ $2.8T (2015)",
+    industry_disaggregation="None — ERDI broadcast uniformly across BEA Summary industries (v1)",
+    calibration_anchor="babylon_hickel_final.csv `annual_drain_usd_billions` column (different field of same publication; year-resolved per SC-004 + R8.4)",
     v1_simplification_caveats=[
-        "Country-level ratio applied uniformly across all BEA industries",
-        "Underestimates rent in low-wage manufacturing; overstates in high-wage services",
+        "Country-level ERDI broadcast uniformly across all BEA industries",
+        "Industry-disaggregated periphery wage data not used; QCEW US-side industry resolution deferred to v1.5",
+        "Source publication (ERDI) and calibration target (annual_drain_usd_billions) come from the same Hickel CSV — the orthogonality is at the column level, not the dataset level (see R9)",
     ],
 )
 ```
 
 **Alternatives considered**:
 
-- **ILO Global Wage Database**: Industry-disaggregated wage data by country, but coverage varies (e.g., no US data after a certain year for some industries). Rejected for v1 because it would require a custom ingestion pipeline + a constitutional III.4 addition.
-- **Hickel et al. 2022 raw drain estimates**: Provides the calibration target ($2.8T), not the input ratios. Used as SC-004 anchor instead of as input.
-- **BLS International Labor Comparisons**: Discontinued 2014. Would require historical-only coverage. Rejected.
-- **UNIDO INDSTAT4**: Manufacturing-only. Would require sector hybrid. Deferred to v2.
+- **PWT v10.01 (original plan)**: Rejected because PWT data is not loaded in `marxist-data-3NF.sqlite` and not present in the babylon-data trove. Loading would require a constitutional III.4 amendment + a new ingestion pipeline. Hickel ERDI is already in the trove.
+- **ILO Global Wage Database**: Industry-disaggregated wage data by country, but coverage varies and would require a custom ingestion pipeline + a constitutional III.4 addition. Rejected for v1.
+- **BEA TiVA (Trade in Value Added)**: Constitutionally listed (`data-catalog.yaml id: BEA_TiVA`) and industry-disaggregated. Could derive a wage-distortion proxy via the value-added-vs-gross-output ratio. Promising but deferred to v2 because it requires deriving a wage signal from a value-added series — non-trivial.
+- **WID (World Inequality Database)**: Constitutionally listed (`data-catalog.yaml id: WID`) but not loaded into SQLite; WID's primary focus is income distribution, not industry-level wages. Deferred to v2.
+- **BLS International Labor Comparisons**: Discontinued 2014. Rejected.
 
 ---
 
@@ -250,17 +254,53 @@ The single-year `$2.8T (2015)` anchor in SC-004 is a defensible Extensive-scale 
 
 The single-year $2.8T (2015) figure remains a valid anchor in spec narrative; the test mechanism adds the year-resolved CSV-driven check.
 
+## R9: Constitutional III.4 amendment — add Hickel CSV as fixture data source (post-analyze 2026-05-08)
+
+**Discovery context**: R1's pivot from PWT to Hickel ERDI (driven by the analyze C4 finding that PWT is not loaded) makes `babylon_hickel_final.csv` a runtime data input, not just a calibration anchor. Per Constitution III.4, every runtime data source must appear in `data-catalog.yaml`. The Hickel CSV is currently absent from the catalog.
+
+**Decision**: Add a single entry to `.specify/memory/data-catalog.yaml` under `International Trade` category, classified as `Fixture` (the data is a pinned static historical time series, not a refreshable feed):
+
+```yaml
+      - id: Hickel_HSZ_Drain
+        agency: Hickel/Sullivan/Zoomkawala
+        dataset: Global South Value Drain time series 1960–2017 (annual_drain_usd_billions, ERDI, alpha)
+        vintage: Static (2021 publication; data through 2017)
+        granularity: National-aggregate (Global North vs Global South)
+        cadence: Static (no updates planned)
+        class: Fixture
+        provenance_url: https://doi.org/10.1016/j.gloenvcha.2021.102467
+        local_path: /media/user/data/babylon-data/babylon_hickel_final.csv
+```
+
+**Constitutional implication**: This is a `PATCH`-level constitution amendment (data-catalog addition, no principle redefinition) per Constitution IX.1. Bumping `data-catalog.yaml` version from `2.6.1` → `2.6.2`. Adding to the `International Trade` category (closest fit to the Global North/South drain framework).
+
+**Rationale for `Fixture` class**:
+
+- Hickel et al. 2021 published a one-time time series. No live API, no scheduled refresh.
+- Data through 2017; not updated since publication. Future updates would be a separate publication, not a refresh of this one.
+- Matches the constitutional `Fixture` pattern: "pinned snapshots... never fetched at runtime and never substituted for runtime data."
+- Subtle nuance: the simulation reads ERDI per tick year, so it functions like runtime data semantically. But the data ITSELF is static and pinned. Chetty Opportunity Atlas is the precedent (also Fixture, also tract-level historical data consumed during simulation).
+
+**Implementation**: New task T024c lands the catalog amendment + a one-line entry in `.specify/memory/data-catalog.yaml`; constitution amendment registry comment block updated.
+
+**Alternatives considered**:
+
+- **Treat as runtime data (Runtime class)**: Would imply a refreshable upstream — incorrect for a one-time publication.
+- **Skip catalog addition**: Violates Constitution III.4. Not an option.
+- **Use a different source to avoid the catalog addition**: Would defeat the purpose of pivoting to Hickel ERDI in the first place (R1 chose Hickel because it's the most empirically grounded available source).
+
 ## Summary of Phase 0 outputs
 
 | Item | Decision | Affects |
 |------|----------|---------|
-| R1 — Periphery-wage source | PWT v10.01 country-aggregate, applied uniformly across BEA industries (v1). Hickel CSV reserved for calibration only (R8.4) | `DefaultPeripheryLaborCoefficientsSource` implementation, FR-002 metadata |
-| R2 — Final-demand source | BEA Use Table Summary level, "Total Final Uses (GDP)" column. Source XLSX confirmed at `input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx` (R8) | `DefaultFinalDemandSource` implementation, FR-003 |
+| R1 — Periphery-wage source **(REVISED 2026-05-08)** | **Hickel/Sullivan/Zoomkawala (2021) ERDI** time series from `babylon_hickel_final.csv` (ingested into `fact_hickel_erdi_annual`); `wage_ratio_i = ERDI[year]` uniformly broadcast across BEA Summary industries (v1). Original PWT plan rejected because PWT data is not loaded (analyze C4 finding) | `DefaultPeripheryLaborCoefficientsSource` implementation, FR-002 metadata, T024c (catalog amendment), T024d (ingestion) |
+| R2 — Final-demand source | BEA Use Table Summary level "Total Final Uses (GDP)" column — **DEFAULT path: derive `y = x − A·x`** from `fact_bea_national_industry.gross_output_millions` + `fact_bea_io_coefficient` (per `FinalDemandSource` Protocol's "or derived" docstring). Fallback ingestion only if SC-004 calibration insufficient | `DefaultFinalDemandSource` implementation, FR-003 |
 | R3 — Performance budget | ≤100ms warm / ≤250ms cold per-tick; smoke test in `test_imperial_rent_perf.py` | New test file, SC-005 |
-| R4 — NAICS-BEA crosswalk | Reuse Spec 025 ingestion's `xref_naics_bea_summary` (or ingest from `concordance/BEA-Industry-and-Commodity-Codes-and-NAICS-Concordance.xlsx` per R8); missing-code → cell-zero + warning | `IndustryToCountyAllocator` implementation |
+| R4 — NAICS-BEA crosswalk | Use confirmed `bridge_naics_bea` (NOT `xref_naics_bea_summary`); leverage `weight` column for split-mapping apportionment + `mapping_quality` discriminator | `IndustryToCountyAllocator` implementation |
 | R5 — Calculator clamp | Preserve clamp; spec Q3 language updated to two-layer pattern | Spec edit (docs-only); no code change |
 | R6 — `CalibrationWarning` placement | 3 new `EconomicEvent` subclasses in `models/events.py`; published via existing `EventBus` | `models/events.py` edits; FR-002, FR-004, FR-008 |
 | R7 — Industry-list alignment | List-equality validation in `imperial_rent.compute()`; bounded diagnostic | `imperial_rent.py` implementation, FR-006 |
-| R8 — Data trove + SC-004 refinement | All source data at `/media/user/data/babylon-data/`; in-repo `data/sqlite/marxist-data-3NF.sqlite` is what code reads. SC-004 promoted from single-year `$2.8T (2015)` to year-resolved comparison against `babylon_hickel_final.csv` time series | spec edit to SC-004; new test `test_imperial_rent_calibration.py`; downstream refinements to R1/R2/R4 sources |
+| R8 — Data trove + SC-004 refinement | All source data at `/media/user/data/babylon-data/`; in-repo `data/sqlite/marxist-data-3NF.sqlite` is what code reads. SC-004 promoted from single-year `$2.8T (2015)` to year-resolved comparison against `babylon_hickel_final.csv` time series. **Orthogonality note**: post-R1 pivot, the same CSV provides BOTH input ERDI (R1) and calibration target `annual_drain_usd_billions` (R8.4); they are different columns of the same dataset, but conceptually distinct quantities (input is wage distortion proxy; target is aggregate drain estimate) — see R9 caveat | spec edit to SC-004; new test `test_imperial_rent_calibration.py`; downstream refinements to R1/R2/R4 sources |
+| R9 — Hickel catalog amendment **(NEW 2026-05-08)** | Add `Hickel_HSZ_Drain` entry to `data-catalog.yaml` under `International Trade` category, class `Fixture`. PATCH-level constitution amendment (`2.6.1` → `2.6.2`) | T024c, `.specify/memory/data-catalog.yaml`, constitution amendment registry |
 
 **No remaining NEEDS CLARIFICATION items.** Ready for Phase 1.

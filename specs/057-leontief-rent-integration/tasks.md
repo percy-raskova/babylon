@@ -74,24 +74,26 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### Tests for User Story 2 (RED — write first, expect failure)
 
-- [ ] T019 [P] [US2] Write failing test `test_get_coefficients_present_year` (AC1) — assert valid `PeripheryLaborCoefficients` returned for a fixture year present in PWT; verify shape `(n_industries,)`, dtype float64, finiteness, industry list match
-- [ ] T020 [P] [US2] Write failing test `test_get_coefficients_pre_pwt_year` (AC2) — assert `isinstance(source.get_coefficients(1900), NoDataSentinel)`, no exception
+- [ ] T019 [P] [US2] Write failing test `test_get_coefficients_present_year` (AC1) — for year 2015 + scale_type "Intensive", assert returned `PeripheryLaborCoefficients.wage_ratios` has shape `(n_industries,)`, dtype float64, finite, AND every element equals `8.25` (the 2015 Intensive ERDI value per `babylon_hickel_final.csv`). Industry list matches BEA Summary
+- [ ] T020 [P] [US2] Write failing test `test_get_coefficients_outside_window` (AC2) — assert `isinstance(source.get_coefficients(1900), NoDataSentinel)` AND `isinstance(source.get_coefficients(2030), NoDataSentinel)`, no exception
 - [ ] T021 [P] [US2] Write failing test `test_axiom_violation_pass_through` (AC3) — inject mock data with `wage_ratio[k] = 0.95`; assert (a) `result.wage_ratios[k] == 0.95` (NOT clamped at source layer), (b) exactly one `Event(type="calibration_warning.axiom_violation", ...)` in `event_bus.get_history()` with matching payload
 - [ ] T022 [P] [US2] Write failing test `test_determinism_repeat_query` (AC4) — assert `np.array_equal(source.get_coefficients(2015).wage_ratios, source.get_coefficients(2015).wage_ratios)`
 - [ ] T023 [P] [US2] Write failing test `test_metadata_shape` (AC5) — assert `source.metadata.publication == "PWT v10.01"`, `metadata.base_year == 2017`, etc., per data-model.md `PeripheryWageMetadata` fields
 
 ### Implementation for User Story 2
 
-- [ ] T024 [P] [US2] Implement `PeripheryWageMetadata` Pydantic frozen model in `src/babylon/economics/tensor_hierarchy/leontief_rent/periphery_labor_coefficients.py` per data-model.md (publication, publication_url, periphery_definition, units, base_year, industry_disaggregation, calibration_anchor, v1_simplification_caveats)
-- [ ] T025 [US2] Implement `PeripheryLaborCoefficientsSource(Protocol)` + `DefaultPeripheryLaborCoefficientsSource(CachedSource[PeripheryLaborCoefficients])` in same file. The `_fetch(year)` method:
-  - reads PWT country-aggregate `cgdpe · labsh / emp` from `marxist-data-3NF.sqlite` for year + Hickel/Sullivan/Zoomkawala 2022 Global South country list (per research.md §R1)
-  - computes `w_us / w_periphery_aggregate` (population-weighted)
-  - broadcasts the country-level ratio across the BEA Summary industries returned by the injected `bea_industries_source`
-  - emits `AxiomViolationEvent` per industry with ratio < 1.0 (in v1, since the broadcast is uniform, this fires for all industries iff the country ratio < 1.0 — should be a single year-conditional event)
-  - returns `NoDataSentinel` if PWT lacks data for `year`
+- [ ] T024 [P] [US2] Implement `PeripheryWageMetadata` Pydantic frozen model in `src/babylon/economics/tensor_hierarchy/leontief_rent/periphery_labor_coefficients.py` per data-model.md (publication, publication_url, periphery_definition, units, base_year, industry_disaggregation, calibration_anchor, v1_simplification_caveats) — REVISED 2026-05-08 to use Hickel ERDI provenance, not PWT
+- [ ] T024c [US2] **(R9 — Constitution III.4 amendment)** Add `Hickel_HSZ_Drain` entry to `.specify/memory/data-catalog.yaml` under the `International Trade` category, class `Fixture`, with provenance fields per research.md §R9. Bump catalog version `2.6.1` → `2.6.2` in the file's top-level `version` field. Update the constitution amendment registry comment block in `.specify/memory/constitution.md` (header section) noting the PATCH-level amendment for Spec 057
+- [ ] T024d [US2] **(R1 — ingestion task)** Ingest `/media/user/data/babylon-data/babylon_hickel_final.csv` into a new `fact_hickel_erdi_annual` table in `data/sqlite/marxist-data-3NF.sqlite`. Table schema: `(year INTEGER, scale_type VARCHAR(20), erdi NUMERIC(10,4), annual_drain_usd_billions NUMERIC(15,2), alpha NUMERIC(10,6), core_gain_per_capita_usd NUMERIC(15,2), source VARCHAR(255), PRIMARY KEY (year, scale_type))`. Add an ingestion script under `tools/ingest/hickel_erdi.py` that reads the CSV and inserts rows; idempotent (DROP + RECREATE table on each run). Run once to populate; verify with `sqlite3 data/sqlite/marxist-data-3NF.sqlite "SELECT COUNT(*), MIN(year), MAX(year) FROM fact_hickel_erdi_annual;"` → expect ~58 rows, year range 1960–2017
+- [ ] T025 [US2] Implement `PeripheryLaborCoefficientsSource(Protocol)` + `DefaultPeripheryLaborCoefficientsSource(CachedSource[PeripheryLaborCoefficients])` in same file (REVISED 2026-05-08 post-analyze C4 — pivoted from PWT to Hickel ERDI). The `_fetch(year)` method:
+  - queries `fact_hickel_erdi_annual` for `(year, scale_type)` (default `scale_type="Intensive"`)
+  - if no row → returns `NoDataSentinel`
+  - else broadcasts the single ERDI value uniformly across the BEA Summary industries returned by the injected `bea_industries_source`: `wage_ratios = np.full(n_industries, erdi_value, dtype=np.float64)`
+  - emits `AxiomViolationEvent` per industry with `ratio < 1.0` (v1 uniform-broadcast: fires for all n_industries iff the year's ERDI < 1.0 — implementation MAY emit one aggregate event for that year per AC3 of contracts/periphery_labor_coefficients_source.md)
+  - returns `PeripheryLaborCoefficients(year=year, industries=bea_industries, wage_ratios=wage_ratios)`
 - [ ] T026 [US2] Add `from .periphery_labor_coefficients import PeripheryLaborCoefficientsSource, DefaultPeripheryLaborCoefficientsSource, PeripheryWageMetadata` to `src/babylon/economics/tensor_hierarchy/leontief_rent/__init__.py`; update `__all__`
 - [ ] T027 [US2] Run `poetry run pytest tests/unit/economics/tensor_hierarchy/leontief_rent/test_periphery_labor_coefficients_source.py -v` → all 5 GREEN
-- [ ] T028 [US2] Commit boundary: `feat(spec-057): DefaultPeripheryLaborCoefficientsSource — US2, PWT v10.x country-aggregate`
+- [ ] T028 [US2] Commit boundary: `feat(spec-057): DefaultPeripheryLaborCoefficientsSource — US2, Hickel ERDI broadcast (analyze C4 pivot from PWT)`
 
 **Checkpoint**: US2 fully functional and unit-tested independently.
 
@@ -403,11 +405,11 @@ US1 is the MVP but is the *integration* of US2/US3/US4. Two valid strategies:
 
 ---
 
-**Total task count**: 93 tasks across 8 phases (89 original + 4 added during analyze remediation: T053b SC-006 multi-tick coverage, T058b FR-011 field-shape regression, T066b FR-012 docstring verification, T085b Constitution IV.2 tri-county backward-compat).
+**Total task count**: 95 tasks across 8 phases (89 original + 4 from analyze remediation [T053b, T058b, T066b, T085b] + 2 from R1 pivot to Hickel ERDI [T024c catalog amendment, T024d SQLite ingestion]).
 
-**Per-user-story counts** (post-analyze):
+**Per-user-story counts** (post-R1-pivot):
 
-- US2 (Phase 3): 10 tasks (5 RED tests + 4 implementation + 1 commit)
+- US2 (Phase 3): 12 tasks (5 RED tests + 4 implementation + T024c constitutional amendment + T024d ingestion + 1 commit)
 - US3 (Phase 4): 11 tasks (6 RED tests + 4 implementation + 1 commit)
 - US4 (Phase 5): 12 tasks (7 RED tests + 4 implementation + 1 commit)
 - US1 (Phase 6): 19 tasks (10 RED tests including T053b multi-tick + 8 implementation including T058b FR-011 + T066b FR-012 + 1 commit)

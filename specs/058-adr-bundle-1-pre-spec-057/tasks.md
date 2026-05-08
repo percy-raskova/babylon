@@ -86,13 +86,13 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 
 ### Sub-phase US1.1 — `protocol_kit` introduction (commit 4)
 
-- [ ] T030 [P] [US1] Create `tests/unit/core/test_protocol_kit.py` with the 8 `CachedSource` tests from `contracts/protocol_kit.md` "Test contract" section + the 10 `SourceRegistry` tests from `contracts/source_registry.md` "Test contract" **items 1-10** (18 tests total in this file; **items 11-13 belong in `test_factory_shims.py` per T031 — do NOT duplicate them here**); initially RED — module doesn't exist yet
-- [ ] T031 [P] [US1] Create `tests/unit/economics/test_factory_shims.py` with the 3 shim-acceptance tests from `contracts/source_registry.md` "Test contract" items 11-13; initially RED — will pass after commit 6 (T057)
-- [ ] T032 [US1] Create `src/babylon/core/__init__.py` as an empty package marker
-- [ ] T033 [US1] Create `src/babylon/core/protocol_kit.py` with `DataSource` (Protocol marker), `CachedSource[T]` (Generic ABC with `cache_negative_results: bool = True` class attribute, `__init__`, `_resolve`, `invalidate`, `clear`), and `SourceRegistry` (concrete class with `register`, `get`, `has`, stub `builtin_economics`) per `data-model.md` §2-§4 and `contracts/protocol_kit.md` + `contracts/source_registry.md`
-- [ ] T034 [US1] Stub `SourceRegistry.builtin_economics()` body to `return self  # filled in commit 6 — see T053`; this leaves no integration broken at commit 4 boundary
-- [ ] T035 [US1] Verify T030's 18 contract tests pass (GREEN); the 3 factory-shim tests in T031 stay RED until commit 6
-- [ ] T036 [US1] Run `mise run check && mise run test:unit`; baseline tally + 21 new tests passing; the 3 factory-shim RED tests are *expected* to still RED (mark with `@pytest.mark.xfail(reason="GREEN at commit 6")` to keep CI green between commit 4 and commit 6)
+- [X] T030 [P] [US1] Wrote 20 RED tests in `tests/unit/core/test_protocol_kit.py` (8 CachedSource + 10 SourceRegistry + 2 DataSource Protocol smoke)
+- [X] T031 [P] [US1] Wrote 3 xfail-marked tests in `tests/unit/economics/test_factory_shims.py` (items 11-13 from source_registry.md). pytestmark = pytest.mark.xfail(reason="GREEN at commit 6"); marker dropped at T057
+- [X] T032 [US1] Created `src/babylon/core/__init__.py` (package docstring; ADR-002 reminder about narrow scope)
+- [X] T033 [US1] Created `src/babylon/core/protocol_kit.py` with DataSource (runtime-checkable Protocol), CachedSource[T] (PEP 695 generic class with cache_negative_results = True class attr), SourceRegistry (DEFAULT_VARIANT/TEST_VARIANT, register, get, has, builtin_economics)
+- [X] T034 [US1] SourceRegistry.builtin_economics() stub returns self (no-op) with explicit comment pointing at T053 for commit-6 fill-in
+- [X] T035 [US1] All 20 protocol_kit tests pass (GREEN); 3 factory-shim tests xfail as expected
+- [X] T036 [US1] Full fast-gate: 9021p / 186s / 4xf / 1f. +20 passed from new core/ tests; +3 xfail from factory shims; pre-existing flake unchanged. mypy + ruff clean (1 PEP 695 syntax modernization: Generic[T] → CachedSource[T])
 - [ ] T037 [US1] Commit: `feat(core): add protocol_kit with DataSource, CachedSource, SourceRegistry`
 
 ### Sub-phase US1.2 — melt/ + gamma/ Default* migrations (commit 5)

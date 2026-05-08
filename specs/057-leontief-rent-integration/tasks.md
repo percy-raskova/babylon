@@ -136,18 +136,18 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### Tests for User Story 4 (RED — write first)
 
-- [ ] T040 [P] [US4] Write failing test `test_synthetic_two_county_conservation` (AC1) — fabricate inputs with known shares + per-industry rents; assert `abs(allocation_total - national_total) / national_total < 0.01`
-- [ ] T041 [P] [US4] Write failing test `test_zero_employment_zero_allocation` (AC2) — fabricate county with `share[fips, naics_X] = 0`; assert allocation excludes industry_X's contribution
-- [ ] T042 [P] [US4] Write failing test `test_carry_forward_one_year` (AC3) — fabricate QCEW with `(fips, Y) = absent`, `(fips, Y-1) = present`; assert (a) `fips` present in result, (b) exactly one `QcewCarryForwardEvent(county_fips=fips, year=Y, look_back_year=Y-1, look_back_distance=1)` in event history
-- [ ] T043 [P] [US4] Write failing test `test_carry_forward_beyond_window` (AC4) — fabricate `(fips, Y) = absent` and `(fips, Y - 6) = present` with `max_years=5`; assert `fips` absent from result
-- [ ] T044 [P] [US4] Write failing test `test_outlier_event_high` (AC5) — fabricate inputs producing `phi_hour > 1000.0`; assert exactly one `PhiHourOutlierEvent` in history
-- [ ] T045 [P] [US4] Write failing test `test_window_uniformly_empty_returns_sentinel` (AC6) — fabricate QCEW with no data in any year of the window; assert `isinstance(result, NoDataSentinel)`
-- [ ] T046 [P] [US4] Write failing test `test_determinism_dict_and_event_order` (AC7) — call `allocate(...)` twice; assert `result1 == result2` and event payloads match in order
+- [X] T040 [P] [US4] Write failing test `test_synthetic_two_county_conservation` (AC1) — fabricate inputs with known shares + per-industry rents; assert `abs(allocation_total - national_total) / national_total < 0.01`
+- [X] T041 [P] [US4] Write failing test `test_zero_employment_zero_allocation` (AC2) — fabricate county with `share[fips, naics_X] = 0`; assert allocation excludes industry_X's contribution
+- [X] T042 [P] [US4] Write failing test `test_carry_forward_one_year` (AC3) — fabricate QCEW with `(fips, Y) = absent`, `(fips, Y-1) = present`; assert (a) `fips` present in result, (b) exactly one `QcewCarryForwardEvent(county_fips=fips, year=Y, look_back_year=Y-1, look_back_distance=1)` in event history
+- [X] T043 [P] [US4] Write failing test `test_carry_forward_beyond_window` (AC4) — fabricate `(fips, Y) = absent` and `(fips, Y - 6) = present` with `max_years=5`; assert `fips` absent from result
+- [X] T044 [P] [US4] Write failing test `test_outlier_event_high` (AC5) — fabricate inputs producing `phi_hour > 1000.0`; assert exactly one `PhiHourOutlierEvent` in history
+- [X] T045 [P] [US4] Write failing test `test_window_uniformly_empty_returns_sentinel` (AC6) — fabricate QCEW with no data in any year of the window; assert `isinstance(result, NoDataSentinel)`
+- [X] T046 [P] [US4] Write failing test `test_determinism_dict_and_event_order` (AC7) — call `allocate(...)` twice; assert `result1 == result2` and event payloads match in order
 
 ### Implementation for User Story 4
 
-- [ ] T047 [US4] NAICS-BEA crosswalk confirmed (analyze 2026-05-08): table is `bridge_naics_bea` in `marxist-data-3NF.sqlite` with columns `(industry_id, bea_industry_id, mapping_quality, weight)`. Use the `weight` column (NUMERIC(5, 4)) for proper apportionment of `mapping_quality='split'` NAICS codes — this is richer than the original "missing-code → cell-zero" assumption. The `mapping_quality` discriminator (`exact|aggregated|split|estimated`) lets the allocator distinguish high-confidence from estimated cells; allocator MAY emit a `CalibrationWarning(QcewCarryForward, ...)` variant or ignore quality at v1. Schema verified: `dim_industry` ↔ `bridge_naics_bea` ↔ `dim_bea_industry`
-- [ ] T048 [US4] Implement `IndustryToCountyAllocator(Protocol)` + `DefaultIndustryToCountyAllocator(CachedSource[dict[str, float]])` in `src/babylon/economics/tensor_hierarchy/leontief_rent/industry_to_county_allocator.py` per the algorithm in `contracts/industry_to_county_allocator.md`:
+- [X] T047 [US4] NAICS-BEA crosswalk confirmed (analyze 2026-05-08): table is `bridge_naics_bea` in `marxist-data-3NF.sqlite` with columns `(industry_id, bea_industry_id, mapping_quality, weight)`. Use the `weight` column (NUMERIC(5, 4)) for proper apportionment of `mapping_quality='split'` NAICS codes — this is richer than the original "missing-code → cell-zero" assumption. The `mapping_quality` discriminator (`exact|aggregated|split|estimated`) lets the allocator distinguish high-confidence from estimated cells; allocator MAY emit a `CalibrationWarning(QcewCarryForward, ...)` variant or ignore quality at v1. Schema verified: `dim_industry` ↔ `bridge_naics_bea` ↔ `dim_bea_industry`
+- [X] T048 [US4] Implement `IndustryToCountyAllocator(Protocol)` + `DefaultIndustryToCountyAllocator(CachedSource[dict[str, float]])` in `src/babylon/economics/tensor_hierarchy/leontief_rent/industry_to_county_allocator.py` per the algorithm in `contracts/industry_to_county_allocator.md`:
   - Iterate sorted county FIPS for determinism (per Constitution III.7)
   - For each county, find most recent QCEW year `y' ≤ year` in look-back window `[year - max_years, year]`
   - Compute employment shares, aggregate to BEA via crosswalk (missing crosswalk → cell zero, no error per research.md §R4)
@@ -156,9 +156,9 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
   - Emit `QcewCarryForwardEvent` if `y' < year`
   - Emit `PhiHourOutlierEvent` per `LeontiefRentDefines.phi_hour_outlier_threshold_low/high`
   - Return `{fips: phi_hour}` dict; counties absent from QCEW window are absent from the dict; return `NoDataSentinel` if window uniformly empty
-- [ ] T049 [US4] Add to `src/babylon/economics/tensor_hierarchy/leontief_rent/__init__.py` re-exports + `__all__`
-- [ ] T050 [US4] Run `poetry run pytest tests/unit/economics/tensor_hierarchy/leontief_rent/test_industry_to_county_allocator.py -v` → all 7 GREEN
-- [ ] T051 [US4] Commit boundary: `feat(spec-057): IndustryToCountyAllocator with 5-year carry-forward — US4`
+- [X] T049 [US4] Add to `src/babylon/economics/tensor_hierarchy/leontief_rent/__init__.py` re-exports + `__all__`
+- [X] T050 [US4] Run `poetry run pytest tests/unit/economics/tensor_hierarchy/leontief_rent/test_industry_to_county_allocator.py -v` → all 7 GREEN
+- [X] T051 [US4] Commit boundary: `feat(spec-057): IndustryToCountyAllocator with 5-year carry-forward — US4`
 
 **Checkpoint**: US2 + US3 + US4 sources/allocator all functional and unit-tested independently. US1 (the integration) can now wire them.
 

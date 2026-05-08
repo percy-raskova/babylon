@@ -426,6 +426,15 @@ class TestHydrateSNLTConversion:
         assert tensor.excluded_wages == pytest.approx(100.0)
 
 
+@pytest.mark.skip(
+    reason=(
+        "Blocked on spec 057-leontief-rent-integration. References the "
+        "MarxianHydrator.hydrate_with_rent path and the babylon.economics."
+        "reproduction module deleted in commit a5f73139. Spec 057's FR-009 "
+        "will decide whether to delete or rewrite these tests against the "
+        "new pipeline."
+    )
+)
 class TestHydrateWithRent:
     """Tests for hydrate_with_rent() method."""
 

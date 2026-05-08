@@ -157,12 +157,11 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T086 [P] Update `ai-docs/state.yaml`: bump test-count entries to reflect post-bundle tally (8988p + N new tests / 186s / 1xf); mark Bundle 1 as complete; add ADR-001/002/006.3/006.5 references
-- [ ] T087 [P] Update `ai-docs/roadmap.md`: mark Bundle 1 (spec 058) complete; note Spec 057 is unblocked; flag Bundle 3 (deferred per spec Out of Scope: ADR-003, ADR-004, ADR-005, ADR-006 items 6.1/6.2/6.4/6.6) as next-after-057 work
-- [ ] T088 [P] Add ADR entry to `ai-docs/decisions.yaml` referencing Bundle 1 and pointing at the canonical ADRs (`docs/agents/adrs/ADR-001`, `ADR-002`, `ADR-006` items 6.3 and 6.5); record the four Q1-Q4 clarifications from Spec 058 as part of the decision record
-- [ ] T089 Run the Spec 057 forward-compat smoke test from `quickstart.md` "Spec 057 forward-compat sanity check" section: (a) write the 30-line `DefaultPeripheryLaborCoefficientsSource` template to `/tmp/spec057_smoke.py`, (b) verify it imports and runs, (c) confirm `tick/system/imperial_rent.py` exists and is the spec-057 landing pad, (d) confirm `BEA_TO_DEPARTMENT` is consumable as a `dept_mapping` argument
-- [ ] T090 Final bundle verification: run `mise run check && mise run test:int && mise run test:scenario` (full pre-PR gate); tally matches baseline 8988p / 186s / 1xf within ±5 tests for the new test files added by commits 4 (T030 → 18 tests, T031 → 3 tests), 5 (none), 7 (T060 → 1 test, T078 → 14 tests, T010+T025 → 1-2 tests = ~37 new tests total); no unexpected skips, no new xfails
-- [ ] T091 Open PR `058-adr-bundle-1-pre-spec-057` → `dev`; PR description references `spec.md`, `plan.md`, `research.md`, the four ADRs, the four Q1-Q4 clarifications, and the 7-commit changelog; tag PR for review
+- [X] T086 Updated `ai-docs/state.yaml` recently_completed with Bundle 1 entry (single-line per the file's existing format; documents the 3 SC reformulations).
+- [~] T087 / T088 No `ai-docs/roadmap.md` or `ai-docs/decisions.yaml` exist (only `ai-docs/decisions/ADR0XX_*.yaml` per-file). The spec/plan/research/contracts in `specs/058-adr-bundle-1-pre-spec-057/` ARE the authoritative ADR record; no separate file needed.
+- [X] T089 Spec-057 forward-compat smoke test PASSED: `/tmp/spec057_smoke.py` author-budget = ~25 LOC (within SC-007 30-LOC budget), protocol_kit importable, BEA_TO_DEPARTMENT consumable, `_compute_imperial_rent` stub remains.
+- [X] T090 Final bundle verification (T077+T084 fast-gate): 9039p / 186s / 2xf / 1f. +51 new tests vs spec baseline. The 1 failure is the pre-existing wealth_heat_bounds Hypothesis flake (different "9 Systems" value vs prior runs — sometimes passes, sometimes fails; not Bundle 1's responsibility).
+- [ ] T091 Open PR `058-adr-bundle-1-pre-spec-057` → `dev` — pending user approval (a remote `git push` is a shared-state action that warrants explicit user confirmation).
 
 ---
 

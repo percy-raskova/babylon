@@ -18,7 +18,6 @@ from tests.unit.economics.tick.conftest import (
     MockCapitalStockCalculator,
     MockClassTransitionEngine,
     MockGammaIIICalculator,
-    MockImperialRentCalculator,
     MockMELTCalculator,
     MockThroughputCalculator,
     build_territory_graph,
@@ -36,7 +35,6 @@ def _make_services(**kwargs: Any) -> ServiceContainer:
         "capital_calculator": MockCapitalStockCalculator(),
         "throughput_calculator": MockThroughputCalculator(),
         "transition_engine": MockClassTransitionEngine(),
-        "imperial_rent_calculator": MockImperialRentCalculator(),
     }
     defaults.update(kwargs)
     return ServiceContainer.create(**defaults)

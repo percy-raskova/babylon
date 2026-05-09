@@ -223,17 +223,17 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 - [ ] T068 [P] [US5] Edit `tests/unit/engine/test_services.py` — remove the spec-057 quarantine `pytest.mark.skip` marker (line ~108); update test assertions to include the 4 new ServiceContainer fields per data-model.md
 - [ ] T069 [P] [US5] Edit `tests/unit/engine/test_formula_registry.py` — remove the 3 spec-057 quarantine markers (lines ~87, ~128, ~170); review each test's assertions against the new pipeline's formula registrations
-- [ ] T070 [P] [US5] Edit `tests/unit/economics/test_factory.py` — remove 2 spec-057 quarantine markers (lines ~39, ~90); update `_EXPECTED_KEYS` constant to include the 4 new sources/allocator/calculator
-- [ ] T071 [P] [US5] Edit `tests/unit/economics/test_hydrator_mutants.py` — remove the spec-057 quarantine marker (line ~431); review test against the new pipeline's hydration path
-- [ ] T072 [P] [US5] Edit `tests/unit/economics/melt/test_class_position.py` — remove the spec-057 quarantine marker (line ~515); review the test against the new `phi_hour` semantics (now structurally-derived, not constant zero)
-- [ ] T073 [P] [US5] Edit `tests/integration/economics/conftest.py` — remove the spec-057 quarantine marker (line ~37) that gated the entire `tests/integration/economics/` collection
-- [ ] T074 [P] [US5] Edit `tests/integration/system/test_phase1_blueprint.py` — remove the spec-057 quarantine marker (line ~24); review imports for references to deleted `babylon.economics.reproduction`
+- [X] T070 [P] [US5] Edit `tests/unit/economics/test_factory.py` — remove 2 spec-057 quarantine markers (lines ~39, ~90); update `_EXPECTED_KEYS` constant to include the 4 new sources/allocator/calculator
+- [X] T071 [P] [US5] Edit `tests/unit/economics/test_hydrator_mutants.py` — remove the spec-057 quarantine marker (line ~431); review test against the new pipeline's hydration path
+- [X] T072 [P] [US5] Edit `tests/unit/economics/melt/test_class_position.py` — remove the spec-057 quarantine marker (line ~515); review the test against the new `phi_hour` semantics (now structurally-derived, not constant zero)
+- [X] T073 [P] [US5] Edit `tests/integration/economics/conftest.py` — remove the spec-057 quarantine marker (line ~37) that gated the entire `tests/integration/economics/` collection
+- [X] T074 [P] [US5] Edit `tests/integration/system/test_phase1_blueprint.py` — remove the spec-057 quarantine marker (line ~24); review imports for references to deleted `babylon.economics.reproduction`
 
 ### Delete orphan tests (per FR-009 — tests against removed API)
 
-- [ ] T075 [US5] **(U1 — pre-listed orphan candidates)** Audit each unquarantined test for orphans. Pre-list the candidates by running: `grep -rnE "MockImperialRentCalculator|babylon\\.economics\\.reproduction|babylon\\.economics\\.melt\\.imperial_rent|imperial_rent_calculator" tests/unit/ tests/integration/ > /tmp/orphan_candidates.txt`, then for each match decide: DELETE if the test exclusively asserts behavior of the removed per-worker API (no path forward post-Spec 057), or UPDATE if the test asserts a still-valid behavior (e.g., ServiceContainer field expectations — update the field name to one of the 4 new Spec 057 fields). Document each deletion in the commit message per FR-009. Expected scope: ≤10 stale test functions across the 7 files
-- [ ] T076 [US5] Run `poetry run pytest tests/unit tests/integration -m "not ai" -v --tb=short` → all GREEN, no collection errors, skipped count drops by ~9 from baseline (matching SC-001 invariant: same-or-better tally)
-- [ ] T077 [US5] Commit boundary: `test(spec-057): unquarantine spec-057 markers + delete orphan per-worker tests — US5, FR-009`
+- [X] T075 [US5] **(U1 — pre-listed orphan candidates)** Audit each unquarantined test for orphans. Pre-list the candidates by running: `grep -rnE "MockImperialRentCalculator|babylon\\.economics\\.reproduction|babylon\\.economics\\.melt\\.imperial_rent|imperial_rent_calculator" tests/unit/ tests/integration/ > /tmp/orphan_candidates.txt`, then for each match decide: DELETE if the test exclusively asserts behavior of the removed per-worker API (no path forward post-Spec 057), or UPDATE if the test asserts a still-valid behavior (e.g., ServiceContainer field expectations — update the field name to one of the 4 new Spec 057 fields). Document each deletion in the commit message per FR-009. Expected scope: ≤10 stale test functions across the 7 files
+- [X] T076 [US5] Run `poetry run pytest tests/unit tests/integration -m "not ai" -v --tb=short` → all GREEN, no collection errors, skipped count drops by ~9 from baseline (matching SC-001 invariant: same-or-better tally)
+- [X] T077 [US5] Commit boundary: `test(spec-057): unquarantine spec-057 markers + delete orphan per-worker tests — US5, FR-009`
 
 **Checkpoint**: All 5 user stories functional. Quarantine cleared. Test tally restored.
 

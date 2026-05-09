@@ -82,24 +82,20 @@ class TestFormulaRegistry:
         registry.register("formula", replacement)
         assert registry.get("formula")(5.0) == 50.0
 
-    @pytest.mark.skip(
-        reason=(
-            "Blocked on spec 057-leontief-rent-integration. The "
-            "'imperial_rent' formula was removed from the default registry "
-            "in commit a5f73139 (count went 24 -> 23). Spec 057 will "
-            "register a Leontief-based successor; this expected-list will "
-            "be updated then."
-        )
-    )
     def test_default_registers_all_formulas(self) -> None:
-        """default() factory creates registry with all standard formulas."""
+        """default() factory creates registry with all standard formulas.
+
+        Spec 057 unquarantine: count is 23 (was 24); 'imperial_rent' formula
+        was permanently removed in commit a5f73139. Spec 057 wired the new
+        Leontief pipeline via ServiceContainer fields, NOT via FormulaRegistry,
+        so the count stays at 23 and 'imperial_rent' remains absent.
+        """
         from babylon.engine.formula_registry import FormulaRegistry
 
         registry = FormulaRegistry.default()
         formulas = registry.list_formulas()
 
         expected_formulas = [
-            "imperial_rent",
             "labor_aristocracy_ratio",
             "is_labor_aristocracy",
             "consciousness_drift",
@@ -119,29 +115,23 @@ class TestFormulaRegistry:
             "solidarity_amplification",  # Feature 022
         ]
 
-        assert len(formulas) == 24  # 18 prior + 6 lifecycle (Feature 030)
+        assert len(formulas) == 23  # post-Spec 057
+        assert "imperial_rent" not in formulas  # moved to ServiceContainer
         for name in expected_formulas:
             assert name in formulas, f"Missing formula: {name}"
 
-    @pytest.mark.skip(
-        reason=(
-            "Blocked on spec 057-leontief-rent-integration. The "
-            "'imperial_rent' formula was removed from the default registry "
-            "in commit a5f73139 along with the per-worker calculator. "
-            "Spec 057 will register a Leontief-based successor."
-        )
-    )
-    def test_default_imperial_rent_works(self) -> None:
-        """default() registry's imperial_rent formula is functional."""
+    def test_default_imperial_rent_removed(self) -> None:
+        """Spec 057 removed 'imperial_rent' formula from FormulaRegistry.
+
+        Was: registry.get("imperial_rent") returned a per-worker callable.
+        Now: 'imperial_rent' is not in the registry. The new Leontief
+        pipeline lives at imperial_rent.compute() in tick/system/, wired
+        via ServiceContainer.production_chain_calculator (not a formula).
+        """
         from babylon.engine.formula_registry import FormulaRegistry
 
         registry = FormulaRegistry.default()
-        imperial_rent = registry.get("imperial_rent")
-
-        # Test with known values: alpha=0.5, wages=0.4, consciousness=0.2
-        # Expected: 0.5 * 0.4 * (1 - 0.2) = 0.5 * 0.4 * 0.8 = 0.16
-        result = imperial_rent(alpha=0.5, periphery_wages=0.4, periphery_consciousness=0.2)
-        assert result == pytest.approx(0.16)
+        assert "imperial_rent" not in registry.list_formulas()
 
     def test_default_acquiescence_probability_works(self) -> None:
         """default() registry's acquiescence_probability formula is functional."""
@@ -165,24 +155,20 @@ class TestFormulaRegistry:
         result = p_revolution(cohesion=0.5, repression=0.5)
         assert result == pytest.approx(1.0, rel=0.01)
 
-    @pytest.mark.skip(
-        reason=(
-            "Blocked on spec 057-leontief-rent-integration. Asserts "
-            "'imperial_rent' is registered as formulas.calculate_imperial_rent, "
-            "both removed in commit a5f73139. Spec 057 will reintroduce a "
-            "Leontief-based successor whose name and module function may "
-            "differ; this assertion will be updated then."
-        )
-    )
     def test_default_formulas_match_module_functions(self) -> None:
-        """default() registry formulas are the actual module functions."""
+        """default() registry formulas are the actual module functions.
+
+        Spec 057 unquarantine: removed the 'imperial_rent' assertion; the
+        formula was permanently removed in commit a5f73139. Spec 057's
+        Leontief pipeline is wired via ServiceContainer fields, not as a
+        FormulaRegistry entry.
+        """
         from babylon import formulas
         from babylon.engine.formula_registry import FormulaRegistry
 
         registry = FormulaRegistry.default()
 
-        # Spot check a few
-        assert registry.get("imperial_rent") is formulas.calculate_imperial_rent
+        # Spot check a few (imperial_rent removed by Spec 057 — see test_default_imperial_rent_removed)
         assert registry.get("loss_aversion") is formulas.apply_loss_aversion
         assert registry.get("prebisch_singer") is formulas.prebisch_singer_effect
 

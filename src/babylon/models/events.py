@@ -949,6 +949,110 @@ class EndgameEvent(SimulationEvent):
 
 
 # =============================================================================
+# Spec 057 — Leontief Imperial Rent Integration: CalibrationWarning event family
+# =============================================================================
+# These three events are infrastructural — they signal data-quality / calibration
+# drift, not value transfer. Therefore they subclass SimulationEvent directly,
+# NOT EconomicEvent (which mandates a Currency `amount`). The EconomicEvent
+# placement originally proposed in research.md §R6 was revised at implementation
+# time to honor the SimulationEvent vs EconomicEvent semantic distinction.
+#
+# Discriminator strings: "calibration_warning.<subtype>" per research.md §R6.
+# Published via the existing EventBus.publish(Event(...)) adapter pattern.
+# Subscribers filter by event.type.startswith("calibration_warning.") and
+# parse payload back into the typed class via .model_validate(...).
+
+
+class AxiomViolationEvent(SimulationEvent):
+    """Periphery-wage source published a ratio < 1.0 (FR-002).
+
+    Emitted by ``DefaultPeripheryLaborCoefficientsSource._fetch`` when the
+    structural axiom (core wages ≥ periphery wages, i.e. ratio ≥ 1.0) is
+    violated by source data. The source layer passes the value through
+    unchanged; the math layer (``ProductionChainRentCalculator``) clamps
+    via ``np.maximum(loss_ratio, 0.0)``. This event surfaces the
+    calibration signal without destabilizing downstream arithmetic
+    (research.md §R5 — two-layer pattern).
+
+    Attributes:
+        event_type: Always CALIBRATION_AXIOM_VIOLATION.
+        industry: BEA industry code where the violation occurred.
+        year: The data year.
+        ratio: The violating wage ratio (< threshold).
+        threshold: The expected lower bound (default 1.0).
+    """
+
+    event_type: EventType = Field(
+        default=EventType.CALIBRATION_AXIOM_VIOLATION,
+        description="Event type (always CALIBRATION_AXIOM_VIOLATION)",
+    )
+    industry: str = Field(..., min_length=1, description="BEA industry code")
+    year: int = Field(..., ge=1900, le=2100, description="Data year")
+    ratio: float = Field(..., description="The violating wage ratio (< threshold)")
+    threshold: float = Field(default=1.0, description="Expected lower bound (axiom)")
+
+
+class QcewCarryForwardEvent(SimulationEvent):
+    """QCEW data missing for (county, year); employment shares carried forward (FR-004).
+
+    Emitted by ``DefaultIndustryToCountyAllocator.allocate`` when QCEW data
+    is missing for a (county, year) pair within the look-back window
+    (default 5 years per ``LeontiefRentDefines.qcew_carry_forward_max_years``).
+    Also emitted by ``imperial_rent.compute()`` with ``county_fips="*"`` and
+    ``look_back_distance=-1`` as a sentinel for "Spec 057 pipeline not wired"
+    (graceful-degradation path per data-model.md ServiceContainer notes).
+
+    Attributes:
+        event_type: Always CALIBRATION_QCEW_CARRY_FORWARD.
+        county_fips: 5-char numeric FIPS (or "*" for "all counties" sentinel).
+        year: The tick year (gap year).
+        look_back_year: The year carried forward from.
+        look_back_distance: year - look_back_year (use -1 sentinel for
+            "Spec 057 pipeline not wired" pattern).
+    """
+
+    event_type: EventType = Field(
+        default=EventType.CALIBRATION_QCEW_CARRY_FORWARD,
+        description="Event type (always CALIBRATION_QCEW_CARRY_FORWARD)",
+    )
+    county_fips: str = Field(..., min_length=1, description="County FIPS or '*' sentinel")
+    year: int = Field(..., ge=1900, le=2100, description="Tick year (gap year)")
+    look_back_year: int = Field(..., ge=1900, le=2100, description="Year carried forward from")
+    look_back_distance: int = Field(
+        ...,
+        ge=0,
+        le=20,
+        description="year - look_back_year (max 20; use the unsigned distance)",
+    )
+
+
+class PhiHourOutlierEvent(SimulationEvent):
+    """Per-county phi_hour fell outside the LeontiefRentDefines plausibility bounds (FR-008).
+
+    Emitted by ``DefaultIndustryToCountyAllocator.allocate`` (or by
+    ``imperial_rent.compute()`` post-allocation) when an allocated
+    ``phi_hour`` falls outside ``[threshold_low, threshold_high]``. Defaults
+    come from ``LeontiefRentDefines.phi_hour_outlier_threshold_low/high``.
+
+    Attributes:
+        event_type: Always CALIBRATION_PHI_HOUR_OUTLIER.
+        county_fips: 5-char numeric FIPS where the outlier occurred.
+        phi_hour: The outlier value.
+        threshold_low: Plausibility lower bound (default -1000.0).
+        threshold_high: Plausibility upper bound (default 1000.0).
+    """
+
+    event_type: EventType = Field(
+        default=EventType.CALIBRATION_PHI_HOUR_OUTLIER,
+        description="Event type (always CALIBRATION_PHI_HOUR_OUTLIER)",
+    )
+    county_fips: str = Field(..., min_length=1, description="County FIPS where outlier occurred")
+    phi_hour: float = Field(..., description="The outlier value")
+    threshold_low: float = Field(default=-1000.0, description="Plausibility lower bound")
+    threshold_high: float = Field(default=1000.0, description="Plausibility upper bound")
+
+
+# =============================================================================
 # Event Deserialization (Sprint 1.X Deliverable 2)
 # =============================================================================
 
@@ -970,6 +1074,10 @@ EVENT_CLASS_MAP: dict[str, type[SimulationEvent]] = {
     EventType.PHASE_TRANSITION.value: PhaseTransitionEvent,
     EventType.BIFURCATION_TENDENCY_CHANGE.value: BifurcationTendencyEvent,
     EventType.ENDGAME_REACHED.value: EndgameEvent,
+    # Spec 057 — Leontief Imperial Rent Integration
+    EventType.CALIBRATION_AXIOM_VIOLATION.value: AxiomViolationEvent,
+    EventType.CALIBRATION_QCEW_CARRY_FORWARD.value: QcewCarryForwardEvent,
+    EventType.CALIBRATION_PHI_HOUR_OUTLIER.value: PhiHourOutlierEvent,
 }
 
 

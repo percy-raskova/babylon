@@ -1,0 +1,183 @@
+# =============================================================================
+# ADR-035: Leontief Imperial Rent Pipeline (Spec 057)
+# =============================================================================
+#
+# Decision: End-to-end Leontief production-chain imperial rent computation
+# replaces the per-worker TVT axiom calculator that was deleted in commit
+# a5f73139.
+#
+# Status: ACCEPTED (2026-05-09)
+# Supersedes: per-worker ImperialRentCalculator (ADR-007 implicit)
+# Related: Spec 057 + Spec 058 (structural prep)
+
+context: |
+  Commit a5f73139 (2026-04-12) introduced a new structural model for imperial
+  rent based on the Leontief inverse of the BEA Input-Output table. The new
+  ProductionChainRentCalculator was unit-tested in isolation, but the
+  per-tick step (_compute_imperial_rent) was stubbed to write phi_hour=0
+  "until tensor integration." Spec 057 is that integration.
+
+decision: |
+  Implement the missing data-source layer (PeripheryLaborCoefficientsSource,
+  FinalDemandSource, IndustryToCountyAllocator) and wire the full pipeline
+  into TickDynamicsSystem._compute_imperial_rent via a thin facade
+  delegating to imperial_rent.compute() in tick/system/imperial_rent.py.
+
+architecture:
+  three_layer_axiom_enforcement:
+    description: |
+      The structural axiom (core wages >= periphery wages, ratio >= 1.0) is
+      enforced in three places to provide defense in depth.
+    source_layer:
+      where: DefaultPeripheryLaborCoefficientsSource (periphery_labor_coefficients.py)
+      action: detect ratio < 1.0 + emit AxiomViolationEvent via EventBus
+      rationale: pass value through unchanged → preserves source data integrity
+    calculator_layer:
+      where: ProductionChainRentCalculator.calculate (production_chain_rent.py:181)
+      action: np.maximum(loss_ratio, 0.0) clamp
+      rationale: math invariant prevents negative rent contributions from
+        flipping sign on phi_adjustment in savings_schedule.py
+    data_model_layer:
+      where: CountyEconomicState.phi_hour Field(..., ge=0)
+      action: pydantic.ValidationError if a negative value reaches this far
+      rationale: third defense layer; should never fire in practice
+
+  graceful_degradation:
+    description: |
+      If any of the 4 Spec 057 ServiceContainer fields (periphery_labor_source,
+      final_demand_source, industry_county_allocator, production_chain_calculator)
+      is None, OR if any source returns NoDataSentinel for the tick year, the
+      pipeline falls back to stub behavior (county_states unchanged) and emits
+      a single QcewCarryForwardEvent with county_fips="*" as the sentinel marker.
+
+  behavioral_fence:
+    description: |
+      Per Spec 058 / FR-007: the _compute_imperial_rent facade preserves the
+      return-type class (dict[str, CountyEconomicState]), exception class
+      hierarchy (ValueError for FR-006 misalignment), and event-bus emission
+      ordering (sorted county FIPS, sorted BEA industries) of the original stub.
+
+data_pivots:
+  R1_periphery_wage_source:
+    original_plan: PWT v10.x country-aggregate wage ratio
+    revised: Hickel/Sullivan/Zoomkawala (2021) ERDI time series
+    reason: |
+      Schema check during /speckit.analyze revealed PWT data is not loaded in
+      marxist-data-3NF.sqlite and not in /media/user/data/babylon-data/.
+      notebooklm_to_babylon_mapping.csv documents the project's actual approach
+      as "ERDI from Hickel; wage data from QCEW".
+    constitutional: |
+      PATCH amendment to data-catalog.yaml v2.6.2 added Hickel_HSZ_Drain as
+      Fixture-class data source under International Trade.
+
+  R2_final_demand_source:
+    original_plan: derive y = x - A·x from fact_bea_national_industry +
+      fact_bea_io_coefficient
+    revised: ingest BEA Use Table "Total Final Uses (GDP)" column directly
+      into fact_bea_final_demand_annual
+    reason: |
+      Schema check revealed fact_bea_national_industry is empty (0 rows).
+      Direct ingestion from /media/user/data/babylon-data/input-output/make-use/
+      IOUse_Before_Redefinitions_PRO_Summary.xlsx was simpler.
+    verification: |
+      2015 sum across 73 industries = $18.295T matches BEA published 2015
+      US GDP of ~$18.2T to ~0.5% (sanity check passed).
+
+  R6_calibration_warning_placement:
+    original_plan: subclass EconomicEvent
+    revised: subclass SimulationEvent directly
+    reason: |
+      EconomicEvent mandates a Currency `amount` for value-transfer events;
+      calibration warnings carry no monetary `amount`. The semantic
+      distinction outweighs the original R6 reasoning about subscriber
+      inheritance ergonomics. Subscribers filter via
+      event.type.startswith("calibration_warning.") at the EventBus level.
+
+calibration:
+  sc_004_anchor:
+    target: babylon_hickel_final.csv annual_drain_usd_billions column
+    method: year-resolved comparison (per research.md §R8.4 + R9)
+    scale_type: Intensive (post-2009 era; Extensive available pre-2009)
+    orthogonality_caveat: |
+      Post-R1 pivot, the same Hickel CSV provides both the input ERDI column
+      (R1) and the calibration target annual_drain_usd_billions column
+      (SC-004). Different columns of the same publication; orthogonality is
+      at the column level, not the dataset level. SC-004 still has falsifying
+      value but is weaker than fully-independent input/target sources.
+
+constitution_gates:
+  III_1_no_magic_constants: |
+    Every numeric tunable in the new pipeline traces to either (a) a
+    constitutionally-listed data source (PWT/Hickel via Hickel_HSZ_Drain
+    catalog entry; QCEW; BEA), or (b) LeontiefRentDefines:
+    qcew_carry_forward_max_years (default 5, configurable [0, 20]),
+    phi_hour_outlier_threshold_low/high (defaults ±1000.0).
+  III_2_falsifiability: |
+    SC-004 makes phi_hour falsifiable against published Hickel time series
+    within order-of-magnitude. Null hypothesis: phi_hour uniformly zero
+    (the pre-Spec-057 stub state).
+  III_4_data_catalog: |
+    PATCH amendment 2.6.1 → 2.6.2: added Hickel_HSZ_Drain entry under
+    International Trade, class Fixture (matches Chetty_Atlas precedent).
+  III_7_determinism: |
+    Pipeline iteration uses sorted county FIPS + sorted BEA industries
+    throughout. Cache is process-local and deterministic. Bit-identical
+    output across two runs with same seed (verified via
+    test_reproducibility_same_inputs in test_imperial_rent_pipeline.py).
+  III_8_aleksandrov_test: |
+    Each operator chains to a material process: BEA inter-industry flow =
+    production network; import-share decomposition = empirical fraction;
+    Leontief inverse = total domestic production requirement; periphery
+    wage ratio = labor-time arbitrage; final demand = consumption +
+    investment + government + net exports; QCEW = labor distribution.
+
+implementation:
+  source_files:
+    - src/babylon/economics/tensor_hierarchy/leontief_rent/__init__.py
+    - src/babylon/economics/tensor_hierarchy/leontief_rent/periphery_labor_coefficients.py
+    - src/babylon/economics/tensor_hierarchy/leontief_rent/final_demand.py
+    - src/babylon/economics/tensor_hierarchy/leontief_rent/industry_to_county_allocator.py
+    - src/babylon/economics/tick/system/imperial_rent.py
+    - src/babylon/config/defines/economy_basic.py (LeontiefRentDefines)
+    - src/babylon/models/events.py (CalibrationWarning event family)
+    - src/babylon/models/enums/events.py (3 new EventType entries)
+    - src/babylon/engine/services.py (5 new ServiceContainer fields)
+    - src/babylon/reference/schema.py (FactHickelERDIAnnual, FactBEAFinalDemandAnnual)
+  ingestion_scripts:
+    - tools/ingest/hickel_erdi.py (58 rows, 1960-2017, 3 scale_types)
+    - tools/ingest/bea_final_demand.py (2044 rows, 28 years × 73 industries)
+  test_files:
+    - tests/unit/config/test_leontief_rent_defines.py (8 tests)
+    - tests/unit/models/test_calibration_warning_events.py (15 tests)
+    - tests/unit/economics/tensor_hierarchy/leontief_rent/test_*.py (24 tests)
+    - tests/unit/economics/tick/test_phi_hour_field_shape.py (4 tests)
+    - tests/integration/economics/tick/test_imperial_rent_pipeline.py (9 tests)
+    - tests/integration/economics/tick/test_imperial_rent_perf.py (2 tests)
+    - tests/integration/economics/tick/test_imperial_rent_calibration.py (2 tests)
+
+deferred_to_followup:
+  - Wayne County baseline integration test (SC-002 end-to-end)
+    requires: real DefaultPeripheryLaborCoefficientsSource +
+      DefaultFinalDemandSource + DefaultIndustryToCountyAllocator wired
+      against production reference DB
+  - SC-006 multi-tick savings/accumulation downstream test
+    (T053b created; full assertion deferred to Wayne baseline)
+  - v1.5 industry resolution: wage_ratio_i = ERDI[year] · qcew_us_wage[i] /
+    qcew_us_avg_wage (uses fact_qcew_annual aggregated to BEA Summary
+    via bridge_naics_bea)
+  - factory.py SourceRegistry.builtin_economics() registration of the 4
+    new sources (T062 deferred — current tests use direct ServiceContainer
+    field assignment)
+
+consequences:
+  positive:
+    - First end-to-end realization of Constitution I.2 Imperial Rent (Φ)
+    - Replaces deleted per-worker calculator with structurally-grounded model
+    - Establishes the three-layer axiom enforcement pattern (defensive depth)
+    - Adds CalibrationWarning event family (typed, observable via EventBus)
+    - SC-004 calibration gate is structurally in place
+  negative:
+    - v1 uniform-broadcast simplification (industry resolution deferred to v1.5)
+    - Same Hickel CSV serves as both input (ERDI) and target
+      (annual_drain_usd_billions); orthogonality is at column level only
+    - Wayne County end-to-end integration test deferred to follow-up

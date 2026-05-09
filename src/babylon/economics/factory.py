@@ -35,6 +35,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from babylon.core.protocol_kit import SourceRegistry
 from babylon.economics.capital_stock import CapitalStockCalculator
 from babylon.economics.dynamics.accumulation import DefaultAccumulationCalculator
 from babylon.economics.dynamics.crisis import DefaultCrisisAmplifier
@@ -45,13 +46,13 @@ from babylon.economics.dynamics.transition_engine import DefaultClassTransitionE
 from babylon.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
 from babylon.economics.gamma.gamma_iii import DefaultGammaIIICalculator
 from babylon.economics.melt import (
-    DefaultBasketVisibilityCalculator,
     DefaultMELTCalculator,
 )
 from babylon.economics.melt.adapters import (
     SQLiteBEANationalGDPSource,
     SQLiteQCEWNationalEmploymentSource,
 )
+from babylon.economics.melt.basket_visibility import BasketVisibilityCalculator
 from babylon.economics.throughput.adapters import (
     SQLiteBEACountyGDPSource,
     SQLiteQCEWCountyNAICSSource,
@@ -63,6 +64,22 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from babylon.economics.tensor_registry import TensorRegistry
+
+
+# Spec 058 / FR-006 / commit 6: process-wide registry holding the parameterless
+# subset of melt+gamma Default* classes (per the SC-004-reformulation rationale
+# in plan.md §R5). Lazy-constructed on first access; the dep-laden 3 classes
+# (MELT, RentDifferential, GammaIII) stay constructed in the create_*_services
+# topological resolution below.
+_BUILTIN_REGISTRY: SourceRegistry | None = None
+
+
+def _get_builtin_registry() -> SourceRegistry:
+    """Return the process-wide registry, lazy-constructing on first access."""
+    global _BUILTIN_REGISTRY
+    if _BUILTIN_REGISTRY is None:
+        _BUILTIN_REGISTRY = SourceRegistry().builtin_economics()
+    return _BUILTIN_REGISTRY
 
 
 def create_economics_services(
@@ -84,8 +101,12 @@ def create_economics_services(
         Dict with keys matching ServiceContainer calculator field names,
         all values non-None.
     """
-    # Level 0: No dependencies
-    basket = DefaultBasketVisibilityCalculator()
+    # Level 0: No dependencies — pulled from SourceRegistry per Spec 058 / FR-006.
+    # The registry holds the parameterless subset of migrated melt+gamma Default*
+    # classes; the dep-laden classes (MELT, etc.) stay constructed below in
+    # explicit topological order (SC-004 not-met-by-design — see plan.md §R5).
+    registry = _get_builtin_registry()
+    basket = registry.get(BasketVisibilityCalculator)
 
     # Level 1: Data source adapters
     bea_national = SQLiteBEANationalGDPSource(session_factory)

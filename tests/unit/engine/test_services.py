@@ -11,8 +11,6 @@ Test Intent:
 
 from dataclasses import is_dataclass
 
-import pytest
-
 
 class TestServiceContainer:
     """Test ServiceContainer behavior."""
@@ -103,24 +101,22 @@ class TestServiceContainer:
         finally:
             container.database.close()
 
-    @pytest.mark.skip(
-        reason=(
-            "Blocked on spec 057-leontief-rent-integration. The "
-            "'imperial_rent' formula was removed from the default registry "
-            "in commit a5f73139 (count went 24 -> 23). Spec 057 will "
-            "register a Leontief-based successor."
-        )
-    )
     def test_formulas_has_all_defaults(self) -> None:
-        """The formula registry has all default formulas registered."""
+        """The formula registry has all default formulas registered.
+
+        Spec 057 unquarantine: count is now 23 (was 24). The 'imperial_rent'
+        formula was removed in commit a5f73139; Spec 057 wired the new
+        Leontief pipeline via ServiceContainer fields, NOT FormulaRegistry,
+        so the count stays at 23.
+        """
         from babylon.engine.services import ServiceContainer
 
         container = ServiceContainer.create()
 
         try:
             formulas = container.formulas.list_formulas()
-            assert len(formulas) == 24  # 18 prior + 6 lifecycle (Feature 030)
-            assert "imperial_rent" in formulas
+            assert len(formulas) == 23  # post-Spec 057
+            assert "imperial_rent" not in formulas  # moved to ServiceContainer
             assert "revolution_probability" in formulas
             assert "solidarity_transmission" in formulas  # Sprint 3.4.2
             assert "bourgeoisie_decision" in formulas  # Sprint 3.4.4

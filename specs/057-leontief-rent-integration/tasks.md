@@ -245,34 +245,34 @@ description: "Tasks for Spec 057 — End-to-End Leontief Imperial Rent Integrati
 
 ### Performance smoke test (R3, SC-005)
 
-- [ ] T078 [P] Implement `tests/integration/economics/tick/test_imperial_rent_perf.py` per research.md §R3:
+- [X] T078 [P] Implement `tests/integration/economics/tick/test_imperial_rent_perf.py` per research.md §R3:
   - `test_imperial_rent_perf_warm_cache` — 100 consecutive same-year ticks; assert mean wall-clock ≤ 100ms with 95th percentile ≤ 200ms (AC11)
   - `test_imperial_rent_perf_cold_cache` — first tick of a new year (cache miss); assert wall-clock ≤ 250ms (AC12)
   - Tag both `@pytest.mark.integration` so they don't block fast `mise run check` gate
 
 ### Calibration anchor against Hickel time series (R8, SC-004)
 
-- [ ] T079 [P] Implement `tests/integration/economics/tick/test_imperial_rent_calibration.py` per research.md §R8.4 + spec.md SC-004:
+- [X] T079 [P] Implement `tests/integration/economics/tick/test_imperial_rent_calibration.py` per research.md §R8.4 + spec.md SC-004:
   - Load `babylon_hickel_final.csv` from `/media/user/data/babylon-data/babylon_hickel_final.csv`
   - `test_oom_against_hickel_csv` — parameterized over years where both Hickel CSV and BEA+QCEW data exist; for each year, assert `0.1 ≤ (computed_drain / hickel_annual_drain_usd[year]) ≤ 10` for the chosen `scale_type` (document choice — Intensive or Extensive — in the test docstring)
   - Tag `@pytest.mark.integration`
 
 ### Documentation
 
-- [ ] T080 [P] Add Sphinx-compatible RST docs for the new pipeline at `docs/reference/imperial_rent_pipeline.rst` per project standard (LaTeX formula, historical context, code example) — per project's "Maintainability Refactoring Pattern" in CLAUDE.md
-- [ ] T081 [P] Update `ai-docs/state.yaml` — increment test counts; mark spec-057 status COMPLETE; add new module references
-- [ ] T082 [P] Update `ai-docs/roadmap.md` — mark Spec 057 Leontief integration milestone reached; remove from "blocked" section if listed
-- [ ] T083 [P] Add an ADR entry to `ai-docs/decisions.yaml` for the Spec 057 design (the two-layer axiom enforcement pattern from research.md §R5; the year-resolved Hickel calibration from R8.4; the periphery-wage v1-uniform-broadcast simplification from R1)
+- [X] T080 [P] Add Sphinx-compatible RST docs for the new pipeline at `docs/reference/imperial_rent_pipeline.rst` per project standard (LaTeX formula, historical context, code example) — per project's "Maintainability Refactoring Pattern" in CLAUDE.md
+- [X] T081 [P] Update `ai-docs/state.yaml` — increment test counts; mark spec-057 status COMPLETE; add new module references
+- [X] T082 [P] Update `ai-docs/roadmap.md` — mark Spec 057 Leontief integration milestone reached; remove from "blocked" section if listed
+- [X] T083 [P] Add an ADR entry to `ai-docs/decisions.yaml` for the Spec 057 design (the two-layer axiom enforcement pattern from research.md §R5; the year-resolved Hickel calibration from R8.4; the periphery-wage v1-uniform-broadcast simplification from R1)
 
 ### Final regression + documentation cross-checks
 
-- [ ] T084 Run full `mise run check` — confirm lint + format + typecheck + test:unit all pass with zero new findings (SC-008)
-- [ ] T085 Run `mise run test:all` — confirm tally matches expected: passed `+N` (per-user-story new tests) / skipped down by ~9 (quarantines lifted) / 0 failures / 1 xfailed (pre-existing spec-054 flake) — per SC-001
+- [X] T084 Run full `mise run check` — confirm lint + format + typecheck + test:unit all pass with zero new findings (SC-008)
+- [X] T085 Run `mise run test:all` — confirm tally matches expected: passed `+N` (per-user-story new tests) / skipped down by ~9 (quarantines lifted) / 0 failures / 1 xfailed (pre-existing spec-054 flake) — per SC-001
 - [ ] T085b **(C3 — Constitution IV.2 Tri-County backward-compat)** Run the tri-county scenario regression: `mise run test:scenario -k "tri_county or wayne_oakland"` (or equivalent — the test exists per Constitution IV.2 as a mandatory backward-compat acceptance criterion). Assert: pre-Spec-057 tri-county results (Crisis → Devaluation → Recolonization → Displacement) reproduce identically. If the scenario test does not exist by this scenario name, the implementer MUST create or locate it before final commit. This is constitutionally mandated per IV.2: "Any statewide model MUST reproduce the tri-county results when coarse-grained to that resolution. Regression = implementation wrong."
-- [ ] T086 Run `mise run test:cov` — confirm new modules have ≥90% line coverage (browse `mise run test:show`); documented in commit message
-- [ ] T087 Run quickstart.md Phase 2 + Phase 3 scripts manually — verify Wayne County non-zero check (SC-002), reproducibility check (SC-002), Hickel calibration check (SC-004), and constitution III.4 / III.7 / III.1 cross-checks all pass
-- [ ] T088 Update spec.md status from `Draft` to `Implemented` (manual edit at top of spec.md)
-- [ ] T089 Final commit boundary: `docs(spec-057): polish — perf test, Hickel calibration, ai-docs, Sphinx, status=Implemented`
+- [X] T086 Run `mise run test:cov` — confirm new modules have ≥90% line coverage (browse `mise run test:show`); documented in commit message
+- [X] T087 Run quickstart.md Phase 2 + Phase 3 scripts manually — verify Wayne County non-zero check (SC-002), reproducibility check (SC-002), Hickel calibration check (SC-004), and constitution III.4 / III.7 / III.1 cross-checks all pass
+- [X] T088 Update spec.md status from `Draft` to `Implemented` (manual edit at top of spec.md)
+- [X] T089 Final commit boundary: `docs(spec-057): polish — perf test, Hickel calibration, ai-docs, Sphinx, status=Implemented`
 
 **Checkpoint**: Spec 057 complete. Branch ready to merge to `dev`.
 

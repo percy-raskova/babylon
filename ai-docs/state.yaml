@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.2.0"
-  updated: "2026-03-02"
-  last_sprint: "039-state-apparatus-ai (Complete)"
+  version: "2.3.0"
+  updated: "2026-05-09"
+  last_sprint: "057-leontief-rent-integration (Complete)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `057-leontief-rent-integration`
 **Created**: 2026-05-08
-**Status**: Draft
+**Status**: Implemented (2026-05-09)
 **Input**: User description: "A1-full. Wire `ProductionChainRentCalculator` end-to-end so the simulation actually computes per-county imperial rent (`phi_hour`) from BEA Leontief decomposition + periphery wage coefficients + final demand + industry-to-county QCEW allocation, replacing the no-op stub in `tick/system.py:_compute_imperial_rent`. Implement the missing `PeripheryLaborCoefficientsSource` and `FinalDemandSource` data layers and the industry-to-county allocation step. Delete the orphaned per-county TVT-axiom tests left over from commit `a5f73139`."
 
 ## Background and Motivation

@@ -33,6 +33,7 @@ import warnings
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Protocol
 
+from babylon.core.protocol_kit import CachedSource
 from babylon.economics.melt.types import ClassPosition, PrecarityStatus
 
 if TYPE_CHECKING:
@@ -246,7 +247,7 @@ class ClassPositionClassifier(Protocol):
         ...
 
 
-class DefaultClassPositionClassifier:
+class DefaultClassPositionClassifier(CachedSource[float]):
     """Default implementation of ClassPositionClassifier.
 
     This classifier implements wealth-based class position classification

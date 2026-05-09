@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from typing import Protocol
 
+from babylon.core.protocol_kit import CachedSource
 from babylon.economics.gamma.types import (
     MVP_ERDI_VALUES,
     PERIPHERY_DEFAULT_ERDI,
@@ -95,7 +96,7 @@ class GammaImportCalculator(Protocol):
         ...
 
 
-class DefaultGammaImportCalculator:
+class DefaultGammaImportCalculator(CachedSource[float]):
     """Default implementation using MVP hardcoded ERDI and import share values.
 
     Uses Penn World Tables 10.01 ERDI values and US Census trade data

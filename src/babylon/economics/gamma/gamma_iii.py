@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Protocol
 
+from babylon.core.protocol_kit import CachedSource
 from babylon.economics.gamma.types import GammaIII
 from babylon.economics.gamma.validation import validate_gamma_iii
 from babylon.economics.tensor import NoDataSentinel
@@ -87,7 +88,7 @@ class GammaIIICalculator(Protocol):
         ...
 
 
-class DefaultGammaIIICalculator:
+class DefaultGammaIIICalculator(CachedSource[float]):
     """Default implementation of GammaIIICalculator using ATUS and QCEW data.
 
     Computes gamma_III = L_paid_care / (L_paid_care + L_unpaid_care) using
@@ -115,6 +116,7 @@ class DefaultGammaIIICalculator:
             unpaid_source: Source for unpaid care hours (ATUS).
             paid_source: Source for paid care hours (QCEW).
         """
+        super().__init__()
         self._unpaid_source = unpaid_source
         self._paid_source = paid_source
 

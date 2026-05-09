@@ -114,6 +114,17 @@ class ServiceContainer:
     z1_source: Any = field(default=None)
     housing_data_source: Any = field(default=None)
 
+    # Spec 057 — Leontief Imperial Rent Integration (optional, default None)
+    periphery_labor_source: Any = field(default=None)
+    final_demand_source: Any = field(default=None)
+    industry_county_allocator: Any = field(default=None)
+    production_chain_calculator: Any = field(default=None)
+    bea_industries: list[str] | None = field(default=None)
+    """The configured BEA Summary industry list — defines the alignment baseline
+    for FR-006 (industry-list mismatch fail-fast). Set at scenario-load time;
+    None until then (the Spec 057 pipeline falls back to graceful-degradation
+    stub behavior when None per data-model.md ServiceContainer notes)."""
+
     @classmethod
     def create(
         cls,
@@ -150,6 +161,11 @@ class ServiceContainer:
         financial_crisis_assessor: Any = None,
         z1_source: Any = None,
         housing_data_source: Any = None,
+        periphery_labor_source: Any = None,
+        final_demand_source: Any = None,
+        industry_county_allocator: Any = None,
+        production_chain_calculator: Any = None,
+        bea_industries: list[str] | None = None,
     ) -> ServiceContainer:
         """Factory method to create a fully-initialized container.
 
@@ -216,4 +232,9 @@ class ServiceContainer:
             financial_crisis_assessor=financial_crisis_assessor,
             z1_source=z1_source,
             housing_data_source=housing_data_source,
+            periphery_labor_source=periphery_labor_source,
+            final_demand_source=final_demand_source,
+            industry_county_allocator=industry_county_allocator,
+            production_chain_calculator=production_chain_calculator,
+            bea_industries=bea_industries,
         )

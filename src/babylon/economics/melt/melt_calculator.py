@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+from babylon.core.protocol_kit import CachedSource
 from babylon.economics.tensor import NoDataSentinel
 
 if TYPE_CHECKING:
@@ -131,7 +132,7 @@ class MELTCalculator(Protocol):
         ...
 
 
-class DefaultMELTCalculator:
+class DefaultMELTCalculator(CachedSource[float]):
     """Default implementation of MELTCalculator using BEA GDP and QCEW employment.
 
     This calculator computes τ = GDP / (employment × 2080) using real data
@@ -164,6 +165,7 @@ class DefaultMELTCalculator:
             bea_source: Data source for GDP values
             qcew_source: Data source for employment values
         """
+        super().__init__()
         self._bea_source = bea_source
         self._qcew_source = qcew_source
 

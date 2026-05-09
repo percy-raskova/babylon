@@ -20,6 +20,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from babylon.core.protocol_kit import CachedSource
 from babylon.economics.tensor import NoDataSentinel
 from babylon.models.enums import CommunityType
 
@@ -152,7 +153,7 @@ _MOCK_EMPLOYMENT: dict[str, dict[str, int]] = {
 }
 
 
-class DefaultRentDifferentialCalculator:
+class DefaultRentDifferentialCalculator(CachedSource[float]):
     """Default implementation with mock ACS earnings data.
 
     Uses mock data following the same pattern as DefaultWealthProxyCalculator.
@@ -170,6 +171,7 @@ class DefaultRentDifferentialCalculator:
             earnings_data: Optional ACS earnings data.
             employment_data: Optional QCEW employment data.
         """
+        super().__init__()
         self._earnings = earnings_data if earnings_data is not None else _MOCK_EARNINGS
         self._employment = employment_data if employment_data is not None else _MOCK_EMPLOYMENT
 

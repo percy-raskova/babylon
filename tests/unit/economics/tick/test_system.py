@@ -21,7 +21,6 @@ from tests.unit.economics.tick.conftest import (
     MockCapitalStockCalculator,
     MockClassTransitionEngine,
     MockGammaIIICalculator,
-    MockImperialRentCalculator,
     MockMELTCalculator,
     MockTensor,
     MockTensorRegistry,
@@ -1584,84 +1583,6 @@ class TestComputeTickSummary:
 
 # =============================================================================
 # _compute_imperial_rent — kills ~11 survivors
-# =============================================================================
-
-
-@pytest.mark.skip(
-    reason=(
-        "Blocked on spec 057-leontief-rent-integration. These tests verify "
-        "the per-county TVT-axiom imperial-rent injection that was removed "
-        "in commit a5f73139; the production stub now writes phi_hour=0 "
-        "until the new ProductionChainRentCalculator is wired in. Spec 057's "
-        "FR-009 will decide whether to delete or rewrite this class."
-    )
-)
-class TestComputeImperialRent:
-    """Tests for _compute_imperial_rent (76.1% score)."""
-
-    def test_no_calculator_returns_unchanged(self) -> None:
-        """imperial_rent_calculator=None returns states unchanged."""
-        system = TickDynamicsSystem()
-        county = _make_county(phi_hour=3.50)
-        states = {WAYNE_FIPS: county}
-        params = _make_national_params()
-        services = _make_services(imperial_rent_calculator=None)
-
-        result = system._compute_imperial_rent(states, params, services)
-        assert result[WAYNE_FIPS].phi_hour == pytest.approx(3.50)
-
-    def test_phi_hour_clamped_to_zero(self) -> None:
-        """Negative phi_hour from calculator clamped to 0.0."""
-        system = TickDynamicsSystem()
-        county = _make_county()
-        states = {WAYNE_FIPS: county}
-        params = _make_national_params()
-        services = _make_services(
-            imperial_rent_calculator=MockImperialRentCalculator(phi_hour=-2.0)
-        )
-
-        result = system._compute_imperial_rent(states, params, services)
-        assert result[WAYNE_FIPS].phi_hour == pytest.approx(0.0)
-
-    def test_positive_phi_hour_stored(self) -> None:
-        """Positive phi_hour from calculator stored on county."""
-        system = TickDynamicsSystem()
-        county = _make_county()
-        states = {WAYNE_FIPS: county}
-        params = _make_national_params()
-        services = _make_services(imperial_rent_calculator=MockImperialRentCalculator(phi_hour=5.0))
-
-        result = system._compute_imperial_rent(states, params, services)
-        assert result[WAYNE_FIPS].phi_hour == pytest.approx(5.0)
-
-    def test_national_params_passed_correctly(self) -> None:
-        """NationalParameters built with correct values from NationalTickParameters."""
-        system = TickDynamicsSystem()
-        county = _make_county()
-        states = {WAYNE_FIPS: county}
-        params = _make_national_params(tau=65.0, gamma_basket=0.72)
-
-        class CapturingRentCalc:
-            """Captures input params for assertion."""
-
-            def __init__(self) -> None:
-                self.captured_params: Any = None
-
-            def compute_phi_hour(self, wage: float, params: Any) -> float:
-                self.captured_params = params
-                return 0.0
-
-        calc = CapturingRentCalc()
-        services = _make_services(imperial_rent_calculator=calc)
-
-        system._compute_imperial_rent(states, params, services)
-
-        assert calc.captured_params.tau == pytest.approx(65.0)
-        assert calc.captured_params.gamma_basket == pytest.approx(0.72)
-
-
-# =============================================================================
-# _derive_precarity — kills ~7 survivors
 # =============================================================================
 
 

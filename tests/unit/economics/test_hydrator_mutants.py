@@ -426,54 +426,6 @@ class TestHydrateSNLTConversion:
         assert tensor.excluded_wages == pytest.approx(100.0)
 
 
-@pytest.mark.skip(
-    reason=(
-        "Blocked on spec 057-leontief-rent-integration. References the "
-        "MarxianHydrator.hydrate_with_rent path and the babylon.economics."
-        "reproduction module deleted in commit a5f73139. Spec 057's FR-009 "
-        "will decide whether to delete or rewrite these tests against the "
-        "new pipeline."
-    )
-)
-class TestHydrateWithRent:
-    """Tests for hydrate_with_rent() method."""
-
-    def test_raises_without_rent_calculator(self) -> None:
-        """hydrate_with_rent raises ValueError without calculator."""
-        qcew = MockQCEWSource([("31", 1000.0, 50)])
-        bea = MockBEASource()
-        mapper = MockDeptMapper(
-            allocations={"31": DepartmentAllocation(dept_I=1.0)},
-        )
-
-        hydrator = MarxianHydrator(qcew, bea, mapper, rent_calculator=None)
-
-        with pytest.raises(ValueError, match="ImperialRentCalculator required"):
-            hydrator.hydrate_with_rent("26163", 2022)
-
-    def test_returns_result_with_calculator(self) -> None:
-        """hydrate_with_rent returns ImperialRentResult when calculator provided."""
-        from babylon.economics.reproduction import ImperialRentCalculator, ImperialRentResult
-
-        qcew = MockQCEWSource([("31", 1000.0, 50)])
-        bea = MockBEASource()
-        mapper = MockDeptMapper(
-            allocations={"31": DepartmentAllocation(dept_I=1.0)},
-            default_sv=dict.fromkeys(Department, 1.0),
-            default_cv=dict.fromkeys(Department, 2.0),
-        )
-        rent_calc = ImperialRentCalculator.default()
-
-        hydrator = MarxianHydrator(qcew, bea, mapper, rent_calculator=rent_calc)
-        result = hydrator.hydrate_with_rent("26163", 2022)
-
-        assert isinstance(result, ImperialRentResult)
-        assert result.core_wages == pytest.approx(1000.0)
-        assert result.periphery_baseline > 0
-        # imperial_rent = core_wages - periphery_baseline; sign depends on values
-        assert result.imperial_rent == pytest.approx(result.core_wages - result.periphery_baseline)
-
-
 class TestHydrateEdgeCases:
     """Edge cases for hydrate() method."""
 

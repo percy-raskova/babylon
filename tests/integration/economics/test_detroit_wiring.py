@@ -43,8 +43,11 @@ class TestDetroitWiring:
         assert sim._calculator_overrides is not None
         assert "melt_calculator" in sim._calculator_overrides
         assert "tensor_registry" in sim._calculator_overrides
-        # Vol III financial (11) + Vol II circulation (3) + Vol I production (3) + base (8)
-        assert len(sim._calculator_overrides) == 25
+        # Vol III financial (11) + Vol II circulation (3) + Vol I production (3) + base (7)
+        # Spec 057: base count is 7 (was 8 — 'imperial_rent_calculator' removed in
+        # commit a5f73139; new Leontief pipeline wires 4 fields directly via
+        # ServiceContainer, not through this factory).
+        assert len(sim._calculator_overrides) == 24
         # Key volume-specific calculators present
         assert "interest_calculator" in sim._calculator_overrides
         assert "distribution_calculator" in sim._calculator_overrides

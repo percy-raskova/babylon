@@ -331,8 +331,8 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """58 event types (55 prior + 3 Institution F040)."""
-        assert len(EventType) == 58
+        """61 event types (55 prior + 3 Institution F040 + 3 Spec 057 CalibrationWarning)."""
+        assert len(EventType) == 61
 
     def test_terminal_crisis_event_types_exist(self) -> None:
         """Terminal Crisis Dynamics: Events for endgame arc.

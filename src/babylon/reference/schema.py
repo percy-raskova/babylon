@@ -2385,6 +2385,99 @@ class FactHickelDrain(NormalizedBase):
     )
 
 
+class FactHickelERDIAnnual(NormalizedBase):
+    """Hickel/Sullivan/Zoomkawala (2021) ERDI annual time series 1960–2017.
+
+    Spec 057: ingested from ``/media/user/data/babylon-data/babylon_hickel_final.csv``
+    via ``tools/ingest/hickel_erdi.py``. Provides the periphery-wage signal
+    (``erdi`` column) consumed by ``DefaultPeripheryLaborCoefficientsSource``,
+    AND the calibration target (``annual_drain_usd_billions``) consumed by
+    ``test_imperial_rent_calibration.py`` for SC-004.
+
+    Distinct from :class:`FactHickelDrain`, which stores Hickel resource-flow
+    decomposition (embodied labor / land / energy / raw materials). This table
+    stores the annual ERDI / drain time series at the national-aggregate level.
+
+    Constitutional III.4 status: ``Hickel_HSZ_Drain`` data source listed in
+    ``data-catalog.yaml`` v2.6.2 under ``International Trade``, class ``Fixture``
+    (per Spec 057 / R9 PATCH-level amendment).
+    """
+
+    __tablename__ = "fact_hickel_erdi_annual"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    scale_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    """Hickel methodology selector. Observed values in source CSV:
+    'Extensive' (raw dollar drain; pre-2009 era), 'Intensive' (ERDI-corrected;
+    post-2009), 'Intensive_China_Inflection' (post-2017 China-shift variant).
+    """
+
+    erdi: Mapped[float] = mapped_column(Float, nullable=False)
+    """Exchange Rate Distortion Index — market_exchange_rate / PPP_exchange_rate.
+    Used as the periphery-wage gap proxy by Spec 057 R1 (broadcast uniformly
+    across BEA Summary industries for v1)."""
+
+    annual_drain_usd_billions: Mapped[float] = mapped_column(Float, nullable=False)
+    """Aggregate Global South → North drain, USD billions. Used as Spec 057
+    SC-004 calibration anchor (year-resolved comparison vs computed national
+    total phi_hour · employment-hours)."""
+
+    alpha: Mapped[float | None] = mapped_column(Float)
+    core_gain_per_capita_usd: Mapped[float | None] = mapped_column(Float)
+    is_anchor_year: Mapped[bool] = mapped_column(nullable=False, default=False)
+    china_inflection: Mapped[bool] = mapped_column(nullable=False, default=False)
+    cumulative_drain: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+    """Provenance tag — e.g., 'Hickel_Sullivan_Zoomkawala_2021'."""
+
+    __table_args__ = (
+        Index("idx_hickel_erdi_time", "time_id"),
+        Index("idx_hickel_erdi_scale_type", "scale_type"),
+        # Composite uniqueness: at most one row per (time_id, scale_type)
+        Index("idx_hickel_erdi_time_scale", "time_id", "scale_type", unique=True),
+    )
+
+
+class FactBEAFinalDemandAnnual(NormalizedBase):
+    """BEA Use Table — per-industry "Total Final Uses (GDP)" annual time series.
+
+    Spec 057: ingested from
+    ``/media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx``
+    via ``tools/ingest/bea_final_demand.py``. Provides the final-demand
+    vector ``y`` consumed by ``DefaultFinalDemandSource`` and (downstream)
+    by :func:`babylon.economics.tensor_hierarchy.production_chain_rent.ProductionChainRentCalculator.calculate`.
+
+    Constitutional III.4: the BEA Use Table source is covered by the existing
+    BEA_GDP / BEA_TiVA catalog entries (under ``Federal Economic``); no
+    additional III.4 amendment required.
+    """
+
+    __tablename__ = "fact_bea_final_demand_annual"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    bea_industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_industry.bea_industry_id"), nullable=False
+    )
+    total_final_uses_millions: Mapped[float] = mapped_column(Float, nullable=False)
+    """The "Total Final Uses (GDP)" column from the BEA Use Table for this
+    (year, industry). Sum of: PCE + Private Fixed Investment + Change in
+    Private Inventories + Government Consumption Expenditures + Net Exports.
+    Units: millions of dollars."""
+
+    __table_args__ = (
+        Index("idx_bea_fd_time", "time_id"),
+        Index("idx_bea_fd_industry", "bea_industry_id"),
+        Index(
+            "idx_bea_fd_time_industry",
+            "time_id",
+            "bea_industry_id",
+            unique=True,
+        ),
+    )
+
+
 class FactRicciUnequalExchange(NormalizedBase):
     """Ricci (2021) Unequal Exchange tracking metrics.
 
@@ -2526,6 +2619,8 @@ __all__ = [
     "DimBEAIOTableType",
     "FactBEAIOCoefficient",
     "FactFAFCommodityFlow",
+    "FactBEAFinalDemandAnnual",
     "FactHickelDrain",
+    "FactHickelERDIAnnual",
     "FactRicciUnequalExchange",
 ]

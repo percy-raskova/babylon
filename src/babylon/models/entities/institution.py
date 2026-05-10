@@ -17,6 +17,11 @@ See Also:
     :mod:`babylon.models.enums`: ApparatusType, SocialFunction, etc.
 """
 
+# standalone schema, no $ref — per Spec 059 ADR-036:
+# src/babylon/schemas/entities/institution.schema.json is graph-orphan
+# (no incoming $ref cross-references in the knowledge graph) but is
+# the canonical declarative shape paired with this Pydantic model.
+
 from __future__ import annotations
 
 from typing import Any, Self

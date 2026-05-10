@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 _MAX_HISTORY_WINDOW = 3
 
 
-class ContradictionFieldSystem:
+class ContradictionFieldSystem(SystemBase):
     """Compute contradiction fields for all social-class nodes.
 
     Execution Order: 14 (after all 13 existing economic/consciousness systems)

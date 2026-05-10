@@ -13,6 +13,7 @@ import networkx as nx
 
 from babylon.economics.reserve_army.calculator import DefaultWagePressureCalculator
 from babylon.engine.event_bus import Event
+from babylon.engine.systems.base import SystemBase
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 ContextType = Union[dict[str, Any], "TickContext"]
 
 
-class ReserveArmySystem:
+class ReserveArmySystem(SystemBase):
     """Computes reserve army composition and applies wage pressure.
 
     For each territory node in the graph, reads the reserve_ratio
@@ -36,10 +37,7 @@ class ReserveArmySystem:
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 
-    @property
-    def name(self) -> str:
-        """System identifier."""
-        return "reserve_army"
+    name: ClassVar[str] = "reserve_army"
 
     def step(
         self,

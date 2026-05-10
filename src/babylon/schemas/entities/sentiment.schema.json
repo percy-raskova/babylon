@@ -1,9 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Public sentiment in a region",
   "$id": "https://babylonrpg.com/schemas/entities/sentiment.schema.json",
   "title": "Sentiment",
-  "description": "Public sentiment in a region",
-
   "type": "object",
   "properties": {
     "region": {
@@ -17,11 +16,21 @@
       "items": {
         "type": "object",
         "properties": {
-          "type": { "type": "string" },
-          "magnitude": { "type": "number" },
-          "target": { "type": "string" },
-          "reason": { "type": "string" },
-          "dynamics": { "type": "string" }
+          "type": {
+            "type": "string"
+          },
+          "magnitude": {
+            "type": "number"
+          },
+          "target": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "dynamics": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       }

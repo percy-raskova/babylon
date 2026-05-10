@@ -1,9 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A cultural group",
   "$id": "https://babylonrpg.com/schemas/entities/culture.schema.json",
   "title": "Culture",
-  "description": "A cultural group",
-
   "type": "object",
   "properties": {
     "id": {
@@ -18,17 +17,24 @@
     },
     "values": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "customs": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "attributes": {
       "type": "object",
       "additionalProperties": true
     }
   },
-  "required": ["id", "name"],
+  "required": [
+    "id",
+    "name"
+  ],
   "additionalProperties": true
 }

@@ -38,7 +38,7 @@ from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, OrgType, SectorType
-from babylon.models.events import SimulationEvent, deserialize_event
+from babylon.models.events import EVENT_CLASS_MAP, SimulationEvent, TickEventAdapter
 from babylon.models.types import Currency
 
 if TYPE_CHECKING:
@@ -87,6 +87,34 @@ ORGANIZATION_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         "composition_cache",
     }
 )
+
+
+def _validate_event(data: dict[str, Any]) -> SimulationEvent:
+    """Deserialize an event dict via TickEventAdapter.
+
+    Spec 059 US2 / FR-006 / SC-003: replaces the deleted ``deserialize_event``
+    shim. For events serialized before US2 (lacking the ``kind`` discriminator
+    field), inject ``kind`` from ``event_type`` since both fields use identical
+    string values across the EventType enum.
+    """
+    if "kind" not in data and "event_type" in data:
+        et = data["event_type"]
+        # Mutate in place: event_type values map 1:1 to kind values
+        data = {**data, "kind": et if isinstance(et, str) else et.value}
+    if "kind" in data:
+        return TickEventAdapter.validate_python(data)
+    # Fallback: bare SimulationEvent (no kind, no event_type) — preserve
+    # historical behaviour
+    et = data.get("event_type")
+    et_str: str | None = None
+    if isinstance(et, str):
+        et_str = et
+    elif et is not None and hasattr(et, "value"):
+        et_str = str(et.value)
+    cls: type[SimulationEvent] = (
+        EVENT_CLASS_MAP.get(et_str, SimulationEvent) if et_str else SimulationEvent
+    )
+    return cls.model_validate(data)
 
 
 def _reconstruct_institution(node_data: dict[str, Any]) -> Institution:
@@ -384,7 +412,13 @@ class WorldState(BaseModel):
         if events is None:
             events_data = G.graph.get("events", [])
             if events_data:
-                events = [deserialize_event(e) for e in events_data]
+                # Spec 059 US2 / FR-006 / SC-003: use TickEventAdapter directly
+                # (replaced the deserialize_event shim deleted in this commit).
+                # Backward-compat: legacy events serialized before US2 lack a
+                # ``kind`` field; inject it from ``event_type`` (the kind values
+                # mirror the EventType enum strings 1:1) so the discriminated
+                # adapter can dispatch correctly.
+                events = [_validate_event(e) for e in events_data]
 
         # Reconstruct event_log from graph metadata (Sprint 1.X D2)
         # Only use graph metadata if event_log parameter was not explicitly provided

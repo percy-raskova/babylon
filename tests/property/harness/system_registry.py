@@ -57,12 +57,20 @@ def all_systems() -> tuple[type[System], ...]:
             continue
         mod = importlib.import_module(f"{engine_systems_pkg.__name__}.{mod_info.name}")
         for name, obj in inspect.getmembers(mod, inspect.isclass):
-            if obj.__module__ != mod.__name__:
+            # Per Spec 059 ADR-006.4: an engine/systems/<x>.py module that became
+            # an engine/systems/<x>/ package re-exports its System class from
+            # _legacy.py; obj.__module__ is then "<x>._legacy" rather than "<x>".
+            # Accept both the exact module match and any submodule of it.
+            if not (
+                obj.__module__ == mod.__name__ or obj.__module__.startswith(mod.__name__ + ".")
+            ):
                 continue
             if not name.endswith("System"):
                 continue
             if obj is System:
                 continue
+            if obj in found:
+                continue  # de-dup if both _legacy and __init__ surface the class
             found.append(obj)
     if len(found) < _MIN_EXPECTED_SYSTEMS:
         msg = (

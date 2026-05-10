@@ -20,6 +20,7 @@ unchanged via this re-export.
 from __future__ import annotations
 
 from babylon.engine.systems.edge_transition._legacy import (
+    _VALID_TRANSITIONS,
     CompoundPredicate,
     EdgeModeTransition,
     EdgeTransitionSystem,
@@ -27,6 +28,7 @@ from babylon.engine.systems.edge_transition._legacy import (
 )
 
 __all__ = [
+    "_VALID_TRANSITIONS",
     "CompoundPredicate",
     "EdgeModeTransition",
     "EdgeTransitionSystem",

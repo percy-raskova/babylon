@@ -1,0 +1,24 @@
+# Bundle 2 scenario byte-determinism preflight (T010)
+# Date: 2026-05-09
+
+NOTE: tools/parameter_analysis.py currently exposes only the imperial_circuit
+default scenario; no --scenario CLI flag exists. Per-scenario byte-determinism
+checks for the other 5 builders (two_node, high_tension, labor_aristocracy, us,
+wayne_county) are DEFERRED to T069 (US4 byte-equality verification) which
+runs after the Scenario ABC migration introduces the registry-based scenario
+selection.
+
+Confirmed deterministic at preflight:
+- imperial_circuit: ✓ byte-identical across two 50-tick runs (T009 re-confirms research.md D8)
+
+Pending until T069:
+- two_node
+- high_tension
+- labor_aristocracy
+- us
+- wayne_county
+
+If any of the 5 scenarios is non-deterministic at the byte level when tested
+in T069, contracts/byte-equality.md B2 relaxes that scenario's SC-007 bar to
+numeric tolerance with epsilon=1e-9. The relaxation is recorded in the T069
+commit message.

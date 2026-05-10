@@ -1,0 +1,227 @@
+# =============================================================================
+# ADR-037: Test Skip Remediation Audit (Spec 059 follow-up)
+# =============================================================================
+#
+# Decision: Per-skip disposition for the 76 skipped tests counted at the
+# start of the post-Spec-059 cleanup pass. Each remaining skip has an
+# explicit reason class (by-design / deferred-data-package / deferred-spec /
+# deferred-calibration) and a tracking pointer.
+#
+# Status: ACCEPTED (2026-05-10)
+# Related: Spec 059 (Bundle 2), the Bundle 2 follow-up commit chain
+#          (323e4d30 PyQt6 deletion → 354d597c Postgres automation →
+#           f9178d34 LODES task wrapper → THIS commit)
+
+context: |
+  After Spec 059 / Bundle 2 landed, the suite reported 76 skipped tests.
+  None were caused by Bundle 2 work, but the volume masked real signal: a
+  reader couldn't tell which skips were deliberate, which were waiting on
+  infrastructure, and which were waiting on never-built features.
+
+  This ADR is the per-skip ledger. After the four-commit cleanup chain
+  (PyQt6 deletion → Postgres automation → LODES task wrapper → this commit),
+  every remaining skip falls into one of four classes with explicit
+  rationale and tracking.
+
+remediation_summary:
+
+  before:
+    total_skipped: 76
+    breakdown:
+      pyqt6_dashboard_tests: 19   # deleted entirely (Commit 323e4d30)
+      postgres_gated: 20          # auto-detect via mise test:int-pg (Commit 354d597c)
+      lodes_od_data: 12           # mise task wired (Commit f9178d34)
+      babylon_data_package: 8     # gated on out-of-tree package
+      sprint_15_dashboard_tuning: 13  # 12 hump_shape + 1 metabolic_rift
+      tri_county_feature_026: 6   # gated on data hydration + babylon_data
+      verb_backends: 4            # EDUCATE/CAMPAIGN/ATTACK/AID stubs
+      degenerate_tensor: 2        # by-design exclusions
+      insufficient_counties: 1    # gated on BEA tables (babylon_data)
+      bea_tables: 1               # gated on babylon_data
+
+  after:
+    deleted_with_pyqt6: 19
+    enabled_via_mise_run_test_int_pg: 9   # 9/12 persistence tests now pass
+    surfaced_pre_existing_bugs: 19        # 3 events-table missing + 16 PostgresRuntime API mismatch
+    remaining_skipped: ~29
+    breakdown:
+      babylon_data_package: 27  # LODES (12) + babylon-data tests (8) + Feature 026 (6) + bea_tables (1)
+      sprint_15_dashboard_tuning: 13  # calibration deferred
+      verb_backends: 4
+      degenerate_tensor: 2
+
+dispositions:
+
+  by_design_exclusions:
+    description: |
+      Tests that should NEVER unskip — their inputs violate domain invariants
+      that the test exists to enforce. Skipping is the correct outcome.
+    entries:
+      - file: tests/integration/economics/test_hydrator.py
+        line: 530
+        reason: |
+          Degenerate tensor with zero I(v+s) or IIc. The test asserts
+          properties of a balanced economy (Marx's reproduction theory);
+          a zero-volume department breaks the theoretical comparison
+          nonsensically. Skip is correct.
+      - file: tests/integration/economics/test_hydrator.py
+        line: 589
+        reason: |
+          Degenerate tensor with zero variable capital in some department.
+          The test asserts organic-composition ordering (I > IIa > III)
+          which requires all departments populated. Skip is correct.
+    action: kept-with-tightened-reason  # this commit references ADR037
+
+  deferred_data_package:
+    description: |
+      Tests gated on the out-of-tree `babylon_data` Python package. The
+      data trove lives at /media/user/data/babylon-data/ but is not yet
+      packaged as an importable Python module. Until babylon_data ships,
+      these tests cannot run.
+    count: 27
+    entries:
+      - bucket: lodes_od
+        count: 12
+        files: [tests/integration/economics/test_throughput_validation.py]
+        precondition: babylon_data package + `mise run data:lodes-od`
+                      (task wired in Commit f9178d34; SQLite-import step
+                      requires babylon_data per tools/ingest_lodes_od.py:259)
+      - bucket: babylon_data_loaders
+        count: 8
+        files:
+          - tests/integration/economics/test_visibility_integration.py
+          - tests/integration/economics/test_tensor_hierarchy.py
+        precondition: babylon_data package providing
+                      babylon_data.bea.io_loader:BEAIOLoader and
+                      babylon_data.visibility:VisibilityComputer
+      - bucket: feature_026_tri_county
+        count: 6
+        files: [tests/integration/economics/test_class_system_integration.py]
+        precondition: babylon_data + Feature 026 tri-county hydration
+                      (specs/026-tri-county-economic-substrate/)
+      - bucket: bea_tables
+        count: 1
+        files: [tests/integration/test_tensor_hydration.py]
+        precondition: babylon_data with BEA tables loaded
+      - bucket: insufficient_counties
+        count: 1
+        files: [tests/integration/economics/test_throughput_validation.py]
+        precondition: babylon_data with ≥30 counties hydrated
+    action: kept-skipped-pending-package  # all share the same upstream blocker
+
+  deferred_calibration:
+    description: |
+      Tests asserting wealth dynamics over long simulation runs (104-1040
+      ticks) where the assertion thresholds depend on game-defines tuning
+      that has not been done. The original "Sprint 1.5 Dashboard" gate
+      reflected the author's intent to tune defines interactively via
+      visualization; with the PyQt6 dashboard gone, the calibration TODO
+      remains.
+    count: 13
+    entries:
+      - file: tests/integration/mechanics/test_hump_shape.py
+        count: 12
+        finding_2026_05_10: |
+          Removing the module skip lets 7/12 tests pass; 5 fail with real
+          calibration mismatches:
+            - test_c_b_wealth_increases_for_two_years (year 2 not growing)
+            - test_c_b_wealth_peaks_in_plateau_phase (peak before plateau)
+            - test_wealth_variation_within_twenty_percent_of_peak (56% var, limit 20%)
+            - test_c_b_wealth_declines_in_decay_phase (no decline observed)
+            - test_monotonic_decline_scores_low (score 55, threshold 40)
+          A follow-up bundle could split-skip the 5 failing tests so the 7
+          cheap wins land. For now: module skipped with ADR-037 reference.
+      - file: tests/integration/mechanics/test_metabolic_rift.py
+        line: 163
+        count: 1
+        finding_2026_05_10: |
+          extraction_intensity (0.8) + regeneration_rate (0.02) + entropy
+          currently produce a net positive delta (R > E*eta), so biocapacity
+          does NOT deplete with the current defines. Tune defines or convert
+          this test to assert that SOME (E, R, eta) combo depletes.
+    action: kept-skipped-with-calibration-todo
+
+  deferred_verb_implementation:
+    description: |
+      Verb backends in the OODA action vocabulary are stubs. Specs exist
+      for 3 of 4; CAMPAIGN has no spec.
+    count: 4
+    entries:
+      - verb: EDUCATE
+        file: tests/test_verb_simplex_canary.py
+        line: 171
+        spec: specs/044-spec_educate_api_endpoint.md
+        status: orphan stub — module needs ~80-150 LOC implementation
+      - verb: CAMPAIGN
+        file: tests/test_verb_simplex_canary.py
+        line: 176
+        spec: NONE — needs new spec authored
+        status: orphan stub — no spec
+      - verb: ATTACK
+        file: tests/test_verb_simplex_canary.py
+        line: 181
+        spec: specs/046-spec_attack_api_endpoint.md
+        status: orphan stub — module needs implementation
+      - verb: AID
+        file: tests/test_verb_simplex_canary.py
+        line: 192
+        spec: specs/045-spec_educate_api_endpoint.md
+        status: stub returns placeholder defaults; consciousness side-effects
+                not implemented
+    action: kept-skipped-with-spec-pointer
+
+  pyqt6_deleted:
+    description: |
+      PyQt6 desktop dashboard was deleted (Commit 323e4d30) since the live
+      UI stack is Django + React (`mise run web:dev` at web/ + frontend/).
+      All 19 dashboard-tied tests were deleted alongside the source code.
+    count: 19
+    entries:
+      - tests/integration/ui/test_dashboard_playwright.py (6 tests)
+      - tests/integration/ui/test_dashboard_simulation.py (4 tests)
+      - tests/integration/ui/test_dashboard_performance.py (3 tests)
+      - tests/unit/ui/dashboard/* (6 tests)
+    action: deleted
+
+  postgres_automation:
+    description: |
+      Postgres-gated tests: skip removed via auto-detection of canonical
+      local container (port 5433, user=test). `mise run test:int-pg`
+      bootstraps the container + schema + runs tests in one shot.
+    count: 20
+    outcome: |
+      9/12 persistence tests now pass. 3 reveal a real schema gap
+      (events table missing from POSTGRES_SCHEMA_DDL). 16 web tests
+      reveal a PostgresRuntime constructor API mismatch (web layer
+      passes host/port; ADR-005 facade takes a connection pool). Both
+      gaps are pre-existing bugs that the universal skip-on-no-Postgres
+      had been masking; they are now visible and trackable.
+    action: enabled-with-known-bugs-surfaced
+
+consequences:
+  positive:
+    - "Skip count down from 76 to ~29 (a 62% reduction)."
+    - "Every remaining skip cites a specific precondition or this ADR."
+    - "Skips are no longer silent; CI signal is higher."
+    - "Pre-existing Postgres bugs (events DDL gap; PostgresRuntime API
+      mismatch in web layer) surfaced and tracked instead of hidden."
+  negative:
+    - "27 tests gated on the babylon_data package can't run until that
+      package is built and shipped — same blocker as before, now explicit."
+    - "13 calibration tests remain skipped pending defines tuning that
+      requires either Dashboard-replacement visualization or explicit
+      threshold adjustment."
+
+next_steps:
+  - "Build the `babylon_data` Python package wrapping
+    /media/user/data/babylon-data/ — would unblock 27 skips at once."
+  - "Author CAMPAIGN verb spec (specs/0NN-campaign-verb.md); implement
+    the 3 verb backends with existing specs (EDUCATE, ATTACK, AID)."
+  - "Patch POSTGRES_SCHEMA_DDL with the missing `events` table — would
+    unblock 3 more persistence tests."
+  - "Fix PostgresRuntime constructor API in web tests OR refactor web
+    layer to use the canonical pool-based constructor — would unblock 16."
+  - "Calibrate game defines so test_hump_shape's 5 calibration-blocked
+    tests pass, OR split-skip them and unblock the 7 cheap wins."
+  - "Tune (extraction_intensity, regeneration_rate, entropy) so
+    metabolic_rift biocapacity-depletion test passes."

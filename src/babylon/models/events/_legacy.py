@@ -60,6 +60,7 @@ See Also:
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -140,6 +141,8 @@ class ExtractionEvent(EconomicEvent):
         <EventType.SURPLUS_EXTRACTION: 'surplus_extraction'>
     """
 
+    kind: Literal["surplus_extraction"] = "surplus_extraction"
+
     event_type: EventType = Field(
         default=EventType.SURPLUS_EXTRACTION,
         description="Event type (always SURPLUS_EXTRACTION)",
@@ -183,6 +186,8 @@ class SubsidyEvent(EconomicEvent):
         >>> event.event_type
         <EventType.IMPERIAL_SUBSIDY: 'imperial_subsidy'>
     """
+
+    kind: Literal["imperial_subsidy"] = "imperial_subsidy"
 
     event_type: EventType = Field(
         default=EventType.IMPERIAL_SUBSIDY,
@@ -229,6 +234,8 @@ class CrisisEvent(SimulationEvent):
         >>> event.event_type
         <EventType.ECONOMIC_CRISIS: 'economic_crisis'>
     """
+
+    kind: Literal["economic_crisis"] = "economic_crisis"
 
     event_type: EventType = Field(
         default=EventType.ECONOMIC_CRISIS,
@@ -287,6 +294,8 @@ class SuperwageCrisisEvent(SimulationEvent):
         <EventType.SUPERWAGE_CRISIS: 'superwage_crisis'>
     """
 
+    kind: Literal["superwage_crisis"] = "superwage_crisis"
+
     event_type: EventType = Field(
         default=EventType.SUPERWAGE_CRISIS,
         description="Event type (always SUPERWAGE_CRISIS)",
@@ -332,6 +341,8 @@ class ClassDecompositionEvent(SimulationEvent):
         ...     proletariat_fraction=0.7,
         ... )
     """
+
+    kind: Literal["class_decomposition"] = "class_decomposition"
 
     event_type: EventType = Field(
         default=EventType.CLASS_DECOMPOSITION,
@@ -379,6 +390,8 @@ class ControlRatioCrisisEvent(SimulationEvent):
         ... )
     """
 
+    kind: Literal["control_ratio_crisis"] = "control_ratio_crisis"
+
     event_type: EventType = Field(
         default=EventType.CONTROL_RATIO_CRISIS,
         description="Event type (always CONTROL_RATIO_CRISIS)",
@@ -425,6 +438,8 @@ class TerminalDecisionEvent(SimulationEvent):
         ...     revolution_threshold=0.6,
         ... )
     """
+
+    kind: Literal["terminal_decision"] = "terminal_decision"
 
     event_type: EventType = Field(
         default=EventType.TERMINAL_DECISION,
@@ -494,6 +509,8 @@ class TransmissionEvent(ConsciousnessEvent):
         <EventType.CONSCIOUSNESS_TRANSMISSION: 'consciousness_transmission'>
     """
 
+    kind: Literal["consciousness_transmission"] = "consciousness_transmission"
+
     event_type: EventType = Field(
         default=EventType.CONSCIOUSNESS_TRANSMISSION,
         description="Event type (always CONSCIOUSNESS_TRANSMISSION)",
@@ -538,6 +555,8 @@ class MassAwakeningEvent(ConsciousnessEvent):
         >>> event.event_type
         <EventType.MASS_AWAKENING: 'mass_awakening'>
     """
+
+    kind: Literal["mass_awakening"] = "mass_awakening"
 
     event_type: EventType = Field(
         default=EventType.MASS_AWAKENING,
@@ -605,6 +624,8 @@ class SparkEvent(StruggleEvent):
         <EventType.EXCESSIVE_FORCE: 'excessive_force'>
     """
 
+    kind: Literal["excessive_force"] = "excessive_force"
+
     event_type: EventType = Field(
         default=EventType.EXCESSIVE_FORCE,
         description="Event type (always EXCESSIVE_FORCE)",
@@ -646,6 +667,8 @@ class UprisingEvent(StruggleEvent):
         >>> event.event_type
         <EventType.UPRISING: 'uprising'>
     """
+
+    kind: Literal["uprising"] = "uprising"
 
     event_type: EventType = Field(
         default=EventType.UPRISING,
@@ -693,6 +716,8 @@ class SolidaritySpikeEvent(StruggleEvent):
         >>> event.event_type
         <EventType.SOLIDARITY_SPIKE: 'solidarity_spike'>
     """
+
+    kind: Literal["solidarity_spike"] = "solidarity_spike"
 
     event_type: EventType = Field(
         default=EventType.SOLIDARITY_SPIKE,
@@ -754,6 +779,8 @@ class RuptureEvent(ContradictionEvent):
         >>> event.event_type
         <EventType.RUPTURE: 'rupture'>
     """
+
+    kind: Literal["rupture"] = "rupture"
 
     event_type: EventType = Field(
         default=EventType.RUPTURE,
@@ -820,6 +847,8 @@ class PhaseTransitionEvent(TopologyEvent):
         <EventType.PHASE_TRANSITION: 'phase_transition'>
     """
 
+    kind: Literal["phase_transition"] = "phase_transition"
+
     event_type: EventType = Field(
         default=EventType.PHASE_TRANSITION,
         description="Event type (always PHASE_TRANSITION)",
@@ -874,6 +903,8 @@ class BifurcationTendencyEvent(TopologyEvent):
             communities bridging contradiction axes.
         legitimation_index: Population-weighted mean legitimation index.
     """
+
+    kind: Literal["bifurcation_tendency_change"] = "bifurcation_tendency_change"
 
     event_type: EventType = Field(
         default=EventType.BIFURCATION_TENDENCY_CHANGE,
@@ -938,6 +969,8 @@ class EndgameEvent(SimulationEvent):
         <EventType.ENDGAME_REACHED: 'endgame_reached'>
     """
 
+    kind: Literal["endgame_reached"] = "endgame_reached"
+
     event_type: EventType = Field(
         default=EventType.ENDGAME_REACHED,
         description="Event type (always ENDGAME_REACHED)",
@@ -982,6 +1015,8 @@ class AxiomViolationEvent(SimulationEvent):
         threshold: The expected lower bound (default 1.0).
     """
 
+    kind: Literal["calibration_warning.axiom_violation"] = "calibration_warning.axiom_violation"
+
     event_type: EventType = Field(
         default=EventType.CALIBRATION_AXIOM_VIOLATION,
         description="Event type (always CALIBRATION_AXIOM_VIOLATION)",
@@ -1010,6 +1045,10 @@ class QcewCarryForwardEvent(SimulationEvent):
         look_back_distance: year - look_back_year (use -1 sentinel for
             "Spec 057 pipeline not wired" pattern).
     """
+
+    kind: Literal["calibration_warning.qcew_carry_forward"] = (
+        "calibration_warning.qcew_carry_forward"
+    )
 
     event_type: EventType = Field(
         default=EventType.CALIBRATION_QCEW_CARRY_FORWARD,
@@ -1041,6 +1080,8 @@ class PhiHourOutlierEvent(SimulationEvent):
         threshold_low: Plausibility lower bound (default -1000.0).
         threshold_high: Plausibility upper bound (default 1000.0).
     """
+
+    kind: Literal["calibration_warning.phi_hour_outlier"] = "calibration_warning.phi_hour_outlier"
 
     event_type: EventType = Field(
         default=EventType.CALIBRATION_PHI_HOUR_OUTLIER,
@@ -1081,75 +1122,39 @@ EVENT_CLASS_MAP: dict[str, type[SimulationEvent]] = {
 }
 
 
-def deserialize_event(data: dict[str, object]) -> SimulationEvent:
-    """Deserialize an event from a dict to the appropriate SimulationEvent subclass.
-
-    This is used by WorldState.from_graph() to restore events from graph metadata.
-    The event_type field determines which subclass to use for deserialization.
-
-    Args:
-        data: Dict containing event data, must have "event_type" key.
-
-    Returns:
-        The appropriate SimulationEvent subclass instance.
-
-    Raises:
-        ValueError: If event_type is missing or unrecognized.
-
-    Example:
-        >>> data = {"event_type": "surplus_extraction", "tick": 5, ...}
-        >>> event = deserialize_event(data)
-        >>> isinstance(event, ExtractionEvent)
-        True
-    """
-    event_type = data.get("event_type")
-
-    # Handle EventType enum or string
-    if isinstance(event_type, EventType):
-        event_type_str = event_type.value
-    elif isinstance(event_type, str):
-        event_type_str = event_type
-    else:
-        raise ValueError(f"Missing or invalid event_type in event data: {data}")
-
-    # Look up the appropriate class
-    event_class = EVENT_CLASS_MAP.get(event_type_str, SimulationEvent)
-
-    # Deserialize using Pydantic's model_validate
-    return event_class.model_validate(data)
+# Spec 059 US2 / FR-006 / SC-003: ``deserialize_event`` was DELETED in this
+# bundle. All callers now use ``TickEventAdapter.validate_python(data)``
+# directly. Legacy callers deserializing events without a ``kind`` field
+# inject it from ``event_type`` first — see
+# ``babylon.models.world_state._validate_event`` for the canonical pattern.
+# ``EVENT_CLASS_MAP`` above is preserved as the kind→class lookup that
+# ``_validate_event`` falls back on when neither ``kind`` nor ``event_type``
+# discriminator is recoverable.
 
 
 # =============================================================================
-# TickEvent — Spec 059 US2 / ADR-004 (partial: discriminator-field migration deferred)
+# TickEvent — Spec 059 US2 / ADR-004 (FR-004 + FR-005 + FR-006)
 # =============================================================================
 #
-# TickEvent is the canonical sum type for all 19 leaf Event variants emitted by
-# the simulation engine in a single tick.
+# TickEvent is the canonical Pydantic 2 *discriminated* union over the 19 leaf
+# Event variants. Each leaf carries a unique ``kind: Literal["..."]`` field;
+# Pydantic's ``Field(discriminator="kind")`` dispatches automatically on the
+# kind value during validation.
 #
-# Status (Spec 059, May 2026): the type alias is provided as a Union so callers
-# can begin writing ``list[TickEvent]`` annotations against the canonical name.
-# The full Pydantic 2 *discriminated* union (with a ``kind: Literal["..."]``
-# field on each leaf variant + ``Field(discriminator="kind")``) per ADR-004's
-# acceptance criteria is DEFERRED to a follow-up bundle. Reasons:
+# Status: the discriminator-field migration shipped in Spec 059 US2 (no
+# longer deferred). ``deserialize_event`` now prefers ``TickEventAdapter``
+# when ``kind`` is present in the input dict and falls back to the legacy
+# ``EVENT_CLASS_MAP`` path only for older persisted data without a ``kind``
+# field. This preserves backward compatibility with serialized world-states
+# while enabling typecheck-time exhaustiveness for all new code.
 #
-# 1. Each of the 19 leaf variants currently uses ``event_type: EventType`` (a
-#    runtime enum) as its de facto discriminator. Replacing that field with
-#    ``kind: Literal[...]`` cleanly is a 19-class migration that touches every
-#    test and call site that constructs an event by ``event_type=`` keyword
-#    — high blast radius, low marginal value without observer dispatch
-#    migration (research.md D7: zero observers currently use ``match event:``).
-# 2. ``deserialize_event`` already provides explicit type dispatch via the
-#    ``EVENT_CLASS_MAP`` lookup; the runtime path is correct.
-# 3. The follow-up bundle that adds ``kind: Literal[...]`` will also
-#    introduce ``match event:`` dispatch in observers and delete
-#    ``deserialize_event``, completing FR-004 / FR-005 / FR-006 / FR-008
-#    / SC-003 / SC-004 / SC-010 in one cohesive change.
+# Each leaf variant retains its original ``event_type: EventType`` field
+# (additive: both fields coexist on every instance). Removing ``event_type``
+# is out-of-scope for Bundle 2 — it would break every test and call site
+# that constructs an event with ``event_type=EventType.X`` as a keyword arg.
 #
-# What's available NOW (this commit):
-# - The ``TickEvent`` name resolves and can be used in type annotations.
-# - ``TickEventAdapter = TypeAdapter(TickEvent)`` validates a known variant
-#   instance against the Union (no discriminator-based dispatch yet).
-TickEvent = (
+# Discriminated union (Spec 059 US2 / ADR-004): Pydantic dispatches on `kind`
+TickEvent = Annotated[
     ExtractionEvent
     | SubsidyEvent
     | CrisisEvent
@@ -1168,8 +1173,9 @@ TickEvent = (
     | EndgameEvent
     | AxiomViolationEvent
     | QcewCarryForwardEvent
-    | PhiHourOutlierEvent
-)
+    | PhiHourOutlierEvent,
+    Field(discriminator="kind"),
+]
 """TickEvent: sum type for the 19 leaf Event variants. See block comment above."""
 
 TickEventAdapter: TypeAdapter[TickEvent] = TypeAdapter(TickEvent)

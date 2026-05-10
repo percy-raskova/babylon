@@ -23,13 +23,14 @@ if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.event_bus import Event
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 from babylon.models.enums import EventType
 
 logger = logging.getLogger(__name__)
 
 
-class FieldDerivativeSystem:
+class FieldDerivativeSystem(SystemBase):
     """Compute spatial and temporal derivatives for contradiction fields.
 
     Execution Order: 15 (after ContradictionFieldSystem)
@@ -39,8 +40,7 @@ class FieldDerivativeSystem:
     derivatives from the rolling history in persistent_data.
     """
 
-    name = "field_derivative"
-
+    name: ClassVar[str] = "field_derivative"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 

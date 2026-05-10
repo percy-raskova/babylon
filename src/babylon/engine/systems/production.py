@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ _EMPLOYED_PRODUCER_ROLES: frozenset[SocialRole] = frozenset({SocialRole.LABOR_AR
 _PRODUCER_ROLES: frozenset[SocialRole] = _DIRECT_PRODUCER_ROLES | _EMPLOYED_PRODUCER_ROLES
 
 
-class ProductionSystem:
+class ProductionSystem(SystemBase):
     """Phase 1: Value creation - The Soil.
 
     Workers produce wealth proportional to territory biocapacity.
@@ -83,10 +84,7 @@ class ProductionSystem:
         self.invariants = [NonNegativeWealth()]
         self.phase = Phase.PRODUCTION
 
-    @property
-    def name(self) -> str:
-        """System identifier."""
-        return "production"
+    name: ClassVar[str] = "production"
 
     def step(
         self,

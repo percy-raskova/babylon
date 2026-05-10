@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 # Context keys for storing previous values between ticks
@@ -70,7 +71,7 @@ def _get_ideology_profile_from_node(
     }  # pragma: no mutate
 
 
-class ConsciousnessSystem:
+class ConsciousnessSystem(SystemBase):
     """Phase 2: Consciousness Drift based on material conditions.
 
     Sprint 3.4.3 (George Jackson Refactor): Uses multi-dimensional IdeologicalProfile.
@@ -84,8 +85,7 @@ class ConsciousnessSystem:
     - Routes agitation to either class_consciousness or national_identity
     """
 
-    name = "Consciousness Drift"
-
+    name: ClassVar[str] = "Consciousness Drift"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 

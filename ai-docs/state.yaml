@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.3.0"
-  updated: "2026-05-09"
-  last_sprint: "057-leontief-rent-integration (Complete)"
+  version: "2.4.0"
+  updated: "2026-05-10"
+  last_sprint: "059-adr-bundle-2-post-spec-057 (Complete; sub-component LOC splits deferred)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"

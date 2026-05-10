@@ -76,16 +76,19 @@ class SystemBase(ABC):
 
     @staticmethod
     def _read(
-        node: GraphNode,
+        source: GraphNode | dict[str, Any],
         key: str,
         *,
         required: bool = False,
         default: Any = None,
     ) -> Any:
-        """Read attribute ``key`` from a :class:`GraphNode`.
+        """Read attribute ``key`` from a :class:`GraphNode` or attribute dict.
 
         Args:
-            node: A GraphProtocol :class:`GraphNode` whose attributes to read.
+            source: Either a :class:`GraphNode` (read ``source.attributes``)
+                or a raw attribute ``dict`` (e.g., the ``data`` dict held by a
+                :class:`networkx.DiGraph` node, or ``GraphNode.attributes``
+                already unwrapped).
             key: The attribute name.
             required: If True, raise :class:`KeyError` when the attribute is
                 absent — surfaces schema bugs at the read site instead of
@@ -100,11 +103,17 @@ class SystemBase(ABC):
 
         Raises:
             KeyError: When ``required`` is True and ``key`` is absent. The
-                message names both the attribute and the node id, per ADR-003.
+                diagnostic names the attribute and (when available) the node
+                id, per ADR-003.
         """
-        attrs = node.attributes
+        if isinstance(source, dict):
+            attrs = source
+            node_id = source.get("_node_id") or source.get("id") or "<dict>"
+        else:
+            attrs = source.attributes
+            node_id = source.id
         if required and key not in attrs:
-            raise KeyError(f"Required attribute '{key}' missing on graph node '{node.id}'")
+            raise KeyError(f"Required attribute '{key}' missing on graph node '{node_id}'")
         return attrs.get(key, default)
 
     @staticmethod

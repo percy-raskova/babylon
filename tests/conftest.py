@@ -275,11 +275,16 @@ def django_db_setup(  # type: ignore[no-untyped-def]
 def pg_dsn() -> str:
     """PostgreSQL DSN for integration tests.
 
-    Reads from BABYLON_TEST_PG_DSN env var or defaults to localhost.
+    Reads from BABYLON_TEST_PG_DSN env var; defaults to the canonical local
+    test container created by ``mise run db:up`` (port 5433, user/password
+    ``test``/``test``, db ``babylon_test``). Developers can either:
+      - Run ``mise run db:up`` once and then any pytest invocation finds it,
+      - Run ``mise run test:int-pg`` for the one-shot setup-test-teardown
+        cycle.
     """
     return os.environ.get(
         "BABYLON_TEST_PG_DSN",
-        "dbname=babylon_test host=localhost",
+        "dbname=babylon_test host=localhost port=5433 user=test password=test",
     )
 
 

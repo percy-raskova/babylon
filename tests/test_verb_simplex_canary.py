@@ -168,17 +168,23 @@ class TestVerbSimplexCanaries:
             post_agitation = base_graph.nodes[target_id].get("agitation", 0.0)
             assert post_agitation > pre_agitation, "Mobilize did not create agitation"
 
-    @pytest.mark.skip(reason="Not implemented: EDUCATE backend")
+    @pytest.mark.skip(
+        reason="EDUCATE backend deferred (ADR-037 / spec 044): module needs ~80-150 LOC implementation"
+    )
     def test_educate_simplex_drift(self, base_graph):
         """EDUCATE: Modifies education_pressure, verify CI (r) routing."""
         pass
 
-    @pytest.mark.skip(reason="Not implemented: CAMPAIGN backend")
+    @pytest.mark.skip(
+        reason="CAMPAIGN backend deferred (ADR-037): no spec yet; needs new specs/0NN-campaign-verb.md"
+    )
     def test_campaign_simplex_routing(self, base_graph):
         """CAMPAIGN: modifies institutional_factor, drifts toward l, avoids r (liberal trap)."""
         pass
 
-    @pytest.mark.skip(reason="Not implemented: ATTACK backend")
+    @pytest.mark.skip(
+        reason="ATTACK backend deferred (ADR-037 / spec 046): module needs implementation"
+    )
     def test_attack_simplex_routing(self, base_graph):
         """ATTACK: Generates collateral agitation and repression_backfire."""
         pass
@@ -186,7 +192,10 @@ class TestVerbSimplexCanaries:
     def test_aid_simplex_drift(self, base_graph):
         """AID: increases solidarity, verification of positive delta-r."""
         if not resolve_aid:
-            pytest.skip("AID backend resolution logic absent")
+            pytest.skip("AID backend resolution logic absent (ADR-037 / spec 045)")
 
         # Currently resolve_aid is just a stub returning nothing/pass. So we skip dynamically if it isn't mutating.
-        pytest.skip("AID implemented as stub, cannot verify consciousness side-effects just yet")
+        pytest.skip(
+            "AID stub deferred (ADR-037 / spec 045): consciousness side-effects not "
+            "yet implemented; resolve_aid returns placeholder defaults."
+        )

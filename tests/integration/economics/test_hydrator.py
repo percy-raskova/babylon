@@ -527,7 +527,11 @@ class TestReproductionSchemaConditions:
 
         # Skip if either is zero (degenerate case)
         if I_living == 0.0 or II_constant == 0.0:
-            pytest.skip("Degenerate tensor with zero I(v+s) or IIc")
+            pytest.skip(
+                "By-design exclusion (ADR-037): degenerate tensor with zero "
+                "I(v+s) or IIc cannot express Marx's reproduction theory; "
+                "the test asserts properties of a balanced economy."
+            )
 
         ratio = I_living / II_constant
 
@@ -586,7 +590,11 @@ class TestOrganicCompositionOrdering:
 
         # Skip if any department has zero variable capital
         if tensor.dept_I.v == 0.0 or tensor.dept_IIa.v == 0.0 or tensor.dept_III.v == 0.0:
-            pytest.skip("Degenerate tensor with zero variable capital in some department")
+            pytest.skip(
+                "By-design exclusion (ADR-037): degenerate tensor with zero "
+                "variable capital in some department breaks the organic-"
+                "composition ordering (I > IIa > III) the test exists to enforce."
+            )
 
         # Get organic compositions
         occ_I = tensor.dept_I.organic_composition
@@ -640,7 +648,11 @@ class TestExploitationRateOrdering:
 
         # Skip if any department has zero variable capital
         if tensor.dept_IIa.v == 0.0 or tensor.dept_IIb.v == 0.0 or tensor.dept_III.v == 0.0:
-            pytest.skip("Degenerate tensor with zero variable capital in some department")
+            pytest.skip(
+                "By-design exclusion (ADR-037): degenerate tensor with zero "
+                "variable capital in some department breaks the organic-"
+                "composition ordering (I > IIa > III) the test exists to enforce."
+            )
 
         # Get exploitation rates
         sv_IIa = tensor.dept_IIa.exploitation_rate

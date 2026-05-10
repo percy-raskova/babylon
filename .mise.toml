@@ -530,6 +530,58 @@ run = "docker stop babylon-pg-isolated && docker rm babylon-pg-isolated"
 description = "Run psql directly against the isolated test database"
 run = "PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test"
 
+[tasks."db:bootstrap"]
+description = "Apply babylon canonical schema to the running test container (idempotent)"
+run = """
+poetry run python -c "
+import psycopg
+from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL
+dsn = 'host=localhost port=5433 dbname=babylon_test user=test password=test'
+with psycopg.connect(dsn, autocommit=True) as conn:
+    for ddl in POSTGRES_SCHEMA_DDL:
+        try:
+            conn.execute(ddl)
+        except psycopg.errors.DuplicateTable:
+            pass
+        except psycopg.errors.DuplicateObject:
+            pass
+        except psycopg.errors.UndefinedObject as e:
+            print(f'WARN missing extension: {e}')
+        except Exception as e:
+            print(f'WARN DDL: {e}')
+print('Schema bootstrap complete.')
+"
+"""
+
+[tasks."test:int-pg"]
+description = "One-shot Postgres-gated integration tests: container + schema + tests; leaves container running"
+run = """
+# Idempotent container setup
+docker start babylon-pg-isolated 2>/dev/null \\
+  || docker run --name babylon-pg-isolated \\
+       -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test -e POSTGRES_DB=babylon_test \\
+       -p 5433:5432 -d postgres:15
+
+# Wait for connection
+for i in $(seq 1 20); do
+  if PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -c "SELECT 1" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.5
+done
+
+# Apply canonical schema (idempotent; tolerates already-applied)
+mise run db:bootstrap
+
+export BABYLON_TEST_PG_DSN="dbname=babylon_test host=localhost port=5433 user=test password=test"
+export POSTGRES_HOST=localhost
+poetry run pytest \\
+  tests/integration/test_postgres_integration.py \\
+  tests/integration/test_persistence_monotonic_postgres.py \\
+  tests/integration/test_archival_integration.py \\
+  -m "not ai" -p no:randomly --no-header -q
+"""
+
 # =============================================================================
 # DOCUMENTATION (Namespaced)
 # =============================================================================

@@ -1,0 +1,5 @@
+0.12s call     tests/unit/formulas/test_survival_calculus_properties.py::TestCrossoverThresholdProperties::test_higher_cohesion_raises_crossover
+- Generated html report: file:///home/user/projects/game/babylon/reports/test-results/unit/report.html -
+[36m[1m=========================== short test summary info ============================[0m
+[33mXFAIL[0m tests/unit/economics/test_factory_shims.py::[1mTestFactoryShimsBacked::test_factory_loc_under_150[0m - SC-004 not-met-by-design (Spec 058 commit 6, plan.md §R5 corrected): factory.py contains topological dependency resolution that SourceRegistry's Callable[[], object] model does not replace. The <150 LOC target was based on a misreading of factory.py as boilerplate. xfail retained deliberately as the audit trail for the spec-vs-reality learning; a future bundle may revisit the dep-graph refactor.
+[33m================ [32m8254 passed[0m, [33m[1m1 xfailed[0m, [33m[1m33 warnings[0m[33m in 55.63s[0m[33m =================[0m

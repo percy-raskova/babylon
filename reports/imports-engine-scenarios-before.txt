@@ -1,0 +1,9 @@
+            "but it was found in imports from babylon.engine.scenarios"
+            f"Expected 'create_imperial_circuit_scenario' in imports from babylon.engine.scenarios, "
+from babylon.engine.scenarios import (
+from babylon.engine.scenarios import apply_scenario, create_two_node_scenario
+from babylon.engine.scenarios import create_imperial_circuit_scenario
+        from babylon.engine.scenarios import create_two_node_scenario
+from babylon.engine.scenarios import create_two_node_scenario
+from babylon.engine.scenarios import get_multiverse_scenarios
+from babylon.engine.scenarios_wayne_county import create_wayne_county_scenario

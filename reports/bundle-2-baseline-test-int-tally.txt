@@ -1,0 +1,5 @@
+[33mSKIPPED[0m [1] tests/integration/economics/test_throughput_validation.py:807: LODES OD data not loaded
+[33mSKIPPED[0m [1] tests/integration/economics/test_throughput_validation.py:818: LODES OD data not loaded
+[33mSKIPPED[0m [1] tests/integration/economics/test_throughput_validation.py:832: LODES OD data not loaded
+[33mXFAIL[0m tests/integration/test_db_initialization_queries.py::[1mTestTributeEdges::test_institutional_ownership_has_absentee_field[0m - DATA GAP: absentee_owned column exists but is uniformly 0 across all 6,570 rows. Census ACS does not directly provide absentee ownership breakdowns; this field requires a supplementary ETL from CoreLogic, ATTOM, or similar property-record sources. Tracked as a known gap for the Tribute edge imputation model.
+[33m====== [32m617 passed[0m, [33m[1m72 skipped[0m, [33m[1m1 xfailed[0m, [33m[1m1 warning[0m[33m in 167.60s (0:02:47)[0m[33m =======[0m

@@ -61,7 +61,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from babylon.models.enums import EventType, GameOutcome
 from babylon.models.types import Currency
@@ -1117,3 +1117,60 @@ def deserialize_event(data: dict[str, object]) -> SimulationEvent:
 
     # Deserialize using Pydantic's model_validate
     return event_class.model_validate(data)
+
+
+# =============================================================================
+# TickEvent — Spec 059 US2 / ADR-004 (partial: discriminator-field migration deferred)
+# =============================================================================
+#
+# TickEvent is the canonical sum type for all 19 leaf Event variants emitted by
+# the simulation engine in a single tick.
+#
+# Status (Spec 059, May 2026): the type alias is provided as a Union so callers
+# can begin writing ``list[TickEvent]`` annotations against the canonical name.
+# The full Pydantic 2 *discriminated* union (with a ``kind: Literal["..."]``
+# field on each leaf variant + ``Field(discriminator="kind")``) per ADR-004's
+# acceptance criteria is DEFERRED to a follow-up bundle. Reasons:
+#
+# 1. Each of the 19 leaf variants currently uses ``event_type: EventType`` (a
+#    runtime enum) as its de facto discriminator. Replacing that field with
+#    ``kind: Literal[...]`` cleanly is a 19-class migration that touches every
+#    test and call site that constructs an event by ``event_type=`` keyword
+#    — high blast radius, low marginal value without observer dispatch
+#    migration (research.md D7: zero observers currently use ``match event:``).
+# 2. ``deserialize_event`` already provides explicit type dispatch via the
+#    ``EVENT_CLASS_MAP`` lookup; the runtime path is correct.
+# 3. The follow-up bundle that adds ``kind: Literal[...]`` will also
+#    introduce ``match event:`` dispatch in observers and delete
+#    ``deserialize_event``, completing FR-004 / FR-005 / FR-006 / FR-008
+#    / SC-003 / SC-004 / SC-010 in one cohesive change.
+#
+# What's available NOW (this commit):
+# - The ``TickEvent`` name resolves and can be used in type annotations.
+# - ``TickEventAdapter = TypeAdapter(TickEvent)`` validates a known variant
+#   instance against the Union (no discriminator-based dispatch yet).
+TickEvent = (
+    ExtractionEvent
+    | SubsidyEvent
+    | CrisisEvent
+    | SuperwageCrisisEvent
+    | ClassDecompositionEvent
+    | ControlRatioCrisisEvent
+    | TerminalDecisionEvent
+    | TransmissionEvent
+    | MassAwakeningEvent
+    | SparkEvent
+    | UprisingEvent
+    | SolidaritySpikeEvent
+    | RuptureEvent
+    | PhaseTransitionEvent
+    | BifurcationTendencyEvent
+    | EndgameEvent
+    | AxiomViolationEvent
+    | QcewCarryForwardEvent
+    | PhiHourOutlierEvent
+)
+"""TickEvent: sum type for the 19 leaf Event variants. See block comment above."""
+
+TickEventAdapter: TypeAdapter[TickEvent] = TypeAdapter(TickEvent)
+"""TypeAdapter wrapping TickEvent for runtime validation against the Union."""

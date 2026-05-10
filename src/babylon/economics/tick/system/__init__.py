@@ -25,7 +25,7 @@ See Also:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import networkx as nx
 
@@ -66,6 +66,7 @@ from babylon.economics.tick.types import (
     SmoothedCoefficients,
     TickSummary,
 )
+from babylon.engine.systems.base import SystemBase
 
 if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
@@ -86,7 +87,7 @@ DEFAULT_BANKRUPTCY_RATE: float = 0.006
 DEFAULT_EVICTION_RATE: float = 0.063
 
 
-class TickDynamicsSystem:
+class TickDynamicsSystem(SystemBase):
     """Engine System for per-tick economic state evolution.
 
     Conforms to the System protocol (name + step). Executes the 8-step
@@ -97,6 +98,8 @@ class TickDynamicsSystem:
         >>> system.step(graph, services, context)
     """
 
+    name: ClassVar[str] = "tick_dynamics"
+
     def __init__(self) -> None:
         self._legacy_crisis_detector = ThresholdCrisisDetector()
         self._crisis_detector: MultiPeriodCrisisDetector | None = None
@@ -104,11 +107,6 @@ class TickDynamicsSystem:
         self._precarity_deriver = PrecarityDeriver()
         self._smoother = CoefficientSmoother(alpha=0.3)
         self._rate_calculator = DerivedRateCalculator()
-
-    @property
-    def name(self) -> str:
-        """System identifier."""
-        return "tick_dynamics"
 
     def step(
         self,

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 # Prisoner classes (internal proletariat + lumpen)
@@ -85,7 +86,7 @@ def _count_prisoner_population_and_org(
     return total_pop, org_sum
 
 
-class ControlRatioSystem:
+class ControlRatioSystem(SystemBase):
     """Track guard:prisoner ratio and trigger terminal decision.
 
     When enforcers × CONTROL_CAPACITY < prisoners, a control ratio

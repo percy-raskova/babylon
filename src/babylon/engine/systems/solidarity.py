@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 
@@ -85,7 +86,7 @@ def _update_ideology_class_consciousness(  # pragma: no mutate — node updater 
     }  # pragma: no mutate
 
 
-class SolidaritySystem:
+class SolidaritySystem(SystemBase):
     """Proletarian Internationalism - Consciousness Transmission System.
 
     Implements consciousness transmission via SOLIDARITY edges:
@@ -97,8 +98,7 @@ class SolidaritySystem:
     only the class_consciousness dimension.
     """
 
-    name = "Solidarity"
-
+    name: ClassVar[str] = "Solidarity"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 

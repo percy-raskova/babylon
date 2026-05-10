@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 
@@ -42,7 +43,7 @@ def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
     return 0.0
 
 
-class ImperialRentSystem:
+class ImperialRentSystem(SystemBase):
     """5-phase Imperial Circuit: Extraction → Tribute → Wages → Subsidy → Decision.
 
     ADR032: Subsistence burn moved to VitalitySystem (Phase 1: The Drain).

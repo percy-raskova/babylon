@@ -216,7 +216,13 @@ class Simulation:
         tensor_registry = TensorRegistry()
 
         # Locate NAICS-to-department mapping YAML
-        economics_path = Path(__file__).parent.parent / "economics" / "data" / "naics_to_dept.yaml"
+        # Spec 059 ADR-005 Part B: this file moved from engine/simulation.py to
+        # engine/simulation/_legacy.py — extra .parent compensates for the
+        # additional package directory (now: simulation/_legacy.py → simulation/
+        # → engine/ → babylon/ → economics/data/naics_to_dept.yaml).
+        economics_path = (
+            Path(__file__).parent.parent.parent / "economics" / "data" / "naics_to_dept.yaml"
+        )
 
         with get_reference_session() as session:
             qcew_source = SQLiteQCEWSource(session)

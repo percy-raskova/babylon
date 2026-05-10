@@ -530,6 +530,20 @@ run = "docker stop babylon-pg-isolated && docker rm babylon-pg-isolated"
 description = "Run psql directly against the isolated test database"
 run = "PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test"
 
+[tasks."data:lodes-od"]
+description = "Download LODES OD commuter flow data (Michigan, current year). Tri-county minimum: --states mi"
+usage = '''
+arg "[states]" help="Space-separated state abbreviations (default: mi)" default="mi"
+arg "[start_year]" help="First LODES year to download" default="2022"
+arg "[end_year]" help="Last LODES year to download" default="2022"
+'''
+run = """
+poetry run python tools/ingest_lodes_od.py \\
+  --states ${usage_states} \\
+  --start-year ${usage_start_year} \\
+  --end-year ${usage_end_year}
+"""
+
 [tasks."db:bootstrap"]
 description = "Apply babylon canonical schema to the running test container (idempotent)"
 run = """

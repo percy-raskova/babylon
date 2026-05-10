@@ -47,11 +47,17 @@ class SystemBase(ABC):
     @abstractmethod
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: nx.DiGraph[str],
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
-        """Apply system logic to the world graph (in-place mutation)."""
+        """Apply system logic to the world graph (in-place mutation).
+
+        The signature matches :class:`babylon.engine.systems.protocol.System`
+        exactly. Subclasses MAY widen ``graph`` to accept ``GraphProtocol``
+        (e.g., ``nx.DiGraph[str] | GraphProtocol``) — input widening is
+        Liskov-compatible.
+        """
 
     @staticmethod
     def _wrap_graph(graph: nx.DiGraph[str] | GraphProtocol) -> GraphProtocol:

@@ -18,7 +18,6 @@ from collections.abc import Iterator
 
 import numpy as np
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from babylon.economics.tensor import NoDataSentinel
@@ -32,7 +31,6 @@ from babylon.reference.schema import (
     DimBEAIndustry,
     DimTime,
     FactBEAFinalDemandAnnual,
-    NormalizedBase,
 )
 
 # =============================================================================
@@ -41,18 +39,14 @@ from babylon.reference.schema import (
 
 
 @pytest.fixture
-def in_memory_db_with_final_demand() -> Iterator[Session]:
-    """In-memory SQLite seeded with synthetic 3-industry final-demand fixture."""
-    engine = create_engine("sqlite:///:memory:")
-    NormalizedBase.metadata.create_all(
-        engine,
-        tables=[
-            DimTime.__table__,
-            DimBEAIndustry.__table__,
-            FactBEAFinalDemandAnnual.__table__,
-        ],
-    )
-    with Session(engine) as session:
+def in_memory_db_with_final_demand(reference_sqlite_session_factory) -> Iterator[Session]:
+    """In-memory SQLite seeded with synthetic 3-industry final-demand fixture.
+
+    Schema comes from the shared ``reference_sqlite_session_factory``
+    (full ``NormalizedBase`` schema; unused tables are harmless).
+    Only the seed-data inserts are file-specific.
+    """
+    with reference_sqlite_session_factory() as session:
         t2015 = DimTime(year=2015, is_annual=True)
         session.add(t2015)
         session.flush()

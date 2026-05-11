@@ -119,20 +119,50 @@ def test_dir() -> Generator[str, None, None]:
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-@pytest.fixture(scope="session")
-def test_db() -> "Engine":
-    """Create a test database with reference schema.
+def create_reference_engine() -> "Engine":
+    """Build a fresh in-memory SQLite engine with the NormalizedBase schema.
 
-    Imports are done lazily to support mutation testing with mutmut.
+    Production parity: the runtime engine reads reference data from
+    SQLite at scenario-init time (see ``simulation/_legacy.py:275``
+    where ``get_normalized_session_factory()`` is invoked). Tests use
+    the same dialect so dialect-specific quirks (Decimal-as-TEXT,
+    Boolean coercion, JSON storage) match production behavior.
+
+    Imports are lazy to support mutation testing with mutmut.
+
+    Returns:
+        A bound, schema-initialized SQLAlchemy engine. Caller is
+        responsible for ``engine.dispose()``.
     """
     from sqlalchemy import create_engine
 
     from babylon.reference.database import NormalizedBase
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine("sqlite:///:memory:", echo=False, future=True)
     NormalizedBase.metadata.create_all(bind=engine)
-
     return engine
+
+
+@pytest.fixture
+def reference_sqlite_session_factory():
+    """Function-scoped session factory backed by a fresh in-memory NormalizedBase.
+
+    Each test gets its own empty schema — preserves isolation by
+    construction. Tests are responsible for seeding the data they
+    need (synthetic INSERTs, or by invoking production loaders like
+    ``BEANationalLoader`` / ``BEAIOLoader``).
+
+    Class-scoped consumers that need to amortize an expensive seed
+    step (e.g., running BEA loaders) should build their own
+    class-scoped fixture using ``create_reference_engine()`` directly
+    rather than depending on this fixture (pytest scope hierarchy).
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_reference_engine()
+    factory = sessionmaker(bind=engine)
+    yield factory
+    engine.dispose()
 
 
 @pytest.fixture(scope="function")

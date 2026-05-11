@@ -14,7 +14,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # =============================================================================
@@ -82,14 +81,13 @@ class TestInterIndustryFlowPipeline:
         if not _BEA_USE_XLSX.exists():
             pytest.skip("BEA Use XLSX absent from data/input-output/make-use/")
 
-        from babylon.reference.schema import NormalizedBase
         from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
         from babylon_data.bea.loader_national import (  # type: ignore[import-not-found]
             BEANationalLoader,
         )
+        from tests.conftest import create_reference_engine
 
-        engine = create_engine("sqlite:///:memory:", echo=False)
-        NormalizedBase.metadata.create_all(engine)
+        engine = create_reference_engine()
         factory = sessionmaker(bind=engine)
 
         nat_loader = BEANationalLoader(data_dir=_BABYLON_DATA_ROOT)

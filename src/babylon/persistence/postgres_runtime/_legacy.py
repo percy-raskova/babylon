@@ -249,7 +249,7 @@ class PostgresRuntime:
             )
 
             cur.execute(
-                "SELECT details FROM events WHERE session_id = %s AND tick = %s",
+                "SELECT details FROM simulation_event WHERE session_id = %s AND tick = %s",
                 (session_id, tick),
             )
             events_list = sorted(

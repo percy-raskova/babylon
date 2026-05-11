@@ -43,9 +43,9 @@ remediation_summary:
     deleted_with_pyqt6: 19
     enabled_via_mise_run_test_int_pg: 9   # 9/12 persistence tests now pass
     surfaced_pre_existing_bugs: 19        # 3 events-table missing + 16 PostgresRuntime API mismatch
-    remaining_skipped: ~29
+    remaining_skipped: ~24                # reduced from ~29 by spec-060 BEA fix
     breakdown:
-      babylon_data_package: 27  # LODES (12) + babylon-data tests (8) + Feature 026 (6) + bea_tables (1)
+      babylon_data_package: 22  # LODES (12) + babylon-data tests (3) + Feature 026 (6) + bea_tables (1); -5 for BEA bridge fix (2026-05-11)
       sprint_15_dashboard_tuning: 13  # calibration deferred
       verb_backends: 4
       degenerate_tensor: 2
@@ -87,13 +87,47 @@ dispositions:
                       (task wired in Commit f9178d34; SQLite-import step
                       requires babylon_data per tools/ingest_lodes_od.py:259)
       - bucket: babylon_data_loaders
-        count: 8
+        count: 3   # reduced from 8 by spec-060 follow-up commit
         files:
           - tests/integration/economics/test_visibility_integration.py
-          - tests/integration/economics/test_tensor_hierarchy.py
         precondition: babylon_data package providing
-                      babylon_data.bea.io_loader:BEAIOLoader and
                       babylon_data.visibility:VisibilityComputer
+        spec_060_followup_2026_05_11: |
+          tests/integration/economics/test_tensor_hierarchy.py::TestInterIndustryFlowPipeline
+          (5 tests) UNBLOCKED. Plan-mode investigation surfaced a TWO-LAYER bug:
+
+            Layer 1 (fixture gap): tests called BEAIOLoader.load() against an
+            empty SQLite without first running BEANationalLoader to populate
+            dim_bea_industry. Loader bailed at the "dim_bea_industry is
+            empty; run BEANationalLoader first" gate (io_loader.py:380).
+
+            Layer 2 (production namespace incompatibility): even WITH the dim
+            table populated, BEANationalLoader writes synthetic codes
+            (f"BEA{line_number:03d}", e.g. "BEA001") while BEAIOLoader's
+            parser extracts raw BEA Summary/U.Summary/Sector codes (e.g.
+            "111CA", "211", "23") from the IO XLSX column headers. The
+            industry_lookup query returned 0 matches; loader wrote 0 facts
+            silently.
+
+          Fix: production-side concordance bridge in BEANationalLoader
+          (~140 LOC in /media/user/data/babylon-data/bea/loader_national.py).
+          The bridge consults BEA-Industry-and-Commodity-Codes-and-NAICS-
+          Concordance.xlsx after _load_industry_dimension and rewrites
+          dim_bea_industry.bea_code from synthetic to canonical (via name
+          matching on the concordance's cols 0-2). Industries without a
+          concordance match keep their synthetic code (totals like
+          "All industries"). Both bea_code and parent_bea_code are rewritten
+          in the same pass for referential consistency.
+
+          Plus a fixture refactor in test_tensor_hierarchy.py: replaced 5×
+          repeated loader-setup boilerplate (~150 LOC) with a single class-
+          scoped populated_session_factory fixture (~30 LOC). Three skip
+          gates preserved for CI: pytest.importorskip("babylon_data"),
+          _GDP_FILE.exists(), _BEA_USE_XLSX.exists().
+
+          Verification: 5 tests pass in 12.45 s; sim:trace 200 byte-equality
+          preserved; wider economics integration 120/0 pass/fail; spec-060
+          invariant bundle 23/8/0 unchanged.
       - bucket: feature_026_tri_county
         count: 6
         files: [tests/integration/economics/test_class_system_integration.py]
@@ -200,21 +234,33 @@ dispositions:
 
 consequences:
   positive:
-    - "Skip count down from 76 to ~29 (a 62% reduction)."
+    - "Skip count down from 76 to ~24 (a 68% reduction)."
     - "Every remaining skip cites a specific precondition or this ADR."
     - "Skips are no longer silent; CI signal is higher."
     - "Pre-existing Postgres bugs (events DDL gap; PostgresRuntime API
       mismatch in web layer) surfaced and tracked instead of hidden."
   negative:
-    - "27 tests gated on the babylon_data package can't run until that
-      package is built and shipped — same blocker as before, now explicit."
+    - "22 tests still gated on the babylon_data package (down from 27);
+      same blocker as before, now explicit. BEA tests in
+      test_tensor_hierarchy.py UNBLOCKED via spec-060 follow-up
+      (concordance bridge + fixture refactor, 2026-05-11)."
     - "13 calibration tests remain skipped pending defines tuning that
       requires either Dashboard-replacement visualization or explicit
       threshold adjustment."
 
 next_steps:
+  - "DONE 2026-05-11: BEA test_tensor_hierarchy.py concordance bridge +
+    fixture refactor — unblocked 5 tests, surfaced+fixed pre-existing
+    namespace bug in BEANationalLoader. See babylon_data_loaders bucket
+    above for full discovery trace."
+  - "Migrate reference-data tests to testcontainers Postgres (user-raised
+    follow-up): the 3NF schema tests currently use in-memory SQLite while
+    runtime simulation state lives in Postgres per ADR-037 (Spec 037);
+    inconsistency. Would need a future ADR (~ADR-039?) covering Decimal-
+    precision audit or a SQLite-compat shim over
+    testcontainers.PostgresContainer."
   - "Build the `babylon_data` Python package wrapping
-    /media/user/data/babylon-data/ — would unblock 27 skips at once."
+    /media/user/data/babylon-data/ — would unblock 22 more skips at once."
   - "Author CAMPAIGN verb spec (specs/0NN-campaign-verb.md); implement
     the 3 verb backends with existing specs (EDUCATE, ATTACK, AID)."
   - "Patch POSTGRES_SCHEMA_DDL with the missing `events` table — would

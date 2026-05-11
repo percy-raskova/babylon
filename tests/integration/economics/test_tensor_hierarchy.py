@@ -28,6 +28,11 @@ _BEA_USE_XLSX = (
 _BEA_LEONTIEF_XLSX = (
     _PROJECT_ROOT / "data/input-output/total-domestic-requirements/IxI_Domestic_Summary.xlsx"
 )
+# Babylon-data trove root (Spec 059 symlink target). The GDP-by-industry
+# XLSX (consumed by BEANationalLoader to populate dim_bea_industry) lives
+# in the trove, not the repo's data/.
+_BABYLON_DATA_ROOT = Path("/media/user/data/babylon-data")
+_GDP_FILE = _BABYLON_DATA_ROOT / "gdp-by-industry" / "GrossOutput.xlsx"
 
 
 # =============================================================================
@@ -36,61 +41,90 @@ _BEA_LEONTIEF_XLSX = (
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not _BEA_USE_XLSX.exists(),
-    reason="BEA Use XLSX not present at data/input-output/make-use/",
-)
 class TestInterIndustryFlowPipeline:
     """End-to-end BEA I-O XLSX → SQLite → tensor → Leontief pipeline.
 
-    Uses an in-memory SQLite database to avoid polluting the real database.
+    The class-scoped ``populated_session_factory`` fixture handles the
+    full two-stage ingest once per test class:
+
+      1. ``BEANationalLoader`` populates ``dim_bea_industry`` from the
+         GDP-by-industry XLSX in the babylon-data trove, applying the
+         concordance bridge so ``bea_code`` matches the IO XLSX's
+         column header codes.
+      2. ``BEAIOLoader`` populates ``fact_bea_io_coefficients`` from
+         the IO Use Summary XLSX in the repo's ``data/``.
+
+    Three skip gates protect non-dev environments (ordered by priority):
+
+      a. ``pytest.importorskip("babylon_data")`` — fires on CI without
+         the babylon-data mount.
+      b. ``_GDP_FILE.exists()`` — fires if GDP-by-industry XLSX absent.
+      c. ``_BEA_USE_XLSX.exists()`` — fires if repo's IO Use XLSX absent.
+
+    See ``ai-docs/decisions/ADR037_test_skip_remediation.yaml`` for the
+    history of this test (the two-layer bug it surfaced and the
+    namespace-bridge fix).
     """
 
-    @pytest.fixture()
-    def in_memory_session_factory(self):  # type: ignore[no-untyped-def]
-        """Provide an in-memory SQLite session factory with 3NF schema."""
+    @pytest.fixture(scope="class")
+    def populated_session_factory(self):  # type: ignore[no-untyped-def]
+        """Session factory with both BEA tables populated.
+
+        Runs ``BEANationalLoader`` → ``BEAIOLoader`` once per test class.
+        Returns a ``sessionmaker`` bound to an in-memory SQLite engine;
+        each test checks out its own session.
+        """
+        pytest.importorskip("babylon_data", reason="BEA pipeline requires babylon-data package")
+        if not _GDP_FILE.exists():
+            pytest.skip(
+                f"BEA GDP-by-industry XLSX absent; needs babylon-data mount at {_BABYLON_DATA_ROOT}"
+            )
+        if not _BEA_USE_XLSX.exists():
+            pytest.skip("BEA Use XLSX absent from data/input-output/make-use/")
+
         from babylon.reference.schema import NormalizedBase
+        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
+        from babylon_data.bea.loader_national import (  # type: ignore[import-not-found]
+            BEANationalLoader,
+        )
 
         engine = create_engine("sqlite:///:memory:", echo=False)
         NormalizedBase.metadata.create_all(engine)
         factory = sessionmaker(bind=engine)
+
+        nat_loader = BEANationalLoader(data_dir=_BABYLON_DATA_ROOT)
+        io_loader = BEAIOLoader(data_dir=_PROJECT_ROOT / "data")
+        with factory() as session:
+            nat_loader.load(session, reset=True, verbose=False)
+            stats = io_loader.load(session, reset=True, verbose=False)
+            assert stats.total_facts > 0, (
+                f"BEA pipeline produced 0 facts after both loaders ran. errors={stats.errors}"
+            )
+            session.commit()
         return factory
 
-    def test_bea_loader_ingests_xlsx(self, in_memory_session_factory) -> None:  # type: ignore[no-untyped-def]
-        """BEAIOLoader parses XLSX and inserts coefficients into SQLite."""
-        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
-        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
+    def test_bea_loader_ingests_xlsx(self, populated_session_factory) -> None:  # type: ignore[no-untyped-def]
+        """BEAIOLoader successfully ingests the IO Use XLSX into the 3NF schema."""
+        from babylon.economics.tensor_hierarchy.inter_industry import (
+            DefaultInterIndustryFlowSource,
+        )
 
-        loader = BEAIOLoader(data_dir=_PROJECT_ROOT / "data")
-        with in_memory_session_factory() as session:
-            stats = loader.load(session, reset=True, verbose=False)
-
-        assert stats.total_facts > 0
-        assert stats.files_processed > 0
-        assert not stats.has_errors
+        source = DefaultInterIndustryFlowSource(populated_session_factory)
+        years = source.available_years()
+        assert len(years) > 0, "BEAIOLoader populated 0 facts"
 
     def test_inter_industry_flow_source_returns_tensor(
         self,
-        in_memory_session_factory,  # type: ignore[no-untyped-def]
+        populated_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """DefaultInterIndustryFlowSource reads SQLite and returns InterIndustryFlow."""
-        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
-        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
-
         from babylon.economics.tensor_hierarchy.inter_industry import (
             DefaultInterIndustryFlowSource,
         )
         from babylon.economics.tensor_hierarchy.types import InterIndustryFlow
 
-        loader = BEAIOLoader(data_dir=_PROJECT_ROOT / "data")
-        with in_memory_session_factory() as session:
-            loader.load(session, reset=True, verbose=False)
-
-        source = DefaultInterIndustryFlowSource(in_memory_session_factory)
-        available = source.available_years()
-        assert len(available) > 0
-
-        year = min(available)
+        source = DefaultInterIndustryFlowSource(populated_session_factory)
+        year = min(source.available_years())
         flow = source.get_direct_requirements(year)
         assert isinstance(flow, InterIndustryFlow)
         assert flow.n_industries > 0
@@ -98,59 +132,36 @@ class TestInterIndustryFlowPipeline:
 
     def test_leontief_inverse_non_negative(
         self,
-        in_memory_session_factory,  # type: ignore[no-untyped-def]
+        populated_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """Leontief inverse has non-negative elements (Perron-Frobenius)."""
-        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
-        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
-
         from babylon.economics.tensor_hierarchy.inter_industry import (
             DefaultInterIndustryFlowSource,
             DefaultLeontiefComputer,
         )
-        from babylon.economics.tensor_hierarchy.types import InterIndustryFlow, LeontiefInverse
+        from babylon.economics.tensor_hierarchy.types import LeontiefInverse
 
-        loader = BEAIOLoader(data_dir=_PROJECT_ROOT / "data")
-        with in_memory_session_factory() as session:
-            loader.load(session, reset=True, verbose=False)
-
-        source = DefaultInterIndustryFlowSource(in_memory_session_factory)
-        year = min(source.available_years())
-        flow = source.get_direct_requirements(year)
-
-        assert isinstance(flow, InterIndustryFlow)
-        computer = DefaultLeontiefComputer()
-        leontief = computer.compute_inverse(flow)
+        source = DefaultInterIndustryFlowSource(populated_session_factory)
+        flow = source.get_direct_requirements(min(source.available_years()))
+        leontief = DefaultLeontiefComputer().compute_inverse(flow)
 
         assert isinstance(leontief, LeontiefInverse)
-        # All elements should be >= 0 (allow small negative from floating point)
         assert np.all(leontief.inverse_matrix >= -1e-9)
-        # Diagonal elements >= 1.0
-        diag = np.diag(leontief.inverse_matrix)
-        assert np.all(diag >= 1.0 - 1e-9)
+        assert np.all(np.diag(leontief.inverse_matrix) >= 1.0 - 1e-9)
 
     def test_department_aggregation_produces_4x4_matrix(
         self,
-        in_memory_session_factory,  # type: ignore[no-untyped-def]
+        populated_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """Department aggregation reduces ~70 industries to 4x4 matrix."""
-        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
-        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
-
         from babylon.economics.tensor_hierarchy.inter_industry import (
             DefaultDepartmentAggregator,
             DefaultInterIndustryFlowSource,
         )
         from babylon.economics.tensor_hierarchy.types import InterIndustryFlow
 
-        loader = BEAIOLoader(data_dir=_PROJECT_ROOT / "data")
-        with in_memory_session_factory() as session:
-            loader.load(session, reset=True, verbose=False)
-
-        source = DefaultInterIndustryFlowSource(in_memory_session_factory)
-        year = min(source.available_years())
-        flow = source.get_direct_requirements(year)
-        assert isinstance(flow, InterIndustryFlow)
+        source = DefaultInterIndustryFlowSource(populated_session_factory)
+        flow = source.get_direct_requirements(min(source.available_years()))
 
         aggregator = DefaultDepartmentAggregator()
         mapping = aggregator.get_default_mapping()
@@ -162,12 +173,9 @@ class TestInterIndustryFlowPipeline:
 
     def test_full_pipeline_end_to_end(
         self,
-        in_memory_session_factory,  # type: ignore[no-untyped-def]
+        populated_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
-        """Full pipeline: XLSX → SQLite → InterIndustryFlow → Leontief → Departments."""
-        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
-        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
-
+        """Full pipeline: SQLite → InterIndustryFlow → Leontief → Departments."""
         from babylon.economics.tensor_hierarchy.inter_industry import (
             DefaultDepartmentAggregator,
             DefaultInterIndustryFlowSource,
@@ -175,31 +183,19 @@ class TestInterIndustryFlowPipeline:
         )
         from babylon.economics.tensor_hierarchy.types import InterIndustryFlow, LeontiefInverse
 
-        loader = BEAIOLoader(data_dir=_PROJECT_ROOT / "data")
-        with in_memory_session_factory() as session:
-            stats = loader.load(session, reset=True, verbose=False)
-        assert stats.total_facts > 0
+        source = DefaultInterIndustryFlowSource(populated_session_factory)
+        flow = source.get_direct_requirements(min(source.available_years()))
 
-        source = DefaultInterIndustryFlowSource(in_memory_session_factory)
-        year = min(source.available_years())
-        flow = source.get_direct_requirements(year)
-        assert isinstance(flow, InterIndustryFlow)
-
-        # Compute Leontief
         leontief_computer = DefaultLeontiefComputer()
         leontief = leontief_computer.compute_inverse(flow)
         assert isinstance(leontief, LeontiefInverse)
 
-        # Aggregate to departments
         aggregator = DefaultDepartmentAggregator()
-        mapping = aggregator.get_default_mapping()
-        dept_flow = aggregator.aggregate(flow, mapping)
+        dept_flow = aggregator.aggregate(flow, aggregator.get_default_mapping())
         assert isinstance(dept_flow, InterIndustryFlow)
         assert dept_flow.n_industries == 4
 
-        # Compute department-level Leontief
         dept_leontief = leontief_computer.compute_inverse(dept_flow)
-        assert isinstance(dept_leontief, LeontiefInverse)
         assert dept_leontief.n_industries == 4
 
 

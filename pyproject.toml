@@ -16,6 +16,11 @@ keywords = [
 ]
 packages = [
     { include = "babylon", from = "src" },
+    # babylon_data: thin Python wrapper around the data trove at
+    # /media/user/data/babylon-data/. src/babylon_data is a symlink to that
+    # path (committed in git). Restored from commit 4ce7c96a^ in the
+    # post-Spec-059 skip-remediation pass. See ADR-037.
+    { include = "babylon_data", from = "src" },
 ]
 
 [tool.poetry.urls]

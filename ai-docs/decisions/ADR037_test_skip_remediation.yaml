@@ -41,8 +41,8 @@ remediation_summary:
 
   after:
     deleted_with_pyqt6: 19
-    enabled_via_mise_run_test_int_pg: 9   # 9/12 persistence tests now pass
-    surfaced_pre_existing_bugs: 19        # 3 events-table missing + 16 PostgresRuntime API mismatch
+    enabled_via_mise_run_test_int_pg: 13  # 9/12 persistence tests + 4 events-rename fixes; was 9
+    surfaced_pre_existing_bugs: 15        # 16 PostgresRuntime API mismatch (events-rename fixed 2026-05-11); was 19
     remaining_skipped: ~24                # reduced from ~29 by spec-060 BEA fix
     breakdown:
       babylon_data_package: 22  # LODES (12) + babylon-data tests (3) + Feature 026 (6) + bea_tables (1); -5 for BEA bridge fix (2026-05-11)
@@ -275,8 +275,21 @@ next_steps:
     /media/user/data/babylon-data/ — would unblock 22 more skips at once."
   - "Author CAMPAIGN verb spec (specs/0NN-campaign-verb.md); implement
     the 3 verb backends with existing specs (EDUCATE, ATTACK, AID)."
-  - "Patch POSTGRES_SCHEMA_DDL with the missing `events` table — would
-    unblock 3 more persistence tests."
+  - "DONE 2026-05-11: 'events DDL gap' RESOLVED — original recommendation
+    here was wrong. Plan-mode investigation surfaced the actual root
+    cause: a stale-rename / copy-paste bug in
+    `src/babylon/persistence/postgres_runtime/_legacy.py:252`, NOT a
+    missing table. The Postgres runtime CORRECTLY writes to
+    `simulation_event` (defined in `postgres_schema.py:210-221`) but
+    ONE line in `_canonical_payload_for_tick()` read from a non-existent
+    `events` table (the SQLite-runtime name, copied over during the
+    Spec 037 SQLite→Postgres migration). Fixed by changing
+    `FROM events` → `FROM simulation_event` on that one line. Unblocked
+    4 tests in tests/integration/test_persistence_monotonic_postgres.py
+    (the originally-reported 3 plus test_back_in_time_rewrite_raises,
+    which had the same root cause). DO NOT add a new `events` table to
+    POSTGRES_SCHEMA_DDL — the table is `simulation_event` and the write
+    path was always correct; only the read path was stale."
   - "Fix PostgresRuntime constructor API in web tests OR refactor web
     layer to use the canonical pool-based constructor — would unblock 16."
   - "Calibrate game defines so test_hump_shape's 5 calibration-blocked

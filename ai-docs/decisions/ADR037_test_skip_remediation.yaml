@@ -253,12 +253,24 @@ next_steps:
     fixture refactor — unblocked 5 tests, surfaced+fixed pre-existing
     namespace bug in BEANationalLoader. See babylon_data_loaders bucket
     above for full discovery trace."
-  - "Migrate reference-data tests to testcontainers Postgres (user-raised
-    follow-up): the 3NF schema tests currently use in-memory SQLite while
-    runtime simulation state lives in Postgres per ADR-037 (Spec 037);
-    inconsistency. Would need a future ADR (~ADR-039?) covering Decimal-
-    precision audit or a SQLite-compat shim over
-    testcontainers.PostgresContainer."
+  - "REJECTED 2026-05-11: Migrate reference-data tests to testcontainers
+    Postgres. Investigated and withdrawn on architectural grounds.
+    Reference data (LODES, QCEW, BEA tables) lives on SQLite by design;
+    the runtime engine reads it from SQLite at scenario-init time
+    (src/babylon/engine/simulation/_legacy.py:275). Migrating those
+    tests to Postgres would test the wrong dialect's behavior
+    (Decimal-as-TEXT vs NUMERIC, Boolean coercion, JSON storage)
+    relative to production read paths. Pattern B tests
+    (test_throughput_validation, test_adapters) are empirical-validation
+    tests of federal data — they belong on the empirical-validation
+    backend by definition. Testcontainers Postgres remains reserved for
+    Spec 037 runtime tests (WorldState, traces, embeddings). The
+    boilerplate-reduction concern that originally motivated this
+    follow-up was solved instead via the shared
+    `reference_sqlite_session_factory` fixture in `tests/conftest.py`
+    plus a `create_reference_engine()` helper, deduplicating 4 inline
+    SQLite-engine constructions across the leontief_rent +
+    tensor_hierarchy test files."
   - "Build the `babylon_data` Python package wrapping
     /media/user/data/babylon-data/ — would unblock 22 more skips at once."
   - "Author CAMPAIGN verb spec (specs/0NN-campaign-verb.md); implement

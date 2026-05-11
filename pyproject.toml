@@ -166,6 +166,7 @@ markers = [
     "benchmark: Performance and memory benchmarks for tensor operations",
     "requires_postgres: Tests requiring a running PostgreSQL instance (skipped if unavailable)",
     "postgres: Tests using testcontainers ephemeral PostgreSQL (requires Docker)",
+    "invariant: Marx value-form & software metamorphic invariant tests (spec-060)",
 ]
 addopts = [
     "-v",                      # Verbose output (already have)

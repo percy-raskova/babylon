@@ -13,14 +13,14 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 
-class ContradictionSystem:
+class ContradictionSystem(SystemBase):
     """Phase 4: Accumulation of Tension and Ruptures."""
 
-    name = "Contradiction Tension"
-
+    name: ClassVar[str] = "Contradiction Tension"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 

@@ -1,14 +1,21 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Schema for ai-docs/*-spec.yaml slice specification files",
   "$id": "slice-spec.schema.json",
   "title": "Babylon Slice Specification",
-  "description": "Schema for ai-docs/*-spec.yaml slice specification files",
   "type": "object",
-  "required": ["meta"],
+  "required": [
+    "meta"
+  ],
   "properties": {
     "meta": {
       "type": "object",
-      "required": ["epoch", "sub_epoch", "slice", "status"],
+      "required": [
+        "epoch",
+        "sub_epoch",
+        "slice",
+        "status"
+      ],
       "properties": {
         "epoch": {
           "type": "integer",
@@ -18,7 +25,16 @@
         },
         "sub_epoch": {
           "type": "string",
-          "enum": ["1A", "1B", "2A", "2B", "2C", "2D", "3A", "DEFERRED"],
+          "enum": [
+            "1A",
+            "1B",
+            "2A",
+            "2B",
+            "2C",
+            "2D",
+            "3A",
+            "DEFERRED"
+          ],
           "description": "Sub-epoch assignment for staged delivery"
         },
         "slice": {
@@ -36,7 +52,14 @@
         },
         "status": {
           "type": "string",
-          "enum": ["PLANNED", "IN_PROGRESS", "COMPLETE", "SPEC_COMPLETE", "CONCEPTUAL", "DEFERRED"],
+          "enum": [
+            "PLANNED",
+            "IN_PROGRESS",
+            "COMPLETE",
+            "SPEC_COMPLETE",
+            "CONCEPTUAL",
+            "DEFERRED"
+          ],
           "description": "Implementation status"
         },
         "version": {
@@ -60,12 +83,19 @@
         },
         "priority": {
           "type": "string",
-          "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+          "enum": [
+            "CRITICAL",
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+          ],
           "description": "Implementation priority"
         },
         "dependencies": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "List of required slices/systems"
         },
         "scope_note": {
@@ -97,9 +127,15 @@
           "items": {
             "type": "object",
             "properties": {
-              "author": { "type": "string" },
-              "work": { "type": "string" },
-              "relevance": { "type": "string" }
+              "author": {
+                "type": "string"
+              },
+              "work": {
+                "type": "string"
+              },
+              "relevance": {
+                "type": "string"
+              }
             }
           },
           "description": "List of theoretical sources"

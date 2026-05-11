@@ -1,0 +1,10 @@
+0.12s call     tests/unit/formulas/test_survival_calculus_properties.py::TestCrossoverThresholdProperties::test_higher_cohesion_raises_crossover
+- Generated html report: file:///home/user/projects/game/babylon/reports/test-results/unit/report.html -
+[36m[1m=========================== short test summary info ============================[0m
+[33mXFAIL[0m tests/unit/economics/test_factory_shims.py::[1mTestFactoryShimsBacked::test_factory_loc_under_150[0m - SC-004 not-met-by-design (Spec 058 commit 6, plan.md §R5 corrected): factory.py contains topological dependency resolution that SourceRegistry's Callable[[], object] model does not replace. The <150 LOC target was based on a misreading of factory.py as boilerplate. xfail retained deliberately as the audit trail for the spec-vs-reality learning; a future bundle may revisit the dep-graph refactor.
+[33m================ [32m8254 passed[0m, [33m[1m1 xfailed[0m, [33m[1m33 warnings[0m[33m in 55.63s[0m[33m =================[0m
+[33mSKIPPED[0m [1] tests/integration/economics/test_throughput_validation.py:807: LODES OD data not loaded
+[33mSKIPPED[0m [1] tests/integration/economics/test_throughput_validation.py:818: LODES OD data not loaded
+[33mSKIPPED[0m [1] tests/integration/economics/test_throughput_validation.py:832: LODES OD data not loaded
+[33mXFAIL[0m tests/integration/test_db_initialization_queries.py::[1mTestTributeEdges::test_institutional_ownership_has_absentee_field[0m - DATA GAP: absentee_owned column exists but is uniformly 0 across all 6,570 rows. Census ACS does not directly provide absentee ownership breakdowns; this field requires a supplementary ETL from CoreLogic, ATTOM, or similar property-record sources. Tracked as a known gap for the Tribute edge imputation model.
+[33m====== [32m617 passed[0m, [33m[1m72 skipped[0m, [33m[1m1 xfailed[0m, [33m[1m1 warning[0m[33m in 167.60s (0:02:47)[0m[33m =======[0m

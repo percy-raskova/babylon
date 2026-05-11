@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 from babylon.formulas import (
     calculate_biocapacity_delta,
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
 
 
-class MetabolismSystem:
+class MetabolismSystem(SystemBase):
     """System tracking the metabolic rift between extraction and regeneration.
 
     The metabolic rift is the core dynamic of imperial accumulation:
@@ -45,13 +46,9 @@ class MetabolismSystem:
     - ECOLOGICAL_OVERSHOOT: When overshoot_ratio > 1.0
     """
 
+    name: ClassVar[str] = "Metabolism"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
-
-    @property
-    def name(self) -> str:
-        """The identifier of this system."""
-        return "Metabolism"
 
     def step(
         self,

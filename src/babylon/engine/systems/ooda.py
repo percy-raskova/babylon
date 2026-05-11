@@ -14,6 +14,8 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from babylon.engine.systems.base import SystemBase
+from babylon.engine.systems.protocol import ContextType
 from babylon.models.enums import EventType, OrgType
 from babylon.ooda.cycle_time import compute_cycle_time
 from babylon.ooda.initiative import (
@@ -30,10 +32,9 @@ if TYPE_CHECKING:
     import networkx as nx
 
     from babylon.engine.services import ServiceContainer
-    from babylon.engine.systems.protocol import ContextType
 
 
-class OODASystem:
+class OODASystem(SystemBase):
     """Orchestrates organizational action resolution each tick.
 
     Three-phase turn resolution:
@@ -45,10 +46,7 @@ class OODASystem:
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 
-    @property
-    def name(self) -> str:
-        """System identifier."""
-        return "ooda"
+    name: ClassVar[str] = "ooda"
 
     def step(
         self,

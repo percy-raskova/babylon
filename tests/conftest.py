@@ -119,20 +119,50 @@ def test_dir() -> Generator[str, None, None]:
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-@pytest.fixture(scope="session")
-def test_db() -> "Engine":
-    """Create a test database with reference schema.
+def create_reference_engine() -> "Engine":
+    """Build a fresh in-memory SQLite engine with the NormalizedBase schema.
 
-    Imports are done lazily to support mutation testing with mutmut.
+    Production parity: the runtime engine reads reference data from
+    SQLite at scenario-init time (see ``simulation/_legacy.py:275``
+    where ``get_normalized_session_factory()`` is invoked). Tests use
+    the same dialect so dialect-specific quirks (Decimal-as-TEXT,
+    Boolean coercion, JSON storage) match production behavior.
+
+    Imports are lazy to support mutation testing with mutmut.
+
+    Returns:
+        A bound, schema-initialized SQLAlchemy engine. Caller is
+        responsible for ``engine.dispose()``.
     """
     from sqlalchemy import create_engine
 
     from babylon.reference.database import NormalizedBase
 
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine("sqlite:///:memory:", echo=False, future=True)
     NormalizedBase.metadata.create_all(bind=engine)
-
     return engine
+
+
+@pytest.fixture
+def reference_sqlite_session_factory():
+    """Function-scoped session factory backed by a fresh in-memory NormalizedBase.
+
+    Each test gets its own empty schema — preserves isolation by
+    construction. Tests are responsible for seeding the data they
+    need (synthetic INSERTs, or by invoking production loaders like
+    ``BEANationalLoader`` / ``BEAIOLoader``).
+
+    Class-scoped consumers that need to amortize an expensive seed
+    step (e.g., running BEA loaders) should build their own
+    class-scoped fixture using ``create_reference_engine()`` directly
+    rather than depending on this fixture (pytest scope hierarchy).
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_reference_engine()
+    factory = sessionmaker(bind=engine)
+    yield factory
+    engine.dispose()
 
 
 @pytest.fixture(scope="function")
@@ -195,38 +225,6 @@ def mock_simulation() -> MagicMock:
     mock.tick = 0
     mock.is_running = False
     return mock
-
-
-# =============================================================================
-# PYTEST-QT FIXTURES (Feature 007: God Mode Dashboard)
-# =============================================================================
-
-
-@pytest.fixture(scope="session")
-def qapp_args() -> list[str]:
-    """Arguments passed to QApplication for pytest-qt.
-
-    Returns:
-        List of command-line arguments for QApplication initialization.
-    """
-    return ["--platform", "offscreen"]
-
-
-@pytest.fixture
-def qtbot_headless(qapp_args: list[str], qtbot):  # type: ignore[no-untyped-def]
-    """Qt test helper configured for headless operation.
-
-    This wraps the standard pytest-qt qtbot fixture with headless configuration.
-    Use this for testing Qt widgets without a display.
-
-    Args:
-        qapp_args: QApplication arguments (injected).
-        qtbot: Standard pytest-qt bot fixture (injected).
-
-    Returns:
-        The qtbot fixture, configured for headless operation.
-    """
-    return qtbot
 
 
 # =============================================================================
@@ -307,11 +305,16 @@ def django_db_setup(  # type: ignore[no-untyped-def]
 def pg_dsn() -> str:
     """PostgreSQL DSN for integration tests.
 
-    Reads from BABYLON_TEST_PG_DSN env var or defaults to localhost.
+    Reads from BABYLON_TEST_PG_DSN env var; defaults to the canonical local
+    test container created by ``mise run db:up`` (port 5433, user/password
+    ``test``/``test``, db ``babylon_test``). Developers can either:
+      - Run ``mise run db:up`` once and then any pytest invocation finds it,
+      - Run ``mise run test:int-pg`` for the one-shot setup-test-teardown
+        cycle.
     """
     return os.environ.get(
         "BABYLON_TEST_PG_DSN",
-        "dbname=babylon_test host=localhost",
+        "dbname=babylon_test host=localhost port=5433 user=test password=test",
     )
 
 

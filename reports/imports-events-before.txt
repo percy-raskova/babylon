@@ -1,0 +1,33 @@
+Design follows the SimulationEvent pattern from babylon.models.events.
+from babylon.models.events import (
+from babylon.models.events import AxiomViolationEvent
+from babylon.models.events import BifurcationTendencyEvent
+from babylon.models.events import BifurcationTendencyEvent, SimulationEvent
+        from babylon.models.events import CrisisEvent
+from babylon.models.events import CrisisEvent
+from babylon.models.events import CrisisEvent, ExtractionEvent, PhaseTransitionEvent
+        from babylon.models.events import CrisisEvent, UprisingEvent
+        from babylon.models.events import EndgameEvent
+from babylon.models.events import EndgameEvent
+        from babylon.models.events import ExtractionEvent
+from babylon.models.events import ExtractionEvent
+        from babylon.models.events import ExtractionEvent, SparkEvent
+from babylon.models.events import ExtractionEvent, SparkEvent
+from babylon.models.events import ExtractionEvent, TransmissionEvent
+    from babylon.models.events import ExtractionEvent, UprisingEvent
+from babylon.models.events import ExtractionEvent, UprisingEvent
+        from babylon.models.events import PhaseTransitionEvent
+from babylon.models.events import PhaseTransitionEvent, SimulationEvent
+        from babylon.models.events import PhaseTransitionEvent, TopologyEvent
+from babylon.models.events import PhiHourOutlierEvent, QcewCarryForwardEvent
+from babylon.models.events import QcewCarryForwardEvent
+        from babylon.models.events import RuptureEvent
+        from babylon.models.events import SimulationEvent
+from babylon.models.events import SimulationEvent
+from babylon.models.events import SimulationEvent, deserialize_event
+        from babylon.models.events import SolidaritySpikeEvent
+        from babylon.models.events import SparkEvent
+        from babylon.models.events import TopologyEvent
+        from babylon.models.events import TransmissionEvent
+        from babylon.models.events import UprisingEvent
+from babylon.models.events import UprisingEvent

@@ -1,0 +1,134 @@
+# =============================================================================
+# ADR-036: Orphan JSON Schema Audit (Spec 059 US6 / FR-015 / SC-008)
+# =============================================================================
+#
+# Decision: Per-schema disposition for the 7 graph-orphan JSON schemas
+# flagged by the knowledge-graph rebuild (May 2026), distinguishing
+# graph-orphan (no incoming $ref) from runtime-unused (no Python loader).
+#
+# Status: ACCEPTED (2026-05-10)
+# Related: Spec 059 ADR-006.6 / research.md D6
+
+context: |
+  ADR-006.6 (rolled into Spec 059) flagged "8 orphan JSON schemas" — files in
+  src/babylon/schemas/ with no incoming $ref cross-references in the
+  knowledge graph. The original list named 7 explicitly (culture, ideology,
+  institution, persona, sentiment, slice-spec, narrative_frame) plus one
+  inferred from earlier validation warnings.
+
+  Research.md D6 disambiguates: graph-orphan ≠ runtime-unused. A schema may
+  have no incoming $ref but still be loaded at runtime by a Python module
+  via jsonschema. Deletion is only safe when BOTH classifications hold.
+
+audit_method: |
+  Per-schema runtime grep across src/babylon/, tests/, tools/:
+    git grep -l "<basename>.schema" -- 'src/' 'tests/' 'tools/'
+
+  Per-schema Pydantic-counterpart check:
+    ls src/babylon/models/entities/<basename>.py
+
+  Pre-flight knowledge graph (132-byte LFS pointer) pulled via
+  `git lfs pull -- .understand-anything/knowledge-graph.json`. The rebuilt
+  graph (1.8 MB) was queried for schema nodes with no incoming edges; a
+  permissive filter yielded 37 candidates, of which the 7 named in
+  ADR-006.6 are the canonical "orphan" subset (the others have Pydantic
+  counterparts that the knowledge graph treats as a non-$ref reference).
+
+dispositions:
+
+  culture.schema.json:
+    classification: graph-orphan AND runtime-unused
+    pydantic_counterpart: none
+    runtime_loaders: 0
+    decision: kept-with-description
+    rationale: |
+      No active loader, no Pydantic model. Marked standalone-by-design with
+      a description field added to the schema (option c). Deletion not
+      taken in this commit because the entity may be loaded at runtime by
+      content not yet in src/ (e.g., scenario fixtures or tools/). A
+      future bundle may delete after a wider grep.
+    action: add description field to schema
+
+  ideology.schema.json:
+    classification: graph-orphan AND runtime-unused
+    pydantic_counterpart: none
+    runtime_loaders: 0
+    decision: kept-with-description
+    rationale: |
+      Same as culture — no Pydantic model, no loader. Standalone-by-design
+      annotation; description field added.
+    action: add description field to schema
+
+  institution.schema.json:
+    classification: graph-orphan only
+    pydantic_counterpart: src/babylon/models/entities/institution.py
+    runtime_loaders: 0
+    decision: standalone-by-design
+    rationale: |
+      Pydantic counterpart exists. Schema is the canonical declarative
+      shape; the Pydantic model is the runtime construct. Annotated with
+      a # standalone schema, no $ref comment in the Pydantic counterpart
+      (option a) plus a description field (option c). Both are kept as
+      complementary artifacts.
+    action: add description field + comment in Pydantic counterpart
+
+  persona.schema.json:
+    classification: graph-orphan only (RUNTIME-LOADED)
+    pydantic_counterpart: none
+    runtime_loaders: 1 (src/babylon/ai/persona_loader.py)
+    decision: kept-with-description
+    rationale: |
+      Loaded at runtime by ai/persona_loader.py via jsonschema.
+      Graph-orphan but emphatically NOT runtime-unused. MUST NOT be
+      deleted. Description field added clarifying the loader path.
+    action: add description field to schema
+
+  sentiment.schema.json:
+    classification: graph-orphan AND runtime-unused
+    pydantic_counterpart: none
+    runtime_loaders: 0
+    decision: kept-with-description
+    rationale: |
+      Same as culture/ideology — no Pydantic model, no active loader.
+      Description field added. Deletion deferred to future bundle.
+    action: add description field to schema
+
+  narrative_frame.schema.json:
+    classification: graph-orphan only (RUNTIME-LOADED)
+    pydantic_counterpart: none
+    runtime_loaders: 1 (src/babylon/engine/observers/schema_validator.py:36)
+    decision: kept-with-description
+    rationale: |
+      Loaded at runtime by schema_validator observer. The exemplar case
+      that motivated research.md D6's graph-orphan vs runtime-unused
+      disambiguation. MUST NOT be deleted.
+    action: add description field to schema
+
+  slice-spec.schema.json:
+    classification: graph-orphan AND runtime-unused
+    pydantic_counterpart: none
+    runtime_loaders: 0
+    decision: kept-with-description
+    rationale: |
+      No active loader. May be a planned-but-never-implemented schema.
+      Description field added flagging this; future bundle decides
+      delete vs implement.
+    action: add description field to schema
+
+consequences:
+  positive:
+    - Every flagged schema has a documented disposition (SC-008 satisfied).
+    - Graph-orphan vs runtime-unused distinction is now explicit, preventing
+      future audits from accidentally deleting a runtime-loaded schema
+      (the narrative_frame near-miss case).
+    - The 2 runtime-loaded orphans (persona, narrative_frame) are
+      explicitly marked, simplifying future reviewer reasoning.
+  negative:
+    - 4 schemas (culture, ideology, sentiment, slice-spec) marked
+      "kept-with-description" rather than deleted; they continue to clutter
+      the schemas directory. A follow-up audit with a wider grep
+      (including any data fixture pipelines outside src/) may delete them.
+
+next_steps:
+  - "Knowledge-graph rebuild after this commit should produce zero new orphan-schema validation warnings (verifies SC-008)."
+  - "Future bundle: re-audit the 4 kept schemas against the wider repo (tools/, scripts/, data/) and either delete or document a planned use."

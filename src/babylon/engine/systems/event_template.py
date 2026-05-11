@@ -17,6 +17,7 @@ from babylon.engine.event_evaluator import (
     evaluate_template,
     get_matching_nodes_for_resolution,
 )
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class EventTemplateSystem:
+class EventTemplateSystem(SystemBase):
     """System that evaluates and applies EventTemplates.
 
     EventTemplates are data-driven definitions of recurring game events.

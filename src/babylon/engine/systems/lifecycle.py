@@ -21,6 +21,8 @@ from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculat
 from babylon.economics.lifecycle.mobility import DefaultClassMobilityCalculator
 from babylon.economics.lifecycle.types import ClassMobilityParams, DPDState, LegitimationState
 from babylon.engine.event_bus import Event
+from babylon.engine.systems.base import SystemBase
+from babylon.engine.systems.protocol import ContextType
 from babylon.models.enums import EventType, LegitimationClassification
 
 if TYPE_CHECKING:
@@ -28,12 +30,11 @@ if TYPE_CHECKING:
 
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
-    from babylon.engine.systems.protocol import ContextType
 
 logger = logging.getLogger(__name__)
 
 
-class LifecycleSystem:
+class LifecycleSystem(SystemBase):
     """D-P-D' lifecycle circuit system (Feature 030).
 
     Tracks population cohorts across three lifecycle phases per county,
@@ -43,8 +44,7 @@ class LifecycleSystem:
     Turn position: After CommunitySystem, before SolidaritySystem.
     """
 
-    name = "Lifecycle Circuit"
-
+    name: ClassVar[str] = "Lifecycle Circuit"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 

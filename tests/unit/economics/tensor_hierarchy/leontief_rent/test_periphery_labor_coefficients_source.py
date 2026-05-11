@@ -20,7 +20,6 @@ from collections.abc import Iterator
 
 import numpy as np
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from tests.unit.economics.tensor_hierarchy.leontief_rent.conftest import FakeEventBus
 
@@ -31,7 +30,7 @@ from babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficien
     PeripheryWageMetadata,
 )
 from babylon.economics.tensor_hierarchy.types import PeripheryLaborCoefficients
-from babylon.reference.schema import DimTime, FactHickelERDIAnnual, NormalizedBase
+from babylon.reference.schema import DimTime, FactHickelERDIAnnual
 
 # =============================================================================
 # Fixtures
@@ -39,16 +38,15 @@ from babylon.reference.schema import DimTime, FactHickelERDIAnnual, NormalizedBa
 
 
 @pytest.fixture
-def in_memory_db_with_erdi() -> Iterator[Session]:
+def in_memory_db_with_erdi(reference_sqlite_session_factory) -> Iterator[Session]:
     """In-memory SQLite seeded with Hickel ERDI fixtures matching the
     real CSV (2015 Intensive = 8.25, plus a synthetic axiom-violation
     row for AC3).
+
+    Schema comes from the shared ``reference_sqlite_session_factory``
+    (full ``NormalizedBase`` schema; unused tables are harmless).
     """
-    engine = create_engine("sqlite:///:memory:")
-    NormalizedBase.metadata.create_all(
-        engine, tables=[DimTime.__table__, FactHickelERDIAnnual.__table__]
-    )
-    with Session(engine) as session:
+    with reference_sqlite_session_factory() as session:
         # Real 2015 Intensive ERDI value from babylon_hickel_final.csv
         t2015 = DimTime(year=2015, is_annual=True)
         session.add(t2015)

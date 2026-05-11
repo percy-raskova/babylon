@@ -1,0 +1,126 @@
+# =============================================================================
+# ADR-038: Spec 060 Invariant Test Bundle
+# =============================================================================
+#
+# Decision: A seven-user-story, twenty-two-FR property/metamorphic test
+# bundle that asserts cross-domain, cross-tick, cross-resolution
+# invariants on the Babylon engine — without changing engine behavior.
+#
+# Status: ACCEPTED (2026-05-11)
+# Related: Spec 060 (`specs/060-value-form-invariants/`)
+# Supersedes: nothing
+# Superseded by: nothing
+
+context: |
+  Prior to spec-060 the engine's value-form claims (MELT τ bridges
+  labor-time and money domains; tensor notation c/v/s earns its keep
+  through actual invariance; the simulation step is a pure Markovian
+  function) were each tested at the per-module level but never as
+  cross-cutting properties of a tick. A bug in unit handling, MELT
+  application, transformation logic, UUID coupling, serialization,
+  tick semantics, or H3 aggregation could pass every existing unit
+  test and silently corrupt downstream results.
+
+  Constitution III.3 (Physics Cosplay Prohibition) and VIII.4
+  (Ungrounded Tensor Notation) demand that tensor notation earn its
+  keep through actual invariance. Spec-060 IS that demonstration.
+
+decision: |
+  Land a test-only bundle of 14 test files + 11 shared helpers under
+  `tests/_helpers/invariants/` + 1 production constant
+  (`src/babylon/config/h3_splitter.py`, FR-011 exception per spec-060
+  R1). All tests carry `@pytest.mark.invariant` and run via
+  `poetry run pytest -m invariant` in under 10 seconds wall-clock.
+
+  Seven user stories:
+    US1 (P1) — Numeraire invariance
+    US2 (P1) — MELT-mediated per-entity consistency
+    US3 (P2) — TSSI/NI aggregate equalities
+    US4 (P2) — OCC-conditional wage asymmetry
+    US5 (P3) — Productivity-shock decoupling
+    US6 (P1) — Software metamorphic (UUID, serialization, Markov, H3)
+    US7 (P2) — Marxist sign/monotonicity (proportional, OCC monotone,
+               Volume III equalization)
+
+  Eight tests SKIP today, all referencing spec-060:
+    - 2 gated on Feature 026 (productive entity hydration)
+    - 5 gated on the transformation engine activating
+    - 1 by-design (NoDataSentinel)
+
+  Skips activate automatically as engine subsystems mature; no manual
+  intervention required.
+
+rationale:
+  protocol_separation: |
+    Helpers under `tests/_helpers/invariants/` are pure dataclasses or
+    pure functions. They do not import engine internals beyond the
+    declared contracts (Pydantic models, MELT calculator interface,
+    GraphProtocol). This keeps spec-060 independent of refactors to
+    engine implementation.
+  single_source_of_truth: |
+    `transformation_mode.probe_transformation_mode` is the sole gate
+    used by US3-redistribution-arm, US4, US5, US7(c) per FR-021. Tests
+    don't re-implement the gate; the probe is unit-tested in
+    `tests/unit/test_transformation_mode_probe.py` (T042).
+  byte_equality_preservation: |
+    `mise run sim:trace 200` must remain byte-identical to the
+    pre-spec-060 baseline (FR-012/SC-008). The only production-side
+    change is a new file (`src/babylon/config/h3_splitter.py`) that
+    is not imported by any production code path; the engine's
+    behavior is unchanged.
+  performance_budget: |
+    Full bundle runs in 9.85 s (vs. 120 s SC-006 target). The
+    100-example numeraire-invariance Hypothesis test is the slowest
+    individual test at 0.53 s.
+  no_new_dependencies: |
+    Hypothesis was already a dev dependency (spec 053). No new
+    third-party packages required. No new database tables, no
+    persistence changes.
+
+consequences:
+  positive:
+    - "Cross-domain invariants now executable: any future refactor
+      that breaks numeraire invariance, MELT bridging, TSSI/NI
+      aggregates, UUID coupling, serialization, or H3 round-trip
+      conservation will be caught on the fast gate."
+    - "Constitution III.3 (Physics Cosplay Prohibition) now has an
+      executable enforcement mechanism."
+    - "Transformation engine maturation lights up 5 SKIPped tests
+      automatically; no manual gate-flip needed."
+    - "Feature 026 (tri-county hydration) lights up 2 SKIPs."
+    - "23 new tests pass green; 8 SKIPs all reference spec-060."
+    - "11 reusable helpers in tests/_helpers/invariants/ available
+      to future spec authors."
+  negative:
+    - "SC-007 target of ≤ 5 SKIPs not met at landing (8 SKIPs today).
+      Realistic baseline given pre-Feature-026 / pre-transformation
+      state of the engine."
+    - "FR-001 numeraire test passes trivially today because
+      ratios are computed from labor-time tensor (not money). Test
+      remains valuable as a regression guard against money-coupling
+      bugs being introduced."
+    - "FR-003 per-entity MELT consistency cannot exercise an
+      independent labor-time path until Feature 026 hydrates
+      organizations with c/v/s in LaborHours (currently money domain
+      only)."
+
+next_steps:
+  - "When Feature 026 hydrates productive entities: lift FR-003 and
+    FR-005-proportional from SKIPped to ACTIVE; expect skip count to
+    drop from 8 → 6."
+  - "When the transformation engine activates (redistribution mode):
+    lift FR-005-redistribution, FR-006, FR-006-property, FR-007,
+    FR-019 from SKIPped to ACTIVE; expect skip count to drop from
+    6 → 1 (just FR-004 NoDataSentinel by-design)."
+  - "Audit pyproject.toml for new dependencies in 6 months and
+    deprecate the FR-011 exception (`src/babylon/config/h3_splitter.py`)
+    if a substrate-side module assumes the same role."
+
+verification:
+  performance: "9.85 s / 120 s budget (8.2%)"
+  test_count: "23 passing / 8 skipping / 0 failing"
+  bytes_changed_in_src_babylon: "1 new file (config/h3_splitter.py)
+                                  + 0 file modifications"
+  fr_coverage: "22/22 FRs referenced in tests"
+  sc_coverage: "15/16 SCs verified by tests (SC-016 retrospective)"
+  marker_coverage: "14/14 test files carry @pytest.mark.invariant"

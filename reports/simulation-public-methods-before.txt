@@ -1,0 +1,19 @@
+add_observer
+end
+get_current_tick
+get_hexes_for_territory
+get_history
+get_node_by_spatial_index
+get_outcome
+get_snapshot
+get_territory_state
+get_time_series
+register_observer
+remove_observer
+reset
+run
+run_until_endgame
+step
+unregister_observer
+update_state
+# Total: 18 public methods

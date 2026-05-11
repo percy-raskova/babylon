@@ -18,7 +18,6 @@ from collections.abc import Iterator
 
 import numpy as np
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from tests.unit.economics.tensor_hierarchy.leontief_rent.conftest import FakeEventBus
 
@@ -37,7 +36,6 @@ from babylon.reference.schema import (
     DimState,
     DimTime,
     FactQcewAnnual,
-    NormalizedBase,
 )
 
 # =============================================================================
@@ -46,28 +44,17 @@ from babylon.reference.schema import (
 
 
 @pytest.fixture
-def fake_db() -> Iterator[Session]:
+def fake_db(reference_sqlite_session_factory) -> Iterator[Session]:
     """In-memory SQLite seeded with a tiny synthetic QCEW + bridge fixture.
 
     Two counties (A, B) × two NAICS industries (N1, N2) → two BEA codes (B1, B2).
     Year 2015 has data for both counties; year 2014 also has data (used in
     carry-forward tests).
+
+    Schema comes from the shared ``reference_sqlite_session_factory``
+    (full ``NormalizedBase`` schema; unused tables are harmless).
     """
-    engine = create_engine("sqlite:///:memory:")
-    NormalizedBase.metadata.create_all(
-        engine,
-        tables=[
-            DimState.__table__,
-            DimCounty.__table__,
-            DimIndustry.__table__,
-            DimOwnership.__table__,
-            DimBEAIndustry.__table__,
-            DimTime.__table__,
-            BridgeNAICSBEA.__table__,
-            FactQcewAnnual.__table__,
-        ],
-    )
-    with Session(engine) as session:
+    with reference_sqlite_session_factory() as session:
         # State (required FK for dim_county)
         state = DimState(state_fips="01", state_abbrev="ZZ", state_name="Test State")
         session.add(state)

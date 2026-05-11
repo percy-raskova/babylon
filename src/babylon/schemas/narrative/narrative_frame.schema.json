@@ -1,9 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Causal graph structure output by observers for AI narrative generation",
   "$id": "https://babylonrpg.com/schemas/narrative/narrative_frame.schema.json",
   "title": "NarrativeFrame",
-  "description": "Causal graph structure output by observers for AI narrative generation",
-
   "type": "object",
   "properties": {
     "pattern": {
@@ -20,9 +19,11 @@
       "$ref": "#/$defs/CausalGraph"
     }
   },
-  "required": ["pattern", "causal_graph"],
+  "required": [
+    "pattern",
+    "causal_graph"
+  ],
   "additionalProperties": false,
-
   "$defs": {
     "CausalGraph": {
       "type": "object",
@@ -44,10 +45,12 @@
           }
         }
       },
-      "required": ["nodes", "edges"],
+      "required": [
+        "nodes",
+        "edges"
+      ],
       "additionalProperties": false
     },
-
     "CausalNode": {
       "type": "object",
       "description": "An event node in the causal graph",
@@ -80,10 +83,13 @@
           "additionalProperties": true
         }
       },
-      "required": ["id", "type", "tick"],
+      "required": [
+        "id",
+        "type",
+        "tick"
+      ],
       "additionalProperties": false
     },
-
     "CausalEdge": {
       "type": "object",
       "description": "A causal relationship between two nodes",
@@ -110,7 +116,11 @@
           ]
         }
       },
-      "required": ["source", "target", "relation"],
+      "required": [
+        "source",
+        "target",
+        "relation"
+      ],
       "additionalProperties": false
     }
   }

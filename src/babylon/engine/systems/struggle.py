@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 # Social roles that can participate in struggle/uprising
@@ -231,7 +232,7 @@ def _find_entity_by_role(
     return None
 
 
-class StruggleSystem:
+class StruggleSystem(SystemBase):
     """Agency Layer - The Struggle System ("George Floyd Dynamic").
 
     This system runs AFTER SurvivalSystem (needs P values) and BEFORE
@@ -252,7 +253,7 @@ class StruggleSystem:
     The solidarity built in Tick N enables SolidaritySystem transmission in Tick N+1.
     """
 
-    name = "Struggle"
+    name: ClassVar[str] = "Struggle"
     # Spec 053 INV-001: StruggleSystem destroys wealth during uprisings
     # (`new_wealth = current_wealth * (1.0 - wealth_destruction)`).
     creates_value: ClassVar[bool] = True

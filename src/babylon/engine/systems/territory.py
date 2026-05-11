@@ -33,10 +33,11 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 
-class TerritorySystem:
+class TerritorySystem(SystemBase):
     """Territory Dynamic System - Layer 0 spatial dynamics.
 
     Implements the territorial substrate mechanics:
@@ -54,8 +55,7 @@ class TerritorySystem:
     - PENAL_COLONY organization suppression (atomization)
     """
 
-    name = "Territory"
-
+    name: ClassVar[str] = "Territory"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
     # Priority order for sink node selection by displacement mode

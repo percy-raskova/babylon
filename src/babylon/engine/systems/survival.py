@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 
@@ -66,7 +67,7 @@ def _calculate_solidarity_multiplier(
     return 1.0 + solidarity_sum
 
 
-class SurvivalSystem:
+class SurvivalSystem(SystemBase):
     """Phase 3: Survival Calculus (P(S|A) vs P(S|R)).
 
     Bug Fix (Sprint 3.4.2): Organization is now DYNAMIC.
@@ -79,8 +80,7 @@ class SurvivalSystem:
     This ensures that High Solidarity scenarios produce higher P(S|R).
     """
 
-    name = "Survival Calculus"
-
+    name: ClassVar[str] = "Survival Calculus"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 

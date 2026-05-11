@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "AI narrative persona for the NarrativeDirector",
   "$id": "https://babylonrpg.com/schemas/entities/persona.schema.json",
   "title": "Persona",
-  "description": "AI narrative persona for the NarrativeDirector",
   "type": "object",
   "properties": {
     "id": {
@@ -40,7 +40,11 @@
           "description": "How the persona addresses the user"
         }
       },
-      "required": ["tone", "style", "address_user_as"],
+      "required": [
+        "tone",
+        "style",
+        "address_user_as"
+      ],
       "additionalProperties": false
     },
     "obsessions": {
@@ -70,6 +74,13 @@
       "description": "Topics or behaviors to avoid"
     }
   },
-  "required": ["id", "name", "role", "voice", "obsessions", "directives"],
+  "required": [
+    "id",
+    "name",
+    "role",
+    "voice",
+    "obsessions",
+    "directives"
+  ],
   "additionalProperties": false
 }

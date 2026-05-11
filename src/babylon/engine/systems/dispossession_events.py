@@ -14,6 +14,7 @@ import networkx as nx
 
 from babylon.economics.dispossession.intensity import DispossessionIntensityCalculator
 from babylon.engine.event_bus import Event
+from babylon.engine.systems.base import SystemBase
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 ContextType = Union[dict[str, Any], "TickContext"]
 
 
-class DispossessionEventSystem:
+class DispossessionEventSystem(SystemBase):
     """Computes aggregate dispossession and tracks value transfers.
 
     For each territory node, reads dispossession rates (foreclosure_rate,
@@ -38,10 +39,7 @@ class DispossessionEventSystem:
     # Default-deny while audit pending; flip to False once conservation proven.
     creates_value: ClassVar[bool] = True
 
-    @property
-    def name(self) -> str:
-        """System identifier."""
-        return "dispossession_events"
+    name: ClassVar[str] = "dispossession_events"
 
     def step(
         self,

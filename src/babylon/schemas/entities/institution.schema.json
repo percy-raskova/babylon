@@ -1,10 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A societal institution",
   "$id": "https://babylonrpg.com/schemas/entities/institution.schema.json",
   "title": "Institution",
   "$comment": "DEPRECATED: This legacy JSON Schema is superseded by the Pydantic Institution model in src/babylon/models/entities/institution.py (Feature 040). Will be removed in a future version.",
-  "description": "A societal institution",
-
   "type": "object",
   "properties": {
     "id": {
@@ -25,13 +24,18 @@
     },
     "functions": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "attributes": {
       "type": "object",
       "additionalProperties": true
     }
   },
-  "required": ["id", "name"],
+  "required": [
+    "id",
+    "name"
+  ],
   "additionalProperties": true
 }

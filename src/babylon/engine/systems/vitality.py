@@ -44,10 +44,11 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 
-class VitalitySystem:
+class VitalitySystem(SystemBase):
     """Mass Line Phase 3: The Drain + Grinding Attrition + The Reaper.
 
     Three-phase vitality check for all active entities:
@@ -76,13 +77,9 @@ class VitalitySystem:
             payload: {entity_id, wealth, consumption_needs, cause, tick}
     """
 
+    name: ClassVar[str] = "vitality"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
-
-    @property
-    def name(self) -> str:
-        """System identifier."""
-        return "vitality"
 
     def step(
         self,
@@ -228,11 +225,14 @@ class VitalitySystem:
         Returns:
             Tuple of (deaths: int, attrition_rate: float).
         """
-        wealth = data.get("wealth", 0.0)
-        population = data.get("population", 1)
-        inequality = data.get("inequality", 0.0)
-        s_bio = data.get("s_bio", 0.0)
-        s_class = data.get("s_class", 0.0)
+        # FR-011: required social_class attributes — surface bugs at read
+        # site (was data.get("X", 0.0) which silently masked missing fields,
+        # producing wrong death counts downstream per CLAUDE.md gotcha).
+        wealth = self._read(data, "wealth", required=True)
+        population = self._read(data, "population", required=True)
+        inequality = self._read(data, "inequality", required=True)
+        s_bio = self._read(data, "s_bio", required=True)
+        s_class = self._read(data, "s_class", required=True)
         subsistence_needs = s_bio + s_class
 
         # Edge case: no consumption needs = no deaths

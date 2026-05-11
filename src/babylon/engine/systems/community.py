@@ -19,6 +19,7 @@ from typing import Any, ClassVar
 import networkx as nx
 import xgi  # type: ignore[import-untyped]
 
+from babylon.engine.systems.base import SystemBase
 from babylon.models.entities.community import (
     LEGAL_STATUS_MULTIPLIERS,
     ROLE_STRENGTH_WEIGHTS,
@@ -296,7 +297,7 @@ def _get_community_states_from_services(
     return {}
 
 
-class CommunitySystem:
+class CommunitySystem(SystemBase):
     """Hypergraph community system (Feature 022).
 
     Manages alpha-smoothed community state decay, solidarity potential
@@ -305,8 +306,7 @@ class CommunitySystem:
     engine pipeline (position 6).
     """
 
-    name = "community"
-
+    name: ClassVar[str] = "community"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 

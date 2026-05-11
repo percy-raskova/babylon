@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
 
@@ -63,7 +64,7 @@ def _find_entity_by_role(
     return None
 
 
-class DecompositionSystem:
+class DecompositionSystem(SystemBase):
     """Handles class decomposition during terminal crisis.
 
     The Labor Aristocracy decomposes when super-wages can't be paid:
@@ -75,7 +76,7 @@ class DecompositionSystem:
     Must run AFTER ImperialRentSystem (which emits SUPERWAGE_CRISIS).
     """
 
-    name = "Decomposition"
+    name: ClassVar[str] = "Decomposition"
     # Spec 053 INV-001: DecompositionSystem transfers wealth proportionally
     # during LA decomposition. Default-deny while audit pending; flip to
     # False once internal redistribution is proven sum-preserving.

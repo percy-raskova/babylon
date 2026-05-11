@@ -1,9 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A political ideology",
   "$id": "https://babylonrpg.com/schemas/entities/ideology.schema.json",
   "title": "Ideology",
-  "description": "A political ideology",
-
   "type": "object",
   "properties": {
     "id": {
@@ -18,13 +17,18 @@
     },
     "principles": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "attributes": {
       "type": "object",
       "additionalProperties": true
     }
   },
-  "required": ["id", "name"],
+  "required": [
+    "id",
+    "name"
+  ],
   "additionalProperties": true
 }

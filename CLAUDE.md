@@ -827,6 +827,7 @@ ADR0XX_descriptive_name:
 - N/A — this is a refactor; no schema changes, no new persistence (058-adr-bundle-1-pre-spec-057)
 - Python 3.12+ (existing project standard) + Pydantic 2.x (frozen models, discriminated unions), (059-adr-bundle-2-post-spec-057)
 - PostgreSQL 16+ for runtime state (unchanged); SQLite for (059-adr-bundle-2-post-spec-057)
+- N/A — fully in-memory. Tests use existing `WorldState` and (060-value-form-invariants)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

@@ -28,6 +28,42 @@ class TraceLevel(IntEnum):
     TRACE = 3
 
 
+class TickAlreadyResolved(Exception):
+    """Raised when ``persist_full_tick`` (or the atomic resolution path)
+    is invoked for a ``(session_id, tick)`` that has already been written.
+
+    Spec 061 FR-005 (Real Backend Wire-Up): resolved ticks are immutable.
+    The implementation guards this via ``INSERT ... ON CONFLICT
+    (session_id, tick) DO NOTHING RETURNING id`` against ``tick_log``;
+    if the RETURNING clause yields no row, the tick was already resolved
+    by a prior (or concurrent) writer, and this exception is raised so
+    the caller can surface a 409 Conflict to the API client.
+
+    This is **distinct** from :class:`MonotonicityViolationError`:
+
+    - ``MonotonicityViolationError`` is raised by the lower-level
+      ``persist_tick`` protocol method when an UPSERT-style retry
+      attempts to overwrite an existing tick with a *different* payload
+      — it is the post-spec-056 idempotency guard.
+    - ``TickAlreadyResolved`` is raised by the higher-level resolve
+      flow when any second resolution is attempted, regardless of
+      whether the new payload matches — the resolve flow is a one-shot
+      operation per FR-005.
+
+    Args:
+        session_id: The session whose tick was already resolved.
+        tick: The tick number that the caller tried to re-resolve.
+    """
+
+    def __init__(self, session_id: UUID, tick: int) -> None:
+        self.session_id = session_id
+        self.tick = tick
+        super().__init__(
+            f"Tick {tick} for session {session_id} has already been resolved; "
+            "resolved ticks are immutable per spec 061 FR-005."
+        )
+
+
 class MonotonicityViolationError(Exception):
     """Raised when ``persist_tick`` is called with a DIFFERENT payload for
     an already-persisted ``(session_id, tick)`` pair.
@@ -495,8 +531,10 @@ class VectorStoreProtocol(Protocol):
 
 
 __all__ = [
+    "MonotonicityViolationError",
     "PostgresRuntimeExtensions",
     "RuntimePersistence",
+    "TickAlreadyResolved",
     "TraceCollector",
     "TraceLevel",
     "VectorStoreProtocol",

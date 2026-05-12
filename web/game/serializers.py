@@ -224,10 +224,23 @@ class HyperedgeSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class EventSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a simulation event."""
+    """Serialize a simulation event.
 
+    Spec 061 US3 FR-012: events expose ``id``, ``severity``, ``title``,
+    ``body`` in addition to the legacy ``type``/``tick``/``data`` fields
+    so the v2 Briefing Priority Dispatch panel can render severity
+    badges and human-readable titles directly from snapshot data.
+    """
+
+    id = serializers.CharField(required=False, default="")
     type = serializers.CharField()
     tick = serializers.IntegerField()
+    severity = serializers.ChoiceField(
+        choices=("critical", "warning", "informational"),
+        default="informational",
+    )
+    title = serializers.CharField(required=False, default="", allow_blank=True)
+    body = serializers.CharField(required=False, default="", allow_blank=True)
     data = serializers.DictField(required=False, default=dict)  # type: ignore[assignment]
 
 

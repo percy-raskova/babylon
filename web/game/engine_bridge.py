@@ -355,9 +355,56 @@ class EngineBridge:
         """Return the top-bar summary data: tick, profit rate, phi, state faction, alerts."""
         return {}
 
-    def get_game_timeseries(self, _session_id: UUID) -> dict[str, Any]:
-        """Return historical timeseries data for charting."""
-        return {}
+    def get_game_timeseries(self, session_id: UUID) -> dict[str, Any]:
+        """Return historical timeseries data for charting (spec 061 US3, FR-026).
+
+        Reads the per-tick aggregates from the ``tick_summary`` table and
+        emits the six named arrays the v2 Briefing/Analysis pages chart:
+        ``imperial_rent``, ``consciousness``, ``solidarity``, ``heat``,
+        ``wealth``, ``biocapacity``. Each array is parallel-indexed with
+        the ``ticks`` array (oldest tick first). Missing values become
+        ``None`` so the frontend can interpolate / hide gaps without a
+        backend round-trip.
+
+        The persistence layer fronts this via
+        :meth:`PostgresRuntime.query_tick_summary_series`. SQLite-backed
+        ``RuntimeDatabase`` returns an empty list (the v2 pages are only
+        ever consumed against a live Postgres deployment).
+        """
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_tick_summary_series", None)
+        if callable(query):
+            try:
+                rows = query(session_id)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+                logger.exception("get_game_timeseries: query_tick_summary_series failed")
+                rows = []
+
+        ticks: list[int] = []
+        imperial_rent: list[float | None] = []
+        consciousness: list[float | None] = []
+        solidarity: list[float | None] = []
+        heat: list[float | None] = []
+        wealth: list[float | None] = []
+        biocapacity: list[float | None] = []
+        for row in rows:
+            ticks.append(int(row.get("tick", 0)))
+            imperial_rent.append(_optional_float(row.get("imperial_rent")))
+            consciousness.append(_optional_float(row.get("avg_consciousness")))
+            # No dedicated columns yet — these fields fall back gracefully.
+            solidarity.append(_optional_float(row.get("solidarity_edge_count")))
+            heat.append(_optional_float(row.get("total_heat")))
+            wealth.append(_optional_float(row.get("total_wealth")))
+            biocapacity.append(_optional_float(row.get("total_biocapacity")))
+        return {
+            "ticks": ticks,
+            "imperial_rent": imperial_rent,
+            "consciousness": consciousness,
+            "solidarity": solidarity,
+            "heat": heat,
+            "wealth": wealth,
+            "biocapacity": biocapacity,
+        }
 
     def get_economy_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         """Return the economy left-panel dashboard data."""
@@ -1795,6 +1842,121 @@ def _enum_val(obj: object) -> str:
     return obj.value if hasattr(obj, "value") else str(obj)
 
 
+def _optional_float(value: Any) -> float | None:
+    """Coerce a numeric-or-None field to ``float | None`` defensively.
+
+    Postgres ``NULL`` columns surface as ``None`` from psycopg's row
+    objects; numeric ``Decimal`` results need an explicit ``float()``.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+# Spec 061 US3 FR-012: event severity classification.
+# Maps engine EventType strings (the canonical lowercase form) to the
+# three-bucket frontend taxonomy. Default for unmapped types is
+# "informational" — the safe non-alarming bucket.
+_EVENT_SEVERITY: dict[str, str] = {
+    # Critical: state-violation / collapse events
+    "economic_crisis": "critical",
+    "class_decomposition": "critical",
+    "superwage_crisis": "critical",
+    "imperial_collapse": "critical",
+    "uprising": "critical",
+    "revolution": "critical",
+    "fascist_consolidation": "critical",
+    # Warning: threshold-cross / bifurcation events
+    "consciousness_bifurcation": "warning",
+    "ideology_drift": "warning",
+    "heat_threshold": "warning",
+    "eviction_pipeline": "warning",
+    "repression_event": "warning",
+    "trap_activated": "warning",
+    "excessive_force": "warning",
+    # Informational: routine flow events
+    "surplus_extraction": "informational",
+    "imperial_subsidy": "informational",
+    "wage_payment": "informational",
+    "solidarity_transmission": "informational",
+}
+
+
+def _classify_event(event_type_str: str) -> str:
+    """Map an event_type to one of {critical, warning, informational}.
+
+    Per spec 061 FR-012. Unrecognized types default to informational so
+    the frontend can render them without raising the alarm level.
+    """
+    return _EVENT_SEVERITY.get(event_type_str.lower(), "informational")
+
+
+def _humanize_event_type(event_type_str: str) -> str:
+    """Convert ``"economic_crisis"`` to ``"Economic Crisis"`` for UI titles."""
+    return event_type_str.replace("_", " ").title()
+
+
+def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
+    """Serialize a single :class:`SimulationEvent` for the snapshot.
+
+    Spec 061 US3 (FR-012): every event surfaces ``id``, ``severity``,
+    ``title``, and ``body`` fields in addition to the legacy
+    ``type``/``tick``/``data`` triple.
+
+    - ``id``: deterministic UUID5 over ``(session_id, tick, event_type,
+      data)`` so retries / replays produce identical IDs (Constitution
+      III.7 — determinism).
+    - ``severity``: one of ``{"critical", "warning", "informational"}``
+      via :func:`_classify_event`.
+    - ``title``: human-readable variant of ``event_type``.
+    - ``body``: a short prose body derived from the event payload.
+      Falls back to the empty string when no narrative is available
+      (the frontend renders body-less events compactly).
+    """
+    import json
+    import uuid
+
+    event_type_str = _enum_val(event.event_type)
+    tick = getattr(event, "tick", 0)
+    data: dict[str, Any] = {}
+    for attr in ("data", "payload"):
+        value = getattr(event, attr, None)
+        if isinstance(value, dict):
+            data = value
+            break
+    if not data:
+        try:
+            data = event.model_dump(exclude={"event_type", "tick", "timestamp"})
+        except Exception:  # noqa: BLE001 — defensive
+            data = {}
+
+    deterministic_seed = json.dumps(
+        {
+            "session": str(session_id),
+            "tick": tick,
+            "event_type": event_type_str,
+            "data": data,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, deterministic_seed))
+
+    narrative = getattr(event, "narrative", None) or ""
+    return {
+        "id": event_id,
+        "type": event_type_str,
+        "tick": tick,
+        "severity": _classify_event(event_type_str),
+        "title": _humanize_event_type(event_type_str),
+        "body": narrative,
+        "data": data,
+    }
+
+
 def _serialize_entity(e: Any) -> dict[str, Any]:
     """Serialize a SocialClass entity with all visualization-relevant fields."""
     ideology = e.ideology
@@ -1929,14 +2091,7 @@ def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
-    events_list: list[dict[str, Any]] = [
-        {
-            "type": _enum_val(e.event_type),
-            "tick": e.tick,
-            "data": e.data if hasattr(e, "data") else {},
-        }
-        for e in state.events
-    ]
+    events_list: list[dict[str, Any]] = [_serialize_event(e, session_id) for e in state.events]
 
     # Compute trap detection for the session
     traps_dict = _compute_traps(state, session_id)

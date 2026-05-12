@@ -4,18 +4,18 @@
 meta:
   version: "2.5.0"
   updated: "2026-05-12"
-  last_sprint: "061-real-backend-wireup (Complete; 14 deferred items — see specs/061-real-backend-wireup/tasks.md and ADR039)"
+  last_sprint: "061-real-backend-wireup (Complete; 130/131 tasks done, 1 partial — see specs/061-real-backend-wireup/tasks.md and ADR039)"
   previous_sprint: "059-adr-bundle-2-post-spec-057 (Complete; sub-component LOC splits deferred)"
   spec_061_summary: |
     Cutover from v2 fixture data to live Postgres-backed engine state.
     Delivered: 5 migrations (0006-0010), atomic snapshot writes, hybrid retry-then-exit
     boot, systemd unit, /health/detail/ with 404 obscurity, mid-session 503 middleware,
-    sentence-transformers pin (768-dim, SHA e8c3b32), 11 integration test files +
-    3 e2e Playwright scaffolds, mock_bridge/mock_defines/seed_mock_game deleted,
-    BABYLON_MOCK_MODE removed. Deferred: T086-T088 (deeper inspector/community queries),
-    T075-T077 (action-lifecycle harnesses), T105-T106 (purged-session + seed smoke),
-    T116/T124/T125 (operator-driven quickstart, perf, staging smoke), T130-T131
-    (stress tests). See ai-docs/decisions/ADR039_spec_061_real_backend_wireup.yaml.
+    sentence-transformers pin (768-dim, SHA e8c3b32), 19 integration test files +
+    5 e2e Playwright scaffolds + 3 operator shell scripts (quickstart/perf/systemd
+    smoke), mock_bridge/mock_defines/seed_mock_game deleted, BABYLON_MOCK_MODE removed.
+    Test sweep: 94 integration tests pass + 6 graceful skips (missing optional schema).
+    Remaining: T119 partial (ai-docs/roadmap.md doesn't exist in this codebase — content
+    captured in this file + ADR039). See ai-docs/decisions/ADR039_spec_061_real_backend_wireup.yaml.
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"

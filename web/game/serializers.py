@@ -106,7 +106,13 @@ class CampaignActionSerializer(BaseActionSerializer):
 
 
 class TerritorySerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a territory with full visualization fields (Spec 052 §8)."""
+    """Serialize a territory with full visualization fields (Spec 052 §8).
+
+    Spec 061 US6 FR-013 (T094): adds ``consciousness`` / ``solidarity``
+    / ``wealth`` / ``dominant_community`` derived aggregates so the
+    Intel page can render per-territory detail without an extra
+    inspector round-trip.
+    """
 
     id = serializers.CharField()
     name = serializers.CharField()
@@ -123,6 +129,10 @@ class TerritorySerializer(serializers.Serializer[dict[str, Any]]):
     biocapacity = serializers.FloatField()
     host_id = serializers.CharField(allow_null=True)
     occupant_id = serializers.CharField(allow_null=True)
+    consciousness = serializers.FloatField(required=False, default=0.0)
+    solidarity = serializers.FloatField(required=False, default=0.0)
+    wealth = serializers.FloatField(required=False, default=0.0)
+    dominant_community = serializers.CharField(required=False, default="", allow_blank=True)
 
 
 class ConsciousnessVectorSerializer(serializers.Serializer[dict[str, Any]]):
@@ -137,13 +147,23 @@ class ConsciousnessVectorSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class OodaProfileSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize the OODA loop profile (Spec 052 §6)."""
+    """Serialize the OODA loop profile (Spec 052 §6).
+
+    Spec 061 FR-011 (T066, T067): adds ``phase`` — the deterministic
+    argmax over the four floats, as an enum string. Lets the frontend
+    render OODA badges without re-computing argmax in JS.
+    """
 
     observe = serializers.FloatField()
     orient = serializers.FloatField()
     decide = serializers.FloatField()
     act = serializers.FloatField()
     cycle_ticks = serializers.IntegerField()
+    phase = serializers.ChoiceField(
+        choices=("observe", "orient", "decide", "act"),
+        required=False,
+        default="observe",
+    )
 
 
 class VanguardResourcesSerializer(serializers.Serializer[dict[str, Any]]):
@@ -159,10 +179,19 @@ class VanguardResourcesSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class OrganizationSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize an organization — the only agent type (Spec 052 §6)."""
+    """Serialize an organization — the only agent type (Spec 052 §6).
+
+    Spec 061 US4 (FR-011, FR-016): adds ``short_name`` / ``player_controlled``
+    / ``legitimacy`` / ``opacity``. ``ooda.phase`` carried via
+    :class:`OodaProfileSerializer`.
+    """
 
     id = serializers.CharField()
     name = serializers.CharField()
+    short_name = serializers.CharField(required=False, default="", allow_blank=True)
+    player_controlled = serializers.BooleanField(required=False, default=False)
+    legitimacy = serializers.FloatField(required=False, default=0.5)
+    opacity = serializers.FloatField(required=False, default=0.5)
     org_type = serializers.CharField()
     class_character = serializers.CharField()
     cohesion = serializers.FloatField()
@@ -200,7 +229,12 @@ class InstitutionSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class EdgeSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a dyadic edge (Spec 052 §10)."""
+    """Serialize a dyadic edge (Spec 052 §10).
+
+    Spec 061 US6 FR-014 (T096): adds ``rate_of_profit`` /
+    ``rent_burden`` / ``age_ticks`` (all nullable when not yet
+    computable) so the Intel page can chart edge histories.
+    """
 
     id = serializers.CharField()
     source_id = serializers.CharField()
@@ -209,6 +243,9 @@ class EdgeSerializer(serializers.Serializer[dict[str, Any]]):
     value_flow = serializers.FloatField()
     tension = serializers.FloatField()
     repression_flow = serializers.FloatField()
+    rate_of_profit = serializers.FloatField(required=False, allow_null=True, default=None)
+    rent_burden = serializers.FloatField(required=False, allow_null=True, default=None)
+    age_ticks = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class HyperedgeSerializer(serializers.Serializer[dict[str, Any]]):
@@ -224,10 +261,23 @@ class HyperedgeSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class EventSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a simulation event."""
+    """Serialize a simulation event.
 
+    Spec 061 US3 FR-012: events expose ``id``, ``severity``, ``title``,
+    ``body`` in addition to the legacy ``type``/``tick``/``data`` fields
+    so the v2 Briefing Priority Dispatch panel can render severity
+    badges and human-readable titles directly from snapshot data.
+    """
+
+    id = serializers.CharField(required=False, default="")
     type = serializers.CharField()
     tick = serializers.IntegerField()
+    severity = serializers.ChoiceField(
+        choices=("critical", "warning", "informational"),
+        default="informational",
+    )
+    title = serializers.CharField(required=False, default="", allow_blank=True)
+    body = serializers.CharField(required=False, default="", allow_blank=True)
     data = serializers.DictField(required=False, default=dict)  # type: ignore[assignment]
 
 

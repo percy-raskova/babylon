@@ -1,9 +1,19 @@
 /**
  * Babylon Frontend v2 — Mock Data Fixtures
  *
- * Port of ui_kits/webapp_v2/mock-data.jsx into typed TypeScript.
- * This is the single source of truth for all v2 routes during
- * development, before API wiring.
+ * Spec 061 US7 (T115): this file is preserved ONLY for v1-style
+ * visualization placeholders (HexMapPlaceholder, TopologyGraphPlaceholder,
+ * TopBarV2) and for the verb-target catalog in `lib/verb-config.ts`.
+ *
+ * None of the v2 pages (Briefing, Orgs, Verb, Intel, Results, Analysis)
+ * import from this module any more — they read the live engine state
+ * via `useGameState` + `useTimeseries`. The full deletion of this file
+ * is deferred to a follow-up spec that replaces the verb-target catalog
+ * with engine-sourced target endpoints (T091's full implementation).
+ *
+ * Original purpose:
+ *   Port of ui_kits/webapp_v2/mock-data.jsx into typed TypeScript.
+ *   Was the single source of truth for all v2 routes during development.
  */
 
 import type {

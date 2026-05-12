@@ -33,7 +33,7 @@ from babylon.persistence.postgres_schema import (
     TRACE_PARTITION_CREATE_TEMPLATE,
     TRACE_PARTITION_DROP_TEMPLATE,
 )
-from babylon.persistence.protocols import MonotonicityViolationError
+from babylon.persistence.protocols import MonotonicityViolationError, TickAlreadyResolved
 
 logger = logging.getLogger(__name__)
 
@@ -833,6 +833,40 @@ class PostgresRuntime:
                 ),
             )
 
+    def query_tick_summary_series(
+        self,
+        session_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """Return ordered ``tick_summary`` rows for one session (spec 061 T051).
+
+        Powers the v2 Briefing + Analysis pages' sparklines via
+        :meth:`web.game.engine_bridge.EngineBridge.get_game_timeseries`.
+        Rows are returned oldest-tick-first; gaps are not interpolated —
+        the bridge layer decides whether to forward-fill.
+
+        Args:
+            session_id: Game session UUID.
+
+        Returns:
+            List of dicts with the ``tick_summary`` column names as keys.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, year, total_c, total_v, total_s,
+                       exploitation_rate, profit_rate, imperial_rent,
+                       avg_consciousness, solidarity_edge_count,
+                       antagonistic_edge_count, co_optive_edge_count,
+                       org_count, player_org_count, uprising_count,
+                       repression_count, conservation_check
+                FROM tick_summary
+                WHERE session_id = %s
+                ORDER BY tick
+                """,
+                (session_id,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def persist_traces(
         self,
         session_id: UUID,
@@ -1247,382 +1281,451 @@ class PostgresRuntime:
         game_id: UUID,
         tick: int,
         territories: list[dict[str, Any]],
+        *,
+        _cursor: Any | None = None,
     ) -> None:
         """Bulk INSERT territory_snapshot rows for one tick.
+
+        Spec 061 FR-004: ``ON CONFLICT (game_id, tick, county_fips) DO NOTHING``
+        makes the write retry-safe against the existing composite PK.
 
         Args:
             game_id: Game session UUID.
             tick: Tick number.
             territories: List of territory dicts (one per county per tick).
+            _cursor: Optional shared cursor. When supplied by
+                :meth:`persist_full_tick`, the helper runs inside the caller's
+                transaction without acquiring a new pool connection.
         """
         if not territories:
             return
 
-        with self._pool.connection() as conn, conn.cursor() as cur:
-            cur.executemany(
-                """
-                INSERT INTO territory_snapshot
-                    (game_id, tick, county_fips,
-                     c_dept_i, v_dept_i, s_dept_i,
-                     c_dept_iia, v_dept_iia, s_dept_iia,
-                     c_dept_iib, v_dept_iib, s_dept_iib,
-                     c_dept_iii, v_dept_iii, s_dept_iii,
-                     profit_rate, exploitation_rate, occ,
-                     imperial_rent, g33_visibility,
-                     pop_bourgeoisie, pop_petit_bourgeoisie,
-                     pop_labor_aristocracy, pop_proletariat,
-                     pop_lumpenproletariat, pop_total,
-                     faction_finance_capital, faction_security_state,
-                     faction_settler_populist, heat, attributes)
-                VALUES (%s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s)
-                """,
-                [
-                    (
-                        game_id,
-                        tick,
-                        t["county_fips"],
-                        t.get("c_dept_i"),
-                        t.get("v_dept_i"),
-                        t.get("s_dept_i"),
-                        t.get("c_dept_iia"),
-                        t.get("v_dept_iia"),
-                        t.get("s_dept_iia"),
-                        t.get("c_dept_iib"),
-                        t.get("v_dept_iib"),
-                        t.get("s_dept_iib"),
-                        t.get("c_dept_iii"),
-                        t.get("v_dept_iii"),
-                        t.get("s_dept_iii"),
-                        t.get("profit_rate"),
-                        t.get("exploitation_rate"),
-                        t.get("occ"),
-                        t.get("imperial_rent"),
-                        t.get("g33_visibility"),
-                        t.get("pop_bourgeoisie", 0),
-                        t.get("pop_petit_bourgeoisie", 0),
-                        t.get("pop_labor_aristocracy", 0),
-                        t.get("pop_proletariat", 0),
-                        t.get("pop_lumpenproletariat", 0),
-                        t.get("pop_total", 0),
-                        t.get("faction_finance_capital"),
-                        t.get("faction_security_state"),
-                        t.get("faction_settler_populist"),
-                        t.get("heat", 0.0),
-                        json.dumps(t.get("attributes", {}), default=_json_default),
-                    )
-                    for t in territories
-                ],
+        rows = [
+            (
+                game_id,
+                tick,
+                t["county_fips"],
+                t.get("c_dept_i"),
+                t.get("v_dept_i"),
+                t.get("s_dept_i"),
+                t.get("c_dept_iia"),
+                t.get("v_dept_iia"),
+                t.get("s_dept_iia"),
+                t.get("c_dept_iib"),
+                t.get("v_dept_iib"),
+                t.get("s_dept_iib"),
+                t.get("c_dept_iii"),
+                t.get("v_dept_iii"),
+                t.get("s_dept_iii"),
+                t.get("profit_rate"),
+                t.get("exploitation_rate"),
+                t.get("occ"),
+                t.get("imperial_rent"),
+                t.get("g33_visibility"),
+                t.get("pop_bourgeoisie", 0),
+                t.get("pop_petit_bourgeoisie", 0),
+                t.get("pop_labor_aristocracy", 0),
+                t.get("pop_proletariat", 0),
+                t.get("pop_lumpenproletariat", 0),
+                t.get("pop_total", 0),
+                t.get("faction_finance_capital"),
+                t.get("faction_security_state"),
+                t.get("faction_settler_populist"),
+                t.get("heat", 0.0),
+                json.dumps(t.get("attributes", {}), default=_json_default),
             )
+            for t in territories
+        ]
+        sql = """
+            INSERT INTO territory_snapshot
+                (game_id, tick, county_fips,
+                 c_dept_i, v_dept_i, s_dept_i,
+                 c_dept_iia, v_dept_iia, s_dept_iia,
+                 c_dept_iib, v_dept_iib, s_dept_iib,
+                 c_dept_iii, v_dept_iii, s_dept_iii,
+                 profit_rate, exploitation_rate, occ,
+                 imperial_rent, g33_visibility,
+                 pop_bourgeoisie, pop_petit_bourgeoisie,
+                 pop_labor_aristocracy, pop_proletariat,
+                 pop_lumpenproletariat, pop_total,
+                 faction_finance_capital, faction_security_state,
+                 faction_settler_populist, heat, attributes)
+            VALUES (%s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s)
+            ON CONFLICT (game_id, tick, county_fips) DO NOTHING
+            """
+        if _cursor is not None:
+            _cursor.executemany(sql, rows)
+            return
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
 
     def persist_org_snapshots(
         self,
         game_id: UUID,
         tick: int,
         orgs: list[dict[str, Any]],
+        *,
+        _cursor: Any | None = None,
     ) -> None:
         """Bulk INSERT org_snapshot rows for one tick.
+
+        Spec 061 FR-004: ``ON CONFLICT (game_id, tick, org_id) DO NOTHING``
+        for retry safety.
 
         Args:
             game_id: Game session UUID.
             tick: Tick number.
             orgs: List of org dicts.
+            _cursor: Optional shared cursor for :meth:`persist_full_tick`.
         """
         if not orgs:
             return
 
-        with self._pool.connection() as conn, conn.cursor() as cur:
-            cur.executemany(
-                """
-                INSERT INTO org_snapshot
-                    (game_id, tick, org_id, org_type,
-                     home_county, home_hex,
-                     ooda_phase, action_points, action_points_max,
-                     cadre_count, sympathizer_count,
-                     cadre_labor, sympathizer_labor, material_resources,
-                     coherence, reputation, opsec,
-                     owner_type, owner_id, attributes)
-                VALUES (%s, %s, %s, %s,
-                        %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s)
-                """,
-                [
-                    (
-                        game_id,
-                        tick,
-                        o["org_id"],
-                        o["org_type"],
-                        o.get("home_county"),
-                        o.get("home_hex"),
-                        o.get("ooda_phase"),
-                        o.get("action_points"),
-                        o.get("action_points_max"),
-                        o.get("cadre_count", 0),
-                        o.get("sympathizer_count", 0),
-                        o.get("cadre_labor", 0.0),
-                        o.get("sympathizer_labor", 0.0),
-                        o.get("material_resources", 0.0),
-                        o.get("coherence"),
-                        o.get("reputation"),
-                        o.get("opsec"),
-                        o.get("owner_type"),
-                        o.get("owner_id"),
-                        json.dumps(o.get("attributes", {}), default=_json_default),
-                    )
-                    for o in orgs
-                ],
+        rows = [
+            (
+                game_id,
+                tick,
+                o["org_id"],
+                o["org_type"],
+                o.get("home_county"),
+                o.get("home_hex"),
+                o.get("ooda_phase"),
+                o.get("action_points"),
+                o.get("action_points_max"),
+                o.get("cadre_count", 0),
+                o.get("sympathizer_count", 0),
+                o.get("cadre_labor", 0.0),
+                o.get("sympathizer_labor", 0.0),
+                o.get("material_resources", 0.0),
+                o.get("coherence"),
+                o.get("reputation"),
+                o.get("opsec"),
+                o.get("owner_type"),
+                o.get("owner_id"),
+                json.dumps(o.get("attributes", {}), default=_json_default),
             )
+            for o in orgs
+        ]
+        sql = """
+            INSERT INTO org_snapshot
+                (game_id, tick, org_id, org_type,
+                 home_county, home_hex,
+                 ooda_phase, action_points, action_points_max,
+                 cadre_count, sympathizer_count,
+                 cadre_labor, sympathizer_labor, material_resources,
+                 coherence, reputation, opsec,
+                 owner_type, owner_id, attributes)
+            VALUES (%s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (game_id, tick, org_id) DO NOTHING
+            """
+        if _cursor is not None:
+            _cursor.executemany(sql, rows)
+            return
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
 
     def persist_edge_snapshots(
         self,
         game_id: UUID,
         tick: int,
         edges: list[dict[str, Any]],
+        *,
+        _cursor: Any | None = None,
     ) -> None:
         """Bulk INSERT edge_snapshot rows for one tick.
+
+        Spec 061 FR-004: ``ON CONFLICT (game_id, tick, source_id, target_id,
+        edge_type) DO NOTHING`` for retry safety.
 
         Args:
             game_id: Game session UUID.
             tick: Tick number.
             edges: List of edge dicts.
+            _cursor: Optional shared cursor for :meth:`persist_full_tick`.
         """
         if not edges:
             return
 
-        with self._pool.connection() as conn, conn.cursor() as cur:
-            cur.executemany(
-                """
-                INSERT INTO edge_snapshot
-                    (game_id, tick, source_id, target_id, edge_type,
-                     edge_mode, value_flow, solidarity, tension, attributes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                [
-                    (
-                        game_id,
-                        tick,
-                        e["source_id"],
-                        e["target_id"],
-                        e["edge_type"],
-                        e.get("edge_mode"),
-                        e.get("value_flow"),
-                        e.get("solidarity"),
-                        e.get("tension"),
-                        json.dumps(e.get("attributes", {}), default=_json_default),
-                    )
-                    for e in edges
-                ],
+        rows = [
+            (
+                game_id,
+                tick,
+                e["source_id"],
+                e["target_id"],
+                e["edge_type"],
+                e.get("edge_mode"),
+                e.get("value_flow"),
+                e.get("solidarity"),
+                e.get("tension"),
+                json.dumps(e.get("attributes", {}), default=_json_default),
             )
+            for e in edges
+        ]
+        sql = """
+            INSERT INTO edge_snapshot
+                (game_id, tick, source_id, target_id, edge_type,
+                 edge_mode, value_flow, solidarity, tension, attributes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (game_id, tick, source_id, target_id, edge_type) DO NOTHING
+            """
+        if _cursor is not None:
+            _cursor.executemany(sql, rows)
+            return
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
 
     def persist_community_snapshots(
         self,
         game_id: UUID,
         tick: int,
         communities: list[dict[str, Any]],
+        *,
+        _cursor: Any | None = None,
     ) -> None:
         """Bulk INSERT community_snapshot rows for one tick.
+
+        Spec 061 FR-004: ``ON CONFLICT (game_id, tick, community_id) DO NOTHING``
+        for retry safety.
 
         Args:
             game_id: Game session UUID.
             tick: Tick number.
             communities: List of community dicts.
+            _cursor: Optional shared cursor for :meth:`persist_full_tick`.
         """
         if not communities:
             return
 
-        with self._pool.connection() as conn, conn.cursor() as cur:
-            cur.executemany(
-                """
-                INSERT INTO community_snapshot
-                    (game_id, tick, community_id,
-                     community_type, hyperedge_category, contradiction_axis,
-                     county_fips,
-                     collective_identity, ideological_contestation,
-                     dominant_tendency,
-                     reproduction_cost_modifier, rent_access_modifier,
-                     member_count, attributes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                [
-                    (
-                        game_id,
-                        tick,
-                        c["community_id"],
-                        c["community_type"],
-                        c["hyperedge_category"],
-                        c.get("contradiction_axis"),
-                        c.get("county_fips"),
-                        c.get("collective_identity"),
-                        c.get("ideological_contestation"),
-                        c.get("dominant_tendency"),
-                        c.get("reproduction_cost_modifier"),
-                        c.get("rent_access_modifier"),
-                        c.get("member_count"),
-                        json.dumps(c.get("attributes", {}), default=_json_default),
-                    )
-                    for c in communities
-                ],
+        rows = [
+            (
+                game_id,
+                tick,
+                c["community_id"],
+                c["community_type"],
+                c["hyperedge_category"],
+                c.get("contradiction_axis"),
+                c.get("county_fips"),
+                c.get("collective_identity"),
+                c.get("ideological_contestation"),
+                c.get("dominant_tendency"),
+                c.get("reproduction_cost_modifier"),
+                c.get("rent_access_modifier"),
+                c.get("member_count"),
+                json.dumps(c.get("attributes", {}), default=_json_default),
             )
+            for c in communities
+        ]
+        sql = """
+            INSERT INTO community_snapshot
+                (game_id, tick, community_id,
+                 community_type, hyperedge_category, contradiction_axis,
+                 county_fips,
+                 collective_identity, ideological_contestation,
+                 dominant_tendency,
+                 reproduction_cost_modifier, rent_access_modifier,
+                 member_count, attributes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (game_id, tick, community_id) DO NOTHING
+            """
+        if _cursor is not None:
+            _cursor.executemany(sql, rows)
+            return
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
 
     def persist_hex_activity(
         self,
         game_id: UUID,
         tick: int,
         activities: list[dict[str, Any]],
+        *,
+        _cursor: Any | None = None,
     ) -> None:
         """Bulk INSERT hex_activity rows for one tick (sparse).
+
+        Spec 061 FR-004: ``ON CONFLICT (game_id, tick, h3_index) DO NOTHING``
+        for retry safety.
 
         Args:
             game_id: Game session UUID.
             tick: Tick number.
             activities: List of hex activity dicts.
+            _cursor: Optional shared cursor for :meth:`persist_full_tick`.
         """
         if not activities:
             return
 
-        with self._pool.connection() as conn, conn.cursor() as cur:
-            cur.executemany(
-                """
-                INSERT INTO hex_activity
-                    (game_id, tick, h3_index,
-                     heat_delta, heat_total,
-                     org_ids, org_count,
-                     actions_taken, was_target, attributes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                [
-                    (
-                        game_id,
-                        tick,
-                        a["h3_index"],
-                        a.get("heat_delta", 0.0),
-                        a.get("heat_total", 0.0),
-                        a.get("org_ids", []),
-                        a.get("org_count", 0),
-                        a.get("actions_taken", 0),
-                        a.get("was_target", False),
-                        json.dumps(a.get("attributes"), default=_json_default)
-                        if a.get("attributes")
-                        else None,
-                    )
-                    for a in activities
-                ],
+        rows = [
+            (
+                game_id,
+                tick,
+                a["h3_index"],
+                a.get("heat_delta", 0.0),
+                a.get("heat_total", 0.0),
+                a.get("org_ids", []),
+                a.get("org_count", 0),
+                a.get("actions_taken", 0),
+                a.get("was_target", False),
+                json.dumps(a.get("attributes"), default=_json_default)
+                if a.get("attributes")
+                else None,
             )
+            for a in activities
+        ]
+        sql = """
+            INSERT INTO hex_activity
+                (game_id, tick, h3_index,
+                 heat_delta, heat_total,
+                 org_ids, org_count,
+                 actions_taken, was_target, attributes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (game_id, tick, h3_index) DO NOTHING
+            """
+        if _cursor is not None:
+            _cursor.executemany(sql, rows)
+            return
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
 
     def persist_economic_summary(
         self,
         game_id: UUID,
         tick: int,
         summary: dict[str, Any],
+        *,
+        _cursor: Any | None = None,
     ) -> None:
         """INSERT one economic_summary row for a tick.
+
+        Spec 061 FR-004: ``ON CONFLICT (game_id, tick) DO NOTHING`` for
+        retry safety against the existing composite PK.
 
         Args:
             game_id: Game session UUID.
             tick: Tick number.
             summary: Aggregated summary dict.
+            _cursor: Optional shared cursor for :meth:`persist_full_tick`.
         """
+        sql = """
+            INSERT INTO economic_summary
+                (game_id, tick,
+                 avg_profit_rate, avg_exploitation_rate, avg_occ,
+                 total_imperial_rent, avg_g33_visibility,
+                 total_bourgeoisie, total_petit_bourgeoisie,
+                 total_labor_aristocracy, total_proletariat,
+                 total_lumpenproletariat, total_population,
+                 avg_faction_finance, avg_faction_security,
+                 avg_faction_settler,
+                 total_heat, total_orgs, total_player_orgs,
+                 total_solidaristic_edges, total_antagonistic_edges,
+                 percolation_ratio, fascist_convergence,
+                 narrative_text, attributes)
+            VALUES (%s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s)
+            ON CONFLICT (game_id, tick) DO NOTHING
+            """
+        params = (
+            game_id,
+            tick,
+            summary.get("avg_profit_rate"),
+            summary.get("avg_exploitation_rate"),
+            summary.get("avg_occ"),
+            summary.get("total_imperial_rent"),
+            summary.get("avg_g33_visibility"),
+            summary.get("total_bourgeoisie"),
+            summary.get("total_petit_bourgeoisie"),
+            summary.get("total_labor_aristocracy"),
+            summary.get("total_proletariat"),
+            summary.get("total_lumpenproletariat"),
+            summary.get("total_population"),
+            summary.get("avg_faction_finance"),
+            summary.get("avg_faction_security"),
+            summary.get("avg_faction_settler"),
+            summary.get("total_heat"),
+            summary.get("total_orgs"),
+            summary.get("total_player_orgs"),
+            summary.get("total_solidaristic_edges"),
+            summary.get("total_antagonistic_edges"),
+            summary.get("percolation_ratio"),
+            summary.get("fascist_convergence", False),
+            summary.get("narrative_text"),
+            json.dumps(summary.get("attributes"), default=_json_default)
+            if summary.get("attributes")
+            else None,
+        )
+        if _cursor is not None:
+            _cursor.execute(sql, params)
+            return
         with self._pool.connection() as conn:
-            conn.execute(
-                """
-                INSERT INTO economic_summary
-                    (game_id, tick,
-                     avg_profit_rate, avg_exploitation_rate, avg_occ,
-                     total_imperial_rent, avg_g33_visibility,
-                     total_bourgeoisie, total_petit_bourgeoisie,
-                     total_labor_aristocracy, total_proletariat,
-                     total_lumpenproletariat, total_population,
-                     avg_faction_finance, avg_faction_security,
-                     avg_faction_settler,
-                     total_heat, total_orgs, total_player_orgs,
-                     total_solidaristic_edges, total_antagonistic_edges,
-                     percolation_ratio, fascist_convergence,
-                     narrative_text, attributes)
-                VALUES (%s, %s,
-                        %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s,
-                        %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s)
-                """,
-                (
-                    game_id,
-                    tick,
-                    summary.get("avg_profit_rate"),
-                    summary.get("avg_exploitation_rate"),
-                    summary.get("avg_occ"),
-                    summary.get("total_imperial_rent"),
-                    summary.get("avg_g33_visibility"),
-                    summary.get("total_bourgeoisie"),
-                    summary.get("total_petit_bourgeoisie"),
-                    summary.get("total_labor_aristocracy"),
-                    summary.get("total_proletariat"),
-                    summary.get("total_lumpenproletariat"),
-                    summary.get("total_population"),
-                    summary.get("avg_faction_finance"),
-                    summary.get("avg_faction_security"),
-                    summary.get("avg_faction_settler"),
-                    summary.get("total_heat"),
-                    summary.get("total_orgs"),
-                    summary.get("total_player_orgs"),
-                    summary.get("total_solidaristic_edges"),
-                    summary.get("total_antagonistic_edges"),
-                    summary.get("percolation_ratio"),
-                    summary.get("fascist_convergence", False),
-                    summary.get("narrative_text"),
-                    json.dumps(summary.get("attributes"), default=_json_default)
-                    if summary.get("attributes")
-                    else None,
-                ),
-            )
+            conn.execute(sql, params)
 
     def persist_tick_events(
         self,
         game_id: UUID,
         tick: int,
         events: list[dict[str, Any]],
+        *,
+        _cursor: Any | None = None,
     ) -> None:
         """Bulk INSERT tick_event rows.
+
+        Spec 061 FR-004: ``tick_event.event_id`` is ``SERIAL`` and the
+        composite PK is ``(game_id, tick, event_id)`` — retried inserts
+        receive fresh ``event_id`` values, so a literal
+        ``ON CONFLICT (game_id, tick, event_id) DO NOTHING`` would never
+        fire. The retry-safety guarantee for ``tick_event`` rows therefore
+        comes from the outer transaction wrap on
+        :meth:`persist_full_tick` plus the ``tick_log`` PK gate at the top
+        of that method (no second resolution can ever commit). The
+        helper does **not** add an ``ON CONFLICT`` clause for this reason.
 
         Args:
             game_id: Game session UUID.
             tick: Tick number.
             events: List of event dicts.
+            _cursor: Optional shared cursor for :meth:`persist_full_tick`.
         """
         if not events:
             return
 
-        with self._pool.connection() as conn, conn.cursor() as cur:
-            cur.executemany(
-                """
-                INSERT INTO tick_event
-                    (game_id, tick, event_type, severity,
-                     source_id, target_id, county_fips, h3_index,
-                     summary, detail)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                [
-                    (
-                        game_id,
-                        tick,
-                        e["event_type"],
-                        e.get("severity"),
-                        e.get("source_id"),
-                        e.get("target_id"),
-                        e.get("county_fips"),
-                        e.get("h3_index"),
-                        e["summary"],
-                        json.dumps(e.get("detail"), default=_json_default)
-                        if e.get("detail")
-                        else None,
-                    )
-                    for e in events
-                ],
+        rows = [
+            (
+                game_id,
+                tick,
+                e["event_type"],
+                e.get("severity"),
+                e.get("source_id"),
+                e.get("target_id"),
+                e.get("county_fips"),
+                e.get("h3_index"),
+                e["summary"],
+                json.dumps(e.get("detail"), default=_json_default) if e.get("detail") else None,
             )
+            for e in events
+        ]
+        sql = """
+            INSERT INTO tick_event
+                (game_id, tick, event_type, severity,
+                 source_id, target_id, county_fips, h3_index,
+                 summary, detail)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+        if _cursor is not None:
+            _cursor.executemany(sql, rows)
+            return
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
 
     def persist_full_tick(
         self,
@@ -1639,28 +1742,63 @@ class PostgresRuntime:
     ) -> None:
         """Write all Spec 037 snapshot tables for a single tick atomically.
 
-        Wraps all INSERTs in a single transaction. Either all tables
-        for tick N commit, or none do.
+        Spec 061 FR-003 (Real Backend Wire-Up): single connection, single
+        transaction. Either every table for tick ``tick`` commits, or
+        none do. Implemented per research.md R2: one
+        ``self._pool.connection()`` acquisition wrapping a
+        ``conn.transaction()`` block; psycopg 3 handles ``BEGIN``/
+        ``COMMIT``/``ROLLBACK`` semantics automatically.
+
+        Spec 061 FR-005: race-safe immutability via
+        ``INSERT INTO tick_log (session_id, tick) VALUES ... ON CONFLICT
+        (session_id, tick) DO NOTHING RETURNING tick``. If the
+        ``RETURNING`` clause yields no row, the ``(session_id, tick)``
+        pair already exists in ``tick_log`` (from a prior or concurrent
+        resolution), and :exc:`TickAlreadyResolved` is raised. The
+        existing :meth:`log_tick` method later UPSERTs the same row to
+        record diagnostic fields (RNG state, timings) — this is
+        compatible because ``log_tick`` uses ``ON CONFLICT DO UPDATE``
+        on the same PK.
 
         Args:
-            game_id: Game session UUID.
+            game_id: Game session UUID (corresponds to ``session_id`` in
+                ``tick_log``).
             tick: Tick number.
-            territories: Territory snapshot rows.
-            orgs: Org snapshot rows.
-            edges: Edge snapshot rows.
-            communities: Community snapshot rows.
-            hex_activities: Hex activity rows (sparse).
-            economic_summary: Single summary dict.
-            events: Tick event rows.
+            territories, orgs, edges, communities, hex_activities,
+                economic_summary, events: Per-table snapshot payloads.
+
+        Raises:
+            TickAlreadyResolved: If ``(game_id, tick)`` was already
+                resolved by a prior or concurrent caller.
         """
-        self.persist_territory_snapshots(game_id, tick, territories or [])
-        self.persist_org_snapshots(game_id, tick, orgs or [])
-        self.persist_edge_snapshots(game_id, tick, edges or [])
-        self.persist_community_snapshots(game_id, tick, communities or [])
-        self.persist_hex_activity(game_id, tick, hex_activities or [])
-        if economic_summary:
-            self.persist_economic_summary(game_id, tick, economic_summary)
-        self.persist_tick_events(game_id, tick, events or [])
+        with self._pool.connection() as conn, conn.transaction(), conn.cursor() as cur:
+            # FR-005 race-safe immutability gate. Insert into tick_log
+            # under the existing PRIMARY KEY (session_id, tick). If the
+            # row already exists, the ON CONFLICT DO NOTHING swallows
+            # the violation and RETURNING produces nothing — surface
+            # that as TickAlreadyResolved so the caller can return
+            # 409 Conflict to the API client.
+            cur.execute(
+                "INSERT INTO tick_log (session_id, tick) VALUES (%s, %s) "
+                "ON CONFLICT (session_id, tick) DO NOTHING "
+                "RETURNING tick",
+                (game_id, tick),
+            )
+            if cur.fetchone() is None:
+                raise TickAlreadyResolved(game_id, tick)
+
+            # Each helper participates in this transaction via the shared
+            # cursor; its INSERT carries an ON CONFLICT DO NOTHING against
+            # the existing composite PK so a retry inside the same
+            # transaction is a no-op (FR-004).
+            self.persist_territory_snapshots(game_id, tick, territories or [], _cursor=cur)
+            self.persist_org_snapshots(game_id, tick, orgs or [], _cursor=cur)
+            self.persist_edge_snapshots(game_id, tick, edges or [], _cursor=cur)
+            self.persist_community_snapshots(game_id, tick, communities or [], _cursor=cur)
+            self.persist_hex_activity(game_id, tick, hex_activities or [], _cursor=cur)
+            if economic_summary:
+                self.persist_economic_summary(game_id, tick, economic_summary, _cursor=cur)
+            self.persist_tick_events(game_id, tick, events or [], _cursor=cur)
 
     # ─── Spec 037: hex_latest Refresh ────────────────────────────────
 

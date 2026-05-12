@@ -1,0 +1,103 @@
+openapi: 3.1.0
+info:
+  title: Babylon Time-Series Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/timeseries/` — replaces the current `{}` stub with a
+    populated payload backed by the `tick_summary` table. Required by FR-017.
+
+paths:
+  /api/games/{game_id}/timeseries/:
+    get:
+      summary: Per-tick time series for six standard metrics.
+      description: |
+        Returns six numeric arrays aligned with a `ticks` x-axis. Source data
+        comes from the existing `tick_summary` table; no new aggregation is
+        introduced. Metrics are exactly those required by FR-017: imperial rent,
+        consciousness, solidarity, heat, wealth, biocapacity.
+      operationId: getGameTimeseries
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: {type: string, format: uuid}
+        - in: query
+          name: from_tick
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: |
+            If supplied, returns only ticks >= from_tick. Default: tick 0.
+        - in: query
+          name: to_tick
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: |
+            If supplied, returns only ticks <= to_tick. Default: current tick.
+      responses:
+        "200":
+          description: Time-series envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: {type: string, enum: ["ok"]}
+                  data: {$ref: "#/components/schemas/TimeseriesPayload"}
+              examples:
+                three_ticks:
+                  value:
+                    status: "ok"
+                    data:
+                      ticks: [0, 1, 2]
+                      imperial_rent: [0.12, 0.14, 0.16]
+                      consciousness: [0.30, 0.32, 0.35]
+                      solidarity: [0.10, 0.12, 0.13]
+                      heat: [0.20, 0.25, 0.30]
+                      wealth: [1000.0, 1020.0, 1015.0]
+                      biocapacity: [1.00, 0.98, 0.96]
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    TimeseriesPayload:
+      type: object
+      required: [ticks, imperial_rent, consciousness, solidarity, heat, wealth, biocapacity]
+      description: |
+        All six metric arrays MUST be the same length as `ticks`. Missing data
+        is represented as `null` within the array, not as a shortened array.
+      properties:
+        ticks:
+          type: array
+          items: {type: integer, minimum: 0}
+        imperial_rent:
+          type: array
+          items: {type: ["number", "null"]}
+        consciousness:
+          type: array
+          items: {type: ["number", "null"], minimum: 0, maximum: 1}
+        solidarity:
+          type: array
+          items: {type: ["number", "null"], minimum: 0, maximum: 1}
+        heat:
+          type: array
+          items: {type: ["number", "null"], minimum: 0, maximum: 1}
+        wealth:
+          type: array
+          items: {type: ["number", "null"]}
+        biocapacity:
+          type: array
+          items: {type: ["number", "null"], minimum: 0}

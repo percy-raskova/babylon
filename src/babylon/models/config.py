@@ -65,6 +65,15 @@ class SimulationConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    # Spec 061 US5 FR-024 (T080): per-tick RNG seed for byte-identical
+    # replays. Threaded through from the GameSession's rng_seed by the
+    # bridge so that resolving the same actions in the same order with
+    # the same seed produces the same outcome.
+    rng_seed: int = Field(
+        default=0,
+        description="RNG seed for deterministic action resolution (Constitution III.7)",
+    )
+
     # Imperial rent parameters
     extraction_efficiency: Coefficient = Field(
         default=0.8,

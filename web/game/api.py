@@ -14,7 +14,6 @@ import uuid
 from typing import Any
 from uuid import UUID
 
-from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponseBase, JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -67,28 +66,23 @@ _bridge_instance: Any | None = None
 def _get_bridge() -> Any:
     """Return the cached EngineBridge instance, creating on first use.
 
-    Returns a mock-friendly ``Any`` so tests can replace ``_bridge_instance``.
-    In production, initializes from PostgresRuntime via ``GameConfig.ready()``.
+    Spec 061 US7 (T112): the MockEngineBridge path has been removed.
+    Production must initialize the bridge via ``GameConfig.ready()``
+    (see ``game.apps``). In SQLite-only dev configurations the legacy
+    ``StubEngineBridge`` remains as a non-persisting fallback so the
+    Django app boots without Postgres.
 
-    Priority:
-    1. ``settings.BABYLON_MOCK_MODE`` → ``MockEngineBridge`` (Spec 045)
-    2. Fallback → ``StubEngineBridge`` (random, non-persisting)
+    Returns a mock-friendly ``Any`` so tests can replace ``_bridge_instance``.
     """
     global _bridge_instance  # noqa: PLW0603
     if _bridge_instance is None:
-        if getattr(settings, "BABYLON_MOCK_MODE", False):
-            from .mock_bridge import MockEngineBridge
+        from .stub_bridge import StubEngineBridge
 
-            logger.info("BABYLON_MOCK_MODE is active — using MockEngineBridge")
-            _bridge_instance = MockEngineBridge()
-        else:
-            from .stub_bridge import StubEngineBridge
-
-            logger.warning(
-                "EngineBridge not initialized — falling back to StubEngineBridge. "
-                "Set up PostgreSQL or call init_bridge() for production use."
-            )
-            _bridge_instance = StubEngineBridge()
+        logger.warning(
+            "EngineBridge not initialized — falling back to StubEngineBridge. "
+            "Set up PostgreSQL or call init_bridge() for production use."
+        )
+        _bridge_instance = StubEngineBridge()
     return _bridge_instance
 
 

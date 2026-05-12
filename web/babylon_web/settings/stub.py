@@ -56,6 +56,6 @@ LOGGING["loggers"]["django.db.backends"]["level"] = "WARNING"  # type: ignore[in
 # because they're created by the Postgres runtime DDL)
 STUB_CREATE_TABLES = True
 
-# Use deterministic MockEngineBridge instead of StubEngineBridge (Spec 045).
-# Snapshots persist to GameSession.snapshot_json and progress deterministically.
-BABYLON_MOCK_MODE = True
+# Spec 061 US7 (T111): BABYLON_MOCK_MODE removed.
+# StubEngineBridge remains for SQLite-only dev/test configurations
+# (see web.game.api._get_bridge fallback path).

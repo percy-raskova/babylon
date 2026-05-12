@@ -1,23 +1,32 @@
 /**
  * AnalysisPage — post-MVP analysis dashboard.
  *
- * Displays the topology graph, time-series analysis grid, and comparative metrics.
- * Currently uses placeholder visualizations.
+ * Spec 061 US6 (T103): wired to useTimeseries; the topology graph
+ * remains a placeholder (Constitution-aligned d3-force renderer is
+ * out of scope per spec 061 plan.md).
  */
 
+import { useParams } from "react-router";
+import { BblBadge, BblLabel, BblPanel, Sparkline } from "@/components/bbl";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { BblPanel, BblBadge, BblLabel, Sparkline } from "@/components/bbl";
 import { TopologyGraphPlaceholder } from "@/components/viz";
-import { TIMESERIES } from "@/fixtures/v2-mock-data";
+import { useTimeseries } from "@/hooks/useTimeseries";
+
+function compactSeries(series: (number | null)[]): number[] {
+  return series.filter((v): v is number => typeof v === "number");
+}
 
 export function AnalysisPage() {
+  const { id: gameId } = useParams<{ id: string }>();
+  const { data: ts } = useTimeseries(gameId ?? null);
+
   const metrics: { label: string; data: number[]; color: string }[] = [
-    { label: "RENT", data: TIMESERIES.imperial_rent, color: "#a070d0" },
-    { label: "CON", data: TIMESERIES.consciousness, color: "#80b0e0" },
-    { label: "SOL", data: TIMESERIES.solidarity, color: "#40c040" },
-    { label: "HEAT", data: TIMESERIES.heat, color: "#e04040" },
-    { label: "WEALTH", data: TIMESERIES.wealth, color: "#c8a860" },
-    { label: "BIOCAP", data: TIMESERIES.biocapacity, color: "#7ab038" },
+    { label: "RENT", data: compactSeries(ts.imperial_rent), color: "#a070d0" },
+    { label: "CON", data: compactSeries(ts.consciousness), color: "#80b0e0" },
+    { label: "SOL", data: compactSeries(ts.solidarity), color: "#40c040" },
+    { label: "HEAT", data: compactSeries(ts.heat), color: "#e04040" },
+    { label: "WEALTH", data: compactSeries(ts.wealth), color: "#c8a860" },
+    { label: "BIOCAP", data: compactSeries(ts.biocapacity), color: "#7ab038" },
   ];
 
   return (
@@ -30,7 +39,6 @@ export function AnalysisPage() {
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 p-3">
-        {/* Topology graph */}
         <BblPanel
           title="Social Graph Topology"
           right={<BblBadge color="#787878">d3-force</BblBadge>}
@@ -38,13 +46,12 @@ export function AnalysisPage() {
           <TopologyGraphPlaceholder className="h-full min-h-[300px]" />
         </BblPanel>
 
-        {/* Time series grid */}
         <BblPanel
           title="Time-Series Dashboard"
-          right={<BblBadge color="#787878">UpSet plot pending</BblBadge>}
+          right={<BblBadge color="#787878">{ts.ticks.length} ticks</BblBadge>}
         >
           <div className="flex flex-col gap-4">
-            <BblLabel color="#c8a860">Aggregate Metrics (10-tick window)</BblLabel>
+            <BblLabel color="#c8a860">Aggregate Metrics</BblLabel>
             <div className="grid grid-cols-2 gap-6">
               {metrics.map((m) => (
                 <Sparkline
@@ -60,8 +67,7 @@ export function AnalysisPage() {
 
             <BblLabel color="#787878">Correlations</BblLabel>
             <div className="rounded border border-dashed border-soot bg-void p-4 text-center text-[11px] text-chassis">
-              Correlation matrix, UpSet intersection plots, and dialectical phase-space projections
-              will render here.
+              Correlation matrix and UpSet intersection plots are out of scope for spec 061.
             </div>
           </div>
         </BblPanel>

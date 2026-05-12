@@ -113,20 +113,20 @@
 
 ### Tests for User Story 2 (TDD)
 
-- [ ] T033 [P] [US2] Write integration test `tests/integration/test_health_public.py` asserting `GET /health/` returns 200 with `{"status": "ok"}` regardless of auth state
-- [ ] T034 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_unauthenticated_returns_404` asserting unauthenticated GET on `/health/detail/` returns 404 with body `{"detail": "Not found."}` (NOT 401, NOT 403, NOT empty body)
-- [ ] T035 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_non_staff_returns_404` asserting authenticated non-staff GET returns same 404 shape
-- [ ] T036 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_staff_returns_diagnostic` asserting staff GET returns 200 with payload matching `contracts/health.yaml#/components/schemas/HealthDetailResponse`
-- [ ] T037 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_implementation_field_is_real_bridge` asserting `data.engine.implementation == "EngineBridge"` after a clean boot (NOT `"StubEngineBridge"`)
+- [X] T033 [P] [US2] Write integration test `tests/integration/test_health_public.py` asserting `GET /health/` returns 200 with `{"status": "ok"}` regardless of auth state
+- [X] T034 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_unauthenticated_returns_404` asserting unauthenticated GET on `/health/detail/` returns 404 with body `{"detail": "Not found."}` (NOT 401, NOT 403, NOT empty body)
+- [X] T035 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_non_staff_returns_404` asserting authenticated non-staff GET returns same 404 shape
+- [X] T036 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_staff_returns_diagnostic` asserting staff GET returns 200 with payload matching `contracts/health.yaml#/components/schemas/HealthDetailResponse`
+- [X] T037 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_implementation_field_is_real_bridge` asserting `data.engine.implementation == "EngineBridge"` after a clean boot (NOT `"StubEngineBridge"`)
 
 ### Implementation for User Story 2
 
-- [ ] T038 [US2] Create `web/babylon_web/health/__init__.py` (new package) and `web/babylon_web/health/views.py` containing `class HealthDetailView(APIView)` with `permission_classes = [IsAuthenticated, IsStaff]`. Implement GET handler returning the diagnostic payload from `contracts/health.yaml`
-- [ ] T039 [US2] Create `web/babylon_web/health/permissions.py` containing `class IsStaff(BasePermission)` with `has_permission()` returning `bool(request.user and request.user.is_staff)`
-- [ ] T040 [US2] Create `web/babylon_web/health/exceptions.py` containing `health_obscuring_exception_handler(exc, context)` per `research.md` R5: intercepts `NotAuthenticated`/`PermissionDenied` raised by `HealthDetailView` and returns `Response({"detail": "Not found."}, status=404)`. Delegates to DRF default handler otherwise
-- [ ] T041 [US2] Register the custom exception handler in `web/babylon_web/settings/base.py` under `REST_FRAMEWORK['EXCEPTION_HANDLER'] = "babylon_web.health.exceptions.health_obscuring_exception_handler"`
-- [ ] T042 [US2] Add `path("health/detail/", HealthDetailView.as_view(), name="health-detail")` to `web/babylon_web/urls.py` (alongside the existing `path("health/", health_check, name="health")`)
-- [ ] T043 [US2] Implement the diagnostic payload assembly in `HealthDetailView.get()`:
+- [X] T038 [US2] Create `web/babylon_web/health/__init__.py` (new package) and `web/babylon_web/health/views.py` containing `class HealthDetailView(APIView)` with `permission_classes = [IsAuthenticated, IsStaff]`. Implement GET handler returning the diagnostic payload from `contracts/health.yaml`
+- [X] T039 [US2] Create `web/babylon_web/health/permissions.py` containing `class IsStaff(BasePermission)` with `has_permission()` returning `bool(request.user and request.user.is_staff)`
+- [X] T040 [US2] Create `web/babylon_web/health/exceptions.py` containing `health_obscuring_exception_handler(exc, context)` per `research.md` R5: intercepts `NotAuthenticated`/`PermissionDenied` raised by `HealthDetailView` and returns `Response({"detail": "Not found."}, status=404)`. Delegates to DRF default handler otherwise
+- [X] T041 [US2] Register the custom exception handler in `web/babylon_web/settings/base.py` under `REST_FRAMEWORK['EXCEPTION_HANDLER'] = "babylon_web.health.exceptions.health_obscuring_exception_handler"`
+- [X] T042 [US2] Add `path("health/detail/", HealthDetailView.as_view(), name="health-detail")` to `web/babylon_web/urls.py` (alongside the existing `path("health/", health_check, name="health")`)
+- [X] T043 [US2] Implement the diagnostic payload assembly in `HealthDetailView.get()`:
   - `engine.implementation`: `type(game_api._bridge_instance).__name__`
   - `engine.boot_attempts`: track via a class-level counter on `GameConfig`, exposed as `GameConfig.last_boot_attempts`
   - `engine.boot_succeeded_at`: set in `GameConfig._initialize_engine_with_retry` on success

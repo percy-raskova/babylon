@@ -30,6 +30,15 @@ from psycopg_pool import ConnectionPool
 logger = logging.getLogger(__name__)
 
 
+class EmbeddingDimensionError(ValueError):
+    """Raised when an embedding vector's dimension does not match the configured store dimension.
+
+    Per spec 061 FR-002, dimension checking happens at the application layer before any
+    SQL is issued so that misconfigured pipelines fail with a clear, actionable error
+    instead of an opaque pgvector mismatch from the database.
+    """
+
+
 class PgVectorStore:
     """PostgreSQL pgvector implementation of VectorStoreProtocol.
 
@@ -213,4 +222,4 @@ class PgVectorStore:
             return count
 
 
-__all__ = ["PgVectorStore"]
+__all__ = ["EmbeddingDimensionError", "PgVectorStore"]

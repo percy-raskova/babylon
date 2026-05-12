@@ -1,4 +1,4 @@
-"""PgVector-based vector store for semantic search (Feature 037).
+"""PgVector-based vector store for semantic search (Feature 037 / spec 061).
 
 Implements ``VectorStoreProtocol`` using PostgreSQL's pgvector extension
 with HNSW indexing and cosine distance for the RAG pipeline.
@@ -9,7 +9,7 @@ Usage::
     from babylon.persistence.pgvector_store import PgVectorStore
 
     pool = ConnectionPool(conninfo="dbname=babylon")
-    store = PgVectorStore(pool, dimension=1536)
+    store = PgVectorStore(pool)  # 768-dim default per spec 061 FR-001
     store.add_chunks(chunks)
     ids, docs, embeddings, metadatas, distances = store.query_similar(
         query_embedding=embedding, k=5
@@ -26,6 +26,8 @@ from uuid import uuid4
 from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
+
+from babylon.config.llm_config import CANONICAL_EMBEDDING_DIM
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,18 @@ class PgVectorStore:
     Uses HNSW index with cosine distance for approximate nearest neighbor
     search over document chunk embeddings stored in the ``document_chunk`` table.
 
+    Spec 061 FR-001: ``dimension`` defaults to ``CANONICAL_EMBEDDING_DIM``
+    (768) — the dimension matching the pinned
+    ``sentence-transformers/all-mpnet-base-v2`` model from research.md R1
+    and the ``embedding vector(768)`` column DDL applied by migration
+    ``0010_document_chunk_reconciliation``. The previous ``1536`` default
+    (a holdover from earlier OpenAI-embedding wiring) made
+    ``add_chunks`` raise an opaque pgvector mismatch.
+
+    Spec 061 FR-002: :meth:`add_chunks` performs a dimension preflight on
+    every incoming embedding and raises :class:`EmbeddingDimensionError`
+    *before* issuing any SQL.
+
     Attributes:
         _pool: psycopg ConnectionPool.
         _dimension: Embedding vector dimension.
@@ -54,7 +68,7 @@ class PgVectorStore:
     def __init__(
         self,
         pool: ConnectionPool[Connection[Any]],
-        dimension: int = 1536,
+        dimension: int = CANONICAL_EMBEDDING_DIM,
         collection: str = "default",
     ) -> None:
         self._pool = pool
@@ -66,42 +80,63 @@ class PgVectorStore:
 
         Each chunk should have: id, content, embedding, metadata.
 
+        Spec 061 FR-002: every chunk's embedding length is validated
+        against ``self._dimension`` *before* any SQL is issued. A
+        dimension mismatch raises :class:`EmbeddingDimensionError` with
+        a message naming the offending chunk and the expected and
+        actual lengths — so misconfigured ingest pipelines fail with a
+        clear, actionable error instead of an opaque pgvector error
+        from the database.
+
         Args:
             chunks: List of chunk objects or dicts.
+
+        Raises:
+            EmbeddingDimensionError: If any chunk's embedding has a
+                length other than ``self._dimension``.
         """
         if not chunks:
             return
 
-        with self._pool.connection() as conn, conn.cursor() as cur:
-            rows = []
-            for chunk in chunks:
-                if isinstance(chunk, dict):
-                    chunk_id = chunk.get("id", str(uuid4()))
-                    content = chunk.get("content", "")
-                    embedding = chunk.get("embedding", [])
-                    metadata = chunk.get("metadata", {})
-                    source = chunk.get("source", metadata.get("source"))
-                    chunk_index = chunk.get("chunk_index", metadata.get("chunk_index", 0))
-                else:
-                    chunk_id = getattr(chunk, "id", str(uuid4()))
-                    content = getattr(chunk, "content", "")
-                    embedding = getattr(chunk, "embedding", [])
-                    metadata = getattr(chunk, "metadata", {})
-                    source = getattr(chunk, "source", None)
-                    chunk_index = getattr(chunk, "chunk_index", 0)
+        rows = []
+        for index, chunk in enumerate(chunks):
+            if isinstance(chunk, dict):
+                chunk_id = chunk.get("id", str(uuid4()))
+                content = chunk.get("content", "")
+                embedding = chunk.get("embedding", [])
+                metadata = chunk.get("metadata", {})
+                source = chunk.get("source", metadata.get("source"))
+                chunk_index = chunk.get("chunk_index", metadata.get("chunk_index", 0))
+            else:
+                chunk_id = getattr(chunk, "id", str(uuid4()))
+                content = getattr(chunk, "content", "")
+                embedding = getattr(chunk, "embedding", [])
+                metadata = getattr(chunk, "metadata", {})
+                source = getattr(chunk, "source", None)
+                chunk_index = getattr(chunk, "chunk_index", 0)
 
-                rows.append(
-                    (
-                        str(chunk_id),
-                        self._collection,
-                        content,
-                        embedding,
-                        json.dumps(metadata) if isinstance(metadata, dict) else metadata,
-                        source,
-                        chunk_index,
-                    )
+            # FR-002 preflight: fail fast on dimension mismatch.
+            if len(embedding) != self._dimension:
+                raise EmbeddingDimensionError(
+                    f"chunk #{index} (id={chunk_id!r}) has embedding of length "
+                    f"{len(embedding)}, expected {self._dimension}. "
+                    "Verify the embedding model matches "
+                    "babylon.config.llm_config.CANONICAL_EMBEDDING_MODEL_ID."
                 )
 
+            rows.append(
+                (
+                    str(chunk_id),
+                    self._collection,
+                    content,
+                    embedding,
+                    json.dumps(metadata) if isinstance(metadata, dict) else metadata,
+                    source,
+                    chunk_index,
+                )
+            )
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
             cur.executemany(
                 """
                 INSERT INTO document_chunk

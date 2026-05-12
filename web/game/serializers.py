@@ -106,7 +106,13 @@ class CampaignActionSerializer(BaseActionSerializer):
 
 
 class TerritorySerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a territory with full visualization fields (Spec 052 §8)."""
+    """Serialize a territory with full visualization fields (Spec 052 §8).
+
+    Spec 061 US6 FR-013 (T094): adds ``consciousness`` / ``solidarity``
+    / ``wealth`` / ``dominant_community`` derived aggregates so the
+    Intel page can render per-territory detail without an extra
+    inspector round-trip.
+    """
 
     id = serializers.CharField()
     name = serializers.CharField()
@@ -123,6 +129,10 @@ class TerritorySerializer(serializers.Serializer[dict[str, Any]]):
     biocapacity = serializers.FloatField()
     host_id = serializers.CharField(allow_null=True)
     occupant_id = serializers.CharField(allow_null=True)
+    consciousness = serializers.FloatField(required=False, default=0.0)
+    solidarity = serializers.FloatField(required=False, default=0.0)
+    wealth = serializers.FloatField(required=False, default=0.0)
+    dominant_community = serializers.CharField(required=False, default="", allow_blank=True)
 
 
 class ConsciousnessVectorSerializer(serializers.Serializer[dict[str, Any]]):
@@ -219,7 +229,12 @@ class InstitutionSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class EdgeSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize a dyadic edge (Spec 052 §10)."""
+    """Serialize a dyadic edge (Spec 052 §10).
+
+    Spec 061 US6 FR-014 (T096): adds ``rate_of_profit`` /
+    ``rent_burden`` / ``age_ticks`` (all nullable when not yet
+    computable) so the Intel page can chart edge histories.
+    """
 
     id = serializers.CharField()
     source_id = serializers.CharField()
@@ -228,6 +243,9 @@ class EdgeSerializer(serializers.Serializer[dict[str, Any]]):
     value_flow = serializers.FloatField()
     tension = serializers.FloatField()
     repression_flow = serializers.FloatField()
+    rate_of_profit = serializers.FloatField(required=False, allow_null=True, default=None)
+    rent_burden = serializers.FloatField(required=False, allow_null=True, default=None)
+    age_ticks = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class HyperedgeSerializer(serializers.Serializer[dict[str, Any]]):

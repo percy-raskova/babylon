@@ -11,6 +11,10 @@ local models (Ollama). Cloud APIs are transitional tools.
 import os
 from typing import Final
 
+CANONICAL_EMBEDDING_MODEL_ID: Final[str] = "sentence-transformers/all-mpnet-base-v2"
+CANONICAL_EMBEDDING_DIM: Final[int] = 768
+CANONICAL_EMBEDDING_REVISION: Final[str] = "main"
+
 
 class LLMConfig:
     """Configuration for LLM API integration.

@@ -9,7 +9,7 @@ from game.models import GameSession, HexState
 
 
 class Command(BaseCommand):
-    help = "Seeds sim.hex_states from the mock fixture for a given GameSession."
+    help = "Seeds hex_latest from the GeoJSON fixture for a given GameSession."
 
     def add_arguments(self, parser: Any) -> None:
         parser.add_argument("game_id", type=str, help="UUID of the GameSession")

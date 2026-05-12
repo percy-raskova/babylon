@@ -833,6 +833,40 @@ class PostgresRuntime:
                 ),
             )
 
+    def query_tick_summary_series(
+        self,
+        session_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """Return ordered ``tick_summary`` rows for one session (spec 061 T051).
+
+        Powers the v2 Briefing + Analysis pages' sparklines via
+        :meth:`web.game.engine_bridge.EngineBridge.get_game_timeseries`.
+        Rows are returned oldest-tick-first; gaps are not interpolated —
+        the bridge layer decides whether to forward-fill.
+
+        Args:
+            session_id: Game session UUID.
+
+        Returns:
+            List of dicts with the ``tick_summary`` column names as keys.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, year, total_c, total_v, total_s,
+                       exploitation_rate, profit_rate, imperial_rent,
+                       avg_consciousness, solidarity_edge_count,
+                       antagonistic_edge_count, co_optive_edge_count,
+                       org_count, player_org_count, uprising_count,
+                       repression_count, conservation_check
+                FROM tick_summary
+                WHERE session_id = %s
+                ORDER BY tick
+                """,
+                (session_id,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def persist_traces(
         self,
         session_id: UUID,

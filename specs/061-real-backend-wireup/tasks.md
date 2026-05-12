@@ -113,7 +113,7 @@
 
 ### Tests for User Story 2 (TDD)
 
-- [X] T033 [P] [US2] Write integration test `tests/integration/test_health_public.py` asserting `GET /health/` returns 200 with `{"status": "ok"}` regardless of auth state
+- [X] T033 [P] [US2] Write integration test `tests/integration/test_health_public.py` asserting `GET /health/` returns 200 with `{"status": "ok"}` regardless of auth state. **Implemented in `tests/integration/test_health_detail.py::TestHealthEndpointObscurity::test_public_health_is_open_unauthenticated`** — public/detail tests were colocated in one file since they share the same client setup.
 - [X] T034 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_unauthenticated_returns_404` asserting unauthenticated GET on `/health/detail/` returns 404 with body `{"detail": "Not found."}` (NOT 401, NOT 403, NOT empty body)
 - [X] T035 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_non_staff_returns_404` asserting authenticated non-staff GET returns same 404 shape
 - [X] T036 [P] [US2] Write integration test `tests/integration/test_health_detail.py::test_staff_returns_diagnostic` asserting staff GET returns 200 with payload matching `contracts/health.yaml#/components/schemas/HealthDetailResponse`
@@ -234,11 +234,11 @@
 
 ### Tests for User Story 5 (TDD)
 
-- [X] T075 [P] [US5] Write integration test `tests/integration/test_action_lifecycle.py::test_submit_action_persists` — POST to `/actions/educate/`, GET `/actions/`, assert the action appears with `resolved=False`
-- [X] T076 [P] [US5] Write integration test `tests/integration/test_action_lifecycle.py::test_resolve_processes_action` — submit Educate, POST `/resolve/`, assert action_result row exists with non-zero `consciousness_delta` AND original action's `resolved` flipped to True
-- [X] T077 [P] [US5] Write integration test `tests/integration/test_action_determinism.py::test_replay_byte_identical` — two sessions with same `rng_seed`, same action sequence, assert action_result rows are byte-identical (FR-023, SC-004)
+- [ ] T075 [P] [US5] Write integration test `tests/integration/test_action_lifecycle.py::test_submit_action_persists` — POST to `/actions/educate/`, GET `/actions/`, assert the action appears with `resolved=False`. **Deferred 2026-05-12** — production code paths in `submit_action`/`resolve_tick` are in place (verified via existing `test_unsupported_verbs.py`); the lifecycle harness around a live `EngineBridge` was not authored. Pre-existing engine code, not new spec-061 work — no production-code change required (FR-021).
+- [ ] T076 [P] [US5] Write integration test `tests/integration/test_action_lifecycle.py::test_resolve_processes_action` — submit Educate, POST `/resolve/`, assert action_result row exists with non-zero `consciousness_delta` AND original action's `resolved` flipped to True. **Deferred 2026-05-12** — same rationale as T075 (FR-022).
+- [ ] T077 [P] [US5] Write integration test `tests/integration/test_action_determinism.py::test_replay_byte_identical` — two sessions with same `rng_seed`, same action sequence, assert action_result rows are byte-identical (FR-023, SC-004). **Deferred 2026-05-12** — `SimulationConfig(rng_seed=...)` threading IS implemented in `EngineBridge.resolve_tick` per T080; the byte-identity harness is not.
 - [X] T078 [P] [US5] Write integration test `tests/integration/test_unsupported_verbs.py::test_unsupported_verbs_not_in_available_actions` — GET `/api/games/{id}/actions/available/`, assert that the response does NOT include `investigate`, `move`, or `negotiate` (per T081 Option A resolution: these verbs are removed from the available-actions list until a follow-up spec implements real handlers, satisfying FR-025).
-- [X] T079 [P] [US5] Write Playwright e2e test `web/frontend/e2e/verb-submit.spec.ts` — navigate to `/games/<session>/actions/educate`, select actor, target, submit, assert success toast and entry visible on Results page after resolve
+- [ ] T079 [P] [US5] Write Playwright e2e test `web/frontend/e2e/verb-submit.spec.ts` — navigate to `/games/<session>/actions/educate`, select actor, target, submit, assert success toast and entry visible on Results page after resolve. **Deferred 2026-05-12** — covered partially by `orgs-live-data.spec.ts`; the full end-to-end submit+resolve+results-visibility flow needs a live test DB + e2e harness, gated on T125's staging readiness.
 
 ### Implementation
 
@@ -263,11 +263,11 @@
 
 ### Tests for User Story 6 (TDD)
 
-- [X] T084 [P] [US6] Write integration test `tests/integration/test_territory_serialization.py::test_extended_fields_present` — assert every serialized Territory has `consciousness`, `solidarity`, `wealth`, `dominant_community` (FR-013)
-- [X] T085 [P] [US6] Write integration test `tests/integration/test_edge_serialization.py::test_extended_fields_present_or_null` — assert every serialized Edge has `id` and either real numeric `rate_of_profit`/`rent_burden`/`age_ticks` OR explicit `null` (FR-014)
-- [X] T086 [P] [US6] Write integration test `tests/integration/test_communities_endpoint.py::test_returns_per_community_ternary` — GET `/communities/`, assert each entry has `hyperedge_id`, `category`, `member_count`, `ternary` with three numeric fields (FR-018)
-- [X] T087 [P] [US6] Write integration tests `tests/integration/test_inspector_endpoints.py::test_{node,org,community,edge,hex}_returns_detail` — one test per inspector, each asserts non-empty `data` dict matching the corresponding contract schema (FR-019)
-- [X] T088 [P] [US6] Write Playwright e2e test `web/frontend/e2e/intel-results-analysis.spec.ts` — visit each of `/intel/territories/<id>`, `/results`, `/analysis`. Assert per-page acceptance scenarios from spec US6
+- [X] T084 [P] [US6] Write integration test `tests/integration/test_territory_serialization.py::test_extended_fields_present` — assert every serialized Territory has `consciousness`, `solidarity`, `wealth`, `dominant_community` (FR-013). **Implemented as `tests/integration/test_territory_edge_serialization.py`** — combined Territory + Edge fixtures into one file (T084 + T085 share the same stub-entity machinery).
+- [X] T085 [P] [US6] Write integration test `tests/integration/test_edge_serialization.py::test_extended_fields_present_or_null` — assert every serialized Edge has `id` and either real numeric `rate_of_profit`/`rent_burden`/`age_ticks` OR explicit `null` (FR-014). **Implemented as `tests/integration/test_territory_edge_serialization.py`** — combined with T084.
+- [ ] T086 [P] [US6] Write integration test `tests/integration/test_communities_endpoint.py::test_returns_per_community_ternary` — GET `/communities/`, assert each entry has `hyperedge_id`, `category`, `member_count`, `ternary` with three numeric fields (FR-018). **Deferred 2026-05-12** — `get_communities_dashboard` is currently a stub returning `[]`; a meaningful test would require completing the deeper XGI-membership query (deferred to follow-up spec per ADR039 follow-up list).
+- [ ] T087 [P] [US6] Write integration tests `tests/integration/test_inspector_endpoints.py::test_{node,org,community,edge,hex}_returns_detail` — one test per inspector, each asserts non-empty `data` dict matching the corresponding contract schema (FR-019). **Deferred 2026-05-12** — five inspector methods are stubs returning skeleton payloads; deeper queries (`query_org_recent_actions`, `query_edge_history`, XGI community membership) are deferred to follow-up spec per ADR039.
+- [ ] T088 [P] [US6] Write Playwright e2e test `web/frontend/e2e/intel-results-analysis.spec.ts` — visit each of `/intel/territories/<id>`, `/results`, `/analysis`. Assert per-page acceptance scenarios from spec US6. **Deferred 2026-05-12** — gated on real-data inspectors (T086/T087) and on T125 staging-host readiness for the e2e harness.
 
 ### Bridge-side stub method implementations
 
@@ -306,8 +306,8 @@
 ### Tests for User Story 7 (TDD)
 
 - [X] T104 [P] [US7] Write CI script `tests/scripts/check_mock_sunset.sh` — `grep -rn "MockEngineBridge\|mock_defines\|seed_mock_game\|BABYLON_MOCK_MODE" src/ web/ --include="*.py" | grep -v __pycache__ | wc -l` should equal 0. Add to `mise run check` as a final step
-- [X] T105 [P] [US7] Write integration test `tests/integration/test_purged_session_404.py` — given a UUID that was purged by migration 0007, assert GET `/api/games/<uuid>/state/` returns 404
-- [X] T106 [P] [US7] Write integration test `tests/integration/test_seed_initial_game_command.py::test_creates_real_engine_session` — invoke management command, assert created GameSession has `snapshot_json` empty/absent (NOT populated by mock writer)
+- [ ] T105 [P] [US7] Write integration test `tests/integration/test_purged_session_404.py` — given a UUID that was purged by migration 0007, assert GET `/api/games/<uuid>/state/` returns 404. **Deferred 2026-05-12** — production migration 0007 ran and Django returns 404 for unknown UUIDs by default; the explicit harness verifying purge-then-404 behavior was not authored. Pre-existing Django ORM contract, not new spec-061 code.
+- [ ] T106 [P] [US7] Write integration test `tests/integration/test_seed_initial_game_command.py::test_creates_real_engine_session` — invoke management command, assert created GameSession has `snapshot_json` empty/absent (NOT populated by mock writer). **Deferred 2026-05-12** — migration 0008 dropped the `snapshot_json` column entirely so the assertion form is moot; the `seed_initial_game` command IS implemented and refuses to fall back to `MockEngineBridge` (verified by reading the source). A real-engine smoke test of the command is deferred until T125 staging is set up.
 
 ### Implementation
 
@@ -332,11 +332,11 @@
 - [ ] T116 [P] Run the full quickstart.md validation walkthrough end-to-end against a fresh dev DB. Capture timing + any deviations from spec acceptance criteria. File issues for any drift
 - [X] T117 [P] Update `ai-docs/state.yaml` with feature 061 status and new test counts (per CLAUDE.md "Documentation Maintenance" guidance)
 - [X] T118 [P] Update `ai-docs/decisions.yaml` with a new ADR for this feature: ADR0XX_real_backend_wireup. Capture: cutover-purge decision, sentence-transformers pin, hybrid-retry-then-exit boot, custom DRF exception handler pattern
-- [X] T119 [P] Update `ai-docs/roadmap.md` to reflect that the v2 page wire-up is complete; identify any follow-up work (e.g., the hardcoded tensor-diff panel in ResultsPage from T102)
+- [~] T119 [P] Update `ai-docs/roadmap.md` to reflect that the v2 page wire-up is complete; identify any follow-up work (e.g., the hardcoded tensor-diff panel in ResultsPage from T102). **Partial 2026-05-12** — `ai-docs/roadmap.md` does not exist in this codebase (the project uses `ai-docs/state.yaml` + `ai-docs/decisions/` as the authoritative status sources). The follow-up work is captured in `ai-docs/decisions/ADR039_spec_061_real_backend_wireup.yaml#follow_up_specs` instead. T117 (state.yaml) captures the sprint-completion summary.
 - [X] T120 Pin the `CANONICAL_EMBEDDING_REVISION` SHA in `src/babylon/config/llm_config.py` (T002 used a placeholder). Capture the actual SHA after first successful download from HuggingFace: `huggingface-cli scan-cache | grep all-mpnet-base-v2`
 - [X] T121 [P] Run `poetry run mypy src/babylon/persistence/ src/babylon/rag/ web/babylon_web/health/ web/game/ --strict` and resolve any new type errors introduced by this feature
 - [X] T122 [P] Run `poetry run ruff check . --fix && poetry run ruff format .` to sweep formatting before commit
-- [ ] T123 Update `web/HOW-TO-LOCAL-DEV.md` to reflect the new bootstrap flow: `mise run web:migrate` → `mise run web:manage seed_initial_game --scenario wayne_county --player admin` → `mise run web:dev`. Remove any references to `seed_mock_game` or `BABYLON_MOCK_MODE`
+- [X] T123 Update `web/HOW-TO-LOCAL-DEV.md` to reflect the new bootstrap flow: `mise run web:migrate` → `mise run web:manage seed_initial_game --scenario wayne_county --player admin` → `mise run web:dev`. Remove any references to `seed_mock_game` or `BABYLON_MOCK_MODE`
 - [ ] T124 Performance verification: time the full quickstart action-submit-to-result-visibility cycle, assert <10s p95 per SC-012. If exceeded, profile via `cProfile` on the resolve path
 - [ ] T125 Smoke-test the systemd unit on a staging host: stop Postgres, observe 3 retries + exit, observe systemd restart, start Postgres, observe successful boot and `/health/detail/` reports `EngineBridge`
 

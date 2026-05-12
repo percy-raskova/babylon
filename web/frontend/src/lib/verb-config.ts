@@ -18,6 +18,16 @@ import {
 
 export { VERBS };
 
+/** Spec 061 US5 T081 / FR-025: verbs whose engine handlers don't exist.
+ *  Filtered out of the verb picker and rejected at the action-submit
+ *  endpoint server-side. A follow-up spec will add real handlers and
+ *  remove entries from this set.
+ */
+export const DISABLED_VERBS: ReadonlySet<string> = new Set(["investigate", "move", "negotiate"]);
+
+/** VERBS minus disabled verbs — for the verb picker, NavRail, and grids. */
+export const SUPPORTED_VERBS = VERBS.filter((v) => !DISABLED_VERBS.has(v.verb));
+
 /**
  * Resolve eligible targets for a verb, gated by target_type.
  * CRITICAL: never one big dropdown. Per Constitution Article IV,

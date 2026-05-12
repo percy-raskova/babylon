@@ -54,29 +54,29 @@
 
 ### Atomic snapshot transactional wrap (FR-003, R2 decision)
 
-- [ ] T013 Refactor `src/babylon/persistence/postgres_runtime/_legacy.py:persist_full_tick()` to acquire one connection from `self._pool.connection()`, wrap all 7 per-table writes in a single `with conn.transaction():` block, and pass the cursor down to per-table helpers instead of having each helper acquire its own connection
-- [ ] T014 Update `_persist_territory_snapshots`, `_persist_org_snapshots`, `_persist_edge_snapshots`, `_persist_community_snapshots`, `_persist_hex_activity`, `_persist_economic_summary`, `_persist_tick_events` (all in `src/babylon/persistence/postgres_runtime/_legacy.py`) to accept `cursor` parameter and use it instead of acquiring their own
-- [ ] T015 Add `ON CONFLICT DO NOTHING` clauses to all INSERT statements in the seven helpers from T014, split by table category for clarity:
+- [X] T013 Refactor `src/babylon/persistence/postgres_runtime/_legacy.py:persist_full_tick()` to acquire one connection from `self._pool.connection()`, wrap all 7 per-table writes in a single `with conn.transaction():` block, and pass the cursor down to per-table helpers instead of having each helper acquire its own connection
+- [X] T014 Update `_persist_territory_snapshots`, `_persist_org_snapshots`, `_persist_edge_snapshots`, `_persist_community_snapshots`, `_persist_hex_activity`, `_persist_economic_summary`, `_persist_tick_events` (all in `src/babylon/persistence/postgres_runtime/_legacy.py`) to accept `cursor` parameter and use it instead of acquiring their own
+- [X] T015 Add `ON CONFLICT DO NOTHING` clauses to all INSERT statements in the seven helpers from T014, split by table category for clarity:
   - **(a)** For the five snapshot tables `territory_snapshot`, `org_snapshot`, `edge_snapshot`, `community_snapshot`, `economic_summary`, and the supporting `hex_activity` / `tick_event` tables — use their **existing composite primary keys** as the ON CONFLICT target (e.g., `ON CONFLICT (game_id, tick, county_fips) DO NOTHING` for territory_snapshot). No new constraints needed; the PKs already enforce uniqueness.
   - **(b)** For `action_result` and `simulation_event` — use the **new unique constraints added by T009** as the ON CONFLICT target (`(session_id, tick, action_id)` and `(session_id, tick, event_type, entity_id)` respectively). Append-only retry safety per FR-004.
-- [ ] T016 Refactor `src/babylon/persistence/postgres_runtime/_legacy.py:_resolve_tick_atomic()` (or create if absent) to use the `INSERT ... ON CONFLICT (session_id, tick) DO NOTHING RETURNING id` pattern against `tick_log`. If `RETURNING id` yields nothing, raise `TickAlreadyResolved` exception (FR-005, race-safe per R2)
+- [X] T016 Refactor `src/babylon/persistence/postgres_runtime/_legacy.py:_resolve_tick_atomic()` (or create if absent) to use the `INSERT ... ON CONFLICT (session_id, tick) DO NOTHING RETURNING id` pattern against `tick_log`. If `RETURNING id` yields nothing, raise `TickAlreadyResolved` exception (FR-005, race-safe per R2)
 - [X] T017 Define `TickAlreadyResolved(Exception)` in `src/babylon/persistence/protocols.py`. Importable from `babylon.persistence`
 
 ### Engine bridge boot retry + hard-exit (FR-006, FR-007, R4 decision)
 
 - [X] T018 Refactor `web/game/apps.py:GameConfig.ready()` to add class-level `_initialized` flag and the 3-attempt retry loop calling `sys.exit(1)` on exhaustion. Use the exact pattern from `research.md` R4. Replace the silent `except Exception: logger.exception(...)` with the retry loop. Preserve `RUN_MAIN` and engine-check guards
 - [X] T019 Extract the retry loop body into a `_initialize_engine_with_retry(self, max_attempts: int = 3) -> None` method on `GameConfig` for testability
-- [ ] T020 Audit and fix `--preload-app` usage in Gunicorn template:
+- [X] T020 Audit and fix `--preload-app` usage in Gunicorn template:
   - **(a)** Inspect `deploy/ansible/roles/web/templates/gunicorn_start.j2` for any occurrence of `--preload-app` or `preload_app = True`. Report findings.
-  - **(b)** If the flag is present in (a), remove it and add a comment citing research R4 rationale ("fork-safety with psycopg connection pools — preload causes file-descriptor sharing across workers"). If the flag is absent in (a), no further action; document the verification in the task PR.
-- [ ] T021 [P] Configure systemd unit per R3 decision in `deploy/ansible/roles/web/templates/babylon-web.service.j2` (create new file): `Type=notify`, `Restart=on-failure`, `RestartSec=5s`, `RestartSteps=4`, `RestartMaxDelaySec=60s` in `[Service]`; `StartLimitIntervalSec=300`, `StartLimitBurst=5` in `[Unit]`. Reference the gunicorn ExecStart from existing template
-- [ ] T022 [P] Update Ansible play `deploy/ansible/roles/web/tasks/main.yml` to install the new systemd unit file from T021 and run `systemctl daemon-reload` + `systemctl enable babylon-web.service`
+  - **(b)** If the flag is present in (a), remove it and add a comment citing research R4 rationale ("fork-safety with psycopg connection pools — preload causes file-descriptor sharing across workers"). If the flag is absent in (a), no further action; document the verification in the task PR. **Verified absent — no action needed.**
+- [X] T021 [P] Configure systemd unit per R3 decision in `deploy/ansible/roles/web/templates/babylon-web.service.j2` (create new file): `Type=notify`, `Restart=on-failure`, `RestartSec=5s`, `RestartSteps=4`, `RestartMaxDelaySec=60s` in `[Service]`; `StartLimitIntervalSec=300`, `StartLimitBurst=5` in `[Unit]`. Reference the gunicorn ExecStart from existing template
+- [X] T022 [P] Update Ansible play `deploy/ansible/roles/web/tasks/main.yml` to install the new systemd unit file from T021 and run `systemctl daemon-reload` + `systemctl enable babylon-web.service`
 
 ### Foundational tests
 
-- [ ] T023 [P] Write integration test `tests/integration/test_persist_tick_atomic.py` asserting that when one of the seven snapshot helpers raises mid-call, NO rows are committed to ANY of the seven tables for that tick (rollback verification, SC-011)
-- [ ] T024 [P] Write integration test `tests/integration/test_tick_immutability.py` asserting that calling `persist_full_tick()` twice for the same `(session_id, tick)` returns rows from the first call only and raises `TickAlreadyResolved` on the second call. Race condition test using two threads invoking the same tick simultaneously (FR-005)
-- [ ] T025 [P] Write integration test `tests/integration/test_engine_bridge_boot.py` with three scenarios: (a) reachable DB → succeeds on attempt 1; (b) DB unreachable for entire window → 3 retries logged then `sys.exit(1)`; (c) DB unreachable on attempts 1-2, reachable on attempt 3 → succeeds on attempt 3 and worker continues. Use a mock `init_persistence` that raises N times then succeeds
+- [X] T023 [P] Write integration test `tests/integration/test_persist_tick_atomic.py` asserting that when one of the seven snapshot helpers raises mid-call, NO rows are committed to ANY of the seven tables for that tick (rollback verification, SC-011)
+- [X] T024 [P] Write integration test `tests/integration/test_tick_immutability.py` asserting that calling `persist_full_tick()` twice for the same `(session_id, tick)` returns rows from the first call only and raises `TickAlreadyResolved` on the second call. Race condition test using two threads invoking the same tick simultaneously (FR-005)
+- [X] T025 [P] Write integration test `tests/integration/test_engine_bridge_boot.py` with three scenarios: (a) reachable DB → succeeds on attempt 1; (b) DB unreachable for entire window → 3 retries logged then `sys.exit(1)`; (c) DB unreachable on attempts 1-2, reachable on attempt 3 → succeeds on attempt 3 and worker continues. Use a mock `init_persistence` that raises N times then succeeds
 
 **Checkpoint**: Foundation ready — schema clean, transactions atomic, boot retries hard-fail loudly, immutability enforced. User story implementation can now begin.
 

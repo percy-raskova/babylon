@@ -2000,15 +2000,79 @@ def _serialize_territory(t: Any) -> dict[str, Any]:
     }
 
 
+_OODA_PHASE_ORDER: tuple[str, ...] = ("observe", "orient", "decide", "act")
+
+
+def _derive_ooda_phase(profile: dict[str, float]) -> str:
+    """Argmax across the four OODA components → enum string (FR-011).
+
+    Deterministic tiebreak by ``_OODA_PHASE_ORDER`` so the same input
+    always produces the same phase across replays (Constitution III.7).
+    """
+    best_phase = "observe"
+    best_value = float("-inf")
+    for phase in _OODA_PHASE_ORDER:
+        value = float(profile.get(phase, 0.0))
+        if value > best_value:
+            best_value = value
+            best_phase = phase
+    return best_phase
+
+
+def _derive_short_name(name: str) -> str:
+    """Truncate ``name`` to ≤16 chars for compact UI surfaces (FR-016)."""
+    if not name:
+        return ""
+    if len(name) <= 16:
+        return name
+    # Truncate-with-ellipsis for visual signal that more name exists.
+    return name[:15] + "…"
+
+
 def _serialize_organization(o: Any) -> dict[str, Any]:
     """Serialize an Organization with all visualization-relevant fields.
 
-    For player organizations (civil_society with proletarian class character),
-    computes and attaches VanguardResources as the 'vanguard' field.
+    Spec 061 US4 (T067, T068): adds ``short_name`` / ``player_controlled``
+    / ``legitimacy`` / ``opacity`` plus ``ooda.phase`` derived enum.
+
+    Note on ``player_controlled``: the engine model does not yet carry an
+    explicit ``controlling_player_id`` linking an Organization to a
+    Django auth user. Until that link is added by a follow-up spec, we
+    fall back on the existing class_character + org_type heuristic that
+    also gates VanguardResources attachment — proletarian civil-society
+    orgs are treated as player-controlled.
+
+    For player organizations, computes and attaches VanguardResources
+    as the ``vanguard`` field.
     """
+    name = str(o.name)
+    is_player_org = (
+        _enum_val(o.class_character) == "proletarian" and _enum_val(o.org_type) == "civil_society"
+    )
+
+    # Spec 061 FR-011: surface OODA phase as a deterministic enum.
+    ooda_profile: dict[str, float] = {
+        "observe": 0.5,
+        "orient": 0.5,
+        "decide": 0.5,
+        "act": 0.5,
+        "cycle_ticks": 4,
+    }
+    engine_profile = getattr(o, "ooda_profile", None) or getattr(o, "ooda", None)
+    if engine_profile is not None:
+        for phase in _OODA_PHASE_ORDER:
+            value = getattr(engine_profile, phase, None)
+            if value is not None:
+                ooda_profile[phase] = float(value)
+    ooda_phase = _derive_ooda_phase(ooda_profile)
+
     result: dict[str, Any] = {
         "id": o.id,
-        "name": o.name,
+        "name": name,
+        "short_name": _derive_short_name(name),
+        "player_controlled": is_player_org,
+        "legitimacy": float(getattr(o, "legitimacy", 0.5)),
+        "opacity": float(getattr(o, "opacity", 0.5)),
         "org_type": _enum_val(o.org_type),
         "class_character": _enum_val(o.class_character),
         "cohesion": float(o.cohesion),
@@ -2018,16 +2082,15 @@ def _serialize_organization(o: Any) -> dict[str, Any]:
         "territory_ids": list(o.territory_ids),
         "consciousness_tendency": _enum_val(o.consciousness_tendency),
         "vanguard": None,
-        # Stub missing Spec 052 fields to satisfy OrganizationSerializer
+        # Stubs preserved from the prior bridge for Spec 052 schema compat.
+        # T069 (hyperedge_memberships from XGI) is left empty until the
+        # XGI persistence query lands; the frontend treats empty as
+        # "no community memberships known" rather than as an error.
         "hyperedge_memberships": [],
         "consciousness": {"liberal": 0.33, "fascist": 0.33, "revolutionary": 0.34},
-        "ooda": {"observe": 0.5, "orient": 0.5, "decide": 0.5, "act": 0.5, "cycle_ticks": 4},
+        "ooda": {**ooda_profile, "phase": ooda_phase},
     }
 
-    # Compute vanguard resources for player orgs
-    is_player_org = (
-        _enum_val(o.class_character) == "proletarian" and _enum_val(o.org_type) == "civil_society"
-    )
     if is_player_org:
         vanguard = VanguardResources.from_organization(
             cadre_level=float(o.cadre_level),

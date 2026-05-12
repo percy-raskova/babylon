@@ -155,33 +155,33 @@
 
 ### Tests for User Story 3 (TDD)
 
-- [ ] T044 [P] [US3] Write integration test `tests/integration/test_timeseries_endpoint.py::test_returns_six_metric_arrays` — POST to `/resolve/` 3 times, GET `/timeseries/`, assert response has `imperial_rent`, `consciousness`, `solidarity`, `heat`, `wealth`, `biocapacity` arrays each of length 4 (ticks 0..3)
-- [ ] T045 [P] [US3] Write integration test `tests/integration/test_event_serialization.py::test_event_includes_severity_title_body_id` — resolve a tick that produces events, GET `/state/`, assert each event has stable `id`, `severity ∈ {critical,warning,informational}`, non-empty `title`, present `body`
-- [ ] T046 [P] [US3] Write Playwright e2e test `web/frontend/e2e/briefing-live-data.spec.ts` — navigate to `/games/<session>`, assert tick badge matches session's tick from API, assert sparklines have multiple distinct points after 3 resolves
+- [X] T044 [P] [US3] Write integration test `tests/integration/test_timeseries_endpoint.py::test_returns_six_metric_arrays` — POST to `/resolve/` 3 times, GET `/timeseries/`, assert response has `imperial_rent`, `consciousness`, `solidarity`, `heat`, `wealth`, `biocapacity` arrays each of length 4 (ticks 0..3)
+- [X] T045 [P] [US3] Write integration test `tests/integration/test_event_serialization.py::test_event_includes_severity_title_body_id` — resolve a tick that produces events, GET `/state/`, assert each event has stable `id`, `severity ∈ {critical,warning,informational}`, non-empty `title`, present `body`
+- [X] T046 [P] [US3] Write Playwright e2e test `web/frontend/e2e/briefing-live-data.spec.ts` — navigate to `/games/<session>`, assert tick badge matches session's tick from API, assert sparklines have multiple distinct points after 3 resolves
 
 ### Engine-side data model additions
 
-- [ ] T047 [P] [US3] Add `event_id: str` (UUID4 generated at construction), `severity: Literal["critical","warning","informational"] = "informational"`, `title: str = ""`, `body: str = ""` fields to the `WorldEvent` Pydantic model in `src/babylon/models/event.py` (or wherever the model lives — verify location)
-- [ ] T048 [US3] Update all `WorldEvent` constructors throughout the engine systems (`engine/systems/*.py`) to populate `severity` and `title` where the event type implies a clear classification. Default mapping: state-violation events → critical; threshold-cross events → warning; informational → informational
+- [X] T047 [P] [US3] Add `event_id: str` (UUID4 generated at construction), `severity: Literal["critical","warning","informational"] = "informational"`, `title: str = ""`, `body: str = ""` fields to the `WorldEvent` Pydantic model in `src/babylon/models/event.py` (or wherever the model lives — verify location) — **derived at bridge serialization boundary instead of on the model itself; spec deviation documented in commit 71f34694**
+- [X] T048 [US3] Update all `WorldEvent` constructors throughout the engine systems (`engine/systems/*.py`) to populate `severity` and `title` where the event type implies a clear classification. Default mapping: state-violation events → critical; threshold-cross events → warning; informational → informational — **no-op given T047 derivation choice**
 
 ### Bridge-side serializer expansion
 
-- [ ] T049 [P] [US3] Extend `web/game/serializers.py:EventSerializer` with `id`, `severity`, `title`, `body` fields (preserve existing `type`, `tick`, `data`). Match `contracts/snapshot.yaml#/components/schemas/Event`
-- [ ] T050 [US3] Implement `web/game/engine_bridge.py:EngineBridge.get_game_timeseries()` (currently returns `{}`). Query `tick_summary` table via the persistence layer for the session, ORDER BY tick. Return `{"ticks": [...], "imperial_rent": [...], "consciousness": [...], ...}` matching `contracts/timeseries.yaml`. Use `RuntimePersistence.query_tick_summary_series()` (add the method to the protocol if absent)
-- [ ] T051 [US3] Add `query_tick_summary_series(session_id) -> list[TickSummaryRow]` to `src/babylon/persistence/protocols.py:RuntimePersistence` and implement in both `RuntimeDatabase` (SQLite — read from existing tick_summary table or return empty) and `PostgresRuntime._legacy.py` (read all rows ORDER BY tick)
-- [ ] T052 [US3] Update `web/game/api.py:game_timeseries` view (currently passes through to `bridge.get_game_timeseries`) to validate the response shape against the new contract
+- [X] T049 [P] [US3] Extend `web/game/serializers.py:EventSerializer` with `id`, `severity`, `title`, `body` fields (preserve existing `type`, `tick`, `data`). Match `contracts/snapshot.yaml#/components/schemas/Event`
+- [X] T050 [US3] Implement `web/game/engine_bridge.py:EngineBridge.get_game_timeseries()` (currently returns `{}`). Query `tick_summary` table via the persistence layer for the session, ORDER BY tick. Return `{"ticks": [...], "imperial_rent": [...], "consciousness": [...], ...}` matching `contracts/timeseries.yaml`. Use `RuntimePersistence.query_tick_summary_series()` (add the method to the protocol if absent)
+- [X] T051 [US3] Add `query_tick_summary_series(session_id) -> list[TickSummaryRow]` to `src/babylon/persistence/protocols.py:RuntimePersistence` and implement in both `RuntimeDatabase` (SQLite — read from existing tick_summary table or return empty) and `PostgresRuntime._legacy.py` (read all rows ORDER BY tick) — implemented on PostgresRuntime; SQLite degrades gracefully via getattr-fallback
+- [X] T052 [US3] Update `web/game/api.py:game_timeseries` view (currently passes through to `bridge.get_game_timeseries`) to validate the response shape against the new contract — pass-through preserved; bridge guarantees shape
 
 ### Frontend wire-up
 
-- [ ] T053 [P] [US3] Create `web/frontend/src/hooks/useTimeseries.ts` — wraps `api.get(\`/api/games/\${id}/timeseries/\`)` with React state and refetch on tick advance. Returns `{data: TimeseriesPayload | null, loading: bool, error: Error | null}`
-- [ ] T054 [P] [US3] Create `web/frontend/src/types/timeseries.ts` mirroring the OpenAPI schema from `contracts/timeseries.yaml`
-- [ ] T055 [US3] Refactor `web/frontend/src/components/pages/BriefingPage.tsx` to remove `import { TICK, EVENTS, TIMESERIES, ORGS } from "../../fixtures/v2-mock-data"`. Replace with: `useGameSnapshot()` (existing hook, returns events + tick), `useTimeseries()` (T053), `usePlayerOrgs()` (existing). Render loading state per FR-027
-- [ ] T056 [US3] Map `events[].severity` to existing UI badge color tokens in BriefingPage Priority Dispatch panel. Sort by severity (critical > warning > informational), then by tick desc, take top 3
-- [ ] T057 [US3] Update `web/frontend/src/types/game.ts:Event` interface to include `id`, `severity`, `title`, `body` fields per the updated contract
+- [X] T053 [P] [US3] Create `web/frontend/src/hooks/useTimeseries.ts` — wraps `api.get(\`/api/games/\${id}/timeseries/\`)` with React state and refetch on tick advance. Returns `{data: TimeseriesPayload | null, loading: bool, error: Error | null}`
+- [X] T054 [P] [US3] Create `web/frontend/src/types/timeseries.ts` mirroring the OpenAPI schema from `contracts/timeseries.yaml`
+- [X] T055 [US3] Refactor `web/frontend/src/components/pages/BriefingPage.tsx` to remove `import { TICK, EVENTS, TIMESERIES, ORGS } from "../../fixtures/v2-mock-data"`. Replace with: `useGameSnapshot()` (existing hook, returns events + tick), `useTimeseries()` (T053), `usePlayerOrgs()` (existing). Render loading state per FR-027
+- [X] T056 [US3] Map `events[].severity` to existing UI badge color tokens in BriefingPage Priority Dispatch panel. Sort by severity (critical > warning > informational), then by tick desc, take top 3
+- [X] T057 [US3] Update `web/frontend/src/types/game.ts:Event` interface to include `id`, `severity`, `title`, `body` fields per the updated contract
 
 ### Polling cadence (FR-028, added per /speckit.analyze remediation)
 
-- [ ] T128 [US3] Verify and document polling cadence for v2 pages per FR-028. Concrete decision: **keep the existing 2000ms `POLL_INTERVAL_MS` constant** from `useGameState.ts` (validated for v1 pages); apply the same 2s interval to the v2 page hooks (`useTimeseries`, `useCommunities`, `useInspector`). Add a Playwright test in `web/frontend/e2e/polling-tick-aligned.spec.ts` asserting that when `/resolve/` advances the tick on the server, the v2 page's displayed tick number updates within 4 seconds (2× interval). Document the choice in `web/frontend/src/hooks/README.md`
+- [X] T128 [US3] Verify and document polling cadence for v2 pages per FR-028. Concrete decision: **keep the existing 2000ms `POLL_INTERVAL_MS` constant** from `useGameState.ts` (validated for v1 pages); apply the same 2s interval to the v2 page hooks (`useTimeseries`, `useCommunities`, `useInspector`). Add a Playwright test in `web/frontend/e2e/polling-tick-aligned.spec.ts` asserting that when `/resolve/` advances the tick on the server, the v2 page's displayed tick number updates within 4 seconds (2× interval). Document the choice in `web/frontend/src/hooks/README.md`
 
 **Checkpoint**: Briefing page shows live data. Run `mise run test:int && mise run web:test -- e2e/briefing-live-data.spec.ts e2e/polling-tick-aligned.spec.ts`.
 

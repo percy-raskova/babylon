@@ -99,10 +99,23 @@ export interface OodaProfile {
   cycle_ticks: number;
 }
 
-/** Organization — the only agent type (Spec 052 §6). */
+/** Organization — the only agent type (Spec 052 §6).
+ *  Spec 061 US4 (T071): adds short_name / player_controlled / legitimacy /
+ *  opacity. These are optional on the type so US3 (Briefing) can ship
+ *  ahead of the full US4 serializer expansion; once US4 backend lands,
+ *  the bridge populates them on every snapshot.
+ */
 export interface OrgState {
   id: string;
   name: string;
+  /** Display-only short name (≤16 chars). Derived from `name` when absent. */
+  short_name?: string;
+  /** True when this org belongs to the requesting session's player. */
+  player_controlled?: boolean;
+  /** [0, 1] legitimacy under spec 061 FR-011. */
+  legitimacy?: number;
+  /** [0, 1] opacity (counter-intelligence) under spec 061 FR-011. */
+  opacity?: number;
   org_type: OrgType;
   class_character: string;
   cohesion: number;
@@ -244,10 +257,21 @@ export interface DerivedBlock {
   };
 }
 
-/** Simulation event. */
+/** Simulation event. Spec 061 FR-012: severity/title/body/id are
+ *  populated by the bridge serializer so v2 pages can render
+ *  Priority Dispatch and badges directly from snapshot data.
+ */
 export interface GameEvent {
+  /** Deterministic UUID5 over (session_id, tick, type, data). Stable across replays. */
+  id: string;
   type: string;
   tick: number;
+  /** Three canonical buckets per FR-012; backend default for unknown types is "informational". */
+  severity: "critical" | "warning" | "informational";
+  /** Human-readable title derived from `type` ("economic_crisis" → "Economic Crisis"). */
+  title: string;
+  /** Short prose body. May be the empty string when no narrative is available. */
+  body: string;
   data: Record<string, unknown>;
 }
 

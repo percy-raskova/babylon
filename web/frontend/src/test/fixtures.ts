@@ -197,8 +197,12 @@ export function makeDerived(overrides?: Partial<DerivedBlock>): DerivedBlock {
 
 export function makeEvent(overrides?: Partial<GameEvent>): GameEvent {
   return {
+    id: "test-event-fixture",
     type: "EXTRACTION",
     tick: 1,
+    severity: "informational",
+    title: "Extraction",
+    body: "",
     data: { source_id: "org-finance-bloc", amount: 5.0 },
     ...overrides,
   };

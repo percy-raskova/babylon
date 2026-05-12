@@ -438,8 +438,77 @@ class EngineBridge:
         return {}
 
     def get_communities_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the communities left-panel dashboard data."""
-        return {}
+        """Return communities dashboard (spec 061 US6 T089, FR-018).
+
+        Returns ``{"communities": [...]}`` where each entry has the
+        canonical shape from ``contracts/communities.yaml``. The engine
+        Community model is not yet wired through the bridge; until that
+        lands (US6 follow-up), this method emits an empty list — the
+        frontend can render a "no communities surfaced" empty state.
+        """
+        return {"communities": []}
+
+    # ------------------------------------------------------------------ #
+    # Spec 061 US6 T091: inspector endpoints (FR-019)
+    #
+    # Each inspector returns a populated detail object matching
+    # contracts/inspectors.yaml. The current implementations look up the
+    # entity in the existing snapshot helpers and wrap the result in the
+    # standard envelope. Recent-activity / history tails (which require
+    # query_org_recent_actions, query_edge_history per T092/T093) are
+    # left as empty lists until the deeper persistence wiring lands.
+    # ------------------------------------------------------------------ #
+
+    def inspect_node(self, session_id: UUID, node_id: str) -> dict[str, Any]:
+        """Generic node lookup — dispatches by node type (FR-019)."""
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        for collection in ("organizations", "institutions", "territories"):
+            for entry in snap.get(collection, []):
+                if entry.get("id") == node_id:
+                    return {"node": entry, "collection": collection}
+        return {"node": None, "collection": None}
+
+    def inspect_org(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        org = next((o for o in snap.get("organizations", []) if o.get("id") == org_id), None)
+        return {
+            "org": org,
+            "recent_actions": [],  # T092: populated when query_org_recent_actions lands
+        }
+
+    def inspect_community(self, _session_id: UUID, _community_id: str) -> dict[str, Any]:
+        return {"community": None, "members": []}
+
+    def inspect_edge(
+        self, session_id: UUID, source_id: str, target_id: str, edge_type: str
+    ) -> dict[str, Any]:
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        edge = next(
+            (
+                e
+                for e in snap.get("edges", [])
+                if e.get("source_id") == source_id
+                and e.get("target_id") == target_id
+                and e.get("mode") == edge_type
+            ),
+            None,
+        )
+        return {
+            "edge": edge,
+            "history": [],  # T093: populated when query_edge_history lands
+        }
+
+    def inspect_hex(self, session_id: UUID, h3_index: str) -> dict[str, Any]:
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        territory = next(
+            (t for t in snap.get("territories", []) if t.get("h3_index") == h3_index),
+            None,
+        )
+        return {"hex": territory}
 
     def get_organizations_dashboard(
         self, session_id: UUID, player_only: bool = False
@@ -2013,7 +2082,16 @@ def _serialize_entity(e: Any) -> dict[str, Any]:
 
 
 def _serialize_territory(t: Any) -> dict[str, Any]:
-    """Serialize a Territory with all visualization-relevant fields."""
+    """Serialize a Territory with all visualization-relevant fields.
+
+    Spec 061 US6 FR-013 (T095): also emits ``consciousness`` /
+    ``solidarity`` / ``wealth`` / ``dominant_community`` derived
+    aggregates. The engine Territory model does not yet carry these
+    directly; defaults are 0.0 / "" until US6-followup persistence
+    queries (T095 detailed implementation) land. The frontend can
+    distinguish "no data yet" (0.0/"") from "real zero" via the
+    presence/absence of dominant_community.
+    """
     return {
         "id": t.id,
         "name": t.name,
@@ -2030,6 +2108,10 @@ def _serialize_territory(t: Any) -> dict[str, Any]:
         "biocapacity": float(t.biocapacity),
         "host_id": t.host_id,
         "occupant_id": t.occupant_id,
+        "consciousness": float(getattr(t, "consciousness", 0.0)),
+        "solidarity": float(getattr(t, "solidarity", 0.0)),
+        "wealth": float(getattr(t, "wealth", 0.0)),
+        "dominant_community": str(getattr(t, "dominant_community", "") or ""),
     }
 
 
@@ -2159,7 +2241,18 @@ def _serialize_institution(inst: Any) -> dict[str, Any]:
 
 
 def _serialize_edge(rel: Any) -> dict[str, Any]:
-    """Serialize a Relationship edge."""
+    """Serialize a Relationship edge.
+
+    Spec 061 US6 FR-014 (T097): also emits ``rate_of_profit`` /
+    ``rent_burden`` / ``age_ticks`` when the engine attaches them;
+    otherwise emits ``None`` so the frontend can render "n/a".
+    Age requires either an engine attribute or an edge_snapshot
+    history query (the latter is a US6-followup task; the field
+    surfaces as None for now).
+    """
+    rate_of_profit = getattr(rel, "rate_of_profit", None)
+    rent_burden = getattr(rel, "rent_burden", None)
+    age_ticks = getattr(rel, "age_ticks", None)
     return {
         "id": f"{rel.source_id}-{rel.target_id}-{_enum_val(rel.edge_type)}",
         "source_id": rel.source_id,
@@ -2168,6 +2261,9 @@ def _serialize_edge(rel: Any) -> dict[str, Any]:
         "value_flow": float(rel.value_flow),
         "tension": float(rel.tension),
         "repression_flow": float(getattr(rel, "solidarity_strength", 0.0)),
+        "rate_of_profit": float(rate_of_profit) if rate_of_profit is not None else None,
+        "rent_burden": float(rent_burden) if rent_burden is not None else None,
+        "age_ticks": int(age_ticks) if age_ticks is not None else None,
     }
 
 

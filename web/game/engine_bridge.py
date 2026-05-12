@@ -50,19 +50,46 @@ _ACTION_HISTORY_CAP = 50
 # See: specs/041-mvp-nationwide-sim/research.md §2
 # ---------------------------------------------------------------------- #
 
+# Spec 061 US5 (T081, FR-025): Investigate / Move / Negotiate are
+# removed from the canonical verb list because their engine handlers
+# don't exist yet. The map only contains verbs with real handlers;
+# `get_available_actions()` derives its output from this map so the
+# unsupported verbs are filtered out of the UI as well. A follow-up
+# spec is expected to land real handlers and re-add them.
 VERB_TO_ACTION_TYPE: dict[str, ActionType] = {
     "educate": ActionType.EDUCATE,
     "reproduce": ActionType.RECRUIT,
-    "investigate": ActionType.MAP_NETWORK,
     "attack": ActionType.ATTACK_INFRASTRUCTURE,
     "mobilize": ActionType.PROTEST,
     "campaign": ActionType.PROPAGANDIZE,
     "aid": ActionType.PROVIDE_SERVICE,
-    "move": ActionType.ORGANIZE,
-    "negotiate": ActionType.PROPOSE_ALLIANCE,
 }
 
+# Spec 061 US5 (T081, FR-025): verbs that have stale wiring but no
+# real engine handler. Listed for documentation; not exposed to the API.
+UNSUPPORTED_VERBS: frozenset[str] = frozenset({"investigate", "move", "negotiate"})
+
 CANONICAL_VERBS: frozenset[str] = frozenset(VERB_TO_ACTION_TYPE.keys())
+
+
+def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
+    """Read ``rng_seed`` from ``game_session`` (T080 / FR-024).
+
+    Falls back to 0 when the connection fails or the row is missing —
+    determinism is best-effort during transient outages.
+    """
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT rng_seed FROM game_session WHERE id = %s",
+                (session_id,),
+            )
+            row = cur.fetchone()
+            if row and row[0] is not None:
+                return int(row[0])
+    except Exception:  # noqa: BLE001 — non-fatal; defaults to 0
+        logger.exception("Failed to read rng_seed for session %s", session_id)
+    return 0
 
 
 class EngineBridge:
@@ -499,7 +526,13 @@ class EngineBridge:
         else:
             game_defines = GameDefines()
 
-        sim_config = SimulationConfig()
+        # Spec 061 US5 T080 (FR-024): thread the session's rng_seed
+        # into the engine config so action resolution is byte-deterministic
+        # across replays of the same seed + action sequence.
+        rng_seed = _fetch_session_rng_seed_from_pool(
+            getattr(self._persistence, "_pool", None), session_id
+        )
+        sim_config = SimulationConfig(rng_seed=rng_seed)
 
         # T014: Read pending player actions and format for engine injection
         pending = self.get_pending_actions(session_id, state.tick)

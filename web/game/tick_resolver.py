@@ -18,7 +18,7 @@ def resolve_game_tick(
     """Resolve one tick for a game session via the engine bridge.
 
     Args:
-        bridge: An EngineBridge or MockEngineBridge instance.
+        bridge: An EngineBridge instance (or StubEngineBridge for dev/test).
         session_id: The game session UUID.
         persistent_context: Optional cross-tick context.
 

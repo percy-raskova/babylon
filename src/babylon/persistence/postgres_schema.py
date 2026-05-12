@@ -373,13 +373,13 @@ CREATE TABLE IF NOT EXISTS trace_log (
 
 DOCUMENT_CHUNK_DDL = """
 CREATE TABLE IF NOT EXISTS document_chunk (
-    id              VARCHAR(128) PRIMARY KEY,
-    session_id      UUID REFERENCES game_session(id) ON DELETE SET NULL,
-    source_file     VARCHAR(256) NOT NULL,
-    chunk_index     INTEGER NOT NULL,
+    chunk_id        VARCHAR(128) PRIMARY KEY,
+    collection      VARCHAR(64) NOT NULL DEFAULT 'default',
     content         TEXT NOT NULL,
     embedding       vector(768) NOT NULL,
-    metadata        JSONB,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source          VARCHAR(256),
+    chunk_index     INTEGER NOT NULL DEFAULT 0,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 )
 """
@@ -467,7 +467,7 @@ INDEXES_DDL: list[str] = [
         "CREATE INDEX IF NOT EXISTS idx_document_chunk_embedding "
         "ON document_chunk USING hnsw (embedding vector_cosine_ops)"
     ),
-    "CREATE INDEX IF NOT EXISTS idx_document_chunk_session ON document_chunk(session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_document_chunk_collection ON document_chunk(collection)",
     # R8 Reference
     "CREATE INDEX IF NOT EXISTS idx_r8_ref_parent ON hex_r8_reference(parent_h3)",
     "CREATE INDEX IF NOT EXISTS idx_r8_ref_county ON hex_r8_reference(county_fips)",

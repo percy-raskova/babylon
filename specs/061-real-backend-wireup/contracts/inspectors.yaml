@@ -1,0 +1,254 @@
+openapi: 3.1.0
+info:
+  title: Babylon Inspector Endpoints
+  version: 1.0.0
+  description: |
+    Five entity inspector endpoints. Required by FR-019. Each currently returns
+    `{}`; this contract specifies the populated detail payload each must return.
+
+paths:
+  /api/games/{game_id}/node/{node_id}/:
+    get:
+      summary: Generic graph node inspector.
+      operationId: inspectNode
+      security: [{sessionAuth: []}]
+      parameters:
+        - {in: path, name: game_id, required: true, schema: {type: string, format: uuid}}
+        - {in: path, name: node_id, required: true, schema: {type: string}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: {type: string, enum: ["ok"]}
+                  data: {$ref: "#/components/schemas/NodeDetail"}
+        "404":
+          description: Node not found at the current tick (or session not found).
+
+  /api/games/{game_id}/org/{org_id}/:
+    get:
+      summary: Organization detail inspector.
+      operationId: inspectOrg
+      security: [{sessionAuth: []}]
+      parameters:
+        - {in: path, name: game_id, required: true, schema: {type: string, format: uuid}}
+        - {in: path, name: org_id, required: true, schema: {type: string}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: {type: string, enum: ["ok"]}
+                  data: {$ref: "#/components/schemas/OrgDetail"}
+        "404":
+          description: Org not found at the current tick.
+
+  /api/games/{game_id}/community/{hyperedge_id}/:
+    get:
+      summary: Community (hyperedge) detail inspector.
+      operationId: inspectCommunity
+      security: [{sessionAuth: []}]
+      parameters:
+        - {in: path, name: game_id, required: true, schema: {type: string, format: uuid}}
+        - {in: path, name: hyperedge_id, required: true, schema: {type: string}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: {type: string, enum: ["ok"]}
+                  data: {$ref: "#/components/schemas/CommunityDetail"}
+
+  /api/games/{game_id}/edge/{edge_id}/:
+    get:
+      summary: Edge detail inspector.
+      operationId: inspectEdge
+      security: [{sessionAuth: []}]
+      parameters:
+        - {in: path, name: game_id, required: true, schema: {type: string, format: uuid}}
+        - {in: path, name: edge_id, required: true, schema: {type: string}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: {type: string, enum: ["ok"]}
+                  data: {$ref: "#/components/schemas/EdgeDetail"}
+
+  /api/games/{game_id}/hex/{h3_index}/:
+    get:
+      summary: Hex cell detail inspector.
+      operationId: inspectHex
+      security: [{sessionAuth: []}]
+      parameters:
+        - {in: path, name: game_id, required: true, schema: {type: string, format: uuid}}
+        - {in: path, name: h3_index, required: true, schema: {type: string, minLength: 15, maxLength: 17}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: {type: string, enum: ["ok"]}
+                  data: {$ref: "#/components/schemas/HexDetail"}
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    NodeDetail:
+      type: object
+      required: [id, type, attributes]
+      properties:
+        id: {type: string}
+        type: {type: string, description: "Engine node type (organization, territory, community, ...)"}
+        attributes:
+          type: object
+          additionalProperties: true
+          description: Full graph-node dict for this entity at the current tick.
+        incoming_edges:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            properties:
+              source_id: {type: string}
+              edge_type: {type: string}
+              mode: {type: string}
+        outgoing_edges:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            properties:
+              target_id: {type: string}
+              edge_type: {type: string}
+              mode: {type: string}
+
+    OrgDetail:
+      type: object
+      description: |
+        Includes the full Organization payload (see snapshot.yaml) plus
+        recent action history and community memberships.
+      required: [organization, recent_actions, communities]
+      properties:
+        organization:
+          type: object
+          additionalProperties: true
+          description: Full Organization payload (see snapshot.yaml).
+        recent_actions:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            properties:
+              tick: {type: integer, minimum: 0}
+              action_type: {type: string}
+              target_id: {type: string, nullable: true}
+              success: {type: boolean}
+        communities:
+          type: array
+          items:
+            type: object
+            properties:
+              hyperedge_id: {type: string}
+              role: {type: string}
+              strength: {type: number, minimum: 0, maximum: 1}
+
+    CommunityDetail:
+      type: object
+      required:
+        - hyperedge_id
+        - category
+        - member_roster
+        - ternary
+        - material_basis
+        - ideological_dimension
+      properties:
+        hyperedge_id: {type: string}
+        category:
+          type: string
+          enum: [class, identity, ideological]
+        contradiction_partner_id: {type: string, nullable: true}
+        member_roster:
+          type: array
+          description: Sorted by (role, strength desc).
+          items:
+            type: object
+            properties:
+              member_id: {type: string}
+              role: {type: string}
+              strength: {type: number, minimum: 0, maximum: 1}
+        ternary:
+          type: object
+          properties:
+            reformist: {type: number, minimum: 0, maximum: 1}
+            liberal: {type: number, minimum: 0, maximum: 1}
+            fascist: {type: number, minimum: 0, maximum: 1}
+        material_basis: {type: object, additionalProperties: true}
+        ideological_dimension: {type: object, additionalProperties: true}
+
+    EdgeDetail:
+      type: object
+      required: [id, source_id, target_id, mode, attributes, history]
+      properties:
+        id: {type: string}
+        source_id: {type: string}
+        target_id: {type: string}
+        edge_type: {type: string}
+        mode: {type: string}
+        attributes:
+          type: object
+          additionalProperties: true
+          description: Current-tick edge attributes.
+        history:
+          type: array
+          maxItems: 10
+          description: Last 10 ticks of value-flow history from edge_snapshot.
+          items:
+            type: object
+            properties:
+              tick: {type: integer, minimum: 0}
+              value_flow: {type: number}
+              tension: {type: number}
+
+    HexDetail:
+      type: object
+      required: [h3_index, hex_latest, parent_aggregates, present_orgs, present_communities]
+      properties:
+        h3_index: {type: string}
+        hex_latest:
+          type: object
+          additionalProperties: true
+          description: Full hex_latest row for this h3 at the current tick.
+        parent_aggregates:
+          type: object
+          properties:
+            county_fips: {type: string}
+            cz_id: {type: string, nullable: true}
+            bea_ea_code: {type: string, nullable: true}
+            msa_code: {type: string, nullable: true}
+        present_orgs:
+          type: array
+          items: {type: string, description: "org_id"}
+        present_communities:
+          type: array
+          items: {type: string, description: "hyperedge_id"}

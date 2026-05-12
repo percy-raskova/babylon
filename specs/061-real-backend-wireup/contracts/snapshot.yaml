@@ -1,0 +1,350 @@
+openapi: 3.1.0
+info:
+  title: Babylon Game Snapshot Endpoint (Expanded)
+  version: 1.0.0
+  description: |
+    Updated `GET /api/games/{id}/state/` schema reflecting the field additions
+    required by FR-011 through FR-016. New fields surface engine state that the
+    v2 frontend pages (Briefing, Orgs, Verb, Intel, Results, Analysis) need to
+    replace fixture data with live data.
+
+paths:
+  /api/games/{game_id}/state/:
+    get:
+      summary: Full simulation snapshot for the current tick.
+      operationId: getGameState
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Snapshot envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: {type: string, enum: ["ok"]}
+                  data: {$ref: "#/components/schemas/GameSnapshot"}
+        "404":
+          description: Session not found (e.g., purged by cutover migration).
+        "503":
+          description: Engine in degraded state (DB unreachable mid-session per FR-010).
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    GameSnapshot:
+      type: object
+      required: [session_id, tick, organizations, institutions, territories, hyperedges, edges, events, derived]
+      properties:
+        session_id: {type: string, format: uuid}
+        tick: {type: integer, minimum: 0}
+        organizations:
+          type: array
+          items: {$ref: "#/components/schemas/Organization"}
+        institutions:
+          type: array
+          items: {$ref: "#/components/schemas/Institution"}
+        territories:
+          type: array
+          items: {$ref: "#/components/schemas/Territory"}
+        hyperedges:
+          type: array
+          description: |
+            REPLACES current hard-coded `[]` per FR-015. Hyperedge memberships
+            sourced from the XGI hypergraph layer.
+          items: {$ref: "#/components/schemas/Hyperedge"}
+        edges:
+          type: array
+          items: {$ref: "#/components/schemas/Edge"}
+        events:
+          type: array
+          items: {$ref: "#/components/schemas/Event"}
+        derived: {$ref: "#/components/schemas/DerivedBlock"}
+        traps: {$ref: "#/components/schemas/TrapDetectionResult", nullable: true}
+
+    Organization:
+      type: object
+      required:
+        - id
+        - name
+        - short_name           # NEW per FR-011
+        - org_type
+        - class_character
+        - cohesion
+        - cadre_level
+        - budget
+        - heat
+        - territory_ids
+        - hyperedge_memberships  # NEW per FR-011 (no longer hard-coded [])
+        - consciousness
+        - ooda                  # EXPANDED per FR-011 (now includes phase enum)
+        - player_controlled     # NEW per FR-011
+        - legitimacy            # NEW per FR-011
+        - opacity               # NEW per FR-011
+      properties:
+        id: {type: string}
+        name: {type: string}
+        short_name:
+          type: string
+          maxLength: 16
+          description: |
+            Display name for compact UI surfaces (roster cards, action picker).
+            Derived deterministically from `name` if not explicitly set.
+        org_type:
+          type: string
+          enum: [state_apparatus, business, political_faction, civil_society]
+        class_character: {type: string}
+        cohesion: {type: number, minimum: 0, maximum: 1}
+        cadre_level: {type: integer, minimum: 0}
+        budget: {type: number, minimum: 0}
+        heat: {type: number, minimum: 0, maximum: 1}
+        territory_ids:
+          type: array
+          items: {type: string}
+        hyperedge_memberships:
+          type: array
+          items:
+            type: object
+            required: [hyperedge_id, role, strength]
+            properties:
+              hyperedge_id: {type: string}
+              role: {type: string}
+              strength: {type: number, minimum: 0, maximum: 1}
+        consciousness:
+          type: object
+          required: [reformist, liberal, fascist]
+          properties:
+            reformist: {type: number, minimum: 0, maximum: 1}
+            liberal: {type: number, minimum: 0, maximum: 1}
+            fascist: {type: number, minimum: 0, maximum: 1}
+          description: |
+            Ternary consciousness composition. Values sum to 1.0 (within
+            floating-point tolerance per Constitution III.7 determinism).
+        ooda:
+          type: object
+          required: [observe, orient, decide, act, cycle_ticks, phase]
+          properties:
+            observe: {type: number, minimum: 0, maximum: 1}
+            orient: {type: number, minimum: 0, maximum: 1}
+            decide: {type: number, minimum: 0, maximum: 1}
+            act: {type: number, minimum: 0, maximum: 1}
+            cycle_ticks: {type: integer, minimum: 1}
+            phase:
+              type: string
+              enum: [observe, orient, decide, act]
+              description: |
+                Currently active OODA phase (the dominant component).
+                NEW per FR-011 — replaces frontend's need to derive from 4 floats.
+        player_controlled:
+          type: boolean
+          description: |
+            True iff this org's `controlling_player_id` matches the session's
+            `player_id`. Computed at serialization time; not a stored attribute.
+        legitimacy: {type: number, minimum: 0, maximum: 1}
+        opacity: {type: number, minimum: 0, maximum: 1}
+        vanguard:
+          $ref: "#/components/schemas/VanguardResources"
+          nullable: true
+
+    VanguardResources:
+      type: object
+      properties:
+        cadre_labor: {type: number, minimum: 0}
+        sympathizer_labor: {type: number, minimum: 0}
+        max_cadre_labor: {type: number, minimum: 0}
+        max_sympathizer_labor: {type: number, minimum: 0}
+        reputation: {type: number, minimum: 0, maximum: 1}
+        budget: {type: number, minimum: 0}
+        heat: {type: number, minimum: 0, maximum: 1}
+
+    Institution:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        apparatus_type: {type: string}
+        social_function: {type: string}
+        class_inscription: {type: string}
+        legitimacy: {type: number, minimum: 0, maximum: 1}
+        budget: {type: number, minimum: 0}
+        housed_org_ids:
+          type: array
+          items: {type: string}
+        territory_ids:
+          type: array
+          items: {type: string}
+        factional_composition:
+          type: object
+          properties:
+            liberal_technocratic: {type: number, minimum: 0, maximum: 1}
+            revanchist_fascist: {type: number, minimum: 0, maximum: 1}
+            institutionalist_bonapartist: {type: number, minimum: 0, maximum: 1}
+
+    Territory:
+      type: object
+      required:
+        - id
+        - name
+        - h3_index
+        - h3_resolution
+        - county_fips
+        - heat
+        - sector_type
+        - territory_type
+        - profile
+        - rent_level
+        - population
+        - under_eviction
+        - biocapacity
+        # NEW fields per FR-013:
+        - consciousness
+        - solidarity
+        - wealth
+        - dominant_community
+      properties:
+        id: {type: string}
+        name: {type: string}
+        h3_index: {type: string, minLength: 15, maxLength: 17}
+        h3_resolution: {type: integer, minimum: 0, maximum: 15}
+        county_fips: {type: string}
+        heat: {type: number, minimum: 0, maximum: 1}
+        sector_type: {type: string}
+        territory_type: {type: string}
+        profile: {type: string, enum: [HIGH_PROFILE, LOW_PROFILE]}
+        rent_level: {type: number, minimum: 0}
+        population: {type: integer, minimum: 0}
+        under_eviction: {type: boolean}
+        biocapacity: {type: number, minimum: 0}
+        host_id: {type: string, nullable: true}
+        occupant_id: {type: string, nullable: true}
+        consciousness:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            Aggregate consciousness across orgs in territory. NEW per FR-013.
+            Derived (not stored) per Constitution II.2.
+        solidarity:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            Average SOLIDARITY edge weight to other territories. NEW per FR-013.
+            Derived (not stored).
+        wealth:
+          type: number
+          description: |
+            Total wealth in territory (Currency). Surfaced from existing
+            CountyEconomicState. NEW per FR-013.
+        dominant_community:
+          type: string
+          nullable: true
+          description: |
+            hyperedge_id of the community with the largest member share in this
+            territory at the current tick. NEW per FR-013. Null when no
+            community has membership in this territory.
+
+    Hyperedge:
+      type: object
+      required: [id, category, label, member_ids, material_basis, ideological_dimension]
+      properties:
+        id: {type: string}
+        category:
+          type: string
+          enum: [class, identity, ideological]
+        label: {type: string}
+        contradiction_partner_id: {type: string, nullable: true}
+        member_ids:
+          type: array
+          items: {type: string}
+        material_basis:
+          type: object
+          additionalProperties: true
+        ideological_dimension:
+          type: object
+          additionalProperties: true
+
+    Edge:
+      type: object
+      required: [id, source_id, target_id, mode, value_flow, tension]
+      properties:
+        id:
+          type: string
+          description: |
+            Deterministic identifier. NEW per FR-014. Format: "<source>><mode>><target>".
+        source_id: {type: string}
+        target_id: {type: string}
+        mode:
+          type: string
+          enum: [EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC]
+        value_flow: {type: number}
+        tension: {type: number}
+        repression_flow: {type: number, nullable: true}
+        rate_of_profit:
+          type: number
+          nullable: true
+          description: NEW per FR-014. Present for EXTRACTIVE/TRANSACTIONAL modes.
+        rent_burden:
+          type: number
+          nullable: true
+          description: NEW per FR-014. Present for tribute-bearing edges.
+        age_ticks:
+          type: integer
+          minimum: 0
+          description: NEW per FR-014. Ticks since edge creation.
+
+    Event:
+      type: object
+      required: [id, type, tick, severity, title, body, data]
+      description: |
+        EXPANDED per FR-012. Adds id, severity, title, body to the existing
+        type/tick/data shape. Existing `data` payload is preserved.
+      properties:
+        id: {type: string, description: "Stable event identifier."}
+        type: {type: string}
+        tick: {type: integer, minimum: 0}
+        severity:
+          type: string
+          enum: [critical, warning, informational]
+        title:
+          type: string
+          maxLength: 80
+        body: {type: string}
+        data:
+          type: object
+          additionalProperties: true
+
+    DerivedBlock:
+      type: object
+      required: [value_tensor, imperial_rent, dept_iii_visibility, class_aggregates, economy, predictions]
+      properties:
+        value_tensor: {type: object, additionalProperties: true}
+        imperial_rent: {type: object, additionalProperties: true}
+        dept_iii_visibility: {type: object, additionalProperties: true}
+        class_aggregates: {type: object, additionalProperties: true}
+        economy:
+          type: object
+          properties:
+            gdp: {type: number}
+            gini: {type: number, minimum: 0, maximum: 1}
+            profit_rate: {type: number}
+            exploitation_rate: {type: number}
+        predictions: {type: object, additionalProperties: true}
+
+    TrapDetectionResult:
+      type: object
+      additionalProperties: true

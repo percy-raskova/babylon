@@ -52,6 +52,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "babylon_web.middleware.RequestLoggingMiddleware",
+    # spec 061 T127 FR-010: turn mid-session DB-unreachable into HTTP 503.
+    "babylon_web.middleware.EngineAvailabilityMiddleware",
 ]
 
 ROOT_URLCONF = "babylon_web.urls"

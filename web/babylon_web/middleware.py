@@ -1,21 +1,45 @@
-"""Request logging middleware for the Babylon web application.
+"""Middleware for the Babylon web application.
 
-Adds a correlation ID to each request, logs request/response metadata
-with timing, and propagates context for downstream loggers.
+Two middlewares live here:
+
+- :class:`RequestLoggingMiddleware` (existing): adds correlation IDs +
+  per-request timing logs.
+- :class:`EngineAvailabilityMiddleware` (spec 061 T127, FR-010): catches
+  :exc:`psycopg.OperationalError` and :exc:`psycopg_pool.PoolTimeout`
+  raised during request handling and returns HTTP 503 with the standard
+  error body. Health endpoints are exempt (they have their own
+  degraded-state reporting via ``database.reachable`` on
+  ``/health/detail/``).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from django.http import HttpResponse
+
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponseBase
 
 logger = logging.getLogger("babylon_web.request")
+engine_logger = logging.getLogger("babylon_web.engine_availability")
+
+# Routes that MUST NOT be 503'd by the engine-availability middleware.
+# These endpoints have their own degraded-state reporting via the
+# ``database.reachable`` field on ``/health/detail/`` per spec 061 FR-009.
+_HEALTH_PATH_PREFIXES = ("/health/",)
+
+_ENGINE_UNAVAILABLE_BODY = json.dumps(
+    {
+        "detail": "Service temporarily unavailable. "
+        "The simulation engine cannot reach its data layer."
+    }
+).encode("utf-8")
 
 # Header used to receive or propagate a correlation ID.
 CORRELATION_HEADER = "X-Request-ID"
@@ -83,3 +107,70 @@ def _get_client_ip(request: HttpRequest) -> str:
         # First IP in the chain is the original client
         return str(forwarded.split(",")[0].strip())
     return str(request.META.get("REMOTE_ADDR", "unknown"))
+
+
+class EngineAvailabilityMiddleware:
+    """Convert mid-session DB-loss into HTTP 503 (spec 061 T127, FR-010).
+
+    The :class:`~game.apps.GameConfig` boot retry handles
+    *startup-time* engine init failures by hard-exiting the worker.
+    But once the worker is up, a transient Postgres outage during
+    request handling produces a :class:`psycopg.OperationalError` (or
+    :class:`psycopg_pool.PoolTimeout` on pool exhaustion) deep inside
+    the bridge / persistence layer. Without this middleware, those
+    surface as Django 500 (or worse, a half-broken JSON response).
+
+    Per FR-010 (clarified): the right response shape is a uniform
+    HTTP 503 with body::
+
+        {"detail": "Service temporarily unavailable. The simulation
+         engine cannot reach its data layer."}
+
+    Health endpoints (``/health/``, ``/health/detail/``) are exempt —
+    they must continue to respond so operators can observe the
+    degraded state via the ``database.reachable`` field
+    (spec 061 FR-009).
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponseBase]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponseBase:
+        return self.get_response(request)
+
+    def process_exception(
+        self,
+        request: HttpRequest,
+        exception: BaseException,
+    ) -> HttpResponseBase | None:
+        """Map DB-unreachable exceptions onto the standard 503 envelope.
+
+        Returns ``None`` to delegate to the normal exception path for
+        anything that isn't a DB-availability failure.
+        """
+        if any(request.path.startswith(p) for p in _HEALTH_PATH_PREFIXES):
+            return None
+
+        # Import lazily so the middleware module doesn't fail to load
+        # when psycopg isn't installed (e.g., in SQLite-only test runs).
+        try:
+            from psycopg import OperationalError as PsycopgOperationalError
+            from psycopg_pool import PoolTimeout as PsycopgPoolTimeout
+        except ImportError:
+            return None
+
+        if not isinstance(exception, PsycopgOperationalError | PsycopgPoolTimeout):
+            return None
+
+        engine_logger.warning(
+            "Engine unavailable mid-request: %s %s -> 503 (%s)",
+            request.method,
+            request.path,
+            type(exception).__name__,
+        )
+
+        return HttpResponse(
+            _ENGINE_UNAVAILABLE_BODY,
+            status=503,
+            content_type="application/json",
+        )

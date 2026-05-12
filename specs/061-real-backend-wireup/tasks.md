@@ -195,32 +195,32 @@
 
 ### Tests for User Story 4 (TDD)
 
-- [ ] T058 [P] [US4] Write integration test `tests/integration/test_org_serialization.py::test_player_controlled_flag_correct` — create session with player_id=42, seed 2 orgs with controlling_player_id=42 and 6 with controlling_player_id=None, GET `/state/`, assert exactly 2 orgs have `player_controlled: true`
-- [ ] T059 [P] [US4] Write integration test `tests/integration/test_org_serialization.py::test_ooda_phase_enum_present` — assert each serialized org has `ooda.phase ∈ {observe, orient, decide, act}` (not just the 4 floats)
-- [ ] T060 [P] [US4] Write integration test `tests/integration/test_org_serialization.py::test_short_name_present` — assert each org has `short_name` field, non-empty, ≤16 chars
-- [ ] T061 [P] [US4] Write integration test `tests/integration/test_org_serialization.py::test_hyperedge_memberships_populated` — when an org belongs to a community, assert `hyperedge_memberships` contains at least one entry (NOT hard-coded `[]`)
-- [ ] T062 [P] [US4] Write Playwright e2e test `web/frontend/e2e/orgs-live-data.spec.ts` — load `/games/<session>/orgs`, assert player tab card count matches API, click an org, assert OODA badge shows phase string
+- [X] T058 [P] [US4] Write integration test `tests/integration/test_org_serialization.py::test_player_controlled_flag_correct` — create session with player_id=42, seed 2 orgs with controlling_player_id=42 and 6 with controlling_player_id=None, GET `/state/`, assert exactly 2 orgs have `player_controlled: true`
+- [X] T059 [P] [US4] Write integration test `tests/integration/test_org_serialization.py::test_ooda_phase_enum_present` — assert each serialized org has `ooda.phase ∈ {observe, orient, decide, act}` (not just the 4 floats)
+- [X] T060 [P] [US4] Write integration test `tests/integration/test_org_serialization.py::test_short_name_present` — assert each org has `short_name` field, non-empty, ≤16 chars
+- [X] T061 [P] [US4] Write integration test `tests/integration/test_org_serialization.py::test_hyperedge_memberships_populated` — when an org belongs to a community, assert `hyperedge_memberships` contains at least one entry (NOT hard-coded `[]`)
+- [X] T062 [P] [US4] Write Playwright e2e test `web/frontend/e2e/orgs-live-data.spec.ts` — load `/games/<session>/orgs`, assert player tab card count matches API, click an org, assert OODA badge shows phase string
 
 ### Engine-side data model additions (`src/babylon/models/organization.py` or equivalent)
 
-- [ ] T063 [P] [US4] Add `short_name: str | None = None` field to engine `Organization` model. Add `__post_init__` (or Pydantic validator) that derives from `name` (truncate to 16 chars) when None
-- [ ] T064 [P] [US4] Add `controlling_player_id: int | None = None` field to engine `Organization` model
-- [ ] T065 [P] [US4] Add `legitimacy: Probability = Probability(0.5)` and `opacity: Probability = Probability(0.5)` fields to engine `Organization` model
-- [ ] T066 [P] [US4] Add `OodaPhase = Literal["observe", "orient", "decide", "act"]` type alias and a `current_phase` computed property (or Pydantic computed_field) on `OodaProfile` that returns the dominant component as `OodaPhase`. Source: `argmax({observe, orient, decide, act})` with deterministic tiebreak by enum order
+- [X] T063 [P] [US4] Add `short_name: str | None = None` field to engine `Organization` model. Add `__post_init__` (or Pydantic validator) that derives from `name` (truncate to 16 chars) when None
+- [X] T064 [P] [US4] Add `controlling_player_id: int | None = None` field to engine `Organization` model
+- [X] T065 [P] [US4] Add `legitimacy: Probability = Probability(0.5)` and `opacity: Probability = Probability(0.5)` fields to engine `Organization` model
+- [X] T066 [P] [US4] Add `OodaPhase = Literal["observe", "orient", "decide", "act"]` type alias and a `current_phase` computed property (or Pydantic computed_field) on `OodaProfile` that returns the dominant component as `OodaPhase`. Source: `argmax({observe, orient, decide, act})` with deterministic tiebreak by enum order
 
 ### Bridge-side serializer expansion
 
-- [ ] T067 [US4] Extend `web/game/serializers.py:OrganizationSerializer` with `short_name`, `player_controlled`, `legitimacy`, `opacity`, `hyperedge_memberships` fields. Update `OodaProfileSerializer` with `phase` field. Match `contracts/snapshot.yaml#/components/schemas/Organization`
-- [ ] T068 [US4] Update `web/game/engine_bridge.py:_serialize_organization()` — replace hardcoded `consciousness: {0.33, 0.33, 0.34}` and `ooda: {0.5, 0.5, 0.5, 0.5, 4}` stubs with reads from the actual `Organization` instance. Add `player_controlled` derivation: `org.controlling_player_id == session.player_id`. Replace hardcoded `hyperedge_memberships: []` with XGI hypergraph query for org's communities
-- [ ] T069 [US4] Add `query_org_hyperedge_memberships(session_id, tick, org_id) -> list[HyperedgeMembership]` to `src/babylon/persistence/protocols.py:RuntimePersistence` and implement in both `RuntimeDatabase` (no-op returning empty list) and `PostgresRuntime` (read from `community_membership` table filtered by agent_id)
-- [ ] T070 [US4] Implement `web/game/engine_bridge.py:EngineBridge.get_org_status()` (currently stub) — return full `OrganizationSerializer` payload for one org_id. Wire to `/api/games/{id}/org/{id}/` endpoint
+- [X] T067 [US4] Extend `web/game/serializers.py:OrganizationSerializer` with `short_name`, `player_controlled`, `legitimacy`, `opacity`, `hyperedge_memberships` fields. Update `OodaProfileSerializer` with `phase` field. Match `contracts/snapshot.yaml#/components/schemas/Organization`
+- [X] T068 [US4] Update `web/game/engine_bridge.py:_serialize_organization()` — replace hardcoded `consciousness: {0.33, 0.33, 0.34}` and `ooda: {0.5, 0.5, 0.5, 0.5, 4}` stubs with reads from the actual `Organization` instance. Add `player_controlled` derivation: `org.controlling_player_id == session.player_id`. Replace hardcoded `hyperedge_memberships: []` with XGI hypergraph query for org's communities
+- [X] T069 [US4] Add `query_org_hyperedge_memberships(session_id, tick, org_id) -> list[HyperedgeMembership]` to `src/babylon/persistence/protocols.py:RuntimePersistence` and implement in both `RuntimeDatabase` (no-op returning empty list) and `PostgresRuntime` (read from `community_membership` table filtered by agent_id)
+- [X] T070 [US4] Implement `web/game/engine_bridge.py:EngineBridge.get_org_status()` (currently stub) — return full `OrganizationSerializer` payload for one org_id. Wire to `/api/games/{id}/org/{id}/` endpoint
 
 ### Frontend wire-up
 
-- [ ] T071 [P] [US4] Update `web/frontend/src/types/game.ts:OrgState` to include `short_name`, `player_controlled`, `legitimacy`, `opacity`, `hyperedge_memberships`. Update `OodaProfile` type to include `phase: "observe" | "orient" | "decide" | "act"`
-- [ ] T072 [US4] Refactor `web/frontend/src/components/pages/OrgsPage.tsx` to remove `import { ORGS, COMMUNITIES, ... } from "../../fixtures/v2-mock-data"`. Replace with `useGameSnapshot()` reading orgs from snapshot. Filter to player-controlled orgs by `org.player_controlled === true` (replaces previous fixture flag). Render loading/error states per FR-027
-- [ ] T073 [US4] Update OrgsPage component cards to read from new field names: `org.short_name` instead of `org.short`, `org.ooda.phase` instead of inferring from floats. Map `org.vanguard.cadre_labor`/`max_cadre_labor` to existing `cl`/`cl_max` UI bindings (rename in component, NOT in API — keep engine field names canonical per FR-016)
-- [ ] T074 [US4] Update community-memberships panel in OrgsPage to read from `org.hyperedge_memberships` array (replaces fixture `org.members.includes(c.id)` filter)
+- [X] T071 [P] [US4] Update `web/frontend/src/types/game.ts:OrgState` to include `short_name`, `player_controlled`, `legitimacy`, `opacity`, `hyperedge_memberships`. Update `OodaProfile` type to include `phase: "observe" | "orient" | "decide" | "act"`
+- [X] T072 [US4] Refactor `web/frontend/src/components/pages/OrgsPage.tsx` to remove `import { ORGS, COMMUNITIES, ... } from "../../fixtures/v2-mock-data"`. Replace with `useGameSnapshot()` reading orgs from snapshot. Filter to player-controlled orgs by `org.player_controlled === true` (replaces previous fixture flag). Render loading/error states per FR-027
+- [X] T073 [US4] Update OrgsPage component cards to read from new field names: `org.short_name` instead of `org.short`, `org.ooda.phase` instead of inferring from floats. Map `org.vanguard.cadre_labor`/`max_cadre_labor` to existing `cl`/`cl_max` UI bindings (rename in component, NOT in API — keep engine field names canonical per FR-016)
+- [X] T074 [US4] Update community-memberships panel in OrgsPage to read from `org.hyperedge_memberships` array (replaces fixture `org.members.includes(c.id)` filter)
 
 **Checkpoint**: Orgs page fully wired. Run `mise run test:int -- tests/integration/test_org_serialization.py && mise run web:test -- e2e/orgs-live-data.spec.ts`.
 
@@ -234,22 +234,22 @@
 
 ### Tests for User Story 5 (TDD)
 
-- [ ] T075 [P] [US5] Write integration test `tests/integration/test_action_lifecycle.py::test_submit_action_persists` — POST to `/actions/educate/`, GET `/actions/`, assert the action appears with `resolved=False`
-- [ ] T076 [P] [US5] Write integration test `tests/integration/test_action_lifecycle.py::test_resolve_processes_action` — submit Educate, POST `/resolve/`, assert action_result row exists with non-zero `consciousness_delta` AND original action's `resolved` flipped to True
-- [ ] T077 [P] [US5] Write integration test `tests/integration/test_action_determinism.py::test_replay_byte_identical` — two sessions with same `rng_seed`, same action sequence, assert action_result rows are byte-identical (FR-023, SC-004)
-- [ ] T078 [P] [US5] Write integration test `tests/integration/test_unsupported_verbs.py::test_unsupported_verbs_not_in_available_actions` — GET `/api/games/{id}/actions/available/`, assert that the response does NOT include `investigate`, `move`, or `negotiate` (per T081 Option A resolution: these verbs are removed from the available-actions list until a follow-up spec implements real handlers, satisfying FR-025).
-- [ ] T079 [P] [US5] Write Playwright e2e test `web/frontend/e2e/verb-submit.spec.ts` — navigate to `/games/<session>/actions/educate`, select actor, target, submit, assert success toast and entry visible on Results page after resolve
+- [X] T075 [P] [US5] Write integration test `tests/integration/test_action_lifecycle.py::test_submit_action_persists` — POST to `/actions/educate/`, GET `/actions/`, assert the action appears with `resolved=False`
+- [X] T076 [P] [US5] Write integration test `tests/integration/test_action_lifecycle.py::test_resolve_processes_action` — submit Educate, POST `/resolve/`, assert action_result row exists with non-zero `consciousness_delta` AND original action's `resolved` flipped to True
+- [X] T077 [P] [US5] Write integration test `tests/integration/test_action_determinism.py::test_replay_byte_identical` — two sessions with same `rng_seed`, same action sequence, assert action_result rows are byte-identical (FR-023, SC-004)
+- [X] T078 [P] [US5] Write integration test `tests/integration/test_unsupported_verbs.py::test_unsupported_verbs_not_in_available_actions` — GET `/api/games/{id}/actions/available/`, assert that the response does NOT include `investigate`, `move`, or `negotiate` (per T081 Option A resolution: these verbs are removed from the available-actions list until a follow-up spec implements real handlers, satisfying FR-025).
+- [X] T079 [P] [US5] Write Playwright e2e test `web/frontend/e2e/verb-submit.spec.ts` — navigate to `/games/<session>/actions/educate`, select actor, target, submit, assert success toast and entry visible on Results page after resolve
 
 ### Implementation
 
-- [ ] T080 [US5] Verify `web/game/engine_bridge.py:EngineBridge.resolve_tick()` threads the session's `rng_seed` into `step()` (FR-024). Currently `SimulationConfig()` is constructed with defaults at line 493-498. Change to `SimulationConfig(rng_seed=session.rng_seed)` (verify `SimulationConfig` accepts this; if not, add the field)
-- [ ] T081 [US5] Apply **Option A** for the three unsupported verbs (Investigate, Move, Negotiate) per FR-025 and the /speckit.analyze remediation decision. Concretely: remove these three keys from `web/game/engine_bridge.py:VERB_TO_ACTION_TYPE` (lines 53-63); remove them from `get_available_actions()` output; remove their per-verb endpoints from `web/game/urls.py` (or have them return 404). Add `web/frontend/src/lib/verb-config.ts` entries that mark these three verbs as `disabled: true` so the UI omits them from the verb picker. File a follow-up spec for real handler implementation; this spec does NOT implement them.
-- [ ] T082 [US5] Refactor `web/frontend/src/components/pages/VerbPage.tsx` — remove `import { ORGS, VERBS } from "../../fixtures/v2-mock-data"`. Wire actor list from `useGameSnapshot()` filtered to `player_controlled`. Wire target list from `useVerbTargets(verb, orgId)` (existing pattern in gameStore). Wire submit button `onClick` handler to `submitAction(verb, params)` from `gameStore`
-- [ ] T083 [US5] Verify the affordability pre-check in `web/game/engine_bridge.py:submit_action()` (lines 663-691, `VanguardResources.from_organization()`) is correctly blocking submission with insufficient resources, returning 422 with explicit error. Frontend error state per FR-027
+- [X] T080 [US5] Verify `web/game/engine_bridge.py:EngineBridge.resolve_tick()` threads the session's `rng_seed` into `step()` (FR-024). Currently `SimulationConfig()` is constructed with defaults at line 493-498. Change to `SimulationConfig(rng_seed=session.rng_seed)` (verify `SimulationConfig` accepts this; if not, add the field)
+- [X] T081 [US5] Apply **Option A** for the three unsupported verbs (Investigate, Move, Negotiate) per FR-025 and the /speckit.analyze remediation decision. Concretely: remove these three keys from `web/game/engine_bridge.py:VERB_TO_ACTION_TYPE` (lines 53-63); remove them from `get_available_actions()` output; remove their per-verb endpoints from `web/game/urls.py` (or have them return 404). Add `web/frontend/src/lib/verb-config.ts` entries that mark these three verbs as `disabled: true` so the UI omits them from the verb picker. File a follow-up spec for real handler implementation; this spec does NOT implement them.
+- [X] T082 [US5] Refactor `web/frontend/src/components/pages/VerbPage.tsx` — remove `import { ORGS, VERBS } from "../../fixtures/v2-mock-data"`. Wire actor list from `useGameSnapshot()` filtered to `player_controlled`. Wire target list from `useVerbTargets(verb, orgId)` (existing pattern in gameStore). Wire submit button `onClick` handler to `submitAction(verb, params)` from `gameStore`
+- [X] T083 [US5] Verify the affordability pre-check in `web/game/engine_bridge.py:submit_action()` (lines 663-691, `VanguardResources.from_organization()`) is correctly blocking submission with insufficient resources, returning 422 with explicit error. Frontend error state per FR-027
 
 ### Verify existing FR-021/FR-022 behavior (added per /speckit.analyze remediation)
 
-- [ ] T129 [P] [US5] Document in the test docstrings for T075/T076 that these tests cover **existing** action-persistence and tick-resolution behavior (FR-021, FR-022) — no production-code change is required for these FRs. If T075 or T076 fails, the regression is in pre-existing engine code, not in this feature's new work. This is a documentation-only task; no source code is modified.
+- [X] T129 [P] [US5] Document in the test docstrings for T075/T076 that these tests cover **existing** action-persistence and tick-resolution behavior (FR-021, FR-022) — no production-code change is required for these FRs. If T075 or T076 fails, the regression is in pre-existing engine code, not in this feature's new work. This is a documentation-only task; no source code is modified.
 
 **Checkpoint**: Verb pages submit real actions; results are deterministic and visible on Results page. Run `mise run test:int -- tests/integration/test_action_*.py tests/integration/test_unsupported_verbs.py`.
 
@@ -263,35 +263,35 @@
 
 ### Tests for User Story 6 (TDD)
 
-- [ ] T084 [P] [US6] Write integration test `tests/integration/test_territory_serialization.py::test_extended_fields_present` — assert every serialized Territory has `consciousness`, `solidarity`, `wealth`, `dominant_community` (FR-013)
-- [ ] T085 [P] [US6] Write integration test `tests/integration/test_edge_serialization.py::test_extended_fields_present_or_null` — assert every serialized Edge has `id` and either real numeric `rate_of_profit`/`rent_burden`/`age_ticks` OR explicit `null` (FR-014)
-- [ ] T086 [P] [US6] Write integration test `tests/integration/test_communities_endpoint.py::test_returns_per_community_ternary` — GET `/communities/`, assert each entry has `hyperedge_id`, `category`, `member_count`, `ternary` with three numeric fields (FR-018)
-- [ ] T087 [P] [US6] Write integration tests `tests/integration/test_inspector_endpoints.py::test_{node,org,community,edge,hex}_returns_detail` — one test per inspector, each asserts non-empty `data` dict matching the corresponding contract schema (FR-019)
-- [ ] T088 [P] [US6] Write Playwright e2e test `web/frontend/e2e/intel-results-analysis.spec.ts` — visit each of `/intel/territories/<id>`, `/results`, `/analysis`. Assert per-page acceptance scenarios from spec US6
+- [X] T084 [P] [US6] Write integration test `tests/integration/test_territory_serialization.py::test_extended_fields_present` — assert every serialized Territory has `consciousness`, `solidarity`, `wealth`, `dominant_community` (FR-013)
+- [X] T085 [P] [US6] Write integration test `tests/integration/test_edge_serialization.py::test_extended_fields_present_or_null` — assert every serialized Edge has `id` and either real numeric `rate_of_profit`/`rent_burden`/`age_ticks` OR explicit `null` (FR-014)
+- [X] T086 [P] [US6] Write integration test `tests/integration/test_communities_endpoint.py::test_returns_per_community_ternary` — GET `/communities/`, assert each entry has `hyperedge_id`, `category`, `member_count`, `ternary` with three numeric fields (FR-018)
+- [X] T087 [P] [US6] Write integration tests `tests/integration/test_inspector_endpoints.py::test_{node,org,community,edge,hex}_returns_detail` — one test per inspector, each asserts non-empty `data` dict matching the corresponding contract schema (FR-019)
+- [X] T088 [P] [US6] Write Playwright e2e test `web/frontend/e2e/intel-results-analysis.spec.ts` — visit each of `/intel/territories/<id>`, `/results`, `/analysis`. Assert per-page acceptance scenarios from spec US6
 
 ### Bridge-side stub method implementations
 
-- [ ] T089 [US6] Implement `web/game/engine_bridge.py:EngineBridge.get_communities_dashboard()` — query `community_state` and `community_membership` tables via persistence layer, aggregate per community, return shape per `contracts/communities.yaml`. Add `query_community_dashboard(session_id, tick) -> list[CommunityDashboardRow]` to RuntimePersistence protocol
-- [ ] T090 [US6] Implement `web/game/engine_bridge.py:EngineBridge.get_economy_summary()` — read latest row from `economic_summary` table for the session. Add `query_economy_summary(session_id, tick) -> EconomySummaryRow` to RuntimePersistence protocol
-- [ ] T091 [US6] Implement five inspector methods on `EngineBridge`: `inspect_node(id)`, `inspect_org(id)`, `inspect_community(id)`, `inspect_edge(id)`, `inspect_hex(h3)`. Each returns the populated detail object per `contracts/inspectors.yaml`. Compose from existing serializers + 1-2 additional persistence reads (e.g., `recent_actions` from `action_result`, `history` from `edge_snapshot`)
-- [ ] T092 [P] [US6] Add `query_org_recent_actions(session_id, org_id, limit) -> list[ActionResultRow]` to RuntimePersistence and implement in both backends
-- [ ] T093 [P] [US6] Add `query_edge_history(session_id, source_id, target_id, edge_type, limit) -> list[EdgeSnapshotRow]` to RuntimePersistence and implement in both backends
+- [X] T089 [US6] Implement `web/game/engine_bridge.py:EngineBridge.get_communities_dashboard()` — query `community_state` and `community_membership` tables via persistence layer, aggregate per community, return shape per `contracts/communities.yaml`. Add `query_community_dashboard(session_id, tick) -> list[CommunityDashboardRow]` to RuntimePersistence protocol
+- [X] T090 [US6] Implement `web/game/engine_bridge.py:EngineBridge.get_economy_summary()` — read latest row from `economic_summary` table for the session. Add `query_economy_summary(session_id, tick) -> EconomySummaryRow` to RuntimePersistence protocol
+- [X] T091 [US6] Implement five inspector methods on `EngineBridge`: `inspect_node(id)`, `inspect_org(id)`, `inspect_community(id)`, `inspect_edge(id)`, `inspect_hex(h3)`. Each returns the populated detail object per `contracts/inspectors.yaml`. Compose from existing serializers + 1-2 additional persistence reads (e.g., `recent_actions` from `action_result`, `history` from `edge_snapshot`)
+- [X] T092 [P] [US6] Add `query_org_recent_actions(session_id, org_id, limit) -> list[ActionResultRow]` to RuntimePersistence and implement in both backends
+- [X] T093 [P] [US6] Add `query_edge_history(session_id, source_id, target_id, edge_type, limit) -> list[EdgeSnapshotRow]` to RuntimePersistence and implement in both backends
 
 ### Bridge-side serializer expansion (Territory, Edge)
 
-- [ ] T094 [US6] Extend `web/game/serializers.py:TerritorySerializer` with `consciousness`, `solidarity`, `wealth`, `dominant_community` fields (FR-013)
-- [ ] T095 [US6] Extend `_serialize_territory()` in `web/game/engine_bridge.py` to compute the four new fields. `consciousness` and `solidarity` are derived aggregates over orgs/edges in territory. `wealth` reads from `CountyEconomicState.total_wealth`. `dominant_community` queries XGI for the community with largest member share in territory
-- [ ] T096 [US6] Extend `web/game/serializers.py:EdgeSerializer` with `id` (deterministic from `source_id>edge_type>target_id`), `rate_of_profit`, `rent_burden`, `age_ticks`. Match `contracts/snapshot.yaml#/components/schemas/Edge`
-- [ ] T097 [US6] Update `_serialize_edge()` in `web/game/engine_bridge.py` to populate the new fields. `age_ticks` requires either a new `created_at_tick` engine attribute OR querying `edge_snapshot` for first-seen tick (prefer the latter; do not mutate Edge primitive)
-- [ ] T098 [US6] Update `web/game/serializers.py:ActionResultSerializer` to add a derived `outcome` formatted-string field (e.g., `"+0.04 CON, +0.08 HEAT"`) computed from `consciousness_delta` and `heat_delta`. Frontend ResultsPage expects this string format
+- [X] T094 [US6] Extend `web/game/serializers.py:TerritorySerializer` with `consciousness`, `solidarity`, `wealth`, `dominant_community` fields (FR-013)
+- [X] T095 [US6] Extend `_serialize_territory()` in `web/game/engine_bridge.py` to compute the four new fields. `consciousness` and `solidarity` are derived aggregates over orgs/edges in territory. `wealth` reads from `CountyEconomicState.total_wealth`. `dominant_community` queries XGI for the community with largest member share in territory
+- [X] T096 [US6] Extend `web/game/serializers.py:EdgeSerializer` with `id` (deterministic from `source_id>edge_type>target_id`), `rate_of_profit`, `rent_burden`, `age_ticks`. Match `contracts/snapshot.yaml#/components/schemas/Edge`
+- [X] T097 [US6] Update `_serialize_edge()` in `web/game/engine_bridge.py` to populate the new fields. `age_ticks` requires either a new `created_at_tick` engine attribute OR querying `edge_snapshot` for first-seen tick (prefer the latter; do not mutate Edge primitive)
+- [X] T098 [US6] Update `web/game/serializers.py:ActionResultSerializer` to add a derived `outcome` formatted-string field (e.g., `"+0.04 CON, +0.08 HEAT"`) computed from `consciousness_delta` and `heat_delta`. Frontend ResultsPage expects this string format
 
 ### Frontend wire-up (3 pages)
 
-- [ ] T099 [P] [US6] Create `web/frontend/src/hooks/useCommunities.ts` — wraps `api.get(\`/api/games/\${id}/communities/\`)`. Returns `{data: CommunitiesPayload | null, loading, error}`
-- [ ] T100 [P] [US6] Create `web/frontend/src/hooks/useInspector.ts` — generic hook taking `(type, id)`, dispatches to the correct inspector endpoint. Returns the detail payload
-- [ ] T101 [US6] Refactor `web/frontend/src/components/pages/IntelPageV2.tsx` to remove fixture imports. Wire territory/org/edge/community lists from `useGameSnapshot()`. Wire detail panels from `useInspector(type, id)` based on URL params
-- [ ] T102 [US6] Refactor `web/frontend/src/components/pages/ResultsPage.tsx` to remove fixture imports. Wire from `useGameResults(currentTick)` (new hook calling `/results/{tick}/`) and `useGameSnapshot()` for org context. **Remove the hardcoded tensor-diff panel** at lines 71-80 OR mark it as TODO and move to a separate v2-pages-polish spec
-- [ ] T103 [US6] Refactor `web/frontend/src/components/pages/AnalysisPage.tsx` to remove fixture imports. Wire all six sparklines from `useTimeseries()` (created in T053). Topology graph placeholder remains for now (out of scope per spec Out of Scope)
+- [X] T099 [P] [US6] Create `web/frontend/src/hooks/useCommunities.ts` — wraps `api.get(\`/api/games/\${id}/communities/\`)`. Returns `{data: CommunitiesPayload | null, loading, error}`
+- [X] T100 [P] [US6] Create `web/frontend/src/hooks/useInspector.ts` — generic hook taking `(type, id)`, dispatches to the correct inspector endpoint. Returns the detail payload
+- [X] T101 [US6] Refactor `web/frontend/src/components/pages/IntelPageV2.tsx` to remove fixture imports. Wire territory/org/edge/community lists from `useGameSnapshot()`. Wire detail panels from `useInspector(type, id)` based on URL params
+- [X] T102 [US6] Refactor `web/frontend/src/components/pages/ResultsPage.tsx` to remove fixture imports. Wire from `useGameResults(currentTick)` (new hook calling `/results/{tick}/`) and `useGameSnapshot()` for org context. **Remove the hardcoded tensor-diff panel** at lines 71-80 OR mark it as TODO and move to a separate v2-pages-polish spec
+- [X] T103 [US6] Refactor `web/frontend/src/components/pages/AnalysisPage.tsx` to remove fixture imports. Wire all six sparklines from `useTimeseries()` (created in T053). Topology graph placeholder remains for now (out of scope per spec Out of Scope)
 
 **Checkpoint**: All three pages live. Run `mise run test:int -- tests/integration/test_{territory,edge,communities,inspector}*.py && mise run web:test -- e2e/intel-results-analysis.spec.ts`.
 
@@ -305,21 +305,21 @@
 
 ### Tests for User Story 7 (TDD)
 
-- [ ] T104 [P] [US7] Write CI script `tests/scripts/check_mock_sunset.sh` — `grep -rn "MockEngineBridge\|mock_defines\|seed_mock_game\|BABYLON_MOCK_MODE" src/ web/ --include="*.py" | grep -v __pycache__ | wc -l` should equal 0. Add to `mise run check` as a final step
-- [ ] T105 [P] [US7] Write integration test `tests/integration/test_purged_session_404.py` — given a UUID that was purged by migration 0007, assert GET `/api/games/<uuid>/state/` returns 404
-- [ ] T106 [P] [US7] Write integration test `tests/integration/test_seed_initial_game_command.py::test_creates_real_engine_session` — invoke management command, assert created GameSession has `snapshot_json` empty/absent (NOT populated by mock writer)
+- [X] T104 [P] [US7] Write CI script `tests/scripts/check_mock_sunset.sh` — `grep -rn "MockEngineBridge\|mock_defines\|seed_mock_game\|BABYLON_MOCK_MODE" src/ web/ --include="*.py" | grep -v __pycache__ | wc -l` should equal 0. Add to `mise run check` as a final step
+- [X] T105 [P] [US7] Write integration test `tests/integration/test_purged_session_404.py` — given a UUID that was purged by migration 0007, assert GET `/api/games/<uuid>/state/` returns 404
+- [X] T106 [P] [US7] Write integration test `tests/integration/test_seed_initial_game_command.py::test_creates_real_engine_session` — invoke management command, assert created GameSession has `snapshot_json` empty/absent (NOT populated by mock writer)
 
 ### Implementation
 
-- [ ] T107 [US7] Delete `web/game/mock_bridge.py` (FR-032)
-- [ ] T108 [US7] Delete `web/game/mock_defines.py` (FR-032)
-- [ ] T109 [US7] Delete `web/game/management/commands/seed_mock_game.py` (FR-032)
-- [ ] T110 [US7] Create `web/game/management/commands/seed_initial_game.py` — uses real `EngineBridge.create_game()` directly (no MockEngineBridge). Args: `--scenario` (default `wayne_county`), `--player` (Django username, looked up to player_id). Replaces `seed_mock_game` for dev/test seeding
-- [ ] T111 [US7] Remove `BABYLON_MOCK_MODE` setting from `web/babylon_web/settings/base.py`, `web/babylon_web/settings/stub.py`, and any other settings module that references it (FR-032)
-- [ ] T112 [US7] Remove the `BABYLON_MOCK_MODE` branch from `web/game/api.py:_get_bridge()`. The function should now: (1) return `_bridge_instance` if set; (2) raise RuntimeError "EngineBridge not initialized — apps.py:GameConfig.ready failed" otherwise. No StubEngineBridge fallback in production
-- [ ] T113 [US7] Update `web/game/stub_bridge.py` — keep ONLY the dev-mode SQLite stub-tables path used when `STUB_CREATE_TABLES=True` for offline development without Postgres. Remove all production-fallback code paths. Add module docstring clarifying it is dev-only and never selected in production
-- [ ] T114 [US7] Fix `web/game/management/commands/seed_hex_data.py:12` docstring — change `"Seeds sim.hex_states from the mock fixture for a given GameSession."` to `"Seeds hex_latest from the GeoJSON fixture for a given GameSession."` (FR-031)
-- [ ] T115 [US7] Delete `web/frontend/src/fixtures/v2-mock-data.ts` (FR-029) — must run AFTER all v2 pages are wired (T055, T072, T082, T101, T102, T103). Confirm via `grep -rn "v2-mock-data" web/frontend/src/` returns zero before deleting
+- [X] T107 [US7] Delete `web/game/mock_bridge.py` (FR-032)
+- [X] T108 [US7] Delete `web/game/mock_defines.py` (FR-032)
+- [X] T109 [US7] Delete `web/game/management/commands/seed_mock_game.py` (FR-032)
+- [X] T110 [US7] Create `web/game/management/commands/seed_initial_game.py` — uses real `EngineBridge.create_game()` directly (no MockEngineBridge). Args: `--scenario` (default `wayne_county`), `--player` (Django username, looked up to player_id). Replaces `seed_mock_game` for dev/test seeding
+- [X] T111 [US7] Remove `BABYLON_MOCK_MODE` setting from `web/babylon_web/settings/base.py`, `web/babylon_web/settings/stub.py`, and any other settings module that references it (FR-032)
+- [X] T112 [US7] Remove the `BABYLON_MOCK_MODE` branch from `web/game/api.py:_get_bridge()`. The function should now: (1) return `_bridge_instance` if set; (2) raise RuntimeError "EngineBridge not initialized — apps.py:GameConfig.ready failed" otherwise. No StubEngineBridge fallback in production
+- [X] T113 [US7] Update `web/game/stub_bridge.py` — keep ONLY the dev-mode SQLite stub-tables path used when `STUB_CREATE_TABLES=True` for offline development without Postgres. Remove all production-fallback code paths. Add module docstring clarifying it is dev-only and never selected in production
+- [X] T114 [US7] Fix `web/game/management/commands/seed_hex_data.py:12` docstring — change `"Seeds sim.hex_states from the mock fixture for a given GameSession."` to `"Seeds hex_latest from the GeoJSON fixture for a given GameSession."` (FR-031)
+- [X] T115 [US7] Delete `web/frontend/src/fixtures/v2-mock-data.ts` (FR-029) — must run AFTER all v2 pages are wired (T055, T072, T082, T101, T102, T103). Confirm via `grep -rn "v2-mock-data" web/frontend/src/` returns zero before deleting
 
 **Checkpoint**: Mock fully sunset. Run `bash tests/scripts/check_mock_sunset.sh` (exits 0 on success).
 
@@ -330,12 +330,12 @@
 **Purpose**: Final validation, documentation, deployment readiness.
 
 - [ ] T116 [P] Run the full quickstart.md validation walkthrough end-to-end against a fresh dev DB. Capture timing + any deviations from spec acceptance criteria. File issues for any drift
-- [ ] T117 [P] Update `ai-docs/state.yaml` with feature 061 status and new test counts (per CLAUDE.md "Documentation Maintenance" guidance)
-- [ ] T118 [P] Update `ai-docs/decisions.yaml` with a new ADR for this feature: ADR0XX_real_backend_wireup. Capture: cutover-purge decision, sentence-transformers pin, hybrid-retry-then-exit boot, custom DRF exception handler pattern
-- [ ] T119 [P] Update `ai-docs/roadmap.md` to reflect that the v2 page wire-up is complete; identify any follow-up work (e.g., the hardcoded tensor-diff panel in ResultsPage from T102)
-- [ ] T120 Pin the `CANONICAL_EMBEDDING_REVISION` SHA in `src/babylon/config/llm_config.py` (T002 used a placeholder). Capture the actual SHA after first successful download from HuggingFace: `huggingface-cli scan-cache | grep all-mpnet-base-v2`
-- [ ] T121 [P] Run `poetry run mypy src/babylon/persistence/ src/babylon/rag/ web/babylon_web/health/ web/game/ --strict` and resolve any new type errors introduced by this feature
-- [ ] T122 [P] Run `poetry run ruff check . --fix && poetry run ruff format .` to sweep formatting before commit
+- [X] T117 [P] Update `ai-docs/state.yaml` with feature 061 status and new test counts (per CLAUDE.md "Documentation Maintenance" guidance)
+- [X] T118 [P] Update `ai-docs/decisions.yaml` with a new ADR for this feature: ADR0XX_real_backend_wireup. Capture: cutover-purge decision, sentence-transformers pin, hybrid-retry-then-exit boot, custom DRF exception handler pattern
+- [X] T119 [P] Update `ai-docs/roadmap.md` to reflect that the v2 page wire-up is complete; identify any follow-up work (e.g., the hardcoded tensor-diff panel in ResultsPage from T102)
+- [X] T120 Pin the `CANONICAL_EMBEDDING_REVISION` SHA in `src/babylon/config/llm_config.py` (T002 used a placeholder). Capture the actual SHA after first successful download from HuggingFace: `huggingface-cli scan-cache | grep all-mpnet-base-v2`
+- [X] T121 [P] Run `poetry run mypy src/babylon/persistence/ src/babylon/rag/ web/babylon_web/health/ web/game/ --strict` and resolve any new type errors introduced by this feature
+- [X] T122 [P] Run `poetry run ruff check . --fix && poetry run ruff format .` to sweep formatting before commit
 - [ ] T123 Update `web/HOW-TO-LOCAL-DEV.md` to reflect the new bootstrap flow: `mise run web:migrate` → `mise run web:manage seed_initial_game --scenario wayne_county --player admin` → `mise run web:dev`. Remove any references to `seed_mock_game` or `BABYLON_MOCK_MODE`
 - [ ] T124 Performance verification: time the full quickstart action-submit-to-result-visibility cycle, assert <10s p95 per SC-012. If exceeded, profile via `cProfile` on the resolve path
 - [ ] T125 Smoke-test the systemd unit on a staging host: stop Postgres, observe 3 retries + exit, observe systemd restart, start Postgres, observe successful boot and `/health/detail/` reports `EngineBridge`

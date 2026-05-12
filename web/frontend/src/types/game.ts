@@ -91,12 +91,19 @@ export interface ConsciousnessVector {
 }
 
 /** OODA loop profile (Spec 052 §6). */
+/** OODA decision-loop profile.
+ *  Spec 061 US4 FR-011 (T066, T067): adds ``phase`` — the deterministic
+ *  argmax over the four floats — so the frontend can render OODA
+ *  badges without re-implementing argmax.
+ */
 export interface OodaProfile {
   observe: number;
   orient: number;
   decide: number;
   act: number;
   cycle_ticks: number;
+  /** Deterministic argmax over observe/orient/decide/act. */
+  phase?: "observe" | "orient" | "decide" | "act";
 }
 
 /** Organization — the only agent type (Spec 052 §6).

@@ -137,13 +137,23 @@ class ConsciousnessVectorSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class OodaProfileSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize the OODA loop profile (Spec 052 §6)."""
+    """Serialize the OODA loop profile (Spec 052 §6).
+
+    Spec 061 FR-011 (T066, T067): adds ``phase`` — the deterministic
+    argmax over the four floats, as an enum string. Lets the frontend
+    render OODA badges without re-computing argmax in JS.
+    """
 
     observe = serializers.FloatField()
     orient = serializers.FloatField()
     decide = serializers.FloatField()
     act = serializers.FloatField()
     cycle_ticks = serializers.IntegerField()
+    phase = serializers.ChoiceField(
+        choices=("observe", "orient", "decide", "act"),
+        required=False,
+        default="observe",
+    )
 
 
 class VanguardResourcesSerializer(serializers.Serializer[dict[str, Any]]):
@@ -159,10 +169,19 @@ class VanguardResourcesSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class OrganizationSerializer(serializers.Serializer[dict[str, Any]]):
-    """Serialize an organization — the only agent type (Spec 052 §6)."""
+    """Serialize an organization — the only agent type (Spec 052 §6).
+
+    Spec 061 US4 (FR-011, FR-016): adds ``short_name`` / ``player_controlled``
+    / ``legitimacy`` / ``opacity``. ``ooda.phase`` carried via
+    :class:`OodaProfileSerializer`.
+    """
 
     id = serializers.CharField()
     name = serializers.CharField()
+    short_name = serializers.CharField(required=False, default="", allow_blank=True)
+    player_controlled = serializers.BooleanField(required=False, default=False)
+    legitimacy = serializers.FloatField(required=False, default=0.5)
+    opacity = serializers.FloatField(required=False, default=0.5)
     org_type = serializers.CharField()
     class_character = serializers.CharField()
     cohesion = serializers.FloatField()

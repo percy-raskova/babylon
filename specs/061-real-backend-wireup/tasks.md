@@ -90,16 +90,16 @@
 
 ### Tests for User Story 1 (TDD — write FIRST)
 
-- [ ] T026 [P] [US1] Write unit test `tests/unit/persistence/test_pgvector_store.py::test_add_chunks_succeeds_with_canonical_dim` — uses real psycopg connection (or transaction-rollback fixture against test DB) instead of mocked cursor. Adds 5 entries, asserts no exception
-- [ ] T027 [P] [US1] Write unit test `tests/unit/persistence/test_pgvector_store.py::test_query_similar_returns_k_results` — adds 5 embeddings, queries with k=3, asserts len(results) == 3 and distances are monotonically increasing
-- [ ] T028 [P] [US1] Write unit test `tests/unit/persistence/test_pgvector_store.py::test_add_chunks_rejects_wrong_dimension` — calls `add_chunks` with 384-dim vectors, asserts `EmbeddingDimensionError` raised before any DB call (mock the cursor and assert it was never called)
+- [X] T026 [P] [US1] Write unit test `tests/unit/persistence/test_pgvector_store.py::test_add_chunks_succeeds_with_canonical_dim` — uses real psycopg connection (or transaction-rollback fixture against test DB) instead of mocked cursor. Adds 5 entries, asserts no exception
+- [X] T027 [P] [US1] Write unit test `tests/unit/persistence/test_pgvector_store.py::test_query_similar_returns_k_results` — adds 5 embeddings, queries with k=3, asserts len(results) == 3 and distances are monotonically increasing
+- [X] T028 [P] [US1] Write unit test `tests/unit/persistence/test_pgvector_store.py::test_add_chunks_rejects_wrong_dimension` — calls `add_chunks` with 384-dim vectors, asserts `EmbeddingDimensionError` raised before any DB call (mock the cursor and assert it was never called)
 
 ### Implementation for User Story 1
 
-- [ ] T029 [US1] Update `src/babylon/persistence/pgvector_store.py:PgVectorStore.__init__()` signature to default `dimension` to `CANONICAL_EMBEDDING_DIM` (imported from `babylon.config.llm_config`). Remove the `dimension: int = 1536` literal default
-- [ ] T030 [US1] Add a dimension preflight check in `PgVectorStore.add_chunks()` that iterates `embeddings` and raises `EmbeddingDimensionError` with a clear message if any element's length != `self._dimension`. This is BEFORE the SQL INSERT (FR-002)
-- [ ] T031 [US1] Verify the SQL in `PgVectorStore.add_chunks()` and `PgVectorStore.query_similar()` matches the corrected `document_chunk` columns from T010/T011 — no `id`/`session_id`/`source_file` references; uses `chunk_id`/`collection`/`source`. Should already match the existing code (the bug was DDL/code mismatch); confirm by running T026
-- [ ] T032 [US1] Update `src/babylon/rag/__init__.py:25-28` instantiation `PgVectorStore(pool=pool, collection="rag_documents")` — verify it does not pass an explicit `dimension=` arg (so it picks up the canonical default from T029)
+- [X] T029 [US1] Update `src/babylon/persistence/pgvector_store.py:PgVectorStore.__init__()` signature to default `dimension` to `CANONICAL_EMBEDDING_DIM` (imported from `babylon.config.llm_config`). Remove the `dimension: int = 1536` literal default
+- [X] T030 [US1] Add a dimension preflight check in `PgVectorStore.add_chunks()` that iterates `embeddings` and raises `EmbeddingDimensionError` with a clear message if any element's length != `self._dimension`. This is BEFORE the SQL INSERT (FR-002)
+- [X] T031 [US1] Verify the SQL in `PgVectorStore.add_chunks()` and `PgVectorStore.query_similar()` matches the corrected `document_chunk` columns from T010/T011 — no `id`/`session_id`/`source_file` references; uses `chunk_id`/`collection`/`source`. Should already match the existing code (the bug was DDL/code mismatch); confirm by running T026
+- [X] T032 [US1] Update `src/babylon/rag/__init__.py:25-28` instantiation `PgVectorStore(pool=pool, collection="rag_documents")` — verify it does not pass an explicit `dimension=` arg (so it picks up the canonical default from T029)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently. Run `mise run test:unit -- tests/unit/persistence/test_pgvector_store.py` and `mise run test:int -- tests/integration/test_engine_bridge_boot.py`.
 

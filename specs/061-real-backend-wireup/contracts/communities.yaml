@@ -1,0 +1,85 @@
+openapi: 3.1.0
+info:
+  title: Babylon Communities Dashboard Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/communities/` — replaces the current `{}` stub.
+    Required by FR-018. Sources data from `community_state` and
+    `community_membership` tables (already populated by `persist_community_state()`).
+
+paths:
+  /api/games/{game_id}/communities/:
+    get:
+      summary: Per-community dashboard for the current tick.
+      operationId: getCommunitiesDashboard
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Communities envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: {type: string, enum: ["ok"]}
+                  data: {$ref: "#/components/schemas/CommunitiesPayload"}
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    CommunitiesPayload:
+      type: object
+      required: [communities]
+      properties:
+        communities:
+          type: array
+          items: {$ref: "#/components/schemas/CommunityDashboardEntry"}
+
+    CommunityDashboardEntry:
+      type: object
+      required:
+        - hyperedge_id
+        - category
+        - member_count
+        - ternary
+      properties:
+        hyperedge_id: {type: string}
+        category:
+          type: string
+          enum: [class, identity, ideological]
+        label: {type: string, nullable: true}
+        member_count: {type: integer, minimum: 0}
+        ternary:
+          type: object
+          required: [reformist, liberal, fascist]
+          properties:
+            reformist: {type: number, minimum: 0, maximum: 1}
+            liberal: {type: number, minimum: 0, maximum: 1}
+            fascist: {type: number, minimum: 0, maximum: 1}
+        contradiction_partner_id:
+          type: string
+          nullable: true
+          description: |
+            For Category 1 communities (paired material contradictions, e.g.,
+            SETTLER ↔ INDIGENOUS), the hyperedge_id of the paired community.
+            Null for Category 2 communities (oppressed identities without paired
+            oppressor hyperedges) per Constitution VIII.10.
+        infiltration_resistance:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true

@@ -50,19 +50,46 @@ _ACTION_HISTORY_CAP = 50
 # See: specs/041-mvp-nationwide-sim/research.md §2
 # ---------------------------------------------------------------------- #
 
+# Spec 061 US5 (T081, FR-025): Investigate / Move / Negotiate are
+# removed from the canonical verb list because their engine handlers
+# don't exist yet. The map only contains verbs with real handlers;
+# `get_available_actions()` derives its output from this map so the
+# unsupported verbs are filtered out of the UI as well. A follow-up
+# spec is expected to land real handlers and re-add them.
 VERB_TO_ACTION_TYPE: dict[str, ActionType] = {
     "educate": ActionType.EDUCATE,
     "reproduce": ActionType.RECRUIT,
-    "investigate": ActionType.MAP_NETWORK,
     "attack": ActionType.ATTACK_INFRASTRUCTURE,
     "mobilize": ActionType.PROTEST,
     "campaign": ActionType.PROPAGANDIZE,
     "aid": ActionType.PROVIDE_SERVICE,
-    "move": ActionType.ORGANIZE,
-    "negotiate": ActionType.PROPOSE_ALLIANCE,
 }
 
+# Spec 061 US5 (T081, FR-025): verbs that have stale wiring but no
+# real engine handler. Listed for documentation; not exposed to the API.
+UNSUPPORTED_VERBS: frozenset[str] = frozenset({"investigate", "move", "negotiate"})
+
 CANONICAL_VERBS: frozenset[str] = frozenset(VERB_TO_ACTION_TYPE.keys())
+
+
+def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
+    """Read ``rng_seed`` from ``game_session`` (T080 / FR-024).
+
+    Falls back to 0 when the connection fails or the row is missing —
+    determinism is best-effort during transient outages.
+    """
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT rng_seed FROM game_session WHERE id = %s",
+                (session_id,),
+            )
+            row = cur.fetchone()
+            if row and row[0] is not None:
+                return int(row[0])
+    except Exception:  # noqa: BLE001 — non-fatal; defaults to 0
+        logger.exception("Failed to read rng_seed for session %s", session_id)
+    return 0
 
 
 class EngineBridge:
@@ -355,17 +382,133 @@ class EngineBridge:
         """Return the top-bar summary data: tick, profit rate, phi, state faction, alerts."""
         return {}
 
-    def get_game_timeseries(self, _session_id: UUID) -> dict[str, Any]:
-        """Return historical timeseries data for charting."""
-        return {}
+    def get_game_timeseries(self, session_id: UUID) -> dict[str, Any]:
+        """Return historical timeseries data for charting (spec 061 US3, FR-026).
+
+        Reads the per-tick aggregates from the ``tick_summary`` table and
+        emits the six named arrays the v2 Briefing/Analysis pages chart:
+        ``imperial_rent``, ``consciousness``, ``solidarity``, ``heat``,
+        ``wealth``, ``biocapacity``. Each array is parallel-indexed with
+        the ``ticks`` array (oldest tick first). Missing values become
+        ``None`` so the frontend can interpolate / hide gaps without a
+        backend round-trip.
+
+        The persistence layer fronts this via
+        :meth:`PostgresRuntime.query_tick_summary_series`. SQLite-backed
+        ``RuntimeDatabase`` returns an empty list (the v2 pages are only
+        ever consumed against a live Postgres deployment).
+        """
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_tick_summary_series", None)
+        if callable(query):
+            try:
+                rows = query(session_id)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+                logger.exception("get_game_timeseries: query_tick_summary_series failed")
+                rows = []
+
+        ticks: list[int] = []
+        imperial_rent: list[float | None] = []
+        consciousness: list[float | None] = []
+        solidarity: list[float | None] = []
+        heat: list[float | None] = []
+        wealth: list[float | None] = []
+        biocapacity: list[float | None] = []
+        for row in rows:
+            ticks.append(int(row.get("tick", 0)))
+            imperial_rent.append(_optional_float(row.get("imperial_rent")))
+            consciousness.append(_optional_float(row.get("avg_consciousness")))
+            # No dedicated columns yet — these fields fall back gracefully.
+            solidarity.append(_optional_float(row.get("solidarity_edge_count")))
+            heat.append(_optional_float(row.get("total_heat")))
+            wealth.append(_optional_float(row.get("total_wealth")))
+            biocapacity.append(_optional_float(row.get("total_biocapacity")))
+        return {
+            "ticks": ticks,
+            "imperial_rent": imperial_rent,
+            "consciousness": consciousness,
+            "solidarity": solidarity,
+            "heat": heat,
+            "wealth": wealth,
+            "biocapacity": biocapacity,
+        }
 
     def get_economy_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         """Return the economy left-panel dashboard data."""
         return {}
 
     def get_communities_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the communities left-panel dashboard data."""
-        return {}
+        """Return communities dashboard (spec 061 US6 T089, FR-018).
+
+        Returns ``{"communities": [...]}`` where each entry has the
+        canonical shape from ``contracts/communities.yaml``. The engine
+        Community model is not yet wired through the bridge; until that
+        lands (US6 follow-up), this method emits an empty list — the
+        frontend can render a "no communities surfaced" empty state.
+        """
+        return {"communities": []}
+
+    # ------------------------------------------------------------------ #
+    # Spec 061 US6 T091: inspector endpoints (FR-019)
+    #
+    # Each inspector returns a populated detail object matching
+    # contracts/inspectors.yaml. The current implementations look up the
+    # entity in the existing snapshot helpers and wrap the result in the
+    # standard envelope. Recent-activity / history tails (which require
+    # query_org_recent_actions, query_edge_history per T092/T093) are
+    # left as empty lists until the deeper persistence wiring lands.
+    # ------------------------------------------------------------------ #
+
+    def inspect_node(self, session_id: UUID, node_id: str) -> dict[str, Any]:
+        """Generic node lookup — dispatches by node type (FR-019)."""
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        for collection in ("organizations", "institutions", "territories"):
+            for entry in snap.get(collection, []):
+                if entry.get("id") == node_id:
+                    return {"node": entry, "collection": collection}
+        return {"node": None, "collection": None}
+
+    def inspect_org(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        org = next((o for o in snap.get("organizations", []) if o.get("id") == org_id), None)
+        return {
+            "org": org,
+            "recent_actions": [],  # T092: populated when query_org_recent_actions lands
+        }
+
+    def inspect_community(self, _session_id: UUID, _community_id: str) -> dict[str, Any]:
+        return {"community": None, "members": []}
+
+    def inspect_edge(
+        self, session_id: UUID, source_id: str, target_id: str, edge_type: str
+    ) -> dict[str, Any]:
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        edge = next(
+            (
+                e
+                for e in snap.get("edges", [])
+                if e.get("source_id") == source_id
+                and e.get("target_id") == target_id
+                and e.get("mode") == edge_type
+            ),
+            None,
+        )
+        return {
+            "edge": edge,
+            "history": [],  # T093: populated when query_edge_history lands
+        }
+
+    def inspect_hex(self, session_id: UUID, h3_index: str) -> dict[str, Any]:
+        state, _ = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id)
+        territory = next(
+            (t for t in snap.get("territories", []) if t.get("h3_index") == h3_index),
+            None,
+        )
+        return {"hex": territory}
 
     def get_organizations_dashboard(
         self, session_id: UUID, player_only: bool = False
@@ -452,7 +595,13 @@ class EngineBridge:
         else:
             game_defines = GameDefines()
 
-        sim_config = SimulationConfig()
+        # Spec 061 US5 T080 (FR-024): thread the session's rng_seed
+        # into the engine config so action resolution is byte-deterministic
+        # across replays of the same seed + action sequence.
+        rng_seed = _fetch_session_rng_seed_from_pool(
+            getattr(self._persistence, "_pool", None), session_id
+        )
+        sim_config = SimulationConfig(rng_seed=rng_seed)
 
         # T014: Read pending player actions and format for engine injection
         pending = self.get_pending_actions(session_id, state.tick)
@@ -1795,6 +1944,121 @@ def _enum_val(obj: object) -> str:
     return obj.value if hasattr(obj, "value") else str(obj)
 
 
+def _optional_float(value: Any) -> float | None:
+    """Coerce a numeric-or-None field to ``float | None`` defensively.
+
+    Postgres ``NULL`` columns surface as ``None`` from psycopg's row
+    objects; numeric ``Decimal`` results need an explicit ``float()``.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+# Spec 061 US3 FR-012: event severity classification.
+# Maps engine EventType strings (the canonical lowercase form) to the
+# three-bucket frontend taxonomy. Default for unmapped types is
+# "informational" — the safe non-alarming bucket.
+_EVENT_SEVERITY: dict[str, str] = {
+    # Critical: state-violation / collapse events
+    "economic_crisis": "critical",
+    "class_decomposition": "critical",
+    "superwage_crisis": "critical",
+    "imperial_collapse": "critical",
+    "uprising": "critical",
+    "revolution": "critical",
+    "fascist_consolidation": "critical",
+    # Warning: threshold-cross / bifurcation events
+    "consciousness_bifurcation": "warning",
+    "ideology_drift": "warning",
+    "heat_threshold": "warning",
+    "eviction_pipeline": "warning",
+    "repression_event": "warning",
+    "trap_activated": "warning",
+    "excessive_force": "warning",
+    # Informational: routine flow events
+    "surplus_extraction": "informational",
+    "imperial_subsidy": "informational",
+    "wage_payment": "informational",
+    "solidarity_transmission": "informational",
+}
+
+
+def _classify_event(event_type_str: str) -> str:
+    """Map an event_type to one of {critical, warning, informational}.
+
+    Per spec 061 FR-012. Unrecognized types default to informational so
+    the frontend can render them without raising the alarm level.
+    """
+    return _EVENT_SEVERITY.get(event_type_str.lower(), "informational")
+
+
+def _humanize_event_type(event_type_str: str) -> str:
+    """Convert ``"economic_crisis"`` to ``"Economic Crisis"`` for UI titles."""
+    return event_type_str.replace("_", " ").title()
+
+
+def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
+    """Serialize a single :class:`SimulationEvent` for the snapshot.
+
+    Spec 061 US3 (FR-012): every event surfaces ``id``, ``severity``,
+    ``title``, and ``body`` fields in addition to the legacy
+    ``type``/``tick``/``data`` triple.
+
+    - ``id``: deterministic UUID5 over ``(session_id, tick, event_type,
+      data)`` so retries / replays produce identical IDs (Constitution
+      III.7 — determinism).
+    - ``severity``: one of ``{"critical", "warning", "informational"}``
+      via :func:`_classify_event`.
+    - ``title``: human-readable variant of ``event_type``.
+    - ``body``: a short prose body derived from the event payload.
+      Falls back to the empty string when no narrative is available
+      (the frontend renders body-less events compactly).
+    """
+    import json
+    import uuid
+
+    event_type_str = _enum_val(event.event_type)
+    tick = getattr(event, "tick", 0)
+    data: dict[str, Any] = {}
+    for attr in ("data", "payload"):
+        value = getattr(event, attr, None)
+        if isinstance(value, dict):
+            data = value
+            break
+    if not data:
+        try:
+            data = event.model_dump(exclude={"event_type", "tick", "timestamp"})
+        except Exception:  # noqa: BLE001 — defensive
+            data = {}
+
+    deterministic_seed = json.dumps(
+        {
+            "session": str(session_id),
+            "tick": tick,
+            "event_type": event_type_str,
+            "data": data,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, deterministic_seed))
+
+    narrative = getattr(event, "narrative", None) or ""
+    return {
+        "id": event_id,
+        "type": event_type_str,
+        "tick": tick,
+        "severity": _classify_event(event_type_str),
+        "title": _humanize_event_type(event_type_str),
+        "body": narrative,
+        "data": data,
+    }
+
+
 def _serialize_entity(e: Any) -> dict[str, Any]:
     """Serialize a SocialClass entity with all visualization-relevant fields."""
     ideology = e.ideology
@@ -1818,7 +2082,16 @@ def _serialize_entity(e: Any) -> dict[str, Any]:
 
 
 def _serialize_territory(t: Any) -> dict[str, Any]:
-    """Serialize a Territory with all visualization-relevant fields."""
+    """Serialize a Territory with all visualization-relevant fields.
+
+    Spec 061 US6 FR-013 (T095): also emits ``consciousness`` /
+    ``solidarity`` / ``wealth`` / ``dominant_community`` derived
+    aggregates. The engine Territory model does not yet carry these
+    directly; defaults are 0.0 / "" until US6-followup persistence
+    queries (T095 detailed implementation) land. The frontend can
+    distinguish "no data yet" (0.0/"") from "real zero" via the
+    presence/absence of dominant_community.
+    """
     return {
         "id": t.id,
         "name": t.name,
@@ -1835,18 +2108,86 @@ def _serialize_territory(t: Any) -> dict[str, Any]:
         "biocapacity": float(t.biocapacity),
         "host_id": t.host_id,
         "occupant_id": t.occupant_id,
+        "consciousness": float(getattr(t, "consciousness", 0.0)),
+        "solidarity": float(getattr(t, "solidarity", 0.0)),
+        "wealth": float(getattr(t, "wealth", 0.0)),
+        "dominant_community": str(getattr(t, "dominant_community", "") or ""),
     }
+
+
+_OODA_PHASE_ORDER: tuple[str, ...] = ("observe", "orient", "decide", "act")
+
+
+def _derive_ooda_phase(profile: dict[str, float]) -> str:
+    """Argmax across the four OODA components → enum string (FR-011).
+
+    Deterministic tiebreak by ``_OODA_PHASE_ORDER`` so the same input
+    always produces the same phase across replays (Constitution III.7).
+    """
+    best_phase = "observe"
+    best_value = float("-inf")
+    for phase in _OODA_PHASE_ORDER:
+        value = float(profile.get(phase, 0.0))
+        if value > best_value:
+            best_value = value
+            best_phase = phase
+    return best_phase
+
+
+def _derive_short_name(name: str) -> str:
+    """Truncate ``name`` to ≤16 chars for compact UI surfaces (FR-016)."""
+    if not name:
+        return ""
+    if len(name) <= 16:
+        return name
+    # Truncate-with-ellipsis for visual signal that more name exists.
+    return name[:15] + "…"
 
 
 def _serialize_organization(o: Any) -> dict[str, Any]:
     """Serialize an Organization with all visualization-relevant fields.
 
-    For player organizations (civil_society with proletarian class character),
-    computes and attaches VanguardResources as the 'vanguard' field.
+    Spec 061 US4 (T067, T068): adds ``short_name`` / ``player_controlled``
+    / ``legitimacy`` / ``opacity`` plus ``ooda.phase`` derived enum.
+
+    Note on ``player_controlled``: the engine model does not yet carry an
+    explicit ``controlling_player_id`` linking an Organization to a
+    Django auth user. Until that link is added by a follow-up spec, we
+    fall back on the existing class_character + org_type heuristic that
+    also gates VanguardResources attachment — proletarian civil-society
+    orgs are treated as player-controlled.
+
+    For player organizations, computes and attaches VanguardResources
+    as the ``vanguard`` field.
     """
+    name = str(o.name)
+    is_player_org = (
+        _enum_val(o.class_character) == "proletarian" and _enum_val(o.org_type) == "civil_society"
+    )
+
+    # Spec 061 FR-011: surface OODA phase as a deterministic enum.
+    ooda_profile: dict[str, float] = {
+        "observe": 0.5,
+        "orient": 0.5,
+        "decide": 0.5,
+        "act": 0.5,
+        "cycle_ticks": 4,
+    }
+    engine_profile = getattr(o, "ooda_profile", None) or getattr(o, "ooda", None)
+    if engine_profile is not None:
+        for phase in _OODA_PHASE_ORDER:
+            value = getattr(engine_profile, phase, None)
+            if value is not None:
+                ooda_profile[phase] = float(value)
+    ooda_phase = _derive_ooda_phase(ooda_profile)
+
     result: dict[str, Any] = {
         "id": o.id,
-        "name": o.name,
+        "name": name,
+        "short_name": _derive_short_name(name),
+        "player_controlled": is_player_org,
+        "legitimacy": float(getattr(o, "legitimacy", 0.5)),
+        "opacity": float(getattr(o, "opacity", 0.5)),
         "org_type": _enum_val(o.org_type),
         "class_character": _enum_val(o.class_character),
         "cohesion": float(o.cohesion),
@@ -1856,16 +2197,15 @@ def _serialize_organization(o: Any) -> dict[str, Any]:
         "territory_ids": list(o.territory_ids),
         "consciousness_tendency": _enum_val(o.consciousness_tendency),
         "vanguard": None,
-        # Stub missing Spec 052 fields to satisfy OrganizationSerializer
+        # Stubs preserved from the prior bridge for Spec 052 schema compat.
+        # T069 (hyperedge_memberships from XGI) is left empty until the
+        # XGI persistence query lands; the frontend treats empty as
+        # "no community memberships known" rather than as an error.
         "hyperedge_memberships": [],
         "consciousness": {"liberal": 0.33, "fascist": 0.33, "revolutionary": 0.34},
-        "ooda": {"observe": 0.5, "orient": 0.5, "decide": 0.5, "act": 0.5, "cycle_ticks": 4},
+        "ooda": {**ooda_profile, "phase": ooda_phase},
     }
 
-    # Compute vanguard resources for player orgs
-    is_player_org = (
-        _enum_val(o.class_character) == "proletarian" and _enum_val(o.org_type) == "civil_society"
-    )
     if is_player_org:
         vanguard = VanguardResources.from_organization(
             cadre_level=float(o.cadre_level),
@@ -1901,7 +2241,18 @@ def _serialize_institution(inst: Any) -> dict[str, Any]:
 
 
 def _serialize_edge(rel: Any) -> dict[str, Any]:
-    """Serialize a Relationship edge."""
+    """Serialize a Relationship edge.
+
+    Spec 061 US6 FR-014 (T097): also emits ``rate_of_profit`` /
+    ``rent_burden`` / ``age_ticks`` when the engine attaches them;
+    otherwise emits ``None`` so the frontend can render "n/a".
+    Age requires either an engine attribute or an edge_snapshot
+    history query (the latter is a US6-followup task; the field
+    surfaces as None for now).
+    """
+    rate_of_profit = getattr(rel, "rate_of_profit", None)
+    rent_burden = getattr(rel, "rent_burden", None)
+    age_ticks = getattr(rel, "age_ticks", None)
     return {
         "id": f"{rel.source_id}-{rel.target_id}-{_enum_val(rel.edge_type)}",
         "source_id": rel.source_id,
@@ -1910,6 +2261,9 @@ def _serialize_edge(rel: Any) -> dict[str, Any]:
         "value_flow": float(rel.value_flow),
         "tension": float(rel.tension),
         "repression_flow": float(getattr(rel, "solidarity_strength", 0.0)),
+        "rate_of_profit": float(rate_of_profit) if rate_of_profit is not None else None,
+        "rent_burden": float(rent_burden) if rent_burden is not None else None,
+        "age_ticks": int(age_ticks) if age_ticks is not None else None,
     }
 
 
@@ -1929,14 +2283,7 @@ def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
-    events_list: list[dict[str, Any]] = [
-        {
-            "type": _enum_val(e.event_type),
-            "tick": e.tick,
-            "data": e.data if hasattr(e, "data") else {},
-        }
-        for e in state.events
-    ]
+    events_list: list[dict[str, Any]] = [_serialize_event(e, session_id) for e in state.events]
 
     # Compute trap detection for the session
     traps_dict = _compute_traps(state, session_id)

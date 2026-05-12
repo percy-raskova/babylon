@@ -22,3 +22,9 @@
 
 - ansible.builtin.import_tasks: setup_supervisor.yml
   tags: supervisor
+
+# spec 061 T022: systemd unit installation (Constitution X.4).
+# Coexists with supervisor for now; supervisor migration is out of
+# scope per spec 061 plan.md.
+- ansible.builtin.import_tasks: setup_systemd.yml
+  tags: systemd

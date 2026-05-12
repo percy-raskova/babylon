@@ -35,6 +35,18 @@ up, you can run everything from the project root:
 | `mise run web:check`    | Run frontend quality checks (tsc + eslint + prettier + vitest) |
 | `mise run web:build`    | Build frontend for production                                  |
 
+Bootstrap order on a clean database:
+
+1. `mise run web:migrate` — apply all Django migrations (including 0006–0010
+   from spec 061, which drop the orphan `sim.hex_states` schema, purge legacy
+   fixture sessions, drop `game_session.snapshot_json`, and reconcile the
+   `document_chunk` pgvector schema)
+1. `poetry run python manage.py createsuperuser` (from `web/`) — create the
+   Django user the seed command will own the game as
+1. `poetry run python manage.py seed_initial_game --scenario wayne_county --player admin`
+   — seed the first real-engine game session
+1. `mise run web:dev` — start backend + frontend
+
 For first-time database setup and superuser creation, see the detailed steps
 below.
 
@@ -78,9 +90,18 @@ poetry run python manage.py migrate
 # Create a superuser for the admin panel and game access
 poetry run python manage.py createsuperuser
 
+# Seed an initial game session against the real engine
+poetry run python manage.py seed_initial_game --scenario wayne_county --player admin
+
 # Start the development server on port 8000
 poetry run python manage.py runserver 8000
 ```
+
+`seed_initial_game` invokes the real `EngineBridge.create_game()` — there is no
+mock fallback. The `--player` argument must match an existing Django username
+(usually the superuser you just created). The `--scenario` argument selects from
+the scenarios exposed by the engine; `wayne_county` is the default vertical
+slice.
 
 When `createsuperuser` prompts for username, press Enter to accept the
 default shown (for example, `user` on your machine). Babylon auth is
@@ -106,6 +127,23 @@ curl http://localhost:8000/health/
 ```
 
 You should get `{"status": "ok"}`.
+
+`/health/` is intentionally minimal — it reports liveness only. For richer
+diagnostics (which `EngineBridge` implementation is active, when it last
+resolved a tick, current pool size, pinned embedding model, git SHA), the
+project exposes `/health/detail/`. That endpoint is gated to staff users:
+unauthenticated and non-staff requests get a standard 404 (deliberate
+information-hiding per spec 061 FR-009; see also ADR039). After logging in as
+a superuser you can curl it via a session cookie or browse to it directly.
+
+If the engine cannot reach Postgres at startup, `GameConfig.ready()` retries
+three times (1s, 2s) before calling `sys.exit(1)`. Under `runserver` that just
+kills the dev process; under systemd in production, the unit's
+`Restart=on-failure` kicks in with exponential backoff. Mid-session DB outages
+surface as HTTP 503 from any engine-dependent endpoint (state, resolve,
+timeseries, communities) with a uniform error envelope — `/health/` and
+`/health/detail/` are exempt from this 503 wrapping so you can still observe a
+degraded backend.
 
 ## Start the React Frontend
 

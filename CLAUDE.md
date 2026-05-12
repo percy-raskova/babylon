@@ -828,6 +828,8 @@ ADR0XX_descriptive_name:
 - Python 3.12+ (existing project standard) + Pydantic 2.x (frozen models, discriminated unions), (059-adr-bundle-2-post-spec-057)
 - PostgreSQL 16+ for runtime state (unchanged); SQLite for (059-adr-bundle-2-post-spec-057)
 - N/A — fully in-memory. Tests use existing `WorldState` and (060-value-form-invariants)
+- Python 3.12+ (backend, engine, persistence); TypeScript 5.7 (frontend) (061-real-backend-wireup)
+- PostgreSQL 16+ with PostGIS, pgvector, uuid-ossp extensions; SQLite for reference data only (`marxist-data-3NF.sqlite`) (061-real-backend-wireup)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

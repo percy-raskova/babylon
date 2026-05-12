@@ -1,6 +1,7 @@
 """Unit tests for PgVectorStore (mocked psycopg).
 
 Phase 9 (T050-T053): Semantic search with pgvector.
+Spec 061 US1 (T026-T028): canonical 768-dim default + FR-002 dimension preflight.
 """
 
 from __future__ import annotations
@@ -11,7 +12,24 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.persistence.pgvector_store import PgVectorStore
+from babylon.config.llm_config import CANONICAL_EMBEDDING_DIM
+from babylon.persistence.pgvector_store import (
+    EmbeddingDimensionError,
+    PgVectorStore,
+)
+
+# All embeddings in this file are 384-dim to match the test fixture's store.
+# Spec 061 FR-002 (T030) now preflights the dimension before issuing any
+# SQL, so embeddings of the wrong length would raise EmbeddingDimensionError
+# in mock-based tests too. The TestDimensionPreflight class below exercises
+# the failure path explicitly.
+_TEST_DIM = 384
+
+
+def _emb(seed: float) -> list[float]:
+    """Return a 384-dim embedding seeded by ``seed`` (for variety in test data)."""
+    return [seed] * _TEST_DIM
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -70,7 +88,7 @@ class TestAddChunks:
             {
                 "id": "chunk_1",
                 "content": "Workers of the world unite",
-                "embedding": [0.1, 0.2, 0.3],
+                "embedding": _emb(0.1),
                 "metadata": {"source": "manifesto.txt", "page": 1},
             },
         ]
@@ -99,7 +117,7 @@ class TestAddChunks:
             def __init__(self) -> None:
                 self.id = "chunk_obj_1"
                 self.content = "The proletariat has nothing to lose"
-                self.embedding = [0.4, 0.5, 0.6]
+                self.embedding = _emb(0.4)
                 self.metadata = {"chapter": 4}
 
         store.add_chunks([MockChunk()])
@@ -273,3 +291,150 @@ class TestGetCollectionCount:
         """get_collection_count returns 0 when query returns None."""
         mock_cursor.fetchone.return_value = None
         assert store.get_collection_count() == 0
+
+
+# ══════════════════════════════════════════════════════════════════════
+# spec 061 US1 T026-T028: dimension preflight + canonical default
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestCanonicalDimensionDefault:
+    """T029: PgVectorStore() without an explicit dimension uses 768."""
+
+    def test_default_dimension_is_canonical_768(self) -> None:
+        pool = MagicMock()
+        store = PgVectorStore(pool)
+        assert store._dimension == CANONICAL_EMBEDDING_DIM == 768
+
+
+class TestDimensionPreflight:
+    """T028 / FR-002: dimension mismatch raises before any SQL is issued."""
+
+    def test_add_chunks_rejects_wrong_dimension(self) -> None:
+        """A 384-dim embedding fed to a 768-dim store raises before any
+        connection is acquired. Asserts ``pool.connection`` was never
+        called, so no SQL was issued."""
+        pool = MagicMock()
+        store = PgVectorStore(pool)  # canonical 768-dim
+        wrong = [0.0] * 384
+
+        with pytest.raises(EmbeddingDimensionError) as exc_info:
+            store.add_chunks(
+                [
+                    {
+                        "id": "bad-chunk",
+                        "content": "x",
+                        "embedding": wrong,
+                        "metadata": {},
+                    }
+                ]
+            )
+
+        message = str(exc_info.value)
+        assert "384" in message
+        assert "768" in message
+        assert "bad-chunk" in message
+        pool.connection.assert_not_called()
+
+    def test_empty_list_is_noop_and_does_not_raise(self) -> None:
+        """add_chunks([]) skips the preflight loop AND the SQL call."""
+        pool = MagicMock()
+        store = PgVectorStore(pool)
+        store.add_chunks([])
+        pool.connection.assert_not_called()
+
+    def test_preflight_uses_overridden_dimension(self) -> None:
+        """A non-canonical dimension argument is honored by the preflight."""
+        pool = MagicMock()
+        store = PgVectorStore(pool, dimension=384)
+        with pytest.raises(EmbeddingDimensionError):
+            store.add_chunks(
+                [
+                    {
+                        "id": "wrong",
+                        "content": "x",
+                        "embedding": [0.0] * 768,  # canonical dim but wrong here
+                        "metadata": {},
+                    }
+                ]
+            )
+        pool.connection.assert_not_called()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# spec 061 US1 T026-T027: roundtrip against real Postgres
+# ══════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.integration
+class TestPgVectorStoreRoundtrip:
+    """T026 + T027: ingest + query against the ``babylon_test`` database.
+
+    Uses ``pg_pool`` fixture (port 5433). Skipped when no test DB is
+    available.
+    """
+
+    _COLLECTION = "spec-061-us1"
+
+    @pytest.fixture
+    def live_store(self, pg_pool) -> PgVectorStore:
+        # The babylon_test database may not have the pgvector extension or
+        # the document_chunk table provisioned (depends on whether the spec
+        # 061 migration set has been applied to the test DB). Skip cleanly
+        # rather than fail loudly — the mock-based tests above cover the
+        # FR-001/FR-002 contract on every test run.
+        from psycopg.errors import UndefinedTable
+
+        try:
+            with pg_pool.connection() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM document_chunk WHERE collection = %s",
+                    (self._COLLECTION,),
+                )
+        except UndefinedTable:
+            pytest.skip(
+                "document_chunk table not present in babylon_test — apply spec 061 "
+                "migrations 0006-0010 to the test DB to enable this test"
+            )
+        return PgVectorStore(pg_pool, collection=self._COLLECTION)
+
+    def test_add_chunks_succeeds_with_canonical_dim(self, live_store: PgVectorStore) -> None:
+        """T026: five 768-dim chunks ingest cleanly."""
+        chunks = [
+            {
+                "id": f"chunk-{i}",
+                "content": f"sample content {i}",
+                "embedding": [float(i) / 100.0] * CANONICAL_EMBEDDING_DIM,
+                "metadata": {"src": "spec-061-us1"},
+            }
+            for i in range(5)
+        ]
+        live_store.add_chunks(chunks)
+        assert live_store.get_collection_count() == 5
+
+    def test_query_similar_returns_k_results(self, live_store: PgVectorStore) -> None:
+        """T027: query k=3 against 5 ingested chunks → 3 results, distances ascending."""
+        chunks = []
+        for i in range(5):
+            embedding = [0.0] * CANONICAL_EMBEDDING_DIM
+            embedding[i] = 1.0
+            chunks.append(
+                {
+                    "id": f"q-{i}",
+                    "content": f"q content {i}",
+                    "embedding": embedding,
+                    "metadata": {},
+                }
+            )
+        live_store.add_chunks(chunks)
+
+        query = [0.0] * CANONICAL_EMBEDDING_DIM
+        query[0] = 1.0
+        ids, _docs, _embeddings, _metadatas, distances = live_store.query_similar(
+            query_embedding=query, k=3
+        )
+
+        assert len(ids) == 3
+        assert ids[0] == "q-0"
+        for a, b in zip(distances, distances[1:], strict=False):
+            assert a <= b, f"distances not sorted ascending: {distances}"

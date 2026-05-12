@@ -2,9 +2,20 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.4.0"
-  updated: "2026-05-10"
-  last_sprint: "059-adr-bundle-2-post-spec-057 (Complete; sub-component LOC splits deferred)"
+  version: "2.5.0"
+  updated: "2026-05-12"
+  last_sprint: "061-real-backend-wireup (Complete; 14 deferred items — see specs/061-real-backend-wireup/tasks.md and ADR039)"
+  previous_sprint: "059-adr-bundle-2-post-spec-057 (Complete; sub-component LOC splits deferred)"
+  spec_061_summary: |
+    Cutover from v2 fixture data to live Postgres-backed engine state.
+    Delivered: 5 migrations (0006-0010), atomic snapshot writes, hybrid retry-then-exit
+    boot, systemd unit, /health/detail/ with 404 obscurity, mid-session 503 middleware,
+    sentence-transformers pin (768-dim, SHA e8c3b32), 11 integration test files +
+    3 e2e Playwright scaffolds, mock_bridge/mock_defines/seed_mock_game deleted,
+    BABYLON_MOCK_MODE removed. Deferred: T086-T088 (deeper inspector/community queries),
+    T075-T077 (action-lifecycle harnesses), T105-T106 (purged-session + seed smoke),
+    T116/T124/T125 (operator-driven quickstart, perf, staging smoke), T130-T131
+    (stress tests). See ai-docs/decisions/ADR039_spec_061_real_backend_wireup.yaml.
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"

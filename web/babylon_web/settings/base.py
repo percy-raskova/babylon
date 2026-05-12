@@ -130,6 +130,14 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
+    # spec 061 US2 FR-009: HealthDetailView raises NotAuthenticated /
+    # PermissionDenied via standard DRF permission classes; this custom
+    # exception handler intercepts THOSE specific exceptions for THAT
+    # specific view and returns a uniform 404 with the standard DRF body.
+    # Every other endpoint preserves DRF's normal 401/403 behavior.
+    # See research.md R5 + DRF issue #7529 for why we don't use
+    # has_permission() raising Http404.
+    "EXCEPTION_HANDLER": "babylon_web.health.exceptions.health_obscuring_exception_handler",
 }
 
 # --------------------------------------------------------------------------- #

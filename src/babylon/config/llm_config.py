@@ -13,7 +13,9 @@ from typing import Final
 
 CANONICAL_EMBEDDING_MODEL_ID: Final[str] = "sentence-transformers/all-mpnet-base-v2"
 CANONICAL_EMBEDDING_DIM: Final[int] = 768
-CANONICAL_EMBEDDING_REVISION: Final[str] = "main"
+# Spec 061 T120: pinned to a specific HuggingFace commit SHA per
+# Constitution III.6. Captured 2026-05-12 via HfApi().model_info().sha.
+CANONICAL_EMBEDDING_REVISION: Final[str] = "e8c3b32edf5434bc2275fc9bab85f82640a19130"
 
 
 class LLMConfig:

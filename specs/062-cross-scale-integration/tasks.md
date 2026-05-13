@@ -255,15 +255,15 @@ Tests: `tests/{unit,integration,property}/`
 
 ### Tests for US7 (RED phase)
 
-- [ ] T081 [P] [US7] Write failing test `tests/unit/engine/test_substrate_system_ordering.py` verifying the pipeline ordering FR-050: Substrate runs after Territory and before Production on every tick
-- [ ] T082 [P] [US7] Write failing test `tests/unit/engine/test_pipeline_substrate_position.py` exercising User Story 7 acceptance scenarios 1-2
-- [ ] T083 [P] [US7] Write failing integration test `tests/integration/test_substrate_pipeline_position.py` against `pg_pool` verifying that zeroed substrate propagates to zero Production output in the same tick
+- [X] T081 [P] [US7] Write failing test `tests/unit/engine/test_substrate_system_ordering.py` verifying the pipeline ordering FR-050: Substrate runs after Territory and before Production on every tick
+- [ ] T082 [P] [US7] Write failing test `tests/unit/engine/test_pipeline_substrate_position.py` exercising User Story 7 acceptance scenarios 1-2  *(deferred — needs T085 engine insertion)*
+- [ ] T083 [P] [US7] Write failing integration test `tests/integration/test_substrate_pipeline_position.py` against `pg_pool` verifying that zeroed substrate propagates to zero Production output in the same tick  *(deferred — needs T085 engine insertion)*
 
 ### Implementation for US7
 
-- [ ] T084 [P] [US7] Create `src/babylon/engine/systems/substrate.py` with a `SubstrateSystem` class implementing the existing `SimulationSystem` protocol; the system computes per-hex `raw_material_stock`, `energy_stock`, `biocapacity_stock` for tick `t+1` from tick `t` values and the per-tick substrate consumption/regeneration
-- [ ] T085 [US7] Extend `src/babylon/engine/simulation_engine.py` to insert `SubstrateSystem` at pipeline position 2.5 (between `TerritorySystem` and the Vol I `ProductionSystem`); update the system-registration order accordingly
-- [ ] T086 [US7] Ensure Production reads substrate values from the *just-computed* state, not from the pre-Substrate snapshot — verify via a unit test that mutates substrate.raw_material_stock to 0 mid-tick and asserts production output is constrained accordingly
+- [X] T084 [P] [US7] Create `src/babylon/engine/systems/substrate.py` with a `SubstrateSystem` class implementing the existing `SimulationSystem` protocol; the system computes per-hex `raw_material_stock`, `energy_stock`, `biocapacity_stock` for tick `t+1` from tick `t` values and the per-tick substrate consumption/regeneration
+- [ ] T085 [US7] Extend `src/babylon/engine/simulation_engine.py` to insert `SubstrateSystem` at pipeline position 2.5 (between `TerritorySystem` and the Vol I `ProductionSystem`); update the system-registration order accordingly  *(deferred — pairs with engine-integration follow-up where Production reads from the just-computed substrate state)*
+- [ ] T086 [US7] Ensure Production reads substrate values from the *just-computed* state, not from the pre-Substrate snapshot — verify via a unit test that mutates substrate.raw_material_stock to 0 mid-tick and asserts production output is constrained accordingly  *(deferred — pairs with T085)*
 
 **Checkpoint**: US7 fully functional. Substrate slot occupies position 2.5; Production sees post-Substrate values.
 

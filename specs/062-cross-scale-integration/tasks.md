@@ -157,31 +157,31 @@ Tests: `tests/{unit,integration,property}/`
 
 ### Tests for US4 (RED phase)
 
-- [ ] T050 [P] [US4] Write failing integration test `tests/integration/test_five_flow_types.py` exercising User Story 4 acceptance scenarios 1-5; covers SC-011. **NB on FR-026/FR-027 coverage**: Production hex-locality and "Production grows v+s by labor increment" properties are expected to pass via existing engine code (Specs 060/057); failure of acceptance scenarios 1 here signals remediation needed in the existing Production system rather than missing spec-062 implementation
-- [ ] T051 [P] [US4] Write failing property test `tests/property/test_per_stage_conservation.py` using Hypothesis: for random hex populations, verify (a) Production grows v+s by exactly the labor increment, (b) Circulation preserves sum(v) within study area modulo boundary register, (c) Equalization preserves per-industry sum(c), (d) Distribution sums p+i+r+t back to s
-- [ ] T052 [P] [US4] Write failing test `tests/unit/economics/test_alpha_weekly_invariant.py` covering FR-029a startup invariant (`α_weekly < 1/52` else init fails)
+- [ ] T050 [P] [US4] Write failing integration test `tests/integration/test_five_flow_types.py` exercising User Story 4 acceptance scenarios 1-5; covers SC-011. **NB on FR-026/FR-027 coverage**: Production hex-locality and "Production grows v+s by labor increment" properties are expected to pass via existing engine code (Specs 060/057); failure of acceptance scenarios 1 here signals remediation needed in the existing Production system rather than missing spec-062 implementation  *(deferred — needs populated hex_state + full pipeline integration; pairs with downstream LODES wiring)*
+- [ ] T051 [P] [US4] Write failing property test `tests/property/test_per_stage_conservation.py` using Hypothesis: for random hex populations, verify (a) Production grows v+s by exactly the labor increment, (b) Circulation preserves sum(v) within study area modulo boundary register, (c) Equalization preserves per-industry sum(c), (d) Distribution sums p+i+r+t back to s  *(deferred — pairs with T050)*
+- [X] T052 [P] [US4] Write failing test `tests/unit/economics/test_alpha_weekly_invariant.py` covering FR-029a startup invariant (`α_weekly < 1/52` else init fails)
 
 ### Implementation for US4 — Vol I Production (hex-local)
 
-- [ ] T053 [US4] Extend `src/babylon/engine/systems/territory.py` to hook hex-county-state aggregation via the `v_*` views so production rates can be reported per-county for diagnostics (NB: this is reporting only; primary state remains hex-level per FR-018)
+- [ ] T053 [US4] Extend `src/babylon/engine/systems/territory.py` to hook hex-county-state aggregation via the `v_*` views so production rates can be reported per-county for diagnostics (NB: this is reporting only; primary state remains hex-level per FR-018)  *(deferred — reporting hook lands with the engine integration follow-up)*
 
 ### Implementation for US4 — Vol II Circulation (LODES OD)
 
-- [ ] T054 [US4] Add `src/babylon/economics/lodes_commute_matrix.py` loading the LODES OD matrix from `immutable_reference_qcew_employment` (or a separate `immutable_reference_lodes_*` table created in T005's migration if not already there) as `scipy.sparse.csr_matrix` per Constitution II.12 + research.md §6 (min-cost flow only)
-- [ ] T055 [US4] In `src/babylon/engine/systems/imperial_rent.py` (or a new `vol_ii_circulation.py` module under `engine/systems/`), implement the circulation step: `v[A, t+1] = sum_j(OD[j, A] * v[j, t] / row_sum[j])`; spillover (rows that route outside study area) is recorded via `BoundaryFlowRegister.record(..., flow_type=COMMUTE_OUT)`
+- [ ] T054 [US4] Add `src/babylon/economics/lodes_commute_matrix.py` loading the LODES OD matrix from `immutable_reference_qcew_employment` (or a separate `immutable_reference_lodes_*` table created in T005's migration if not already there) as `scipy.sparse.csr_matrix` per Constitution II.12 + research.md §6 (min-cost flow only)  *(deferred — full LODES integration is a downstream spec scope)*
+- [ ] T055 [US4] In `src/babylon/engine/systems/imperial_rent.py` (or a new `vol_ii_circulation.py` module under `engine/systems/`), implement the circulation step: `v[A, t+1] = sum_j(OD[j, A] * v[j, t] / row_sum[j])`; spillover (rows that route outside study area) is recorded via `BoundaryFlowRegister.record(..., flow_type=COMMUTE_OUT)`  *(deferred — depends on T054)*
 
 ### Implementation for US4 — Vol III Pt I Equalization (industry-bound)
 
-- [ ] T056 [US4] Extend `babylon.economics.hex_equalization.HexEqualizationComputer` to consume `α_weekly` from `defines.economy.alpha_weekly` (computed via `alpha_weekly(defines.alpha_annual)`); deprecate the hard-coded `alpha=0.01` keyword by making it default to `None` and falling back to `defines.economy.alpha_weekly` when None
-- [ ] T057 [US4] In `babylon.economics.hex_equalization`, ensure equalization derives per-(hex, NAICS) shares on demand from QCEW employment shares (FR-031); add docstring cross-referencing Clarification Q1 (Option A — derive on read)
+- [X] T056 [US4] Extend `babylon.economics.hex_equalization.HexEqualizationComputer` to consume `α_weekly` from `defines.economy.alpha_weekly` (computed via `alpha_weekly(defines.alpha_annual)`); deprecate the hard-coded `alpha=0.01` keyword by making it default to `None` and falling back to `defines.economy.alpha_weekly` when None
+- [ ] T057 [US4] In `babylon.economics.hex_equalization`, ensure equalization derives per-(hex, NAICS) shares on demand from QCEW employment shares (FR-031); add docstring cross-referencing Clarification Q1 (Option A — derive on read)  *(deferred — needs industry-share infrastructure)*
 
 ### Implementation for US4 — Imperial Rent inflow (Φ distribution)
 
-- [ ] T058 [US4] Extend `src/babylon/engine/systems/imperial_rent.py` with `distribute_phi_week_to_counties(state, external_nodes, bea_io_imports)`: compute county-level import-exposure weights via BEA I-O imports × QCEW industry shares; distribute `Φ_year / 52` from each external node to counties weighted by exposure (FR-034/FR-035); `BoundaryFlowRegister.record(source=external, dest=county, flow_type=DRAIN_EDGE)` for each transfer
+- [ ] T058 [US4] Extend `src/babylon/engine/systems/imperial_rent.py` with `distribute_phi_week_to_counties(state, external_nodes, bea_io_imports)`: compute county-level import-exposure weights via BEA I-O imports × QCEW industry shares; distribute `Φ_year / 52` from each external node to counties weighted by exposure (FR-034/FR-035); `BoundaryFlowRegister.record(source=external, dest=county, flow_type=DRAIN_EDGE)` for each transfer  *(deferred — depends on import-exposure infrastructure)*
 
 ### Implementation for US4 — Vol III Pt IV-VI Distribution (s split)
 
-- [ ] T059 [US4] Create `src/babylon/engine/systems/distribution.py` with `split_surplus_to_pirt(state, county_aggregate)`: at county scale, split `s` into `p + i + r + t` using `fred_fed_funds_rate` for interest, `bea_reis_rent` for rent, IRS/BEA effective tax rate (use existing `qcew_employment` proxy if no IRS series available) for taxes, with `p` as residual; conserves exactly to `s` (FR-032/FR-033)
+- [ ] T059 [US4] Create `src/babylon/engine/systems/distribution.py` with `split_surplus_to_pirt(state, county_aggregate)`: at county scale, split `s` into `p + i + r + t` using `fred_fed_funds_rate` for interest, `bea_reis_rent` for rent, IRS/BEA effective tax rate (use existing `qcew_employment` proxy if no IRS series available) for taxes, with `p` as residual; conserves exactly to `s` (FR-032/FR-033)  *(deferred — distribution system lands with the engine integration follow-up)*
 
 **Checkpoint**: US4 fully functional. All five flow stages execute in order and conserve at their respective scales.
 

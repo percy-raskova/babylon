@@ -1,0 +1,129 @@
+openapi: 3.1.0
+info:
+  title: Boundary Flow Register Contract
+  version: 1.0.0
+  description: |
+    Append-only record of every cross-boundary flow per tick.
+    Implements FR-040 with the R2 hex-pair dimensional extension from research.md.
+
+    Constitution II.9 (Morphism as Dyadic Relation): each row is one dyadic
+    source → dest flow. No n-ary structures.
+
+    Owner subsystem: economics (per R5 ownership registry).
+    Read interface: `BoundaryFlowRegister.query(...)` Python facade.
+
+paths: {}
+
+components:
+  schemas:
+    BoundaryFlowRegisterRow:
+      type: object
+      required:
+        - session_id
+        - tick
+        - source_node_id
+        - source_kind
+        - dest_node_id
+        - dest_kind
+        - flow_type
+        - magnitude
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        tick:
+          type: integer
+          minimum: 0
+        source_node_id:
+          type: string
+          description: |
+            Identifier in the appropriate ID space for source_kind:
+              - hex:      H3 res-7 index (15 chars)
+              - county:   5-digit FIPS county code
+              - state:    2-digit FIPS state code
+              - national: "USA"
+              - external: external_node.node_id (e.g., "canada", "china")
+          minLength: 1
+          maxLength: 64
+        source_kind:
+          type: string
+          enum: [hex, county, state, national, external]
+        dest_node_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        dest_kind:
+          type: string
+          enum: [hex, county, state, national, external]
+        flow_type:
+          type: string
+          enum:
+            - trade_edge
+            - drain_edge
+            - commute_out
+            - commute_in
+            - physical_exchange
+          description: |
+            trade_edge:       bidirectional, physical FAF tons + Ricci $-value
+            drain_edge:       directional periphery → core, Hickel Φ
+            commute_out:      Vol II worker exit (study-area boundary)
+            commute_in:       Vol II worker entry (study-area boundary)
+            physical_exchange: FAF freight or USGS minerals
+        magnitude:
+          type: number
+          description: |
+            Signed magnitude. Positive = source → dest direction.
+            For trade_edge (bidirectional), positive convention is study-area
+            export; negative is import.
+
+  contracts:
+    BoundaryFlowRegister:
+      description: |
+        Python facade owned by economics subsystem.
+        Cross-subsystem read access goes through this facade (per II.11).
+      methods:
+        - signature: |
+            record(session_id: UUID, tick: int,
+                   source: tuple[str, NodeKind], dest: tuple[str, NodeKind],
+                   flow_type: BoundaryEdgeKind, magnitude: float) -> None
+          purpose: |
+            Append a row. Writes are buffered and committed inside the
+            per-tick transaction (FR-008a).
+          atomicity: |
+            Buffered until end-of-tick. The `flush_to_envelope()` method
+            transfers buffered rows to the PerTickTransactionEnvelope before
+            persist_tick_atomic() commits.
+        - signature: |
+            query(session_id: UUID, tick: int | None = None,
+                  source_kind: NodeKind | None = None,
+                  source_node_id: str | None = None,
+                  dest_kind: NodeKind | None = None,
+                  dest_node_id: str | None = None,
+                  flow_type: BoundaryEdgeKind | None = None,
+                  ) -> list[BoundaryFlowRegisterRow]
+          purpose: |
+            Filter-based row retrieval. All filters optional.
+          performance_budget: |
+            < 1 second for any tick-scoped or hex-scoped slice (SC-015).
+            B-tree indexes on (session_id, tick), (source_kind, source_node_id),
+            (dest_kind, dest_node_id) ensure this for the Detroit scenario (~10M rows).
+
+    GlobalPhiBalanceComputation:
+      description: |
+        The v_global_phi_balance view computes inflow as:
+          SUM(magnitude) WHERE flow_type = 'drain_edge' AND dest_kind = 'county'
+        per row group (session_id, tick).
+      invariant: |
+        At year-boundary ticks (tick % 52 == 0), the cumulative-since-last-boundary
+        inflow MUST equal the (sum over external nodes of phi_year_inflow) to
+        within ε = 1e-10 (FR-044).
+
+    AppendOnlyEnforcement:
+      description: |
+        Composite PRIMARY KEY (session_id, tick, source_node_id, dest_node_id, flow_type)
+        prevents duplicate row insertion. Updates and deletes blocked by:
+      mechanisms:
+        - composite_primary_key: |
+            Prevents accidental duplicates within a tick; ON CONFLICT DO NOTHING
+            makes retry-after-crash idempotent.
+        - postgres_grant: REVOKE UPDATE, DELETE ON boundary_flow_register FROM <runtime_role>

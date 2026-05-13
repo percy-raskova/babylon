@@ -168,6 +168,7 @@ markers = [
     "requires_postgres: Tests requiring a running PostgreSQL instance (skipped if unavailable)",
     "postgres: Tests using testcontainers ephemeral PostgreSQL (requires Docker)",
     "invariant: Marx value-form & software metamorphic invariant tests (spec-060)",
+    "cross_scale: marks tests for spec 062 cross-scale integration",
 ]
 addopts = [
     "-v",                      # Verbose output (already have)
@@ -419,6 +420,14 @@ ignore_substitutions = [
 [tool.hypothesis]
 deadline = 500
 max_examples = 100
+
+[tool.babylon.cross_scale]
+# Spec 062 cross-scale integration tunables (FR-029 / FR-029a / FR-046 / FR-004a).
+# These mirror the EconomyDefines fields and document the default values for
+# YAML/CLI overrides. See specs/062-cross-scale-integration/data-model.md §2.5.
+alpha_annual = 0.01            # FR-029: annual capital-equalization rate
+epsilon_conservation = 1e-10   # FR-046: conservation-residual tolerance
+scenario_length_years = 15     # FR-004a: immutable scenario length
 
 [tool.babylon.logging]
 default_level = "INFO"

@@ -832,5 +832,6 @@ ADR0XX_descriptive_name:
 - PostgreSQL 16+ with PostGIS, pgvector, uuid-ossp extensions; SQLite for reference data only (`marxist-data-3NF.sqlite`) (061-real-backend-wireup)
 
 ## Recent Changes
+- 062-cross-scale-integration: Two-phase persistence boundary, per-tick transactional atomicity (FR-008a), weekly tick + year-scoped coefficient interpolation, hex-as-source-of-truth aggregation views, 5-flow-type pipeline ordering, Canada boundary node, conservation audit log with determinism hash
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)
 - 001-mvp-sim-engine: Added Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x

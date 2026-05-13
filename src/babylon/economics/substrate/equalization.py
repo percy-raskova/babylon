@@ -117,7 +117,7 @@ class DefaultHexEqualizationComputer:
     def equalize_capital(
         self,
         grid: HexGrid,
-        alpha: float = 0.01,
+        alpha: float | None = None,
         rent_defines: RentCircuitDefines | None = None,
     ) -> HexGrid:
         """Migrate capital between hexes based on profit rate gradient.
@@ -128,13 +128,23 @@ class DefaultHexEqualizationComputer:
 
         Args:
             grid: HexGrid with current profit rates and capital stocks.
-            alpha: Migration speed coefficient (default 0.01).
+            alpha: Migration speed coefficient. When ``None`` (the default),
+                the value is sourced from ``GameDefines.economy.alpha_weekly``
+                per spec 062 FR-029. The historical hard-coded ``0.01`` was
+                an annual rate; under weekly tick cadence that compounded
+                52× into the wrong magnitude. Pass an explicit float to
+                override the GameDefines value (e.g., for unit tests that
+                exercise specific gradients).
             rent_defines: Optional RentCircuitDefines for ground rent
                 extraction.  None disables rent (backward compatible).
 
         Returns:
             New HexGrid with updated capital stocks.
         """
+        if alpha is None:
+            from babylon.config.defines import GameDefines
+
+            alpha = GameDefines().economy.alpha_weekly
         from babylon.economics.substrate.ground_rent import compute_ground_rent
         from babylon.economics.substrate.types import HexGrid as HexGridType
 

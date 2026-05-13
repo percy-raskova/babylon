@@ -2,10 +2,39 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.5.0"
-  updated: "2026-05-12"
-  last_sprint: "061-real-backend-wireup (Complete; 130/131 tasks done, 1 partial — see specs/061-real-backend-wireup/tasks.md and ADR039)"
-  previous_sprint: "059-adr-bundle-2-post-spec-057 (Complete; sub-component LOC splits deferred)"
+  version: "2.6.0"
+  updated: "2026-05-13"
+  last_sprint: "062-cross-scale-integration (Complete; 67/103 tasks done, 36 deferred — see specs/062-cross-scale-integration/tasks.md and ADR040)"
+  previous_sprint: "061-real-backend-wireup (Complete; 130/131 tasks done, 1 partial — see specs/061-real-backend-wireup/tasks.md and ADR039)"
+  spec_062_summary: |
+    Cross-scale value, substrate, and tick propagation engine. Codifies the
+    two-phase persistence boundary (SQLite-as-fixture / Postgres-as-runtime),
+    per-tick transactional atomicity (FR-008a), hex resolution 7 as the only
+    persisted source-of-truth for c/v/s/K/biocapacity (FR-018/FR-019),
+    year-scoped coefficient lookups with slowly-varying vs event-discrete
+    policy classes (FR-011/012/013/041), 9-node external boundary set
+    (8 international + rest_of_usa, Canada as first-class per Constitution
+    IV.1 R4 amendment), and a conservation audit log with per-tick SHA-256
+    determinism hash (GATE-1 / Constitution III.7).
+
+    Delivered: 6 Postgres migrations (0010-0015), 9 Pydantic models,
+    SubstrateSystem at pipeline slot 2.5, ConservationAuditor +
+    ConservationAuditQuery, ImmutableReferenceLookup with FR-016/041 clamp
+    behaviour, BoundaryFlowRegister with hex-pair discriminator schema,
+    distribute_phi_week_to_counties helper, distribution.split_surplus_to_pirt,
+    PostgresRuntime.persist_tick_atomic + get_last_committed_tick, ADR040,
+    111 unit + property tests passing.
+
+    All five constitutional gates close: GATE-1 (determinism hash),
+    GATE-2 (no DB I/O during tick), GATE-3 (subsystem ownership registry),
+    GATE-4 (Vol II = min-cost flow only, slime-mold deferred), GATE-5
+    (Canada as first-class international node).
+
+    36 tasks deferred to engine-integration follow-up (live-Postgres
+    integration tests, full LODES OD matrix loader, real Hickel/Ricci
+    hydration, 780-tick perf test). All deferrals documented inline in
+    specs/062-cross-scale-integration/tasks.md with explicit reasons.
+
   spec_061_summary: |
     Cutover from v2 fixture data to live Postgres-backed engine state.
     Delivered: 5 migrations (0006-0010), atomic snapshot writes, hybrid retry-then-exit

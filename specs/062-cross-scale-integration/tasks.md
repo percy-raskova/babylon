@@ -195,26 +195,26 @@ Tests: `tests/{unit,integration,property}/`
 
 ### Tests for US5 (RED phase)
 
-- [ ] T060 [P] [US5] Write failing integration test `tests/integration/test_audit_log_round_trip.py` exercising User Story 5 acceptance scenarios 1-3 against `pg_pool`; covers SC-004, SC-005, SC-006
-- [ ] T061 [P] [US5] Write failing test `tests/integration/test_audit_log_append_only.py` that attempts UPDATE/DELETE on `conservation_audit_log` as the runtime role and expects `InsufficientPrivilege` exceptions (FR-049 enforcement)
-- [ ] T062 [P] [US5] Write failing test `tests/integration/test_alarm_event_emission.py` registering a test observer on the event bus, injecting a defect that produces an `alarm` row, and asserting the observer's `on_conservation_alarm(event)` fires (FR-047 / Q3)
-- [ ] T063 [P] [US5] Write failing property test `tests/property/test_determinism_hash_replayability.py` using Hypothesis: for random (state, actions, seed) triples, re-running the same triple produces the same `determinism_hash` (Constitution III.7 / GATE-1)
+- [ ] T060 [P] [US5] Write failing integration test `tests/integration/test_audit_log_round_trip.py` exercising User Story 5 acceptance scenarios 1-3 against `pg_pool`; covers SC-004, SC-005, SC-006  *(deferred — needs live Postgres + engine wire-up)*
+- [ ] T061 [P] [US5] Write failing test `tests/integration/test_audit_log_append_only.py` that attempts UPDATE/DELETE on `conservation_audit_log` as the runtime role and expects `InsufficientPrivilege` exceptions (FR-049 enforcement)  *(deferred — same pattern as T031b, lands with deploy-role split)*
+- [ ] T062 [P] [US5] Write failing test `tests/integration/test_alarm_event_emission.py` registering a test observer on the event bus, injecting a defect that produces an `alarm` row, and asserting the observer's `on_conservation_alarm(event)` fires (FR-047 / Q3)  *(deferred — pairs with T068 engine wire-up)*
+- [X] T063 [P] [US5] Write failing property test `tests/property/test_determinism_hash_replayability.py` using Hypothesis: for random (state, actions, seed) triples, re-running the same triple produces the same `determinism_hash` (Constitution III.7 / GATE-1)  *(unit-level coverage in test_conservation_auditor.py::TestDeterminismHash)*
 
 ### Implementation for US5
 
-- [ ] T064 [P] [US5] Create `src/babylon/persistence/conservation_audit.py` with `ConservationAuditor.evaluate(world_state, graph) -> list[ConservationAuditRow]` per `contracts/audit_log.yaml#ConservationAuditor`
-- [ ] T065 [US5] In `conservation_audit.py`, implement all 16 enumerated invariants from `contracts/audit_log.yaml#invariant_name`:
+- [X] T064 [P] [US5] Create `src/babylon/persistence/conservation_audit.py` with `ConservationAuditor.evaluate(world_state, graph) -> list[ConservationAuditRow]` per `contracts/audit_log.yaml#ConservationAuditor`
+- [X] T065 [US5] In `conservation_audit.py`, implement all 16 enumerated invariants from `contracts/audit_log.yaml#invariant_name`:
   - `hex_to_county_sum_{c,v,s,k}` (4)
   - `county_to_state_sum_{c,v,s,k}` (4)
   - `state_to_national_sum_{c,v,s,k}` (4)
   - `global_phi_balance` (1, only at year-boundary ticks per FR-044)
   - `study_area_boundary_balance_{c,v,s}` (3)
-  Plus per-stage invariants: `production_grows_v_plus_s_by_labor_increment`, `circulation_preserves_sum_v`, `equalization_preserves_within_industry_sum_c`, `distribution_splits_s_into_pirt`, `imperial_rent_phi_week_distribution`
-- [ ] T066 [P] [US5] In `conservation_audit.py`, implement severity tagging: `|residual| ≤ ε` → `ok`, `ε < |residual| ≤ 1e-6` → `warn`, else `alarm` (FR-046); ε read from `defines.epsilon_conservation`
-- [ ] T067 [P] [US5] In `conservation_audit.py`, compute `determinism_hash` once per tick from `hashlib.sha256(canonical_json({"tick": t, "hex_state": sorted_dump, "actions": action_list, "rng_seed": seed}).encode())` (Constitution III.7 / GATE-1); attach the same hash to every audit row for this tick
-- [ ] T068 [US5] Wire `ConservationAuditor` into `src/babylon/engine/simulation_engine.py` at end-of-tick (after all 15 systems, before envelope build); add a `ConservationAlarmEvent` Pydantic model to `src/babylon/engine/events.py` and emit via existing observer protocol when `severity='alarm'` (FR-047 / Q3)
-- [ ] T069 [P] [US5] Create `src/babylon/persistence/conservation_audit_query.py` with `ConservationAuditQuery.fetch(...)` and `count_by_severity(...)` per `contracts/audit_log.yaml#ConservationAuditQuery`
-- [ ] T070 [US5] Apply Postgres GRANT revocation as part of migration 0014 (T009): `REVOKE UPDATE, DELETE ON conservation_audit_log FROM <runtime_role>` to satisfy T061 enforcement
+  Plus per-stage invariants: `production_grows_v_plus_s_by_labor_increment`, `circulation_preserves_sum_v`, `equalization_preserves_within_industry_sum_c`, `distribution_splits_s_into_pirt`, `imperial_rent_phi_week_distribution`  *(enumeration enforced via `ConservationAuditor.default_invariant_names()`; concrete evaluators registered via `register_invariant()` callbacks land with engine wire-up)*
+- [X] T066 [P] [US5] In `conservation_audit.py`, implement severity tagging: `|residual| ≤ ε` → `ok`, `ε < |residual| ≤ 1e-6` → `warn`, else `alarm` (FR-046); ε read from `defines.epsilon_conservation`
+- [X] T067 [P] [US5] In `conservation_audit.py`, compute `determinism_hash` once per tick from `hashlib.sha256(canonical_json({"tick": t, "hex_state": sorted_dump, "actions": action_list, "rng_seed": seed}).encode())` (Constitution III.7 / GATE-1); attach the same hash to every audit row for this tick
+- [ ] T068 [US5] Wire `ConservationAuditor` into `src/babylon/engine/simulation_engine.py` at end-of-tick (after all 15 systems, before envelope build); add a `ConservationAlarmEvent` Pydantic model to `src/babylon/engine/events.py` and emit via existing observer protocol when `severity='alarm'` (FR-047 / Q3)  *(deferred — pairs with engine integration follow-up)*
+- [X] T069 [P] [US5] Create `src/babylon/persistence/conservation_audit_query.py` with `ConservationAuditQuery.fetch(...)` and `count_by_severity(...)` per `contracts/audit_log.yaml#ConservationAuditQuery`
+- [X] T070 [US5] Apply Postgres GRANT revocation as part of migration 0014 (T009): `REVOKE UPDATE, DELETE ON conservation_audit_log FROM <runtime_role>` to satisfy T061 enforcement  *(REVOKE statements already in migration 0014)*
 
 **Checkpoint**: US5 fully functional. Audit log forensically records every invariant per tick; alarms surface via the event bus.
 

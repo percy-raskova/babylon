@@ -1,0 +1,146 @@
+openapi: 3.1.0
+info:
+  title: Conservation Audit Log Contract
+  version: 1.0.0
+  description: |
+    Append-only forensic log of per-tick conservation invariants.
+    Implements FR-043 through FR-049 + GATE-1 (Constitution III.7 determinism hash).
+
+    Each row records one (tick, scale, invariant) evaluation. Severity is graded
+    at three levels: ok / warn / alarm (per FR-046).
+
+paths: {}
+
+components:
+  schemas:
+    ConservationAuditRow:
+      type: object
+      required:
+        - session_id
+        - tick
+        - scale
+        - invariant_name
+        - computed_value
+        - expected_value
+        - residual
+        - severity
+        - determinism_hash
+        - created_at_utc
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        tick:
+          type: integer
+          minimum: 0
+        scale:
+          type: string
+          enum: [hex, county, state, national, global_phi, per_stage]
+          description: |
+            Granularity of this invariant check. Most rows are at county/state/
+            national (aggregation invariants). Per-stage rows cover within-tick
+            invariants for Production / Circulation / Equalization / Distribution
+            / ImperialRent.
+        invariant_name:
+          type: string
+          description: |
+            Stable identifier. Enumerated values include:
+              - hex_to_county_sum_c
+              - hex_to_county_sum_v
+              - hex_to_county_sum_s
+              - hex_to_county_sum_k
+              - county_to_state_sum_c|v|s|k
+              - state_to_national_sum_c|v|s|k
+              - global_phi_balance
+              - study_area_boundary_balance_c|v|s
+              - production_grows_v_plus_s_by_labor_increment
+              - circulation_preserves_sum_v
+              - equalization_preserves_within_industry_sum_c
+              - distribution_splits_s_into_pirt
+              - imperial_rent_phi_week_distribution
+        computed_value:
+          type: number
+        expected_value:
+          type: number
+        residual:
+          type: number
+          description: |
+            computed_value - expected_value. Sign-preserving.
+        severity:
+          type: string
+          enum: [ok, warn, alarm]
+          description: |
+            ok:    |residual| ≤ 1e-10 (FR-046)
+            warn:  1e-10 < |residual| ≤ 1e-6
+            alarm: |residual| > 1e-6
+        determinism_hash:
+          type: string
+          minLength: 64
+          maxLength: 64
+          description: |
+            SHA-256 hex of canonical-JSON(tick + sorted hex_state + actions + rng_seed).
+            Same value for every row sharing a (session_id, tick); GATE-1 / III.7.
+        created_at_utc:
+          type: string
+          format: date-time
+
+  contracts:
+    ConservationAuditor:
+      description: |
+        Engine-internal end-of-tick auditor.
+        Runs after the 15-system pipeline completes; before the per-tick transaction commits.
+      methods:
+        - signature: |
+            evaluate(world_state: WorldState, graph: DiGraph) -> list[ConservationAuditRow]
+          purpose: |
+            Computes all invariants for this tick.
+            Returns one row per (scale, invariant). Severity tagged per FR-046.
+            Each alarm-severity row triggers a structured event on the event bus
+            per FR-047 (refined by Clarification Q3).
+
+    ConservationAuditQuery:
+      description: |
+        Cross-subsystem read facade (per II.11) for querying audit rows.
+      methods:
+        - signature: |
+            fetch(session_id: UUID, tick: int | None = None,
+                  scale: str | None = None, severity: str | None = None,
+                  ) -> list[ConservationAuditRow]
+          purpose: |
+            Returns rows matching the filters. All filters optional.
+            Common patterns:
+              - First alarm in session: fetch(session_id, severity='alarm') ORDER BY tick LIMIT 1
+              - All invariants at tick T: fetch(session_id, tick=T)
+              - Time-series for one invariant: fetch(session_id, invariant_name='hex_to_county_sum_c') ORDER BY tick
+        - signature: |
+            count_by_severity(session_id: UUID, tick_range: tuple[int, int] | None = None) -> dict[str, int]
+          purpose: |
+            Returns {'ok': N, 'warn': N, 'alarm': N} for the requested range.
+
+    EventEmission:
+      description: |
+        Per FR-047 (refined by Q3): alarm-severity rows emit a structured event
+        onto the existing event bus.
+      event_schema:
+        kind: ConservationAlarmEvent
+        fields:
+          - session_id
+          - tick
+          - scale
+          - invariant_name
+          - residual
+        delivery: |
+          Synchronous in-process publish to the observer protocol channel.
+          Subscribers (UI banners, batch-mode stderr loggers) may render the alarm
+          without blocking the engine. The tick does NOT pause.
+
+    AppendOnlyEnforcement:
+      description: |
+        FR-049: rows MUST NOT be modified or deleted by runtime tick logic.
+      mechanisms:
+        - postgres_grant: REVOKE UPDATE, DELETE ON conservation_audit_log FROM <runtime_role>
+        - test: |
+            tests/integration/test_audit_log_append_only.py runs:
+              - INSERT (allowed)
+              - UPDATE (should fail with INSUFFICIENT_PRIVILEGE)
+              - DELETE (should fail with INSUFFICIENT_PRIVILEGE)

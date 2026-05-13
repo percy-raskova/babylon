@@ -1,0 +1,162 @@
+openapi: 3.1.0
+info:
+  title: Immutable Reference Series Contract
+  version: 1.0.0
+  description: |
+    Read-only annual reference series copied from SQLite at initialization.
+    Implements FR-004 (year-range copy), FR-004a (scenario_length_years immutable),
+    FR-005 (no runtime writes), FR-011/FR-012/FR-013 (interpolation policy).
+
+    Constitution III.4.2: SQLite reference is **fixture data** (pinned snapshot,
+    never re-fetched at runtime). The Postgres `immutable_reference_*` family
+    is the **fixture-derived runtime cache** — read at runtime but never re-fetched.
+
+    Owner subsystem: persistence. Read interface: `ImmutableReferenceLookup`
+    typed Python protocol.
+
+paths: {}
+
+components:
+  schemas:
+    SeriesDescriptor:
+      type: object
+      description: |
+        Metadata about an immutable reference series, registered in GameDefines.
+      required: [series_id, policy, canonical_source, federal_data_class]
+      properties:
+        series_id:
+          type: string
+          enum:
+            - bea_io_intermediate
+            - bea_io_imports
+            - bea_io_make
+            - melt_tau
+            - basket_gamma
+            - erdi_ratio
+            - hickel_drain
+            - ricci_unequal
+            - faf_freight
+            - qcew_employment
+            - qcew_wages
+            - bea_reis_rent
+            - fred_fed_funds_rate
+            - eia_energy
+            - usgs_minerals
+            - fcc_broadband
+            - regulatory_regime
+            - datacenter_came_online
+        policy:
+          type: string
+          enum: [slowly_varying, event_discrete]
+          description: |
+            slowly_varying: linear interpolation across 52 weeks per FR-012.
+            event_discrete: step-function at year-boundary ticks per FR-013.
+        canonical_source:
+          type: string
+          description: |
+            Human-readable identifier of the SQLite source table and federal agency.
+          example: "BEA Make-Use-Imports Matrix 2010-2024 (BEA.gov)"
+        federal_data_class:
+          type: string
+          enum: [federal_economic, federal_demographic, federal_infrastructure,
+                 international_trade, land_cover_spatial, legal_judicial_housing]
+          description: |
+            Constitution III.4.1 six-category data catalog classification.
+
+    ReferenceLookupRequest:
+      type: object
+      description: |
+        Internal request to `ImmutableReferenceLookup.get(series_id, tick)`.
+      required: [series_id, tick]
+      properties:
+        series_id: { type: string }
+        tick: { type: integer, minimum: 0 }
+
+    ReferenceLookupResult:
+      type: object
+      description: |
+        Per FR-011/FR-012/FR-013: returns a numeric value (or matrix) plus
+        metadata showing how the value was obtained.
+      required: [value, simulated_year, lookup_method, bracketing_years]
+      properties:
+        value:
+          oneOf:
+            - { type: number }
+            - { type: array, items: { type: number } }
+            - { type: object, description: "Matrix/JSON for multi-dimensional series" }
+        simulated_year:
+          type: integer
+          description: |
+            `start_year + (tick // 52)`.
+        lookup_method:
+          type: string
+          enum: [exact_year, linear_interpolated, clamped_to_last]
+          description: |
+            exact_year:           tick % 52 == 0, simulated_year exactly present.
+            linear_interpolated:  slowly_varying series, tick % 52 != 0.
+            clamped_to_last:      simulated_year exceeds the copied range (FR-016).
+        bracketing_years:
+          type: array
+          description: |
+            [y, y+1] for linear_interpolated; [y] for exact_year; [y_max] for clamped_to_last.
+          items: { type: integer }
+        warning_emitted:
+          type: boolean
+          default: false
+          description: |
+            True if FR-016 warning was emitted (one-time per series per session).
+
+  contracts:
+    ImmutableReferenceLookup:
+      description: |
+        Python typed protocol owned by persistence subsystem.
+      methods:
+        - signature: |
+            get(series_id: str, tick: int) -> ReferenceLookupResult
+          purpose: |
+            Returns the active value for `series_id` at tick `t`.
+            Applies policy (slowly_varying / event_discrete) per series descriptor.
+          performance_budget: |
+            < 1 ms per call. Caching across same-tick repeats handled internally.
+        - signature: |
+            list_copied_years(series_id: str) -> tuple[int, int]
+          purpose: |
+            Returns (start_year, end_year_inclusive) for the series in this session's
+            immutable_reference_* tables. Per FR-004a, end_year - start_year + 1
+            equals scenario_length_years + 1.
+
+    InitializationCopy:
+      description: |
+        Phase A initialization routine that populates `immutable_reference_*`
+        tables from SQLite for the session's year range.
+      method:
+        signature: |
+          copy_reference_series(session_id: UUID, start_year: int,
+                               scenario_length_years: int,
+                               sqlite_path: Path) -> dict[str, tuple[int, int]]
+        behavior: |
+          - Open SQLite read-only.
+          - For each registered SeriesDescriptor, copy rows for years
+            [start_year .. start_year + scenario_length_years] into the
+            corresponding immutable_reference_* table with session_id
+            stamped.
+          - Verify every year is present in SQLite; raise
+            InitializationError if any year is missing for any required
+            series.
+          - Close SQLite handle (FR-002).
+        returns: |
+          For each series_id, the (start_year, end_year) actually copied.
+
+    PostgresGrants:
+      description: |
+        Enforcement of FR-005 (no runtime writes to immutable_reference_*).
+      mechanisms:
+        - migration_role: |
+            Initialization runs under a role that has INSERT permission on
+            immutable_reference_*. The role is dropped (or its permissions
+            revoked) after initialization completes.
+        - runtime_role: |
+            The runtime tick role has SELECT-only on immutable_reference_*.
+            Any attempted INSERT/UPDATE/DELETE during runtime raises
+            INSUFFICIENT_PRIVILEGE — a Postgres-enforced invariant, not
+            application-level discipline.

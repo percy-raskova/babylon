@@ -1,0 +1,205 @@
+openapi: 3.1.0
+info:
+  title: Cross-Scale Persistence Contract (Postgres ↔ NetworkX/XGI)
+  version: 1.0.0
+  description: |
+    Inter-spec contract codifying the hydrate/dehydrate boundary between the
+    Postgres runtime store and the in-memory NetworkX+XGI representation
+    that the engine pipeline operates on.
+
+    Constitution II.6 (State is Data, Engine is Transformation): the runtime
+    `World` is the single in-memory structure for tick computation. No DB I/O
+    during the tick itself. Hydration is pre-tick; dehydration is post-tick.
+
+    FR-008a (per-tick atomicity): the entire dehydration step happens inside
+    one Postgres transaction wrapping `dynamic_*` writes + `conservation_audit_log`
+    appends. Crash recovery resumes from the last committed tick.
+
+paths: {}  # No HTTP paths — this is a Python module contract.
+
+components:
+  schemas:
+    HydrationResult:
+      type: object
+      description: |
+        Output of `PostgresRuntime.hydrate_state(session_id, tick)`.
+        Constructs the WorldState + NetworkX graph + XGI hypergraph triple
+        for a single (session, tick).
+      required: [world_state, hex_graph, hypergraph, tick, current_simulated_year]
+      properties:
+        world_state:
+          type: object
+          description: |
+            Pydantic `WorldState` instance with tick, events, and minimal metadata.
+        hex_graph:
+          type: object
+          description: |
+            NetworkX `DiGraph` with hex nodes (`_node_type="hex"`),
+            external nodes (`_node_type="external"`), and boundary edges
+            (`edge_type` in {trade_edge, drain_edge, commute_out, commute_in,
+            physical_exchange}).
+        hypergraph:
+          type: object
+          description: |
+            XGI `Hypergraph` with community memberships (consumed read-only).
+        tick:
+          type: integer
+          minimum: 0
+        current_simulated_year:
+          type: integer
+          description: |
+            `start_year + (tick // 52)`. Pre-computed for systems that need it.
+          minimum: 1900
+          maximum: 2100
+
+    PerTickTransactionEnvelope:
+      type: object
+      description: |
+        Atomic unit of dehydration per FR-008a. All four arrays commit as one
+        Postgres transaction or none of them commit.
+      required:
+        - session_id
+        - tick
+        - hex_state_rows
+        - external_node_rows
+        - boundary_register_rows
+        - audit_log_rows
+        - determinism_hash
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        tick:
+          type: integer
+          minimum: 0
+        hex_state_rows:
+          type: array
+          description: |
+            One `DynamicHexState` row per study-area hex for this tick.
+            ~1700 rows expected for Detroit scenario.
+          items:
+            $ref: "#/components/schemas/DynamicHexStateRow"
+        external_node_rows:
+          type: array
+          description: |
+            One `ExternalNode` row per external node (~8 for Detroit:
+            Canada + 7 world regions + 1 Rest-of-USA).
+          items:
+            $ref: "#/components/schemas/ExternalNodeRow"
+        boundary_register_rows:
+          type: array
+          description: |
+            Append-only rows recording every cross-boundary flow this tick.
+          items:
+            $ref: "#/components/schemas/BoundaryFlowRegisterRow"
+        audit_log_rows:
+          type: array
+          description: |
+            One row per (scale, invariant) combination evaluated. Includes
+            shared `determinism_hash` for this tick.
+          items:
+            $ref: "#/components/schemas/ConservationAuditRow"
+        determinism_hash:
+          type: string
+          minLength: 64
+          maxLength: 64
+          description: |
+            SHA-256 hex of canonical-JSON(tick + sorted hex_state_rows +
+            sorted action_list + rng_seed). GATE-1 / Constitution III.7.
+
+    DynamicHexStateRow:
+      type: object
+      required:
+        - session_id
+        - tick
+        - h3_index
+        - county_fips
+        - state_fips
+        - region_id
+        - c
+        - v
+        - s
+        - k
+        - biocapacity_stock
+        - energy_stock
+        - raw_material_stock
+        - internet_access_pct
+        - surveillance_coupling
+      properties:
+        session_id: { type: string, format: uuid }
+        tick: { type: integer, minimum: 0 }
+        h3_index: { type: string, minLength: 15, maxLength: 15 }
+        county_fips: { type: string, pattern: "^\\d{5}$" }
+        state_fips: { type: string, pattern: "^\\d{2}$" }
+        region_id: { type: string }
+        c: { type: number, minimum: 0 }
+        v: { type: number, minimum: 0 }
+        s: { type: number, minimum: 0 }
+        k: { type: number, minimum: 0 }
+        biocapacity_stock: { type: number, minimum: 0 }
+        energy_stock: { type: number, minimum: 0 }
+        raw_material_stock: { type: number, minimum: 0 }
+        internet_access_pct: { type: number, minimum: 0, maximum: 1 }
+        surveillance_coupling: { type: number, minimum: 0, maximum: 1 }
+
+    ExternalNodeRow:
+      type: object
+      required:
+        - session_id
+        - tick
+        - node_id
+        - kind
+        - phi_year_inflow
+        - bilateral_trade_value
+        - bilateral_trade_tons
+        - erdi_ratio
+      properties:
+        session_id: { type: string, format: uuid }
+        tick: { type: integer, minimum: 0 }
+        node_id:
+          type: string
+          enum: [canada, china, eu, india, sub_saharan_africa, latin_america,
+                 russia_csi, southeast_asia, rest_of_usa]
+        kind:
+          type: string
+          enum: [international, domestic_rest]
+        phi_year_inflow: { type: number, minimum: 0 }
+        bilateral_trade_value: { type: number, minimum: 0 }
+        bilateral_trade_tons: { type: number, minimum: 0 }
+        erdi_ratio: { type: number, minimum: 0, exclusiveMinimum: true }
+
+    BoundaryFlowRegisterRow:
+      $ref: "./boundary_register.yaml#/components/schemas/BoundaryFlowRegisterRow"
+
+    ConservationAuditRow:
+      $ref: "./audit_log.yaml#/components/schemas/ConservationAuditRow"
+
+  contracts:
+    PostgresRuntimeExtensions:
+      description: |
+        Python typed-protocol additions to the existing `PostgresRuntime`
+        class (Spec 037). New methods specified by this contract.
+      methods:
+        - signature: |
+            hydrate_state(session_id: UUID, tick: int) -> HydrationResult
+          purpose: |
+            Reads all dynamic_* + immutable_reference_* rows for the given tick.
+            Constructs WorldState + NetworkX + XGI in-memory representation.
+            No mutations to Postgres during this call.
+          performance_budget: < 2 seconds for 1700-hex study area at tick t.
+        - signature: |
+            persist_tick_atomic(envelope: PerTickTransactionEnvelope) -> None
+          purpose: |
+            Writes the entire envelope in one Postgres transaction.
+            On exception, rolls back; no partial state visible to readers.
+            Implements FR-008a.
+          performance_budget: < 1 second for typical envelope.
+          atomicity: |
+            Uses `with conn.transaction():` block. INSERT statements use
+            `ON CONFLICT (session_id, tick, ...) DO NOTHING` for idempotency
+            on retry-after-crash scenarios.
+        - signature: |
+            get_last_committed_tick(session_id: UUID) -> int | None
+          purpose: |
+            Returns the largest tick for which a complete envelope was committed.
+            Used by `EngineBridge.resume_session()` for crash recovery.

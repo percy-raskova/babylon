@@ -51,9 +51,10 @@ class TestMaterialistCausalityOrder:
         # System names as defined by each system's `name` property.
         # Position 14 is OODASystem per spec-056 F6=α (was last/21 before).
         expected_order = [
-            # --- Material Base (positions 1-13) ---
+            # --- Material Base (positions 1-13, plus Substrate at 2.5) ---
             "vitality",  # 1.  VitalitySystem
             "Territory",  # 2.  TerritorySystem
+            "substrate",  # 2.5 SubstrateSystem (Spec 062 US7)
             "production",  # 3.  ProductionSystem
             "tick_dynamics",  # 4.  TickDynamicsSystem
             "reserve_army",  # 5.  ReserveArmySystem (Feature 021)
@@ -159,6 +160,10 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_twenty_one_systems_present(self) -> None:
-        """All 21 systems must be registered (13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology + 1 OODA)."""
-        assert len(_DEFAULT_SYSTEMS) == 21, f"Expected 21 systems, got {len(_DEFAULT_SYSTEMS)}"
+    def test_all_twenty_two_systems_present(self) -> None:
+        """All 22 systems must be registered.
+
+        13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology
+        + 1 OODA + 1 substrate (Spec 062 US7).
+        """
+        assert len(_DEFAULT_SYSTEMS) == 22, f"Expected 22 systems, got {len(_DEFAULT_SYSTEMS)}"

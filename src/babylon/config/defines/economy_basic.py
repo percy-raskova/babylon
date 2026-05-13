@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.economics.coefficient_lookup import CoefficientLookupPolicy
+from babylon.config.defines.cross_scale import CoefficientLookupPolicy
 
 
 class CrisisDefines(BaseModel):

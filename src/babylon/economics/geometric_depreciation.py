@@ -48,7 +48,7 @@ def delta_weekly(delta_annual: float) -> float:
 
     Example:
         >>> round(delta_weekly(0.07), 6)
-        0.001397
+        0.001395
         >>> abs((1 - delta_weekly(0.07)) ** 52 - (1 - 0.07)) < 1e-12
         True
     """
@@ -75,7 +75,7 @@ def alpha_weekly(alpha_annual: float) -> float:
 
     Example:
         >>> round(alpha_weekly(0.01), 7)
-        0.0001932
+        0.0001933
         >>> alpha_weekly(0.01) < 1 / 52
         True
     """

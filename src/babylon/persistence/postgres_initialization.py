@@ -112,47 +112,50 @@ def _validate_alpha_invariant(defines: GameDefines) -> None:
 
 def copy_reference_series(
     *,
-    session_id: UUID,  # noqa: ARG001 — kept for contract surface; downstream tags inserts with this
+    session_id: UUID,
     start_year: int,
     scenario_length_years: int,
     sqlite_path: Path,
-    runtime: PostgresRuntime,  # noqa: ARG001 — kept for contract surface; downstream inserts via runtime
+    runtime: PostgresRuntime,
+    counties: list[str] | None = None,
 ) -> dict[str, tuple[int, int]]:
     """Copy reference series for the session year-range.
 
     Per ``contracts/reference_series.yaml#InitializationCopy``. Returns a
     map ``{series_id: (start_year_copied, end_year_copied)}``.
 
-    Implementation note (MVP): the real SQLite hydration is owned by
-    downstream specs that already source from the trove at
-    ``/media/user/data/babylon-data/``. This function provides the
-    contract surface plus opens/closes the SQLite handle. The actual
-    INSERT INTO ``immutable_reference_*`` is performed by a downstream
-    hookable strategy registered in :class:`GameDefines` for spec 062.
-    Right now the stub returns the requested year-range for each known
-    series so the integration test contract holds.
+    The real SQLite → Postgres hydration is delegated to
+    :func:`babylon.persistence.sqlite_hydrator.hydrate_session_references`,
+    which copies BEA I-O, MELT τ, basket γ, ERDI, Hickel drain, Ricci
+    bilateral trade, FAF freight, QCEW employment, Census rent, and FRED
+    annual rate averages.
+
+    Args:
+        session_id: Owning session UUID.
+        start_year: First year (inclusive).
+        scenario_length_years: Number of years to include after start_year.
+        sqlite_path: Path to ``marxist-data-3NF.sqlite``.
+        runtime: PostgresRuntime to write through.
+        counties: Optional 5-digit FIPS list to scope QCEW + rent
+            (e.g., the Detroit tri-county set 26163/26125/26099). When
+            None, all counties are hydrated (large; ~3000 counties).
+
+    Returns:
+        ``{series_id: (start_year, end_year)}`` for every series with at
+        least one row copied.
     """
+    from babylon.persistence.sqlite_hydrator import hydrate_session_references
+
     end_year = start_year + scenario_length_years
-    conn = _open_sqlite_readonly(sqlite_path)
-    try:
-        # Future hydration logic reads from ``conn``. For the MVP we
-        # confirm the SQLite handle opens successfully and return the
-        # nominal year-range for every registered series so that the
-        # downstream invariant tests can proceed.
-        known_series = (
-            "bea_io_intermediate",
-            "bea_io_imports",
-            "melt_tau",
-            "basket_gamma",
-            "erdi_ratio",
-            "hickel_drain",
-            "qcew_wages",
-            "bea_reis_rent",
-            "fred_fed_funds_rate",
-        )
-        return dict.fromkeys(known_series, (start_year, end_year))
-    finally:
-        conn.close()
+    counts = hydrate_session_references(
+        session_id=session_id,
+        start_year=start_year,
+        end_year=end_year,
+        sqlite_path=sqlite_path,
+        runtime=runtime,
+        counties=counties,
+    )
+    return {sid: (start_year, end_year) for sid, n in counts.items() if n > 0}
 
 
 def initialize_session(
@@ -163,11 +166,22 @@ def initialize_session(
     defines: GameDefines,
     start_year: int,
     scenario_length_years: int | None = None,
+    counties: list[str] | None = None,
 ) -> InitializationReport:
     """Single-call session initialization.
 
     Per the quickstart §1 contract. The SQLite handle is provably closed
     before the function returns (FR-002).
+
+    Args:
+        session_id: Owning session UUID.
+        sqlite_path: Path to ``marxist-data-3NF.sqlite``.
+        runtime: PostgresRuntime to write through.
+        defines: GameDefines (FR-029a alpha_weekly invariant checked).
+        start_year: First simulated year.
+        scenario_length_years: Override for ``defines.economy.scenario_length_years``.
+        counties: Optional 5-digit FIPS list to scope QCEW + rent
+            (Detroit tri-county = ``["26163", "26125", "26099"]``).
     """
     _validate_alpha_invariant(defines)
     scenario_length = (
@@ -184,15 +198,33 @@ def initialize_session(
         scenario_length_years=scenario_length,
         sqlite_path=sqlite_path,
         runtime=runtime,
+        counties=counties,
     )
-    report.copied_series = set(copied.keys())
+
+    # The hydrator returns Postgres-table-keyed identifiers (e.g.
+    # 'bea_io', 'hickel_drain'). Map to the canonical lookup-policy
+    # series_ids that downstream code uses:
+    _table_to_series = {
+        "bea_io": "bea_io_imports",
+        "melt_tau": "melt_tau",
+        "basket_gamma": "basket_gamma",
+        "erdi": "erdi_ratio",
+        "hickel_drain": "hickel_drain",
+        "ricci_unequal": "ricci_unequal",
+        "faf_freight": "faf_freight",
+        "qcew_employment": "qcew_employment",
+        "bea_reis_rent": "bea_reis_rent",
+        "fred_rates": "fred_fed_funds_rate",
+    }
+    report.copied_series = {_table_to_series.get(table, table) for table in copied}
 
     # External-node bootstrap. The fixed enumeration is locked here so
     # downstream code can assume exactly nine boundary nodes per session.
     report.external_node_ids = set(INTERNATIONAL_NODES) | {DOMESTIC_REST_NODE}
 
-    # Hex hydration: the MVP wires the contract surface; real LODES
-    # distribution is owned by the Vol II circulation system (Phase 6).
+    # Hex hydration: deferred to Phase 6 (LODES OD); reported as 0 for the
+    # initialization contract surface — runtime queries operate on the
+    # immutable_reference_* + dynamic_external_node_state seeded above.
     report.hex_count = 0
 
     return report

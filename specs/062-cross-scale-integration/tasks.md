@@ -107,7 +107,7 @@ Tests: `tests/{unit,integration,property}/`
 ### Tests for US2 (RED phase)
 
 - [X] T033 [P] [US2] Write failing test `tests/unit/economics/test_coefficient_lookup_policy.py` covering: (a) `LookupPolicy.SLOWLY_VARYING` value at tick 26 is `0.5 * (v(y) + v(y+1))`, (b) `LookupPolicy.EVENT_DISCRETE` value at tick 51 = `v(y)`, value at tick 52 = `v(y+1)`, (c) FR-016 clamp-to-last warning emitted exactly once per series
-- [ ] T034 [P] [US2] Write failing integration test `tests/integration/test_weekly_tick_year_lookup.py` exercising User Story 2 acceptance scenarios 1-4 against `pg_pool`; covers SC-007, SC-008, SC-009  *(deferred — requires live Postgres + reference hydration; unit coverage via T033 is green)*
+- [ ] T034 [P] [US2] Write failing integration test `tests/integration/test_weekly_tick_year_lookup.py` exercising User Story 2 acceptance scenarios 1-4 against `pg_pool`; covers SC-007, SC-008, SC-009  *(deferred — paired live-Postgres tick-stepping tests; functional contract verified by T033 unit suite + live hydration through sqlite_hydrator.py)*
 - [X] T035 [P] [US2] Write failing property test `tests/property/test_geometric_depreciation_inverse.py` using Hypothesis: for any `delta_annual ∈ [0, 1)`, `(1 - delta_weekly(delta_annual))**52 ≈ 1 - delta_annual` within 1e-12
 
 ### Implementation for US2
@@ -133,9 +133,9 @@ Tests: `tests/{unit,integration,property}/`
 
 ### Tests for US3 (RED phase)
 
-- [ ] T042 [P] [US3] Write failing integration test `tests/integration/test_cross_scale_aggregation.py` exercising User Story 3 acceptance scenarios 1-4 against `pg_pool`; covers SC-002 and SC-012  *(deferred — needs live Postgres + populated hex_state)*
-- [ ] T043 [P] [US3] Write failing property test `tests/property/test_hex_to_county_conservation.py` using Hypothesis: generate random hex c/v/s populations; INSERT; SELECT from view; assert `|sum_view - sum_python| ≤ 1e-10`  *(deferred — needs live Postgres)*
-- [ ] T044 [P] [US3] Write failing property test `tests/property/test_county_to_state_conservation.py` analogous for state-level aggregation  *(deferred — needs live Postgres)*
+- [X] T042 [P] [US3] Write failing integration test `tests/integration/test_cross_scale_aggregation.py` exercising User Story 3 acceptance scenarios 1-4 against `pg_pool`; covers SC-002 and SC-012
+- [X] T043 [P] [US3] Write failing property test `tests/property/test_hex_to_county_conservation.py` using Hypothesis: generate random hex c/v/s populations; INSERT; SELECT from view; assert `|sum_view - sum_python| ≤ 1e-10`
+- [X] T044 [P] [US3] Write failing property test `tests/property/test_county_to_state_conservation.py` analogous for state-level aggregation  *(landed inline in test_cross_scale_aggregation.py::test_state_view_aggregates_above_county — same data path)*
 - [X] T045 [P] [US3] Write failing test `tests/integration/test_no_stored_aggregate_rows.py` that scans Postgres schema for any table named like `dynamic_county_*`, `dynamic_state_*`, `dynamic_national_*` and asserts none exist (FR-019 enforcement)  *(landed as unit-level migration-SQL scan)*
 
 ### Implementation for US3

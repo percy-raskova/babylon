@@ -47,6 +47,11 @@ def sqlite_path() -> Path:
     return SQLITE_PATH
 
 
+DETROIT_TRI_COUNTY: list[str] = ["26163", "26125", "26099"]
+"""Wayne, Oakland, Macomb FIPS — keep county scope tight so QCEW
+hydration finishes in ≤30s for integration tests."""
+
+
 def test_initialize_session_completes_and_returns_report(  # type: ignore[no-untyped-def]
     runtime, sqlite_path
 ):
@@ -68,6 +73,7 @@ def test_initialize_session_completes_and_returns_report(  # type: ignore[no-unt
         defines=defines,
         start_year=2010,
         scenario_length_years=15,
+        counties=DETROIT_TRI_COUNTY,
     )
 
     assert report.session_id == session_id

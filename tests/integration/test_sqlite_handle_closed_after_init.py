@@ -70,6 +70,8 @@ def test_sqlite_lockable_after_initialize_session(runtime, sqlite_path):  # type
         defines=defines,
         start_year=2010,
         scenario_length_years=15,
+        # Scope to Detroit tri-county so QCEW hydration stays fast for CI.
+        counties=["26163", "26125", "26099"],
     )
 
     fd = os.open(str(sqlite_path), os.O_RDWR)

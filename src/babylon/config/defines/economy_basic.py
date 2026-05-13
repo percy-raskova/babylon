@@ -10,7 +10,38 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.config.defines.cross_scale import CoefficientLookupPolicy
+from babylon.config.defines.cross_scale import (
+    CoefficientLookupPolicy,
+    LookupPolicy,
+)
+
+
+def _default_lookup_policies() -> dict[str, CoefficientLookupPolicy]:
+    """Build the 11-entry default registry per data-model.md §2.5.
+
+    Spec 062, T041. Used by ``EconomyDefines.coefficient_lookup_policies``
+    via ``default_factory`` so the registry is populated for every fresh
+    :class:`GameDefines` instance.
+    """
+    policies = [
+        ("bea_io_intermediate", LookupPolicy.SLOWLY_VARYING, "BEA Make-Use 2010-2024"),
+        ("bea_io_imports", LookupPolicy.SLOWLY_VARYING, "BEA Imports Matrix 2010-2024"),
+        ("melt_tau", LookupPolicy.SLOWLY_VARYING, "MELT τ annual aggregate"),
+        ("basket_gamma", LookupPolicy.SLOWLY_VARYING, "Basket visibility γ"),
+        ("erdi_ratio", LookupPolicy.SLOWLY_VARYING, "ERDI productivity ratios"),
+        ("hickel_drain", LookupPolicy.SLOWLY_VARYING, "Hickel et al. Φ_year"),
+        ("qcew_wages", LookupPolicy.SLOWLY_VARYING, "BLS QCEW annual wages"),
+        ("bea_reis_rent", LookupPolicy.SLOWLY_VARYING, "BEA REIS rent series"),
+        ("fred_fed_funds_rate", LookupPolicy.EVENT_DISCRETE, "FRED FEDFUNDS"),
+        ("regulatory_regime", LookupPolicy.EVENT_DISCRETE, "Federal regulatory regime"),
+        ("datacenter_came_online", LookupPolicy.EVENT_DISCRETE, "Datacenter commission events"),
+    ]
+    return {
+        series_id: CoefficientLookupPolicy(
+            series_id=series_id, policy=policy, canonical_reference=ref
+        )
+        for series_id, policy, ref in policies
+    }
 
 
 class CrisisDefines(BaseModel):
@@ -355,11 +386,11 @@ class EconomyDefines(BaseModel):
         ),
     )
     coefficient_lookup_policies: dict[str, CoefficientLookupPolicy] = Field(
-        default_factory=dict,
+        default_factory=lambda: _default_lookup_policies(),
         description=(
             "Per-series lookup policies for the immutable_reference_* family "
-            "(Spec 062, FR-011 / data-model.md §2.5). Default registry populated "
-            "by GameDefines._populate_default_lookup_policies()."
+            "(Spec 062, FR-011 / data-model.md §2.5). The default registry "
+            "covers the 11 canonical series enumerated in data-model.md §2.5."
         ),
     )
 

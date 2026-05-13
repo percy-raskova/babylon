@@ -35,32 +35,32 @@ Tests: `tests/{unit,integration,property}/`
 
 ### Postgres Migrations (writable schema before any tick can persist)
 
-- [ ] T005 [P] Write migration `src/babylon/persistence/migrations/0010_immutable_reference_tables.sql` creating 10 `immutable_reference_*` tables per data-model.md §3.1 (one per series: bea_io, melt_tau, basket_gamma, erdi, hickel_drain, ricci_unequal, faf_freight, qcew_employment, bea_reis_rent, fred_rates) with `REVOKE INSERT, UPDATE, DELETE FROM PUBLIC` to enforce FR-005
-- [ ] T006 [P] Write migration `src/babylon/persistence/migrations/0011_dynamic_hex_state.sql` per data-model.md §3.2 with composite PRIMARY KEY (session_id, tick, h3_index) and indexes on (session_id, tick), (session_id, tick, county_fips), (session_id, tick, state_fips)
-- [ ] T007 [P] Write migration `src/babylon/persistence/migrations/0012_dynamic_external_node_state.sql` per data-model.md §3.3 with PRIMARY KEY (session_id, tick, node_id)
-- [ ] T008 [P] Write migration `src/babylon/persistence/migrations/0013_boundary_flow_register.sql` per data-model.md §3.4 with composite PRIMARY KEY and three B-tree indexes for the query patterns in `contracts/boundary_register.yaml`
-- [ ] T009 [P] Write migration `src/babylon/persistence/migrations/0014_conservation_audit_log.sql` per data-model.md §3.5 with `REVOKE UPDATE, DELETE` to enforce FR-049, and CHECK constraints on `severity` enum
-- [ ] T010 Write migration `src/babylon/persistence/migrations/0015_aggregation_views.sql` per data-model.md §3.6 creating `v_county_value_aggregate`, `v_state_value_aggregate`, `v_national_value_aggregate`, `v_global_phi_balance` (depends on tables created in T006, T007, T008 existing)
+- [X] T005 [P] Write migration `src/babylon/persistence/migrations/0010_immutable_reference_tables.sql` creating 10 `immutable_reference_*` tables per data-model.md §3.1 (one per series: bea_io, melt_tau, basket_gamma, erdi, hickel_drain, ricci_unequal, faf_freight, qcew_employment, bea_reis_rent, fred_rates) with `REVOKE INSERT, UPDATE, DELETE FROM PUBLIC` to enforce FR-005
+- [X] T006 [P] Write migration `src/babylon/persistence/migrations/0011_dynamic_hex_state.sql` per data-model.md §3.2 with composite PRIMARY KEY (session_id, tick, h3_index) and indexes on (session_id, tick), (session_id, tick, county_fips), (session_id, tick, state_fips)
+- [X] T007 [P] Write migration `src/babylon/persistence/migrations/0012_dynamic_external_node_state.sql` per data-model.md §3.3 with PRIMARY KEY (session_id, tick, node_id)
+- [X] T008 [P] Write migration `src/babylon/persistence/migrations/0013_boundary_flow_register.sql` per data-model.md §3.4 with composite PRIMARY KEY and three B-tree indexes for the query patterns in `contracts/boundary_register.yaml`
+- [X] T009 [P] Write migration `src/babylon/persistence/migrations/0014_conservation_audit_log.sql` per data-model.md §3.5 with `REVOKE UPDATE, DELETE` to enforce FR-049, and CHECK constraints on `severity` enum
+- [X] T010 Write migration `src/babylon/persistence/migrations/0015_aggregation_views.sql` per data-model.md §3.6 creating `v_county_value_aggregate`, `v_state_value_aggregate`, `v_national_value_aggregate`, `v_global_phi_balance` (depends on tables created in T006, T007, T008 existing)
 
 ### Foundational Pydantic Models
 
-- [ ] T011 [P] Create `src/babylon/economics/geometric_depreciation.py` with `delta_weekly(delta_annual: float) -> float` returning `1 - (1 - delta_annual)**(1/52)` per FR-014/FR-015; also `alpha_weekly(alpha_annual: float) -> float` (same form); include doctest examples
-- [ ] T012 [P] Create `src/babylon/persistence/audit_models.py` with `AuditSeverity(StrEnum)` and `ConservationAuditRow` frozen Pydantic model per data-model.md §2.4
-- [ ] T013 [P] Create `src/babylon/persistence/envelope.py` with `PerTickTransactionEnvelope` frozen Pydantic model per data-model.md §2.6
-- [ ] T013a [P] Write failing integration test `tests/unit/persistence/test_per_tick_transaction_atomicity.py` covering FR-008a: (a) successful tick — every row of an envelope (hex_state + external_node + boundary_register + audit_log) becomes visible to a separate transaction only after `persist_tick_atomic()` returns; (b) raise mid-write — entire envelope rolls back; no `dynamic_hex_state`, `conservation_audit_log`, or `boundary_flow_register` row is visible afterwards; (c) `get_last_committed_tick(session_id)` returns the largest tick for which the full envelope was committed (or `None` if none); (d) idempotency — calling `persist_tick_atomic()` twice with an identical envelope (crash-and-retry) does not error and does not duplicate rows (ON CONFLICT DO NOTHING semantics)
-- [ ] T014 [P] Create `src/babylon/economics/node_kinds.py` with `NodeKind(StrEnum)` and `BoundaryEdgeKind(StrEnum)` per data-model.md §2.3
+- [X] T011 [P] Create `src/babylon/economics/geometric_depreciation.py` with `delta_weekly(delta_annual: float) -> float` returning `1 - (1 - delta_annual)**(1/52)` per FR-014/FR-015; also `alpha_weekly(alpha_annual: float) -> float` (same form); include doctest examples
+- [X] T012 [P] Create `src/babylon/persistence/audit_models.py` with `AuditSeverity(StrEnum)` and `ConservationAuditRow` frozen Pydantic model per data-model.md §2.4
+- [X] T013 [P] Create `src/babylon/persistence/envelope.py` with `PerTickTransactionEnvelope` frozen Pydantic model per data-model.md §2.6
+- [X] T013a [P] Write failing integration test `tests/unit/persistence/test_per_tick_transaction_atomicity.py` covering FR-008a: (a) successful tick — every row of an envelope (hex_state + external_node + boundary_register + audit_log) becomes visible to a separate transaction only after `persist_tick_atomic()` returns; (b) raise mid-write — entire envelope rolls back; no `dynamic_hex_state`, `conservation_audit_log`, or `boundary_flow_register` row is visible afterwards; (c) `get_last_committed_tick(session_id)` returns the largest tick for which the full envelope was committed (or `None` if none); (d) idempotency — calling `persist_tick_atomic()` twice with an identical envelope (crash-and-retry) does not error and does not duplicate rows (ON CONFLICT DO NOTHING semantics)
+- [X] T014 [P] Create `src/babylon/economics/node_kinds.py` with `NodeKind(StrEnum)` and `BoundaryEdgeKind(StrEnum)` per data-model.md §2.3
 
 ### Foundational Tests (RED phase)
 
-- [ ] T015 [P] Write failing test `tests/unit/economics/test_geometric_depreciation.py` covering (a) `(1 - delta_weekly(0.07))**52 ≈ 1 - 0.07` to within 1e-12, (b) doctest examples pass, (c) `delta_weekly(0.07) ≈ 0.001397` (FR-015 invariant)
-- [ ] T016 [P] Write failing test `tests/unit/persistence/test_audit_models_frozen.py` verifying `ConservationAuditRow` and `PerTickTransactionEnvelope` raise on mutation
-- [ ] T017 [P] Write failing test `tests/unit/economics/test_node_kinds.py` verifying enum values match the schema constraints in `contracts/boundary_register.yaml`
+- [X] T015 [P] Write failing test `tests/unit/economics/test_geometric_depreciation.py` covering (a) `(1 - delta_weekly(0.07))**52 ≈ 1 - 0.07` to within 1e-12, (b) doctest examples pass, (c) `delta_weekly(0.07) ≈ 0.001397` (FR-015 invariant)
+- [X] T016 [P] Write failing test `tests/unit/persistence/test_audit_models_frozen.py` verifying `ConservationAuditRow` and `PerTickTransactionEnvelope` raise on mutation
+- [X] T017 [P] Write failing test `tests/unit/economics/test_node_kinds.py` verifying enum values match the schema constraints in `contracts/boundary_register.yaml`
 
 ### Foundational Implementation (GREEN — make T015-T017 pass)
 
-- [ ] T018 Implement `delta_weekly`, `alpha_weekly` in `src/babylon/economics/geometric_depreciation.py` to make T015 pass; ensure doctest example outputs match `mise run test:doctest`
-- [ ] T019 Confirm `ConservationAuditRow` and `PerTickTransactionEnvelope` use `model_config = ConfigDict(frozen=True)` so T016 passes
-- [ ] T020 Confirm enum values in `src/babylon/economics/node_kinds.py` match the YAML schema constants so T017 passes
+- [X] T018 Implement `delta_weekly`, `alpha_weekly` in `src/babylon/economics/geometric_depreciation.py` to make T015 pass; ensure doctest example outputs match `mise run test:doctest`
+- [X] T019 Confirm `ConservationAuditRow` and `PerTickTransactionEnvelope` use `model_config = ConfigDict(frozen=True)` so T016 passes
+- [X] T020 Confirm enum values in `src/babylon/economics/node_kinds.py` match the YAML schema constants so T017 passes
 
 **Checkpoint**: Foundation ready — Phase 3+ may proceed.
 

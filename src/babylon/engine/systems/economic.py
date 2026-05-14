@@ -98,6 +98,109 @@ class ImperialRentSystem(SystemBase):
         # Save updated economy back to graph (applies TRPF rent pool decay)
         self._save_economy(graph, tick_context, services)
 
+        # Spec 063 sub-stage 5b — Imperial Rent inflow (T079 / FR-017..FR-022).
+        # Invoked before Vol II Circulation per spec-062 FR-053 sub-stage order.
+        self._invoke_phi_distribution_if_wired(context)
+
+        # Spec 063 sub-stage 5c — Vol II Circulation (FR-015).
+        # Guarded by context presence so existing tests without
+        # session/register infrastructure remain green (back-compat).
+        self._invoke_vol2_circulation_if_wired(graph, context)
+
+    def _invoke_phi_distribution_if_wired(self, context: ContextType) -> None:
+        """Distribute Φ inflow from external nodes to US counties (T079).
+
+        Spec 063 T027 — closes the seam left by spec 062 by invoking
+        ``distribute_phi_week_to_counties`` per (external_node, tick) when
+        the necessary inputs are present in ``context.persistent_data``:
+
+        - ``boundary_flow_register``: per-tick BoundaryFlowRegister buffer
+        - ``session_id``: active session UUID
+        - ``external_nodes_phi``: dict[node_id → phi_year_inflow]
+        - ``county_exposure_by_external``: dict[node_id → dict[county_fips → weight]]
+
+        Silent no-op when any input is missing (back-compat). External
+        nodes with phi_year_inflow == 0 contribute zero DRAIN_EDGE rows
+        per FR-020 but do NOT fail the tick.
+        """
+        register = context.get("boundary_flow_register")
+        session_id = context.get("session_id")
+        external_nodes_phi = context.get("external_nodes_phi")
+        county_exposure_by_external = context.get("county_exposure_by_external")
+        if (
+            register is None
+            or session_id is None
+            or external_nodes_phi is None
+            or county_exposure_by_external is None
+        ):
+            return
+        tick = context.get("tick", 0)
+
+        # Local import to avoid a top-of-module circular with engine systems.
+        from babylon.engine.systems.phi_distribution import (
+            distribute_phi_week_to_counties,
+        )
+
+        for node_id, phi_year_inflow in external_nodes_phi.items():
+            if phi_year_inflow <= 0:
+                continue  # FR-020 — zero-inflow nodes contribute nothing
+            county_exposure = county_exposure_by_external.get(node_id)
+            if not county_exposure:
+                continue  # No exposure data → skip silently (operator config bug)
+            distribute_phi_week_to_counties(
+                session_id=session_id,
+                tick=int(tick),
+                external_node_id=node_id,
+                phi_year_inflow=float(phi_year_inflow),
+                county_exposure=county_exposure,
+                register=register,
+            )
+
+    def _invoke_vol2_circulation_if_wired(
+        self,
+        graph: nx.DiGraph[str] | GraphProtocol,
+        context: ContextType,
+    ) -> None:
+        """Invoke the Vol II Circulation sub-stage when its inputs are present in context.
+
+        Spec 063 T019: variable-capital redistribution across hexes per the
+        LODES OD matrix. Sub-stage 5c per FR-015 / spec 062 FR-053.
+
+        The sub-stage is gated by four ``context.persistent_data`` keys:
+        ``vol2_step``, ``boundary_flow_register``, ``session_id``, and
+        ``simulated_year``. If any are missing, the call is a silent no-op
+        — this preserves spec 062 + earlier test surfaces that don't yet
+        wire the new infrastructure.
+        """
+        # Read with dict-style access (TickContext exposes both).
+        vol2_step = context.get("vol2_step")
+        register = context.get("boundary_flow_register")
+        session_id = context.get("session_id")
+        simulated_year = context.get("simulated_year")
+        if vol2_step is None or register is None or session_id is None or simulated_year is None:
+            return
+
+        tick = context.get("tick", 0)
+        # The graph passed in may be a GraphProtocol wrapper; Vol2CirculationStep
+        # walks raw graph.nodes(data=True), which both nx.DiGraph and the
+        # NetworkXAdapter inner graph support. Unwrap if needed.
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        target_graph: Any
+        if isinstance(graph, GraphProtocol):
+            # NetworkXAdapter wraps an inner nx.DiGraph at ._graph; use it for
+            # direct attribute mutation per Vol2CirculationStep's contract.
+            target_graph = getattr(graph, "_graph", graph)
+        else:
+            target_graph = graph
+        vol2_step.step(
+            graph=target_graph,
+            register=register,
+            session_id=session_id,
+            tick=int(tick),
+            simulated_year=int(simulated_year),
+        )
+
     def _process_subsistence_phase(
         self,
         graph: nx.DiGraph[str] | GraphProtocol,

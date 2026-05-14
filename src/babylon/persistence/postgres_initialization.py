@@ -78,6 +78,11 @@ class InitializationReport:
     external_node_ids: set[str] = field(default_factory=set)
     external_node_count: int = 0
     sqlite_path: Path | None = None
+    # Spec 063 — LODES Commute Matrix hydration counts.
+    lodes_year_count: int = 0
+    lodes_row_count: int = 0
+    # Spec 063 — Option B border-commute synthesis hydration counts.
+    border_synthesis_row_count: int = 0
 
 
 # The canonical fixed external-node set per FR-036 (R4 amendment: Canada
@@ -306,6 +311,12 @@ def initialize_session(
     start_year: int,
     scenario_length_years: int | None = None,
     counties: list[str] | None = None,
+    lodes_root: Path | None = None,
+    lodes_crosswalk: Path | None = None,
+    lodes_study_area_hexes: frozenset[str] | None = None,
+    lodes_study_area_states: frozenset[str] | None = None,
+    hex_hydration_counties: frozenset[str] | None = None,
+    tiger_county_shapefile: Path | None = None,
 ) -> InitializationReport:
     """Single-call session initialization.
 
@@ -366,10 +377,81 @@ def initialize_session(
         session_id=session_id, runtime=runtime, start_year=start_year
     )
 
-    # Hex hydration: deferred to Phase 6 (LODES OD); reported as 0 for the
-    # initialization contract surface — runtime queries operate on the
-    # immutable_reference_* + dynamic_external_node_state seeded above.
-    report.hex_count = 0
+    # Spec-063 closure (2026-05-14) — hex graph hydration at tick 0.
+    # Gated on `hex_hydration_counties` so existing callers that don't
+    # need a populated hex graph (legacy unit tests, helper scripts)
+    # remain unchanged. See `babylon.persistence.hex_hydrator`.
+    if hex_hydration_counties:
+        from babylon.persistence.hex_hydrator import hydrate_hex_state
+
+        report.hex_count = hydrate_hex_state(
+            runtime=runtime,
+            session_id=session_id,
+            counties=hex_hydration_counties,
+            start_year=start_year,
+            defines=defines,
+            tiger_county_shapefile=tiger_county_shapefile,
+        )
+    else:
+        report.hex_count = 0
+
+    # Spec 063 T020 — hydrate LODES OD matrix per scenario year if inputs supplied.
+    # Gated on all four LODES paths being present so existing test surfaces that
+    # don't pass LODES inputs remain green.
+    if (
+        lodes_root is not None
+        and lodes_crosswalk is not None
+        and lodes_study_area_hexes is not None
+        and lodes_study_area_states is not None
+    ):
+        from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+
+        loader = LODESCommuteMatrixLoader(
+            lodes_root=lodes_root,
+            crosswalk_path=lodes_crosswalk,
+            study_area_hexes=lodes_study_area_hexes,
+            study_area_states=lodes_study_area_states,
+        )
+        rows_persisted = 0
+        years_persisted = 0
+        for offset in range(scenario_length):
+            year = start_year + offset
+            clamped = loader.clamp_to_available(year)
+            try:
+                count = loader.persist_to_postgres(
+                    runtime=runtime, session_id=session_id, year=clamped
+                )
+                rows_persisted += count
+                years_persisted += 1
+            except Exception:  # noqa: BLE001 — surface partial hydration in counts
+                continue
+        report.lodes_year_count = years_persisted
+        report.lodes_row_count = rows_persisted
+
+        # Spec 063 FR-026 fail-fast invariant — if any LODES row has
+        # workplace_dest='canada' but the external-node registry omits canada,
+        # refuse to proceed. (Default LODES has no Canadian rows per research §4,
+        # so this is a guard for the Option B synthesis path + synthetic tests.)
+        if "canada" not in report.external_node_ids:
+            with (
+                runtime._pool.connection() as pg,  # noqa: SLF001
+                pg.cursor() as cur,
+            ):
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM immutable_reference_lodes_od_matrix
+                    WHERE session_id = %s AND workplace_dest = 'canada'
+                    """,
+                    (session_id,),
+                )
+                canada_rows = cur.fetchone()
+                if canada_rows and canada_rows[0] > 0:
+                    raise InitializationError(
+                        "Spec 063 FR-026 fail-fast: canada destination present "
+                        "in LODES matrix but canada not present in external_node "
+                        "registry. Add canada to INTERNATIONAL_NODES or disable "
+                        "the Canadian-row injection that produced these rows."
+                    )
 
     return report
 

@@ -544,6 +544,18 @@ poetry run python tools/ingest_lodes_od.py \\
   --end-year ${usage_end_year}
 """
 
+[tasks."data:tiger-counties"]
+description = "Ingest TIGER county geometry shapefile into Postgres (idempotent). Spec-063 closure."
+usage = '''
+arg "[shapefile]" help="Path to tl_<year>_us_county.shp" default="data/tiger/county/tl_2024_us_county.shp"
+arg "[vintage]" help="Census vintage year string" default="2024"
+'''
+run = """
+poetry run python -m babylon.persistence.tiger_ingestion \\
+  --shapefile ${usage_shapefile} \\
+  --vintage ${usage_vintage}
+"""
+
 [tasks."db:bootstrap"]
 description = "Apply babylon canonical schema to the running test container (idempotent)"
 run = """

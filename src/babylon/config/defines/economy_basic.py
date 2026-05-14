@@ -394,6 +394,28 @@ class EconomyDefines(BaseModel):
         ),
     )
 
+    # Spec 063 closure — hex hydration uniform allocation defaults (2026-05-14)
+    initial_c_to_v_ratio: float = Field(
+        default=2.0,
+        ge=0.0,
+        le=10.0,
+        description=(
+            "Initial organic composition of capital used by the hex hydrator: "
+            "per-hex c = v * initial_c_to_v_ratio. Default 2.0 is a mid-range "
+            "Marxist OCC; downstream specs can re-calibrate empirically."
+        ),
+    )
+    initial_k_to_v_ratio: float = Field(
+        default=10.0,
+        ge=0.0,
+        le=50.0,
+        description=(
+            "Initial capital-stock to variable-capital ratio used by the hex "
+            "hydrator: per-hex K = v * initial_k_to_v_ratio. Default 10.0 "
+            "approximates a ~10-year accumulated K relative to annual wages."
+        ),
+    )
+
     # Spec 063 — Vol II Circulation System with LODES OD (FR-031..FR-036)
     border_commute_share: float = Field(
         default=0.50,

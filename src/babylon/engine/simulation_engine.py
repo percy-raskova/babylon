@@ -229,13 +229,22 @@ class SimulationEngine:
         if isinstance(context, dict):
             context.setdefault("audit_rows", []).extend(rows)
 
-        # Emit alarms onto the event bus.
+        # Emit alarms onto the event bus per FR-047 / Clarification Q3.
+        # The bus expects a frozen Event(type=str, tick=int, payload=dict);
+        # wrap the ConservationAlarmEvent Pydantic model accordingly so
+        # `bus.subscribe("conservation_alarm", handler)` routes correctly.
         event_bus = getattr(services, "event_bus", None)
         if event_bus is None or not alarms:
             return
         for alarm in alarms:
             try:
-                event_bus.publish(alarm)
+                event_bus.publish(
+                    Event(
+                        type="conservation_alarm",
+                        tick=alarm.tick,
+                        payload=alarm.model_dump(mode="json"),
+                    )
+                )
             except Exception:  # noqa: BLE001 - observers must not break the tick
                 logger.exception("ConservationAlarmEvent observer raised; tick continues")
 

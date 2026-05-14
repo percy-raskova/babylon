@@ -83,14 +83,24 @@ def compute_determinism_hash(
     Args:
         tick: Current simulation tick.
         rng_seed: Session RNG seed.
-        hex_rows: Iterable of objects with a ``.h3_index`` attribute and a
-            ``.model_dump()`` method (Pydantic frozen models).
+        hex_rows: Iterable of either Pydantic frozen models with a
+            ``.h3_index`` attribute and ``.model_dump()`` method, OR
+            plain dicts whose ``"h3_index"`` key serves the same role
+            (the engine pulls graph node attrs as dicts).
         action_list: Optional iterable of action payloads.
 
     Returns:
         64-char lowercase SHA-256 hex digest.
     """
-    sorted_hex = sorted(hex_rows, key=lambda r: r.h3_index)
+
+    def _h3_key(r: Any) -> str:
+        if hasattr(r, "h3_index"):
+            return str(r.h3_index)
+        if isinstance(r, dict):
+            return str(r.get("h3_index", ""))
+        return ""
+
+    sorted_hex = sorted(hex_rows, key=_h3_key)
     payload = {
         "tick": tick,
         "rng_seed": rng_seed,

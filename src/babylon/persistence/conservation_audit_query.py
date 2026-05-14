@@ -28,8 +28,8 @@ _COUNT_BY_SEVERITY = """
 SELECT severity, COUNT(*)
 FROM conservation_audit_log
 WHERE session_id = %(session_id)s
-  AND (%(tick_lo)s IS NULL OR tick >= %(tick_lo)s)
-  AND (%(tick_hi)s IS NULL OR tick <= %(tick_hi)s)
+  AND (%(tick_lo)s::integer IS NULL OR tick >= %(tick_lo)s::integer)
+  AND (%(tick_hi)s::integer IS NULL OR tick <= %(tick_hi)s::integer)
 GROUP BY severity
 """
 

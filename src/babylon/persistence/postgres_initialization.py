@@ -34,7 +34,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -58,10 +58,17 @@ class InitializationReport:
     Attributes:
         session_id: The UUID of the initialized session.
         hex_count: Number of hex rows persisted at tick 0.
+            Reported as 0 in this MVP — full hex hydration is owned by
+            the LODES-distribution downstream spec (T054/T055).
         copied_series: Set of series_ids successfully copied into
             ``immutable_reference_*`` tables.
-        external_node_ids: Set of node_ids written into
-            ``dynamic_external_node_state`` at tick 0.
+        external_node_ids: Set of node_ids declared (always 9 — the
+            8 international + 1 domestic_rest fixed enumeration per FR-036).
+        external_node_count: Number of rows actually written to
+            ``dynamic_external_node_state`` at tick 0. Equals
+            ``len(external_node_ids)`` after :func:`initialize_session`
+            completes; lets integration tests distinguish "set declared"
+            from "rows persisted" (T078).
         sqlite_path: Resolved path of the source SQLite file (for log).
     """
 
@@ -69,6 +76,7 @@ class InitializationReport:
     hex_count: int = 0
     copied_series: set[str] = field(default_factory=set)
     external_node_ids: set[str] = field(default_factory=set)
+    external_node_count: int = 0
     sqlite_path: Path | None = None
 
 
@@ -158,6 +166,137 @@ def copy_reference_series(
     return {sid: (start_year, end_year) for sid, n in counts.items() if n > 0}
 
 
+# Mapping from canonical ExternalNode.node_id (FR-036) to the partner-name
+# strings the SQLite reference uses. Each maps to a list of acceptable
+# matches; the first non-empty match wins. Unmatched nodes get phi=0 and
+# are still persisted (so the integration tests find all 9 rows).
+_EXTERNAL_PARTNER_KEYS: dict[str, tuple[str, ...]] = {
+    "canada": ("Canada", "NAFTA with Mexico (Consump)"),
+    "china": ("China",),
+    "eu": ("European Union",),
+    "india": ("India",),
+    "sub_saharan_africa": ("Sub-Saharan Africa", "Africa"),
+    "latin_america": ("Latin America", "Mexico"),
+    "russia_csi": ("Russia", "CSI"),
+    "southeast_asia": ("Southeast Asia", "Vietnam", "Indonesia"),
+}
+
+
+def _fetch_node_phi_and_trade(
+    pg_conn: Any, session_id: UUID, year: int, node_id: str
+) -> tuple[float, float, float, float]:
+    """Look up phi_year, bilateral_trade_value, bilateral_trade_tons, erdi.
+
+    Falls back to (0, 0, 0, 1.0) when no Hickel/Ricci/FAF row matches the
+    node's acceptable partner-name keys. Erdi defaults to 1.0 (neutral
+    exchange) since 0 would violate the CHECK constraint.
+    """
+    keys = _EXTERNAL_PARTNER_KEYS.get(node_id, ())
+    phi = 0.0
+    bilateral_value = 0.0
+    bilateral_tons = 0.0
+    erdi = 1.0
+
+    if not keys:
+        return phi, bilateral_value, bilateral_tons, erdi
+
+    # psycopg 3 canonical pattern for list parameters: ``= ANY(%s)`` with a
+    # Python list (adapted to a Postgres array). Per psycopg docs, the
+    # legacy ``IN %s`` form is unsupported in psycopg 3. Empty lists also
+    # work (whereas ``IN ()`` is not valid SQL).
+    key_list = list(keys)
+
+    # Hickel drain
+    row = pg_conn.execute(
+        "SELECT phi_year FROM immutable_reference_hickel_drain "
+        "WHERE session_id = %s AND year = %s AND partner_node_id = ANY(%s) "
+        "ORDER BY phi_year DESC LIMIT 1",
+        (str(session_id), year, key_list),
+    ).fetchone()
+    if row and row[0] is not None:
+        phi = float(row[0])
+
+    # Bilateral trade value
+    row = pg_conn.execute(
+        "SELECT bilateral_value FROM immutable_reference_ricci_unequal "
+        "WHERE session_id = %s AND year = %s AND partner_node_id = ANY(%s) "
+        "ORDER BY bilateral_value DESC LIMIT 1",
+        (str(session_id), year, key_list),
+    ).fetchone()
+    if row and row[0] is not None:
+        bilateral_value = float(row[0])
+
+    # ERDI
+    row = pg_conn.execute(
+        "SELECT erdi_ratio FROM immutable_reference_erdi "
+        "WHERE session_id = %s AND year = %s AND partner_node_id = ANY(%s) "
+        "ORDER BY erdi_ratio DESC LIMIT 1",
+        (str(session_id), year, key_list),
+    ).fetchone()
+    if row and row[0] is not None and row[0] > 0:
+        erdi = float(row[0])
+
+    return phi, bilateral_value, bilateral_tons, erdi
+
+
+def _bootstrap_external_nodes(
+    *, session_id: UUID, runtime: PostgresRuntime, start_year: int
+) -> int:
+    """Populate ``dynamic_external_node_state`` at tick 0 from hydrated refs.
+
+    Spec 062 T078. Reads the just-hydrated ``immutable_reference_hickel_drain``,
+    ``_ricci_unequal``, and ``_faf_freight`` rows for ``start_year`` and writes
+    one ``ExternalNode`` row per canonical node id (8 international + 1
+    domestic_rest). Persists via ``persist_tick_atomic()`` so the writes share
+    the FR-008a atomic-tick guarantee.
+
+    Returns the number of rows written (always 9 for a successful bootstrap).
+    """
+    from babylon.persistence.envelope import PerTickTransactionEnvelope
+    from babylon.persistence.external_node import ExternalNode, ExternalNodeKind
+
+    rows: list[ExternalNode] = []
+    with runtime._pool.connection() as conn:  # noqa: SLF001
+        for node_id in INTERNATIONAL_NODES:
+            phi, btv, btt, erdi = _fetch_node_phi_and_trade(conn, session_id, start_year, node_id)
+            rows.append(
+                ExternalNode(
+                    session_id=session_id,
+                    tick=0,
+                    node_id=node_id,
+                    kind=ExternalNodeKind.INTERNATIONAL,
+                    phi_year_inflow=phi,
+                    bilateral_trade_value=btv,
+                    bilateral_trade_tons=btt,
+                    erdi_ratio=erdi,
+                )
+            )
+    # Rest-of-USA carries no Hickel drain / no foreign trade; pure domestic sink.
+    rows.append(
+        ExternalNode(
+            session_id=session_id,
+            tick=0,
+            node_id=DOMESTIC_REST_NODE,
+            kind=ExternalNodeKind.DOMESTIC_REST,
+            phi_year_inflow=0.0,
+            bilateral_trade_value=0.0,
+            bilateral_trade_tons=0.0,
+            erdi_ratio=1.0,
+        )
+    )
+
+    envelope = PerTickTransactionEnvelope(
+        session_id=session_id,
+        tick=0,
+        external_node_rows=rows,
+        determinism_hash="0" * 64,  # init-time bootstrap; real hashes start tick 1
+    )
+    # persist_tick_atomic is monkey-patched onto PostgresRuntime by
+    # _spec_062.py at module load; mypy doesn't see the attachment.
+    runtime.persist_tick_atomic(envelope)  # type: ignore[attr-defined]
+    return len(rows)
+
+
 def initialize_session(
     *,
     session_id: UUID,
@@ -218,9 +357,14 @@ def initialize_session(
     }
     report.copied_series = {_table_to_series.get(table, table) for table in copied}
 
-    # External-node bootstrap. The fixed enumeration is locked here so
-    # downstream code can assume exactly nine boundary nodes per session.
+    # External-node bootstrap (T078). The fixed enumeration is locked here
+    # so downstream code can assume exactly nine boundary nodes per session.
+    # The bootstrap function reads the just-hydrated Hickel/Ricci/FAF rows
+    # and persists one ExternalNode per canonical node_id at tick 0.
     report.external_node_ids = set(INTERNATIONAL_NODES) | {DOMESTIC_REST_NODE}
+    report.external_node_count = _bootstrap_external_nodes(
+        session_id=session_id, runtime=runtime, start_year=start_year
+    )
 
     # Hex hydration: deferred to Phase 6 (LODES OD); reported as 0 for the
     # initialization contract surface — runtime queries operate on the

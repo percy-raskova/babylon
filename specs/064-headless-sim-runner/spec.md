@@ -27,6 +27,50 @@ testing, or research; deterministic given a seed; producing artifacts an LLM
 can read; covering the full Michigan + Canadian-border circuit that spec-062
 and spec-063 made possible.
 
+## Clarifications
+
+### Session 2026-05-14
+
+- Q: What is the canonical column set for `trace.csv` (one row per tick per
+  measured entity)? → A: **Maximal** — every measured per-county field per
+  tick. Specifically: `tick`, `simulated_year`, `entity_id`, `entity_kind`,
+  `v`, `c`, `s`, `k`, `p_acquiescence`, `p_revolution`, `ideology_r`,
+  `ideology_l`, `ideology_f`, `surveillance_coupling`,
+  `internet_access_pct`, `biocapacity_stock`, `energy_stock`,
+  `raw_material_stock`, `profit_rate`, `exploitation_rate`, `population`,
+  `employment_proxy` (~22 columns, ~2 MB per 1000-tick Michigan run).
+  Fields not applicable to a given `entity_kind` (e.g., `population` for an
+  external node) are emitted as empty strings.
+- Q: What is the output-directory collision policy when the target path
+  already exists? → A: **Overwrite silently** — existing contents are
+  destroyed and replaced with the new run's artifacts. Optimizes for CI
+  re-run ergonomics and same-second collision tolerance; operators wanting
+  to preserve prior runs must pass a fresh `--output-dir` per invocation
+  or rely on the default timestamp-based naming.
+- Q: What is the SIGINT (Ctrl-C) behavior during a long-running simulation?
+  → A: **Graceful, exit 130** — the runner installs a SIGINT handler that
+  stops the tick loop cleanly, writes whatever partial artifacts it has
+  (CSV rows up to the last completed tick + a summary.json with
+  `exit_reason = "user_interrupted"` and `ticks_completed = N`), and exits
+  with the standard Unix SIGINT exit code 130 so shells and CI see it as
+  an interrupt rather than a normal completion.
+- Q: What progress feedback does the runner emit during a long simulation?
+  → A: **tqdm bar to stderr** — the runner emits an interactive tqdm-style
+  progress bar to stderr, auto-suppressed when stderr is not a TTY
+  (piping, CI, redirected logs). stdout remains strictly reserved for the
+  final artifact-directory path on success, preserving FR-012's
+  `$(mise run ...)` capture contract.
+- Q: What calendar year should the default 1000-tick run start from?
+  → A: **Configurable, default 2010** — matches spec-063 quickstart
+  convention (`start_year=2010` Detroit tri-county fixture) and, more
+  importantly, anchors the simulation INSIDE the historical-data window
+  (LODES 2002–2022, QCEW 2003–2024, BEA varies) so the trace can be
+  validated against ground-truth historical outcomes for the majority
+  of the 19-year run. The 1000-tick weekly run from 2010 reaches ~2029,
+  with the post-data-window years (~2023+) handled by spec-063's existing
+  clamp policy. Operators override via `--start-year <YYYY>`. The
+  resolved value MUST be recorded in `summary.json` and `manifest.json`.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — LLM agent runs a 1000-tick Michigan simulation and parses the results (Priority: P1)
@@ -197,6 +241,17 @@ violations; assert the runner's exit code is 0.
   persistence layer without any interactive input.
 - **FR-002**: System MUST default to a tick count of 1000 and accept a
   command-line override (`--ticks` or equivalent).
+- **FR-002a**: System MUST default the simulation start year to **2010**
+  and accept an `--start-year <YYYY>` override. The 2010 default anchors
+  the run within the historical-data window so trace output can be
+  validated against ground-truth historical outcomes for the majority of
+  the 19-year span (LODES 2002–2022, QCEW 2003–2024, BEA varies). Years
+  beyond available data (~2023+ for the default run) are handled by
+  spec-063's existing clamp policy
+  (`LODESCommuteMatrixLoader.clamp_to_available` and analogous fallbacks
+  for QCEW/BEA/FRED). The resolved start year MUST be recorded in
+  `summary.json` (run metadata) and `manifest.json` (reproducibility hash
+  input).
 - **FR-003**: System MUST default to a geographic scope of all 83 Michigan
   counties plus the Canadian boundary node and accept overrides for both
   scope dimensions.
@@ -212,10 +267,22 @@ violations; assert the runner's exit code is 0.
 
 - **FR-007**: System MUST emit, per run, a directory at a configurable
   artifact root (default `reports/sim-runs/<UTC-ISO-timestamp>/`) containing
-  at minimum `trace.csv`, `summary.json`, and `manifest.json`.
+  at minimum `trace.csv`, `summary.json`, and `manifest.json`. If the target
+  directory already exists (operator-supplied `--output-dir` collision, or
+  rare same-timestamp re-invocation), the runner MUST overwrite the
+  existing contents silently — no error, no suffix-renaming. Operators who
+  need to preserve a prior run must pass a fresh `--output-dir` per
+  invocation.
 - **FR-008**: `trace.csv` MUST contain one row per tick per measured entity
-  (county-level granularity by default), with a stable column set documented
-  in `manifest.json`.
+  (county-level granularity by default), with the **maximal** stable column
+  set: `tick`, `simulated_year`, `entity_id`, `entity_kind`, `v`, `c`, `s`,
+  `k`, `p_acquiescence`, `p_revolution`, `ideology_r`, `ideology_l`,
+  `ideology_f`, `surveillance_coupling`, `internet_access_pct`,
+  `biocapacity_stock`, `energy_stock`, `raw_material_stock`, `profit_rate`,
+  `exploitation_rate`, `population`, `employment_proxy`. Empty string for
+  fields that do not apply to a given `entity_kind`. The complete column
+  dictionary (column name, type, units, semantics) MUST also appear in
+  `manifest.json` so consumers can validate without inspecting source.
 - **FR-009**: `summary.json` MUST contain at minimum: run metadata (seed,
   ticks requested, ticks actually run, start/end wallclock, exit reason),
   per-external-node aggregate flows (e.g., total imperial rent for the run),
@@ -228,7 +295,12 @@ violations; assert the runner's exit code is 0.
 - **FR-011**: All three artifacts MUST be parseable by standard libraries
   (CSV reader, JSON parser) with no Babylon-internal types required.
 - **FR-012**: System MUST print the artifact directory path to stdout on
-  success so calling shells / agents can capture it.
+  success — and ONLY the artifact directory path — so calling shells and
+  agents can capture it via `$(mise run sim:e2e-michigan)`. All progress
+  feedback, log messages, and tqdm output MUST go to stderr.
+- **FR-012a**: System MUST display an interactive tqdm-style progress bar
+  on stderr during the tick loop, auto-suppressed when stderr is not a TTY
+  (piped output, CI, redirected logs).
 
 **Tool surface preservation**
 
@@ -251,11 +323,18 @@ violations; assert the runner's exit code is 0.
 **Exit semantics**
 
 - **FR-017**: Exit code 0 on: full 1000-tick run completed; valid
-  early-termination (end-game condition fired); user-requested abort.
-- **FR-018**: Exit code non-zero on: Postgres unreachable; reference data
-  missing; hex hydration produces zero rows; engine raises an exception not
-  caught by any system.
-- **FR-019**: All non-zero exits MUST emit a structured error message on
+  early-termination (end-game condition fired in the simulation itself).
+- **FR-018**: Exit code 130 on user-requested abort via SIGINT (Ctrl-C).
+  The runner MUST install a SIGINT handler that stops the tick loop at the
+  next safe boundary, writes a partial artifact bundle (CSV rows for all
+  completed ticks, `summary.json` with `exit_reason = "user_interrupted"`
+  and `ticks_completed = N`, and `manifest.json` flagged
+  `partial = true`), and exits 130 (standard Unix SIGINT exit code) so
+  shells and CI distinguish interrupt from normal completion.
+- **FR-019**: Exit code non-zero (and not 130) on: Postgres unreachable;
+  reference data missing; hex hydration produces zero rows; engine raises
+  an exception not caught by any system.
+- **FR-020**: All non-zero exits MUST emit a structured error message on
   stderr (one-line summary + path to any partial artifacts).
 
 ### Key Entities

@@ -1,0 +1,184 @@
+contract: trace_csv
+contract_version: "1.0"
+feature: 064-headless-sim-runner
+description: >-
+  Canonical column dictionary for trace.csv. One row per (tick × entity).
+  Every CSV row has every column present; fields not applicable to a given
+  entity_kind are written as the empty string. Column ORDERING in this
+  document is the canonical ordering on disk; the header row MUST match
+  this order.
+
+format:
+  encoding: "utf-8"
+  delimiter: ","
+  quoting: "minimal (RFC 4180)"
+  line_terminator: "\\n"
+  header_row: true
+  trailing_newline: true
+  null_representation: ""
+
+columns:
+  # Identity (4)
+  - name: "tick"
+    type: "int"
+    units: "weekly_tick (1 = one week)"
+    semantics: "Zero-indexed tick number within the run."
+    nullable: false
+
+  - name: "simulated_year"
+    type: "float"
+    units: "calendar_year"
+    semantics: "start_year + tick/52.0. Truncated to 6 decimal places."
+    nullable: false
+
+  - name: "entity_id"
+    type: "str"
+    semantics: >-
+      5-digit FIPS code for counties; canonical short name for external
+      nodes (e.g., 'canada', 'china'); 'us' for national-level rows.
+    nullable: false
+
+  - name: "entity_kind"
+    type: "str"
+    enum: ["county", "external", "national", "hex_aggregate"]
+    semantics: "Discriminator selecting which other columns apply."
+    nullable: false
+
+  # Marx primitives (4) — applicable to county + national; null for external
+  - name: "v"
+    type: "float"
+    units: "USD (week)"
+    semantics: "Variable capital paid as wages this tick."
+    applies_to: ["county", "national", "hex_aggregate"]
+    nullable: true
+
+  - name: "c"
+    type: "float"
+    units: "USD (week)"
+    semantics: "Constant capital consumed this tick."
+    applies_to: ["county", "national", "hex_aggregate"]
+    nullable: true
+
+  - name: "s"
+    type: "float"
+    units: "USD (week)"
+    semantics: "Surplus value extracted this tick."
+    applies_to: ["county", "national", "hex_aggregate"]
+    nullable: true
+
+  - name: "k"
+    type: "float"
+    units: "USD (stock)"
+    semantics: "Accumulated capital stock at end of tick."
+    applies_to: ["county", "national", "hex_aggregate"]
+    nullable: true
+
+  # Survival calculus (2)
+  - name: "p_acquiescence"
+    type: "float"
+    units: "probability [0, 1]"
+    semantics: "P(S|A): probability of survival by acquiescence."
+    applies_to: ["county"]
+    nullable: true
+
+  - name: "p_revolution"
+    type: "float"
+    units: "probability [0, 1]"
+    semantics: "P(S|R): probability of survival by revolution."
+    applies_to: ["county"]
+    nullable: true
+
+  # Ternary consciousness simplex (3) — r + l + f = 1.0
+  - name: "ideology_r"
+    type: "float"
+    units: "simplex coordinate [0, 1]"
+    semantics: "Reactionary pole weight (spec-043 / 034)."
+    applies_to: ["county"]
+    nullable: true
+
+  - name: "ideology_l"
+    type: "float"
+    units: "simplex coordinate [0, 1]"
+    semantics: "Liberal pole weight."
+    applies_to: ["county"]
+    nullable: true
+
+  - name: "ideology_f"
+    type: "float"
+    units: "simplex coordinate [0, 1]"
+    semantics: "Front pole weight."
+    applies_to: ["county"]
+    nullable: true
+
+  # Territory state (5)
+  - name: "surveillance_coupling"
+    type: "float"
+    units: "ratio [0, 1]"
+    semantics: "Surveillance state coupling (spec-063 territory init)."
+    applies_to: ["county"]
+    nullable: true
+
+  - name: "internet_access_pct"
+    type: "float"
+    units: "ratio [0, 1]"
+    semantics: "Fraction of population with broadband access."
+    applies_to: ["county"]
+    nullable: true
+
+  - name: "biocapacity_stock"
+    type: "float"
+    units: "abstract units"
+    semantics: "Remaining biocapacity (spec-063 metabolic-rift state)."
+    applies_to: ["county"]
+    nullable: true
+
+  - name: "energy_stock"
+    type: "float"
+    units: "abstract units"
+    semantics: "Remaining energy stock."
+    applies_to: ["county"]
+    nullable: true
+
+  - name: "raw_material_stock"
+    type: "float"
+    units: "abstract units"
+    semantics: "Remaining raw-material stock."
+    applies_to: ["county"]
+    nullable: true
+
+  # Derived rates (2) — computed by the SQL view, not stored
+  - name: "profit_rate"
+    type: "float"
+    units: "ratio"
+    semantics: "s / (c + v); NULL when (c + v) <= 0."
+    applies_to: ["county", "national"]
+    nullable: true
+
+  - name: "exploitation_rate"
+    type: "float"
+    units: "ratio"
+    semantics: "s / v; NULL when v <= 0."
+    applies_to: ["county", "national"]
+    nullable: true
+
+  # Demographics (2)
+  - name: "population"
+    type: "int"
+    units: "persons"
+    semantics: "Resident population at end of tick."
+    applies_to: ["county"]
+    nullable: true
+
+  - name: "employment_proxy"
+    type: "float"
+    units: "FTE-equivalent"
+    semantics: "Proxy for employed labor force (QCEW-derived)."
+    applies_to: ["county"]
+    nullable: true
+
+total_columns: 22
+
+example_rows:
+  - "0,2010.000000,26163,county,1000000.0,2000000.0,500000.0,8000000.0,0.62,0.38,0.55,0.30,0.15,0.30,0.72,1000.0,500.0,500.0,0.167,0.500,1750000,420000.0"
+  - "0,2010.000000,canada,external,,,,,,,,,,,,,,,,,"
+  - "0,2010.000000,us,national,75000000.0,150000000.0,40000000.0,640000000.0,,,,,,,,,,,0.178,0.533,,"

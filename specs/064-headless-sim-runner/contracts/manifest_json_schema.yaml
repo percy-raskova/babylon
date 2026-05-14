@@ -1,0 +1,220 @@
+contract: manifest_json
+contract_version: "1.0"
+feature: 064-headless-sim-runner
+description: >-
+  JSON Schema (informal YAML representation) for manifest.json. One file
+  per run. Describes the artifact bundle: which files are present, their
+  schemas, their SHA-256 hashes, and which fields are deterministic vs
+  non-deterministic. The reproducibility.input_hash field is the
+  canonical fingerprint for determinism testing.
+
+schema_version: "1.0"
+
+top_level_keys:
+  required:
+    - schema_version
+    - generator
+    - files
+    - reproducibility
+    - column_dictionaries
+
+key_definitions:
+
+  schema_version:
+    type: "str"
+    value: "1.0"
+    semantics: "Locked literal for this contract version."
+
+  generator:
+    type: "object"
+    description: "Which version of the runner emitted this bundle."
+    fields:
+      tool:
+        type: "str"
+        value: "babylon.engine.headless_runner"
+      babylon_version:
+        type: "str"
+        note: "Project version from pyproject.toml"
+      git_sha:
+        type: "str"
+        note: "HEAD commit at run time"
+      python_version:
+        type: "str"
+      partial:
+        type: "bool"
+        semantics: >-
+          True iff exit_reason in (user_interrupted, errored).
+
+  files:
+    type: "list[object]"
+    description: "One entry per artifact file in the bundle."
+    item_fields:
+      name:
+        type: "str"
+        note: "Relative to manifest.json's directory"
+      schema_ref:
+        type: "str"
+        note: >-
+          Either an inline key into column_dictionaries, or a
+          schema-file name from this spec's contracts/ directory.
+      sha256:
+        type: "str"
+        note: "Hex SHA-256 of the file contents"
+      row_count:
+        type: "int"
+        optional: true
+        note: "For CSV files only"
+      size_bytes:
+        type: "int"
+
+  reproducibility:
+    type: "object"
+    description: >-
+      Inputs that determine the run's output. The hash of
+      deterministic_inputs (canonical JSON) IS the reproducibility
+      fingerprint.
+    fields:
+      deterministic_inputs:
+        type: "object"
+        description: "Inputs that, if changed, change the artifact bytes."
+        fields:
+          seed:
+            type: "int"
+          ticks:
+            type: "int"
+          start_year:
+            type: "int"
+          scope_fips:
+            type: "list[str]"
+            note: "Sorted."
+          external_node_ids:
+            type: "list[str]"
+            note: "Sorted."
+          defines_hash:
+            type: "str"
+            note: >-
+              SHA-256 of canonical serialization of GameDefines instance
+              used.
+          data_versions:
+            type: "object"
+            fields:
+              tiger_vintage:
+                type: "str"
+                note: "e.g., 2024"
+              lodes_max_year:
+                type: "int"
+              qcew_max_year:
+                type: "int"
+              bea_imports_max_year:
+                type: "int"
+              fred_max_year:
+                type: "int"
+              sqlite_sha256:
+                type: "str"
+                note: >-
+                  SHA-256 of marxist-data-3NF.sqlite file at run time.
+      non_deterministic_inputs:
+        type: "object"
+        description: >-
+          Inputs that change every run; ignore for determinism
+          comparison.
+        fields:
+          session_id:
+            type: "UUID string"
+          wallclock_start:
+            type: "ISO 8601 UTC"
+          wallclock_end:
+            type: "ISO 8601 UTC"
+          hostname:
+            type: "str"
+          working_dir:
+            type: "str"
+      input_hash:
+        type: "str"
+        semantics: >-
+          SHA-256 of canonical JSON serialization of
+          deterministic_inputs. Two runs with identical input_hash MUST
+          produce byte-identical trace.csv and summary.json (modulo
+          summary.run_metadata wallclock fields, which themselves are
+          in non_deterministic_inputs).
+
+  column_dictionaries:
+    type: "object"
+    description: >-
+      Per-file column / field dictionaries inlined into the manifest so
+      LLM consumers do not need to fetch external schema files. Keys
+      mirror file names (without extension).
+    fields:
+      trace_csv:
+        type: "list[object]"
+        description: >-
+          Mirrors the 22-column dictionary from trace_csv_schema.yaml.
+        item_fields:
+          name:
+            type: "str"
+          type:
+            type: "str"
+          units:
+            type: "str"
+          semantics:
+            type: "str"
+          nullable:
+            type: "bool"
+          applies_to:
+            type: "list[str]"
+            optional: true
+
+example_minimal:
+  schema_version: "1.0"
+  generator:
+    tool: "babylon.engine.headless_runner"
+    babylon_version: "0.4.0"
+    git_sha: "e9dcc8b5"
+    python_version: "3.12.5"
+    partial: false
+  files:
+    - name: "trace.csv"
+      schema_ref: "trace_csv"
+      sha256: "abc123..."
+      row_count: 83000
+      size_bytes: 1843200
+    - name: "summary.json"
+      schema_ref: "summary_json_schema_v1"
+      sha256: "def456..."
+      size_bytes: 18440
+  reproducibility:
+    deterministic_inputs:
+      seed: 2010
+      ticks: 1000
+      start_year: 2010
+      scope_fips:
+        - "26001"
+        - "26003"
+        - "..."
+        - "26165"
+      external_node_ids:
+        - "canada"
+      defines_hash: "789abc..."
+      data_versions:
+        tiger_vintage: "2024"
+        lodes_max_year: 2022
+        qcew_max_year: 2024
+        bea_imports_max_year: 2023
+        fred_max_year: 2025
+        sqlite_sha256: "012345..."
+    non_deterministic_inputs:
+      session_id: "01234567-89ab-cdef-0123-456789abcdef"
+      wallclock_start: "2026-05-14T16:30:00.000000Z"
+      wallclock_end: "2026-05-14T16:38:42.123456Z"
+      hostname: "developer-laptop"
+      working_dir: "/home/user/projects/game/babylon"
+    input_hash: "fedcba9876543210..."
+  column_dictionaries:
+    # The full 22-entry list lives in contracts/trace_csv_schema.yaml.
+    # One example entry shown here for shape; the runner inlines all 22.
+    trace_csv:
+      - name: "tick"
+        type: "int"
+        units: "weekly_tick"
+        semantics: "Zero-indexed"
+        nullable: false

@@ -1,0 +1,289 @@
+contract: summary_json
+contract_version: "1.0"
+feature: 064-headless-sim-runner
+description: >-
+  JSON Schema (informal YAML representation) for summary.json. One file
+  per run. The file MUST validate against this schema at the top level.
+  All numeric tick values are integers; all wallclock fields are ISO 8601
+  UTC with timezone-Z suffix; all monetary aggregates are floats in USD.
+
+schema_version: "1.0"
+
+top_level_keys:
+  required:
+    - schema_version
+    - run_metadata
+    - terminal_state
+    - external_node_flows
+    - county_terminal_snapshot
+    - conservation_audit
+    - performance
+
+  optional:
+    - end_game_event
+    - error
+
+key_definitions:
+
+  schema_version:
+    type: "str"
+    value: "1.0"
+    semantics: "Locked literal for this contract version."
+
+  run_metadata:
+    type: "object"
+    description: "Top-level run identifiers and configuration echo."
+    fields:
+      session_id:
+        type: "UUID string"
+      exit_reason:
+        type: "str"
+        enum:
+          - "completed"
+          - "early_terminated"
+          - "user_interrupted"
+          - "errored"
+      ticks_requested:
+        type: "int"
+      ticks_completed:
+        type: "int"
+      start_year:
+        type: "int"
+      seed:
+        type: "int"
+      scope_name:
+        type: "str"
+      scope_fips:
+        type: "list[str]"
+        note: "Sorted, deduplicated."
+      external_node_ids:
+        type: "list[str]"
+      wallclock_start:
+        type: "ISO 8601 UTC"
+        note: "Non-deterministic; flagged in manifest."
+      wallclock_end:
+        type: "ISO 8601 UTC"
+        note: "Non-deterministic; flagged in manifest."
+
+  terminal_state:
+    type: "object"
+    description: "High-level aggregates at the final completed tick."
+    fields:
+      tick:
+        type: "int"
+      counties_alive:
+        type: "int"
+        semantics: "Counties with v > 0 at terminal tick"
+      total_population:
+        type: "int"
+      total_v:
+        type: "float"
+      total_c:
+        type: "float"
+      total_s:
+        type: "float"
+      total_k:
+        type: "float"
+      mean_p_acquiescence:
+        type: "float"
+      mean_p_revolution:
+        type: "float"
+      mean_ideology_r:
+        type: "float"
+      mean_ideology_l:
+        type: "float"
+      mean_ideology_f:
+        type: "float"
+
+  external_node_flows:
+    type: "list[object]"
+    description: >-
+      One object per external node. Aggregate (summed-over-ticks) phi
+      inflows and outflows.
+    item_fields:
+      external_node_id:
+        type: "str"
+      total_phi_inflow:
+        type: "float"
+        units: "USD"
+      total_trade_inbound:
+        type: "float"
+        units: "USD"
+      total_commute_outbound:
+        type: "float"
+        units: "USD"
+      tick_count_with_inflow:
+        type: "int"
+
+  county_terminal_snapshot:
+    type: "list[object]"
+    description: >-
+      Per-county terminal state. Same columns as trace.csv for the final
+      tick, but inlined here so an LLM agent can answer "which counties
+      changed most" without reading trace.csv.
+    item_fields:
+      entity_id:
+        type: "str"
+        note: "5-digit FIPS"
+      v:
+        type: "float"
+      c:
+        type: "float"
+      s:
+        type: "float"
+      k:
+        type: "float"
+      p_acquiescence:
+        type: "float"
+      p_revolution:
+        type: "float"
+      ideology_r:
+        type: "float"
+      ideology_l:
+        type: "float"
+      ideology_f:
+        type: "float"
+      population:
+        type: "int"
+      delta_k_vs_initial:
+        type: "float"
+        semantics: "k_terminal - k_initial"
+
+  conservation_audit:
+    type: "list[object]"
+    description: >-
+      One object per invariant violation logged by the spec-062
+      conservation_audit_log Postgres table during this session. Empty
+      list when zero violations.
+    item_fields:
+      tick:
+        type: "int"
+      invariant_name:
+        type: "str"
+        note: "e.g., US1_no_double_counting, US2_phi_conservation"
+      severity:
+        type: "str"
+        enum:
+          - "info"
+          - "warning"
+          - "error"
+          - "critical"
+      details:
+        type: "object"
+        note: "Arbitrary JSON payload from the audit log"
+
+  performance:
+    type: "object"
+    description: "Wallclock breakdown for SC-002 verification."
+    fields:
+      total_wallclock_sec:
+        type: "float"
+      session_init_sec:
+        type: "float"
+      hex_hydration_sec:
+        type: "float"
+      tick_loop_sec:
+        type: "float"
+      artifact_emission_sec:
+        type: "float"
+      per_tick_median_ms:
+        type: "float"
+      per_tick_p99_ms:
+        type: "float"
+      per_tick_max_ms:
+        type: "float"
+
+  end_game_event:
+    type: "object"
+    optional: true
+    semantics: "Present iff exit_reason == 'early_terminated'."
+    fields:
+      tick:
+        type: "int"
+      condition:
+        type: "str"
+        enum:
+          - "IMPERIAL_COLLAPSE"
+          - "ALL_COUNTIES_DEAD"
+          - "REVOLUTION_SUCCEEDED"
+      details:
+        type: "object"
+
+  error:
+    type: "object"
+    optional: true
+    semantics: "Present iff exit_reason == 'errored'."
+    fields:
+      type:
+        type: "str"
+        note: "Python exception class name"
+      message:
+        type: "str"
+      tick:
+        type: "int"
+        note: "Tick at which the exception fired"
+      traceback:
+        type: "str"
+        note: "Multi-line; redacted to runner-relative paths"
+
+example_minimal:
+  schema_version: "1.0"
+  run_metadata:
+    session_id: "01234567-89ab-cdef-0123-456789abcdef"
+    exit_reason: "completed"
+    ticks_requested: 1000
+    ticks_completed: 1000
+    start_year: 2010
+    seed: 2010
+    scope_name: "michigan-canada"
+    scope_fips:
+      - "26001"
+      - "26003"
+      - "..."
+      - "26165"
+    external_node_ids:
+      - "canada"
+    wallclock_start: "2026-05-14T16:30:00.000000Z"
+    wallclock_end: "2026-05-14T16:38:42.123456Z"
+  terminal_state:
+    tick: 999
+    counties_alive: 83
+    total_population: 9980000
+    total_v: 4200000000.0
+    total_c: 8400000000.0
+    total_s: 1900000000.0
+    total_k: 33600000000.0
+    mean_p_acquiescence: 0.61
+    mean_p_revolution: 0.34
+    mean_ideology_r: 0.52
+    mean_ideology_l: 0.31
+    mean_ideology_f: 0.17
+  external_node_flows:
+    - external_node_id: "canada"
+      total_phi_inflow: 52000000.0
+      total_trade_inbound: 1300000000.0
+      total_commute_outbound: 760000000.0
+      tick_count_with_inflow: 1000
+  county_terminal_snapshot:
+    - entity_id: "26163"
+      v: 110000000.0
+      c: 220000000.0
+      s: 48000000.0
+      k: 870000000.0
+      p_acquiescence: 0.59
+      p_revolution: 0.37
+      ideology_r: 0.48
+      ideology_l: 0.34
+      ideology_f: 0.18
+      population: 1750000
+      delta_k_vs_initial: 120000000.0
+  conservation_audit: []
+  performance:
+    total_wallclock_sec: 522.12
+    session_init_sec: 28.4
+    hex_hydration_sec: 14.7
+    tick_loop_sec: 478.9
+    artifact_emission_sec: 0.12
+    per_tick_median_ms: 442.0
+    per_tick_p99_ms: 1280.0
+    per_tick_max_ms: 4100.0

@@ -394,6 +394,31 @@ class EconomyDefines(BaseModel):
         ),
     )
 
+    # Spec 063 — Vol II Circulation System with LODES OD (FR-031..FR-036)
+    border_commute_share: float = Field(
+        default=0.50,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Spec 063, FR-034 — fraction of Detroit-Windsor personal-vehicle "
+            "crossings attributable to commuters (vs tourists/shoppers). "
+            "Default 0.50 traces to Workforce WindsorEssex 2017 Cross-Border "
+            "Employment Report: ~6,120 commuters / ~12K daily personal-vehicle "
+            "crossings. Constitution III.1: cited, not magic."
+        ),
+    )
+    enable_border_commute_synthesis: bool = Field(
+        default=False,
+        description=(
+            "Spec 063, FR-031 — opt-in flag for the Option B border-commute "
+            "synthesis loader (BTS + StatCan + WWE share anchor). When True, "
+            "session init reads BTS Border Crossing CSV from "
+            "data-trove/border_crossings/ and merges synthesized weekly "
+            "Canadian-bound aggregate rows into the LODES year matrix. When "
+            "False, behavior is identical to the LODES-only path."
+        ),
+    )
+
     @property
     def alpha_weekly(self) -> float:
         """Geometric weekly equalization rate derived from alpha_annual.

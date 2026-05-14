@@ -1,0 +1,180 @@
+openapi: 3.1.0
+info:
+  title: Border Commute Synthesis Loader Contract
+  version: 1.0.0
+  description: |
+    Synthesize aggregate Detroit-Windsor cross-border commute rows from
+    BTS Border Crossing Data + StatCan Frontier Counts + the Workforce
+    WindsorEssex 2017 commuter-share anchor. Produces ~52 weekly Canadian-bound
+    aggregate flow rows per simulated year that merge into the LODESYearMatrix
+    at session-init time.
+
+    Implements FR-031 (gated by enable_border_commute_synthesis flag) /
+    FR-032 (BTS source) / FR-033 (StatCan source) / FR-034 (WWE share anchor) /
+    FR-035 (weekly aggregate row form) / FR-036 (fail-fast when enabled but
+    files missing).
+
+    Per research.md §4: this synthesis exists because canonical LODES does NOT
+    include Canadian destinations. The synthesis produces an aggregate
+    CMA-to-tri-county flow rather than disaggregating to hex resolution.
+    Hex-resolution Detroit-Windsor commute would require restricted-access
+    StatCan RDC microdata (out of scope).
+
+    Owner subsystem: economics. Injected into LODESCommuteMatrixLoader for
+    matrix merging at load time.
+
+paths: {}
+
+components:
+  schemas:
+    BorderCommuteSynthesisLoaderConstructor:
+      type: object
+      required:
+        - bts_csv_path
+        - statcan_csv_path
+        - border_commute_share
+        - detroit_port_codes
+        - tri_county_aggregate_hex
+        - enabled
+      properties:
+        bts_csv_path:
+          type: ["string", "null"]
+          description: Filesystem path to BTS Border Crossing Data CSV. May be null if enabled=False.
+          example: "/home/user/projects/game/babylon/data-trove/border_crossings/bts_border_crossings.csv"
+        statcan_csv_path:
+          type: ["string", "null"]
+          description: >
+            Filesystem path to StatCan Frontier Counts CSV. May be null
+            (one-time audit log entry on first call).
+          example: >-
+            /home/user/projects/game/babylon/data-trove/border_crossings/statcan_frontier_counts.csv
+        border_commute_share:
+          type: number
+          minimum: 0
+          maximum: 1
+          exclusiveMinimum: true
+          description: >
+            Fraction of personal-vehicle crossings attributable to
+            commuters. Default 0.50 from WWE 2017 report (~6,120
+            commuters / ~12K daily vehicles).
+          example: 0.50
+        detroit_port_codes:
+          type: array
+          items: { type: string }
+          minItems: 1
+          description: BTS port codes for Detroit-area crossings.
+          example: ["3801", "3802"]
+        tri_county_aggregate_hex:
+          type: string
+          description: H3 res-7 cell ID used as the representative origin/destination for synthesized aggregate flows.
+          example: "872a307affffff7"
+        enabled:
+          type: boolean
+          description: >
+            When False, all loader methods become no-ops. Sourced from
+            GameDefines.enable_border_commute_synthesis.
+          default: false
+
+    BorderCommuteFlow:
+      type: object
+      required:
+        - year
+        - week_of_year
+        - direction
+        - aggregate_origin
+        - aggregate_dest
+        - magnitude_workers
+        - source_anchor
+      properties:
+        year:
+          type: integer
+        week_of_year:
+          type: integer
+          minimum: 1
+          maximum: 52
+        direction:
+          type: string
+          enum: ["us_to_canada", "canada_to_us"]
+        aggregate_origin:
+          type: string
+          description: >
+            H3 res-7 cell (representative tri-county aggregate for
+            us_to_canada; "canada" for canada_to_us)
+        aggregate_dest:
+          type: string
+          description: >
+            "canada" for us_to_canada; H3 cell for canada_to_us.
+        magnitude_workers:
+          type: number
+          minimum: 0
+          description: >
+            Commuter count for this week —
+            `vehicle_count_for_week × border_commute_share`.
+        source_anchor:
+          type: string
+          description: Citation string for forensic traceability.
+          example: >-
+            WWE 2017 (commute_share=0.50); BTS port_codes=3801,3802;
+            week=22 of 2010
+
+  examples:
+    DisabledNoOp:
+      summary: enabled=False — synthesis is opt-in; no rows produced
+      value:
+        constructor:
+          bts_csv_path: null
+          statcan_csv_path: null
+          border_commute_share: 0.50
+          detroit_port_codes: ["3801", "3802"]
+          tri_county_aggregate_hex: "872a307affffff7"
+          enabled: false
+        synthesize_year_2010_return: []
+
+    EnabledWithBothSources:
+      summary: enabled=True, both sources present — produces 104 rows for 2010 (52 weeks × 2 directions)
+      value:
+        constructor:
+          bts_csv_path: "/.../bts_border_crossings.csv"
+          statcan_csv_path: "/.../statcan_frontier_counts.csv"
+          border_commute_share: 0.50
+          detroit_port_codes: ["3801", "3802"]
+          tri_county_aggregate_hex: "872a307affffff7"
+          enabled: true
+        synthesize_year_2010_returns_count: 104
+        sample_row:
+          year: 2010
+          week_of_year: 22
+          direction: "us_to_canada"
+          aggregate_origin: "872a307affffff7"
+          aggregate_dest: "canada"
+          magnitude_workers: 6071.0
+          source_anchor: "WWE 2017 (share=0.50); BTS port_codes=3801,3802; week=22 of 2010"
+
+    EnabledStatCanMissing:
+      summary: enabled=True, BTS present, StatCan absent — emits one-time audit warning, only produces us_to_canada rows
+      value:
+        constructor:
+          bts_csv_path: "/.../bts_border_crossings.csv"
+          statcan_csv_path: null
+          border_commute_share: 0.50
+          detroit_port_codes: ["3801", "3802"]
+          tri_county_aggregate_hex: "872a307affffff7"
+          enabled: true
+        synthesize_year_2010_returns_count: 52
+        side_effect: >-
+          One audit log entry per session: 'StatCan Frontier Counts CSV
+          not present; canada_to_us synthesis skipped.'
+
+    EnabledBTSMissing:
+      summary: enabled=True, BTS missing — fail-fast at construction per FR-036
+      value:
+        constructor:
+          bts_csv_path: "/tmp/missing.csv"
+          statcan_csv_path: null
+          border_commute_share: 0.50
+          detroit_port_codes: ["3801", "3802"]
+          tri_county_aggregate_hex: "872a307affffff7"
+          enabled: true
+        result: >-
+          raises FileNotFoundError: BTS Border Crossing CSV required
+          when enable_border_commute_synthesis=True; got /tmp/missing.csv

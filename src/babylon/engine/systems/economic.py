@@ -98,6 +98,56 @@ class ImperialRentSystem(SystemBase):
         # Save updated economy back to graph (applies TRPF rent pool decay)
         self._save_economy(graph, tick_context, services)
 
+        # Spec 063 sub-stage 5c — Vol II Circulation (FR-015).
+        # Guarded by context presence so existing tests without
+        # session/register infrastructure remain green (back-compat).
+        self._invoke_vol2_circulation_if_wired(graph, context)
+
+    def _invoke_vol2_circulation_if_wired(
+        self,
+        graph: nx.DiGraph[str] | GraphProtocol,
+        context: ContextType,
+    ) -> None:
+        """Invoke the Vol II Circulation sub-stage when its inputs are present in context.
+
+        Spec 063 T019: variable-capital redistribution across hexes per the
+        LODES OD matrix. Sub-stage 5c per FR-015 / spec 062 FR-053.
+
+        The sub-stage is gated by four ``context.persistent_data`` keys:
+        ``vol2_step``, ``boundary_flow_register``, ``session_id``, and
+        ``simulated_year``. If any are missing, the call is a silent no-op
+        — this preserves spec 062 + earlier test surfaces that don't yet
+        wire the new infrastructure.
+        """
+        # Read with dict-style access (TickContext exposes both).
+        vol2_step = context.get("vol2_step")
+        register = context.get("boundary_flow_register")
+        session_id = context.get("session_id")
+        simulated_year = context.get("simulated_year")
+        if vol2_step is None or register is None or session_id is None or simulated_year is None:
+            return
+
+        tick = context.get("tick", 0)
+        # The graph passed in may be a GraphProtocol wrapper; Vol2CirculationStep
+        # walks raw graph.nodes(data=True), which both nx.DiGraph and the
+        # NetworkXAdapter inner graph support. Unwrap if needed.
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        target_graph: Any
+        if isinstance(graph, GraphProtocol):
+            # NetworkXAdapter wraps an inner nx.DiGraph at ._graph; use it for
+            # direct attribute mutation per Vol2CirculationStep's contract.
+            target_graph = getattr(graph, "_graph", graph)
+        else:
+            target_graph = graph
+        vol2_step.step(
+            graph=target_graph,
+            register=register,
+            session_id=session_id,
+            tick=int(tick),
+            simulated_year=int(simulated_year),
+        )
+
     def _process_subsistence_phase(
         self,
         graph: nx.DiGraph[str] | GraphProtocol,

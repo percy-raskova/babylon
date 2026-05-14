@@ -315,6 +315,8 @@ def initialize_session(
     lodes_crosswalk: Path | None = None,
     lodes_study_area_hexes: frozenset[str] | None = None,
     lodes_study_area_states: frozenset[str] | None = None,
+    hex_hydration_counties: frozenset[str] | None = None,
+    tiger_county_shapefile: Path | None = None,
 ) -> InitializationReport:
     """Single-call session initialization.
 
@@ -375,10 +377,23 @@ def initialize_session(
         session_id=session_id, runtime=runtime, start_year=start_year
     )
 
-    # Hex hydration: deferred to Phase 6 (LODES OD); reported as 0 for the
-    # initialization contract surface — runtime queries operate on the
-    # immutable_reference_* + dynamic_external_node_state seeded above.
-    report.hex_count = 0
+    # Spec-063 closure (2026-05-14) — hex graph hydration at tick 0.
+    # Gated on `hex_hydration_counties` so existing callers that don't
+    # need a populated hex graph (legacy unit tests, helper scripts)
+    # remain unchanged. See `babylon.persistence.hex_hydrator`.
+    if hex_hydration_counties:
+        from babylon.persistence.hex_hydrator import hydrate_hex_state
+
+        report.hex_count = hydrate_hex_state(
+            runtime=runtime,
+            session_id=session_id,
+            counties=hex_hydration_counties,
+            start_year=start_year,
+            defines=defines,
+            tiger_county_shapefile=tiger_county_shapefile,
+        )
+    else:
+        report.hex_count = 0
 
     # Spec 063 T020 — hydrate LODES OD matrix per scenario year if inputs supplied.
     # Gated on all four LODES paths being present so existing test surfaces that

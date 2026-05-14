@@ -95,6 +95,54 @@ class TerritoryDefines(BaseModel):
         description="Tension threshold above which CONTAINMENT mode activates",
     )
 
+    # Spec-063 closure — hex hydration initial-state defaults (2026-05-14)
+    initial_biocapacity_per_hex: float = Field(
+        default=1000.0,
+        ge=0.0,
+        description=(
+            "Initial biocapacity stock per H3 res-7 cell at session init "
+            "(uniform allocation). Default 1000 units is a placeholder; "
+            "spec-066 (metabolic-rift dynamics) will replace with empirical "
+            "per-hex values from Natural Earth biocapacity overlays."
+        ),
+    )
+    initial_energy_per_hex: float = Field(
+        default=500.0,
+        ge=0.0,
+        description=(
+            "Initial energy stock per H3 res-7 cell at session init "
+            "(uniform allocation). Placeholder until per-hex energy data lands."
+        ),
+    )
+    initial_raw_material_per_hex: float = Field(
+        default=500.0,
+        ge=0.0,
+        description=(
+            "Initial raw-material stock per H3 res-7 cell at session init "
+            "(uniform allocation). Placeholder until per-hex extractive-data "
+            "loaders land."
+        ),
+    )
+    initial_internet_access_pct: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Initial internet-access penetration per H3 res-7 cell at session "
+            "init. Default 0.7 ≈ US national broadband-access average."
+        ),
+    )
+    initial_surveillance_coupling: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Initial surveillance-state coupling per H3 res-7 cell at session "
+            "init. Default 0.3 is a mid-range placeholder; spec-068 "
+            "(surveillance dynamics) will replace with empirical loadings."
+        ),
+    )
+
 
 class TopologyDefines(BaseModel):
     """Phase transition coefficients for solidarity network analysis.

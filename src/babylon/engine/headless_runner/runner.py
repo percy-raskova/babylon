@@ -1,0 +1,752 @@
+"""Core headless simulation runner — orchestrates Postgres + tick loop + artifacts.
+
+Spec: 064-headless-sim-runner (T028-T035).
+
+The runner is intentionally thin: it composes pre-existing pieces from
+``babylon.persistence`` (PostgresRuntime, ``initialize_session``,
+``persist_tick_atomic``) and emits the contracted artifact bundle. The
+simulation math itself is whatever the configured engine step performs
+on the persisted state — this MVP carries hex state forward unchanged
+so the pipeline (hex hydration → tick loop → trace view → CSV) ships as
+a single executable e2e contract. Future specs can plug richer
+per-tick advancement in via the ``step_function`` seam (currently
+private; exposed when needed).
+
+Exit code semantics live in ``contracts/cli_contract.yaml``. Stderr
+formatting on non-zero exits follows the
+``ERROR <NAME>: <message> | partial_artifacts=<path-or-NONE>`` template.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as _dt
+import hashlib
+import json
+import logging
+import os
+import shutil
+import signal
+import statistics
+import sys
+import time
+from contextlib import suppress
+from pathlib import Path
+from typing import Any
+from uuid import UUID, uuid4
+
+try:
+    from tqdm import tqdm
+except ImportError:  # pragma: no cover - tqdm is a hard dep
+    tqdm = None  # type: ignore[assignment,misc]
+
+from babylon.engine.headless_runner.argparse_cli import build_parser
+from babylon.engine.headless_runner.manifest import build_manifest
+from babylon.engine.headless_runner.models import (
+    AuditEntry,
+    ExitReason,
+    PerformanceBreakdown,
+    SimulationRunConfig,
+    SimulationRunResult,
+)
+from babylon.engine.headless_runner.run_summary import build_summary
+from babylon.engine.headless_runner.scopes import (
+    UnknownScopeError,
+    resolve_scope,
+)
+from babylon.engine.headless_runner.trace_emitter import TRACE_COLUMNS, TraceEmitter
+
+_LOG = logging.getLogger("babylon.engine.headless_runner")
+
+# Module-level cooperative-shutdown flag set by the SIGINT handler.
+# Reset to False at the top of every :func:`run` invocation.
+_interrupt_requested = False
+
+# Severity mapping: Postgres conservation_audit_log uses (ok, warn, alarm);
+# the summary.json contract uses (info, warning, error, critical).
+_AUDIT_SEVERITY_MAP = {
+    "ok": "info",
+    "warn": "warning",
+    "alarm": "error",
+}
+
+
+class RunnerError(Exception):
+    """Base class for runner-side preflight errors."""
+
+    exit_code: int = 1
+    exit_name: str = "ENGINE_FAILURE"
+
+
+class ConfigError(RunnerError):
+    exit_code = 2
+    exit_name = "CONFIG_ERROR"
+
+
+class ReferenceDataMissingError(RunnerError):
+    exit_code = 3
+    exit_name = "REFERENCE_DATA_MISSING"
+
+
+class PostgresUnreachableError(RunnerError):
+    exit_code = 4
+    exit_name = "POSTGRES_UNREACHABLE"
+
+
+def _install_sigint_handler() -> None:
+    """Install a one-shot cooperative SIGINT handler (research R3)."""
+    global _interrupt_requested
+    _interrupt_requested = False
+
+    def _handler(_signum: int, _frame: Any) -> None:
+        global _interrupt_requested
+        _interrupt_requested = True
+        # Restore default so a second Ctrl-C aborts immediately.
+        with suppress(Exception):
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    with suppress(ValueError):  # signals can only be installed on main thread
+        signal.signal(signal.SIGINT, _handler)
+
+
+def _resolve_scope_from_args(
+    args: argparse.Namespace,
+) -> tuple[str, frozenset[str], frozenset[str]]:
+    """Resolve ``(scope_name, scope_fips, external_node_ids)`` from CLI args."""
+    if args.fips is not None:
+        raw = [p.strip() for p in args.fips.split(",") if p.strip()]
+        bad = [f for f in raw if not (len(f) == 5 and f.isdigit())]
+        if bad:
+            raise ConfigError(
+                f"--fips contains malformed code(s): {sorted(bad)[:5]}; "
+                "expected 5-digit FIPS strings."
+            )
+        scope_name = "custom"
+        scope_fips = frozenset(raw)
+    else:
+        try:
+            scope = resolve_scope(args.scope, sqlite_path=args.sqlite_path)
+        except UnknownScopeError as exc:
+            raise ConfigError(str(exc)) from exc
+        scope_name = args.scope
+        scope_fips = scope.scope_fips
+
+    external_raw = [p.strip() for p in args.external.split(",") if p.strip()]
+    external_node_ids = frozenset(external_raw)
+    return scope_name, scope_fips, external_node_ids
+
+
+def _default_output_dir() -> Path:
+    """Timestamp-based default artifact directory."""
+    stamp = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
+    return Path("reports") / "sim-runs" / stamp
+
+
+def _build_config(args: argparse.Namespace) -> SimulationRunConfig:
+    """Compose a frozen :class:`SimulationRunConfig` from CLI args."""
+    scope_name, scope_fips, external_node_ids = _resolve_scope_from_args(args)
+    output_dir = args.output_dir if args.output_dir is not None else _default_output_dir()
+    return SimulationRunConfig(
+        ticks=args.ticks,
+        start_year=args.start_year,
+        random_seed=args.seed,
+        scope_name=scope_name,
+        scope_fips=scope_fips,
+        external_node_ids=external_node_ids,
+        sqlite_reference_path=args.sqlite_path,
+        output_dir=output_dir,
+        defines_overlay_path=args.defines,
+        dry_run=args.dry_run,
+        verbose=args.verbose,
+    )
+
+
+def _prepare_output_dir(path: Path) -> None:
+    """Create the output directory, silently overwriting existing contents (FR-007)."""
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _open_postgres_pool() -> Any:
+    """Open a psycopg ConnectionPool from ``BABYLON_PG_DSN`` / ``BABYLON_TEST_PG_DSN``."""
+    dsn = os.environ.get("BABYLON_PG_DSN") or os.environ.get("BABYLON_TEST_PG_DSN")
+    if not dsn:
+        raise PostgresUnreachableError(
+            "No Postgres DSN found in BABYLON_PG_DSN or BABYLON_TEST_PG_DSN."
+        )
+    try:
+        from psycopg_pool import ConnectionPool
+
+        pool = ConnectionPool(dsn, min_size=1, max_size=2, open=True)
+        return pool
+    except Exception as exc:  # pragma: no cover - connectivity errors are runtime
+        raise PostgresUnreachableError(
+            f"Connection pool failed to open ({exc.__class__.__name__}: {exc})"
+        ) from exc
+
+
+def _apply_migrations(pool: Any) -> None:
+    """Apply every migration in src/babylon/persistence/migrations/."""
+    migrations_dir = Path("src/babylon/persistence/migrations").resolve()
+    with pool.connection() as conn:
+        conn.autocommit = True
+        for sql_file in sorted(migrations_dir.glob("00*.sql")):
+            conn.execute(sql_file.read_text())
+
+
+def _validate_preflight(config: SimulationRunConfig) -> None:
+    """Check on-disk reference data + Postgres DSN before any heavy work."""
+    if not config.sqlite_reference_path.exists():
+        raise ReferenceDataMissingError(
+            f"SQLite reference DB not found at {config.sqlite_reference_path}"
+        )
+
+
+def _carry_forward_tick(
+    *,
+    runtime: Any,
+    session_id: UUID,
+    tick: int,
+    determinism_hash: str,
+) -> None:
+    """Persist a no-op tick that carries hex state forward by one tick.
+
+    This is the MVP advancement: the next tick's hex_state row set is
+    a copy of the previous tick's rows, just with the tick number
+    incremented. It guarantees the trace view returns rows for every
+    requested tick. Future specs replace this with real engine-driven
+    advancement.
+    """
+    from babylon.persistence.envelope import PerTickTransactionEnvelope
+    from babylon.persistence.hex_state import DynamicHexState
+
+    pool = runtime.pool
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT h3_index, county_fips, state_fips, region_id, "
+            "c, v, s, k, biocapacity_stock, energy_stock, raw_material_stock, "
+            "internet_access_pct, surveillance_coupling "
+            "FROM dynamic_hex_state "
+            "WHERE session_id = %s AND tick = %s",
+            (str(session_id), tick - 1),
+        )
+        prev_rows = cur.fetchall()
+    if not prev_rows:
+        return  # nothing to carry forward
+
+    next_rows = tuple(
+        DynamicHexState(
+            session_id=session_id,
+            tick=tick,
+            h3_index=row[0],
+            county_fips=row[1],
+            state_fips=row[2],
+            region_id=row[3],
+            c=row[4],
+            v=row[5],
+            s=row[6],
+            k=row[7],
+            biocapacity_stock=row[8],
+            energy_stock=row[9],
+            raw_material_stock=row[10],
+            internet_access_pct=row[11],
+            surveillance_coupling=row[12],
+        )
+        for row in prev_rows
+    )
+    envelope = PerTickTransactionEnvelope(
+        session_id=session_id,
+        tick=tick,
+        hex_state_rows=list(next_rows),
+        determinism_hash=determinism_hash,
+    )
+    runtime.persist_tick_atomic(envelope)
+
+
+def _query_audit_log(*, pool: Any, session_id: UUID) -> list[AuditEntry]:
+    """Project ``conservation_audit_log`` rows into :class:`AuditEntry` list."""
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT tick, invariant_name, severity, "
+            "computed_value, expected_value, residual, scale "
+            "FROM conservation_audit_log "
+            "WHERE session_id = %s "
+            "ORDER BY tick, invariant_name",
+            (str(session_id),),
+        )
+        rows = cur.fetchall()
+    out: list[AuditEntry] = []
+    for tick, name, sev_raw, computed, expected, residual, scale in rows:
+        sev = _AUDIT_SEVERITY_MAP.get(sev_raw, "warning")
+        out.append(
+            AuditEntry(
+                tick=tick,
+                invariant_name=name,
+                severity=sev,  # type: ignore[arg-type]
+                details={
+                    "computed_value": computed,
+                    "expected_value": expected,
+                    "residual": residual,
+                    "scale": scale,
+                },
+            )
+        )
+    return out
+
+
+def _query_trace(*, pool: Any, session_id: UUID, start_year: int) -> list[dict[str, Any]]:
+    """Query the trace-emission view, returning a list of column-keyed dicts."""
+    select_cols = ", ".join(c for c in TRACE_COLUMNS if c not in {"tick", "simulated_year"})
+    sql = (
+        f"SELECT tick, {select_cols} FROM view_runtime_trace_emission "
+        "WHERE session_id = %s ORDER BY tick, entity_id"
+    )
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(sql, (str(session_id),))
+        colnames = [d.name for d in cur.description] if cur.description else []
+        return [
+            {**dict(zip(colnames, row, strict=True)), "simulated_year": start_year + row[0] / 52.0}
+            for row in cur.fetchall()
+        ]
+
+
+def _query_terminal_aggregates(
+    *,
+    pool: Any,
+    session_id: UUID,
+    terminal_tick: int,
+) -> dict[str, Any]:
+    """Aggregate terminal-tick state across all counties from the trace view."""
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FILTER (WHERE v > 0), "
+            "       SUM(v), SUM(c), SUM(s), SUM(k) "
+            "FROM view_runtime_trace_emission "
+            "WHERE session_id = %s AND tick = %s",
+            (str(session_id), terminal_tick),
+        )
+        row = cur.fetchone()
+    counties_alive = int(row[0] or 0) if row else 0
+    return {
+        "tick": terminal_tick,
+        "counties_alive": counties_alive,
+        "total_population": None,
+        "total_v": float(row[1] or 0.0) if row else 0.0,
+        "total_c": float(row[2] or 0.0) if row else 0.0,
+        "total_s": float(row[3] or 0.0) if row else 0.0,
+        "total_k": float(row[4] or 0.0) if row else 0.0,
+        "mean_p_acquiescence": None,
+        "mean_p_revolution": None,
+        "mean_ideology_r": None,
+        "mean_ideology_l": None,
+        "mean_ideology_f": None,
+    }
+
+
+def _county_terminal_snapshot(
+    *,
+    pool: Any,
+    session_id: UUID,
+    terminal_tick: int,
+) -> list[dict[str, Any]]:
+    """Per-county terminal row + delta-vs-initial."""
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT entity_id, v, c, s, k "
+            "FROM view_runtime_trace_emission "
+            "WHERE session_id = %s AND tick = %s "
+            "ORDER BY entity_id",
+            (str(session_id), terminal_tick),
+        )
+        terminal = cur.fetchall()
+        cur.execute(
+            "SELECT entity_id, k FROM view_runtime_trace_emission "
+            "WHERE session_id = %s AND tick = 0",
+            (str(session_id),),
+        )
+        initial_k = {r[0]: float(r[1] or 0.0) for r in cur.fetchall()}
+    out: list[dict[str, Any]] = []
+    for entity_id, v, c, s, k in terminal:
+        k_now = float(k or 0.0)
+        out.append(
+            {
+                "entity_id": entity_id,
+                "v": float(v or 0.0),
+                "c": float(c or 0.0),
+                "s": float(s or 0.0),
+                "k": k_now,
+                "p_acquiescence": None,
+                "p_revolution": None,
+                "ideology_r": None,
+                "ideology_l": None,
+                "ideology_f": None,
+                "population": None,
+                "delta_k_vs_initial": k_now - initial_k.get(entity_id, 0.0),
+            }
+        )
+    return out
+
+
+def _defines_hash(defines: Any) -> str:
+    """SHA-256 over the canonical model_dump() of a GameDefines instance."""
+    try:
+        payload = defines.model_dump(mode="json")
+    except AttributeError:
+        payload = {"_repr": repr(defines)}
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _sqlite_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def run(config: SimulationRunConfig) -> SimulationRunResult:
+    """Execute the headless simulation per ``config`` and emit artifacts.
+
+    Returns:
+        :class:`SimulationRunResult` describing the run outcome.
+    """
+    _install_sigint_handler()
+    _validate_preflight(config)
+
+    from babylon.config.defines import GameDefines
+    from babylon.persistence import PostgresRuntime
+    from babylon.persistence.postgres_initialization import initialize_session
+
+    t_total = time.perf_counter()
+    wallclock_start = _dt.datetime.now(_dt.UTC)
+    session_id = uuid4()
+    exit_reason = ExitReason.COMPLETED
+    end_game_event: dict[str, Any] | None = None
+    error_payload: dict[str, Any] | None = None
+    pool = _open_postgres_pool()
+    runtime: Any = None
+    ticks_completed = 0
+    per_tick_durations: list[float] = []
+    t_session = 0.0
+    t_hex = 0.0
+
+    try:
+        _apply_migrations(pool)
+        runtime = PostgresRuntime(pool=pool)
+        defines = GameDefines.load_default()
+
+        t0 = time.perf_counter()
+        report = initialize_session(
+            session_id=session_id,
+            sqlite_path=config.sqlite_reference_path,
+            runtime=runtime,
+            defines=defines,
+            start_year=config.start_year,
+            scenario_length_years=max(1, config.ticks // 52 + 1),
+            counties=sorted(config.scope_fips),
+            hex_hydration_counties=config.scope_fips,
+        )
+        t_session = time.perf_counter() - t0
+        t_hex = t_session  # subset; refined when hex hydration exposes its own timer
+
+        if report.hex_count == 0:
+            raise ReferenceDataMissingError(
+                "Hex hydration produced zero rows for the requested scope."
+            )
+
+        if config.dry_run:
+            _LOG.info("Dry-run requested; skipping tick loop.")
+        else:
+            ticks_completed = _tick_loop(
+                runtime=runtime,
+                session_id=session_id,
+                config=config,
+                per_tick_durations=per_tick_durations,
+            )
+            if _interrupt_requested and ticks_completed < config.ticks:
+                exit_reason = ExitReason.USER_INTERRUPTED
+
+        terminal_tick = max(ticks_completed - 1, 0)
+        audit_entries = _query_audit_log(pool=pool, session_id=session_id)
+        terminal_state = _query_terminal_aggregates(
+            pool=pool,
+            session_id=session_id,
+            terminal_tick=terminal_tick,
+        )
+        snapshot = _county_terminal_snapshot(
+            pool=pool,
+            session_id=session_id,
+            terminal_tick=terminal_tick,
+        )
+        wallclock_end = _dt.datetime.now(_dt.UTC)
+
+        t_artifacts = time.perf_counter()
+        artifact_dir = _emit_artifacts(
+            config=config,
+            session_id=session_id,
+            exit_reason=exit_reason,
+            ticks_completed=ticks_completed,
+            wallclock_start=wallclock_start,
+            wallclock_end=wallclock_end,
+            terminal_state=terminal_state,
+            snapshot=snapshot,
+            audit_entries=audit_entries,
+            performance=_build_performance(
+                total_start=t_total,
+                session_init=t_session,
+                hex_hydration=t_hex,
+                tick_durations=per_tick_durations,
+                artifact_emission=0.0,
+            ),
+            defines=defines,
+            pool=pool,
+            end_game_event=end_game_event,
+            error=error_payload,
+        )
+        artifact_emission_sec = time.perf_counter() - t_artifacts
+
+        performance = _build_performance(
+            total_start=t_total,
+            session_init=t_session,
+            hex_hydration=t_hex,
+            tick_durations=per_tick_durations,
+            artifact_emission=artifact_emission_sec,
+        )
+
+        return SimulationRunResult(
+            session_id=session_id,
+            config=config,
+            ticks_completed=ticks_completed,
+            exit_reason=exit_reason,
+            end_game_tick=None,
+            end_game_condition=None,
+            wallclock_start=wallclock_start,
+            wallclock_end=wallclock_end,
+            performance=performance,
+            conservation_audit=tuple(audit_entries),
+            artifact_dir=artifact_dir,
+        )
+    finally:
+        if runtime is not None:
+            with suppress(Exception):
+                runtime.close()
+        else:
+            with suppress(Exception):
+                pool.close()
+
+
+def _tick_loop(
+    *,
+    runtime: Any,
+    session_id: UUID,
+    config: SimulationRunConfig,
+    per_tick_durations: list[float],
+) -> int:
+    """Drive the tick loop with tqdm + cooperative SIGINT.
+
+    Returns:
+        Number of ticks fully persisted.
+    """
+    ticks_completed = 1  # tick 0 was persisted by initialize_session
+    tick_range = range(1, config.ticks)
+    iterator: Any = tick_range
+    if tqdm is not None:
+        iterator = tqdm(
+            tick_range,
+            desc="ticks",
+            file=sys.stderr,
+            disable=not sys.stderr.isatty(),
+            mininterval=1.0,
+            unit="tick",
+        )
+
+    for tick in iterator:
+        if _interrupt_requested:
+            break
+        t_tick = time.perf_counter()
+        determinism_hash = hashlib.sha256(
+            f"{session_id}:{tick}:{config.random_seed}".encode()
+        ).hexdigest()
+        _carry_forward_tick(
+            runtime=runtime,
+            session_id=session_id,
+            tick=tick,
+            determinism_hash=determinism_hash,
+        )
+        per_tick_durations.append(time.perf_counter() - t_tick)
+        ticks_completed = tick + 1
+    return ticks_completed
+
+
+def _build_performance(
+    *,
+    total_start: float,
+    session_init: float,
+    hex_hydration: float,
+    tick_durations: list[float],
+    artifact_emission: float,
+) -> PerformanceBreakdown:
+    total = time.perf_counter() - total_start
+    tick_loop_sec = sum(tick_durations)
+    if tick_durations:
+        durations_ms = [d * 1000.0 for d in tick_durations]
+        median_ms = statistics.median(durations_ms)
+        p99_ms = (
+            sorted(durations_ms)[int(len(durations_ms) * 0.99)]
+            if len(durations_ms) > 1
+            else durations_ms[0]
+        )
+        max_ms = max(durations_ms)
+    else:
+        median_ms = p99_ms = max_ms = 0.0
+    return PerformanceBreakdown(
+        total_wallclock_sec=total,
+        session_init_sec=session_init,
+        hex_hydration_sec=hex_hydration,
+        tick_loop_sec=tick_loop_sec,
+        artifact_emission_sec=artifact_emission,
+        per_tick_median_ms=median_ms,
+        per_tick_p99_ms=p99_ms,
+        per_tick_max_ms=max_ms,
+    )
+
+
+def _emit_artifacts(
+    *,
+    config: SimulationRunConfig,
+    session_id: UUID,
+    exit_reason: ExitReason,
+    ticks_completed: int,
+    wallclock_start: _dt.datetime,
+    wallclock_end: _dt.datetime,
+    terminal_state: dict[str, Any],
+    snapshot: list[dict[str, Any]],
+    audit_entries: list[AuditEntry],
+    performance: PerformanceBreakdown,
+    defines: Any,
+    pool: Any,
+    end_game_event: dict[str, Any] | None,
+    error: dict[str, Any] | None,
+) -> Path:
+    """Write trace.csv + summary.json + manifest.json into ``config.output_dir``."""
+    _prepare_output_dir(config.output_dir)
+    artifact_dir = config.output_dir
+
+    # trace.csv
+    trace_rows = _query_trace(pool=pool, session_id=session_id, start_year=config.start_year)
+    trace_path = artifact_dir / "trace.csv"
+    with TraceEmitter(trace_path) as emitter:
+        for row in trace_rows:
+            emitter.write_row(row)
+        trace_row_count = emitter.row_count
+
+    # summary.json
+    summary_payload = build_summary(
+        config=config,
+        session_id=str(session_id),
+        exit_reason=exit_reason,
+        ticks_completed=ticks_completed,
+        wallclock_start=wallclock_start,
+        wallclock_end=wallclock_end,
+        terminal_state=terminal_state,
+        external_node_flows=[],  # MVP: no flow rollups
+        county_terminal_snapshot=snapshot,
+        conservation_audit=audit_entries,
+        performance=performance,
+        end_game_event=end_game_event,
+        error=error,
+    )
+    summary_path = artifact_dir / "summary.json"
+    summary_path.write_text(json.dumps(summary_payload, indent=2, default=str))
+
+    # manifest.json
+    artifact_files = [
+        ("trace.csv", "trace_csv_v1", trace_path.stat().st_size, trace_row_count),
+        ("summary.json", "summary_json_v1", summary_path.stat().st_size, None),
+    ]
+    manifest_payload = build_manifest(
+        config=config,
+        session_id=str(session_id),
+        exit_reason=exit_reason,
+        wallclock_start=wallclock_start,
+        wallclock_end=wallclock_end,
+        artifact_dir=artifact_dir,
+        artifact_files=artifact_files,
+        defines_hash=_defines_hash(defines),
+        data_versions={
+            "tiger_vintage": "2024",
+            "sqlite_sha256": _sqlite_sha256(config.sqlite_reference_path),
+        },
+    )
+    (artifact_dir / "manifest.json").write_text(json.dumps(manifest_payload, indent=2))
+    return artifact_dir
+
+
+def _exit_code_for(reason: ExitReason) -> int:
+    """Map exit reason to CLI exit code (contracts/cli_contract.yaml)."""
+    if reason == ExitReason.COMPLETED:
+        return 0
+    if reason == ExitReason.EARLY_TERMINATED:
+        return 0
+    if reason == ExitReason.USER_INTERRUPTED:
+        return 130
+    return 1
+
+
+def _emit_error(exit_name: str, message: str, partial: Path | None) -> None:
+    """Emit the canonical single-line stderr error message (FR-020)."""
+    artifact_token = str(partial.resolve()) if partial else "NONE"
+    print(
+        f"ERROR {exit_name}: {message} | partial_artifacts={artifact_token}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def main_from_argv(args: argparse.Namespace) -> int:
+    """Build config + dispatch + map exit code (T032).
+
+    Reads CLI args, dispatches to :func:`run`, prints the artifact
+    directory path on stdout for exit-0 runs, and emits the canonical
+    error format on stderr for non-zero exits.
+    """
+    logging.basicConfig(level=getattr(logging, args.verbose), stream=sys.stderr)
+    try:
+        config = _build_config(args)
+    except ConfigError as exc:
+        _emit_error(exc.exit_name, str(exc), partial=None)
+        return exc.exit_code
+
+    try:
+        result = run(config)
+    except ConfigError as exc:
+        _emit_error(exc.exit_name, str(exc), partial=None)
+        return exc.exit_code
+    except ReferenceDataMissingError as exc:
+        _emit_error(exc.exit_name, str(exc), partial=None)
+        return exc.exit_code
+    except PostgresUnreachableError as exc:
+        _emit_error(exc.exit_name, str(exc), partial=None)
+        return exc.exit_code
+    except Exception as exc:  # pragma: no cover - engine exceptions
+        partial: Path | None = config.output_dir if config.output_dir.exists() else None
+        _emit_error("ENGINE_FAILURE", f"{exc.__class__.__name__}: {exc}", partial=partial)
+        return 1
+
+    if result.artifact_dir is not None:
+        print(str(result.artifact_dir.resolve()))
+    return _exit_code_for(result.exit_reason)
+
+
+__all__ = [
+    "ConfigError",
+    "PostgresUnreachableError",
+    "ReferenceDataMissingError",
+    "RunnerError",
+    "build_parser",
+    "main_from_argv",
+    "run",
+]

@@ -330,6 +330,10 @@ poetry run python tools/monte_carlo.py \
   --csv results/monte_carlo.csv
 """
 
+[tasks."sim:e2e-michigan"]
+description = "Headless 1000-tick Michigan + Canada e2e simulation (spec-064)"
+run = "poetry run python -m babylon.engine.headless_runner --scope michigan-canada"
+
 # =============================================================================
 # TUNING (Namespaced)
 # =============================================================================

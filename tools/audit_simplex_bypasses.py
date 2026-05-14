@@ -1,6 +1,25 @@
+"""AST audit for direct ``.r`` / ``.l`` / ``.f`` mutations on TernaryConsciousness.
+
+Enforces spec-043 routing discipline: consciousness simplex coordinates
+MUST flow through the formula-driven update path, never through direct
+attribute assignment. Exits 1 if any CRITICAL finding is detected.
+
+Originally lived at ``scripts/audit_simplex_bypasses.py``; moved into
+``tools/`` as part of the 2026-05-14 tools/scripts consolidation.
+
+Usage::
+
+    poetry run python tools/audit_simplex_bypasses.py
+    # or, via mise:
+    mise run qa:audit-consciousness
+"""
+
+from __future__ import annotations
+
 import ast
 import os
 import sys
+from pathlib import Path
 
 
 def audit_bypasses(root_dir: str) -> list[tuple[str, int, str, str, str]]:
@@ -120,7 +139,8 @@ def audit_bypasses(root_dir: str) -> list[tuple[str, int, str, str, str]]:
 
 
 if __name__ == "__main__":
-    findings = audit_bypasses("/home/user/projects/game/babylon/src/babylon")
+    repo_root = Path(__file__).resolve().parent.parent
+    findings = audit_bypasses(str(repo_root / "src" / "babylon"))
     if any(sev == "CRITICAL" for _, _, _, sev, _ in findings):
         sys.exit(1)
     if not findings:

@@ -13,7 +13,9 @@ Data Source:
 
 Usage::
 
-    .venv/bin/python scripts/load_county_geometry_and_h3.py [--h3-state 26]
+    poetry run python tools/ingest_tiger_geometry.py [--h3-state 26]
+    # or, via mise:
+    mise run data:tiger-sqlite [-- --h3-state 26]
 
 Flags:
     --h3-state FIPS   Generate H3 res-7 cells for this state (default: 26 = Michigan)

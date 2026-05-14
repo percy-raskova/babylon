@@ -15,7 +15,7 @@ into Shapely via ``shapely.wkt.loads()``.
   reference DB at ``data/sqlite/marxist-data-3NF.sqlite``, joining
   ``dim_county`` ⨝ ``dim_county_geometry`` ⨝ ``dim_state``. The reference
   DB itself was populated from the 2024 TIGER shapefile via
-  ``scripts/load_county_geometry_and_h3.py``. Covers 50 states + DC +
+  ``tools/ingest_tiger_geometry.py``. Covers 50 states + DC +
   Puerto Rico (3,222 rows).
 - ``shapefile`` (back-compat): reads ``tl_<year>_us_county.shp`` directly
   via geopandas. Covers 50 states + DC + Puerto Rico + 4 Pacific
@@ -189,7 +189,7 @@ def ingest_tiger_counties_from_sqlite(
             ``data/sqlite/marxist-data-3NF.sqlite`` relative to CWD.
         tiger_vintage: Census vintage year string stored alongside each row.
             Must match the vintage of the shapefile originally loaded into
-            SQLite (``scripts/load_county_geometry_and_h3.py`` uses 2024).
+            SQLite (``tools/ingest_tiger_geometry.py`` uses 2024).
 
     Returns:
         Number of rows actually inserted (existing rows skipped via
@@ -199,7 +199,7 @@ def ingest_tiger_counties_from_sqlite(
     if not path.exists():
         raise FileNotFoundError(
             f"SQLite reference DB not found at {path}; run "
-            "scripts/load_county_geometry_and_h3.py first to populate it"
+            "tools/ingest_tiger_geometry.py first to populate it"
         )
 
     logger.info("Reading TIGER county geometries from SQLite at %s ...", path)

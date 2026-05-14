@@ -1,0 +1,109 @@
+openapi: 3.1.0
+info:
+  title: Cross-Border Commute Classifier Contract
+  version: 1.0.0
+  description: |
+    Stateless classifier that resolves a LODES destination identifier into one
+    of three boundary categories:
+
+      1. In-study-area hex (NodeKind.HEX, the H3 cell ID)
+      2. Domestic out-of-study-area (NodeKind.EXTERNAL, "rest_of_usa")
+      3. Canadian destination (NodeKind.EXTERNAL, "canada")
+
+    Implements FR-023 (Canadian routing) / FR-024 (domestic out-of-area
+    routing) / FR-025 (encoded country/state code lookup) / FR-027 (per-row
+    emission-time classification) / FR-028 (unmapped destination fallback).
+
+    Per research.md §4: canonical LODES does NOT include Canadian destinations.
+    The Canadian branch (3) is implemented and unit-tested with synthetic
+    rows, but produces zero rows from canonical LODES alone.
+
+    Owner subsystem: engine. Stateless and injection-friendly.
+
+paths: {}
+
+components:
+  schemas:
+    CrossBorderCommuteClassifierConstructor:
+      type: object
+      required:
+        - study_area_hexes
+        - study_area_states
+        - domestic_states
+      properties:
+        study_area_hexes:
+          type: array
+          items: { type: string }
+          minItems: 1
+          description: H3 res-7 cell IDs of the in-study-area hex set.
+        study_area_states:
+          type: array
+          items:
+            type: string
+            pattern: "^[0-9]{2}$"
+          minItems: 1
+          description: 2-digit FIPS state codes for the study area.
+          example: ["26"]
+        domestic_states:
+          type: array
+          items:
+            type: string
+            pattern: "^(0[1-9]|[1-5][0-9]|6[0-9]|7[0-8])$"
+          minItems: 1
+          description: All FIPS state codes considered domestic-US (study_area_states MUST be a subset).
+          example: ["01", "02", "04", "...", "56", "60", "66", "69", "72", "78"]
+
+    CrossBorderClassification:
+      type: object
+      required:
+        - dest_kind
+        - dest_node_id
+      properties:
+        dest_kind:
+          type: string
+          enum: ["hex", "external"]
+        dest_node_id:
+          type: string
+          description: H3 res-7 cell ID, "canada", or "rest_of_usa".
+          example: "canada"
+
+  examples:
+    InStudyAreaHex:
+      summary: A Detroit tri-county block-coded destination resolves to its H3 cell
+      value:
+        input_dest_id: "260010001001045"
+        output:
+          dest_kind: "hex"
+          dest_node_id: "872a307affffff7"
+
+    DomesticOutOfArea:
+      summary: A Toledo, OH block (state 39) — domestic but out of study area
+      value:
+        input_dest_id: "390951234567890"
+        output:
+          dest_kind: "external"
+          dest_node_id: "rest_of_usa"
+
+    CanadianDestination:
+      summary: >
+        Synthetic Canadian-coded destination (state-prefix 99 — NOT in
+        `domestic_states`); unit-test only per research.md §4
+      value:
+        input_dest_id: "990001234567890"
+        # canonical US FIPS set; "99" absent → routes to canada per
+        # data-model §1.4 step 3
+        domestic_states_passed: ["01", "02", "...", "78"]
+        output:
+          dest_kind: "external"
+          dest_node_id: "canada"
+
+    UnmappedFallback:
+      summary: Unrecognized destination format → fallback to rest_of_usa per FR-028
+      value:
+        input_dest_id: "ABC-INVALID"
+        output:
+          dest_kind: "external"
+          dest_node_id: "rest_of_usa"
+        side_effect: >
+          One audit log entry: 'Unmapped LODES destination ABC-INVALID
+          for session bb84c2a1-... — defaulted to rest_of_usa'

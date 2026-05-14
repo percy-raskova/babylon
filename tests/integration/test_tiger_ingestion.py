@@ -19,6 +19,12 @@ pytestmark = [
     ),
 ]
 
+_SQLITE_REF_DB = Path("data/sqlite/marxist-data-3NF.sqlite")
+_sqlite_missing = pytest.mark.skipif(
+    not _SQLITE_REF_DB.exists(),
+    reason="SQLite reference DB not present at data/sqlite/marxist-data-3NF.sqlite",
+)
+
 
 @pytest.fixture
 def pg_pool():  # type: ignore[no-untyped-def]
@@ -134,3 +140,86 @@ def test_hex_hydrator_uses_postgres_resident_geometry(fresh_tiger_table) -> None
         tiger_county_shapefile=Path("/tmp/nonexistent-shapefile.shp"),  # Postgres path wins
     )
     assert rows > 500, "Postgres-resident geometry query failed; expected ~1000 cells"
+
+
+@_sqlite_missing
+def test_ingest_from_sqlite_loads_us_counties_minus_pacific_territories(  # type: ignore[no-untyped-def]
+    fresh_tiger_table,
+) -> None:
+    """Loading from SQLite covers 50 states + DC + PR (~3,222 rows).
+
+    Pacific territories (American Samoa, Guam, NMI, USVI — 13 rows) are
+    in the shapefile but not in the SQLite reference DB. Documented as
+    expected scope difference between sources.
+    """
+    from babylon.persistence.tiger_ingestion import ingest_tiger_counties_from_sqlite
+
+    inserted = ingest_tiger_counties_from_sqlite(fresh_tiger_table, _SQLITE_REF_DB)
+    assert 3000 < inserted < 3300, f"Expected ~3222 counties from SQLite, got {inserted}"
+
+    with fresh_tiger_table.connection() as pg, pg.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM immutable_reference_tiger_county")
+        total = cur.fetchone()[0]
+        # Michigan has 83 counties; Wayne County (26163) MUST be present.
+        cur.execute("SELECT COUNT(*) FROM immutable_reference_tiger_county WHERE state_fips = '26'")
+        michigan_count = cur.fetchone()[0]
+        cur.execute(
+            "SELECT name, namelsad FROM immutable_reference_tiger_county WHERE geoid = '26163'"
+        )
+        wayne = cur.fetchone()
+    assert total == inserted
+    assert michigan_count == 83
+    assert wayne == ("Wayne", "Wayne County")
+
+
+@_sqlite_missing
+def test_ingest_from_sqlite_is_idempotent(fresh_tiger_table) -> None:  # type: ignore[no-untyped-def]
+    """Running the SQLite-source ingestion twice does not duplicate rows."""
+    from babylon.persistence.tiger_ingestion import ingest_tiger_counties_from_sqlite
+
+    first = ingest_tiger_counties_from_sqlite(fresh_tiger_table, _SQLITE_REF_DB)
+    second = ingest_tiger_counties_from_sqlite(fresh_tiger_table, _SQLITE_REF_DB)
+    assert first > 0
+    assert second == 0, "Second SQLite-source ingestion should insert zero rows"
+
+
+@_sqlite_missing
+def test_ingest_from_sqlite_geometries_match_shapefile_for_sampled_fips(  # type: ignore[no-untyped-def]
+    fresh_tiger_table,
+) -> None:
+    """SQLite and shapefile sources produce byte-identical WKT for sampled counties.
+
+    Verifies that the SQLite reference DB faithfully mirrors the TIGER 2024
+    shapefile. Samples Wayne (26163, Detroit), Cook (17031, Chicago),
+    Los Angeles (06037), Harris (48201, Houston), and DC (11001).
+    """
+    from babylon.persistence.tiger_ingestion import (
+        fetch_county_geometry_wkt,
+        ingest_tiger_counties_from_shapefile,
+        ingest_tiger_counties_from_sqlite,
+    )
+
+    sample_fips = ("26163", "17031", "06037", "48201", "11001")
+
+    # First pass: load from SQLite, capture WKT for each sample
+    ingest_tiger_counties_from_sqlite(fresh_tiger_table, _SQLITE_REF_DB)
+    sqlite_wkts = {fips: fetch_county_geometry_wkt(fresh_tiger_table, fips) for fips in sample_fips}
+    for fips, wkt in sqlite_wkts.items():
+        assert wkt is not None, f"SQLite source did not produce WKT for {fips}"
+
+    # Truncate + reload from shapefile
+    with fresh_tiger_table.connection() as conn:
+        conn.autocommit = True
+        conn.execute("TRUNCATE immutable_reference_tiger_county")
+    ingest_tiger_counties_from_shapefile(
+        fresh_tiger_table, Path("data/tiger/county/tl_2024_us_county.shp")
+    )
+    shapefile_wkts = {
+        fips: fetch_county_geometry_wkt(fresh_tiger_table, fips) for fips in sample_fips
+    }
+
+    # WKT should be byte-identical (both sources serialize via shapely.wkt)
+    for fips in sample_fips:
+        assert sqlite_wkts[fips] == shapefile_wkts[fips], (
+            f"WKT mismatch for {fips} between SQLite and shapefile sources"
+        )

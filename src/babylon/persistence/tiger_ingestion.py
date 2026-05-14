@@ -9,14 +9,34 @@ The TEXT-WKT representation is chosen for portability — it works on any
 Postgres deployment without PostGIS. Downstream readers load WKT back
 into Shapely via ``shapely.wkt.loads()``.
 
-**Reproducibility**:
+**Two sources supported**:
 
-    # Operator one-shot ingestion (after Postgres is up):
+- ``sqlite`` (canonical, default since 2026-05-14): reads from the
+  reference DB at ``data/sqlite/marxist-data-3NF.sqlite``, joining
+  ``dim_county`` ⨝ ``dim_county_geometry`` ⨝ ``dim_state``. The reference
+  DB itself was populated from the 2024 TIGER shapefile via
+  ``scripts/load_county_geometry_and_h3.py``. Covers 50 states + DC +
+  Puerto Rico (3,222 rows).
+- ``shapefile`` (back-compat): reads ``tl_<year>_us_county.shp`` directly
+  via geopandas. Covers 50 states + DC + Puerto Rico + 4 Pacific
+  territories (American Samoa, Guam, NMI, USVI — 3,235 rows total).
+
+**Reproducibility**::
+
+    # Default: load from SQLite reference DB (no 132 MB shapefile dependency)
     poetry run python -m babylon.persistence.tiger_ingestion
 
-    # Or programmatically from tests / scripts:
-    from babylon.persistence.tiger_ingestion import ingest_tiger_counties
-    count = ingest_tiger_counties(pool, shapefile_path)
+    # Or explicit:
+    poetry run python -m babylon.persistence.tiger_ingestion --source sqlite
+
+    # Legacy path (still supported):
+    poetry run python -m babylon.persistence.tiger_ingestion --source shapefile
+
+    # Programmatic:
+    from babylon.persistence.tiger_ingestion import (
+        ingest_tiger_counties_from_sqlite,
+        ingest_tiger_counties_from_shapefile,
+    )
 
 See Also:
     ``src/babylon/persistence/migrations/0018_tiger_county_geometry.sql``
@@ -28,6 +48,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,20 +58,76 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIGER_PATH = Path("data/tiger/county/tl_2024_us_county.shp")
+_DEFAULT_SQLITE_PATH = Path("data/sqlite/marxist-data-3NF.sqlite")
 _DEFAULT_TIGER_VINTAGE = "2024"
 
+_INSERT_SQL = """
+    INSERT INTO immutable_reference_tiger_county
+        (geoid, state_fips, county_fips, name, namelsad,
+         geometry_wkt, tiger_vintage)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (geoid) DO NOTHING
+"""
 
-def ingest_tiger_counties(
+# Suffix-strip table for deriving TIGER short ``NAME`` from the ``NAMELSAD``-style
+# value stored as ``dim_county.county_name`` in the reference DB. Order matters:
+# longer suffixes must come first ("City and Borough" before "Borough").
+_NAMELSAD_SUFFIXES_FOR_NAME_STRIP: tuple[str, ...] = (
+    " City and Borough",  # Alaska (e.g., "Yakutat City and Borough" → "Yakutat")
+    " Census Area",  # Alaska
+    " Planning Region",  # Connecticut (replaced counties in 2022)
+    " Municipality",  # Alaska
+    " Municipio",  # Puerto Rico
+    " Borough",  # Alaska
+    " Parish",  # Louisiana
+    " County",  # 48 contiguous states + most of AK/HI
+    " city",  # Virginia / Nevada independent cities (lowercase 'c')
+)
+
+
+def _short_name_from_namelsad(namelsad: str) -> str:
+    """Derive TIGER short ``NAME`` from ``NAMELSAD`` by stripping the type suffix.
+
+    Returns the input unchanged when no recognized suffix matches (e.g.,
+    "District of Columbia"). Exact for all 3,222 SQLite-resident rows as
+    of 2026-05-14.
+    """
+    for suffix in _NAMELSAD_SUFFIXES_FOR_NAME_STRIP:
+        if namelsad.endswith(suffix):
+            return namelsad[: -len(suffix)]
+    return namelsad
+
+
+def _insert_tiger_rows(
+    pool: ConnectionPool,
+    payload: list[tuple[str, str, str, str, str, str, str]],
+) -> int:
+    """Apply ``ON CONFLICT DO NOTHING`` INSERTs and return rows actually inserted."""
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM immutable_reference_tiger_county")
+        result = cur.fetchone()
+        before = int(result[0]) if result else 0
+        cur.executemany(_INSERT_SQL, payload)
+        cur.execute("SELECT COUNT(*) FROM immutable_reference_tiger_county")
+        result = cur.fetchone()
+        after = int(result[0]) if result else 0
+    inserted = after - before
+    logger.info(
+        "TIGER ingestion: %d rows already present, %d rows inserted, %d total",
+        before,
+        inserted,
+        after,
+    )
+    return inserted
+
+
+def ingest_tiger_counties_from_shapefile(
     pool: ConnectionPool,
     shapefile_path: Path | None = None,
     *,
     tiger_vintage: str = _DEFAULT_TIGER_VINTAGE,
 ) -> int:
-    """Load TIGER county polygons into ``immutable_reference_tiger_county``.
-
-    Idempotent: rows present in the table are skipped via
-    ``ON CONFLICT (geoid) DO NOTHING``. Re-running after a partial load
-    safely completes; explicit re-load requires a manual ``TRUNCATE``.
+    """Load TIGER county polygons into Postgres directly from the shapefile.
 
     Args:
         pool: Postgres connection pool (psycopg_pool.ConnectionPool).
@@ -60,7 +137,8 @@ def ingest_tiger_counties(
             for auditability — e.g., ``"2024"``).
 
     Returns:
-        Number of rows actually inserted (existing rows are not counted).
+        Number of rows actually inserted (existing rows skipped via
+        ``ON CONFLICT (geoid) DO NOTHING``).
     """
     import geopandas as gpd  # type: ignore[import-untyped]
 
@@ -89,33 +167,87 @@ def ingest_tiger_counties(
         )
         for _, row in gdf.iterrows()
     ]
+    return _insert_tiger_rows(pool, payload)
 
-    with pool.connection() as conn, conn.cursor() as cur:
-        # Count rows before insert so we can report actual inserts.
-        cur.execute("SELECT COUNT(*) FROM immutable_reference_tiger_county")
-        result = cur.fetchone()
-        before = int(result[0]) if result else 0
-        cur.executemany(
-            """
-            INSERT INTO immutable_reference_tiger_county
-                (geoid, state_fips, county_fips, name, namelsad,
-                 geometry_wkt, tiger_vintage)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (geoid) DO NOTHING
-            """,
-            payload,
+
+def ingest_tiger_counties_from_sqlite(
+    pool: ConnectionPool,
+    sqlite_path: Path | None = None,
+    *,
+    tiger_vintage: str = _DEFAULT_TIGER_VINTAGE,
+) -> int:
+    """Load TIGER county polygons into Postgres from the SQLite reference DB.
+
+    Reads ``dim_county`` ⨝ ``dim_county_geometry`` ⨝ ``dim_state``, where
+    ``dim_county.county_name`` holds the canonical ``NAMELSAD`` value
+    (e.g., "Autauga County", "Yakutat City and Borough"). The TIGER
+    short ``NAME`` is derived via :func:`_short_name_from_namelsad`.
+
+    Args:
+        pool: Postgres connection pool (psycopg_pool.ConnectionPool).
+        sqlite_path: Path to ``marxist-data-3NF.sqlite``. Defaults to
+            ``data/sqlite/marxist-data-3NF.sqlite`` relative to CWD.
+        tiger_vintage: Census vintage year string stored alongside each row.
+            Must match the vintage of the shapefile originally loaded into
+            SQLite (``scripts/load_county_geometry_and_h3.py`` uses 2024).
+
+    Returns:
+        Number of rows actually inserted (existing rows skipped via
+        ``ON CONFLICT (geoid) DO NOTHING``).
+    """
+    path = sqlite_path or _DEFAULT_SQLITE_PATH
+    if not path.exists():
+        raise FileNotFoundError(
+            f"SQLite reference DB not found at {path}; run "
+            "scripts/load_county_geometry_and_h3.py first to populate it"
         )
-        cur.execute("SELECT COUNT(*) FROM immutable_reference_tiger_county")
-        result = cur.fetchone()
-        after = int(result[0]) if result else 0
-    inserted = after - before
-    logger.info(
-        "TIGER ingestion: %d rows already present, %d rows inserted, %d total",
-        before,
-        inserted,
-        after,
-    )
-    return inserted
+
+    logger.info("Reading TIGER county geometries from SQLite at %s ...", path)
+    query = """
+        SELECT
+            c.fips           AS geoid,
+            s.state_fips     AS state_fips,
+            c.county_fips    AS county_fips,
+            c.county_name    AS namelsad,
+            cg.geometry_wkt  AS geometry_wkt
+        FROM dim_county_geometry cg
+        JOIN dim_county c ON cg.county_id = c.county_id
+        JOIN dim_state  s ON c.state_id  = s.state_id
+        WHERE cg.geometry_wkt IS NOT NULL
+        ORDER BY c.fips
+    """
+    with sqlite3.connect(path) as sqlite_conn:
+        rows = sqlite_conn.execute(query).fetchall()
+    logger.info("Loaded %d SQLite TIGER rows; preparing INSERT payload", len(rows))
+
+    payload: list[tuple[str, str, str, str, str, str, str]] = [
+        (
+            geoid,
+            state_fips,
+            county_fips,
+            _short_name_from_namelsad(namelsad),
+            namelsad,
+            geometry_wkt,
+            tiger_vintage,
+        )
+        for (geoid, state_fips, county_fips, namelsad, geometry_wkt) in rows
+    ]
+    return _insert_tiger_rows(pool, payload)
+
+
+def ingest_tiger_counties(
+    pool: ConnectionPool,
+    shapefile_path: Path | None = None,
+    *,
+    tiger_vintage: str = _DEFAULT_TIGER_VINTAGE,
+) -> int:
+    """Back-compat alias for :func:`ingest_tiger_counties_from_shapefile`.
+
+    Preserved so existing callers (notably ``tests/integration/test_hex_hydration.py``'s
+    ``tiger_geometries_ingested`` fixture) keep working. New code should call
+    :func:`ingest_tiger_counties_from_sqlite` directly.
+    """
+    return ingest_tiger_counties_from_shapefile(pool, shapefile_path, tiger_vintage=tiger_vintage)
 
 
 def fetch_county_geometry_wkt(pool: ConnectionPool, geoid: str) -> str | None:
@@ -150,14 +282,28 @@ def _cli() -> int:
     """Entry point for ``python -m babylon.persistence.tiger_ingestion``."""
     parser = argparse.ArgumentParser(
         description=(
-            "Ingest the TIGER county shapefile into immutable_reference_tiger_county. Idempotent."
+            "Ingest TIGER county geometries into immutable_reference_tiger_county. "
+            "Default source is the SQLite reference DB; pass --source shapefile to "
+            "read the raw TIGER shapefile instead. Idempotent."
         )
+    )
+    parser.add_argument(
+        "--source",
+        choices=("sqlite", "shapefile"),
+        default="sqlite",
+        help="Where to read TIGER rows from (default: %(default)s)",
     )
     parser.add_argument(
         "--shapefile",
         type=Path,
         default=_DEFAULT_TIGER_PATH,
-        help="Path to tl_<year>_us_county.shp (default: %(default)s)",
+        help="Path to tl_<year>_us_county.shp (used when --source=shapefile, default: %(default)s)",
+    )
+    parser.add_argument(
+        "--sqlite-path",
+        type=Path,
+        default=_DEFAULT_SQLITE_PATH,
+        help="Path to marxist-data-3NF.sqlite (used when --source=sqlite, default: %(default)s)",
     )
     parser.add_argument(
         "--vintage",
@@ -186,8 +332,15 @@ def _cli() -> int:
         with pool.connection() as conn:
             conn.autocommit = True
             conn.execute(migration_path.read_text())
-        inserted = ingest_tiger_counties(pool, args.shapefile, tiger_vintage=args.vintage)
-        print(f"Inserted {inserted} new TIGER county rows.")
+        if args.source == "sqlite":
+            inserted = ingest_tiger_counties_from_sqlite(
+                pool, args.sqlite_path, tiger_vintage=args.vintage
+            )
+        else:
+            inserted = ingest_tiger_counties_from_shapefile(
+                pool, args.shapefile, tiger_vintage=args.vintage
+            )
+        print(f"Inserted {inserted} new TIGER county rows (source={args.source}).")
     return 0
 
 
@@ -199,4 +352,6 @@ __all__ = [
     "fetch_county_geometries_wkt",
     "fetch_county_geometry_wkt",
     "ingest_tiger_counties",
+    "ingest_tiger_counties_from_shapefile",
+    "ingest_tiger_counties_from_sqlite",
 ]

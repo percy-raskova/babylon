@@ -290,8 +290,8 @@ class TestStepOnce:
 
         # Use asyncio.to_thread mock that actually delays
         with patch("asyncio.to_thread") as mock_to_thread:
-            mock_to_thread.side_effect = (
-                lambda func: asyncio.sleep(0.01).then(lambda _: func())
+            mock_to_thread.side_effect = lambda func: (
+                asyncio.sleep(0.01).then(lambda _: func())
                 if hasattr(asyncio.sleep(0.01), "then")
                 else func()
             )

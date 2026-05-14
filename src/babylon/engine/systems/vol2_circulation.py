@@ -52,6 +52,9 @@ if TYPE_CHECKING:
     from babylon.economics.lodes_commute_matrix import (
         LODESCommuteMatrixLoader,
     )
+    from babylon.engine.systems.cross_border_commute import (
+        CrossBorderCommuteClassifier,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +112,10 @@ class Vol2CirculationStep:
         self,
         *,
         od_loader: LODESCommuteMatrixLoader,
+        classifier: CrossBorderCommuteClassifier | None = None,
     ) -> None:
         self._od_loader = od_loader
+        self._classifier = classifier
 
     def step(  # noqa: C901, PLR0915 — FR-009/010/011/030a/conservation are inherently coupled; splitting would harm clarity
         self,
@@ -225,7 +230,16 @@ class Vol2CirculationStep:
             if row_sum_j == 0:
                 continue
             origin_hex = row_to_origin[r]
-            dest_id = year_matrix.dest_node_id_by_col[c]
+            raw_dest_id = year_matrix.dest_node_id_by_col[c]
+            # FR-027 emission-time classification: when a classifier is
+            # wired, reclassify the destination so Canadian-coded blocks
+            # route to dest_node_id='canada' rather than the loader's
+            # default 'rest_of_usa'.
+            if self._classifier is not None:
+                classification = self._classifier.classify(raw_dest_id)
+                dest_id = classification.dest_node_id
+            else:
+                dest_id = raw_dest_id
             share = float(v_count) / row_sum_j
             magnitude = share * v_pre_vec[r]
             if magnitude == 0:

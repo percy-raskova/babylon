@@ -723,7 +723,7 @@ def hydrate_industry_hyperedges(
                 total_wages=wages,
                 profit_rate=profit_rate,
                 occ=occ,
-                county_fips=set(fips_codes),
+                county_fips=frozenset(fips_codes),
             )
             industries[f"ind_{naics_2digit}"] = ind
 

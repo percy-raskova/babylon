@@ -280,6 +280,7 @@ exclude = [
     "dist/",
     "assets/music/",
     "specs/",
+    "src/babylon_data/",
 ]
 plugins = [
     "pydantic.mypy",

@@ -1,0 +1,182 @@
+ADR040_spec_062_cross_scale_integration:
+  status: "accepted"
+  date: "2026-05-12"
+  title: "Spec 062: Cross-Scale Integration — value, substrate, and tick propagation"
+  context: |
+    Babylon prior to spec 062 had a working hex resolution 7 substrate
+    and a federal-statistics-derived economic stack, but lacked a single
+    coherent contract for how value flows across scales (hex → county →
+    state → national → international), how time-scoped coefficients
+    interpolate at weekly cadence, and how conservation is audited
+    per tick. Three load-bearing tensions had to be resolved:
+
+      1. Two-phase persistence (SQLite-as-fixture vs Postgres-as-runtime)
+         was de-facto practiced but never codified; downstream code
+         occasionally re-opened the SQLite file at runtime.
+      2. Per-tick atomicity was assumed but not enforced — a crash mid-
+         tick could leave hex_state, audit_log, and boundary_register
+         in a half-committed state.
+      3. Aggregation up the spatial hierarchy was happening via ad-hoc
+         Python sums in callsites that diverged from the auditor's
+         independent sum, masking conservation drift.
+
+    Five constitutional gates surfaced during the gate review and had
+    to close before implementation could proceed: III.7 determinism
+    hash, II.6 no DB I/O during tick, II.11 subsystem ownership,
+    II.13 transport substrate scope, and IV.1 Detroit-Windsor / Canada
+    as a first-class international node.
+
+  decision: |
+    Six architectural decisions captured by this spec:
+
+    1. **Two-phase persistence boundary (FR-001 / FR-002)**: SQLite
+       (`marxist-data-3NF.sqlite`) is open read-only at initialization
+       only; the handle is provably closed before tick 0 (verified by
+       a flock-based integration test). Runtime ticks read exclusively
+       from Postgres `immutable_reference_*` tables.
+
+    2. **Per-tick transactional atomicity (FR-008a)**:
+       `PostgresRuntime.persist_tick_atomic(envelope)` wraps every
+       `dynamic_hex_state`, `dynamic_external_node_state`,
+       `boundary_flow_register`, and `conservation_audit_log` write in a
+       single `conn.transaction()` block. `ON CONFLICT DO NOTHING` on
+       every composite primary key makes retry-after-crash idempotent.
+       `get_last_committed_tick(session_id)` returns the highest fully-
+       committed tick for crash-recovery.
+
+    3. **Hex resolution 7 as the only persisted state (FR-018 /
+       FR-019)**: county / state / national aggregates are derived on
+       read via SQL views (`v_county_value_aggregate`,
+       `v_state_value_aggregate`, `v_national_value_aggregate`,
+       `v_global_phi_balance`). No `dynamic_county_*` /
+       `dynamic_state_*` / `dynamic_national_*` table is permitted.
+
+    4. **Year-scoped coefficient lookup with discrete policy classes
+       (FR-011 / FR-012 / FR-013 / FR-041)**: every reference series
+       carries a `CoefficientLookupPolicy` (`slowly_varying` →
+       linear interpolation across 52 weeks; `event_discrete` →
+       step-function at year-boundary tick). Out-of-range lookups
+       clamp to the nearest available year and emit a one-time
+       warning per `(session_id, series_id)` pair.
+
+    5. **9-node external boundary set (FR-036 + R4 amendment)**:
+       Canada is a first-class international node alongside China, EU,
+       India, Sub-Saharan Africa, Latin America, Russia/CSI, Southeast
+       Asia. `rest_of_usa` is the single domestic-rest sink for
+       non-international non-study-area US flows. This closes GATE-5
+       (Constitution IV.1 Detroit-Windsor).
+
+    6. **Conservation audit log with determinism hash (FR-043 to
+       FR-049 + GATE-1)**: end-of-tick auditor produces one row per
+       (scale, invariant) with three-level severity (ok/warn/alarm).
+       Every row in a tick carries the same SHA-256 hash over
+       canonical(tick + sorted hex_state + actions + rng_seed),
+       satisfying Constitution III.7 replayability.
+
+  rationale:
+    persistence_split: |
+      Treating SQLite as fixture and Postgres as runtime per Constitution
+      III.4.2 was already the de-facto split. Codifying it removes
+      ambiguity and lets the runtime role enforce REVOKE
+      INSERT/UPDATE/DELETE on every `immutable_reference_*` table.
+
+    transactional_atomicity: |
+      Conservation is meaningless if the auditor sees a half-committed
+      tick. Wrapping the entire envelope in one Postgres transaction is
+      the only correct boundary; the alternative (per-table commits)
+      would let a CHECK violation in `conservation_audit_log` leave
+      already-committed `dynamic_hex_state` rows visible.
+
+    no_stored_aggregates: |
+      Constitution II.2 (Primitives vs Derived) treats `c_sum`,
+      `v_sum`, etc. above hex resolution 7 as derived. Storing them
+      would create two sources of truth and inevitable drift. Views
+      always reflect the current hex state.
+
+    canada_first_class: |
+      Constitution IV.1 (Detroit-Windsor Boundary Condition) is
+      non-negotiable. Collapsing Canada into `rest_of_usa` would
+      defeat the Detroit study area's analytical purpose. The R4
+      amendment in research.md §4 made this explicit.
+
+    determinism_hash_design: |
+      Hash inputs are (tick, sorted hex_state, sorted action list,
+      rng_seed). Sorting by `h3_index` makes the hash order-independent
+      (Postgres SELECT order is unspecified). Every audit row in the
+      tick shares the same hash so a single failing invariant points
+      to the exact replay state.
+
+  consequences:
+    positive:
+      - "Conservation drift becomes observable as audit_log rows; no silent divergence."
+      - "Crash recovery is trivial: resume from `get_last_committed_tick(session_id) + 1`."
+      - "Canada becomes a first-class boundary, unblocking Detroit-Windsor analysis."
+      - "Lookup policies make weekly interpolation explicit and testable."
+      - "Determinism hash enables replay-from-state debugging without re-running the engine."
+
+    negative:
+      - "Per-tick atomicity adds one Postgres transaction commit per tick (≤1 second budget)."
+      - "View-based aggregation requires Postgres-side GROUP BY on every cross-scale query."
+      - "Frozen Pydantic envelope forces all four row lists to be ready before commit (memory pressure on large studies)."
+
+  closures:
+    GATE-1: |
+      III.7 determinism hash closed by SHA-256 over canonical(tick +
+      sorted hex_state + actions + rng_seed). Implemented in
+      `conservation_audit.compute_determinism_hash()`; tested in
+      `test_conservation_auditor.TestDeterminismHash`.
+
+    GATE-2: |
+      II.6 no DB I/O during tick closed by the hydrate-tick-dehydrate
+      contract codified in `contracts/persistence.yaml`. The engine
+      holds no Postgres handle inside the 15-system pipeline.
+
+    GATE-3: |
+      II.11 subsystem table ownership closed by the registry in
+      `data-model.md §1`: persistence owns every `dynamic_*` and most
+      `immutable_reference_*`; economics owns `boundary_flow_register`
+      and the `v_global_phi_balance` view.
+
+    GATE-4: |
+      II.13 transport substrate closed by research.md §6: Vol II uses
+      the deterministic LODES min-cost-flow component only; slime-mold
+      conductivity is explicitly out of scope for spec 062.
+
+    GATE-5: |
+      IV.1 Detroit-Windsor closed by adding Canada as the 8th
+      international node (R4 amendment to FR-036).
+
+  followups:
+    - "Empirical re-calibration of alpha_annual against BEA county-level rate-of-profit convergence (downstream spec)."
+    - "Slime-mold conductivity routing for Vol II (downstream spec; LODES is the base layer)."
+    - "Engine pipeline insertion of SubstrateSystem at slot 2.5 + ConservationAuditor wire-up (T068, T085-T086)."
+    - "Live-Postgres integration tests for US1/US2/US3/US4/US5/US6 acceptance scenarios (T024, T034, T042-T044, T050-T051, T060-T062, T071, T074)."
+    - "Per-county Φ distribution wiring (T058, T078-T079)."
+    - "LODES OD matrix loader (T054-T055, T080)."
+
+  artifacts:
+    - "specs/062-cross-scale-integration/spec.md (321 lines, 56 FRs)"
+    - "specs/062-cross-scale-integration/plan.md (255 lines)"
+    - "specs/062-cross-scale-integration/research.md (153 lines)"
+    - "specs/062-cross-scale-integration/data-model.md (508 lines)"
+    - "specs/062-cross-scale-integration/quickstart.md (287 lines)"
+    - "specs/062-cross-scale-integration/contracts/* (5 YAML files)"
+    - "specs/062-cross-scale-integration/tasks.md (103 tasks)"
+    - "src/babylon/persistence/migrations/0010-0015 (6 SQL migrations)"
+    - "src/babylon/persistence/postgres_initialization.py"
+    - "src/babylon/persistence/postgres_reference.py"
+    - "src/babylon/persistence/postgres_aggregation.py"
+    - "src/babylon/persistence/conservation_audit.py"
+    - "src/babylon/persistence/conservation_audit_query.py"
+    - "src/babylon/persistence/audit_models.py"
+    - "src/babylon/persistence/hex_state.py"
+    - "src/babylon/persistence/external_node.py"
+    - "src/babylon/persistence/envelope.py"
+    - "src/babylon/persistence/postgres_runtime/_spec_062.py"
+    - "src/babylon/economics/boundary_flow_register.py"
+    - "src/babylon/economics/node_kinds.py"
+    - "src/babylon/economics/geometric_depreciation.py"
+    - "src/babylon/economics/coefficient_lookup.py"
+    - "src/babylon/engine/systems/substrate.py"
+    - "src/babylon/config/defines/cross_scale.py"
+    - "96 unit + property tests; integration tests skip when Postgres unavailable"

@@ -10,6 +10,39 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from babylon.config.defines.cross_scale import (
+    CoefficientLookupPolicy,
+    LookupPolicy,
+)
+
+
+def _default_lookup_policies() -> dict[str, CoefficientLookupPolicy]:
+    """Build the 11-entry default registry per data-model.md §2.5.
+
+    Spec 062, T041. Used by ``EconomyDefines.coefficient_lookup_policies``
+    via ``default_factory`` so the registry is populated for every fresh
+    :class:`GameDefines` instance.
+    """
+    policies = [
+        ("bea_io_intermediate", LookupPolicy.SLOWLY_VARYING, "BEA Make-Use 2010-2024"),
+        ("bea_io_imports", LookupPolicy.SLOWLY_VARYING, "BEA Imports Matrix 2010-2024"),
+        ("melt_tau", LookupPolicy.SLOWLY_VARYING, "MELT τ annual aggregate"),
+        ("basket_gamma", LookupPolicy.SLOWLY_VARYING, "Basket visibility γ"),
+        ("erdi_ratio", LookupPolicy.SLOWLY_VARYING, "ERDI productivity ratios"),
+        ("hickel_drain", LookupPolicy.SLOWLY_VARYING, "Hickel et al. Φ_year"),
+        ("qcew_wages", LookupPolicy.SLOWLY_VARYING, "BLS QCEW annual wages"),
+        ("bea_reis_rent", LookupPolicy.SLOWLY_VARYING, "BEA REIS rent series"),
+        ("fred_fed_funds_rate", LookupPolicy.EVENT_DISCRETE, "FRED FEDFUNDS"),
+        ("regulatory_regime", LookupPolicy.EVENT_DISCRETE, "Federal regulatory regime"),
+        ("datacenter_came_online", LookupPolicy.EVENT_DISCRETE, "Datacenter commission events"),
+    ]
+    return {
+        series_id: CoefficientLookupPolicy(
+            series_id=series_id, policy=policy, canonical_reference=ref
+        )
+        for series_id, policy, ref in policies
+    }
+
 
 class CrisisDefines(BaseModel):
     """Crisis and Devaluation Mechanics coefficients (Feature 018).
@@ -322,6 +355,56 @@ class EconomyDefines(BaseModel):
         default_factory=lambda: LeontiefRentDefines(),
         description="Tunables for the Leontief imperial-rent integration (Spec 057)",
     )
+
+    # Spec 062 — Cross-scale integration tunables (FR-029, FR-029a, FR-046, FR-004a)
+    alpha_annual: float = Field(
+        default=0.01,
+        ge=0.0,
+        lt=1.0,
+        description=(
+            "Annual capital-equalization rate alpha (Spec 062, FR-029). "
+            "Geometric weekly form derived via alpha_weekly(alpha_annual). "
+            "Default 0.01 matches HexEqualizationComputer's prior calibration."
+        ),
+    )
+    epsilon_conservation: float = Field(
+        default=1e-10,
+        gt=0.0,
+        le=1e-3,
+        description=(
+            "Conservation-residual tolerance epsilon (Spec 062, FR-046 / SC-002). "
+            "Audit rows with |residual| <= epsilon receive severity='ok'."
+        ),
+    )
+    scenario_length_years: int = Field(
+        default=15,
+        ge=1,
+        le=200,
+        description=(
+            "Immutable scenario length in years (Spec 062, FR-004a). "
+            "Reference-series copy spans [start_year, start_year + scenario_length_years]."
+        ),
+    )
+    coefficient_lookup_policies: dict[str, CoefficientLookupPolicy] = Field(
+        default_factory=lambda: _default_lookup_policies(),
+        description=(
+            "Per-series lookup policies for the immutable_reference_* family "
+            "(Spec 062, FR-011 / data-model.md §2.5). The default registry "
+            "covers the 11 canonical series enumerated in data-model.md §2.5."
+        ),
+    )
+
+    @property
+    def alpha_weekly(self) -> float:
+        """Geometric weekly equalization rate derived from alpha_annual.
+
+        Implements ``alpha_weekly = 1 - (1 - alpha_annual)^(1/52)`` so that
+        compounding 52 weekly applications reproduces the annual rate.
+        Required to satisfy FR-029a startup invariant ``alpha_weekly < 1/52``.
+        """
+        from babylon.economics.geometric_depreciation import alpha_weekly
+
+        return alpha_weekly(self.alpha_annual)
 
 
 class LeontiefRentDefines(BaseModel):

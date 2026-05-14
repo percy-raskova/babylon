@@ -1,0 +1,148 @@
+openapi: 3.1.0
+info:
+  title: Vol II Circulation Step Contract
+  version: 1.0.0
+  description: |
+    Per-tick transformation that consumes a `LODESYearMatrix` plus the current
+    in-memory hex `v` vector and produces (a) the next-tick hex `v` vector
+    and (b) boundary register rows for cross-boundary commute (with paired
+    TRADE_EDGE rows per FR-030a).
+
+    Implements FR-008 / FR-009 (formula) / FR-010 (conservation) / FR-011
+    (zero-row-sum guard) / FR-012 (COMMUTE_OUT emission) / FR-013 (no
+    industry mixing) / FR-014 (deterministic) / FR-015 (sub-stage 5c) /
+    FR-016 (sparse matrix-vector multiplication) / FR-029 (boundary
+    routing conservation) / FR-030a/b/c (paired TRADE_EDGE pattern).
+
+    Owner subsystem: engine. Invoked from `ImperialRentSystem.step()` only.
+
+paths: {}
+
+components:
+  schemas:
+    Vol2CirculationStepConstructor:
+      type: object
+      required:
+        - od_loader
+        - classifier
+      properties:
+        od_loader:
+          $ref: "lodes_loader.yaml#/components/schemas/LODESLoaderConfig"
+          description: Reference to the active LODESCommuteMatrixLoader instance.
+        classifier:
+          $ref: "cross_border_classifier.yaml#/components/schemas/CrossBorderCommuteClassifier"
+          description: Reference to the CrossBorderCommuteClassifier instance.
+
+    StepInputs:
+      type: object
+      required:
+        - graph
+        - tick
+        - session_id
+        - register
+      properties:
+        graph:
+          type: object
+          description: GraphProtocol-compliant adapter wrapping the in-memory hex/topology graph.
+        tick:
+          type: integer
+          minimum: 0
+        session_id:
+          type: string
+          format: uuid
+        register:
+          type: object
+          description: BoundaryFlowRegister instance owned by the per-tick context.
+
+    CirculationStepResult:
+      type: object
+      required:
+        - tick
+        - pre_total_v
+        - post_total_v_in_area
+        - boundary_out_total_v
+        - rows_emitted
+        - od_year_used
+        - conservation_residual
+      properties:
+        tick:
+          type: integer
+        pre_total_v:
+          type: number
+          description: Sum of v across all in-study-area hexes BEFORE the step.
+        post_total_v_in_area:
+          type: number
+          description: Sum of v across all in-study-area hexes AFTER the step.
+        boundary_out_total_v:
+          type: number
+          description: Sum of magnitudes of all COMMUTE_OUT rows added this tick.
+        rows_emitted:
+          type: integer
+          description: Total boundary register rows added this tick (COMMUTE_OUT + paired TRADE_EDGE).
+        od_year_used:
+          type: integer
+          description: The LODES year actually consumed (may differ from simulated year if FR-004 clamp fired).
+        conservation_residual:
+          type: number
+          description: |
+            |pre_total_v - (post_total_v_in_area + boundary_out_total_v)|.
+            MUST be <= 1e-9 * pre_total_v per SC-002 / FR-010.
+
+  responses:
+    StepSuccess:
+      description: Step completed and conservation invariant held.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CirculationStepResult"
+    ConservationViolation:
+      description: |
+        Conservation invariant FR-010 was violated. The step rolls back its v-writes,
+        does NOT commit boundary register rows, and raises a ConservationAlarmEvent
+        via the event bus. The engine's per-tick transaction (FR-008a) aborts.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Vol II Circulation conservation residual 1.4e-7 exceeds tolerance 1.0e-9 for tick 42"
+              residual:
+                type: number
+              tolerance:
+                type: number
+
+  examples:
+    HappyPath:
+      summary: One Detroit tri-county tick
+      value:
+        tick: 42
+        pre_total_v: 1234567890.0
+        post_total_v_in_area: 1234562315.0
+        boundary_out_total_v: 5575.0
+        rows_emitted: 60
+        od_year_used: 2010
+        conservation_residual: 0.0
+
+    ZeroRowSumOriginsCarryForward:
+      summary: 47 origin hexes had row_sum == 0 (uninhabited cells); their v carries forward unchanged per FR-011
+      value:
+        tick: 42
+        pre_total_v: 1234567890.0
+        post_total_v_in_area: 1234567890.0
+        boundary_out_total_v: 0.0
+        rows_emitted: 0
+        od_year_used: 2010
+        conservation_residual: 0.0
+
+    YearClampActive:
+      summary: Simulated year 2025 hit the FR-004 clamp; OD matrix from 2021 is used
+      value:
+        tick: 832
+        pre_total_v: 9876543210.0
+        post_total_v_in_area: 9876531010.0
+        boundary_out_total_v: 12200.0
+        rows_emitted: 124
+        od_year_used: 2021
+        conservation_residual: 0.0

@@ -10,7 +10,7 @@ All constraints are fully respected. The `test_simplex_invariants.py` test suite
 
 ## 2. Bypass Audit & Extraneous Access Control
 
-We verified via AST bypass audit script `scripts/audit_simplex_bypasses.py` that `TernaryConsciousness` enforces native constructors.
+We verified via AST bypass audit script `tools/audit_simplex_bypasses.py` that `TernaryConsciousness` enforces native constructors.
 
 - **Critical Findings:** 0 CRITICAL instances.
 - **Warnings Detected & Whitelisted:** 1 WARNING identified in `src/babylon/bifurcation/consciousness.py:221` regarding an explicit constructor instantiating the 2nd simplex parameter via legacy mappings in the `anisotropic_observation_error` noise simulation logic. Since this runs passively and does not modify the engine's `WorldState`, it has been explicitly whitelisted with user approval.

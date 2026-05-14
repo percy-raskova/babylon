@@ -334,8 +334,15 @@ violations; assert the runner's exit code is 0.
 - **FR-019**: Exit code non-zero (and not 130) on: Postgres unreachable;
   reference data missing; hex hydration produces zero rows; engine raises
   an exception not caught by any system.
-- **FR-020**: All non-zero exits MUST emit a structured error message on
-  stderr (one-line summary + path to any partial artifacts).
+- **FR-020**: All non-zero exits MUST emit a single-line stderr message in
+  the canonical format
+  `ERROR <exit_code_name>: <human_readable_message> | partial_artifacts=<path-or-NONE>`,
+  where `<exit_code_name>` is one of the names defined in
+  `contracts/cli_contract.yaml.exit_codes` (e.g., `ENGINE_FAILURE`,
+  `CONFIG_ERROR`, `REFERENCE_DATA_MISSING`, `POSTGRES_UNREACHABLE`),
+  `<human_readable_message>` is a sentence-style explanation, and
+  `partial_artifacts` is either the absolute path of any partial bundle
+  written or the literal token `NONE`.
 
 ### Key Entities
 

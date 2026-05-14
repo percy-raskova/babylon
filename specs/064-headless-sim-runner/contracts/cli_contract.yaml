@@ -191,3 +191,26 @@ stderr_contract:
     interactive tqdm progress bar is auto-suppressed when stderr is not
     a TTY (CI, piped output, redirected logs). Logging respects
     --verbose level.
+  error_message_format:
+    template: "ERROR <exit_code_name>: <message> | partial_artifacts=<path-or-NONE>"
+    description: >-
+      On every non-zero exit, the runner MUST emit exactly one line in
+      this format to stderr immediately before process termination.
+      <exit_code_name> is a name from `exit_codes` (e.g., ENGINE_FAILURE).
+      <message> is a single-sentence explanation. <path-or-NONE> is
+      either the absolute artifact-directory path (when a partial bundle
+      was written, e.g., on SIGINT or mid-run exception) or the literal
+      token NONE.
+    examples:
+      - >-
+        ERROR REFERENCE_DATA_MISSING: SQLite reference DB not found at
+        data/sqlite/marxist-data-3NF.sqlite | partial_artifacts=NONE
+      - >-
+        ERROR POSTGRES_UNREACHABLE: Connection pool failed to open
+        (port 5433) | partial_artifacts=NONE
+      - >-
+        ERROR ENGINE_FAILURE: ValueError in ImperialRentSystem at tick 247
+        | partial_artifacts=/home/user/projects/game/babylon/reports/sim-runs/2026-05-14T16-30-00Z/
+      - >-
+        ERROR USER_INTERRUPTED: SIGINT received at tick 412
+        | partial_artifacts=/home/user/projects/game/babylon/reports/sim-runs/2026-05-14T16-30-00Z/

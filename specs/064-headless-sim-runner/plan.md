@@ -165,17 +165,24 @@ specs/064-headless-sim-runner/
 ```text
 src/babylon/
 ├── engine/
-│   ├── headless_runner.py        # NEW — main entry point + tick loop + artifact emission
-│   ├── trace_emitter.py          # NEW — per-tick row capture; writes incrementally to CSV
-│   ├── run_summary.py            # NEW — summary.json builder (terminal state + audit log)
-│   └── simulation_engine.py      # EXISTING — used unchanged
+│   ├── headless_runner/              # NEW — package (cohesive ~6 closely-related modules)
+│   │   ├── __init__.py               # NEW — re-exports `run` from runner.py
+│   │   ├── __main__.py               # NEW — `python -m babylon.engine.headless_runner` entry
+│   │   ├── runner.py                 # NEW — main `run()` function + tick loop
+│   │   ├── argparse_cli.py           # NEW — argparse parser per cli_contract.yaml
+│   │   ├── scopes.py                 # NEW — predefined scope registry (michigan-canada, etc.)
+│   │   ├── models.py                 # NEW — Pydantic entities (SimulationRunConfig, etc.)
+│   │   ├── trace_emitter.py          # NEW — per-tick CSV row capture
+│   │   ├── run_summary.py            # NEW — summary.json builder
+│   │   └── manifest.py               # NEW — manifest.json + input_hash builder
+│   └── simulation_engine.py          # EXISTING — used unchanged
 ├── persistence/
-│   ├── postgres_initialization.py  # EXISTING — extended in spec-063 for hex hydration; reused
-│   ├── postgres_runtime.py       # EXISTING — used unchanged
-│   ├── tiger_ingestion.py        # EXISTING (yesterday) — reused
+│   ├── postgres_initialization.py    # EXISTING — extended in spec-063 for hex hydration
+│   ├── postgres_runtime.py           # EXISTING — used unchanged
+│   ├── tiger_ingestion.py            # EXISTING (yesterday) — reused
 │   └── migrations/
-│       └── 0019_trace_emission_view.sql  # NEW — cross-subsystem aggregation view for trace emission
-└── __main__.py                   # EXISTING — `python -m babylon` entry; keep as-is (smoke-test only)
+│       └── 0019_trace_emission_view.sql  # NEW — cross-subsystem view for trace emission
+└── __main__.py                       # EXISTING — `python -m babylon` smoke-test only
 
 tools/
 ├── shared.py                     # MODIFIED — run_simulation() routes to headless_runner
@@ -201,13 +208,18 @@ tests/
 .mise.toml                        # MODIFIED — new `sim:e2e-michigan` task; existing tasks may be retired or re-wired
 ```
 
-**Structure Decision**: Single project layout with a NEW module
+**Structure Decision**: Single project layout with a NEW package
 `babylon.engine.headless_runner` as the canonical entry point. The runner
-lives under `babylon.engine` (not `tools/`) because it IS the engine's
-canonical CLI surface — `tools/` is the analysis layer that calls down into
-it via `tools/shared.py`. This separation enforces SC-007 (no `tools/`
-script imports the in-memory engine path) since the public engine surface
-becomes `headless_runner.run()` instead of `step()` + `WorldState`.
+is a **package** (subdirectory with `__init__.py`), not a single module,
+because the ~6 closely-related modules (runner, argparse_cli, scopes,
+models, trace_emitter, run_summary, manifest) benefit from cohesion under
+one namespace. Callers import `from babylon.engine.headless_runner import
+run` (re-exported from `runner.py` via `__init__.py`). The runner lives
+under `babylon.engine` (not `tools/`) because it IS the engine's canonical
+CLI surface — `tools/` is the analysis layer that calls down into it via
+`tools/shared.py`. This separation enforces SC-007 (no `tools/` script
+imports the in-memory engine path) since the public engine surface becomes
+`headless_runner.run()` instead of `step()` + `WorldState`.
 
 ## Complexity Tracking
 

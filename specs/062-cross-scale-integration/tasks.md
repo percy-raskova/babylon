@@ -107,7 +107,7 @@ Tests: `tests/{unit,integration,property}/`
 ### Tests for US2 (RED phase)
 
 - [X] T033 [P] [US2] Write failing test `tests/unit/economics/test_coefficient_lookup_policy.py` covering: (a) `LookupPolicy.SLOWLY_VARYING` value at tick 26 is `0.5 * (v(y) + v(y+1))`, (b) `LookupPolicy.EVENT_DISCRETE` value at tick 51 = `v(y)`, value at tick 52 = `v(y+1)`, (c) FR-016 clamp-to-last warning emitted exactly once per series
-- [ ] T034 [P] [US2] Write failing integration test `tests/integration/test_weekly_tick_year_lookup.py` exercising User Story 2 acceptance scenarios 1-4 against `pg_pool`; covers SC-007, SC-008, SC-009  *(deferred — paired live-Postgres tick-stepping tests; functional contract verified by T033 unit suite + live hydration through sqlite_hydrator.py)*
+- [X] T034 [P] [US2] Write failing integration test `tests/integration/test_weekly_tick_year_lookup.py` exercising User Story 2 acceptance scenarios 1-4 against `pg_pool`; covers SC-007, SC-008, SC-009
 - [X] T035 [P] [US2] Write failing property test `tests/property/test_geometric_depreciation_inverse.py` using Hypothesis: for any `delta_annual ∈ [0, 1)`, `(1 - delta_weekly(delta_annual))**52 ≈ 1 - delta_annual` within 1e-12
 
 ### Implementation for US2
@@ -143,7 +143,7 @@ Tests: `tests/{unit,integration,property}/`
 - [X] T046 [US3] Apply migration 0015 from T010 to create the four aggregation views (already specified in Phase 2; this task is the apply + smoke verification on the test database)  *(migration file landed in Phase 2; applied by integration test fixtures)*
 - [X] T047 [P] [US3] Create `src/babylon/persistence/postgres_aggregation.py` with module-level functions: `fetch_county_aggregate(runtime, session_id, tick, county_fips) -> CountyValueAggregate`, `fetch_state_aggregate(...)`, `fetch_national_aggregate(...)`, `fetch_global_phi_balance(...)` per `contracts/aggregation_views.yaml#AggregationViewQuery`
 - [X] T048 [P] [US3] In `postgres_aggregation.py`, return Pydantic models matching the YAML schemas (`CountyValueAggregate`, `StateValueAggregate`, `NationalValueAggregate`, `GlobalPhiBalance`)
-- [ ] T049 [US3] Verify SC-012 explicitly: write a one-shot script `tests/scripts/verify_sc012_hex_to_county_sum.py` that inserts a known hex distribution, queries the county view, and prints `match=True` if the residual is ≤ 1e-10; run as part of CI smoke  *(deferred — pairs with T042 integration test)*
+- [X] T049 [US3] Verify SC-012 explicitly: write a one-shot script `tests/scripts/verify_sc012_hex_to_county_sum.py` that inserts a known hex distribution, queries the county view, and prints `match=True` if the residual is ≤ 1e-10; run as part of CI smoke
 
 **Checkpoint**: US3 fully functional. Any aggregate query returns the exact hex-level sum.
 
@@ -157,8 +157,8 @@ Tests: `tests/{unit,integration,property}/`
 
 ### Tests for US4 (RED phase)
 
-- [ ] T050 [P] [US4] Write failing integration test `tests/integration/test_five_flow_types.py` exercising User Story 4 acceptance scenarios 1-5; covers SC-011. **NB on FR-026/FR-027 coverage**: Production hex-locality and "Production grows v+s by labor increment" properties are expected to pass via existing engine code (Specs 060/057); failure of acceptance scenarios 1 here signals remediation needed in the existing Production system rather than missing spec-062 implementation  *(deferred — needs populated hex_state + full pipeline integration; pairs with downstream LODES wiring)*
-- [ ] T051 [P] [US4] Write failing property test `tests/property/test_per_stage_conservation.py` using Hypothesis: for random hex populations, verify (a) Production grows v+s by exactly the labor increment, (b) Circulation preserves sum(v) within study area modulo boundary register, (c) Equalization preserves per-industry sum(c), (d) Distribution sums p+i+r+t back to s  *(deferred — pairs with T050)*
+- [X] T050 [P] [US4] Write failing integration test `tests/integration/test_five_flow_types.py` exercising User Story 4 acceptance scenarios 1-5; covers SC-011. **NB on FR-026/FR-027 coverage**: Production hex-locality and "Production grows v+s by labor increment" properties are expected to pass via existing engine code (Specs 060/057); failure of acceptance scenarios 1 here signals remediation needed in the existing Production system rather than missing spec-062 implementation
+- [X] T051 [P] [US4] Write failing property test `tests/property/test_per_stage_conservation.py` using Hypothesis: for random hex populations, verify (a) Production grows v+s by exactly the labor increment, (b) Circulation preserves sum(v) within study area modulo boundary register, (c) Equalization preserves per-industry sum(c), (d) Distribution sums p+i+r+t back to s
 - [X] T052 [P] [US4] Write failing test `tests/unit/economics/test_alpha_weekly_invariant.py` covering FR-029a startup invariant (`α_weekly < 1/52` else init fails)
 
 ### Implementation for US4 — Vol I Production (hex-local)
@@ -195,9 +195,9 @@ Tests: `tests/{unit,integration,property}/`
 
 ### Tests for US5 (RED phase)
 
-- [ ] T060 [P] [US5] Write failing integration test `tests/integration/test_audit_log_round_trip.py` exercising User Story 5 acceptance scenarios 1-3 against `pg_pool`; covers SC-004, SC-005, SC-006  *(deferred — needs live Postgres + engine wire-up)*
+- [X] T060 [P] [US5] Write failing integration test `tests/integration/test_audit_log_round_trip.py` exercising User Story 5 acceptance scenarios 1-3 against `pg_pool`; covers SC-004, SC-005, SC-006
 - [ ] T061 [P] [US5] Write failing test `tests/integration/test_audit_log_append_only.py` that attempts UPDATE/DELETE on `conservation_audit_log` as the runtime role and expects `InsufficientPrivilege` exceptions (FR-049 enforcement)  *(deferred — same pattern as T031b, lands with deploy-role split)*
-- [ ] T062 [P] [US5] Write failing test `tests/integration/test_alarm_event_emission.py` registering a test observer on the event bus, injecting a defect that produces an `alarm` row, and asserting the observer's `on_conservation_alarm(event)` fires (FR-047 / Q3)  *(deferred — pairs with T068 engine wire-up)*
+- [X] T062 [P] [US5] Write failing test `tests/integration/test_alarm_event_emission.py` registering a test observer on the event bus, injecting a defect that produces an `alarm` row, and asserting the observer's `on_conservation_alarm(event)` fires (FR-047 / Q3)
 - [X] T063 [P] [US5] Write failing property test `tests/property/test_determinism_hash_replayability.py` using Hypothesis: for random (state, actions, seed) triples, re-running the same triple produces the same `determinism_hash` (Constitution III.7 / GATE-1)  *(unit-level coverage in test_conservation_auditor.py::TestDeterminismHash)*
 
 ### Implementation for US5
@@ -228,10 +228,10 @@ Tests: `tests/{unit,integration,property}/`
 
 ### Tests for US6 (RED phase)
 
-- [ ] T071 [P] [US6] Write failing integration test `tests/integration/test_external_node_boundary.py` exercising User Story 6 acceptance scenarios 1-3; covers SC-010  *(deferred — needs live Postgres + populated external_node_state)*
+- [X] T071 [P] [US6] Write failing integration test `tests/integration/test_external_node_boundary.py` exercising User Story 6 acceptance scenarios 1-3; covers SC-010
 - [X] T072 [P] [US6] Write failing test `tests/integration/test_canada_node_present.py` verifying that `initialize_session(...)` for the Detroit scenario creates a `canada` external node row (R4 + FR-036 amendment)  *(landed as unit-level structural test on INTERNATIONAL_NODES constant)*
 - [X] T073 [P] [US6] Write failing test `tests/unit/economics/test_boundary_register_hex_pair_fields.py` verifying R2: that `BoundaryFlowRegisterRow` accepts hex-kind, county-kind, external-kind on either end of the dyad with the discriminator enum
-- [ ] T074 [P] [US6] Write failing test `tests/integration/test_phi_year_distribution_to_counties.py` verifying that sum over all counties of weekly Φ inflow recorded in the register equals `Φ_year / 52 × 52 = Φ_year` after one simulated year (FR-035)  *(deferred — needs T058 distribute_phi_week_to_counties)*
+- [X] T074 [P] [US6] Write failing test `tests/integration/test_phi_year_distribution_to_counties.py` verifying that sum over all counties of weekly Φ inflow recorded in the register equals `Φ_year / 52 × 52 = Φ_year` after one simulated year (FR-035)
 
 ### Implementation for US6
 
@@ -239,7 +239,7 @@ Tests: `tests/{unit,integration,property}/`
 - [X] T076 [P] [US6] In `boundary_flow_register.py`, implement `BoundaryFlowRegister.query(...)` per `contracts/boundary_register.yaml#BoundaryFlowRegister.query` with optional filters on session/tick/source/dest/flow_type
 - [X] T077 [US6] In `src/babylon/persistence/postgres_initialization.py`, extend external-node init to instantiate all 9 nodes per data-model.md `ExternalNodeRow.node_id` enum: `canada`, `china`, `eu`, `india`, `sub_saharan_africa`, `latin_america`, `russia_csi`, `southeast_asia` (kind=`international`), and `rest_of_usa` (kind=`domestic_rest`)  *(InitializationReport already exposes the 9-node set; rest_of_usa added as the domestic node)*
 - [X] T077a [P] [US6] Write structural test `tests/unit/persistence/test_external_node_no_hex_structure.py` covering FR-038: assert via introspection that `ExternalNode` Pydantic model has no fields named `hexes`, `hex_count`, `h3_index`, `internal_hexes`, or any field whose type is `H3Index | list[H3Index] | set[H3Index]`; this enforces the "reduced state representation, no internal hex structure" constraint at the model level rather than only documentation
-- [ ] T078 [P] [US6] For each external node, load `phi_year_inflow` from `immutable_reference_hickel_drain` for the current simulated year and `bilateral_trade_value` / `bilateral_trade_tons` / `erdi_ratio` from `immutable_reference_ricci_unequal` and `immutable_reference_faf_freight`  *(deferred — needs real Hickel/Ricci hydration)*
+- [X] T078 [P] [US6] For each external node, load `phi_year_inflow` from `immutable_reference_hickel_drain` for the current simulated year and `bilateral_trade_value` / `bilateral_trade_tons` / `erdi_ratio` from `immutable_reference_ricci_unequal` and `immutable_reference_faf_freight`  *(`_bootstrap_external_nodes()` in postgres_initialization.py reads the just-hydrated tables and writes 9 ExternalNode rows; bilateral trade values populate from Ricci data; phi defaults to 0 since Hickel only carries 'Intensive' aggregate — per-partner attribution is downstream spec scope)*
 - [ ] T079 [US6] In `imperial_rent.py` (from T058), confirm that Φ inflow is distributed to **counties** (not Rest-of-USA) when `source_kind = 'external'` — this is the wiring that closes Constitution IV.1 (Detroit-Windsor) by making Canada-specific Φ flow into US counties via the standard drain-edge mechanism  *(deferred — pairs with T058)*
 - [ ] T080 [US6] Add a special-case for Canada-bound commute flows: in `src/babylon/engine/systems/territory.py` (or a new `cross_border_commute.py` module under `engine/systems/`), when LODES OD routes a worker from a tri-county hex to a destination county whose FIPS state code is not Michigan/Ohio/Indiana/Illinois, record a `COMMUTE_OUT` boundary register row with `dest_kind='external'` and `dest_node_id='rest_of_usa'`; for Canada-side destinations (LODES Windsor data), record with `dest_node_id='canada'`  *(deferred — pairs with T054 LODES integration)*
 
@@ -257,7 +257,7 @@ Tests: `tests/{unit,integration,property}/`
 
 - [X] T081 [P] [US7] Write failing test `tests/unit/engine/test_substrate_system_ordering.py` verifying the pipeline ordering FR-050: Substrate runs after Territory and before Production on every tick
 - [X] T082 [P] [US7] Write failing test `tests/unit/engine/test_pipeline_substrate_position.py` exercising User Story 7 acceptance scenarios 1-2
-- [ ] T083 [P] [US7] Write failing integration test `tests/integration/test_substrate_pipeline_position.py` against `pg_pool` verifying that zeroed substrate propagates to zero Production output in the same tick  *(deferred — needs live Postgres + populated hex_state hydration; unit-level coverage in `test_pipeline_substrate_position.TestSubstrateZeroPropagation`)*
+- [X] T083 [P] [US7] Write failing integration test `tests/integration/test_substrate_pipeline_position.py` against `pg_pool` verifying that zeroed substrate propagates to zero Production output in the same tick
 
 ### Implementation for US7
 
@@ -274,7 +274,7 @@ Tests: `tests/{unit,integration,property}/`
 **Purpose**: Documentation, performance verification, constitutional & ai-docs reconciliation.
 
 - [X] T087 [P] Write failing property test `tests/property/test_crisis_machinery_weekly_cadence.py` per research.md §3 (R3): verify threshold-crossings produce categorical coefficient resets within a single tick, sub-tick dynamics aggregate without conservation violation, and crisis-reset events appear as `severity='alarm'` audit rows with crisis-specific `invariant_name`  *(landed at the unit level — 5 properties on `grade_severity()`; full engine-driven crisis property tests pair with engine integration follow-up)*
-- [ ] T088 [P] Run the quickstart.md walkthrough end-to-end as a single executable script `tests/scripts/quickstart_062_walkthrough.sh` covering the five sections (init, tick, aggregate, audit, new series); used to gate post-Phase-2 readiness in CI  *(deferred — needs live Postgres + populated hydration)*
+- [X] T088 [P] Run the quickstart.md walkthrough end-to-end as a single executable script `tests/scripts/quickstart_062_walkthrough.sh` covering the five sections (init, tick, aggregate, audit, new series); used to gate post-Phase-2 readiness in CI  *(landed as `quickstart_062_walkthrough.py` — Python script, not shell, prints `§N OK` for each of the 5 sections)*
 - [ ] T089 [P] Performance test `tests/integration/test_780_tick_perf_budget.py` (slow; opt-in via `mise run test:perf` or `@pytest.mark.slow`): execute a 780-tick Detroit scenario end-to-end; assert wall-time ≤ 60 minutes (SC-003) and per-tick average ≤ 4.6 seconds  *(deferred — needs engine integration)*
 - [X] T090 [P] Update `ai-docs/state.yaml` bumping `meta.version` to "2.6.0" (matching this feature's spec number-as-minor), updating `last_sprint` to "062-cross-scale-integration (Complete; N tasks done)", and adding a `spec_062_summary` block with deliverables
 - [X] T091 [P] Add ADR `ai-docs/decisions/ADR040_spec_062_cross_scale_integration.yaml` capturing the five Q clarifications + six R research decisions + five constitutional gate closures (GATE-1..GATE-5) for permanent record per project convention

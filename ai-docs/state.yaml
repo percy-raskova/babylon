@@ -4,7 +4,7 @@
 meta:
   version: "2.6.0"
   updated: "2026-05-13"
-  last_sprint: "062-cross-scale-integration (Complete; 67/103 tasks done, 36 deferred — see specs/062-cross-scale-integration/tasks.md and ADR040)"
+  last_sprint: "062-cross-scale-integration (Complete; 94/103 tasks done, 9 deferred — see specs/062-cross-scale-integration/tasks.md and ADR040)"
   previous_sprint: "061-real-backend-wireup (Complete; 130/131 tasks done, 1 partial — see specs/061-real-backend-wireup/tasks.md and ADR039)"
   spec_062_summary: |
     Cross-scale value, substrate, and tick propagation engine. Codifies the

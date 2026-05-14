@@ -56,7 +56,22 @@ def apply_migrations(pg_pool):  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture
-def runtime(pg_pool, apply_migrations):  # type: ignore[no-untyped-def]
+def tiger_geometries_ingested(pg_pool, apply_migrations):  # type: ignore[no-untyped-def]
+    """Ingest TIGER county geometries into Postgres (idempotent).
+
+    Spec-063 follow-up requirement (2026-05-14): hex hydration relies on
+    Postgres-resident TIGER geometries, not on-the-fly shapefile reads.
+    """
+    from babylon.persistence.tiger_ingestion import ingest_tiger_counties
+
+    ingest_tiger_counties(
+        pg_pool,
+        Path("data/tiger/county/tl_2024_us_county.shp"),
+    )
+
+
+@pytest.fixture
+def runtime(pg_pool, apply_migrations, tiger_geometries_ingested):  # type: ignore[no-untyped-def]
     from babylon.persistence import PostgresRuntime
 
     return PostgresRuntime(pool=pg_pool)

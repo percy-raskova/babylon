@@ -3,7 +3,11 @@
 Closes the ``InitializationReport.hex_count = 0`` stub that spec-062 T029
 shipped. For each county in the study area:
 
-  1. Loads the county polygon from TIGER ``tl_2024_us_county.shp``.
+  1. Loads the county polygon from the Postgres-resident
+     ``immutable_reference_tiger_county`` table (WKT-in-TEXT; populated
+     by :func:`babylon.persistence.tiger_ingestion.ingest_tiger_counties`).
+     Falls back to direct shapefile read if the table is empty (caller
+     should ensure the ingestion ran).
   2. Polyfills to H3 res-7 cells via ``generate_h3_cells`` (existing helper
      at :mod:`babylon.economics.substrate.h3_utils`).
   3. Reads the county's QCEW employment total from
@@ -81,15 +85,13 @@ def hydrate_hex_state(
         logger.info("hydrate_hex_state: empty county set; nothing to do")
         return 0
 
-    shapefile_path = tiger_county_shapefile or _DEFAULT_TIGER_PATH
-    if not shapefile_path.exists():
-        raise FileNotFoundError(
-            f"TIGER county shapefile not found at {shapefile_path}; "
-            "place the file or pass tiger_county_shapefile= explicitly"
-        )
-
-    # 1. Load county polygons + employment totals.
-    polygons = _load_county_polygons(counties, shapefile_path)
+    # 1. Load county polygons (prefer Postgres-resident WKT, fall back to shapefile)
+    #    + employment totals.
+    polygons = _load_county_polygons(
+        counties=counties,
+        runtime=runtime,
+        shapefile_fallback=tiger_county_shapefile or _DEFAULT_TIGER_PATH,
+    )
     employment_totals = _fetch_county_employment_totals(
         runtime=runtime,
         session_id=session_id,
@@ -157,18 +159,56 @@ def hydrate_hex_state(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _load_county_polygons(fips_codes: frozenset[str], shapefile_path: Path) -> dict[str, object]:
+def _load_county_polygons(
+    *,
+    counties: frozenset[str],
+    runtime: RuntimePersistence,
+    shapefile_fallback: Path,
+) -> dict[str, object]:
     """Return ``{fips: shapely_geometry}`` for the requested counties.
 
-    Uses ``geopandas.read_file`` with a filter expression; falls back to
-    iterating all rows if filter pushdown fails. The TIGER shapefile uses
-    GEOID = ``state(2)+county(3)`` for the 5-digit FIPS code.
+    Preferred path: query ``immutable_reference_tiger_county`` for the
+    Postgres-resident WKT representation populated by
+    :func:`babylon.persistence.tiger_ingestion.ingest_tiger_counties`.
+    Reproducible across deployments because the source of truth is the
+    Postgres row, not a transient shapefile read.
+
+    Fallback path: if the Postgres table is empty or missing entries
+    for the requested counties, read directly from the TIGER shapefile.
+    A warning is emitted so the operator can run the ingestion CLI.
     """
+    import shapely.wkt  # type: ignore[import-untyped]
+
+    from babylon.persistence.tiger_ingestion import fetch_county_geometries_wkt
+
+    pool = runtime._pool  # type: ignore[attr-defined]  # noqa: SLF001
+    wkt_by_geoid = fetch_county_geometries_wkt(pool, counties)
+    polygons: dict[str, object] = {
+        geoid: shapely.wkt.loads(wkt) for geoid, wkt in wkt_by_geoid.items()
+    }
+    missing = counties - polygons.keys()
+    if not missing:
+        return polygons
+
+    logger.warning(
+        "hex_hydrator: %d counties missing from immutable_reference_tiger_county "
+        "(%s); falling back to shapefile read at %s. "
+        "Run `python -m babylon.persistence.tiger_ingestion` to make this "
+        "lookup fully Postgres-resident.",
+        len(missing),
+        sorted(missing),
+        shapefile_fallback,
+    )
+    if not shapefile_fallback.exists():
+        raise FileNotFoundError(
+            f"TIGER county shapefile not found at {shapefile_fallback}; "
+            f"missing counties: {sorted(missing)}"
+        )
+
     import geopandas as gpd  # type: ignore[import-untyped]
 
-    gdf = gpd.read_file(shapefile_path, columns=["GEOID", "geometry"])
-    gdf = gdf[gdf["GEOID"].isin(fips_codes)]
-    polygons: dict[str, object] = {}
+    gdf = gpd.read_file(shapefile_fallback, columns=["GEOID", "geometry"])
+    gdf = gdf[gdf["GEOID"].isin(missing)]
     for _, row in gdf.iterrows():
         polygons[row["GEOID"]] = row["geometry"]
     return polygons

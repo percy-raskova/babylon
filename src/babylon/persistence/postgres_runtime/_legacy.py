@@ -2229,4 +2229,21 @@ class PostgresRuntime:
         return result
 
 
+def _attach_spec_062_methods() -> None:
+    """Attach Spec 062 cross-scale methods to PostgresRuntime.
+
+    Imported and called at module load. Keeping the implementations in the
+    sibling module ``_spec_062.py`` preserves the existing 2200-line legacy
+    file boundary set by Spec 059 and makes the spec-062 additions easy to
+    locate.
+    """
+    from babylon.persistence.postgres_runtime import _spec_062
+
+    PostgresRuntime.persist_tick_atomic = _spec_062.persist_tick_atomic  # type: ignore[attr-defined]
+    PostgresRuntime.get_last_committed_tick = _spec_062.get_last_committed_tick  # type: ignore[attr-defined]
+
+
+_attach_spec_062_methods()
+
+
 __all__ = ["PostgresRuntime"]

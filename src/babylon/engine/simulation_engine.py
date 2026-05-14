@@ -59,6 +59,7 @@ from babylon.engine.systems.protocol import ContextType, System
 from babylon.engine.systems.reserve_army import ReserveArmySystem
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.engine.systems.struggle import StruggleSystem
+from babylon.engine.systems.substrate import SubstrateSystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.engine.systems.vitality import VitalitySystem
@@ -112,19 +113,35 @@ class SimulationEngine:
     15. EdgeTransition (predicates + state machine) - Feature 002
     """
 
-    def __init__(self, systems: list[System]) -> None:
+    def __init__(
+        self,
+        systems: list[System],
+        *,
+        auditor: Any = None,
+    ) -> None:
         """Initialize the engine with a list of systems.
 
         Args:
             systems: Ordered list of systems to execute each tick.
                      Order matters! Economic systems must run before ideology.
+            auditor: Optional Spec 062 ConservationAuditor. When provided,
+                runs at end-of-tick (after all systems) and emits any
+                alarm-severity audit rows onto the event bus per FR-047.
+                When None, audit step is skipped — preserves backward
+                compatibility with pre-spec-062 callers.
         """
         self._systems = systems
+        self._auditor = auditor
 
     @property
     def systems(self) -> list[System]:
         """Read-only access to registered systems."""
         return list(self._systems)
+
+    @property
+    def auditor(self) -> Any:
+        """The conservation auditor, or None if not configured."""
+        return self._auditor
 
     def run_tick(
         self,
@@ -136,6 +153,11 @@ class SimulationEngine:
 
         All logs emitted during this method are automatically tagged with
         tick number and a unique correlation_id (UUID) for tracing.
+
+        Spec 062, T068: when ``self._auditor`` is set, the
+        :class:`ConservationAuditor` runs after every system completes.
+        Alarm-severity rows are published as ``ConservationAlarmEvent``
+        instances onto the event bus.
 
         Args:
             graph: NetworkX graph (mutated in place by systems)
@@ -160,6 +182,71 @@ class SimulationEngine:
         with log_context_scope(tick=tick, correlation_id=correlation_id):
             for system in self._systems:
                 system.step(graph, services, context)
+
+            # Spec 062 T068: end-of-tick conservation audit.
+            if self._auditor is not None:
+                self._run_audit(graph, services, context, tick)
+
+    def _run_audit(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+        context: ContextType,
+        tick: int,
+    ) -> None:
+        """Run the conservation auditor and emit alarm events.
+
+        Hex rows are reconstructed from the graph for the determinism
+        hash. The auditor's registered evaluators (registered by the
+        engine bridge) compute the actual residuals.
+        """
+        _ = services  # Reserved: future evaluators may consume services.
+        session_id = (
+            context.session_id
+            if hasattr(context, "session_id")
+            else (context.get("session_id") if isinstance(context, dict) else None)
+        )
+        if session_id is None:
+            # Without a session_id the auditor cannot tag rows; skip silently.
+            return
+
+        # Reconstruct hex rows from graph for the determinism hash. The
+        # auditor is robust to empty iterables (returns empty rows list).
+        hex_rows = [
+            attrs for _node, attrs in graph.nodes(data=True) if attrs.get("_node_type") == "hex"
+        ]
+        action_list = context.get("actions") if isinstance(context, dict) else None
+
+        rows, alarms = self._auditor.evaluate(
+            session_id=session_id,
+            tick=tick,
+            hex_rows=hex_rows,
+            post_state=graph,
+            action_list=action_list,
+        )
+
+        # Stash rows on the context so the envelope builder can pick them up.
+        if isinstance(context, dict):
+            context.setdefault("audit_rows", []).extend(rows)
+
+        # Emit alarms onto the event bus per FR-047 / Clarification Q3.
+        # The bus expects a frozen Event(type=str, tick=int, payload=dict);
+        # wrap the ConservationAlarmEvent Pydantic model accordingly so
+        # `bus.subscribe("conservation_alarm", handler)` routes correctly.
+        event_bus = getattr(services, "event_bus", None)
+        if event_bus is None or not alarms:
+            return
+        for alarm in alarms:
+            try:
+                event_bus.publish(
+                    Event(
+                        type="conservation_alarm",
+                        tick=alarm.tick,
+                        payload=alarm.model_dump(mode="json"),
+                    )
+                )
+            except Exception:  # noqa: BLE001 - observers must not break the tick
+                logger.exception("ConservationAlarmEvent observer raised; tick continues")
 
 
 # ADR032: Materialist Causality System Order
@@ -199,9 +286,10 @@ class SimulationEngine:
 # 20. FieldDerivativeSystem - Spatial/temporal derivatives + principal (Feature 002)
 # 21. EdgeTransitionSystem - Compound predicates + edge mode transitions (Feature 002)
 _DEFAULT_SYSTEMS: list[System] = [
-    # --- Material Base (positions 1–13) ---
+    # --- Material Base (positions 1–13, plus Substrate at 2.5) ---
     VitalitySystem(),  # 1. Biological cost + death
     TerritorySystem(),  # 2. Land state updates
+    SubstrateSystem(),  # 2.5. Substrate stocks (Spec 062, US7, FR-050)
     ProductionSystem(),  # 3. Value creation
     TickDynamicsSystem(),  # 4. Tick dynamics (Feature 017)
     ReserveArmySystem(),  # 5. Reserve army wage pressure (Feature 021)
@@ -235,6 +323,7 @@ MATERIAL_BASE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
     {
         VitalitySystem,
         TerritorySystem,
+        SubstrateSystem,  # Spec 062, US7: physical substrate stocks
         ProductionSystem,
         TickDynamicsSystem,
         ReserveArmySystem,

@@ -1,0 +1,165 @@
+openapi: 3.1.0
+info:
+  title: Aggregation Views Contract
+  version: 1.0.0
+  description: |
+    Four read-only Postgres views providing cross-scale aggregation
+    (county / state / national / global Φ-balance) without storing
+    duplicate aggregate rows.
+
+    Constitution II.11 (Subsystem Table Ownership): these views are the
+    declared cross-subsystem read interface. Any subsystem may SELECT.
+
+    FR-018 + FR-019: hex resolution 7 is the only persisted source-of-truth
+    for c/v/s/K/biocapacity. Every coarser-scale value is computed on read
+    from these views.
+
+paths: {}  # No HTTP paths — these are Postgres views.
+
+components:
+  schemas:
+    CountyValueAggregate:
+      type: object
+      description: |
+        v_county_value_aggregate: per-(session, tick, county_fips) aggregation.
+      required:
+        - session_id
+        - tick
+        - county_fips
+        - c_sum
+        - v_sum
+        - s_sum
+        - k_sum
+        - biocapacity_sum
+        - hex_count
+      properties:
+        session_id: { type: string, format: uuid }
+        tick: { type: integer, minimum: 0 }
+        county_fips: { type: string, pattern: "^\\d{5}$" }
+        c_sum:
+          type: number
+          minimum: 0
+          description: SUM(c) over all hexes mapped to this county at this tick.
+        v_sum: { type: number, minimum: 0 }
+        s_sum: { type: number, minimum: 0 }
+        k_sum: { type: number, minimum: 0 }
+        biocapacity_sum: { type: number, minimum: 0 }
+        hex_count: { type: integer, minimum: 0 }
+
+    StateValueAggregate:
+      type: object
+      description: |
+        v_state_value_aggregate: per-(session, tick, state_fips) aggregation.
+      required:
+        - session_id
+        - tick
+        - state_fips
+        - c_sum
+        - v_sum
+        - s_sum
+        - k_sum
+        - biocapacity_sum
+        - hex_count
+      properties:
+        session_id: { type: string, format: uuid }
+        tick: { type: integer, minimum: 0 }
+        state_fips: { type: string, pattern: "^\\d{2}$" }
+        c_sum: { type: number, minimum: 0 }
+        v_sum: { type: number, minimum: 0 }
+        s_sum: { type: number, minimum: 0 }
+        k_sum: { type: number, minimum: 0 }
+        biocapacity_sum: { type: number, minimum: 0 }
+        hex_count: { type: integer, minimum: 0 }
+
+    NationalValueAggregate:
+      type: object
+      description: |
+        v_national_value_aggregate: single-row (session, tick) aggregation.
+      required:
+        - session_id
+        - tick
+        - national_id
+        - c_sum
+        - v_sum
+        - s_sum
+        - k_sum
+        - biocapacity_sum
+        - hex_count
+      properties:
+        session_id: { type: string, format: uuid }
+        tick: { type: integer, minimum: 0 }
+        national_id:
+          type: string
+          enum: ["USA"]
+        c_sum: { type: number, minimum: 0 }
+        v_sum: { type: number, minimum: 0 }
+        s_sum: { type: number, minimum: 0 }
+        k_sum: { type: number, minimum: 0 }
+        biocapacity_sum: { type: number, minimum: 0 }
+        hex_count: { type: integer, minimum: 0 }
+
+    GlobalPhiBalance:
+      type: object
+      description: |
+        v_global_phi_balance: per-(session, tick) cross-boundary Φ accounting.
+        Used for the annual Φ-balance conservation invariant (FR-044).
+      required:
+        - session_id
+        - tick
+        - phi_week_outflow_total
+        - phi_week_inflow_total
+        - residual
+      properties:
+        session_id: { type: string, format: uuid }
+        tick: { type: integer, minimum: 0 }
+        phi_week_outflow_total:
+          type: number
+          minimum: 0
+          description: |
+            Sum over all external nodes of (phi_year_inflow / 52).
+            Represents periphery → boundary outflow this week.
+        phi_week_inflow_total:
+          type: number
+          minimum: 0
+          description: |
+            Sum of magnitude over all `drain_edge` boundary register rows
+            where dest_kind = 'county' for this tick.
+            Represents boundary → US-county inflow this week.
+        residual:
+          type: number
+          description: |
+            phi_week_outflow_total - phi_week_inflow_total.
+            Should be ≤ ε in absolute value at year-boundary ticks (FR-044).
+
+  contracts:
+    AggregationViewQuery:
+      description: |
+        Read access patterns for the four views. Any subsystem may execute
+        these SELECTs directly (the view IS the declared interface per II.11).
+      query_patterns:
+        - name: county_total_at_tick
+          sql: |
+            SELECT c_sum, v_sum, s_sum FROM v_county_value_aggregate
+            WHERE session_id = $1 AND tick = $2 AND county_fips = $3;
+          performance_budget: < 50 ms (B-tree index on session_id, tick, county_fips).
+        - name: national_total_time_series
+          sql: |
+            SELECT tick, c_sum, v_sum, s_sum FROM v_national_value_aggregate
+            WHERE session_id = $1 AND tick BETWEEN $2 AND $3
+            ORDER BY tick;
+          performance_budget: < 500 ms for 780-tick range.
+        - name: phi_balance_annual
+          sql: |
+            SELECT tick, residual FROM v_global_phi_balance
+            WHERE session_id = $1 AND tick % 52 = 0
+            ORDER BY tick;
+          performance_budget: < 100 ms for full scenario length.
+
+    ConservationProperty:
+      description: |
+        Property tested in the Hypothesis suite (FR-020): the view's
+        c_sum/v_sum/s_sum equals the offline Python sum over the same hexes
+        at the same tick, to within ε = 1e-10.
+      hypothesis_strategy: |
+        Generate random hex c/v/s populations, INSERT into dynamic_hex_state,
+        SELECT from view, assert |sum_view - sum_python| ≤ 1e-10.

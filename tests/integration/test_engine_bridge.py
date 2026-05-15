@@ -18,7 +18,6 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 
 import pytest
 
@@ -90,9 +89,7 @@ def test_smoke_tri_county_full_fidelity() -> None:
     """T026: 5-tick tri-county run produces all 3 artifacts + populated rows."""
     result = _run_runner(scope="detroit-tri-county", ticks=5)
 
-    assert result.exit_reason.value == "completed", (
-        f"unexpected exit_reason: {result.exit_reason}"
-    )
+    assert result.exit_reason.value == "completed", f"unexpected exit_reason: {result.exit_reason}"
     assert result.ticks_completed == 5
     assert result.artifact_dir is not None
 
@@ -129,9 +126,9 @@ def test_determinism() -> None:
 
     m1 = json.loads((r1.artifact_dir / "manifest.json").read_text())
     m2 = json.loads((r2.artifact_dir / "manifest.json").read_text())
-    assert (
-        m1["reproducibility"]["input_hash"] == m2["reproducibility"]["input_hash"]
-    ), "manifest input_hash differs between two seed-2010 runs"
+    assert m1["reproducibility"]["input_hash"] == m2["reproducibility"]["input_hash"], (
+        "manifest input_hash differs between two seed-2010 runs"
+    )
 
 
 @pytest.mark.xfail(
@@ -227,8 +224,7 @@ def test_tri_county_wallclock_smoke() -> None:
     elapsed = time.perf_counter() - t_start
 
     assert result.exit_reason.value == "completed"
-    print(f"\n  tri-county 520 ticks: {elapsed:.1f}s "
-          f"({elapsed * 1000 / 520:.1f} ms/tick avg)")
+    print(f"\n  tri-county 520 ticks: {elapsed:.1f}s ({elapsed * 1000 / 520:.1f} ms/tick avg)")
 
 
 @pytest.mark.skipif(

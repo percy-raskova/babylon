@@ -109,6 +109,7 @@ class TestEngineEventModel:
 
     def test_negative_tick_rejected(self) -> None:
         from pydantic import ValidationError
+
         try:
             EngineEvent(tick=-1, event_type="X")
         except ValidationError:

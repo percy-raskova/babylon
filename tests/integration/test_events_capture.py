@@ -36,9 +36,7 @@ def _postgres_reachable() -> bool:
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        not _postgres_reachable(), reason="Postgres test DB not reachable"
-    ),
+    pytest.mark.skipif(not _postgres_reachable(), reason="Postgres test DB not reachable"),
     pytest.mark.skipif(
         not SQLITE_REF.exists(), reason=f"SQLite reference DB missing at {SQLITE_REF}"
     ),
@@ -128,9 +126,7 @@ def test_engine_emitted_event_visible_in_summary(monkeypatch) -> None:
     )
     events = summary.get("events", [])
     matching = [
-        e
-        for e in events
-        if e.get("event_type") == "SUPERWAGE_CRISIS" and e.get("tick") == 2
+        e for e in events if e.get("event_type") == "SUPERWAGE_CRISIS" and e.get("tick") == 2
     ]
     assert matching, f"Expected SUPERWAGE_CRISIS at tick 2; got events={events}"
     assert "26163" in matching[0]["entity_ids"]

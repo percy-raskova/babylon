@@ -213,13 +213,12 @@ def _preflight_reference_data_window(
                 )
             if tbl_max < allowed_end_year:
                 # Clamp the allowed end year to fit this table's coverage.
-                if tbl_max < allowed_end_year:
-                    warnings_collected.append(
-                        f"WARN REFERENCE_DATA_CLAMP: {table_name} ends at "
-                        f"year={tbl_max}; requested end_year={requested_end_year} "
-                        f"exceeds the available window. Clamping scenario length."
-                    )
-                    allowed_end_year = min(allowed_end_year, tbl_max)
+                warnings_collected.append(
+                    f"WARN REFERENCE_DATA_CLAMP: {table_name} ends at "
+                    f"year={tbl_max}; requested end_year={requested_end_year} "
+                    f"exceeds the available window. Clamping scenario length."
+                )
+                allowed_end_year = tbl_max
 
     allowed_length = max(1, allowed_end_year - start_year + 1)
     return allowed_length, warnings_collected

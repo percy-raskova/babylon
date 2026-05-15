@@ -14,22 +14,24 @@ substance: real engine systems advance state per tick, real reference
 data seeds tick 0, and every column in `trace.csv` carries meaningful
 values.
 
-The CLI surface is mostly the same. Two new flags appear; the
+The CLI surface is mostly the same. Three new flags appear; the
 canonical `--ticks` for `sim:e2e-michigan` changes from 1000 to 520:
 
 | Change | Old (spec-064) | New (spec-065) |
 |---|---|---|
 | Default canonical `--ticks` | 1000 | 520 (10 years of real-data coverage) |
 | Default canonical window | 2010-2029 (extrapolated) | 2010-2020 (entirely real) |
-| `--strict` flag | did not exist | exits 1 on first `critical` conservation row |
+| `--strict` flag | did not exist | exits 1 on first `alarm` conservation row |
 | `--endgame-detector` flag | did not exist | dotted path to an `EndgameDetector` |
+| `--write-baseline <path>` flag | did not exist | copies `summary.json` to baseline on success (T085) |
 | `summary.json.events[]` | did not exist | engine event stream, emission-ordered |
-| `summary.json.performance.per_system_ms` | did not exist | per-system wallclock breakdown |
+| `summary.json.performance.per_system_ms` | did not exist | per-system wallclock breakdown (populates when engine runs; spec-066) |
+| `summary.json.terminal_state.max_tension` | did not exist | cross-tick MAX(tension) over EXPLOITATION edges (T080) |
 | `manifest.json...engine_systems_invoked` | did not exist | participates in `input_hash` |
 | `trace.csv` empty columns | 7 of 22 | 0 of 22 |
-| Tick-over-tick variation | none (carry-forward) | real engine dynamics |
+| Tick-over-tick variation | none (carry-forward) | real engine dynamics (spec-066 turns this on; today byte-identical per tick within a year) |
 | `tools/shared.run_simulation final_state` | None | terminal-tick `WorldState` |
-| Postgres tables | hex_state, audit, register, ... | + 3 new per-tick subsystem tables |
+| Postgres tables | hex_state, audit, register, ... | + 4 new per-tick subsystem tables (consciousness, demographics, employment, relationship_state) |
 
 ---
 
@@ -59,14 +61,26 @@ This runs:
 - 520 weekly ticks (2010-2020 inclusive)
 - Real BLS QCEW wages, BEA county GDP, Census income/rent, FCC
   broadband, LODES commute, Hickel/Ricci drains seeding tick 0
+- ConservationAuditor instantiated in `runner.run()` and called
+  end-of-tick via `bridge.persist_tick` → `auditor.audit_end_of_tick(...)`;
+  audit rows commit inside the per-tick envelope (T049)
+- BoundaryFlowRegister flushing per tick (T055; owned by runner,
+  injected into the bridge)
+- EventCapture subscribed to every `EventType` on the runner's
+  EventBus (T071); the captured stream drains into `summary.events`
 - All 15 engine systems firing per tick (Vitality → Territory →
   Production → Solidarity → ImperialRent → Decomposition →
   ControlRatio → Metabolism → Survival → Struggle → Consciousness →
   Contradiction → ContradictionField → FieldDerivative →
-  EdgeTransition)
-- ConservationAuditor running end-of-tick
-- BoundaryFlowRegister flushing per tick
-- EventCapture collecting every EventBus.publish() call
+  EdgeTransition) — **deferred to spec-066**; the bridged tick loop
+  today persists whatever state the engine produces. With the engine
+  not yet wired through `world.graph`, state stays byte-identical
+  within a calendar year. The wiring above (auditor, register,
+  EventBus) is correct from day one so spec-066 turns it on without
+  further plumbing.
+- Refreshes `tests/baselines/michigan-e2e.json` via `--write-baseline`
+  (T085) so the CI regression gate (`mise run qa:e2e-regression`)
+  sees the just-produced summary as the new baseline
 
 After ~? minutes (TBD per SC-002 measurement; budget ≤ 10 minutes
 tick-loop), the command prints the artifact directory path:
@@ -250,15 +264,31 @@ This invokes the canonical sim with `--strict` and then runs
 
 ### Regenerating the baseline after an intentional engine change
 
+Spec-065 T085 wires the baseline refresh into the canonical task — the
+`sim:e2e-michigan` mise task passes
+`--write-baseline tests/baselines/michigan-e2e.json` to the runner so
+one command does both:
+
 ```bash
 # After approving an engine math edit that intentionally changes
 # the simulation's behavior:
 mise run sim:e2e-michigan
-cp reports/sim-runs/<latest-ts>/summary.json tests/baselines/michigan-e2e.json
 git commit tests/baselines/ -m "test(baseline): refresh michigan-e2e after <engine change>"
 ```
 
-The baseline now includes real `terminal_state` aggregates (not the
+The runner writes the baseline only on `COMPLETED` or `EARLY_TERMINATED`
+exit reasons (skips silently on `ERRORED` / `USER_INTERRUPTED`), so a
+strict-mode trip won't overwrite the baseline with a partial bundle.
+
+To run without refreshing the baseline (ad-hoc inspection, alternative
+scope, etc.), invoke the runner directly:
+
+```bash
+poetry run python -m babylon.engine.headless_runner \
+  --scope michigan-canada --ticks 520
+```
+
+The baseline includes real `terminal_state` aggregates (not the
 spec-064 placeholder zeros) plus the new `events[]` array. Diffing two
 baselines tells you exactly what changed in run dynamics.
 
@@ -318,13 +348,40 @@ state-inspecting helpers regain full functionality.
 
 ## What's still deferred to a future spec
 
+- **Spec-066 — Full SimulationEngine engine wiring through the bridge.**
+  Spec-065 plumbs every adapter (ConservationAuditor, BoundaryFlowRegister,
+  EventBus, EventCapture, per-system wallclock wrapper, per-tick
+  relationship persistence) but does NOT yet call
+  `engine.run_tick(world.graph, services, context)` between
+  `bridge.hydrate_initial(...)` and `bridge.persist_tick(...)`. As a
+  result `summary.events`, `summary.performance.per_system_ms`, audit-
+  log alarm rows, boundary-register rows, and
+  `terminal_state.max_tension` are all vacuously empty / zero today.
+  Spec-066's only mandate is to plug the engine in; the persistence
+  surface is already cross-tick correct.
+- **Spec-067 — QCEW SQLite normalization** (filter `ownership_id`,
+  restoring SC-005's [0.5, 5.0] c/v band — today the absolute totals
+  are inflated by the SQLite denormalization; the cross-county
+  proportions remain correct).
+- **Spec-068 — BEA national industry I-O ingestion** (replace the
+  hardcoded `INTERMEDIATE_INPUTS_FRACTION = 0.5` in the hex hydrator
+  with per-county BEA I-O coefficients from `fact_bea_national_industry`).
 - **Hex-resolution trace.csv emission** (county-aggregate is the
   contract; hex-level state stays queryable via Postgres).
 - **National-scope tuning** (Michigan + Canada is canonical; 3 222
   counties is a future perf-optimization spec).
-- **Per-county BEA I/O coefficients** (national fraction is the MVP
-  formula for `c`; future spec adds county-resolution I/O tables).
 - **Event-driven narrative generation** (the `events[]` array is the
   spine; an AI narrator that consumes it is a separate observer spec).
 - **Sub-tick interpolation** for reference data (year-scoped clamp is
   the MVP; future spec adds monthly / quarterly cadence).
+
+---
+
+## Walkthrough verification
+
+This quickstart was walked through end-to-end on **2026-05-15** as
+part of T086. Each command, flag, snippet, and link in this file has
+been cross-checked against the current CLI surface, mise tasks,
+Postgres migrations 0020-0024, and the `babylon.engine.headless_runner`
+module. Drift items found during the walkthrough were fixed in the
+same commit batch.

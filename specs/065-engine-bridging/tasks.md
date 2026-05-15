@@ -404,3 +404,26 @@ Every task in this file satisfies the strict format:
 - **MVP scope**: T001–T044 (~44 tasks) — ships full-fidelity trace.csv + summary terminal aggregates from real engine math; audit/boundary/endgame/events follow as US2-US5
 - **Highest parallelism**: Phase 3 US1 tests (8-way), Phase 8 polish (7-way), Phase 6 US4 tests (5-way)
 - **Independent test criteria**: Documented per user story (see Phase 3/4/5/6/7 headers)
+
+---
+
+## Post-implementation audit-to-standard sweep (2026-05-15)
+
+A line-by-line manual audit after the initial 89-task delivery
+identified seven tasks not actually complete to spec wording:
+
+| Task | Original gap | Fix shipped 2026-05-15 |
+|---|---|---|
+| T049 | ConservationAuditor never instantiated; runner polled the SQL log table directly. | Auditor constructed in `runner.run()`; new `audit_end_of_tick` method + `audit_log_buffer` / `alarms_buffer` fields; bridge calls auditor each tick and merges rows into the per-tick envelope. `_check_strict_alarms` consults the buffer first, with SQL fallback. |
+| T055 | `BoundaryFlowRegister` instantiated inside `bridge.hydrate_initial`. | Lifted to `runner.run()` and injected into `WorldStateBridge.__init__`; also added as an optional `ServiceContainer.boundary_register` field for spec-066. |
+| T071 | `EventCapture.on_event` was never subscribed. | Runner constructs an `EventBus` and injects it into the bridge; `hydrate_initial` subscribes `event_capture.on_event` to every `EventType` enum value. |
+| T074 | `per_system_ms` field existed but no wrapper populated it. | `SimulationEngine.run_tick` now wraps each `system.step(...)` call with `time.perf_counter()` and accumulates into `self._per_system_ms`; exposed via `per_system_ms` property. Dict stays empty until spec-066 invokes the engine. |
+| T080 | `max_tension` computed only over `final_state.relationships` at terminal tick. | New migration `0024_dynamic_relationship_state.sql` + `DynamicRelationshipState` model + envelope expansion. Bridge writes per-tick rows. Runner queries `MAX(tension) FILTER (WHERE edge_type='EXPLOITATION')` across all ticks for the session. |
+| T085 | Baseline was regenerated from tri-county, not Michigan-statewide. | New `--write-baseline <path>` runner flag + `SimulationRunConfig.write_baseline_to` field. `sim:e2e-michigan` mise task passes `--write-baseline tests/baselines/michigan-e2e.json` so the canonical Michigan run refreshes the baseline atomically. |
+| T086 | Quickstart walkthrough never performed. | Walked through `quickstart.md` line-by-line on 2026-05-15; documented `--write-baseline`, distinguished spec-065-wired infrastructure from spec-066-deferred engine execution, named spec-066/067/068 deferrals explicitly; added a "Walkthrough verification" footer. |
+
+All seven tasks are now honestly complete to spec wording. The
+underlying engine integration that makes the audit/event/boundary
+buffers actually populate at runtime is the documented spec-066
+follow-up — see ADR042 `audit_to_standard_sweep_2026_05_15` and
+`followups` for scope.

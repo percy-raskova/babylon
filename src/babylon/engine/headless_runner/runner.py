@@ -41,6 +41,7 @@ except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
 from babylon.engine.headless_runner.argparse_cli import build_parser
+from babylon.engine.headless_runner.bridge import WorldStateBridge
 from babylon.engine.headless_runner.manifest import build_manifest
 from babylon.engine.headless_runner.models import (
     AuditEntry,
@@ -203,32 +204,34 @@ def _validate_preflight(config: SimulationRunConfig) -> None:
         )
 
 
-def _carry_forward_tick(
+def _advance_tick(
     *,
-    runtime: Any,  # noqa: ARG001 — kept in signature for the future engine-bridging path
-    session_id: UUID,  # noqa: ARG001 — same
-    tick: int,  # noqa: ARG001 — same
-    determinism_hash: str,  # noqa: ARG001 — same
+    bridge: WorldStateBridge,
+    world: Any,
+    tick: int,
+    determinism_hash: str,
 ) -> None:
-    """Phase-3 MVP no-op: don't persist per-tick rows.
+    """Spec-065 T042: real per-tick advancement via the bridge.
 
-    The MVP runner carries hex state forward unchanged tick-over-tick.
-    Persisting N byte-identical copies of the same ~30k-row payload
-    blows past the SC-002 wallclock budget on the full Michigan +
-    Canada scope (Postgres B-tree maintenance over 4 indices on
-    ~30M total rows is the bottleneck).
+    The runner now invokes ``bridge.persist_tick(world, tick, hash)``
+    on every tick, replacing the spec-064 MVP's no-op carry-forward.
+    Per-tick rows are written to the spec-065 subsystem state tables
+    (consciousness/demographics/employment) plus hex_state +
+    external_node templates re-emitted with the new tick number.
 
-    Logical equivalence is preserved by ``_emit_virtual_trace_rows``:
-    only tick 0 is persisted to ``dynamic_hex_state``; the trace.csv
-    emitter materializes the requested tick range by emitting N copies
-    of tick 0's per-county aggregates with the tick number rewritten.
+    Per spec-065 research.md §R10, the bridge is a derivation/aggregation
+    adapter — its persist_tick computes per-county subsystem rows from
+    the in-memory WorldState + SQLite reference data each tick.
 
-    When real engine systems land in a future spec, the per-tick
-    advancement WILL produce different data per tick, and this
-    function gets a real implementation that writes the actual deltas
-    via ``persist_tick_atomic``.
+    Engine system integration (calling ``engine.run_tick(world.graph,
+    services, context)`` to mutate ``world`` between ticks) is deferred
+    to a follow-up spec — the engine system surface (15 systems +
+    ServiceContainer) is large enough to deserve its own integration
+    work. Tick-over-tick variance for SC-004 follows from that future
+    integration; today, the bridge correctly persists whatever world
+    state exists.
     """
-    return
+    bridge.persist_tick(world, tick, determinism_hash)
 
 
 def _query_audit_log(*, pool: Any, session_id: UUID) -> list[AuditEntry]:
@@ -269,29 +272,29 @@ def _query_trace(
     start_year: int,
     ticks_completed: int,
 ) -> list[dict[str, Any]]:
-    """Query the trace-emission view, materializing per-tick rows.
+    """Query the trace-emission view across all persisted ticks.
 
-    The MVP runner only persists tick 0 (no-op carry-forward); this
-    function emits ``ticks_completed`` copies of the per-county
-    aggregates with the tick number rewritten on each copy. Logically
-    equivalent to the prior per-tick-persisted implementation; O(1)
-    write cost in Postgres regardless of tick count (T056 / SC-002).
+    Spec-065 T044: tick-virtualization removed. The bridge now
+    persists per-tick subsystem + hex rows, so this query reads the
+    actual rows for every tick in [0, ticks_completed). The
+    ``simulated_year`` is computed in Python from start_year + tick/52.
     """
-    select_cols = ", ".join(c for c in TRACE_COLUMNS if c not in {"tick", "simulated_year"})
+    select_cols = ", ".join(c for c in TRACE_COLUMNS if c not in {"simulated_year"})
     sql = (
         f"SELECT {select_cols} FROM view_runtime_trace_emission "
-        "WHERE session_id = %s AND tick = 0 ORDER BY entity_id"
+        "WHERE session_id = %s AND tick < %s ORDER BY tick, entity_id"
     )
     with pool.connection() as conn, conn.cursor() as cur:
-        cur.execute(sql, (str(session_id),))
+        cur.execute(sql, (str(session_id), max(ticks_completed, 1)))
         colnames = [d.name for d in cur.description] if cur.description else []
-        tick0_rows = [dict(zip(colnames, row, strict=True)) for row in cur.fetchall()]
+        rows = cur.fetchall()
 
     out: list[dict[str, Any]] = []
-    for tick in range(max(ticks_completed, 1)):
-        simulated_year = start_year + tick / 52.0
-        for row in tick0_rows:
-            out.append({**row, "tick": tick, "simulated_year": simulated_year})
+    for row in rows:
+        record = dict(zip(colnames, row, strict=True))
+        tick_val = int(record.get("tick", 0))
+        record["simulated_year"] = start_year + tick_val / 52.0
+        out.append(record)
     return out
 
 
@@ -303,17 +306,17 @@ def _query_terminal_aggregates(
 ) -> dict[str, Any]:
     """Aggregate terminal-tick state across all counties from the trace view.
 
-    MVP-runner note: only tick 0 is persisted (carry-forward is a logical
-    no-op materialized at trace-emit time). We read tick 0 aggregates
-    but report them as the terminal tick, since they are byte-identical.
+    Spec-065 T044: reads the actual terminal tick rather than tick 0.
+    The bridge persists per-tick rows so the terminal aggregate
+    reflects whatever final state the simulation reached.
     """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FILTER (WHERE v > 0), "
             "       SUM(v), SUM(c), SUM(s), SUM(k) "
             "FROM view_runtime_trace_emission "
-            "WHERE session_id = %s AND tick = 0",
-            (str(session_id),),
+            "WHERE session_id = %s AND tick = %s",
+            (str(session_id), terminal_tick),
         )
         row = cur.fetchone()
     counties_alive = int(row[0] or 0) if row else 0
@@ -337,26 +340,49 @@ def _county_terminal_snapshot(
     *,
     pool: Any,
     session_id: UUID,
-    terminal_tick: int,  # noqa: ARG001 — kept for the future engine-bridging path
+    terminal_tick: int,
 ) -> list[dict[str, Any]]:
     """Per-county terminal row + delta-vs-initial.
 
-    MVP-runner note: tick 0 IS the terminal tick (carry-forward is a no-op),
-    so the per-county terminal payload reads from tick 0 and reports
-    ``delta_k_vs_initial = 0.0``.
+    Spec-065 T044: reads the actual terminal tick. Per-county
+    consciousness/demographics/employment columns now flow from the
+    bridge-persisted spec-065 subsystem state tables. ``delta_k_vs_initial``
+    is computed from the difference between terminal-tick k and tick-0 k.
     """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT entity_id, v, c, s, k "
+            "SELECT entity_id, v, c, s, k, "
+            "       p_acquiescence, p_revolution, "
+            "       ideology_r, ideology_l, ideology_f, "
+            "       population "
             "FROM view_runtime_trace_emission "
-            "WHERE session_id = %s AND tick = 0 "
+            "WHERE session_id = %s AND tick = %s "
             "ORDER BY entity_id",
-            (str(session_id),),
+            (str(session_id), terminal_tick),
         )
         terminal = cur.fetchall()
+        cur.execute(
+            "SELECT entity_id, k FROM view_runtime_trace_emission "
+            "WHERE session_id = %s AND tick = 0",
+            (str(session_id),),
+        )
+        initial_k_by_entity = {entity_id: float(k or 0.0) for entity_id, k in cur.fetchall()}
     out: list[dict[str, Any]] = []
-    for entity_id, v, c, s, k in terminal:
+    for (
+        entity_id,
+        v,
+        c,
+        s,
+        k,
+        p_acq,
+        p_rev,
+        ideol_r,
+        ideol_l,
+        ideol_f,
+        population,
+    ) in terminal:
         k_now = float(k or 0.0)
+        k_initial = initial_k_by_entity.get(entity_id, k_now)
         out.append(
             {
                 "entity_id": entity_id,
@@ -364,13 +390,13 @@ def _county_terminal_snapshot(
                 "c": float(c or 0.0),
                 "s": float(s or 0.0),
                 "k": k_now,
-                "p_acquiescence": None,
-                "p_revolution": None,
-                "ideology_r": None,
-                "ideology_l": None,
-                "ideology_f": None,
-                "population": None,
-                "delta_k_vs_initial": 0.0,
+                "p_acquiescence": float(p_acq) if p_acq is not None else None,
+                "p_revolution": float(p_rev) if p_rev is not None else None,
+                "ideology_r": float(ideol_r) if ideol_r is not None else None,
+                "ideology_l": float(ideol_l) if ideol_l is not None else None,
+                "ideology_f": float(ideol_f) if ideol_f is not None else None,
+                "population": int(population) if population is not None else None,
+                "delta_k_vs_initial": k_now - k_initial,
             }
         )
     return out
@@ -445,11 +471,21 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                 "Hex hydration produced zero rows for the requested scope."
             )
 
+        # Spec-065 T043: wire WorldStateBridge into the run.
+        bridge = WorldStateBridge(runtime=runtime, defines=defines)
+        world = bridge.hydrate_initial(
+            session_id=session_id,
+            scope_fips=config.scope_fips,
+            start_year=config.start_year,
+            sqlite_path=config.sqlite_reference_path,
+        )
+
         if config.dry_run:
             _LOG.info("Dry-run requested; skipping tick loop.")
         else:
             ticks_completed = _tick_loop(
-                runtime=runtime,
+                bridge=bridge,
+                world=world,
                 session_id=session_id,
                 config=config,
                 per_tick_durations=per_tick_durations,
@@ -528,17 +564,32 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
 
 def _tick_loop(
     *,
-    runtime: Any,
+    bridge: WorldStateBridge,
+    world: Any,
     session_id: UUID,
     config: SimulationRunConfig,
     per_tick_durations: list[float],
 ) -> int:
     """Drive the tick loop with tqdm + cooperative SIGINT.
 
+    Spec-065 T042/T043: each tick now invokes ``bridge.persist_tick``
+    to write the per-county subsystem rows + re-emit hex/external
+    templates with the new tick number. Replaces spec-064's no-op
+    carry-forward.
+
     Returns:
         Number of ticks fully persisted.
     """
-    ticks_completed = 1  # tick 0 was persisted by initialize_session
+    # Tick 0 was persisted by initialize_session via the hex hydrator
+    # (hex_state rows only). Spec-065 also persists the tick-0 subsystem
+    # rows as the first iteration of this loop, so the bridge call
+    # below covers the full per-tick contract for every tick.
+    ticks_completed = 1
+    determinism_hash_t0 = hashlib.sha256(
+        f"{session_id}:0:{config.random_seed}".encode()
+    ).hexdigest()
+    bridge.persist_tick(world, 0, determinism_hash_t0)
+
     tick_range = range(1, config.ticks)
     iterator: Any = tick_range
     if tqdm is not None:
@@ -558,9 +609,9 @@ def _tick_loop(
         determinism_hash = hashlib.sha256(
             f"{session_id}:{tick}:{config.random_seed}".encode()
         ).hexdigest()
-        _carry_forward_tick(
-            runtime=runtime,
-            session_id=session_id,
+        _advance_tick(
+            bridge=bridge,
+            world=world,
             tick=tick,
             determinism_hash=determinism_hash,
         )

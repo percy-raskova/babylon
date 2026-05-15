@@ -239,38 +239,38 @@ are created in `hydrate_initial` and tagged with the new optional
 
 ### Performance gates
 
-- [ ] T074 [P] Per-system wallclock tracking in `run_summary.py` — add `per_system_ms: dict[str, float]` to the `performance` block (per `data-model.md §3.2`). Source: time each `system.step(...)` call inside `engine.run_tick` via a thin wrapper, accumulate over the run.
-- [ ] T075 [P] Tri-county wallclock smoke test in `tests/integration/test_engine_bridge.py::test_tri_county_wallclock_smoke` (R9 pass 1) — `--scope detroit-tri-county --ticks 520`, assert exit 0, record per-tick mean ms.
-- [ ] T076 SC-002 canonical wallclock budget test in `tests/integration/test_engine_bridge.py::test_canonical_wallclock_budget` (R9 pass 3) — `--scope michigan-canada --ticks 520`, assert `summary.performance.tick_loop_sec ≤ 600`. Skipped unless `BABYLON_SLOW_TESTS=1`.
+- [X] T074 [P] Per-system wallclock tracking in `run_summary.py` — add `per_system_ms: dict[str, float]` to the `performance` block (per `data-model.md §3.2`). Source: time each `system.step(...)` call inside `engine.run_tick` via a thin wrapper, accumulate over the run.
+- [X] T075 [P] Tri-county wallclock smoke test in `tests/integration/test_engine_bridge.py::test_tri_county_wallclock_smoke` (R9 pass 1) — `--scope detroit-tri-county --ticks 520`, assert exit 0, record per-tick mean ms.
+- [X] T076 SC-002 canonical wallclock budget test in `tests/integration/test_engine_bridge.py::test_canonical_wallclock_budget` (R9 pass 3) — `--scope michigan-canada --ticks 520`, assert `summary.performance.tick_loop_sec ≤ 600`. Skipped unless `BABYLON_SLOW_TESTS=1`.
 
 ### Invariant suite gate (SC-012)
 
-- [ ] T077 Run the full spec-053/054/055/056 Hypothesis invariant suite against a fully-bridged canonical run via `tests/integration/test_invariant_suite_under_bridge.py`. Skipped unless `BABYLON_SLOW_TESTS=1`. Asserts every property in the suite passes against the engine-bridged trace.
+- [X] T077 Run the full spec-053/054/055/056 Hypothesis invariant suite against a fully-bridged canonical run via `tests/integration/test_invariant_suite_under_bridge.py`. Skipped unless `BABYLON_SLOW_TESTS=1`. Asserts every property in the suite passes against the engine-bridged trace.
 
 ### SC-011 `tools/shared.run_simulation` fidelity restoration
 
-- [ ] T078 [P] Signature-snapshot test update in `tests/unit/tools/test_shared_signature.py` — confirm the byte-stable signature still matches per spec-064 FR-015 (no signature change).
-- [ ] T079 Restore `final_state = result.final_world_state` in `tools/shared.run_simulation` so legacy callers regain `state.entities` / `state.territories` access per SC-011.
-- [ ] T080 Restore `max_tension` (max EXPLOITATION edge tension across all ticks), `final_wealth` (sum of terminal-tick entity wealth), `phase_milestones` (per-phase tick numbers filtered from `result.events`), and `terminal_outcome` (from `TerminalDecisionEvent` in events) in `tools/shared.run_simulation` per `research.md §R8`.
+- [X] T078 [P] Signature-snapshot test update in `tests/unit/tools/test_shared_signature.py` — confirm the byte-stable signature still matches per spec-064 FR-015 (no signature change).
+- [X] T079 Restore `final_state = result.final_world_state` in `tools/shared.run_simulation` so legacy callers regain `state.entities` / `state.territories` access per SC-011.
+- [X] T080 Restore `max_tension` (max EXPLOITATION edge tension across all ticks), `final_wealth` (sum of terminal-tick entity wealth), `phase_milestones` (per-phase tick numbers filtered from `result.events`), and `terminal_outcome` (from `TerminalDecisionEvent` in events) in `tools/shared.run_simulation` per `research.md §R8`.
 
 ### Manifest extensions
 
-- [ ] T081 [P] Add `engine_systems_invoked: list[str]` field to `manifest.json.reproducibility.deterministic_inputs` in `src/babylon/engine/headless_runner/manifest.py` per `data-model.md §4.1`. Source: `[s.__class__.__name__ for s in engine.systems]`. Ensure it participates in `input_hash` computation.
+- [X] T081 [P] Add `engine_systems_invoked: list[str]` field to `manifest.json.reproducibility.deterministic_inputs` in `src/babylon/engine/headless_runner/manifest.py` per `data-model.md §4.1`. Source: `[s.__class__.__name__ for s in engine.systems]`. Ensure it participates in `input_hash` computation.
 
 ### ai-docs sync
 
-- [ ] T082 [P] Author `ai-docs/decisions/ADR042_spec_065_engine_bridging.yaml` documenting: (a) the hex hydrator becomes real-data-driven; (b) the bridge is the canonical hydrate-run-write surface; (c) the canonical run is rescoped to 520 ticks / 2010-2020; (d) `view_runtime_trace_emission` v2 sources from three new subsystem tables. Update `ai-docs/decisions/index.yaml` accordingly.
-- [ ] T083 [P] Update `ai-docs/state.yaml` to v2.8.0 with `spec_065_summary` block (mirror the v2.7.0 spec-064 summary structure).
-- [ ] T084 [P] Update `ai-docs/tooling.yaml` to document the new `--strict` and `--endgame-detector` flags and the changed `--ticks` defaults for `sim:e2e-michigan` / `qa:e2e-regression`.
+- [X] T082 [P] Author `ai-docs/decisions/ADR042_spec_065_engine_bridging.yaml` documenting: (a) the hex hydrator becomes real-data-driven; (b) the bridge is the canonical hydrate-run-write surface; (c) the canonical run is rescoped to 520 ticks / 2010-2020; (d) `view_runtime_trace_emission` v2 sources from three new subsystem tables. Update `ai-docs/decisions/index.yaml` accordingly.
+- [X] T083 [P] Update `ai-docs/state.yaml` to v2.8.0 with `spec_065_summary` block (mirror the v2.7.0 spec-064 summary structure).
+- [X] T084 [P] Update `ai-docs/tooling.yaml` to document the new `--strict` and `--endgame-detector` flags and the changed `--ticks` defaults for `sim:e2e-michigan` / `qa:e2e-regression`.
 
 ### Baseline refresh
 
-- [ ] T085 Regenerate `tests/baselines/michigan-e2e.json` from a fresh full Michigan-statewide bridged run. Document the regeneration command in the commit message. The new baseline includes real `terminal_state` aggregates + populated `events` array + populated `external_node_flows`.
+- [X] T085 Regenerate `tests/baselines/michigan-e2e.json` from a fresh full Michigan-statewide bridged run. Document the regeneration command in the commit message. The new baseline includes real `terminal_state` aggregates + populated `events` array + populated `external_node_flows`.
 
 ### Final sweeps
 
-- [ ] T086 Run the full `quickstart.md` walkthrough end-to-end (operator path + LLM-agent path + CI engineer path) and fix any drift discovered.
-- [ ] T087 Run `mise run check` and fix any lint / mypy / pre-commit fallout introduced by the new modules + refactored hex hydrator + runner refactor.
+- [X] T086 Run the full `quickstart.md` walkthrough end-to-end (operator path + LLM-agent path + CI engineer path) and fix any drift discovered.
+- [X] T087 Run `mise run check` and fix any lint / mypy / pre-commit fallout introduced by the new modules + refactored hex hydrator + runner refactor.
 
 ---
 

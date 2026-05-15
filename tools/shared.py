@@ -301,19 +301,52 @@ def run_simulation(
         )
         result = headless_run(config)
 
+    # Spec-065 T079/T080: restore final_state + max_tension + final_wealth +
+    # phase_milestones + terminal_outcome from the engine-bridged result.
+    final_state = getattr(result, "final_world_state", None)
+    final_wealth = (
+        sum(float(e.wealth) for e in final_state.entities.values())
+        if final_state is not None and hasattr(final_state, "entities")
+        else 0.0
+    )
+    max_tension = (
+        max(
+            (float(getattr(r, "tension", 0.0)) for r in final_state.relationships),
+            default=0.0,
+        )
+        if final_state is not None and hasattr(final_state, "relationships")
+        else 0.0
+    )
+
+    events = getattr(result, "events", ())
+    milestone_keys = {
+        "superwage_crisis": "SUPERWAGE_CRISIS",
+        "class_decomposition": "CLASS_DECOMPOSITION",
+        "control_ratio_crisis": "CONTROL_RATIO_CRISIS",
+        "terminal_decision": "TERMINAL_DECISION",
+    }
+    phase_milestones: dict[str, int | None] = {k: None for k in milestone_keys}
+    terminal_outcome: str | None = None
+    for ev in events:
+        ev_type = ev.get("event_type") if isinstance(ev, dict) else getattr(ev, "event_type", None)
+        ev_tick = ev.get("tick") if isinstance(ev, dict) else getattr(ev, "tick", None)
+        for legacy_key, type_value in milestone_keys.items():
+            if ev_type == type_value and phase_milestones[legacy_key] is None:
+                phase_milestones[legacy_key] = ev_tick
+        if ev_type == "TERMINAL_DECISION" and terminal_outcome is None:
+            details = (
+                ev.get("details") if isinstance(ev, dict) else getattr(ev, "details", {})
+            )
+            terminal_outcome = details.get("outcome") if isinstance(details, dict) else None
+
     return {
         "ticks_survived": result.ticks_completed,
-        "max_tension": 0.0,
+        "max_tension": max_tension,
         "outcome": "SURVIVED" if result.exit_reason == ExitReason.COMPLETED else "DIED",
-        "final_wealth": 0.0,
-        "final_state": None,
-        "phase_milestones": {
-            "superwage_crisis": None,
-            "class_decomposition": None,
-            "control_ratio_crisis": None,
-            "terminal_decision": None,
-        },
-        "terminal_outcome": None,
+        "final_wealth": final_wealth,
+        "final_state": final_state,
+        "phase_milestones": phase_milestones,
+        "terminal_outcome": terminal_outcome,
     }
 
 

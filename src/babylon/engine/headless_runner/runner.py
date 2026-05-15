@@ -625,13 +625,27 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             config=config,
             ticks_completed=ticks_completed,
             exit_reason=exit_reason,
-            end_game_tick=None,
-            end_game_condition=None,
+            end_game_tick=end_game_event.get("tick") if end_game_event else None,
+            end_game_condition=end_game_event.get("condition") if end_game_event else None,
             wallclock_start=wallclock_start,
             wallclock_end=wallclock_end,
             performance=performance,
             conservation_audit=tuple(audit_entries),
             artifact_dir=artifact_dir,
+            # Spec-065 T079: pass through terminal WorldState for legacy callers
+            # via tools/shared.run_simulation.
+            final_world_state=world,
+            # Spec-065 T073: pass captured events for downstream consumers.
+            events=tuple(
+                {
+                    "tick": e.tick,
+                    "event_type": e.event_type,
+                    "entity_ids": list(e.entity_ids),
+                    "severity": e.severity,
+                    "details": e.details,
+                }
+                for e in captured_events
+            ),
         )
     finally:
         if runtime is not None:

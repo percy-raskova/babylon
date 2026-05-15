@@ -7,7 +7,25 @@ Implements every flag from ``contracts/cli_contract.yaml`` as an
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+
+_VERBOSE_CHOICES = ("DEBUG", "INFO", "WARNING", "ERROR")
+_DEFAULT_VERBOSE = "INFO"
+
+
+def _resolve_default_verbose() -> str:
+    """Resolve the default ``--verbose`` level from the ``LOG_LEVEL`` env var.
+
+    Falls back to ``INFO`` if the env var is unset, blank, or set to a value
+    not in the choice list (case-insensitive match; unrecognized values are
+    silently ignored so a bad ``.env`` line doesn't break the CLI). Pass
+    ``-v <LEVEL>`` on the command line to override per invocation.
+    """
+    raw = os.environ.get("LOG_LEVEL", "").strip().upper()
+    if raw in _VERBOSE_CHOICES:
+        return raw
+    return _DEFAULT_VERBOSE
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,9 +100,13 @@ def build_parser() -> argparse.ArgumentParser:
         "-v",
         "--verbose",
         type=str,
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="stderr logging level. stdout reserved for the artifact path.",
+        default=_resolve_default_verbose(),
+        choices=list(_VERBOSE_CHOICES),
+        help=(
+            "stderr logging level. Defaults to the LOG_LEVEL env var when set "
+            "to a valid level (DEBUG/INFO/WARNING/ERROR), otherwise INFO. "
+            "stdout remains reserved for the artifact directory path."
+        ),
     )
     parser.add_argument(
         "--dry-run",

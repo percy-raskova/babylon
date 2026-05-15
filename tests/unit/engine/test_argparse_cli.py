@@ -19,7 +19,12 @@ pytestmark = pytest.mark.timeout(30)
 class TestArgparseFlags:
     """Every flag from cli_contract.yaml is accepted with correct types."""
 
-    def test_defaults_match_contract(self) -> None:
+    def test_defaults_match_contract(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The runtime default for --verbose is resolved from LOG_LEVEL when
+        # set to a valid level; ensure the contract baseline is exercised
+        # with no env-side override so the assertion reflects the documented
+        # fallback.
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
         args = build_parser().parse_args([])
         assert args.ticks == 1000
         assert args.start_year == 2010
@@ -101,3 +106,52 @@ class TestScopeFipsMutuallyExclusive:
                 ["--scope", "detroit-tri-county", "--fips", "26163,26125"],
             )
         assert exc_info.value.code == 2
+
+
+class TestVerboseDefaultFromEnv:
+    """The --verbose default reads from ``LOG_LEVEL`` when set to a valid level.
+
+    Lets ``.env``'s ``LOG_LEVEL=DEBUG`` flow through into the headless
+    runner without retyping ``-v DEBUG`` on every invocation, while
+    keeping the CLI flag as a per-invocation override.
+    """
+
+    @pytest.mark.parametrize("level", ["DEBUG", "INFO", "WARNING", "ERROR"])
+    def test_log_level_env_sets_default(
+        self,
+        level: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("LOG_LEVEL", level)
+        args = build_parser().parse_args([])
+        assert args.verbose == level
+
+    def test_log_level_env_is_case_insensitive(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("LOG_LEVEL", "debug")
+        args = build_parser().parse_args([])
+        assert args.verbose == "DEBUG"
+
+    def test_unset_log_level_falls_back_to_info(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        args = build_parser().parse_args([])
+        assert args.verbose == "INFO"
+
+    def test_invalid_log_level_silently_falls_back_to_info(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # A bad .env line shouldn't break the CLI; just fall back to INFO.
+        monkeypatch.setenv("LOG_LEVEL", "TRACE")  # not a valid level
+        args = build_parser().parse_args([])
+        assert args.verbose == "INFO"
+
+    def test_explicit_flag_overrides_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+        args = build_parser().parse_args(["-v", "ERROR"])
+        assert args.verbose == "ERROR"

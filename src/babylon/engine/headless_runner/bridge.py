@@ -317,9 +317,7 @@ class WorldStateBridge:
         # Empty list when the engine has not pushed any boundary rows
         # (current state — engine integration is a follow-up).
         boundary_rows = (
-            list(self._boundary_register.flush())
-            if self._boundary_register is not None
-            else []
+            list(self._boundary_register.flush()) if self._boundary_register is not None else []
         )
 
         envelope = PerTickTransactionEnvelope(

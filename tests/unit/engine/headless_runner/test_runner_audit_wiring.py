@@ -8,13 +8,12 @@ T046: Verify _AUDIT_SEVERITY_MAP maps Postgres severities to contract values.
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from babylon.engine.headless_runner.runner import (
     _AUDIT_SEVERITY_MAP,
     _check_strict_alarms,
 )
-
 
 # ----------------------------------------------------------------------
 # T046: Severity mapping
@@ -81,14 +80,10 @@ class _FakeRuntime:
 class TestCheckStrictAlarms:
     def test_no_alarm_rows_returns_none(self) -> None:
         rt = _FakeRuntime([])
-        result = _check_strict_alarms(
-            runtime=rt, session_id=uuid4(), up_to_tick=10
-        )
+        result = _check_strict_alarms(runtime=rt, session_id=uuid4(), up_to_tick=10)
         assert result is None
 
     def test_alarm_row_returns_tick_and_invariant(self) -> None:
         rt = _FakeRuntime([(50, "global_phi_balance")])
-        result = _check_strict_alarms(
-            runtime=rt, session_id=uuid4(), up_to_tick=100
-        )
+        result = _check_strict_alarms(runtime=rt, session_id=uuid4(), up_to_tick=100)
         assert result == (50, "global_phi_balance")

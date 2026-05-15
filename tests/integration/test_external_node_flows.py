@@ -10,7 +10,6 @@ T054: ``summary.external_node_flows`` matches direct SQL aggregation
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 from pathlib import Path
@@ -36,9 +35,7 @@ def _postgres_reachable() -> bool:
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        not _postgres_reachable(), reason="Postgres test DB not reachable"
-    ),
+    pytest.mark.skipif(not _postgres_reachable(), reason="Postgres test DB not reachable"),
     pytest.mark.skipif(
         not SQLITE_REF.exists(), reason=f"SQLite reference DB missing at {SQLITE_REF}"
     ),
@@ -133,15 +130,16 @@ def test_aggregation_matches_register() -> None:
     # Re-read the summary through the aggregator function (the runner
     # already wrote summary.json before the inject; we recompute here
     # to verify equality with the SQL source of truth).
-    from babylon.engine.headless_runner.run_summary import aggregate_external_node_flows
-    import psycopg
     from psycopg_pool import ConnectionPool
+
+    from babylon.engine.headless_runner.run_summary import aggregate_external_node_flows
 
     dsn = os.environ.get(PG_DSN_ENV, DEFAULT_DSN)
     pool = ConnectionPool(conninfo=dsn, min_size=1, max_size=2, open=True)
     try:
         agg_rows = aggregate_external_node_flows(
-            pool=pool, session_id=str(result.session_id)  # type: ignore[attr-defined]
+            pool=pool,
+            session_id=str(result.session_id),  # type: ignore[attr-defined]
         )
         # Direct SQL truth.
         with pool.connection() as conn:

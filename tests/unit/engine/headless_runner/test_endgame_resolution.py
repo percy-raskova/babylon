@@ -12,7 +12,6 @@ from babylon.config.defines import GameDefines
 from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
 
-
 # ----------------------------------------------------------------------
 # T058: argparse acceptance
 # ----------------------------------------------------------------------
@@ -51,9 +50,7 @@ def test_set_endgame_detector_resolves_valid_path(bridge: WorldStateBridge) -> N
 
 def test_set_endgame_detector_imperial_collapse(bridge: WorldStateBridge) -> None:
     """ImperialCollapseAtTick250 fires only at tick 250."""
-    bridge.set_endgame_detector(
-        "tests.integration.fixtures.endgame.ImperialCollapseAtTick250"
-    )
+    bridge.set_endgame_detector("tests.integration.fixtures.endgame.ImperialCollapseAtTick250")
     assert bridge.poll_endgame(world=None, tick=249) is None
     event = bridge.poll_endgame(world=None, tick=250)
     assert event is not None
@@ -74,6 +71,4 @@ def test_set_endgame_detector_rejects_unknown_module(bridge: WorldStateBridge) -
 
 def test_set_endgame_detector_rejects_unknown_attr(bridge: WorldStateBridge) -> None:
     with pytest.raises(ImportError, match="has no attribute"):
-        bridge.set_endgame_detector(
-            "tests.integration.fixtures.endgame.NotARealClass"
-        )
+        bridge.set_endgame_detector("tests.integration.fixtures.endgame.NotARealClass")

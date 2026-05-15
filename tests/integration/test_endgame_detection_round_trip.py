@@ -36,9 +36,7 @@ def _postgres_reachable() -> bool:
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        not _postgres_reachable(), reason="Postgres test DB not reachable"
-    ),
+    pytest.mark.skipif(not _postgres_reachable(), reason="Postgres test DB not reachable"),
     pytest.mark.skipif(
         not SQLITE_REF.exists(), reason=f"SQLite reference DB missing at {SQLITE_REF}"
     ),

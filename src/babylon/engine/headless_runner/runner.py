@@ -108,9 +108,7 @@ class _StrictAbort(RunnerError):
     exit_name = "ENGINE_FAILURE"
 
     def __init__(self, tick: int, invariant_name: str) -> None:
-        super().__init__(
-            f"critical conservation violation at tick {tick}: {invariant_name}"
-        )
+        super().__init__(f"critical conservation violation at tick {tick}: {invariant_name}")
         self.tick = tick
         self.invariant_name = invariant_name
 
@@ -817,9 +815,7 @@ def _emit_artifacts(
         wallclock_start=wallclock_start,
         wallclock_end=wallclock_end,
         terminal_state=terminal_state,
-        external_node_flows=aggregate_external_node_flows(
-            pool=pool, session_id=str(session_id)
-        ),
+        external_node_flows=aggregate_external_node_flows(pool=pool, session_id=str(session_id)),
         county_terminal_snapshot=snapshot,
         conservation_audit=audit_entries,
         performance=performance,

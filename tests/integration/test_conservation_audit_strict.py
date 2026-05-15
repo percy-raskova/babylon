@@ -37,9 +37,7 @@ def _postgres_reachable() -> bool:
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        not _postgres_reachable(), reason="Postgres test DB not reachable"
-    ),
+    pytest.mark.skipif(not _postgres_reachable(), reason="Postgres test DB not reachable"),
     pytest.mark.skipif(
         not SQLITE_REF.exists(), reason=f"SQLite reference DB missing at {SQLITE_REF}"
     ),
@@ -78,7 +76,7 @@ def _inject_alarm_row(session_id: UUID, tick: int) -> None:
         conn.commit()
 
 
-def _build_config(*, strict: bool, ticks: int = 10) -> "tuple":
+def _build_config(*, strict: bool, ticks: int = 10) -> tuple:
     from babylon.engine.headless_runner.models import SimulationRunConfig
     from babylon.engine.headless_runner.scopes import resolve_scope
 
@@ -137,9 +135,7 @@ def test_strict_exits_one_on_critical(inject_alarm_first_tick) -> None:
     config = _build_config(strict=True, ticks=10)
     result = runner_run(config)
 
-    assert result.exit_reason == ExitReason.ERRORED, (
-        f"expected ERRORED, got {result.exit_reason}"
-    )
+    assert result.exit_reason == ExitReason.ERRORED, f"expected ERRORED, got {result.exit_reason}"
     # Loop aborted after tick 1 (the injected alarm tick).
     assert result.ticks_completed <= 3, (
         f"expected early abort at tick ~1, got ticks_completed={result.ticks_completed}"
@@ -165,6 +161,4 @@ def test_non_strict_continues_on_critical(inject_alarm_first_tick) -> None:
     summary = json.loads((result.artifact_dir / "summary.json").read_text())
     audit = summary.get("conservation_audit", [])
     error_entries = [e for e in audit if e.get("severity") in ("error", "critical")]
-    assert error_entries, (
-        f"expected at least one error/critical audit entry; got {audit}"
-    )
+    assert error_entries, f"expected at least one error/critical audit entry; got {audit}"

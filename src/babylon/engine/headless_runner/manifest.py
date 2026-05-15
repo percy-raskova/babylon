@@ -226,6 +226,7 @@ def build_manifest(
     artifact_files: list[tuple[str, str, int, int | None]],
     defines_hash: str,
     data_versions: dict[str, Any],
+    engine_systems_invoked: list[str] | None = None,
 ) -> dict[str, Any]:
     """Construct the manifest payload as a plain dict.
 
@@ -255,6 +256,11 @@ def build_manifest(
         "external_node_ids": sorted(config.external_node_ids),
         "defines_hash": defines_hash,
         "data_versions": data_versions,
+        # Spec-065 T081: engine system class names (ordered) — empty
+        # list when the engine is not yet wired (current first cut).
+        # Participates in input_hash so add/remove of engine systems
+        # between runs surfaces as hash drift.
+        "engine_systems_invoked": engine_systems_invoked or [],
     }
     non_deterministic_inputs: dict[str, Any] = {
         "session_id": session_id,

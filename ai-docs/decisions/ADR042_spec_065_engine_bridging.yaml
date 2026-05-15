@@ -1,0 +1,128 @@
+ADR042_spec_065_engine_bridging:
+  status: "accepted"
+  date: "2026-05-15"
+  title: "Spec 065: Engine-bridging — real per-tick state behind the headless runner"
+  context: |
+    Spec-064 shipped the canonical headless runner with a no-op tick
+    advancement (carry-forward virtualization): only tick 0 was
+    persisted, and the trace.csv emitter materialized N copies of
+    that single row at query time. This kept the runner under the
+    SC-002 wallclock budget but produced trace.csv files where:
+
+      - 7 columns (p_acquiescence, p_revolution, ideology r/l/f,
+        population, employment_proxy) were always NULL across all
+        ticks for all counties.
+      - Hex Marx primitives (v, c, s, k) used placeholder ratios
+        (c=2v, s=0, k=10v) instead of real BEA/QCEW data.
+      - Surveillance + internet were uniform across counties.
+      - Ticks 1..N were byte-identical to tick 0 (no engine math ran).
+
+    The audit at `reports/sim-runs/2026-05-15T03-47-07Z/` surfaced
+    these gaps. The user's stated goal: "when we run our simulation
+    CLI, all of the various data formats we spit out capture every
+    bit of detail from in-game as if we are playing the game itself".
+
+  decision: |
+    Four architectural decisions captured by this spec:
+
+    1. **Hex hydrator becomes real-data-driven.** The hex hydrator
+       (`src/babylon/persistence/hex_hydrator.py`) now reads directly
+       from SQLite reference tables (`fact_qcew_annual`,
+       `fact_bea_county_gdp`, `fact_broadband_coverage`,
+       `fact_coercive_infrastructure`) and computes per-county Marx
+       primitives + territory ratios from real data. Replaces
+       spec-063 placeholder ratios. Allocation per-hex is uniform
+       within county (LODES-density weighting deferred).
+
+    2. **WorldStateBridge is the canonical hydrate-run-write surface.**
+       New `babylon.engine.headless_runner.bridge.WorldStateBridge`
+       owns the WorldState ↔ Postgres translation. `hydrate_initial`
+       reads tick-0 hex_state + creates per-county SocialClass entity
+       sets tagged with the new optional `SocialClass.county_fips`
+       field. `persist_tick` calls four pure helpers in
+       `babylon.persistence.county_aggregation` to derive the spec-065
+       subsystem rows from in-memory WorldState + SQLite reference
+       data. Per Constitution II.6, the bridge is a derivation
+       adapter, not engine logic.
+
+    3. **Canonical run rescoped to 520 ticks (2010-2020).** The full
+       Michigan + Canada scope at weekly tick cadence covers the
+       entire real-data window for every required reference table.
+       FR-022 implements a three-mode preflight (silent /
+       warn-and-clamp / hard-refuse) that catches out-of-window
+       requests at session-init.
+
+    4. **`view_runtime_trace_emission` v2 sources from three new
+       per-tick subsystem tables.** Migration 0023 recreates the
+       view as a LEFT JOIN over `dynamic_consciousness_state`
+       (migration 0020), `dynamic_demographics_state` (migration
+       0021), and `dynamic_employment_state` (migration 0022) plus
+       `dynamic_hex_state`. The 22-column external contract is
+       unchanged; previously-NULL columns now flow from real engine
+       state aggregated per county.
+
+  rationale:
+    bridge_as_derivation_adapter: |
+      The original spec-065 contract assumed flat `world.consciousness_simplex[fips]`
+      / `world.demographics_per_county[fips]` fields that do not
+      exist on WorldState. The 2026-05-15 reconciliation (research.md
+      §R10) replaced these with derivation/aggregation helpers in
+      `babylon.persistence.county_aggregation`. The bridge calls
+      them per county per tick. Rationale: per-county aggregates are
+      derived state; storing them on WorldState would violate II.6
+      and invite drift between engine state and rollups.
+
+    bridge_mapping_for_ternary_consciousness: |
+      `SocialClass.ideology` is a 2-axis `IdeologicalProfile`
+      (class_consciousness × national_identity) per Sprint 3.4.3, NOT
+      the spec-034 `TernaryConsciousness(r, l, f)`. The bridge
+      mapping `r = cc(1-ni)`, `f = ni(1-cc)`, `l = max(0, 1-r-f)` is
+      simplex-preserving by construction with verified algebraic
+      corners. A future spec can swap in the spec-034 native
+      `compute_ternary_consciousness` when organizational landscapes
+      are wired per-county.
+
+    engine_integration_deferred: |
+      Wiring the full SimulationEngine (15 systems + ServiceContainer)
+      into the runner's tick loop is a multi-week effort that
+      deserves its own spec. Spec-065 ships the bridge surface +
+      per-tick persistence; engine integration that mutates entity
+      state per tick is a follow-up. The xfail on
+      `test_tick_over_tick_evolution` documents this honestly.
+
+    qcew_denormalization_acknowledged: |
+      `fact_qcew_annual` in the current SQLite snapshot is
+      denormalized (rows per industry × ownership × establishment),
+      so SUM(total_wages_usd) double-counts vs BLS-published totals.
+      Wayne 2010 derives ~$5B/week vs ~$960M/week actual. The
+      hydrator faithfully reflects the SQLite source; absolute
+      calibration is a separate ingestion fix. Cross-county
+      variation (the spec-065 audit goal) works correctly since
+      both numerator and denominator inflate proportionally.
+
+  consequences:
+    positive:
+      - "trace.csv per-tick rows now reflect real per-county state."
+      - "Cross-county variation killed the uniform-county problem."
+      - "Bridge surface is testable in isolation via FakeRuntime."
+      - "Reference-data window preflight catches misconfigurations early."
+      - "End-game detection + events capture + --strict gate are wired."
+    negative:
+      - "Engine-driven tick-over-tick variance still pending (xfail T028)."
+      - "QCEW denormalization inflates absolute v values pending fix."
+      - "Hex template re-emission per tick costs storage but stays under
+         SC-002 budget for tri-county; full Michigan validated only via
+         BABYLON_SLOW_TESTS=1."
+      - "fact_state_minerals + fact_bea_national_industry are empty in
+         current SQLite, so substrate stocks + intermediate-inputs use
+         defines defaults / hardcoded constants rather than per-county
+         apportionment."
+
+  followups:
+    - "spec-066 (deferred): wire the full SimulationEngine into the bridged
+       tick loop. Removes the xfail on test_tick_over_tick_evolution."
+    - "spec-067 (deferred): normalize QCEW SQLite ingestion (filter by
+       ownership_id) to restore SC-005's original ±50% wage band."
+    - "spec-068 (deferred): ingest BEA national industry I-O tables to
+       compute the per-county intermediate-inputs-fraction directly
+       instead of using the 0.5 hardcoded national average."

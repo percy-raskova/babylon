@@ -129,3 +129,8 @@ decisions:
     status: accepted
     date: '2026-05-14'
     file: ADR041_spec_064_headless_simulation_runner.yaml
+  ADR042_spec_065_engine_bridging:
+    title: 'Spec 065: Engine-bridging — real per-tick state behind the headless runner'
+    status: accepted
+    date: '2026-05-15'
+    file: ADR042_spec_065_engine_bridging.yaml

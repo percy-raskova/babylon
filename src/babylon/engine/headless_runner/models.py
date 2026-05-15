@@ -115,6 +115,8 @@ class PerformanceBreakdown(BaseModel):
     per_tick_median_ms: float = Field(ge=0.0)
     per_tick_p99_ms: float = Field(ge=0.0)
     per_tick_max_ms: float = Field(ge=0.0)
+    # Spec-065 T074: per-engine-system wallclock (empty until engine wires up).
+    per_system_ms: dict[str, float] = Field(default_factory=dict)
 
 
 class AuditEntry(BaseModel):

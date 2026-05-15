@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "run_metadata": {
+    "session_id": "1b66ba33-65f0-46b8-bb73-b074b959fb44",
+    "exit_reason": "completed",
+    "ticks_requested": 5,
+    "ticks_completed": 5,
+    "start_year": 2010,
+    "seed": 2010,
+    "scope_name": "detroit-tri-county",
+    "scope_fips": [
+      "26099",
+      "26125",
+      "26163"
+    ],
+    "external_node_ids": [
+      "canada"
+    ],
+    "wallclock_start": "2026-05-15T03:10:34.345219Z",
+    "wallclock_end": "2026-05-15T03:10:35.953747Z"
+  },
+  "terminal_state": {
+    "tick": 4,
+    "counties_alive": 3,
+    "total_population": null,
+    "total_v": 13167232.999999989,
+    "total_c": 26334465.999999978,
+    "total_s": 0.0,
+    "total_k": 131672330.00000069,
+    "mean_p_acquiescence": null,
+    "mean_p_revolution": null,
+    "mean_ideology_r": null,
+    "mean_ideology_l": null,
+    "mean_ideology_f": null
+  },
+  "external_node_flows": [],
+  "county_terminal_snapshot": [
+    {
+      "entity_id": "26099",
+      "v": 2365911.0000000014,
+      "c": 4731822.000000003,
+      "s": 0.0,
+      "k": 23659109.9999999,
+      "p_acquiescence": null,
+      "p_revolution": null,
+      "ideology_r": null,
+      "ideology_l": null,
+      "ideology_f": null,
+      "population": null,
+      "delta_k_vs_initial": 0.0
+    },
+    {
+      "entity_id": "26125",
+      "v": 5282275.000000007,
+      "c": 10564550.000000015,
+      "s": 0.0,
+      "k": 52822750.000000514,
+      "p_acquiescence": null,
+      "p_revolution": null,
+      "ideology_r": null,
+      "ideology_l": null,
+      "ideology_f": null,
+      "population": null,
+      "delta_k_vs_initial": 0.0
+    },
+    {
+      "entity_id": "26163",
+      "v": 5519046.99999998,
+      "c": 11038093.99999996,
+      "s": 0.0,
+      "k": 55190470.00000027,
+      "p_acquiescence": null,
+      "p_revolution": null,
+      "ideology_r": null,
+      "ideology_l": null,
+      "ideology_f": null,
+      "population": null,
+      "delta_k_vs_initial": 0.0
+    }
+  ],
+  "conservation_audit": [],
+  "performance": {
+    "total_wallclock_sec": 1.6085366909392178,
+    "session_init_sec": 1.0504834479652345,
+    "hex_hydration_sec": 1.0504834479652345,
+    "tick_loop_sec": 0.5196309727616608,
+    "artifact_emission_sec": 0.0,
+    "per_tick_median_ms": 130.98956644535065,
+    "per_tick_p99_ms": 132.91362300515175,
+    "per_tick_max_ms": 132.91362300515175
+  }
+}

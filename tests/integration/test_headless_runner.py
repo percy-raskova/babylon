@@ -172,3 +172,31 @@ def test_conservation_violation_does_not_abort(tmp_path: Path) -> None:
     assert summary["conservation_audit"] == []
     # The schema MUST include conservation_audit even when empty.
     assert "conservation_audit" in summary
+
+
+@pytest.mark.skipif(
+    os.environ.get("BABYLON_SLOW_TESTS") != "1",
+    reason="BABYLON_SLOW_TESTS=1 not set (long-form wallclock-budget gate)",
+)
+def test_smoke_full_michigan_within_wallclock_budget(tmp_path: Path) -> None:
+    """T056 / SC-002: full Michigan + Canada 1000-tick run completes in ≤ 600 s."""
+    import time
+
+    out = tmp_path / "michigan-budget"
+    cmd = [
+        sys.executable,
+        "-m",
+        "babylon.engine.headless_runner",
+        "--scope",
+        "michigan-canada",
+        "--ticks",
+        "1000",
+        "--output-dir",
+        str(out),
+    ]
+    env = os.environ.copy()
+    t0 = time.perf_counter()
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=900)
+    elapsed = time.perf_counter() - t0
+    assert proc.returncode == 0, f"runner failed: stderr={proc.stderr}"
+    assert elapsed <= 600.0, f"SC-002 wallclock budget exceeded: {elapsed:.1f}s > 600s"

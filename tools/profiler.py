@@ -1,17 +1,18 @@
 """cProfile wrapper for Babylon simulation profiling.
 
-Runs the simulation for N ticks under cProfile to identify performance bottlenecks.
-Output can be viewed with snakeviz or pstats.
+Runs the simulation for N ticks under cProfile to identify performance
+bottlenecks. Output can be viewed with snakeviz or pstats.
+
+Spec-064 migration: this tool now profiles the headless Postgres-backed
+runner via :func:`tools.shared.run_simulation` (no in-memory engine
+imports remain — SC-007).
 
 Usage:
     poetry run python tools/profiler.py [--ticks N] [--output FILE]
 
 Examples:
-    # Print top 30 cumulative time functions
     poetry run python tools/profiler.py --ticks 100
-
-    # Save profile for visualization with snakeviz
-    poetry run python tools/profiler.py --ticks 500 --output results/profile.prof
+    poetry run python tools/profiler.py --ticks 50 --output results/profile.prof
     snakeviz results/profile.prof
 """
 
@@ -23,39 +24,29 @@ import pstats
 import sys
 from pathlib import Path
 
-# Add src to path for imports
+# Add src and tools to path for imports.
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
 
-from babylon.engine.scenarios import create_two_node_scenario
-from babylon.engine.simulation import Simulation
+from shared import run_simulation  # noqa: E402
+
+from babylon.config.defines import GameDefines  # noqa: E402
 
 
 def profile_simulation(ticks: int = 100, output: str | None = None) -> None:
-    """Profile simulation for N ticks with cProfile.
-
-    Args:
-        ticks: Number of simulation ticks to profile.
-        output: Optional path to save .prof file for external visualization.
-    """
-    # Create minimal scenario for profiling
-    initial_state, config, _defines = create_two_node_scenario()
-    sim = Simulation(initial_state=initial_state, config=config)
-
-    print(f"Profiling {ticks} simulation ticks...")
+    """Profile a single headless simulation run for ``ticks`` ticks."""
+    defines = GameDefines.load_default()
+    print(f"Profiling {ticks} simulation ticks via headless_runner...")
 
     profiler = cProfile.Profile()
     profiler.enable()
-
-    for _ in range(ticks):
-        sim.step()
-
+    run_simulation(defines, max_ticks=ticks)
     profiler.disable()
 
     stats = pstats.Stats(profiler)
     stats.sort_stats("cumulative")
 
     if output:
-        # Ensure output directory exists
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         stats.dump_stats(output)
@@ -69,7 +60,6 @@ def profile_simulation(ticks: int = 100, output: str | None = None) -> None:
 
 
 def main() -> None:
-    """CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Profile Babylon simulation with cProfile",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -86,7 +76,6 @@ def main() -> None:
         type=str,
         help="Output .prof file (optional, prints to stdout if not specified)",
     )
-
     args = parser.parse_args()
     profile_simulation(args.ticks, args.output)
 

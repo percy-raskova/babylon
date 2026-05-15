@@ -512,6 +512,82 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
     return passed, failed
 
 
+def _compare_bundle_command(args: Any) -> int:
+    """Spec-064 US4: compare a headless-runner bundle to the baseline summary.
+
+    Returns 0 on PASS (within tolerances), 1 on FAIL.
+    """
+    import json as _json
+
+    bundle_dir: Path = args.bundle
+    baseline_path: Path = args.baseline
+    summary_path = bundle_dir / "summary.json"
+
+    if not summary_path.exists():
+        print(f"ERROR: bundle summary not found at {summary_path}", file=sys.stderr)
+        return 1
+    if not baseline_path.exists():
+        print(f"ERROR: baseline not found at {baseline_path}", file=sys.stderr)
+        return 1
+
+    actual = _json.loads(summary_path.read_text())
+    expected = _json.loads(baseline_path.read_text())
+
+    print("Spec-064 e2e regression compare")
+    print(f"  bundle:   {summary_path}")
+    print(f"  baseline: {baseline_path}")
+    print()
+
+    failures: list[str] = []
+
+    # 1. counties_alive: exact match (per spec — terminal-tick scope sanity).
+    actual_alive = int(actual["terminal_state"]["counties_alive"])
+    expected_alive = int(expected["terminal_state"]["counties_alive"])
+    if actual_alive != expected_alive:
+        failures.append(
+            f"counties_alive mismatch: actual={actual_alive}, expected={expected_alive}"
+        )
+    else:
+        print(f"  ✓ counties_alive == {actual_alive}")
+
+    # 2. total_v: within ±tolerance%.
+    actual_v = float(actual["terminal_state"]["total_v"])
+    expected_v = float(expected["terminal_state"]["total_v"])
+    if expected_v != 0:
+        delta_pct = abs(actual_v - expected_v) / abs(expected_v) * 100.0
+        marker = "✓" if delta_pct <= args.total_v_tolerance_pct else "✗"
+        print(
+            f"  {marker} total_v: actual={actual_v:.4g}, expected={expected_v:.4g}, "
+            f"Δ={delta_pct:.3f}%% (tolerance ±{args.total_v_tolerance_pct}%%)"
+        )
+        if delta_pct > args.total_v_tolerance_pct:
+            failures.append(
+                f"total_v drift: Δ={delta_pct:.3f}%% exceeds tolerance ±{args.total_v_tolerance_pct}%%"
+            )
+    elif actual_v != 0:
+        failures.append(f"total_v drift: baseline=0, actual={actual_v}")
+
+    # 3. critical conservation violations: zero allowed.
+    critical = [a for a in actual.get("conservation_audit", []) if a.get("severity") == "critical"]
+    if critical:
+        failures.append(f"{len(critical)} critical conservation violation(s)")
+    else:
+        print("  ✓ no critical conservation violations")
+
+    print()
+    if failures:
+        print("REGRESSION DETECTED:")
+        for f in failures:
+            print(f"  - {f}")
+        print()
+        print("If these changes are intentional, regenerate the baseline:")
+        print("  cp <bundle>/summary.json tests/baselines/michigan-e2e.json")
+        return 1
+
+    print("All regression checks passed.")
+    return 0
+
+
 def main() -> int:
     """Run regression testing."""
     parser = argparse.ArgumentParser(
@@ -563,11 +639,39 @@ Examples:
     # List subcommand
     subparsers.add_parser("list", help="List available scenarios")
 
+    # Spec-064: compare-bundle subcommand — diff a headless-runner
+    # artifact bundle's summary.json against tests/baselines/michigan-e2e.json.
+    bundle_parser = subparsers.add_parser(
+        "compare-bundle",
+        help="Compare a spec-064 artifact bundle against the michigan-e2e baseline",
+    )
+    bundle_parser.add_argument(
+        "--bundle",
+        type=Path,
+        required=True,
+        help="Path to the artifact bundle directory (containing summary.json)",
+    )
+    bundle_parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=Path("tests/baselines/michigan-e2e.json"),
+        help="Path to the baseline summary.json (default: tests/baselines/michigan-e2e.json)",
+    )
+    bundle_parser.add_argument(
+        "--total-v-tolerance-pct",
+        type=float,
+        default=1.0,
+        help="±%% tolerance on terminal_state.total_v (default: 1.0%%)",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
         parser.print_help()
         return 1
+
+    if args.command == "compare-bundle":
+        return _compare_bundle_command(args)
 
     if args.command == "list":
         print("Available scenarios:")

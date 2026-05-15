@@ -2,10 +2,33 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.6.0"
-  updated: "2026-05-13"
-  last_sprint: "062-cross-scale-integration (Complete; 94/103 tasks done, 9 deferred — see specs/062-cross-scale-integration/tasks.md and ADR040)"
-  previous_sprint: "061-real-backend-wireup (Complete; 130/131 tasks done, 1 partial — see specs/061-real-backend-wireup/tasks.md and ADR039)"
+  version: "2.7.0"
+  updated: "2026-05-14"
+  last_sprint: "064-headless-sim-runner (Complete; 67/70 tasks done, 3 deferred — see specs/064-headless-sim-runner/tasks.md and ADR041)"
+  previous_sprint: "062-cross-scale-integration (Complete; 94/103 tasks done, 9 deferred — see specs/062-cross-scale-integration/tasks.md and ADR040)"
+  spec_064_summary: |
+    Headless Postgres-backed simulation runner — canonical CLI surface
+    for end-to-end Babylon runs. A single `mise run sim:e2e-michigan`
+    bootstraps Postgres, hydrates hex state, runs a tick loop, and emits
+    an LLM-parseable artifact bundle (trace.csv + summary.json +
+    manifest.json with input_hash determinism fingerprint).
+
+    Delivered: babylon.engine.headless_runner package (8 modules:
+    runner, argparse_cli, scopes, models, trace_emitter, run_summary,
+    manifest, __main__). Postgres migration 0019_trace_emission_view.sql
+    establishes view_runtime_trace_emission as the II.11-compliant
+    declared cross-subsystem read interface. 6 in-scope tools
+    (audit_simulation, monte_carlo, parameter_analysis,
+    sensitivity_analysis, profiler, landscape_analysis) refactored to
+    route through tools/shared.py:run_simulation; SC-007 import audit
+    enforces the no-legacy-engine boundary at CI time. ADR041, baseline
+    snapshot, qa:e2e-regression mise gate.
+
+    Three tasks deferred: T024a + T033 (end-game detection), and a
+    future-spec recovery of full result-dict fidelity in tools/* once
+    real engine systems are wired into the headless tick loop. The MVP
+    runner carries hex state forward unchanged; richer per-tick
+    advancement lands in a follow-up spec.
   spec_062_summary: |
     Cross-scale value, substrate, and tick propagation engine. Codifies the
     two-phase persistence boundary (SQLite-as-fixture / Postgres-as-runtime),

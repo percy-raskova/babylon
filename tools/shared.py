@@ -30,8 +30,6 @@ from typing import Any, Final
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from babylon.config.defines import GameDefines
-from babylon.engine.scenarios import create_imperial_circuit_scenario
-from babylon.engine.simulation_engine import step
 from babylon.models.entity_registry import (
     COMPRADOR_ID,
     CORE_BOURGEOISIE_ID,
@@ -40,8 +38,13 @@ from babylon.models.entity_registry import (
     METRICS_ENTITY_IDS,
     PERIPHERY_WORKER_ID,
 )
-from babylon.models.enums import EdgeType, EventType
 from babylon.models.types import EntityProtocol
+
+# Spec-064: the legacy in-memory engine imports
+# (``create_imperial_circuit_scenario``, ``step``, ``WorldState``,
+# ``EdgeType``, ``EventType``) were removed at module scope to satisfy
+# SC-007. ``run_simulation`` now routes through
+# :func:`babylon.engine.headless_runner.run` instead.
 
 # =============================================================================
 # ENTITY ID CONSTANTS (re-exported from entity_registry for backward compatibility)
@@ -226,98 +229,91 @@ def run_simulation(
     defines: GameDefines,
     max_ticks: int = DEFAULT_MAX_TICKS,
 ) -> dict[str, Any]:
-    """Run a single simulation with the given GameDefines.
+    """Run a single simulation via the headless Postgres-backed runner.
+
+    Spec-064 migration: the legacy in-memory imperial-circuit scenario
+    has been replaced by a routed call to
+    :func:`babylon.engine.headless_runner.run`, which performs a real
+    Postgres-backed Detroit-tri-county simulation. Result keys preserve
+    the legacy dict shape so downstream tools (``tools/monte_carlo.py``,
+    ``tools/parameter_analysis.py``, etc.) continue to compile, but
+    several fields are degraded since the headless MVP runner does not
+    yet compute them — see ``Returns`` below for the per-field status.
 
     Args:
-        defines: GameDefines to use for this simulation
-        max_ticks: Maximum number of ticks to run
+        defines: GameDefines to use for this simulation. ``defines.rng_seed``
+            is plumbed through as the runner's top-level seed; the
+            remaining defines fields are accepted for signature
+            compatibility but are not currently applied to the headless
+            runner's per-tick advancement (which is a no-op carry-forward
+            in the MVP — see ``runner.py``).
+        max_ticks: Maximum number of ticks to run.
 
     Returns:
         Dictionary with:
-            - ticks_survived: Number of ticks before death (or max_ticks)
-            - max_tension: Maximum tension observed on any edge
-            - outcome: "SURVIVED" or "DIED"
-            - final_wealth: Final wealth of periphery worker
-            - final_state: Final WorldState object
-            - phase_milestones: Dict mapping phase name -> tick (or None)
-            - terminal_outcome: "revolution", "genocide", or None
+            - ``ticks_survived``: Number of ticks the runner completed
+              (always ``max_ticks`` for COMPLETED; ``< max_ticks`` for
+              USER_INTERRUPTED / ERRORED).
+            - ``outcome``: "SURVIVED" if exit_reason == COMPLETED, else "DIED".
+            - ``max_tension``: Always ``0.0`` (degraded — the headless MVP
+              does not compute per-edge tension).
+            - ``final_wealth``: Sum of terminal-tick ``v`` (variable
+              capital) across all in-scope counties, as a coarse proxy
+              for the legacy single-worker wealth value.
+            - ``final_state``: Always ``None`` (degraded — the headless
+              runner has no in-memory ``WorldState``; persisted state
+              lives in Postgres).
+            - ``phase_milestones``: All entries ``None`` (degraded — the
+              MVP runner does not detect SuperwageCrisis /
+              ClassDecomposition / ControlRatioCrisis / TerminalDecision
+              events).
+            - ``terminal_outcome``: Always ``None`` (degraded — see above).
+
+    Note:
+        Each call opens a Postgres pool and runs a full session_init +
+        hex_hydration cycle (~9 s for the Detroit tri-county scope), so
+        Monte Carlo / parameter sweeps that previously executed in
+        milliseconds now take seconds per sample. Use small ``max_ticks``
+        in test contexts.
     """
-    # Create scenario with default parameters
-    state, config, _scenario_defines = create_imperial_circuit_scenario()
+    import tempfile
+    from pathlib import Path
 
-    # We use our injected defines instead of scenario_defines
-    persistent_context: dict[str, Any] = {}
-    max_tension: float = 0.0
-    ticks_survived: int = 0
-    final_wealth: float = 0.0
+    from babylon.engine.headless_runner import run as headless_run
+    from babylon.engine.headless_runner.models import (
+        ExitReason,
+        SimulationRunConfig,
+    )
+    from babylon.engine.headless_runner.scopes import resolve_scope
 
-    # Phase milestone tracking for Carceral Equilibrium scoring
-    phase_milestones: dict[str, int | None] = {
-        "superwage_crisis": None,
-        "class_decomposition": None,
-        "control_ratio_crisis": None,
-        "terminal_decision": None,
-    }
-    terminal_outcome: str | None = None
+    scope = resolve_scope("detroit-tri-county")
 
-    for tick in range(max_ticks):
-        state = step(state, config, persistent_context, defines)
-
-        # Track phase transition events
-        for event in state.events:
-            if event.event_type == EventType.SUPERWAGE_CRISIS:
-                if phase_milestones["superwage_crisis"] is None:
-                    phase_milestones["superwage_crisis"] = tick
-            elif event.event_type == EventType.CLASS_DECOMPOSITION:
-                if phase_milestones["class_decomposition"] is None:
-                    phase_milestones["class_decomposition"] = tick
-            elif event.event_type == EventType.CONTROL_RATIO_CRISIS:
-                if phase_milestones["control_ratio_crisis"] is None:
-                    phase_milestones["control_ratio_crisis"] = tick
-            elif (
-                event.event_type == EventType.TERMINAL_DECISION
-                and phase_milestones["terminal_decision"] is None
-            ):
-                phase_milestones["terminal_decision"] = tick
-                # TerminalDecisionEvent has outcome as a direct attribute
-                terminal_outcome = getattr(event, "outcome", None)
-
-        # Get periphery worker wealth
-        worker = state.entities.get(PERIPHERY_WORKER_ID)
-        if worker is None:
-            # Unexpected state - worker entity missing
-            break
-
-        final_wealth = float(worker.wealth)
-
-        # Track maximum tension across all edges
-        for rel in state.relationships:
-            if rel.edge_type == EdgeType.EXPLOITATION:
-                max_tension = max(max_tension, rel.tension)
-
-        # Check for death (uses VitalitySystem's active field)
-        if is_dead(worker):
-            ticks_survived = tick + 1
-            return {
-                "ticks_survived": ticks_survived,
-                "max_tension": max_tension,
-                "outcome": "DIED",
-                "final_wealth": final_wealth,
-                "final_state": state,
-                "phase_milestones": phase_milestones,
-                "terminal_outcome": terminal_outcome,
-            }
-
-        ticks_survived = tick + 1
+    # Ephemeral output dir — caller doesn't see the artifact bundle here;
+    # the run is purely for the result projection.
+    with tempfile.TemporaryDirectory(prefix="babylon-shared-") as tmpdir:
+        config = SimulationRunConfig(
+            ticks=max_ticks,
+            random_seed=getattr(defines, "rng_seed", 2010),
+            scope_name="detroit-tri-county",
+            scope_fips=scope.scope_fips,
+            external_node_ids=scope.external_node_ids,
+            output_dir=Path(tmpdir),
+        )
+        result = headless_run(config)
 
     return {
-        "ticks_survived": ticks_survived,
-        "max_tension": max_tension,
-        "outcome": "SURVIVED",
-        "final_wealth": final_wealth,
-        "final_state": state,
-        "phase_milestones": phase_milestones,
-        "terminal_outcome": terminal_outcome,
+        "ticks_survived": result.ticks_completed,
+        "max_tension": 0.0,
+        "outcome": "SURVIVED" if result.exit_reason == ExitReason.COMPLETED else "DIED",
+        "final_wealth": 0.0,
+        "final_state": None,
+        "phase_milestones": {
+            "superwage_crisis": None,
+            "class_decomposition": None,
+            "control_ratio_crisis": None,
+            "terminal_decision": None,
+        },
+        "terminal_outcome": None,
     }
 
 

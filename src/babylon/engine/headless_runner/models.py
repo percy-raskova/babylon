@@ -90,6 +90,16 @@ class SimulationRunConfig(BaseModel):
             "becomes 'early_terminated'."
         ),
     )
+    write_baseline_to: Path | None = Field(
+        default=None,
+        description=(
+            "Spec-065 T085: after a successful run, copy summary.json to "
+            "this path. The mise sim:e2e-michigan task wires this to "
+            "tests/baselines/michigan-e2e.json so a single invocation "
+            "both produces the artifacts and refreshes the CI baseline. "
+            "Skipped on non-success exit codes."
+        ),
+    )
 
     @field_validator("scope_fips")
     @classmethod

@@ -40,6 +40,8 @@ try:
 except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
+from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.engine.event_bus import EventBus
 from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
 from babylon.engine.headless_runner.event_capture import EventCapture
@@ -178,6 +180,9 @@ def _build_config(args: argparse.Namespace) -> SimulationRunConfig:
         defines_overlay_path=args.defines,
         dry_run=args.dry_run,
         verbose=args.verbose,
+        strict=getattr(args, "strict", False),
+        endgame_detector=getattr(args, "endgame_detector", None),
+        write_baseline_to=getattr(args, "write_baseline", None),
     )
 
 
@@ -228,15 +233,28 @@ def _check_strict_alarms(
     runtime: Any,
     session_id: UUID,
     up_to_tick: int,
+    auditor: Any = None,
 ) -> tuple[int, str] | None:
-    """Spec-065 T050: scan conservation_audit_log for alarm-severity rows.
+    """Spec-065 T050: scan for the first alarm-severity audit row.
 
     Used by the tick loop when ``config.strict`` is True. Returns
     ``(tick, invariant_name)`` of the first alarm row found, or None.
 
-    Polls the same table the trace view + _query_audit_log read. Only
-    one round trip per tick — acceptable overhead.
+    Spec-065 T049 / T050: if an ``auditor`` is supplied (the canonical
+    path from ``runner.run()``), the in-memory ``audit_log_buffer`` is
+    consulted first — no Postgres round-trip needed. The SQL fallback
+    is retained for callers (unit tests, externally-injected rows) that
+    write directly to ``conservation_audit_log``.
     """
+    # Fast path: in-memory auditor buffer (T049).
+    if auditor is not None:
+        for row in auditor.audit_log_buffer:
+            if (
+                row.tick <= up_to_tick
+                and str(getattr(row.severity, "value", row.severity)) == "alarm"
+            ):
+                return int(row.tick), str(row.invariant_name)
+    # Fallback: SQL polling of conservation_audit_log.
     with runtime._pool.connection() as conn:  # noqa: SLF001
         row = conn.execute(
             "SELECT tick, invariant_name "
@@ -343,6 +361,31 @@ def _query_trace(
         record["simulated_year"] = start_year + tick_val / 52.0
         out.append(record)
     return out
+
+
+def _query_max_tension(
+    *,
+    pool: Any,
+    session_id: UUID,
+) -> float:
+    """Spec-065 T080: MAX(tension) over EXPLOITATION edges across all ticks.
+
+    Reads ``dynamic_relationship_state`` (migration 0024). Returns 0.0
+    when the table is empty for this session — which is the spec-065
+    first-cut state, since ``WorldState.relationships`` is unused until
+    spec-066 wires the engine through the bridge. The SQL aggregate is
+    correct from day one.
+    """
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT MAX(tension) FROM dynamic_relationship_state "
+            "WHERE session_id = %s AND edge_type = 'EXPLOITATION'",
+            (str(session_id),),
+        )
+        row = cur.fetchone()
+    if row is None or row[0] is None:
+        return 0.0
+    return float(row[0])
 
 
 def _query_terminal_aggregates(
@@ -479,6 +522,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
 
     from babylon.config.defines import GameDefines
     from babylon.persistence import PostgresRuntime
+    from babylon.persistence.conservation_audit import ConservationAuditor
     from babylon.persistence.postgres_initialization import initialize_session
 
     t_total = time.perf_counter()
@@ -519,11 +563,29 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             )
 
         # Spec-065 T043: wire WorldStateBridge into the run.
-        # T071: EventCapture is constructed and threaded into the bridge so
-        # engine events fired during the tick loop can be drained into
-        # summary.events at end-of-run.
-        bridge = WorldStateBridge(runtime=runtime, defines=defines)
+        # T055: BoundaryFlowRegister is owned by the runner and injected into
+        # the bridge so spec-066's engine.run_tick can reach it via
+        # services.boundary_register.
+        # T071: EventBus + EventCapture are constructed by the runner and
+        # threaded into the bridge; bridge.hydrate_initial subscribes
+        # event_capture.on_event to all known EventTypes on the bus.
+        # T049: ConservationAuditor is constructed here, passed to the
+        # bridge for per-tick audit_end_of_tick(...) invocation, and
+        # consulted by _check_strict_alarms during the tick loop.
+        boundary_register = BoundaryFlowRegister()
+        event_bus = EventBus()
         event_capture = EventCapture()
+        auditor = ConservationAuditor(
+            epsilon=defines.economy.epsilon_conservation,
+            rng_seed=config.random_seed,
+        )
+        bridge = WorldStateBridge(
+            runtime=runtime,
+            defines=defines,
+            boundary_register=boundary_register,
+            event_bus=event_bus,
+            auditor=auditor,
+        )
         world = bridge.hydrate_initial(
             session_id=session_id,
             scope_fips=config.scope_fips,
@@ -574,6 +636,11 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             session_id=session_id,
             terminal_tick=terminal_tick,
         )
+        # Spec-065 T080: cross-tick MAX(tension) over EXPLOITATION edges.
+        terminal_state["max_tension"] = _query_max_tension(
+            pool=pool,
+            session_id=session_id,
+        )
         snapshot = _county_terminal_snapshot(
             pool=pool,
             session_id=session_id,
@@ -617,6 +684,22 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             tick_durations=per_tick_durations,
             artifact_emission=artifact_emission_sec,
         )
+
+        # Spec-065 T085: write the artifact's summary.json to the
+        # baseline path when the run completed successfully and the
+        # caller requested it. The michigan-e2e CI gate reads from this
+        # path; making the refresh atomic with the canonical run keeps
+        # the operator workflow to a single command.
+        if config.write_baseline_to is not None and exit_reason in (
+            ExitReason.COMPLETED,
+            ExitReason.EARLY_TERMINATED,
+        ):
+            summary_src = artifact_dir / "summary.json"
+            if summary_src.exists():
+                baseline_dest = config.write_baseline_to
+                baseline_dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(summary_src, baseline_dest)
+                _LOG.info("Spec-065 T085: refreshed baseline %s", baseline_dest)
 
         return SimulationRunResult(
             session_id=session_id,
@@ -726,6 +809,7 @@ def _tick_loop(
                 runtime=runtime,
                 session_id=session_id,
                 up_to_tick=tick,
+                auditor=bridge.auditor,
             )
             if alarm is not None:
                 raise _StrictAbort(tick=alarm[0], invariant_name=alarm[1])

@@ -121,6 +121,24 @@ INSERT INTO dynamic_employment_state (
 ON CONFLICT (session_id, tick, county_fips) DO NOTHING
 """
 
+# Spec-065 T080: per-tick dyadic relationship state (migration 0024).
+# Empty in spec-065 first cut (WorldState.relationships unused); fills
+# naturally when spec-066 wires ContradictionSystem + SolidaritySystem
+# through the bridged engine.
+_RELATIONSHIP_INSERT = """
+INSERT INTO dynamic_relationship_state (
+    session_id, tick,
+    source_node_id, target_node_id, edge_type,
+    tension, solidarity
+) VALUES (
+    %(session_id)s, %(tick)s,
+    %(source_node_id)s, %(target_node_id)s, %(edge_type)s,
+    %(tension)s, %(solidarity)s
+)
+ON CONFLICT (session_id, tick, source_node_id, target_node_id, edge_type)
+DO NOTHING
+"""
+
 
 def _hex_row_dict(row: Any) -> dict[str, Any]:
     """Serialize a DynamicHexState row to psycopg param dict."""
@@ -217,6 +235,18 @@ def _employment_row_dict(row: Any) -> dict[str, Any]:
     }
 
 
+def _relationship_row_dict(row: Any) -> dict[str, Any]:
+    return {
+        "session_id": str(row.session_id),
+        "tick": row.tick,
+        "source_node_id": row.source_node_id,
+        "target_node_id": row.target_node_id,
+        "edge_type": row.edge_type,
+        "tension": row.tension,
+        "solidarity": row.solidarity,
+    }
+
+
 def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvelope) -> None:
     """Persist every row in the envelope inside one Postgres transaction.
 
@@ -267,6 +297,12 @@ def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvel
             conn.cursor().executemany(
                 _EMPLOYMENT_INSERT,
                 [_employment_row_dict(r) for r in envelope.employment_state_rows],
+            )
+        # Spec-065 T080: per-tick dyadic relationship state.
+        if envelope.relationship_state_rows:
+            conn.cursor().executemany(
+                _RELATIONSHIP_INSERT,
+                [_relationship_row_dict(r) for r in envelope.relationship_state_rows],
             )
 
 

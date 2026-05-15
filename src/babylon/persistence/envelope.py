@@ -29,6 +29,7 @@ from babylon.persistence.county_state import (
 )
 from babylon.persistence.external_node import ExternalNode
 from babylon.persistence.hex_state import DynamicHexState
+from babylon.persistence.relationship_state import DynamicRelationshipState
 
 
 class PerTickTransactionEnvelope(BaseModel):
@@ -58,6 +59,12 @@ class PerTickTransactionEnvelope(BaseModel):
     consciousness_state_rows: list[DynamicConsciousnessState] = Field(default_factory=list)
     demographics_state_rows: list[DynamicDemographicsState] = Field(default_factory=list)
     employment_state_rows: list[DynamicEmploymentState] = Field(default_factory=list)
+
+    # Spec-065 T080 — per-tick dyadic relationship state (migration 0024).
+    # Cross-tick max_tension SQL aggregation reads from this surface.
+    # Empty list when the engine has not yet mutated WorldState.relationships
+    # (spec-065 first cut); fills naturally when spec-066 lands.
+    relationship_state_rows: list[DynamicRelationshipState] = Field(default_factory=list)
 
     determinism_hash: str = Field(min_length=64, max_length=64)
 

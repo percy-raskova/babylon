@@ -42,6 +42,7 @@ except ImportError:  # pragma: no cover - tqdm is a hard dep
 
 from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
+from babylon.engine.headless_runner.event_capture import EventCapture
 from babylon.engine.headless_runner.manifest import build_manifest
 from babylon.engine.headless_runner.models import (
     AuditEntry,
@@ -50,7 +51,10 @@ from babylon.engine.headless_runner.models import (
     SimulationRunConfig,
     SimulationRunResult,
 )
-from babylon.engine.headless_runner.run_summary import build_summary
+from babylon.engine.headless_runner.run_summary import (
+    aggregate_external_node_flows,
+    build_summary,
+)
 from babylon.engine.headless_runner.scopes import (
     UnknownScopeError,
     resolve_scope,
@@ -92,6 +96,23 @@ class ReferenceDataMissingError(RunnerError):
 class PostgresUnreachableError(RunnerError):
     exit_code = 4
     exit_name = "POSTGRES_UNREACHABLE"
+
+
+class _StrictAbort(RunnerError):
+    """Raised by the tick loop when --strict is set and an alarm row appears.
+
+    Spec-065 T050. Translated to exit code 1 by the outer try/except.
+    """
+
+    exit_code = 1
+    exit_name = "ENGINE_FAILURE"
+
+    def __init__(self, tick: int, invariant_name: str) -> None:
+        super().__init__(
+            f"critical conservation violation at tick {tick}: {invariant_name}"
+        )
+        self.tick = tick
+        self.invariant_name = invariant_name
 
 
 def _install_sigint_handler() -> None:
@@ -202,6 +223,34 @@ def _validate_preflight(config: SimulationRunConfig) -> None:
         raise ReferenceDataMissingError(
             f"SQLite reference DB not found at {config.sqlite_reference_path}"
         )
+
+
+def _check_strict_alarms(
+    *,
+    runtime: Any,
+    session_id: UUID,
+    up_to_tick: int,
+) -> tuple[int, str] | None:
+    """Spec-065 T050: scan conservation_audit_log for alarm-severity rows.
+
+    Used by the tick loop when ``config.strict`` is True. Returns
+    ``(tick, invariant_name)`` of the first alarm row found, or None.
+
+    Polls the same table the trace view + _query_audit_log read. Only
+    one round trip per tick — acceptable overhead.
+    """
+    with runtime._pool.connection() as conn:  # noqa: SLF001
+        row = conn.execute(
+            "SELECT tick, invariant_name "
+            "FROM conservation_audit_log "
+            "WHERE session_id = %s AND tick <= %s AND severity = 'alarm' "
+            "ORDER BY tick, invariant_name "
+            "LIMIT 1",
+            (str(session_id), up_to_tick),
+        ).fetchone()
+    if row is None:
+        return None
+    return int(row[0]), str(row[1])
 
 
 def _advance_tick(
@@ -472,24 +521,51 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             )
 
         # Spec-065 T043: wire WorldStateBridge into the run.
+        # T071: EventCapture is constructed and threaded into the bridge so
+        # engine events fired during the tick loop can be drained into
+        # summary.events at end-of-run.
         bridge = WorldStateBridge(runtime=runtime, defines=defines)
+        event_capture = EventCapture()
         world = bridge.hydrate_initial(
             session_id=session_id,
             scope_fips=config.scope_fips,
+            event_capture=event_capture,
             start_year=config.start_year,
             sqlite_path=config.sqlite_reference_path,
         )
 
+        # Spec-065 T064: end-game detector (US4). Optional dotted path
+        # resolved + instantiated; bridge.poll_endgame is called per tick.
+        if config.endgame_detector:
+            try:
+                bridge.set_endgame_detector(config.endgame_detector)
+            except ImportError as exc:
+                raise ConfigError(f"--endgame-detector resolution failed: {exc}") from exc
+
         if config.dry_run:
             _LOG.info("Dry-run requested; skipping tick loop.")
         else:
-            ticks_completed = _tick_loop(
-                bridge=bridge,
-                world=world,
-                session_id=session_id,
-                config=config,
-                per_tick_durations=per_tick_durations,
-            )
+            try:
+                ticks_completed, endgame_event_payload = _tick_loop(
+                    bridge=bridge,
+                    world=world,
+                    runtime=runtime,
+                    session_id=session_id,
+                    config=config,
+                    per_tick_durations=per_tick_durations,
+                )
+                if endgame_event_payload is not None:
+                    end_game_event = endgame_event_payload
+                    exit_reason = ExitReason.EARLY_TERMINATED
+            except _StrictAbort as exc:
+                # Spec-065 T050: --strict early exit on critical violation.
+                ticks_completed = exc.tick + 1
+                exit_reason = ExitReason.ERRORED
+                error_payload = {
+                    "name": exc.exit_name,
+                    "message": str(exc),
+                    "tick": exc.tick,
+                }
             if _interrupt_requested and ticks_completed < config.ticks:
                 exit_reason = ExitReason.USER_INTERRUPTED
 
@@ -506,6 +582,9 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             terminal_tick=terminal_tick,
         )
         wallclock_end = _dt.datetime.now(_dt.UTC)
+
+        # Spec-065 T073: drain captured engine events for summary.events.
+        captured_events = bridge.refresh_event_log()
 
         t_artifacts = time.perf_counter()
         artifact_dir = _emit_artifacts(
@@ -529,6 +608,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             pool=pool,
             end_game_event=end_game_event,
             error=error_payload,
+            events=captured_events,
         )
         artifact_emission_sec = time.perf_counter() - t_artifacts
 
@@ -566,10 +646,11 @@ def _tick_loop(
     *,
     bridge: WorldStateBridge,
     world: Any,
+    runtime: Any,
     session_id: UUID,
     config: SimulationRunConfig,
     per_tick_durations: list[float],
-) -> int:
+) -> tuple[int, dict[str, Any] | None]:
     """Drive the tick loop with tqdm + cooperative SIGINT.
 
     Spec-065 T042/T043: each tick now invokes ``bridge.persist_tick``
@@ -577,8 +658,12 @@ def _tick_loop(
     templates with the new tick number. Replaces spec-064's no-op
     carry-forward.
 
+    Spec-065 T064: returns ``(ticks_completed, endgame_event_dict | None)``;
+    a non-None endgame event signals early termination via the
+    configured detector.
+
     Returns:
-        Number of ticks fully persisted.
+        ``(ticks_completed, endgame_event)``.
     """
     # Tick 0 was persisted by initialize_session via the hex hydrator
     # (hex_state rows only). Spec-065 also persists the tick-0 subsystem
@@ -609,6 +694,11 @@ def _tick_loop(
         determinism_hash = hashlib.sha256(
             f"{session_id}:{tick}:{config.random_seed}".encode()
         ).hexdigest()
+        # Spec-065 T072: tag subsequent EventCapture.on_event calls with
+        # the current tick BEFORE the engine runs (engine.run_tick will
+        # fire events through services.event_bus.publish).
+        if bridge.event_capture is not None:
+            bridge.event_capture.set_tick(tick)
         _advance_tick(
             bridge=bridge,
             world=world,
@@ -617,7 +707,23 @@ def _tick_loop(
         )
         per_tick_durations.append(time.perf_counter() - t_tick)
         ticks_completed = tick + 1
-    return ticks_completed
+
+        # Spec-065 T050: --strict early exit on alarm-severity audit row.
+        if config.strict:
+            alarm = _check_strict_alarms(
+                runtime=runtime,
+                session_id=session_id,
+                up_to_tick=tick,
+            )
+            if alarm is not None:
+                raise _StrictAbort(tick=alarm[0], invariant_name=alarm[1])
+
+        # Spec-065 T064: end-game detector (US4). Halt loop if the
+        # configured detector returns a non-None event.
+        endgame = bridge.poll_endgame(world, tick)
+        if endgame is not None:
+            return ticks_completed, endgame
+    return ticks_completed, None
 
 
 def _build_performance(
@@ -669,6 +775,7 @@ def _emit_artifacts(
     pool: Any,
     end_game_event: dict[str, Any] | None,
     error: dict[str, Any] | None,
+    events: tuple[Any, ...] = (),
 ) -> Path:
     """Write trace.csv + summary.json + manifest.json into ``config.output_dir``."""
     _prepare_output_dir(config.output_dir)
@@ -696,13 +803,29 @@ def _emit_artifacts(
         wallclock_start=wallclock_start,
         wallclock_end=wallclock_end,
         terminal_state=terminal_state,
-        external_node_flows=[],  # MVP: no flow rollups
+        external_node_flows=aggregate_external_node_flows(
+            pool=pool, session_id=str(session_id)
+        ),
         county_terminal_snapshot=snapshot,
         conservation_audit=audit_entries,
         performance=performance,
         end_game_event=end_game_event,
         error=error,
     )
+    # Spec-065 T073: emit captured engine events (FR-018 emission order).
+    if events:
+        summary_payload["events"] = [
+            {
+                "tick": e.tick,
+                "event_type": e.event_type,
+                "entity_ids": list(e.entity_ids),
+                "severity": e.severity,
+                "details": e.details,
+            }
+            for e in events
+        ]
+    else:
+        summary_payload["events"] = []
     summary_path = artifact_dir / "summary.json"
     summary_path.write_text(json.dumps(summary_payload, indent=2, default=str))
 

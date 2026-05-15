@@ -148,17 +148,17 @@ are created in `hydrate_initial` and tagged with the new optional
 
 ### Tests for User Story 2
 
-- [ ] T045 [P] [US2] ConservationAuditor wiring unit test in `tests/unit/engine/headless_runner/test_runner_audit_wiring.py` — assert `SimulationEngine` is constructed with `auditor=ConservationAuditor(...)` and `auditor.audit_end_of_tick(...)` is invoked once per tick.
-- [ ] T046 [P] [US2] Severity mapping test in `tests/unit/engine/headless_runner/test_audit_severity_mapping.py` — assert Postgres severities (`ok` / `warn` / `alarm`) map to contract severities (`info` / `warning` / `error`) deterministically.
-- [ ] T047 [P] [US2] `--strict` early-exit integration test in `tests/integration/test_conservation_audit_strict.py::test_strict_exits_one_on_critical` — inject a critical audit row at tick 50, run with `--strict --ticks 100`, assert exit code 1, `summary.run_metadata.ticks_completed = 51`, partial artifacts written, stderr matches `ERROR ENGINE_FAILURE: critical conservation violation at tick 50 | partial_artifacts=/...`.
-- [ ] T048 [P] [US2] `--strict-off` continues-on-critical test in `tests/integration/test_conservation_audit_strict.py::test_non_strict_continues_on_critical` — same injection without `--strict`, assert exit 0, full ticks completed, violation visible in `summary.conservation_audit`.
+- [X] T045 [P] [US2] ConservationAuditor wiring unit test in `tests/unit/engine/headless_runner/test_runner_audit_wiring.py` — assert `SimulationEngine` is constructed with `auditor=ConservationAuditor(...)` and `auditor.audit_end_of_tick(...)` is invoked once per tick.
+- [X] T046 [P] [US2] Severity mapping test in `tests/unit/engine/headless_runner/test_audit_severity_mapping.py` — assert Postgres severities (`ok` / `warn` / `alarm`) map to contract severities (`info` / `warning` / `error`) deterministically.
+- [X] T047 [P] [US2] `--strict` early-exit integration test in `tests/integration/test_conservation_audit_strict.py::test_strict_exits_one_on_critical` — inject a critical audit row at tick 50, run with `--strict --ticks 100`, assert exit code 1, `summary.run_metadata.ticks_completed = 51`, partial artifacts written, stderr matches `ERROR ENGINE_FAILURE: critical conservation violation at tick 50 | partial_artifacts=/...`.
+- [X] T048 [P] [US2] `--strict-off` continues-on-critical test in `tests/integration/test_conservation_audit_strict.py::test_non_strict_continues_on_critical` — same injection without `--strict`, assert exit 0, full ticks completed, violation visible in `summary.conservation_audit`.
 
 ### Implementation for User Story 2
 
-- [ ] T049 [US2] Construct `ConservationAuditor` in `runner.run()` (before the tick loop) and pass to `SimulationEngine(systems=..., auditor=auditor)`. Wire `auditor.audit_end_of_tick(...)` to be called at end of each tick after `engine.run_tick`, before `bridge.persist_tick`.
-- [ ] T050 [US2] Implement `--strict` early-exit logic in `_tick_loop`: after each `bridge.persist_tick`, query the just-committed audit rows from `auditor.audit_log_buffer`; if any row has `severity = "alarm"` (Postgres) and `config.strict` is True, raise `_StrictAbort` which the outer `try` block catches and translates to exit code 1.
-- [ ] T051 [US2] Implement `_query_audit_log` severity remapping in `runner.py` per FR-011: `ok → info`, `warn → warning`, `alarm → error` (or `critical` per case heuristic).
-- [ ] T052 [US2] Update `.mise.toml` `qa:e2e-regression` task to invoke runner with `--strict` (per FR-012a).
+- [X] T049 [US2] Construct `ConservationAuditor` in `runner.run()` (before the tick loop) and pass to `SimulationEngine(systems=..., auditor=auditor)`. Wire `auditor.audit_end_of_tick(...)` to be called at end of each tick after `engine.run_tick`, before `bridge.persist_tick`.
+- [X] T050 [US2] Implement `--strict` early-exit logic in `_tick_loop`: after each `bridge.persist_tick`, query the just-committed audit rows from `auditor.audit_log_buffer`; if any row has `severity = "alarm"` (Postgres) and `config.strict` is True, raise `_StrictAbort` which the outer `try` block catches and translates to exit code 1.
+- [X] T051 [US2] Implement `_query_audit_log` severity remapping in `runner.py` per FR-011: `ok → info`, `warn → warning`, `alarm → error` (or `critical` per case heuristic).
+- [X] T052 [US2] Update `.mise.toml` `qa:e2e-regression` task to invoke runner with `--strict` (per FR-012a).
 
 **Checkpoint**: Conservation auditor wired; `--strict` semantics tested; CI gate uses strict mode.
 
@@ -172,14 +172,14 @@ are created in `hydrate_initial` and tagged with the new optional
 
 ### Tests for User Story 3
 
-- [ ] T053 [P] [US3] BoundaryFlowRegister wiring test in `tests/integration/test_external_node_flows.py::test_register_rows_persisted` — run canonical sim; assert `SELECT COUNT(*) FROM boundary_flow_register WHERE session_id = … AND dest_node_id = 'canada' AND flow_type = 'drain_edge'` returns > 0.
-- [ ] T054 [P] [US3] Aggregation cross-check test in `tests/integration/test_external_node_flows.py::test_aggregation_matches_register` — `summary.external_node_flows.canada.total_phi_inflow` equals the Postgres-side `SUM(magnitude)` query (per FR-014). Tolerance: 1 cent.
+- [X] T053 [P] [US3] BoundaryFlowRegister wiring test in `tests/integration/test_external_node_flows.py::test_register_rows_persisted` — run canonical sim; assert `SELECT COUNT(*) FROM boundary_flow_register WHERE session_id = … AND dest_node_id = 'canada' AND flow_type = 'drain_edge'` returns > 0.
+- [X] T054 [P] [US3] Aggregation cross-check test in `tests/integration/test_external_node_flows.py::test_aggregation_matches_register` — `summary.external_node_flows.canada.total_phi_inflow` equals the Postgres-side `SUM(magnitude)` query (per FR-014). Tolerance: 1 cent.
 
 ### Implementation for User Story 3
 
-- [ ] T055 [US3] Wire `BoundaryFlowRegister` instantiation into `runner.run()` (one register per session). Pass into `engine.run_tick(...)` via `services` container.
-- [ ] T056 [US3] After each `engine.run_tick`, call `register.flush()` and add the resulting rows to `envelope.boundary_register_rows` before `bridge.persist_tick`.
-- [ ] T057 [US3] Implement `_aggregate_external_node_flows(pool, session_id)` in `src/babylon/engine/headless_runner/run_summary.py`: SQL `SUM(magnitude) FILTER (WHERE flow_type = ...)` grouped by `(source_node_id, dest_node_id)`; produces one entry per external node with `total_phi_inflow`, `total_trade_inbound`, `total_commute_outbound`, `tick_count_with_inflow` fields.
+- [X] T055 [US3] Wire `BoundaryFlowRegister` instantiation into `runner.run()` (one register per session). Pass into `engine.run_tick(...)` via `services` container.
+- [X] T056 [US3] After each `engine.run_tick`, call `register.flush()` and add the resulting rows to `envelope.boundary_register_rows` before `bridge.persist_tick`.
+- [X] T057 [US3] Implement `_aggregate_external_node_flows(pool, session_id)` in `src/babylon/engine/headless_runner/run_summary.py`: SQL `SUM(magnitude) FILTER (WHERE flow_type = ...)` grouped by `(source_node_id, dest_node_id)`; produces one entry per external node with `total_phi_inflow`, `total_trade_inbound`, `total_commute_outbound`, `tick_count_with_inflow` fields.
 
 **Checkpoint**: External boundary flows populate `summary.external_node_flows` with real per-tick magnitudes.
 
@@ -193,17 +193,17 @@ are created in `hydrate_initial` and tagged with the new optional
 
 ### Tests for User Story 4
 
-- [ ] T058 [P] [US4] `--endgame-detector` argparse acceptance test in `tests/unit/engine/test_argparse_cli.py::test_endgame_detector_accepts_dotted_path` — assert the flag accepts a string and stores it in `args.endgame_detector`.
-- [ ] T059 [P] [US4] Detector resolution unit test in `tests/unit/engine/headless_runner/test_endgame_resolution.py` — `bridge.set_endgame_detector("invalid.module.NotADetector")` raises `ConfigError`; valid path resolves to an instance implementing the `EndgameDetector` Protocol.
-- [ ] T060 [P] [US4] Test fixture `tests/integration/fixtures/endgame.py` exposing `ImperialCollapseAtTick250` (always fires at tick 250) and `NeverFires` (returns None always).
-- [ ] T061 [P] [US4] End-game round-trip integration test in `tests/integration/test_endgame_detection_round_trip.py::test_imperial_collapse_at_tick_250` — per US4 Independent Test above.
-- [ ] T062 [P] [US4] No-detector default test in `tests/integration/test_endgame_detection_round_trip.py::test_no_detector_runs_full_ticks` — without `--endgame-detector`, run to full `--ticks`, `exit_reason = "completed"`, `end_game_event` absent from summary.
+- [X] T058 [P] [US4] `--endgame-detector` argparse acceptance test in `tests/unit/engine/test_argparse_cli.py::test_endgame_detector_accepts_dotted_path` — assert the flag accepts a string and stores it in `args.endgame_detector`.
+- [X] T059 [P] [US4] Detector resolution unit test in `tests/unit/engine/headless_runner/test_endgame_resolution.py` — `bridge.set_endgame_detector("invalid.module.NotADetector")` raises `ConfigError`; valid path resolves to an instance implementing the `EndgameDetector` Protocol.
+- [X] T060 [P] [US4] Test fixture `tests/integration/fixtures/endgame.py` exposing `ImperialCollapseAtTick250` (always fires at tick 250) and `NeverFires` (returns None always).
+- [X] T061 [P] [US4] End-game round-trip integration test in `tests/integration/test_endgame_detection_round_trip.py::test_imperial_collapse_at_tick_250` — per US4 Independent Test above.
+- [X] T062 [P] [US4] No-detector default test in `tests/integration/test_endgame_detection_round_trip.py::test_no_detector_runs_full_ticks` — without `--endgame-detector`, run to full `--ticks`, `exit_reason = "completed"`, `end_game_event` absent from summary.
 
 ### Implementation for User Story 4
 
-- [ ] T063 [US4] Implement `WorldStateBridge.set_endgame_detector(dotted_path)` and `WorldStateBridge.poll_endgame(world, tick)` in `bridge.py` per `contracts/engine_bridge_protocol.yaml.methods`. Use `importlib.import_module` + `getattr` for resolution; raise `ConfigError` on failure or Protocol mismatch.
-- [ ] T064 [US4] Wire `poll_endgame` into `runner._tick_loop`: after `bridge.persist_tick(...)`, call `bridge.poll_endgame(world, tick)`; if it returns a non-None `EndgameEvent`, store it on the result and break out of the loop with `exit_reason = EARLY_TERMINATED`.
-- [ ] T065 [US4] Populate `summary.end_game_event` in `run_summary.build_summary(...)` when `exit_reason == EARLY_TERMINATED` and an `end_game_event` payload was captured.
+- [X] T063 [US4] Implement `WorldStateBridge.set_endgame_detector(dotted_path)` and `WorldStateBridge.poll_endgame(world, tick)` in `bridge.py` per `contracts/engine_bridge_protocol.yaml.methods`. Use `importlib.import_module` + `getattr` for resolution; raise `ConfigError` on failure or Protocol mismatch.
+- [X] T064 [US4] Wire `poll_endgame` into `runner._tick_loop`: after `bridge.persist_tick(...)`, call `bridge.poll_endgame(world, tick)`; if it returns a non-None `EndgameEvent`, store it on the result and break out of the loop with `exit_reason = EARLY_TERMINATED`.
+- [X] T065 [US4] Populate `summary.end_game_event` in `run_summary.build_summary(...)` when `exit_reason == EARLY_TERMINATED` and an `end_game_event` payload was captured.
 
 **Checkpoint**: End-game detection wired; spec-064 T024a + T033 closed.
 
@@ -217,17 +217,17 @@ are created in `hydrate_initial` and tagged with the new optional
 
 ### Tests for User Story 5
 
-- [ ] T066 [P] [US5] EventCapture core unit test in `tests/unit/engine/headless_runner/test_event_capture.py::test_capture_appends_in_order` — call `set_tick(3)` then `on_event(e1); on_event(e2)`, then `set_tick(4)` and `on_event(e3)`; `drain()` returns `(e1, e2, e3)` in that order with tick 3, 3, 4 respectively.
-- [ ] T067 [P] [US5] Determinism test in `tests/unit/engine/headless_runner/test_event_capture.py::test_emission_order_deterministic` — same fixture inputs across two `EventCapture` instances produce byte-identical `drain()` output.
-- [ ] T068 [P] [US5] Events schema integration test in `tests/integration/test_events_capture.py::test_events_array_schema` — run canonical sim; assert `summary.events` is a list; each entry has the 5 required keys; cross-check that `summary.events[*].tick` is strictly non-decreasing (FR-018 inter-tick ordering).
-- [ ] T069 [P] [US5] Events round-trip integration test in `tests/integration/test_events_capture.py::test_engine_emitted_event_visible_in_summary` — monkey-patch `ImperialRentSystem` to fire a synthetic `SuperwageCrisisEvent` at tick 7 for FIPS `26163`; assert `summary.events` contains an entry with `tick=7`, `event_type="SUPERWAGE_CRISIS"`, `entity_ids=["26163"]`.
+- [X] T066 [P] [US5] EventCapture core unit test in `tests/unit/engine/headless_runner/test_event_capture.py::test_capture_appends_in_order` — call `set_tick(3)` then `on_event(e1); on_event(e2)`, then `set_tick(4)` and `on_event(e3)`; `drain()` returns `(e1, e2, e3)` in that order with tick 3, 3, 4 respectively.
+- [X] T067 [P] [US5] Determinism test in `tests/unit/engine/headless_runner/test_event_capture.py::test_emission_order_deterministic` — same fixture inputs across two `EventCapture` instances produce byte-identical `drain()` output.
+- [X] T068 [P] [US5] Events schema integration test in `tests/integration/test_events_capture.py::test_events_array_schema` — run canonical sim; assert `summary.events` is a list; each entry has the 5 required keys; cross-check that `summary.events[*].tick` is strictly non-decreasing (FR-018 inter-tick ordering).
+- [X] T069 [P] [US5] Events round-trip integration test in `tests/integration/test_events_capture.py::test_engine_emitted_event_visible_in_summary` — monkey-patch `ImperialRentSystem` to fire a synthetic `SuperwageCrisisEvent` at tick 7 for FIPS `26163`; assert `summary.events` contains an entry with `tick=7`, `event_type="SUPERWAGE_CRISIS"`, `entity_ids=["26163"]`.
 
 ### Implementation for User Story 5
 
-- [ ] T070 [US5] Implement `EngineEvent` Pydantic model + `EventCapture` class in `src/babylon/engine/headless_runner/event_capture.py` per `data-model.md §1.2 + §1.3`. Methods: `set_tick(tick)`, `on_event(event)`, `drain() -> tuple[EngineEvent, ...]`.
-- [ ] T071 [US5] Subscribe `EventCapture.on_event` to the engine's `EventBus` inside `bridge.hydrate_initial` (per `contracts/engine_bridge_protocol.yaml.hydrate_initial.side_effects`).
-- [ ] T072 [US5] In runner's tick loop, call `event_capture.set_tick(tick)` BEFORE `engine.run_tick(...)` so emissions during that tick are tagged correctly.
-- [ ] T073 [US5] In `run_summary.build_summary(...)`, drain `event_capture` and pass the resulting list as the new `events` argument; emit into `summary.events` per `data-model.md §3.1`.
+- [X] T070 [US5] Implement `EngineEvent` Pydantic model + `EventCapture` class in `src/babylon/engine/headless_runner/event_capture.py` per `data-model.md §1.2 + §1.3`. Methods: `set_tick(tick)`, `on_event(event)`, `drain() -> tuple[EngineEvent, ...]`.
+- [X] T071 [US5] Subscribe `EventCapture.on_event` to the engine's `EventBus` inside `bridge.hydrate_initial` (per `contracts/engine_bridge_protocol.yaml.hydrate_initial.side_effects`).
+- [X] T072 [US5] In runner's tick loop, call `event_capture.set_tick(tick)` BEFORE `engine.run_tick(...)` so emissions during that tick are tagged correctly.
+- [X] T073 [US5] In `run_summary.build_summary(...)`, drain `event_capture` and pass the resulting list as the new `events` argument; emit into `summary.events` per `data-model.md §3.1`.
 
 **Checkpoint**: Engine events captured to artifact; FR-018 emission-order rule enforced by unit test.
 

@@ -59,23 +59,24 @@ class WorldStateBridge:
 
     def hydrate_initial(
         self,
-        session_id: UUID,
-        scope_fips: frozenset[str],
-        event_capture: EventCapture | None = None,
+        session_id: UUID,  # noqa: ARG002 — consumed by T040 implementation
+        scope_fips: frozenset[str],  # noqa: ARG002 — consumed by T040 implementation
+        event_capture: EventCapture | None = None,  # noqa: ARG002 — consumed by T040 implementation
     ) -> Any:
         """Build the initial ``WorldState`` from tick-0 Postgres state.
 
         Phase-2 stub. Full implementation lands in T040.
+
+        T040 will set ``self._hydrated = True`` only AFTER all hydration
+        steps succeed (one-shot semantics + retry-safe on failure).
+        The stub raises before touching state so a stub-time error
+        doesn't lock out a subsequent retry.
         """
         if self._hydrated:
             raise RuntimeError(
                 "WorldStateBridge.hydrate_initial called twice on the same "
                 "instance; one bridge per session"
             )
-        self._session_id = session_id
-        self._scope_fips = scope_fips
-        self._event_capture = event_capture
-        self._hydrated = True
         raise NotImplementedError("WorldStateBridge.hydrate_initial — T040")
 
     def persist_tick(

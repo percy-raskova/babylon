@@ -20,8 +20,13 @@ All Python entities are frozen Pydantic 2.x per project standard.
 
 ### 1.1 `WorldStateBridge` (new — `babylon/engine/headless_runner/bridge.py`)
 
-A thin protocol-implementing object responsible for moving state
-between in-memory `WorldState` and Postgres per-tick subsystem tables.
+A protocol-implementing object responsible for moving state between
+in-memory `WorldState` and Postgres per-tick subsystem tables. The
+bridge does NOT serialize WorldState field-for-field — it
+**derives/aggregates** the spec-065 subsystem columns from existing
+engine state at persist time, using helpers in
+`babylon.persistence.county_aggregation`. See research.md R10 for the
+rationale; the bridge is a derivation adapter, not a flat serializer.
 
 ```python
 class WorldStateBridge:
@@ -30,15 +35,19 @@ class WorldStateBridge:
     Lifecycle within a single run:
       1. ``hydrate_initial(session_id, scope_fips)`` — one-shot at
          session init. Builds the initial WorldState from the
-         tick-0 hex_state + subsystem tables.
+         tick-0 hex_state, then creates one SocialClass entity per
+         (county_fips × role) tagged with the FIPS code.
       2. Each tick the runner mutates the WorldState in place via
          ``engine.run_tick(graph, services, context)``.
-      3. ``persist_tick(world, tick)`` — serializes the delta into a
-         ``PerTickTransactionEnvelope`` and writes via
-         ``runtime.persist_tick_atomic``.
+      3. ``persist_tick(world, tick)`` — for each county in scope_fips:
+         calls the four ``county_aggregation`` helpers, assembles the
+         envelope (including the three new spec-065 row-lists), and
+         writes via ``runtime.persist_tick_atomic``.
 
-    The bridge owns no engine logic; it is purely a serialization
-    adapter (II.6 State is Data / Engine is Transformation).
+    The bridge owns no engine logic; engine systems mutate WorldState
+    in place. The bridge owns the WorldState↔Postgres derivation
+    boundary (II.6 State is Data / Engine is Transformation; derived
+    rollups belong on the trace view, not on WorldState).
     """
 
     def __init__(self, runtime: PostgresRuntime, defines: GameDefines) -> None: ...
@@ -125,6 +134,126 @@ class SimulationRunResult(BaseModel):
 The `final_world_state` is set to the terminal-tick `WorldState` for
 `tools/shared.run_simulation` consumers (SC-011); arbitrary types
 allowed so we can store the existing `WorldState` Pydantic model.
+
+### 1.6 County aggregation helpers (NEW — `babylon/persistence/county_aggregation.py`)
+
+Module containing pure functions that derive the spec-065 per-county
+subsystem columns from existing engine state and reference data. Used
+by `WorldStateBridge.persist_tick` to assemble the three new
+envelope row-lists. See research.md R10 for the design rationale.
+
+```python
+def aggregate_survival_for_county(
+    world: WorldState,
+    county_fips: str,
+) -> tuple[float, float, int]:
+    """Population-weighted means of (p_acquiescence, p_revolution).
+
+    Iterates ``world.entities.values()`` filtered by
+    ``entity.county_fips == county_fips``. Returns a tuple of
+    (p_acq, p_rev, total_population). If no entities match the FIPS,
+    returns (0.0, 0.0, 0) (an audit row with severity='warning'
+    should be emitted by the caller).
+    """
+
+def aggregate_consciousness_for_county(
+    world: WorldState,
+    county_fips: str,
+) -> TernaryConsciousness:
+    """Population-weighted (r, l, f) over entities in the county.
+
+    For each entity with entity.county_fips == county_fips:
+        cc = entity.ideology.class_consciousness
+        ni = entity.ideology.national_identity
+        r_i = cc * (1 - ni)
+        f_i = ni * (1 - cc)
+        l_i = max(0.0, 1.0 - r_i - f_i)
+    Then weighted mean of (r_i, l_i, f_i) by entity.population.
+    Returns a TernaryConsciousness; simplex invariant
+    abs(r + l + f - 1.0) < 1e-9 is asserted before returning.
+
+    Bridge mapping rationale: research.md R10.
+    """
+
+def fetch_population_for_county_at_tick(
+    runtime: PostgresRuntime,
+    county_fips: str,
+    tick: int,
+    start_year: int,
+) -> int:
+    """Census population for (county_fips, year_at_tick) from SQLite.
+
+    Year at tick = start_year + tick // 52 (weekly cadence). Reads
+    fact_census_* via the existing SQLite reference adapter. Falls
+    back to fact_qcew_annual.employment × 2.5 with audit row
+    (severity='warning') if no Census row covers (county, year).
+    """
+
+def fetch_employment_proxy_for_county_at_tick(
+    runtime: PostgresRuntime,
+    county_fips: str,
+    tick: int,
+    start_year: int,
+) -> float:
+    """SUM(fact_qcew_annual.employment) / 52 for (county_fips, year).
+
+    Returns a float (FTE-equivalent weekly employment). Same data
+    source as hex v (QCEW table; QCEW.total_wages → v, QCEW.employment
+    → employment_proxy). Raises ReferenceDataMissingError if the
+    county-year is outside the QCEW data window (handled by FR-022
+    preflight, not here).
+    """
+```
+
+**Module is import-cycle-safe**: depends on `babylon.models` (for
+`WorldState` and `TernaryConsciousness`) and `babylon.persistence`
+(for `PostgresRuntime`). Does NOT import from
+`babylon.engine.headless_runner.*` — the bridge imports the module,
+not the other way around.
+
+**Why a separate module**: the helpers are reusable from non-bridge
+contexts (notebook analysis, ad-hoc auditing, future spec-066 if
+the engine wants to consume aggregated rollups). Co-locating them on
+the bridge would couple them to the bridge's session lifecycle.
+
+### 1.7 Modified `SocialClass` (existing — `babylon/models/entities/social_class.py`)
+
+The only WorldState schema change for spec-065. Adds an optional
+`county_fips` field for per-county attribution.
+
+```python
+class SocialClass(BaseModel):
+    # ... existing fields ...
+
+    # NEW (spec-065): optional per-county attribution.
+    county_fips: str | None = Field(
+        default=None,
+        pattern=r"^\d{5}$|^$",  # 5-digit FIPS or empty string
+        description=(
+            "Optional 5-digit FIPS code attributing this class entity "
+            "to a county. spec-065 introduces per-county entity sets "
+            "for full-fidelity county aggregation; spec-064 callers "
+            "that don't set this field continue to work (entities "
+            "without county_fips are excluded from county aggregates "
+            "but participate in non-county engine logic)."
+        ),
+    )
+```
+
+**Factories**: `create_proletariat(...)` and `create_bourgeoisie(...)`
+gain an optional `county_fips: str | None = None` keyword. Spec-064
+callers that don't pass it remain compatible; spec-065 hydrate_initial
+threads the FIPS through.
+
+**Default behavior**: `None` means "not attributed to any county" —
+the entity participates in non-spatial engine logic (Phase Engine math)
+but is invisible to the county aggregation helpers. Engine systems
+already operate on entities by id; none read `county_fips` (it's a
+bridge-only field).
+
+**Backward compatibility test**: every spec-064 unit test that does
+not set `county_fips` MUST continue to pass without modification.
+This is gated by T086 (quickstart walkthrough) and T087 (lint sweep).
 
 ---
 

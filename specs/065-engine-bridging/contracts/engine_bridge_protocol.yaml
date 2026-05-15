@@ -45,13 +45,41 @@ methods:
       Serialize the WorldState's per-county and per-hex state into
       a PerTickTransactionEnvelope, then call runtime.persist_tick_atomic.
       The envelope carries:
-        - hex_state_rows  (from world.graph nodes of type 'hex')
-        - external_node_rows  (from world.graph nodes of type 'external_node')
-        - boundary_register_rows  (from BoundaryFlowRegister.flush())
-        - audit_rows  (from ConservationAuditor.audit_log_buffer)
-        - consciousness_state_rows  (NEW; from world.consciousness_simplex)
-        - demographics_state_rows   (NEW; from world.demographics_per_county)
-        - employment_state_rows     (NEW; from world.employment_per_county)
+        - hex_state_rows         (from world.graph nodes of type 'hex')
+        - external_node_rows     (from world.graph nodes of type 'external_node')
+        - boundary_register_rows (from BoundaryFlowRegister.flush())
+        - audit_rows             (from ConservationAuditor.audit_log_buffer)
+        - consciousness_state_rows  (NEW; per-county aggregation, see below)
+        - demographics_state_rows   (NEW; from SQLite reference data, see below)
+        - employment_state_rows     (NEW; from SQLite reference data, see below)
+    derivation_of_new_subsystem_rows:
+      description: >-
+        The three spec-065 row-lists are NOT flat field reads off WorldState.
+        They are derivations (engine-state aggregation OR reference-data
+        queries) computed per county in scope_fips at persist time.
+        Source paths are documented in
+        contracts/subsystem_state_tables.yaml.tables.<name>.columns[*].derivation
+        and implemented in babylon.persistence.county_aggregation. See
+        research.md R10 for the design rationale.
+      summary:
+        consciousness_state_rows: >-
+          For each county_fips in self._scope_fips, call
+          aggregate_survival_for_county(world, fips) → (p_acq, p_rev)
+          and aggregate_consciousness_for_county(world, fips) → (r, l, f).
+          Both helpers compute population-weighted means over
+          world.entities filtered by entity.county_fips == fips. The
+          ideology mapping (IdeologicalProfile → TernaryConsciousness)
+          is documented in research.md R10.
+        demographics_state_rows: >-
+          For each county_fips in self._scope_fips, call
+          fetch_population_for_county_at_tick(runtime, fips, tick, start_year)
+          which queries SQLite fact_census_* with year-scoped interpolation.
+          NO engine state is involved.
+        employment_state_rows: >-
+          For each county_fips in self._scope_fips, call
+          fetch_employment_proxy_for_county_at_tick(runtime, fips, tick, start_year)
+          which queries SQLite SUM(fact_qcew_annual.employment) / 52.
+          NO engine state is involved.
     determinism_hash:
       description: >-
         SHA-256 of canonical-JSON of all envelope row contents,
@@ -141,6 +169,7 @@ interaction_diagram:
     - "auditor.audit_end_of_tick(world, T) → populates audit_log_buffer"
     - "if endgame_detector: detector.check(world, T) → maybe halt"
     - "bridge.persist_tick(world, T, determinism_hash)"
+    - "    → for each county in scope_fips: 4 county_aggregation helpers"
     - "    → envelope with hex/external/boundary/audit/consciousness/demographics/employment rows"
     - "    → runtime.persist_tick_atomic(envelope) — one Postgres transaction"
     - "if --strict and any audit row severity='critical': runner exits 1"

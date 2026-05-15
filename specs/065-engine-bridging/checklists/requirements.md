@@ -57,3 +57,17 @@
   Functional Requirements section as anchors against existing code
   surfaces (II.11 compliance). The User Scenarios and Success Criteria
   sections remain technology-agnostic.
+- **2026-05-15 post-foundation reconciliation**: During Phase 1+2
+  review, the original `contracts/subsystem_state_tables.yaml` and
+  `tasks.md` T037–T039 were found to reference WorldState fields that
+  do not exist on the current model
+  (`world.consciousness_simplex`, `world.demographics_per_county`,
+  `world.employment_per_county`). The user-facing spec.md
+  requirements were unaffected — they remain technology-agnostic. The
+  implementation surface was reconciled in research.md §R10,
+  data-model.md §1.6/§1.7, the two affected contract YAMLs, and
+  tasks.md (T036a, T037a added; T037–T041 rewritten). The fix is a
+  derivation/aggregation adapter pattern in
+  `babylon.persistence.county_aggregation` + a single optional
+  `SocialClass.county_fips` field. No FRs, SCs, or user stories
+  changed. Spec quality checklist re-validated; all items still pass.

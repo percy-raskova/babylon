@@ -42,31 +42,59 @@ tables:
         nullable: false
         constraints: ["BETWEEN 0 AND 1"]
         units: "probability"
-        source_engine_value: "state.entities[county].p_acquiescence"
+        source: "engine-computed → aggregated"
+        derivation: >-
+          Population-weighted mean of entity.p_acquiescence over
+          all SocialClass entities in world.entities where
+          entity.county_fips == fips. See research.md R10 +
+          babylon.persistence.county_aggregation.aggregate_survival_for_county.
       - name: p_revolution
         type: DOUBLE PRECISION
         nullable: false
         constraints: ["BETWEEN 0 AND 1"]
         units: "probability"
-        source_engine_value: "state.entities[county].p_revolution"
+        source: "engine-computed → aggregated"
+        derivation: >-
+          Population-weighted mean of entity.p_revolution over
+          all SocialClass entities in world.entities where
+          entity.county_fips == fips. See research.md R10 +
+          babylon.persistence.county_aggregation.aggregate_survival_for_county.
       - name: ideology_r
         type: DOUBLE PRECISION
         nullable: false
         constraints: ["BETWEEN 0 AND 1"]
         units: "simplex coordinate"
-        source_engine_value: "state.consciousness_simplex[county].r"
+        source: "engine-computed → mapped → aggregated"
+        derivation: >-
+          Per entity in county: r = class_consciousness × (1 - national_identity)
+          where (class_consciousness, national_identity) are fields of
+          entity.ideology (IdeologicalProfile). Then population-weighted
+          mean across all entities with entity.county_fips == fips.
+          Bridge mapping defined in research.md R10.
       - name: ideology_l
         type: DOUBLE PRECISION
         nullable: false
         constraints: ["BETWEEN 0 AND 1"]
         units: "simplex coordinate"
-        source_engine_value: "state.consciousness_simplex[county].l"
+        source: "engine-computed → mapped → aggregated"
+        derivation: >-
+          Per entity in county: l = max(0, 1 - r - f) where r and f are
+          computed per the ideology_r and ideology_f derivations.
+          Then population-weighted mean across all entities with
+          entity.county_fips == fips. Simplex sum r+l+f=1 is preserved
+          by construction. Bridge mapping defined in research.md R10.
       - name: ideology_f
         type: DOUBLE PRECISION
         nullable: false
         constraints: ["BETWEEN 0 AND 1"]
         units: "simplex coordinate"
-        source_engine_value: "state.consciousness_simplex[county].f"
+        source: "engine-computed → mapped → aggregated"
+        derivation: >-
+          Per entity in county: f = national_identity × (1 - class_consciousness)
+          where (class_consciousness, national_identity) are fields of
+          entity.ideology (IdeologicalProfile). Then population-weighted
+          mean across all entities with entity.county_fips == fips.
+          Bridge mapping defined in research.md R10.
     primary_key: ["session_id", "tick", "county_fips"]
     indexes:
       - name: ix_consciousness_session_tick
@@ -103,7 +131,15 @@ tables:
         nullable: false
         constraints: ["population >= 0"]
         units: "persons"
-        source_data: "fact_census_* interpolated to weekly cadence (spec-062 year-scoped policy)"
+        source: "reference data"
+        derivation: >-
+          SQLite query against fact_census_* tables for (county_fips, year)
+          interpolated to weekly cadence per spec-062 year-scoped policy.
+          Fall back to fact_qcew_annual.employment × 2.5 (employment-to-
+          population proxy) if Census coverage is missing for the
+          (county, year) pair; an audit row with severity='warning' is
+          emitted on fallback. See research.md R10 +
+          babylon.persistence.county_aggregation.fetch_population_for_county_at_tick.
     primary_key: ["session_id", "tick", "county_fips"]
     indexes:
       - name: ix_demographics_session_tick
@@ -135,7 +171,13 @@ tables:
         nullable: false
         constraints: ["employment_proxy >= 0"]
         units: "FTE-equivalent"
-        source_data: "fact_qcew_annual.employment summed per (county, year) / 52 for weekly"
+        source: "reference data"
+        derivation: >-
+          SQLite query: SUM(fact_qcew_annual.employment) over all
+          industries for (county_id, year) divided by 52 for weekly
+          cadence. Same data source as hex v (which uses total_wages
+          from the same table). See research.md R10 +
+          babylon.persistence.county_aggregation.fetch_employment_proxy_for_county_at_tick.
     primary_key: ["session_id", "tick", "county_fips"]
     indexes:
       - name: ix_employment_session_tick

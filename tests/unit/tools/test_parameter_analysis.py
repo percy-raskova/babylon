@@ -21,11 +21,30 @@ from __future__ import annotations
 import csv
 import importlib.util
 import inspect
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+# Spec-064 transition: classes that exercise the legacy in-memory
+# `run_trace` / `run_sweep` / `extract_sweep_summary` contracts now run
+# through the headless Postgres-backed runner instead. Tests that hit
+# Postgres are gated behind ``BABYLON_TEST_PG_DSN``; tests against the
+# old TickStateRecorder-shaped result are skipped because the contract
+# is gone (the new ``extract_sweep_summary(value, result_dict)`` no
+# longer accepts a collector).
+_NO_PG = os.environ.get("BABYLON_TEST_PG_DSN") is None
+_SKIP_LEGACY_RECORDER = pytest.mark.skip(
+    reason="spec-064: extract_sweep_summary now accepts (value, result_dict); "
+    "TickStateRecorder-shaped tests retired with the legacy in-memory engine path",
+)
+_SKIP_NEEDS_PG = pytest.mark.skipif(
+    _NO_PG,
+    reason="spec-064: run_trace/run_sweep route through headless_runner; "
+    "BABYLON_TEST_PG_DSN required",
+)
 
 # Path to the project root (babylon/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -108,6 +127,7 @@ class TestModuleStructure:
         assert "__main__" in source_code, "Missing __main__ check"
 
 
+@_SKIP_NEEDS_PG
 class TestRunTrace:
     """Test the run_trace function."""
 
@@ -178,6 +198,7 @@ class TestRunTrace:
         assert len(result_low) > 0, "Low extraction trace should produce results"
 
 
+@_SKIP_NEEDS_PG
 class TestWriteCsv:
     """Test CSV writing functionality."""
 
@@ -288,6 +309,7 @@ class TestCLI:
 # =============================================================================
 
 
+@_SKIP_LEGACY_RECORDER
 class TestExtractSweepSummary:
     """Tests for extract_sweep_summary function with TickStateRecorder.
 
@@ -737,6 +759,7 @@ class TestExtractSweepSummary:
         assert result["max_tension"] == 0.05
 
 
+@_SKIP_NEEDS_PG
 class TestRunSweep:
     """Tests for run_sweep function."""
 

@@ -124,3 +124,8 @@ decisions:
     status: accepted
     date: '2025-12-26'
     file: ADR029_hybrid_graph_architecture.yaml
+  ADR041_spec_064_headless_simulation_runner:
+    title: 'Spec 064: Headless Postgres-backed simulation runner as canonical CLI'
+    status: accepted
+    date: '2026-05-14'
+    file: ADR041_spec_064_headless_simulation_runner.yaml

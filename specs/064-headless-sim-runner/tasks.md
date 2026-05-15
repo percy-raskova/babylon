@@ -107,15 +107,15 @@ implementation and testing.
 
 ### Tests for User Story 2
 
-- [ ] T036 [P] [US2] Integration test in `tests/integration/test_monte_carlo_postgres.py::test_n_samples_yields_n_rows` — 5 samples, assert exactly 5 rows in `results/monte_carlo.csv`.
-- [ ] T037 [P] [US2] Integration test in `tests/integration/test_monte_carlo_postgres.py::test_top_level_seed_reproducible` — two runs with same top-level seed produce byte-identical aggregate output CSV.
-- [ ] T038 [P] [US2] Integration test in `tests/integration/test_monte_carlo_postgres.py::test_per_sample_variance_nonzero` — assert std-dev across samples > 0 for at least one numeric column (proves real stochastic divergence).
+- [X] T036 [P] [US2] Integration test in `tests/integration/test_monte_carlo_postgres.py::test_n_samples_yields_n_rows` — 5 samples, assert exactly 5 rows in `results/monte_carlo.csv`.
+- [X] T037 [P] [US2] Integration test in `tests/integration/test_monte_carlo_postgres.py::test_top_level_seed_reproducible` — two runs with same top-level seed produce byte-identical aggregate output CSV.
+- [X] T038 [P] [US2] Integration test in `tests/integration/test_monte_carlo_postgres.py::test_per_sample_variance_nonzero` — assert std-dev across samples > 0 for at least one numeric column (proves real stochastic divergence).
 
 ### Implementation for User Story 2
 
-- [ ] T039 [US2] Refactor `tools/shared.py:run_simulation()` to invoke `babylon.engine.headless_runner.run()` internally. Build `SimulationRunConfig` from the existing parameter dict; map result to the pre-existing return shape (list of tick dicts + metadata dict). Preserve function signature exactly.
-- [ ] T039a [P] [US2] Snapshot test in `tests/unit/tools/test_shared_signature.py` — capture `inspect.signature(tools.shared.run_simulation)` as a baseline string, assert the post-refactor signature matches byte-for-byte. Enforces FR-015 ("signature preserved") at CI time.
-- [ ] T040 [US2] Update `tools/monte_carlo.py` imports — remove `from babylon.engine.scenarios import create_imperial_circuit_scenario` and `from babylon.engine.simulation_engine import step` if present; rely entirely on `shared.run_simulation`. mise task name `sim:monte-carlo` unchanged.
+- [X] T039 [US2] Refactor `tools/shared.py:run_simulation()` to invoke `babylon.engine.headless_runner.run()` internally. Build `SimulationRunConfig` from the existing parameter dict; map result to the pre-existing return shape (list of tick dicts + metadata dict). Preserve function signature exactly.
+- [X] T039a [P] [US2] Snapshot test in `tests/unit/tools/test_shared_signature.py` — capture `inspect.signature(tools.shared.run_simulation)` as a baseline string, assert the post-refactor signature matches byte-for-byte. Enforces FR-015 ("signature preserved") at CI time.
+- [X] T040 [US2] Update `tools/monte_carlo.py` imports — remove `from babylon.engine.scenarios import create_imperial_circuit_scenario` and `from babylon.engine.simulation_engine import step` if present; rely entirely on `shared.run_simulation`. mise task name `sim:monte-carlo` unchanged.
 
 **Checkpoint**: Monte Carlo functional via the new runner.
 
@@ -129,20 +129,20 @@ implementation and testing.
 
 ### Tests for User Story 3
 
-- [ ] T041 [P] [US3] Import-boundary audit test in `tests/integration/test_tools_no_legacy_imports.py` — recursively `ast.parse()` every `.py` under `tools/`, assert NONE import `create_imperial_circuit_scenario`, `WorldState`, or `babylon.engine.simulation_engine.step`. Enforces SC-007.
-- [ ] T042 [P] [US3] Smoke test in `tests/integration/test_sim_sweep_postgres.py` — `mise run sim:sweep` with a 3-point sweep produces a CSV with 3 distinct parameter values.
-- [ ] T043 [P] [US3] Smoke test in `tests/integration/test_tune_morris_postgres.py` — `mise run tune:morris 8` produces `results/morris.json` with the documented schema and non-empty `mu_star` column.
-- [ ] T044 [P] [US3] Smoke test in `tests/integration/test_profiler_postgres.py` — `mise run sim:profile 50` produces a `.prof` file readable by `pstats.Stats`.
-- [ ] T045 [P] [US3] Smoke test in `tests/integration/test_qa_audit_postgres.py` — `mise run qa:audit` writes `reports/audit_latest.md` with the existing 3-scenario structure.
-- [ ] T045a [P] [US3] Smoke test in `tests/integration/test_tune_landscape_postgres.py` — `mise run tune:landscape economy.extraction_efficiency 0.1 0.3 0.1 economy.subsistence_floor 0.0 0.2 0.1` produces `results/landscape.csv` with the expected 2D-grid shape (3 × 3 = 9 rows). Closes FR-014/SC-004 coverage for the 5th refactored tool.
+- [X] T041 [P] [US3] Import-boundary audit test in `tests/integration/test_tools_no_legacy_imports.py` — recursively `ast.parse()` every `.py` under `tools/`, assert NONE import `create_imperial_circuit_scenario`, `WorldState`, or `babylon.engine.simulation_engine.step`. Enforces SC-007.
+- [X] T042 [P] [US3] Smoke test in `tests/integration/test_sim_sweep_postgres.py` — `mise run sim:sweep` with a 3-point sweep produces a CSV with 3 distinct parameter values.
+- [X] T043 [P] [US3] Smoke test in `tests/integration/test_tune_morris_postgres.py` — `mise run tune:morris 8` produces `results/morris.json` with the documented schema and non-empty `mu_star` column.
+- [X] T044 [P] [US3] Smoke test in `tests/integration/test_profiler_postgres.py` — `mise run sim:profile 50` produces a `.prof` file readable by `pstats.Stats`.
+- [X] T045 [P] [US3] Smoke test in `tests/integration/test_qa_audit_postgres.py` — `mise run qa:audit` writes `reports/audit_latest.md` with the existing 3-scenario structure.
+- [X] T045a [P] [US3] Smoke test in `tests/integration/test_tune_landscape_postgres.py` — `mise run tune:landscape economy.extraction_efficiency 0.1 0.3 0.1 economy.subsistence_floor 0.0 0.2 0.1` produces `results/landscape.csv` with the expected 2D-grid shape (3 × 3 = 9 rows). Closes FR-014/SC-004 coverage for the 5th refactored tool.
 
 ### Implementation for User Story 3
 
-- [ ] T046 [P] [US3] Refactor `tools/parameter_analysis.py` — remove direct engine imports; route all sweep/trace logic through `tools.shared.run_simulation()`. Preserve `trace` + `sweep` subcommands and their CSV column conventions.
-- [ ] T047 [P] [US3] Refactor `tools/sensitivity_analysis.py` (Morris + Sobol) — same pattern. Preserve `results/morris.json` + `results/sobol.json` schemas.
-- [ ] T048 [P] [US3] Refactor `tools/profiler.py` — invoke `cProfile.Profile()` around `tools.shared.run_simulation()` instead of the legacy in-memory path. Preserve `.prof` output filename + `pstats` reporting.
-- [ ] T049 [P] [US3] Refactor `tools/audit_simulation.py` — route through `tools.shared.run_simulation()` for each of the 3 scenarios (baseline, starvation, glut). Preserve `reports/audit_latest.md` markdown structure.
-- [ ] T050 [P] [US3] Refactor `tools/landscape_analysis.py` — same pattern. Preserve `results/landscape.csv` 2D-grid output shape.
+- [X] T046 [P] [US3] Refactor `tools/parameter_analysis.py` — remove direct engine imports; route all sweep/trace logic through `tools.shared.run_simulation()`. Preserve `trace` + `sweep` subcommands and their CSV column conventions.
+- [X] T047 [P] [US3] Refactor `tools/sensitivity_analysis.py` (Morris + Sobol) — same pattern. Preserve `results/morris.json` + `results/sobol.json` schemas.
+- [X] T048 [P] [US3] Refactor `tools/profiler.py` — invoke `cProfile.Profile()` around `tools.shared.run_simulation()` instead of the legacy in-memory path. Preserve `.prof` output filename + `pstats` reporting.
+- [X] T049 [P] [US3] Refactor `tools/audit_simulation.py` — route through `tools.shared.run_simulation()` for each of the 3 scenarios (baseline, starvation, glut). Preserve `reports/audit_latest.md` markdown structure.
+- [X] T050 [P] [US3] Refactor `tools/landscape_analysis.py` — same pattern. Preserve `results/landscape.csv` 2D-grid output shape.
 
 **Checkpoint**: All 6 in-scope `tools/` scripts now backed by the headless runner. SC-007 enforced by T041.
 
@@ -156,14 +156,14 @@ implementation and testing.
 
 ### Tests for User Story 4
 
-- [ ] T051 [P] [US4] Integration test in `tests/integration/test_ci_gate_clean.py` — full Michigan run, then assert `summary.conservation_audit` has zero entries with severity `critical`. Skipped unless `BABYLON_TEST_PG_DSN` set AND `BABYLON_SLOW_TESTS=1` (this is the long-form gate, opt-in).
-- [ ] T052 [P] [US4] Integration test in `tests/integration/test_ci_gate_baseline_compare.py` — load the committed baseline from `tests/baselines/michigan-e2e.json`, run the simulation, assert key terminal aggregates within tolerance (`total_v` ±1%, `counties_alive` exact match).
+- [X] T051 [P] [US4] Integration test in `tests/integration/test_ci_gate_clean.py` — full Michigan run, then assert `summary.conservation_audit` has zero entries with severity `critical`. Skipped unless `BABYLON_TEST_PG_DSN` set AND `BABYLON_SLOW_TESTS=1` (this is the long-form gate, opt-in).
+- [X] T052 [P] [US4] Integration test in `tests/integration/test_ci_gate_baseline_compare.py` — load the committed baseline from `tests/baselines/michigan-e2e.json`, run the simulation, assert key terminal aggregates within tolerance (`total_v` ±1%, `counties_alive` exact match).
 
 ### Implementation for User Story 4
 
-- [ ] T053 [US4] Create `tests/baselines/michigan-e2e.json` by running the canonical headless simulation once and copying its `summary.json` (operator instruction documented in `quickstart.md`). Add a one-line `tests/baselines/README.md` explaining the regeneration procedure.
-- [ ] T054 [US4] Extend `tools/regression_test.py` to compare a fresh artifact bundle's `summary.json` against `tests/baselines/michigan-e2e.json` under documented tolerances. Preserve existing mise task `qa:regression`.
-- [ ] T055 [US4] Add `mise run qa:e2e-regression` task in `.mise.toml` that runs the headless runner, then invokes `tools/regression_test.py` with the produced bundle and the committed baseline; non-zero exit on tolerance violation.
+- [X] T053 [US4] Create `tests/baselines/michigan-e2e.json` by running the canonical headless simulation once and copying its `summary.json` (operator instruction documented in `quickstart.md`). Add a one-line `tests/baselines/README.md` explaining the regeneration procedure.
+- [X] T054 [US4] Extend `tools/regression_test.py` to compare a fresh artifact bundle's `summary.json` against `tests/baselines/michigan-e2e.json` under documented tolerances. Preserve existing mise task `qa:regression`.
+- [X] T055 [US4] Add `mise run qa:e2e-regression` task in `.mise.toml` that runs the headless runner, then invokes `tools/regression_test.py` with the produced bundle and the committed baseline; non-zero exit on tolerance violation.
 
 **Checkpoint**: CI gate fully functional and opt-in. US4 can be wired into a nightly workflow when the team is ready.
 
@@ -173,13 +173,13 @@ implementation and testing.
 
 **Purpose**: Wallclock-budget verification, documentation updates, ai-docs sync, retirement decisions.
 
-- [ ] T056 [P] Add wallclock-budget assertion to `tests/integration/test_headless_runner.py::test_smoke_full_michigan` — full Michigan + Canada 1000-tick run completes in ≤ 600s. Skipped unless `BABYLON_SLOW_TESTS=1`. Implements SC-002 verification per research.md R10.
-- [ ] T057 [P] Add ADR entry `ADR037_headless_simulation_runner` to `ai-docs/decisions.yaml` documenting: (a) headless runner becomes canonical sim entry; (b) `tools/shared.py` is the migration seam; (c) `view_runtime_trace_emission` is the II.11-compliant trace contract.
-- [ ] T058 [P] Update `ai-docs/state.yaml` test counts and add `spec-064: completed` once integration tests are green.
-- [ ] T059 [P] Update `ai-docs/tooling.yaml` to document the new `sim:e2e-michigan`, `qa:e2e-regression`, and (if added) `data:sim-bootstrap` tasks.
-- [ ] T060 Decide fate of legacy `sim:run` mise task (`python -m babylon`): either (a) retire and document removal in commit, or (b) keep as a smoke-test shim. Update `.mise.toml` accordingly. Default: keep with a description noting it's a legacy smoke-test.
-- [ ] T061 Run the full `quickstart.md` walkthrough end-to-end (operator path + LLM-agent path + CI path) and update any drift discovered.
-- [ ] T062 Run `mise run check` and fix any lint / mypy / pre-commit fallout introduced by the new module + refactored tools.
+- [X] T056 [P] Add wallclock-budget assertion to `tests/integration/test_headless_runner.py::test_smoke_full_michigan` — full Michigan + Canada 1000-tick run completes in ≤ 600s. Skipped unless `BABYLON_SLOW_TESTS=1`. Implements SC-002 verification per research.md R10.
+- [X] T057 [P] Add ADR entry `ADR037_headless_simulation_runner` to `ai-docs/decisions.yaml` documenting: (a) headless runner becomes canonical sim entry; (b) `tools/shared.py` is the migration seam; (c) `view_runtime_trace_emission` is the II.11-compliant trace contract.
+- [X] T058 [P] Update `ai-docs/state.yaml` test counts and add `spec-064: completed` once integration tests are green.
+- [X] T059 [P] Update `ai-docs/tooling.yaml` to document the new `sim:e2e-michigan`, `qa:e2e-regression`, and (if added) `data:sim-bootstrap` tasks.
+- [X] T060 Decide fate of legacy `sim:run` mise task (`python -m babylon`): either (a) retire and document removal in commit, or (b) keep as a smoke-test shim. Update `.mise.toml` accordingly. Default: keep with a description noting it's a legacy smoke-test.
+- [X] T061 Run the full `quickstart.md` walkthrough end-to-end (operator path + LLM-agent path + CI path) and update any drift discovered.
+- [X] T062 Run `mise run check` and fix any lint / mypy / pre-commit fallout introduced by the new module + refactored tools.
 
 ---
 

@@ -287,7 +287,7 @@ if fails:
 # =============================================================================
 
 [tasks."sim:run"]
-description = "Run main simulation entry point"
+description = "Legacy in-memory smoke-test entry point (use sim:e2e-michigan for the canonical Postgres-backed run, spec-064)"
 run = "poetry run python -m babylon"
 
 [tasks."sim:trace"]
@@ -448,6 +448,16 @@ run = "poetry run python tools/regression_test.py compare"
 [tasks."qa:regression-generate"]
 description = "Generate regression baselines (after intentional changes)"
 run = "poetry run python tools/regression_test.py generate --force"
+
+[tasks."qa:e2e-regression"]
+description = "Run headless e2e sim, then compare to michigan-e2e baseline (spec-064)"
+run = """
+ARTIFACT_DIR=$(poetry run python -m babylon.engine.headless_runner \\
+  --scope detroit-tri-county --ticks 5)
+poetry run python tools/regression_test.py compare-bundle \\
+  --bundle "$ARTIFACT_DIR" \\
+  --baseline tests/baselines/michigan-e2e.json
+"""
 
 [tasks."qa:hexagon-isolation"]
 description = "Verify hexagon UI isolation from database layer (SC-002)"

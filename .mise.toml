@@ -331,8 +331,8 @@ poetry run python tools/monte_carlo.py \
 """
 
 [tasks."sim:e2e-michigan"]
-description = "Headless 520-tick Michigan + Canada e2e simulation (2010-2020 real-data window, spec-065)"
-run = "poetry run python -m babylon.engine.headless_runner --scope michigan-canada --ticks 520"
+description = "Headless 520-tick Michigan + Canada e2e (spec-065); refreshes tests/baselines/michigan-e2e.json via --write-baseline"
+run = "poetry run python -m babylon.engine.headless_runner --scope michigan-canada --ticks 520 --write-baseline tests/baselines/michigan-e2e.json"
 
 # =============================================================================
 # TUNING (Namespaced)

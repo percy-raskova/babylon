@@ -141,6 +141,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("data/sqlite/marxist-data-3NF.sqlite"),
         help="Override the SQLite reference DB path.",
     )
+    parser.add_argument(
+        "--write-baseline",
+        type=Path,
+        default=None,
+        help=(
+            "Spec-065 T085: after a successful run, copy summary.json to "
+            "the given path. Used by mise sim:e2e-michigan to refresh "
+            "tests/baselines/michigan-e2e.json in a single command. "
+            "Skipped silently on non-success exit codes."
+        ),
+    )
 
     return parser
 

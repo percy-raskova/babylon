@@ -45,7 +45,9 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.engine.event_bus import EventBus
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
+from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
 from babylon.persistence.county_aggregation import (
     ReferenceDataMissingError,
@@ -62,10 +64,12 @@ from babylon.persistence.county_state import (
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.external_node import ExternalNode, ExternalNodeKind
 from babylon.persistence.hex_state import DynamicHexState
+from babylon.persistence.relationship_state import DynamicRelationshipState
 
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
     from babylon.engine.headless_runner.event_capture import EngineEvent, EventCapture
+    from babylon.persistence.conservation_audit import ConservationAuditor
 
 __all__ = ["WorldStateBridge"]
 
@@ -115,7 +119,15 @@ class WorldStateBridge:
     is called once per tick.
     """
 
-    def __init__(self, runtime: Any, defines: GameDefines) -> None:
+    def __init__(
+        self,
+        runtime: Any,
+        defines: GameDefines,
+        *,
+        boundary_register: BoundaryFlowRegister | None = None,
+        event_bus: EventBus | None = None,
+        auditor: ConservationAuditor | None = None,
+    ) -> None:
         self._runtime = runtime
         self._defines = defines
         self._session_id: UUID | None = None
@@ -127,10 +139,26 @@ class WorldStateBridge:
         self._hydrated = False
         self._event_capture: EventCapture | None = None
         self._endgame_detector: Any = None
-        # Spec-065 T055: BoundaryFlowRegister — created at hydrate_initial.
-        # Engine systems push rows via context.services; persist_tick
+        # Spec-065 T055: BoundaryFlowRegister is owned by runner.run() and
+        # injected here. When not supplied (older callers / unit tests), the
+        # bridge instantiates its own so behavior stays equivalent.
+        # Engine systems push rows via services.boundary_register; persist_tick
         # flushes them to the envelope each tick.
-        self._boundary_register: BoundaryFlowRegister | None = None
+        self._boundary_register: BoundaryFlowRegister = (
+            boundary_register if boundary_register is not None else BoundaryFlowRegister()
+        )
+        # Spec-065 T071: EventBus is owned by runner.run() so engine systems
+        # (spec-066) and the EventCapture subscriber share the same bus.
+        # When not supplied (older callers / unit tests), the bridge spins up
+        # its own so subscribe() calls remain valid.
+        self._event_bus: EventBus = event_bus if event_bus is not None else EventBus()
+        # Spec-065 T049: ConservationAuditor is owned by runner.run() and
+        # injected so the bridge can call audit_end_of_tick() during
+        # persist_tick. Audit rows are appended to the per-tick envelope so
+        # they hit the conservation_audit_log table durably; the in-memory
+        # ``audit_log_buffer`` lets runner._check_strict_alarms read alarms
+        # without a Postgres round-trip.
+        self._auditor: ConservationAuditor | None = auditor
 
     @property
     def runtime(self) -> Any:
@@ -141,16 +169,38 @@ class WorldStateBridge:
         return self._event_capture
 
     @property
+    def event_bus(self) -> EventBus:
+        """The session's EventBus (T071).
+
+        Owned by ``runner.run()`` and injected at __init__ so the
+        engine-side publishers (spec-066) and the bridge-side
+        :class:`EventCapture` subscriber share the same bus.
+        """
+        return self._event_bus
+
+    @property
+    def auditor(self) -> ConservationAuditor | None:
+        """The session's ConservationAuditor (T049).
+
+        Owned by ``runner.run()`` and injected at __init__. ``persist_tick``
+        calls ``auditor.audit_end_of_tick(...)`` after the envelope is
+        built, merging any newly-produced audit rows into the same
+        per-tick transaction.
+        """
+        return self._auditor
+
+    @property
     def hydrated(self) -> bool:
         return self._hydrated
 
     @property
-    def boundary_register(self) -> BoundaryFlowRegister | None:
+    def boundary_register(self) -> BoundaryFlowRegister:
         """The session's BoundaryFlowRegister (T055).
 
-        Engine systems can push BoundaryFlowRegisterRow entries here;
+        Engine systems push BoundaryFlowRegisterRow entries here;
         :meth:`persist_tick` flushes them into the envelope each tick.
-        Returns None before :meth:`hydrate_initial` is called.
+        Spec-065 T055: the register is owned by runner.run() and injected
+        into the bridge at construction time, so it's always available.
         """
         return self._boundary_register
 
@@ -234,8 +284,18 @@ class WorldStateBridge:
         self._sqlite_path = sqlite_path_resolved
         self._hex_template = tuple(hex_rows)
         self._external_template = tuple(external_rows)
-        # Spec-065 T055: one BoundaryFlowRegister per session.
-        self._boundary_register = BoundaryFlowRegister()
+        # Spec-065 T055: BoundaryFlowRegister is now owned by runner.run()
+        # and injected at __init__; no per-hydrate instantiation needed.
+
+        # Spec-065 T071: subscribe EventCapture.on_event to every known
+        # engine EventType so any event a system publishes via
+        # services.event_bus is captured into summary.events. The bus may
+        # be empty of publishers today (engine integration is spec-066) but
+        # the wiring is correct so spec-066 simply turns it on.
+        if event_capture is not None:
+            for event_type in EventType:
+                self._event_bus.subscribe(event_type.value, event_capture.on_event)
+
         self._hydrated = True
 
         logger.info(
@@ -316,9 +376,30 @@ class WorldStateBridge:
         # Spec-065 T056: flush BoundaryFlowRegister for this tick.
         # Empty list when the engine has not pushed any boundary rows
         # (current state — engine integration is a follow-up).
-        boundary_rows = (
-            list(self._boundary_register.flush()) if self._boundary_register is not None else []
-        )
+        boundary_rows = list(self._boundary_register.flush())
+
+        # Spec-065 T080: persist per-tick dyadic relationship state so the
+        # summary's ``max_tension`` is a true cross-tick MAX over all
+        # EXPLOITATION edges (spec wording: "across all ticks"). Today
+        # WorldState.relationships is empty (engine doesn't mutate it),
+        # so this is a no-op; once spec-066 ships the rows arrive
+        # automatically without further wiring.
+        relationship_rows = self._build_relationship_rows(world=world, tick=tick)
+
+        # Spec-065 T049: run the conservation auditor against the about-to-
+        # commit hex state and merge its rows into the envelope so they
+        # land in conservation_audit_log inside the same transaction
+        # (FR-008a). Auditor evaluators are empty in the spec-065 first
+        # cut — once spec-066 registers concrete invariants this fills
+        # naturally without further wiring.
+        audit_rows: list[Any] = []
+        if self._auditor is not None:
+            audit_rows_typed, _alarms = self._auditor.audit_end_of_tick(
+                session_id=self._session_id,
+                tick=tick,
+                hex_rows=hex_rows,
+            )
+            audit_rows = list(audit_rows_typed)
 
         envelope = PerTickTransactionEnvelope(
             session_id=self._session_id,
@@ -326,9 +407,11 @@ class WorldStateBridge:
             hex_state_rows=hex_rows,
             external_node_rows=external_rows,
             boundary_register_rows=boundary_rows,
+            audit_log_rows=audit_rows,
             consciousness_state_rows=consciousness_rows,
             demographics_state_rows=demographics_rows,
             employment_state_rows=employment_rows,
+            relationship_state_rows=relationship_rows,
             determinism_hash=determinism_hash,
         )
         self._runtime.persist_tick_atomic(envelope)
@@ -480,6 +563,53 @@ class WorldStateBridge:
             ).model_copy(update={"population": 15})
 
         return entities
+
+    def _build_relationship_rows(
+        self,
+        *,
+        world: WorldState,
+        tick: int,
+    ) -> list[DynamicRelationshipState]:
+        """Convert ``world.relationships`` into per-tick rows for migration 0024.
+
+        Spec-065 T080. Today ``world.relationships`` is empty for the
+        bridged path (the engine that mutates this collection is wired
+        in spec-066), so this returns ``[]`` and the SQL aggregate over
+        ``dynamic_relationship_state`` yields NULL (handled gracefully
+        by the consumer with a 0.0 default). The wiring is correct from
+        day one: when spec-066 starts mutating ``world.relationships``,
+        the rows simply start arriving without any further change.
+
+        For SOLIDARITY edges the ``tension`` field is reused as the
+        solidarity intensity since :class:`Relationship` carries one
+        scalar; ``solidarity`` is mirrored from ``tension`` for SOLIDARITY
+        edges and defaults to 0.0 otherwise.
+        """
+        if not getattr(world, "relationships", None):
+            return []
+        assert self._session_id is not None
+        rows: list[DynamicRelationshipState] = []
+        for rel in world.relationships:
+            edge_type = (
+                rel.edge_type.value if hasattr(rel.edge_type, "value") else str(rel.edge_type)
+            )
+            # Truncate to migration's 32-char cap; map unknown edge types
+            # to OTHER so the CHECK constraint accepts them.
+            edge_type_truncated = edge_type[:32]
+            tension = float(getattr(rel, "tension", 0.0) or 0.0)
+            solidarity = tension if edge_type_truncated == "SOLIDARITY" else 0.0
+            rows.append(
+                DynamicRelationshipState(
+                    session_id=self._session_id,
+                    tick=tick,
+                    source_node_id=str(rel.source_id)[:64],
+                    target_node_id=str(rel.target_id)[:64],
+                    edge_type=edge_type_truncated,
+                    tension=max(0.0, min(1.0, tension)),
+                    solidarity=max(0.0, min(1.0, solidarity)),
+                )
+            )
+        return rows
 
     def _derive_subsystem_rows_for_county(
         self,

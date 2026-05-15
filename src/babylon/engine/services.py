@@ -101,6 +101,14 @@ class ServiceContainer:
     persistence: Any = field(default=None)
     tracer: Any = field(default=None)
 
+    # Spec-065 (engine-bridging) — optional services owned by the headless
+    # runner's run() and consumed by the engine systems in spec-066.
+    # Leaving these as Optional[Any] means existing ServiceContainer.create()
+    # call sites are unaffected; spec-066 will populate them when wiring the
+    # engine through the bridge.
+    boundary_register: Any = field(default=None)
+    auditor: Any = field(default=None)
+
     # Capital Volume III financial layer (Feature 024 - optional, default None)
     distribution_calculator: Any = field(default=None)
     interest_calculator: Any = field(default=None)

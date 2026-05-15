@@ -309,14 +309,28 @@ def run_simulation(
         if final_state is not None and hasattr(final_state, "entities")
         else 0.0
     )
-    max_tension = (
-        max(
+    # T080: prefer the cross-tick SQL-backed max from summary.terminal_state
+    # (computed as MAX(tension) FILTER (WHERE edge_type='EXPLOITATION') over
+    # dynamic_relationship_state). Falls back to the terminal in-memory
+    # snapshot for callers that don't have artifact access.
+    artifact_dir = getattr(result, "artifact_dir", None)
+    max_tension = 0.0
+    if artifact_dir is not None:
+        summary_path = artifact_dir / "summary.json"
+        if summary_path.exists():
+            try:
+                import json as _json
+
+                summary_payload = _json.loads(summary_path.read_text())
+                ts = summary_payload.get("terminal_state", {})
+                max_tension = float(ts.get("max_tension") or 0.0)
+            except Exception:
+                max_tension = 0.0
+    if max_tension == 0.0 and final_state is not None and hasattr(final_state, "relationships"):
+        max_tension = max(
             (float(getattr(r, "tension", 0.0)) for r in final_state.relationships),
             default=0.0,
         )
-        if final_state is not None and hasattr(final_state, "relationships")
-        else 0.0
-    )
 
     events = getattr(result, "events", ())
     milestone_keys = {
@@ -325,7 +339,7 @@ def run_simulation(
         "control_ratio_crisis": "CONTROL_RATIO_CRISIS",
         "terminal_decision": "TERMINAL_DECISION",
     }
-    phase_milestones: dict[str, int | None] = {k: None for k in milestone_keys}
+    phase_milestones: dict[str, int | None] = dict.fromkeys(milestone_keys)
     terminal_outcome: str | None = None
     for ev in events:
         ev_type = ev.get("event_type") if isinstance(ev, dict) else getattr(ev, "event_type", None)
@@ -334,9 +348,7 @@ def run_simulation(
             if ev_type == type_value and phase_milestones[legacy_key] is None:
                 phase_milestones[legacy_key] = ev_tick
         if ev_type == "TERMINAL_DECISION" and terminal_outcome is None:
-            details = (
-                ev.get("details") if isinstance(ev, dict) else getattr(ev, "details", {})
-            )
+            details = ev.get("details") if isinstance(ev, dict) else getattr(ev, "details", {})
             terminal_outcome = details.get("outcome") if isinstance(details, dict) else None
 
     return {

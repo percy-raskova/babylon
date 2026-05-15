@@ -39,6 +39,7 @@ def create_proletariat(
     effective_wealth: Currency = 0.0,
     unearned_increment: Currency = 0.0,
     ppp_multiplier: float = 1.0,
+    county_fips: str | None = None,
 ) -> SocialClass:
     """Create a proletariat (exploited class) social class.
 
@@ -89,6 +90,7 @@ def create_proletariat(
         effective_wealth=effective_wealth,
         unearned_increment=unearned_increment,
         ppp_multiplier=ppp_multiplier,
+        county_fips=county_fips,
     )
 
 
@@ -106,6 +108,7 @@ def create_bourgeoisie(
     effective_wealth: Currency = 0.0,
     unearned_increment: Currency = 0.0,
     ppp_multiplier: float = 1.0,
+    county_fips: str | None = None,
 ) -> SocialClass:
     """Create a bourgeoisie (exploiter class) social class.
 
@@ -156,6 +159,7 @@ def create_bourgeoisie(
         effective_wealth=effective_wealth,
         unearned_increment=unearned_increment,
         ppp_multiplier=ppp_multiplier,
+        county_fips=county_fips,
     )
 
 

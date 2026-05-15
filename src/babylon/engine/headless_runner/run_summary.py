@@ -114,4 +114,48 @@ def _iso_utc(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
 
 
-__all__ = ["build_summary"]
+def aggregate_external_node_flows(
+    *,
+    pool: Any,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    """Spec-065 T057: aggregate boundary_flow_register rows per external node.
+
+    Reads the per-tick rows produced by ``BoundaryFlowRegister.flush()``
+    that the bridge persists each tick, and computes per-external-node
+    cumulative summaries:
+
+      - ``total_phi_inflow``: SUM(magnitude) for ``flow_type='drain_edge'``
+      - ``total_trade_inbound``: SUM for ``flow_type='trade_inbound'``
+      - ``total_commute_outbound``: SUM for ``flow_type='commute_outbound'``
+      - ``tick_count_with_inflow``: distinct ticks with at least one row
+
+    Returns one entry per external node id present in the register.
+    Empty list when the engine has not yet integrated boundary flows.
+    """
+    sql = """
+        SELECT dest_node_id,
+               COALESCE(SUM(magnitude) FILTER (WHERE flow_type = 'drain_edge'), 0) AS phi_in,
+               COALESCE(SUM(magnitude) FILTER (WHERE flow_type = 'trade_inbound'), 0) AS trade_in,
+               COALESCE(SUM(magnitude) FILTER (WHERE flow_type = 'commute_outbound'), 0) AS commute_out,
+               COUNT(DISTINCT tick) FILTER (WHERE flow_type = 'drain_edge') AS tick_count
+        FROM boundary_flow_register
+        WHERE session_id = %s
+        GROUP BY dest_node_id
+        ORDER BY dest_node_id
+    """
+    with pool.connection() as conn:
+        rows = conn.execute(sql, (session_id,)).fetchall()
+    return [
+        {
+            "node_id": row[0],
+            "total_phi_inflow": float(row[1] or 0.0),
+            "total_trade_inbound": float(row[2] or 0.0),
+            "total_commute_outbound": float(row[3] or 0.0),
+            "tick_count_with_inflow": int(row[4] or 0),
+        }
+        for row in rows
+    ]
+
+
+__all__ = ["aggregate_external_node_flows", "build_summary"]

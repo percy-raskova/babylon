@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from babylon.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.models.world_state import WorldState
 from babylon.persistence.county_aggregation import (
@@ -126,6 +127,10 @@ class WorldStateBridge:
         self._hydrated = False
         self._event_capture: EventCapture | None = None
         self._endgame_detector: Any = None
+        # Spec-065 T055: BoundaryFlowRegister — created at hydrate_initial.
+        # Engine systems push rows via context.services; persist_tick
+        # flushes them to the envelope each tick.
+        self._boundary_register: BoundaryFlowRegister | None = None
 
     @property
     def runtime(self) -> Any:
@@ -138,6 +143,16 @@ class WorldStateBridge:
     @property
     def hydrated(self) -> bool:
         return self._hydrated
+
+    @property
+    def boundary_register(self) -> BoundaryFlowRegister | None:
+        """The session's BoundaryFlowRegister (T055).
+
+        Engine systems can push BoundaryFlowRegisterRow entries here;
+        :meth:`persist_tick` flushes them into the envelope each tick.
+        Returns None before :meth:`hydrate_initial` is called.
+        """
+        return self._boundary_register
 
     # ------------------------------------------------------------------
     # T040: hydrate_initial
@@ -219,6 +234,8 @@ class WorldStateBridge:
         self._sqlite_path = sqlite_path_resolved
         self._hex_template = tuple(hex_rows)
         self._external_template = tuple(external_rows)
+        # Spec-065 T055: one BoundaryFlowRegister per session.
+        self._boundary_register = BoundaryFlowRegister()
         self._hydrated = True
 
         logger.info(
@@ -296,11 +313,21 @@ class WorldStateBridge:
         hex_rows = [row.model_copy(update={"tick": tick}) for row in self._hex_template]
         external_rows = [row.model_copy(update={"tick": tick}) for row in self._external_template]
 
+        # Spec-065 T056: flush BoundaryFlowRegister for this tick.
+        # Empty list when the engine has not pushed any boundary rows
+        # (current state — engine integration is a follow-up).
+        boundary_rows = (
+            list(self._boundary_register.flush())
+            if self._boundary_register is not None
+            else []
+        )
+
         envelope = PerTickTransactionEnvelope(
             session_id=self._session_id,
             tick=tick,
             hex_state_rows=hex_rows,
             external_node_rows=external_rows,
+            boundary_register_rows=boundary_rows,
             consciousness_state_rows=consciousness_rows,
             demographics_state_rows=demographics_rows,
             employment_state_rows=employment_rows,

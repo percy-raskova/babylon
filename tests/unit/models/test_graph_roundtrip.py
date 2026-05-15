@@ -363,3 +363,92 @@ class TestFullStateRoundTrip:
             assert orig["id"] == rest["id"]
             assert orig["name"] == rest["name"]
             assert orig["sector_type"] == rest["sector_type"]
+
+
+class TestSpec065CountyFipsRoundTrip:
+    """Spec-065 T036a: SocialClass.county_fips round-trip and validation."""
+
+    def test_county_fips_default_is_none(self) -> None:
+        """A SocialClass constructed without county_fips defaults to None."""
+        from babylon.engine.factories import create_proletariat
+
+        entity = create_proletariat()
+        assert entity.county_fips is None
+
+    def test_factory_accepts_county_fips_kwarg(self) -> None:
+        """The proletariat factory accepts the spec-065 county_fips keyword."""
+        from babylon.engine.factories import create_bourgeoisie, create_proletariat
+
+        prole = create_proletariat(county_fips="26163")
+        bourg = create_bourgeoisie(county_fips="26099")
+        assert prole.county_fips == "26163"
+        assert bourg.county_fips == "26099"
+
+    def test_county_fips_pattern_rejects_non_numeric(self) -> None:
+        """Non-numeric strings violate the FIPS pattern."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            SocialClass(
+                id="C901",
+                name="Test",
+                role=SocialRole.PERIPHERY_PROLETARIAT,
+                county_fips="ABCDE",
+            )
+
+    def test_county_fips_pattern_rejects_wrong_length(self) -> None:
+        """3-digit, 4-digit, 6-digit strings violate the FIPS pattern."""
+        from pydantic import ValidationError
+
+        for bad in ("261", "2616", "261631"):
+            with pytest.raises(ValidationError):
+                SocialClass(
+                    id="C902",
+                    name="Test",
+                    role=SocialRole.PERIPHERY_PROLETARIAT,
+                    county_fips=bad,
+                )
+
+    def test_county_fips_pattern_accepts_empty_string(self) -> None:
+        """Empty string is explicitly allowed (means 'explicitly unattributed')."""
+        entity = SocialClass(
+            id="C903",
+            name="Test",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            county_fips="",
+        )
+        assert entity.county_fips == ""
+
+    def test_county_fips_survives_round_trip(self) -> None:
+        """to_graph/from_graph preserves county_fips for set, unset, empty."""
+        from babylon.engine.factories import create_proletariat
+
+        e1 = create_proletariat(id="C001", county_fips="26163")  # set
+        e2 = create_proletariat(id="C002")  # unset (None)
+        e3 = create_proletariat(id="C003", county_fips="")  # empty
+
+        state = WorldState(tick=0, entities={"C001": e1, "C002": e2, "C003": e3})
+        restored = WorldState.from_graph(state.to_graph(), tick=1)
+
+        assert restored.entities["C001"].county_fips == "26163"
+        assert restored.entities["C002"].county_fips is None
+        assert restored.entities["C003"].county_fips == ""
+
+    def test_backward_compatibility_no_county_fips_set(self) -> None:
+        """A WorldState built without ever setting county_fips serializes
+        and round-trips identically to spec-064 behavior — verifies the
+        new field doesn't break any existing test."""
+        from babylon.engine.factories import create_bourgeoisie, create_proletariat
+
+        worker = create_proletariat()
+        bourg = create_bourgeoisie()
+
+        state = WorldState(
+            tick=0,
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: bourg},
+        )
+        restored = WorldState.from_graph(state.to_graph(), tick=1)
+
+        # Both entities round-trip; county_fips stays None on both sides.
+        assert restored.entities[PERIPHERY_WORKER_ID].county_fips is None
+        assert restored.entities[COMPRADOR_ID].county_fips is None

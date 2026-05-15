@@ -176,21 +176,24 @@ def aggregate_consciousness_for_county(
     """
 
 def fetch_population_for_county_at_tick(
-    runtime: PostgresRuntime,
+    sqlite_path: Path,
     county_fips: str,
     tick: int,
     start_year: int,
 ) -> int:
     """Census population for (county_fips, year_at_tick) from SQLite.
 
-    Year at tick = start_year + tick // 52 (weekly cadence). Reads
-    fact_census_* via the existing SQLite reference adapter. Falls
-    back to fact_qcew_annual.employment × 2.5 with audit row
-    (severity='warning') if no Census row covers (county, year).
+    Year at tick = start_year + tick // 52 (weekly cadence). Primary:
+    SUM(fact_census_income.household_count) for the (county, year)
+    — the per-bracket Census rolls up to the ACS county-population
+    total when summed across all (race, source, bracket) buckets
+    (verified for Wayne 2010: 1.77M vs ACS 1.82M). Fallback:
+    SUM(fact_qcew_annual.employment) × 0.33 when Census has no row.
+    Raises ReferenceDataMissingError if both miss.
     """
 
 def fetch_employment_proxy_for_county_at_tick(
-    runtime: PostgresRuntime,
+    sqlite_path: Path,
     county_fips: str,
     tick: int,
     start_year: int,
@@ -204,6 +207,17 @@ def fetch_employment_proxy_for_county_at_tick(
     preflight, not here).
     """
 ```
+
+**Signature note (2026-05-15 reconciliation)**: The two SQLite
+fetchers take ``sqlite_path: Path``, not ``runtime: PostgresRuntime``
+as the original §1.6 draft prescribed. The data is in SQLite (not
+Postgres) and the existing convention from
+``babylon.engine.headless_runner.scopes`` is to accept a path
+parameter and open ``with sqlite3.connect(sqlite_path) as conn``.
+The bridge will pass ``self._defines.sqlite_path`` (or equivalent)
+when calling these helpers. The two engine-state aggregators
+(``aggregate_survival_for_county``, ``aggregate_consciousness_for_county``)
+need no SQLite access — they read purely from the in-memory WorldState.
 
 **Module is import-cycle-safe**: depends on `babylon.models` (for
 `WorldState` and `TernaryConsciousness`) and `babylon.persistence`

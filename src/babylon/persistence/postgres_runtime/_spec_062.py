@@ -226,9 +226,10 @@ def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvel
     Idempotent on retry-after-crash via ``ON CONFLICT DO NOTHING`` on every
     composite primary key.
 
-    The four buffered INSERTs (hex_state, external_node, boundary_register,
-    audit_log) execute in a fixed order so that any constraint violation
-    in audit_log still rolls back the earlier hex_state inserts.
+    The seven buffered INSERTs (hex_state, external_node, boundary_register,
+    audit_log, plus the spec-065 trio: consciousness_state, demographics_state,
+    employment_state) execute in a fixed order so that any constraint
+    violation in a later table still rolls back the earlier inserts.
     """
     with self._pool.connection() as conn, conn.transaction():
         if envelope.hex_state_rows:

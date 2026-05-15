@@ -105,16 +105,30 @@ independent implementation and testing.
 - [ ] T035 [US1] Refactor `src/babylon/persistence/hex_hydrator.py` — replace `energy_stock = raw_material_stock = biocapacity/2` with the per-county allocations per `contracts/hex_hydrator_input.yaml.per_column_sources` (`fact_state_minerals` × population-share for energy, × area-share for raw materials, `fact_hickel_erdi_annual` × land-area-share for biocapacity).
 - [ ] T036 [US1] Extend `src/babylon/persistence/postgres_initialization.py::initialize_session` with the FR-022 three-mode reference-data window preflight: silent / warn-and-clamp / hard-refuse (exit 3 with named-triple error message). Implement the per-metric data-window probe as a set of `SELECT MAX(year), MIN(year)` queries against the listed reference tables.
 
-### Subsystem row writers (parallel — distinct files)
+### SocialClass schema change (sequential — touches model + factories)
 
-- [ ] T037 [P] [US1] Implement `DynamicConsciousnessState.from_worldstate(world, tick, fips)` constructor helper in `src/babylon/persistence/county_state.py`: reads `world.consciousness_simplex[fips]` and `world.entities[fips].p_acquiescence/p_revolution`.
-- [ ] T038 [P] [US1] Implement `DynamicDemographicsState.from_worldstate(world, tick, fips)` in `src/babylon/persistence/county_state.py`: reads `world.demographics_per_county[fips]`.
-- [ ] T039 [P] [US1] Implement `DynamicEmploymentState.from_worldstate(world, tick, fips)` in `src/babylon/persistence/county_state.py`: reads `world.employment_per_county[fips]`.
+**Note (2026-05-15 reconciliation, see research.md R10)**: The
+original T037–T039 prescribed flat WorldState field reads
+(`world.consciousness_simplex[fips]`, etc.) that don't exist on the
+current WorldState. Rewritten to derive/aggregate from existing state
++ reference data via a new `county_aggregation` module. The bridge
+is a derivation adapter, not a flat serializer. Per-county entities
+are created in `hydrate_initial` and tagged with the new optional
+`SocialClass.county_fips` field.
+
+- [ ] T036a [US1] Add optional `county_fips: str | None = None` field to `SocialClass` in `src/babylon/models/entities/social_class.py` per `data-model.md §1.7`. Pattern `^\d{5}$|^$` so empty-string and 5-digit FIPS both pass; existing tests that don't set the field continue to pass. Update factories (`create_proletariat`, `create_bourgeoisie` in `src/babylon/engine/factories.py`) to accept the new kwarg with default `None`. Update `WorldState.to_graph()` / `from_graph()` round-trip to preserve the field (round-trip test in `tests/unit/models/test_world_state_graph_roundtrip.py`).
+
+### County aggregation helpers (parallel — same new module, distinct functions)
+
+- [ ] T037 [P] [US1] Create `src/babylon/persistence/county_aggregation.py` with `aggregate_survival_for_county(world, county_fips) -> tuple[float, float, int]` per `data-model.md §1.6` + `research.md R10`. Population-weighted mean of `entity.p_acquiescence` and `entity.p_revolution` over entities with `entity.county_fips == county_fips`. Returns `(p_acq, p_rev, total_population)`; on no-match returns `(0.0, 0.0, 0)` so callers can emit a `warning` audit row.
+- [ ] T037a [P] [US1] In the same module, implement `aggregate_consciousness_for_county(world, county_fips) -> TernaryConsciousness` per `data-model.md §1.6` + `research.md R10` bridge mapping. For each entity in the county, compute `r_i = cc × (1 − ni)`, `f_i = ni × (1 − cc)`, `l_i = max(0, 1 − r_i − f_i)` (where `cc, ni` come from `entity.ideology`); then population-weighted mean. Asserts the simplex invariant `abs(r + l + f − 1.0) < 1e-9` before returning. Unit test in `tests/unit/persistence/test_county_aggregation.py::TestAggregateConsciousness` covers: simplex corners (revolutionary, fascist, liberal), Jackson midpoint (cc=0.5, ni=0.5 → r=0.25, l=0.5, f=0.25), the degenerate (1, 1) → "national revolutionary" routes to pure liberal, and the empty-entity case (returns substrate default).
+- [ ] T038 [P] [US1] In the same module, implement `fetch_population_for_county_at_tick(runtime, county_fips, tick, start_year) -> int` per `data-model.md §1.6`. SQLite query against `fact_census_*` for `(county_id, start_year + tick // 52)`; fall back to `fact_qcew_annual.employment × 2.5` with a `warning` audit row on Census miss.
+- [ ] T039 [P] [US1] In the same module, implement `fetch_employment_proxy_for_county_at_tick(runtime, county_fips, tick, start_year) -> float` per `data-model.md §1.6`. SQLite query: `SUM(fact_qcew_annual.employment)` over industries for `(county_id, year)` divided by 52. Raise `ReferenceDataMissingError` if the county-year is outside the QCEW window (the FR-022 preflight in T036 normally catches this earlier — this is a defensive last-line check).
 
 ### Bridge implementation (sequential — same file)
 
-- [ ] T040 [US1] Implement `WorldStateBridge.hydrate_initial(session_id, scope_fips) → WorldState` in `src/babylon/engine/headless_runner/bridge.py`. Queries `view_runtime_trace_emission` at `tick = 0` for the scope, plus `dynamic_external_node_state` for boundary nodes, and assembles a `WorldState` Pydantic instance.
-- [ ] T041 [US1] Implement `WorldStateBridge.persist_tick(world, tick, determinism_hash) → None` in `src/babylon/engine/headless_runner/bridge.py`. Serializes WorldState → 6 row-lists (hex/external/boundary/audit/consciousness/demographics/employment); constructs envelope; calls `runtime.persist_tick_atomic`.
+- [ ] T040 [US1] Implement `WorldStateBridge.hydrate_initial(session_id, scope_fips, event_capture=None) → WorldState` in `src/babylon/engine/headless_runner/bridge.py`. (a) Queries `view_runtime_trace_emission` at `tick = 0` for the scope to read tick-0 hex aggregates. (b) For each `county_fips` in scope, instantiates one proletariat + one bourgeoisie SocialClass entity tagged with that FIPS via the updated factories (T036a) using QCEW wages / population as init parameters. (c) Reads `dynamic_external_node_state` for boundary node init. (d) Subscribes the (optional) `event_capture` to the engine's EventBus. (e) Sets `_hydrated = True` only AFTER all of the above succeed — preserves retry semantics if any step raises (fixes the Phase-2 stub's premature mutation bug). Returns a fully-populated `WorldState`.
+- [ ] T041 [US1] Implement `WorldStateBridge.persist_tick(world, tick, determinism_hash) → None` in `src/babylon/engine/headless_runner/bridge.py`. For each `county_fips` in `self._scope_fips`: call `aggregate_survival_for_county`, `aggregate_consciousness_for_county`, `fetch_population_for_county_at_tick`, `fetch_employment_proxy_for_county_at_tick`. Assemble into `DynamicConsciousnessState`, `DynamicDemographicsState`, `DynamicEmploymentState` rows. Also serialize hex_state_rows + external_node_rows from `world.graph`. Construct `PerTickTransactionEnvelope` and call `runtime.persist_tick_atomic(envelope)`. The envelope is a single Postgres transaction — partial failures roll back atomically.
 
 ### Runner refactor (sequential — same file)
 
@@ -274,7 +288,8 @@ independent implementation and testing.
 - **User Story 1 (P1)**: Depends on Foundational.
   - Tests T018–T029 mostly parallel (separate test files); T026-T029 share `test_engine_bridge.py` so sequential.
   - Hex hydrator T030-T036 sequential (same file).
-  - Subsystem writers T037-T039 parallel.
+  - SocialClass schema change T036a sequential (touches model + factories + graph round-trip).
+  - County aggregation helpers T037 ∥ T037a ∥ T038 ∥ T039 — 4-way parallel (same module, distinct functions).
   - Bridge T040-T041 sequential.
   - Runner T042-T044 sequential.
 - **User Story 2 (P2)**: Depends on US1 (auditor needs the bridged tick loop to audit). T045-T048 parallel (separate test files). T049-T052 sequential against runner.py / argparse_cli.py / .mise.toml.
@@ -304,7 +319,7 @@ independent implementation and testing.
 - **Phase 2 migrations**: T006 ∥ T007 ∥ T008 — 3-way parallel.
 - **Phase 2 row models**: T010 ∥ T011 ∥ T012 — 3-way parallel.
 - **Phase 3 US1 tests (per-file)**: T018 ∥ T019 ∥ T020 ∥ T021 ∥ T022 ∥ T023 ∥ T024 ∥ T025 — 8-way parallel (separate files).
-- **Phase 3 US1 subsystem writers**: T037 ∥ T038 ∥ T039 — 3-way parallel.
+- **Phase 3 US1 county aggregation helpers**: T037 ∥ T037a ∥ T038 ∥ T039 — 4-way parallel (same module, distinct functions; T036a precedes them since the aggregators depend on the `county_fips` field).
 - **Phase 4 US2 tests**: T045 ∥ T046 ∥ T047 ∥ T048 — 4-way parallel.
 - **Phase 5 US3 tests**: T053 ∥ T054 — 2-way parallel.
 - **Phase 6 US4 tests**: T058 ∥ T059 ∥ T060 ∥ T061 ∥ T062 — 5-way parallel.
@@ -356,7 +371,7 @@ After Phase 2 checkpoints, US1's parallel test-writing phase can run as
 ```
 
 All 8 should FAIL initially (red phase). Then T030–T036 (hex hydrator
-upgrade), T037–T039 (subsystem writers), and T040–T044 (bridge + runner
+upgrade), T036a (county_fips field), T037–T039 + T037a (county aggregation helpers), and T040–T044 (bridge + runner
 refactor) take them green.
 
 ---
@@ -366,8 +381,8 @@ refactor) take them green.
 Every task in this file satisfies the strict format:
 `- [ ] T### [P?] [Story?] Description with file path`
 
-- ✓ All 87 tasks begin with `- [ ]`
-- ✓ All tasks have unique sequential IDs T001–T087
+- ✓ All 89 tasks begin with `- [ ]` (87 original + 2 added during 2026-05-15 reconciliation: T036a, T037a)
+- ✓ All tasks have unique sequential IDs T001–T087 plus T036a, T037a
 - ✓ Parallelizable tasks marked `[P]`
 - ✓ User-story tasks have `[US1]` / `[US2]` / `[US3]` / `[US4]` / `[US5]` labels
 - ✓ Setup / Foundational / Polish tasks have no story labels
@@ -377,10 +392,10 @@ Every task in this file satisfies the strict format:
 
 ## Summary
 
-- **Total tasks**: 87
+- **Total tasks**: 89 (was 87; reconciliation added T036a + T037a)
 - **Phase 1 (Setup)**: 5 tasks (T001–T005)
 - **Phase 2 (Foundational)**: 12 tasks (T006–T017)
-- **Phase 3 (US1, MVP)**: 27 tasks (T018–T044) — 12 tests + 15 implementation
+- **Phase 3 (US1, MVP)**: 29 tasks (T018–T044 + T036a + T037a) — 12 tests + 17 implementation
 - **Phase 4 (US2)**: 8 tasks (T045–T052) — 4 tests + 4 implementation
 - **Phase 5 (US3)**: 5 tasks (T053–T057) — 2 tests + 3 implementation
 - **Phase 6 (US4)**: 8 tasks (T058–T065) — 5 tests + 3 implementation

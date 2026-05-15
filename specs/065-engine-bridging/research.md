@@ -492,3 +492,186 @@ gated on `BABYLON_TEST_PG_DSN` + `BABYLON_SLOW_TESTS=1`.
   primary. cProfile is exposed via `tools/profiler.py` for operators
   who want flamegraph-level detail; the integration test just asserts
   the budget.
+
+---
+
+## R10: WorldState ↔ subsystem state reconciliation (post-foundation gap)
+
+**Open question** (surfaced during Phase 1+2 implementation review, 2026-05-15):
+The spec's `contracts/subsystem_state_tables.yaml` and `tasks.md` T037–T039
+prescribed `source_engine_value` paths that do not exist on the current
+`WorldState`:
+
+- `world.consciousness_simplex[county_fips]` — no such field
+- `world.demographics_per_county[county_fips]` — no such field
+- `world.employment_per_county[county_fips]` — no such field
+- `state.entities[county_fips]` — `WorldState.entities` is `dict[str, SocialClass]`
+  where the `SocialClass.id` validator pattern is `^C[0-9]{3}$`
+  (e.g., `"C001"`), NOT a 5-digit FIPS code
+
+Verified by `WorldState.model_fields.keys()`:
+```
+contradiction_frames, economy, entities, event_log, events,
+industries, institution_relations, institutions, key_figures,
+organizations, relationships, state_finances, territories, tick
+```
+
+Additionally:
+- `TernaryConsciousness(r, l, f)` exists as a Pydantic model in
+  `babylon.models.entities.consciousness`, but it is attached to
+  `CommunityState`, which is itself NOT a top-level WorldState
+  field — communities are stored hypergraph-side (Feature 022/029),
+  not on WorldState directly.
+- `SocialClass.ideology` is an `IdeologicalProfile`
+  (`class_consciousness`, `national_identity`, `agitation`) — the
+  legacy dual-axis model from Sprint 3.4.3 (George Jackson refactor),
+  NOT a `TernaryConsciousness`.
+- Per-county `population` and `employment` are not WorldState fields
+  at all. Population exists per-`SocialClass` ("block size", line 368
+  of `models/entities/social_class.py`) and per-`Territory`
+  ("human shield count", line 112 of `models/entities/territory.py`),
+  but neither is county-indexed.
+
+**Decision**: The bridge is a **derivation/aggregation adapter**, not a
+flat field-by-field WorldState→table serializer. The 5 previously-NULL
+columns flow from these sources:
+
+| Column | Source kind | Concrete derivation |
+|---|---|---|
+| `population` | reference data | SQLite `fact_census_*` for `(county_fips, year)` interpolated to weekly per spec-062 year-scoped policy. Fall back to `fact_qcew_annual.employment × 2.5` if Census missing for that county-year (with audit row warning). |
+| `employment_proxy` | reference data | `SUM(fact_qcew_annual.employment) / 52` for `(county_fips, year)`. Same source as hex `v`. |
+| `p_acquiescence` | engine-computed → aggregated | Population-weighted mean of `entity.p_acquiescence` over `entities` where `entity.county_fips == fips`. |
+| `p_revolution` | engine-computed → aggregated | Population-weighted mean of `entity.p_revolution` over `entities` where `entity.county_fips == fips`. |
+| `ideology_r`, `ideology_l`, `ideology_f` | engine-computed → mapped → aggregated | For each entity in the county: apply the **bridge mapping** below to convert `IdeologicalProfile → (r, l, f)`. Then population-weighted average per county. |
+
+**Bridge mapping (IdeologicalProfile → TernaryConsciousness)**:
+
+```
+r = class_consciousness × (1 - national_identity)
+f = national_identity × (1 - class_consciousness)
+l = max(0, 1 - r - f)
+```
+
+Properties of this mapping (verified algebraically):
+- `r + l + f = 1` by construction (l is the remainder).
+- All three are in `[0, 1]` (both `cc` and `ni` are `Probability` ∈ [0, 1],
+  products are in [0, 1], `r + f ≤ 1` so `l ≥ 0`).
+- The corners of `(cc, ni)` map to the corners of the simplex:
+  - `(1, 0)` → `(r=1, l=0, f=0)` — pure revolutionary (class-conscious + internationalist)
+  - `(0, 1)` → `(r=0, l=0, f=1)` — pure fascist (false-conscious + nativist)
+  - `(0, 0)` → `(r=0, l=1, f=0)` — pure liberal (no class consciousness, no nativism)
+  - `(0.5, 0.5)` → `(r=0.25, l=0.5, f=0.25)` — Jackson's "liberal hegemony" midpoint
+  - `(1, 1)` → `(r=0, l=0, f=0)` then l=1 — degenerate (a "national revolutionary"
+    is ambiguous; conventionally we route to liberal). Documented as edge case;
+    the audit row emits a `warning` severity when an entity hits this corner.
+
+This is the spec-065 bridge convention; it is NOT the spec-034 native
+`compute_ternary_consciousness(community_type, org_landscape, substrate_floor)`
+computation. Spec-034's native computation requires per-community
+organizational landscapes which are not yet wired to per-county output;
+that upgrade is deferred to a future spec. The mapping above is the
+minimal-invasive route that produces real, non-uniform, simplex-valid
+`(r, l, f)` from existing per-entity `IdeologicalProfile` state.
+
+**Schema change required**: `SocialClass.county_fips: str | None = None`.
+
+This is the **only** WorldState-side change for spec-065. Rationale:
+
+- Optional, defaults to `None` — every existing test that doesn't care
+  about county attribution continues to pass without modification.
+- 5-digit FIPS pattern is documented in the field's `description` and
+  validated by a regex if non-None.
+- The factories (`create_proletariat`, `create_bourgeoisie`) gain an
+  optional `county_fips` keyword that runs are free to pass.
+- Spec-064 MVP creates a single set of entities for the whole scope;
+  spec-065 Phase 3 will create per-county entity sets (one proletariat
+  + one bourgeoisie per county_fips) and tag them with the FIPS code.
+- The aggregation step in `bridge.persist_tick` iterates
+  `world.entities.values()`, filters by `entity.county_fips == fips`,
+  and computes population-weighted means.
+
+**Why this resolution (vs. add `world.county_subsystem_state: dict[str, …]`)**:
+
+- The proposed dict would be **derived state**, not authoritative state.
+  Adding derived state to WorldState breaks Constitution II.6 (State
+  is Data, Engine is Transformation) — derived values belong on
+  computed views (which is exactly what `view_runtime_trace_emission`
+  is).
+- Per-county aggregates have one canonical home: the trace view.
+  They're materialized into the subsystem tables at `persist_tick`,
+  read back via the view, and never re-read from WorldState by any
+  engine system. Storing them on WorldState would duplicate data and
+  invite drift between engine state and derived rollups.
+- A single new `county_fips` field on SocialClass is a 3-line schema
+  change with default `None`; the alternative would be a new top-level
+  Pydantic model + dict field on WorldState (10+ lines, plus
+  `to_graph`/`from_graph` serialization updates, plus a derived-state
+  rule violation).
+
+**Rationale**:
+- The spec's high-level goal — "every column populated with real,
+  tick-varying values" — is satisfied. `population` and
+  `employment_proxy` come from real reference data (same source as
+  hex `v`). `p_acquiescence`, `p_revolution`, and ideology r/l/f come
+  from real per-entity engine state aggregated per county.
+- The single `county_fips` field is the minimum invasive change
+  needed to make per-entity state attributable per county.
+- The bridge mapping for ideology is documented, deterministic,
+  simplex-preserving, and uses only data already in `IdeologicalProfile`.
+
+**Alternatives considered**:
+
+- *Add `world.consciousness_simplex: dict[str, TernaryConsciousness]`,
+  `world.demographics_per_county`, `world.employment_per_county` as
+  the spec originally prescribed* — rejected. Per-county aggregates
+  are derived state; storing them on WorldState violates II.6 and
+  invites drift. The trace view already serves as the canonical
+  derived-rollup interface.
+- *Treat each county as a single SocialClass with id == FIPS code,
+  relaxing the `^C[0-9]{3}$` pattern* — rejected. Pattern relaxation
+  is a broader schema change; the optional `county_fips` field is
+  surgical. Also, distinct entities per role (proletariat,
+  bourgeoisie, etc.) per county is the natural model and preserves
+  the existing per-role distinctions that engine systems already use.
+- *Use spec-034's `compute_ternary_consciousness` from organizational
+  landscapes* — rejected for MVP scope. Organizations are not yet
+  attributed per county; that wiring is bigger than spec-065 should
+  swallow. The bridge mapping from `IdeologicalProfile` is the
+  shippable substitute.
+
+**Implementation plan** (replaces original T037-T039 scope; tracked in
+the updated `tasks.md`):
+
+- **T037a** (new): Add `county_fips: str | None = None` field to
+  `SocialClass` with optional pattern validation. Migrate factories
+  to accept the field as an optional kwarg.
+- **T037b** (new): Implement
+  `babylon.persistence.county_aggregation.aggregate_survival_for_county(world, fips)`
+  returning `(p_acquiescence, p_revolution, total_population)` —
+  population-weighted means over entities filtered by `county_fips`.
+- **T037c** (new): Implement
+  `babylon.persistence.county_aggregation.aggregate_consciousness_for_county(world, fips)`
+  returning `TernaryConsciousness(r, l, f)` — population-weighted
+  means of the bridge-mapped ideology components.
+- **T038** (rewritten): Implement
+  `babylon.persistence.county_aggregation.fetch_population_for_county_at_tick(runtime, fips, tick, start_year)` —
+  SQLite query against `fact_census_*` with year-scoped interpolation.
+- **T039** (rewritten): Implement
+  `babylon.persistence.county_aggregation.fetch_employment_proxy_for_county_at_tick(runtime, fips, tick, start_year)` —
+  SQLite query against `fact_qcew_annual` with `/52` weekly scaling.
+- **T040** (rewritten): `WorldStateBridge.hydrate_initial` creates
+  per-county entity sets tagged with `county_fips`. Tick 0 invokes
+  `engine.run_tick` once to populate `p_acquiescence`, `p_revolution`,
+  ideology via the existing engine systems.
+- **T041** (rewritten): `WorldStateBridge.persist_tick` calls the
+  four aggregator/fetcher helpers per county, assembles the three
+  new envelope row-lists, and persists.
+
+R7 (line 396-400) is partially superseded by R10. R7's claim that
+"population" comes from `fact_census_*` stands. R7's claim that
+"ideology_r/l/f is initialized to (1/3, 1/3, 1/3) at tick 0 and
+evolves via ConsciousnessSystem" is rewritten by R10: at tick 0 the
+mapping above runs against the engine-initialized `IdeologicalProfile`
+defaults; in subsequent ticks the same mapping runs against engine-mutated
+`IdeologicalProfile` state. There is no separate ConsciousnessSystem
+producing per-county TernaryConsciousness in spec-065 scope.

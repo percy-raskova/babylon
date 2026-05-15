@@ -1,0 +1,163 @@
+contract: subsystem_state_tables
+contract_version: "1.0"
+feature: 065-engine-bridging
+description: >-
+  Schemas for the three new per-tick subsystem state tables that
+  this feature introduces. All three are keyed on
+  (session_id, tick, county_fips) and owned by distinct subsystems
+  per Constitution II.11. The trace-emission view
+  (view_runtime_trace_emission, migration 0023) JOINs all three
+  via LEFT JOIN to source the previously-NULL columns.
+
+migrations:
+  - "0020_dynamic_consciousness_state.sql"
+  - "0021_dynamic_demographics_state.sql"
+  - "0022_dynamic_employment_state.sql"
+  - "0023_trace_view_engine_bridged.sql"
+
+tables:
+
+  dynamic_consciousness_state:
+    owner_subsystem: consciousness
+    owner_engine_class: ConsciousnessSystem
+    write_path: "PerTickTransactionEnvelope.consciousness_state_rows → persist_tick_atomic"
+    read_path: "view_runtime_trace_emission only (II.11)"
+    columns:
+      - name: session_id
+        type: UUID
+        nullable: false
+        role: identity
+      - name: tick
+        type: INTEGER
+        nullable: false
+        constraints: ["tick >= 0"]
+        role: identity
+      - name: county_fips
+        type: TEXT
+        nullable: false
+        constraints: ['county_fips ~ ''^\\d{5}$''']
+        role: identity
+      - name: p_acquiescence
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "probability"
+        source_engine_value: "state.entities[county].p_acquiescence"
+      - name: p_revolution
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "probability"
+        source_engine_value: "state.entities[county].p_revolution"
+      - name: ideology_r
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "simplex coordinate"
+        source_engine_value: "state.consciousness_simplex[county].r"
+      - name: ideology_l
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "simplex coordinate"
+        source_engine_value: "state.consciousness_simplex[county].l"
+      - name: ideology_f
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "simplex coordinate"
+        source_engine_value: "state.consciousness_simplex[county].f"
+    primary_key: ["session_id", "tick", "county_fips"]
+    indexes:
+      - name: ix_consciousness_session_tick
+        columns: ["session_id", "tick"]
+    append_only: true
+    invariants:
+      - name: ternary_simplex_sum
+        rule: "abs((ideology_r + ideology_l + ideology_f) - 1.0) <= 1e-9"
+        enforced_by: ConsciousnessSystem (not DB CHECK — float drift)
+        gated_by: spec-053 US3 invariant test
+
+  dynamic_demographics_state:
+    owner_subsystem: demographics
+    owner_engine_class: "(read-derived from Census; no dedicated engine system)"
+    write_path: "PerTickTransactionEnvelope.demographics_state_rows → persist_tick_atomic"
+    read_path: "view_runtime_trace_emission only (II.11)"
+    columns:
+      - name: session_id
+        type: UUID
+        nullable: false
+        role: identity
+      - name: tick
+        type: INTEGER
+        nullable: false
+        constraints: ["tick >= 0"]
+        role: identity
+      - name: county_fips
+        type: TEXT
+        nullable: false
+        constraints: ['county_fips ~ ''^\\d{5}$''']
+        role: identity
+      - name: population
+        type: BIGINT
+        nullable: false
+        constraints: ["population >= 0"]
+        units: "persons"
+        source_data: "fact_census_* interpolated to weekly cadence (spec-062 year-scoped policy)"
+    primary_key: ["session_id", "tick", "county_fips"]
+    indexes:
+      - name: ix_demographics_session_tick
+        columns: ["session_id", "tick"]
+    append_only: true
+
+  dynamic_employment_state:
+    owner_subsystem: employment
+    owner_engine_class: "ImperialRentSystem (modulates) / (read-derived from QCEW)"
+    write_path: "PerTickTransactionEnvelope.employment_state_rows → persist_tick_atomic"
+    read_path: "view_runtime_trace_emission only (II.11)"
+    columns:
+      - name: session_id
+        type: UUID
+        nullable: false
+        role: identity
+      - name: tick
+        type: INTEGER
+        nullable: false
+        constraints: ["tick >= 0"]
+        role: identity
+      - name: county_fips
+        type: TEXT
+        nullable: false
+        constraints: ['county_fips ~ ''^\\d{5}$''']
+        role: identity
+      - name: employment_proxy
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["employment_proxy >= 0"]
+        units: "FTE-equivalent"
+        source_data: "fact_qcew_annual.employment summed per (county, year) / 52 for weekly"
+    primary_key: ["session_id", "tick", "county_fips"]
+    indexes:
+      - name: ix_employment_session_tick
+        columns: ["session_id", "tick"]
+    append_only: true
+
+view_extension:
+
+  view_runtime_trace_emission_v2:
+    migration: "0023_trace_view_engine_bridged.sql"
+    operation: DROP + CREATE (column count + JOIN cardinality changes)
+    upstream_tables_added:
+      - dynamic_consciousness_state
+      - dynamic_demographics_state
+      - dynamic_employment_state
+    join_pattern: |
+      LEFT JOIN per (session_id, tick, county_fips) so a missing
+      subsystem row emits NULL (preserves edge case E3 behavior).
+    column_count_unchanged: true
+    column_ordering_unchanged: true
+    semantics_changed:
+      - >-
+        Previously-NULL columns (p_acquiescence, p_revolution,
+        ideology_r/l/f, population, employment_proxy) now sourced
+        from the new subsystem tables.

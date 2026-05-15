@@ -70,6 +70,27 @@ class SimulationRunConfig(BaseModel):
     dry_run: bool = Field(default=False)
     verbose: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO")
 
+    # Spec-065 additions
+    strict: bool = Field(
+        default=False,
+        description=(
+            "When True, the runner exits with code 1 on first "
+            "conservation_audit_log row with severity='alarm'. The "
+            "qa:e2e-regression mise task enables this; ad-hoc runs "
+            "default to False (informational audit log only)."
+        ),
+    )
+    endgame_detector: str | None = Field(
+        default=None,
+        description=(
+            "Optional dotted import path to an EndgameDetector instance "
+            "(e.g., babylon.engine.observer.ImperialCollapseDetector). "
+            "When set, the runner polls the detector at end of every "
+            "tick; on positive return the loop halts and exit_reason "
+            "becomes 'early_terminated'."
+        ),
+    )
+
     @field_validator("scope_fips")
     @classmethod
     def _validate_fips(cls, value: frozenset[str]) -> frozenset[str]:
@@ -166,3 +187,7 @@ class SimulationRunResult(BaseModel):
 
     trace_rows: Iterator[TraceRow] | None = None
     artifact_dir: Path | None = None
+
+    # Spec-065 additions
+    events: tuple[dict[str, Any], ...] = Field(default_factory=tuple)
+    final_world_state: Any = Field(default=None)

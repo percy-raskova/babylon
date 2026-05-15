@@ -331,8 +331,8 @@ poetry run python tools/monte_carlo.py \
 """
 
 [tasks."sim:e2e-michigan"]
-description = "Headless 1000-tick Michigan + Canada e2e simulation (spec-064)"
-run = "poetry run python -m babylon.engine.headless_runner --scope michigan-canada"
+description = "Headless 520-tick Michigan + Canada e2e simulation (2010-2020 real-data window, spec-065)"
+run = "poetry run python -m babylon.engine.headless_runner --scope michigan-canada --ticks 520"
 
 # =============================================================================
 # TUNING (Namespaced)
@@ -450,10 +450,10 @@ description = "Generate regression baselines (after intentional changes)"
 run = "poetry run python tools/regression_test.py generate --force"
 
 [tasks."qa:e2e-regression"]
-description = "Run headless e2e sim, then compare to michigan-e2e baseline (spec-064)"
+description = "Run headless e2e sim with --strict, then compare to michigan-e2e baseline (spec-065)"
 run = """
 ARTIFACT_DIR=$(poetry run python -m babylon.engine.headless_runner \\
-  --scope detroit-tri-county --ticks 5)
+  --scope detroit-tri-county --ticks 5 --strict)
 poetry run python tools/regression_test.py compare-bundle \\
   --bundle "$ARTIFACT_DIR" \\
   --baseline tests/baselines/michigan-e2e.json

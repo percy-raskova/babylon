@@ -115,6 +115,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bootstrap session + tick 0 only; skip the full tick loop.",
     )
     parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help=(
+            "Spec-065: exit code 1 on first severity='critical'/'alarm' "
+            "conservation_audit row. CI gate (qa:e2e-regression) enables "
+            "this; ad-hoc runs default to informational audit only."
+        ),
+    )
+    parser.add_argument(
+        "--endgame-detector",
+        type=str,
+        default=None,
+        help=(
+            "Spec-065: dotted import path to an EndgameDetector "
+            "(e.g., babylon.engine.observer.ImperialCollapseDetector). "
+            "When set, polled per tick; positive return halts the loop "
+            "with exit_reason='early_terminated'."
+        ),
+    )
+    parser.add_argument(
         "--sqlite-path",
         type=Path,
         default=Path("data/sqlite/marxist-data-3NF.sqlite"),

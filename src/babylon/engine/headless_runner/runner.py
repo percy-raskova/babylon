@@ -205,63 +205,30 @@ def _validate_preflight(config: SimulationRunConfig) -> None:
 
 def _carry_forward_tick(
     *,
-    runtime: Any,
-    session_id: UUID,
-    tick: int,
-    determinism_hash: str,
+    runtime: Any,  # noqa: ARG001 — kept in signature for the future engine-bridging path
+    session_id: UUID,  # noqa: ARG001 — same
+    tick: int,  # noqa: ARG001 — same
+    determinism_hash: str,  # noqa: ARG001 — same
 ) -> None:
-    """Persist a no-op tick that carries hex state forward by one tick.
+    """Phase-3 MVP no-op: don't persist per-tick rows.
 
-    This is the MVP advancement: the next tick's hex_state row set is
-    a copy of the previous tick's rows, just with the tick number
-    incremented. It guarantees the trace view returns rows for every
-    requested tick. Future specs replace this with real engine-driven
-    advancement.
+    The MVP runner carries hex state forward unchanged tick-over-tick.
+    Persisting N byte-identical copies of the same ~30k-row payload
+    blows past the SC-002 wallclock budget on the full Michigan +
+    Canada scope (Postgres B-tree maintenance over 4 indices on
+    ~30M total rows is the bottleneck).
+
+    Logical equivalence is preserved by ``_emit_virtual_trace_rows``:
+    only tick 0 is persisted to ``dynamic_hex_state``; the trace.csv
+    emitter materializes the requested tick range by emitting N copies
+    of tick 0's per-county aggregates with the tick number rewritten.
+
+    When real engine systems land in a future spec, the per-tick
+    advancement WILL produce different data per tick, and this
+    function gets a real implementation that writes the actual deltas
+    via ``persist_tick_atomic``.
     """
-    from babylon.persistence.envelope import PerTickTransactionEnvelope
-    from babylon.persistence.hex_state import DynamicHexState
-
-    pool = runtime.pool
-    with pool.connection() as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT h3_index, county_fips, state_fips, region_id, "
-            "c, v, s, k, biocapacity_stock, energy_stock, raw_material_stock, "
-            "internet_access_pct, surveillance_coupling "
-            "FROM dynamic_hex_state "
-            "WHERE session_id = %s AND tick = %s",
-            (str(session_id), tick - 1),
-        )
-        prev_rows = cur.fetchall()
-    if not prev_rows:
-        return  # nothing to carry forward
-
-    next_rows = tuple(
-        DynamicHexState(
-            session_id=session_id,
-            tick=tick,
-            h3_index=row[0],
-            county_fips=row[1],
-            state_fips=row[2],
-            region_id=row[3],
-            c=row[4],
-            v=row[5],
-            s=row[6],
-            k=row[7],
-            biocapacity_stock=row[8],
-            energy_stock=row[9],
-            raw_material_stock=row[10],
-            internet_access_pct=row[11],
-            surveillance_coupling=row[12],
-        )
-        for row in prev_rows
-    )
-    envelope = PerTickTransactionEnvelope(
-        session_id=session_id,
-        tick=tick,
-        hex_state_rows=list(next_rows),
-        determinism_hash=determinism_hash,
-    )
-    runtime.persist_tick_atomic(envelope)
+    return
 
 
 def _query_audit_log(*, pool: Any, session_id: UUID) -> list[AuditEntry]:
@@ -295,20 +262,37 @@ def _query_audit_log(*, pool: Any, session_id: UUID) -> list[AuditEntry]:
     return out
 
 
-def _query_trace(*, pool: Any, session_id: UUID, start_year: int) -> list[dict[str, Any]]:
-    """Query the trace-emission view, returning a list of column-keyed dicts."""
+def _query_trace(
+    *,
+    pool: Any,
+    session_id: UUID,
+    start_year: int,
+    ticks_completed: int,
+) -> list[dict[str, Any]]:
+    """Query the trace-emission view, materializing per-tick rows.
+
+    The MVP runner only persists tick 0 (no-op carry-forward); this
+    function emits ``ticks_completed`` copies of the per-county
+    aggregates with the tick number rewritten on each copy. Logically
+    equivalent to the prior per-tick-persisted implementation; O(1)
+    write cost in Postgres regardless of tick count (T056 / SC-002).
+    """
     select_cols = ", ".join(c for c in TRACE_COLUMNS if c not in {"tick", "simulated_year"})
     sql = (
-        f"SELECT tick, {select_cols} FROM view_runtime_trace_emission "
-        "WHERE session_id = %s ORDER BY tick, entity_id"
+        f"SELECT {select_cols} FROM view_runtime_trace_emission "
+        "WHERE session_id = %s AND tick = 0 ORDER BY entity_id"
     )
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(sql, (str(session_id),))
         colnames = [d.name for d in cur.description] if cur.description else []
-        return [
-            {**dict(zip(colnames, row, strict=True)), "simulated_year": start_year + row[0] / 52.0}
-            for row in cur.fetchall()
-        ]
+        tick0_rows = [dict(zip(colnames, row, strict=True)) for row in cur.fetchall()]
+
+    out: list[dict[str, Any]] = []
+    for tick in range(max(ticks_completed, 1)):
+        simulated_year = start_year + tick / 52.0
+        for row in tick0_rows:
+            out.append({**row, "tick": tick, "simulated_year": simulated_year})
+    return out
 
 
 def _query_terminal_aggregates(
@@ -317,14 +301,19 @@ def _query_terminal_aggregates(
     session_id: UUID,
     terminal_tick: int,
 ) -> dict[str, Any]:
-    """Aggregate terminal-tick state across all counties from the trace view."""
+    """Aggregate terminal-tick state across all counties from the trace view.
+
+    MVP-runner note: only tick 0 is persisted (carry-forward is a logical
+    no-op materialized at trace-emit time). We read tick 0 aggregates
+    but report them as the terminal tick, since they are byte-identical.
+    """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FILTER (WHERE v > 0), "
             "       SUM(v), SUM(c), SUM(s), SUM(k) "
             "FROM view_runtime_trace_emission "
-            "WHERE session_id = %s AND tick = %s",
-            (str(session_id), terminal_tick),
+            "WHERE session_id = %s AND tick = 0",
+            (str(session_id),),
         )
         row = cur.fetchone()
     counties_alive = int(row[0] or 0) if row else 0
@@ -348,24 +337,23 @@ def _county_terminal_snapshot(
     *,
     pool: Any,
     session_id: UUID,
-    terminal_tick: int,
+    terminal_tick: int,  # noqa: ARG001 — kept for the future engine-bridging path
 ) -> list[dict[str, Any]]:
-    """Per-county terminal row + delta-vs-initial."""
+    """Per-county terminal row + delta-vs-initial.
+
+    MVP-runner note: tick 0 IS the terminal tick (carry-forward is a no-op),
+    so the per-county terminal payload reads from tick 0 and reports
+    ``delta_k_vs_initial = 0.0``.
+    """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT entity_id, v, c, s, k "
             "FROM view_runtime_trace_emission "
-            "WHERE session_id = %s AND tick = %s "
+            "WHERE session_id = %s AND tick = 0 "
             "ORDER BY entity_id",
-            (str(session_id), terminal_tick),
-        )
-        terminal = cur.fetchall()
-        cur.execute(
-            "SELECT entity_id, k FROM view_runtime_trace_emission "
-            "WHERE session_id = %s AND tick = 0",
             (str(session_id),),
         )
-        initial_k = {r[0]: float(r[1] or 0.0) for r in cur.fetchall()}
+        terminal = cur.fetchall()
     out: list[dict[str, Any]] = []
     for entity_id, v, c, s, k in terminal:
         k_now = float(k or 0.0)
@@ -382,7 +370,7 @@ def _county_terminal_snapshot(
                 "ideology_l": None,
                 "ideology_f": None,
                 "population": None,
-                "delta_k_vs_initial": k_now - initial_k.get(entity_id, 0.0),
+                "delta_k_vs_initial": 0.0,
             }
         )
     return out
@@ -636,7 +624,12 @@ def _emit_artifacts(
     artifact_dir = config.output_dir
 
     # trace.csv
-    trace_rows = _query_trace(pool=pool, session_id=session_id, start_year=config.start_year)
+    trace_rows = _query_trace(
+        pool=pool,
+        session_id=session_id,
+        start_year=config.start_year,
+        ticks_completed=ticks_completed,
+    )
     trace_path = artifact_dir / "trace.csv"
     with TraceEmitter(trace_path) as emitter:
         for row in trace_rows:

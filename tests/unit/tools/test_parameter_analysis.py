@@ -127,9 +127,16 @@ class TestModuleStructure:
         assert "__main__" in source_code, "Missing __main__ check"
 
 
-@_SKIP_NEEDS_PG
+@_SKIP_LEGACY_RECORDER
 class TestRunTrace:
-    """Test the run_trace function."""
+    """Test the run_trace function.
+
+    Spec-064: ``run_trace`` no longer returns
+    ``(TickStateRecorder, SimulationConfig, GameDefines)``; it returns
+    ``(Path, GameDefines)`` (path to the headless runner's trace.csv).
+    The TickStateRecorder-shaped tests below are retired with the
+    legacy in-memory engine path.
+    """
 
     def test_run_trace_returns_collector_config_defines(self) -> None:
         """Verify run_trace returns (TickStateRecorder, SimulationConfig, GameDefines)."""
@@ -198,8 +205,12 @@ class TestRunTrace:
         assert len(result_low) > 0, "Low extraction trace should produce results"
 
 
-@_SKIP_NEEDS_PG
+@_SKIP_LEGACY_RECORDER
 class TestWriteCsv:
+    """Spec-064: write_csv tests exercise the legacy
+    TickStateRecorder-derived CSV shape (entity_id/edge columns); the
+    headless runner emits a different 22-column trace.csv contract."""
+
     """Test CSV writing functionality."""
 
     def test_write_csv_creates_file(self, tmp_path: Path) -> None:
@@ -833,8 +844,15 @@ class TestRunSweep:
         assert "outcome" in result[0]
         assert result[0]["outcome"] in ("SURVIVED", "DIED", "ERROR")
 
+    @_SKIP_LEGACY_RECORDER
     def test_run_sweep_result_has_entity_final_states(self) -> None:
-        """Each result should have final wealth for all entities."""
+        """Each result should have final wealth for all entities.
+
+        Spec-064: per-entity final wealth keys (final_p_w_wealth,
+        final_p_c_wealth, final_c_b_wealth, final_c_w_wealth) are gone
+        with the legacy in-memory imperial-circuit scenario. The new
+        result dict only carries scope-level ``final_wealth``.
+        """
         module = load_parameter_analysis_module()
         result = module.run_sweep(
             param_path="economy.extraction_efficiency",

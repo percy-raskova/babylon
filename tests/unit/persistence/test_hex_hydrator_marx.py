@@ -79,13 +79,22 @@ def _build_minimal_sqlite(
     conn.execute("INSERT INTO dim_time (time_id, year) VALUES (?, ?)", (1, year))
     # Two QCEW rows: industry 1 (All Industries) + industry 2 (Manufacturing).
     # Pre-spec-066, the SUM would double-count by adding both.
+    # Spec-066: industry_id=1 + ownership_id=1 = BLS rollup row
     conn.execute(
         "INSERT INTO fact_qcew_annual VALUES (?, ?, ?, ?, ?, ?)",
-        (1, 1, 5, 1, 1_200_000, total_wages_industry_1),
+        (1, 1, 1, 1, 1_200_000, total_wages_industry_1),
     )
+    # Sibling industry_id=2 row (manufacturing): would over-count if
+    # industry_id=1 filter were missing.
     conn.execute(
         "INSERT INTO fact_qcew_annual VALUES (?, ?, ?, ?, ?, ?)",
-        (1, 2, 5, 1, 700_000, total_wages_industry_2),
+        (1, 2, 1, 1, 700_000, total_wages_industry_2),
+    )
+    # Sibling ownership_id=5 (Private) row at industry_id=1: would
+    # over-count if ownership_id=1 filter were missing.
+    conn.execute(
+        "INSERT INTO fact_qcew_annual VALUES (?, ?, ?, ?, ?, ?)",
+        (1, 1, 5, 1, 1_100_000, total_wages_industry_1 * 0.9),
     )
     conn.execute(
         "INSERT INTO fact_bea_county_gdp VALUES (?, ?, ?, ?)",

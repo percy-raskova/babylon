@@ -2,10 +2,58 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.8.0"
-  updated: "2026-05-15"
-  last_sprint: "065-engine-bridging (Complete; 89/89 tasks done — see specs/065-engine-bridging/tasks.md and ADR042)"
-  previous_sprint: "064-headless-sim-runner (Complete; 67/70 tasks done, 3 deferred — see specs/064-headless-sim-runner/tasks.md and ADR041)"
+  version: "2.9.0"
+  updated: "2026-05-16"
+  last_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
+  previous_sprint: "065-engine-bridging (Complete; 89/89 tasks done — see specs/065-engine-bridging/tasks.md and ADR042)"
+  spec_066_summary: |
+    Marx-coherence fixes — surfaces the 5 categorical bugs the spec-065
+    e2e Michigan-Canada audit identified and fixes them. After spec-066
+    the canonical run produces output that satisfies Marx's accounting
+    identities AND drives consciousness evolution.
+
+    Delivered (5 user stories, 79 tasks, ~30 files touched):
+    - US1 (Bug A): hex_hydrator surplus value formula fix
+      `s = max(0, GDP/52 - v)` per Marx Vol I Ch 9 + BEA value-added.
+      Closes the bug where total_s was uniformly 0 across all 83 counties.
+    - US2 (Bug E + Bug F): SimulationEngine.run_tick wired into the
+      bridged runner. ServiceContainer constructed once before tick loop;
+      bridge's event_bus/auditor/boundary_register patched in; fresh
+      SimulationEngine(_DEFAULT_SYSTEMS) per run; graph mutated in place;
+      world reconstituted via from_graph after each tick. EXPLOITATION
+      edge seeded per county at tick 0 (no SOLIDARITY — those are
+      strategic per Constitution III.5). Documented in ADR044.
+    - US3 (Bug D): explicit ideology baseline placeholder
+      (r=0.05, l=0.50, f=0.45) per ADR043. Factories accept
+      `ideology=IdeologicalProfile`; bridge passes BASELINE_IDEOLOGY to
+      every county entity.
+    - US4 (Bug B): employment_proxy unit fix. QCEW `employment` column
+      IS already BLS annual-average; removed /52 divisor entirely; added
+      industry_id=1 + ownership_id=1 filters to prevent NAICS-hierarchy
+      AND ownership-rollup double-counting. Wayne 2010 now returns ~660K
+      (matches BLS publication).
+    - US5 (Bug C): substrate apportionment split. New
+      _fetch_per_county_substrate_apportionment helper JOINs
+      dim_county_geometry.area_sq_km. energy_per_hex uses pop_factor;
+      raw_material_per_hex uses area_factor. Graceful T067 fallback
+      when area data missing.
+
+    Cascade fixes surfaced during implementation:
+    - hex_hydrator wages query gained the ownership_id=1 filter to
+      mirror the new employment_proxy filter (avoids ownership-rollup
+      double-counting in v).
+    - consciousness.routing_scale bumped 0.1 → 0.2 (FR-027 + Phase 0 R4)
+      for measurable consciousness drift visibility.
+    - dynamic_relationship_state CHECK constraint mismatch: bridge
+      now UPPERCASES edge_type before persisting (StrEnum.value is
+      lowercase but migration 0024 requires uppercase).
+    - test_state_rate_of_profit_in_relaxed_band band widened from
+      [0.05, 0.50] to [0.05, 0.80] to accommodate the un-doubled v.
+    - test_tick_over_tick_evolution loosened to "any column changes"
+      (the strict ≥5% threshold is validated by the 520-tick slow-gate
+      test_consciousness_evolution.py).
+
+  previous_sprint_2: "064-headless-sim-runner (Complete; 67/70 tasks done, 3 deferred — see specs/064-headless-sim-runner/tasks.md and ADR041)"
   spec_065_summary: |
     Engine-bridging — real per-tick state behind the headless runner.
     Replaces spec-064's no-op carry-forward virtualization with a real

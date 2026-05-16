@@ -48,6 +48,7 @@ from babylon.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.engine.event_bus import EventBus
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.models import Relationship
+from babylon.models.entities.social_class import IdeologicalProfile
 from babylon.models.enums import EdgeType
 from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
@@ -83,6 +84,16 @@ logger = logging.getLogger(__name__)
 # for QCEW, Census, BEA, FCC, Hickel/Ricci data). Overridable via the
 # ``sqlite_path`` argument to ``hydrate_initial``.
 _DEFAULT_SQLITE_PATH = Path("data/sqlite/marxist-data-3NF.sqlite")
+
+
+# Spec-066 T050 / ADR043 (placeholder): every county entity starts at
+# (cc=0.1, ni=0.5) which the bridge ternary mapping resolves to
+#   r = cc * (1 - ni)         = 0.05  (revolutionary)
+#   l = max(0, 1 - r - f)     = 0.50  (liberal — dominant)
+#   f = ni * (1 - cc)         = 0.45  (fascist)
+# Per Clarifications Q3, this is an explicit placeholder until a future
+# spec ships per-county data-driven seeding (ACS, election results, etc.).
+BASELINE_IDEOLOGY = IdeologicalProfile(class_consciousness=0.1, national_identity=0.5)
 
 
 # SQL: read the tick-0 hex_state rows for a scope. We re-emit these
@@ -567,13 +578,19 @@ class WorldStateBridge:
             proletariat_id = f"C{i:03d}"
             bourgeoisie_id = f"C{i + 500:03d}"
 
+            # Spec-066 T050: pass the BASELINE_IDEOLOGY placeholder to
+            # both factories so every county starts at (r=0.05, l=0.50,
+            # f=0.45) per ADR043. The IdeologicalProfile is frozen, so
+            # sharing the same instance is safe.
             entities[proletariat_id] = create_proletariat(
                 id=proletariat_id,
                 county_fips=county_fips,
+                ideology=BASELINE_IDEOLOGY,
             ).model_copy(update={"population": 85})
             entities[bourgeoisie_id] = create_bourgeoisie(
                 id=bourgeoisie_id,
                 county_fips=county_fips,
+                ideology=BASELINE_IDEOLOGY,
             ).model_copy(update={"population": 15})
 
         return entities

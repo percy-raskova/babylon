@@ -10,6 +10,17 @@ maintaining type safety through Pydantic validation.
 Sprint 3.4.3 (George Jackson Refactor): ideology parameter accepts both
 float (legacy) and IdeologicalProfile (new format). Float values are
 automatically converted to IdeologicalProfile by the SocialClass validator.
+
+Spec-066 baseline (placeholder) per ADR043 + data-model.md section 2:
+the bridged runner passes ``IdeologicalProfile(class_consciousness=0.1,
+national_identity=0.5)`` to every entity. The bridge's ternary mapping
+(r = cc * (1 - ni), f = ni * (1 - cc), l = 1 - r - f) yields the target
+placeholder (r=0.05, l=0.50, f=0.45) per Clarifications Q3. The rejected
+high-cc / high-ni alternative ``(cc=0.5, ni=0.9)`` is theoretically dubious:
+Marx treats class consciousness and national identity as antagonistic, so
+co-existing high values are unstable. Per-county data-driven seeding is
+deferred to a future spec; the placeholder must remain explicit and
+uniform across all 83 x 2 = 166 entities until that work lands.
 """
 
 from __future__ import annotations

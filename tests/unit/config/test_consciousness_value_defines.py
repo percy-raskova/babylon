@@ -142,5 +142,7 @@ class TestConsciousnessValueDefinesIntegration:
         defines = ConsciousnessDefines()
         assert defines.sensitivity == pytest.approx(0.5)
         assert defines.decay_lambda == pytest.approx(0.1)
-        assert defines.routing_scale == pytest.approx(0.1)
+        assert defines.routing_scale == pytest.approx(
+            0.2
+        )  # spec-066: bumped from 0.1 for drift visibility
         assert defines.agitation_decay_rate == pytest.approx(0.1)

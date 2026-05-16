@@ -62,24 +62,24 @@ independent implementation and testing.
 
 ### Tests for User Story 1 (write FIRST, fail, then make pass)
 
-- [ ] T012 [P] [US1] Write `tests/unit/persistence/test_hex_hydrator_marx.py::test_s_formula_uses_value_added_identity` — assert that the hex hydrator's `_compute_per_county_marx_data` (or equivalent) function computes `s = max(0, GDP/52 - v)` (NOT `max(0, GDP/52 - v - c)`) for a fabricated input case. Mock the SQLite reads.
-- [ ] T013 [P] [US1] Write `tests/unit/persistence/test_hex_hydrator_marx.py::test_qcew_query_filters_industry_id_1` — patch the SQLite cursor and assert the SUM query includes `AND fq.industry_id = 1` in its WHERE clause.
-- [ ] T014 [P] [US1] Write `tests/unit/persistence/test_hex_hydrator_marx.py::test_negative_residual_emits_alarm_audit_row` — fabricate inputs where `GDP/52 < v` (clamping to 0) and assert that an audit row with `severity='alarm'` and `invariant_name='s_residual_negative'` was emitted to the auditor's buffer.
-- [ ] T015 [US1] Write `tests/integration/test_marx_identities.py::test_total_s_strictly_positive_5tick_tri_county` — run the runner programmatically for 5 ticks on `detroit-tri-county`, assert `summary.terminal_state.total_s > 0`.
-- [ ] T016 [US1] Write `tests/integration/test_marx_identities.py::test_value_added_identity_per_county_per_tick` — for every row in trace.csv, assert `|v + s - GDP_per_week_implied| / GDP_per_week_implied <= 0.05`. GDP_per_week_implied derived from `c × 2` since c = 0.5 × GDP/52.
-- [ ] T017 [US1] Write `tests/integration/test_marx_identities.py::test_state_rate_of_profit_in_relaxed_band` — assert `0.05 ≤ total_s / (total_c + total_v) ≤ 0.50` for the terminal tick of a 5-tick tri-county run.
+- [X] T012 [P] [US1] Write `tests/unit/persistence/test_hex_hydrator_marx.py::test_s_formula_uses_value_added_identity` — assert that the hex hydrator's `_compute_per_county_marx_data` (or equivalent) function computes `s = max(0, GDP/52 - v)` (NOT `max(0, GDP/52 - v - c)`) for a fabricated input case. Mock the SQLite reads.
+- [X] T013 [P] [US1] Write `tests/unit/persistence/test_hex_hydrator_marx.py::test_qcew_query_filters_industry_id_1` — patch the SQLite cursor and assert the SUM query includes `AND fq.industry_id = 1` in its WHERE clause.
+- [X] T014 [P] [US1] Write `tests/unit/persistence/test_hex_hydrator_marx.py::test_negative_residual_emits_alarm_audit_row` — fabricate inputs where `GDP/52 < v` (clamping to 0) and assert that an audit row with `severity='alarm'` and `invariant_name='s_residual_negative'` was emitted to the auditor's buffer. (Implementation uses `_CalibrationAlarm` dataclass — a thin per-hydration record that the runner converts to a full `ConservationAuditRow` at tick 0.)
+- [X] T015 [US1] Write `tests/integration/test_marx_identities.py::test_total_s_strictly_positive_5tick_tri_county` — run the runner programmatically for 5 ticks on `detroit-tri-county`, assert `summary.terminal_state.total_s > 0`.
+- [X] T016 [US1] Write `tests/integration/test_marx_identities.py::test_value_added_identity_per_county_per_tick` — for every row in trace.csv, assert `|v + s - GDP_per_week_implied| / GDP_per_week_implied <= 0.05`. GDP_per_week_implied derived from `c × 2` since c = 0.5 × GDP/52.
+- [X] T017 [US1] Write `tests/integration/test_marx_identities.py::test_state_rate_of_profit_in_relaxed_band` — assert `0.05 ≤ total_s / (total_c + total_v) ≤ 0.50` for the terminal tick of a 5-tick tri-county run.
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Modify `src/babylon/persistence/hex_hydrator.py:373` — change `s_per_week = max(0.0, gdp_per_week - v_per_week - c_per_week)` to `s_per_week = max(0.0, gdp_per_week - v_per_week)`. Update the function docstring to cite Marx Vol I Ch 9 + BEA value-added accounting.
-- [ ] T019 [US1] Modify `src/babylon/persistence/hex_hydrator.py:~310-320` — add `AND fq.industry_id = 1` to the WHERE clause of the QCEW SUM query. Add a code comment explaining the BLS publication-granularity rationale.
-- [ ] T020 [US1] Modify `src/babylon/persistence/hex_hydrator.py:~373-385` — when `s_raw < 0` (i.e., before the max-clamp), append a `ConservationAuditRow` with `severity='alarm'`, `invariant_name='s_residual_negative'`, `details={county_fips, year, gdp_per_week, v_per_week}` to a returned list of audit rows. The hex hydrator may need a thin extension to its return signature OR an audit-collector parameter; choose the smallest invasive change.
-- [ ] T021 [US1] Verify hex_hydrator.py keeps `_INTERMEDIATE_INPUTS_FRACTION = 0.5` unchanged per Phase 0 R7. Add a comment at line 80 explaining the Shaikh-tractable c/v invariant rationale and pointing to the spec-068 deferral.
+- [X] T018 [US1] Modify `src/babylon/persistence/hex_hydrator.py:373` — change `s_per_week = max(0.0, gdp_per_week - v_per_week - c_per_week)` to `s_per_week = max(0.0, gdp_per_week - v_per_week)`. Update the function docstring to cite Marx Vol I Ch 9 + BEA value-added accounting.
+- [X] T019 [US1] Modify `src/babylon/persistence/hex_hydrator.py:~310-320` — add `AND fq.industry_id = 1` to the WHERE clause of the QCEW SUM query. Add a code comment explaining the BLS publication-granularity rationale.
+- [X] T020 [US1] Modify `src/babylon/persistence/hex_hydrator.py:~373-385` — when `s_raw < 0` (i.e., before the max-clamp), append a `_CalibrationAlarm` record (frozen dataclass with `invariant_name='s_residual_negative'`, `county_fips`, `year`, `gdp_per_week`, `v_per_week`, `residual`) to an `audit_alarms` list passed via `_fetch_per_county_data`'s new keyword arg. Smallest invasive change per the task wording — `ConservationAuditRow` requires session_id which isn't available at hydration; conversion to a full audit row happens later in the runner.
+- [X] T021 [US1] Verify hex_hydrator.py keeps `_INTERMEDIATE_INPUTS_FRACTION = 0.5` unchanged per Phase 0 R7. Add a comment at line 80 explaining the Shaikh-tractable c/v invariant rationale and pointing to the spec-068 deferral.
 
 ### Verification for User Story 1
 
-- [ ] T022 [US1] Run `poetry run pytest tests/unit/persistence/test_hex_hydrator_marx.py -v` → all 3 unit tests pass.
-- [ ] T023 [US1] Run `BABYLON_TEST_PG_DSN='dbname=babylon_test host=localhost port=5433 user=test password=test' poetry run pytest tests/integration/test_marx_identities.py -v` → all 3 integration tests pass.
+- [X] T022 [US1] Run `poetry run pytest tests/unit/persistence/test_hex_hydrator_marx.py -v` → all 3 unit tests pass.
+- [X] T023 [US1] Run `BABYLON_TEST_PG_DSN='dbname=babylon_test host=localhost port=5433 user=test password=test' poetry run pytest tests/integration/test_marx_identities.py -v` → 3 of 5 pass (US1 trio); 2 remain WIP for US4 (T058).
 
 **Checkpoint**: US1 (Bug A) closed. SC-001 + SC-002 + SC-003 + SC-004 verifiable. Bridge still doesn't run engine — that's US2.
 

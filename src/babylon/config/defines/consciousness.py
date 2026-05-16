@@ -61,10 +61,17 @@ class ConsciousnessDefines(BaseModel):
         description="λ = ln(2)/7 ≈ 0.099: COIN political half-life of 7 weeks (FM 3-24).",
     )
     routing_scale: float = Field(
-        default=0.1,
+        default=0.2,
         ge=0.0,
         le=1.0,
-        description="= decay_lambda: agitation→consciousness routing on same 7-week half-life timescale.",
+        description=(
+            "Agitation -> consciousness routing rate per tick. Spec-066 bumped this "
+            "from 0.1 to 0.2 (FR-027 + Phase 0 R4): at decay_lambda=0.1 the empirical "
+            "spec-065 e2e run showed <0.1% ideology drift across 520 ticks, well below "
+            "the SC-005 >=5% threshold. Doubling routing_scale to 0.2 makes drift "
+            "visible within the 10-year canonical horizon while staying below the "
+            "0.3 'mass awakening' regime documented in SolidarityDefines."
+        ),
     )
     agitation_decay_rate: float = Field(
         default=0.1,

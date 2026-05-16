@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -63,6 +64,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass(frozen=True)
+class _CalibrationAlarm:
+    """Structured hydration-time alarm (spec-066 T020).
+
+    Carried out-of-band from ``_fetch_per_county_data`` to allow the
+    runner / bridge to convert into a full ``ConservationAuditRow`` once
+    a session_id + determinism_hash are available at tick 0. The
+    invariant_name + per-county details are stable identifiers.
+    """
+
+    invariant_name: str
+    county_fips: str
+    year: int
+    gdp_per_week: float
+    v_per_week: float
+    residual: float  # = gdp_per_week - v_per_week (signed, negative)
+
+
 # Default TIGER county shapefile shipped under data/tiger/county/.
 _DEFAULT_TIGER_PATH = Path("data/tiger/county/tl_2024_us_county.shp")
 
@@ -77,6 +97,13 @@ _WEEKS_PER_YEAR = 52
 # fact_bea_national_industry which is empty in the current snapshot).
 # A 0.5 fraction matches the BEA economy-wide average for total
 # intermediate inputs / gross output.
+#
+# Spec-066 (Phase 0 R7 + T021): explicitly kept at the Shaikh-tractable
+# economy-wide constant. Per-industry I-O refinement (BEA national
+# table 5) is deferred to spec-068. The 0.5 share yields an organic
+# composition c/v ≈ 1.0 at the BEA-broad v (QCEW total compensation),
+# which is consistent with Shaikh's modern US empirical magnitudes
+# (broad-measure c/v in [0.8, 1.2] for the 2000-2020 window).
 _INTERMEDIATE_INPUTS_FRACTION = 0.5
 
 # Capital-output ratio (k = ratio × annual GDP).
@@ -282,12 +309,14 @@ def _fetch_per_county_data(
     conn: sqlite3.Connection,
     counties: frozenset[str],
     year: int,
+    audit_alarms: list[_CalibrationAlarm] | None = None,
 ) -> dict[str, _CountyRow]:
     """Read per-county economic + infrastructure values for tick-0 seeding.
 
     Five SQLite tables consulted (per `contracts/hex_hydrator_input.yaml`):
 
-      - fact_qcew_annual: SUM(total_wages_usd) → v_per_week (/52)
+      - fact_qcew_annual: SUM(total_wages_usd) WHERE industry_id=1 → v_per_week (/52)
+        (spec-066: industry_id=1 filter prevents NAICS-hierarchy triple-counting)
       - fact_bea_county_gdp + dim_bea_industry: GDP_county for the year
         (bea_industry_id = 1 = "All industries") → c_per_week + s_per_week + k_total
       - fact_broadband_coverage: pct_25_3, pct_100_20 → internet/surveillance
@@ -296,7 +325,14 @@ def _fetch_per_county_data(
     The intermediate-inputs-fraction is a hardcoded national average
     (0.5) since fact_bea_national_industry is empty in the current
     SQLite snapshot. Future ingestion of BEA national I-O tables can
-    refine this per-industry.
+    refine this per-industry (spec-068).
+
+    Spec-066 T020: callers may pass an ``audit_alarms`` list to receive
+    structured ``_CalibrationAlarm`` records for any county where the
+    raw value-added residual ``GDP/52 - v`` is negative (commuter-wage
+    boundary effect). The function still clamps ``s`` to 0 and logs a
+    warning; the alarm list is the structured channel for downstream
+    auditor / observability tooling.
 
     Returns:
         ``{county_fips: _CountyRow}`` for every county that has at
@@ -304,16 +340,27 @@ def _fetch_per_county_data(
         all are absent from the returned dict; the caller emits a
         warning and uses _CountyRow.zero().
     """
+    if audit_alarms is None:
+        audit_alarms = []
     fips_list = sorted(counties)
 
     # 1. QCEW total_wages_usd per (county, year) — primary v source.
+    #
+    # Spec-066 T019: filter to `industry_id = 1` (the BLS 'All Industries'
+    # aggregate). fact_qcew_annual is denormalized across
+    # (industry x ownership x establishment) rows; summing across industries
+    # triple-counts overlapping NAICS hierarchies (Manufacturing + Durable
+    # Goods both contain the same establishments). industry_id=1 is the
+    # BLS publication granularity that researchers cite in QCEW totals.
     qcew_rows = conn.execute(
         f"""
         SELECT dc.fips, COALESCE(SUM(fq.total_wages_usd), 0) AS total_wages
         FROM fact_qcew_annual fq
         JOIN dim_county dc ON dc.county_id = fq.county_id
         JOIN dim_time t ON t.time_id = fq.time_id
-        WHERE dc.fips IN ({_placeholders(fips_list)}) AND t.year = ?
+        WHERE dc.fips IN ({_placeholders(fips_list)})
+          AND t.year = ?
+          AND fq.industry_id = 1
         GROUP BY dc.fips
         """,
         (*fips_list, year),
@@ -368,19 +415,36 @@ def _fetch_per_county_data(
         gdp_usd = bea_gdp_by_fips.get(fips, 0.0)
         # c = GDP × intermediate-inputs-fraction (weekly).
         c_per_week = gdp_usd * _INTERMEDIATE_INPUTS_FRACTION / _WEEKS_PER_YEAR
-        # s = max(0, GDP/52 - v - c). Negative residual flagged below.
+        # s = max(0, GDP/52 - v). Spec-066 T018: the value-added identity
+        # is GDP = v + s (Marx Vol I Ch 9 + BEA accounting). Earlier code
+        # subtracted c as well, which double-counts the constant-capital
+        # pass-through (c is intermediate inputs that flow THROUGH the
+        # production process; they are NOT subtracted from value-added).
         gdp_per_week = gdp_usd / _WEEKS_PER_YEAR
-        s_raw = gdp_per_week - v_per_week - c_per_week
+        s_raw = gdp_per_week - v_per_week
         if s_raw < 0:
+            # Spec-066 T020: emit a structured calibration alarm in
+            # addition to the human-readable log line. The runner / bridge
+            # picks these up from `_fetch_per_county_data`'s return tuple
+            # and forwards them to the ConservationAuditor at tick 0.
+            audit_alarms.append(
+                _CalibrationAlarm(
+                    invariant_name="s_residual_negative",
+                    county_fips=fips,
+                    year=year,
+                    gdp_per_week=gdp_per_week,
+                    v_per_week=v_per_week,
+                    residual=s_raw,
+                )
+            )
             logger.warning(
                 "hex_hydrator: negative s for county=%s year=%d "
-                "(GDP/52=%.0f, v=%.0f, c=%.0f, s=%.0f); clamping to 0. "
-                "Audit row would be emitted by ConservationAuditor.",
+                "(GDP/52=%.0f, v=%.0f, s=%.0f); clamping to 0. "
+                "Calibration alarm emitted as s_residual_negative.",
                 fips,
                 year,
                 gdp_per_week,
                 v_per_week,
-                c_per_week,
                 s_raw,
             )
         s_per_week = max(0.0, s_raw)

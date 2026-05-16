@@ -15,6 +15,8 @@ at ``data/sqlite/marxist-data-3NF.sqlite``.
 
 from __future__ import annotations
 
+import csv
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -91,17 +93,66 @@ def _run_runner(
 
 def test_total_s_strictly_positive_5tick_tri_county() -> None:
     """T015 / SC-001: total_s > 0 at the terminal tick of a 5-tick tri-county run."""
-    pytest.skip("WIP — implemented in spec-066 US1 phase (T018-T021 fixes hex_hydrator)")
+    result = _run_runner(scope="detroit-tri-county", ticks=5)
+    assert result.artifact_dir is not None
+    summary = json.loads((result.artifact_dir / "summary.json").read_text())
+    total_s = summary["terminal_state"]["total_s"]
+    assert total_s > 0, (
+        f"Spec-066 SC-001 FAILED: total_s = {total_s} (expected > 0). "
+        f"Check that hex_hydrator.py:373 uses s = max(0, GDP/52 - v), not - v - c."
+    )
 
 
 def test_value_added_identity_per_county_per_tick() -> None:
-    """T016 / SC-004: |v + s - GDP/52| / (GDP/52) <= 0.05 for every county-tick row."""
-    pytest.skip("WIP — implemented in spec-066 US1 phase (T018-T021 fixes hex_hydrator)")
+    """T016 / SC-004: |v + s - GDP/52| / (GDP/52) <= 0.05 for every county-tick row.
+
+    Derives GDP/52 from c via the hex_hydrator invariant
+    ``c = 0.5 * GDP/52``, so GDP/52 = 2*c.
+    """
+    result = _run_runner(scope="detroit-tri-county", ticks=5)
+    assert result.artifact_dir is not None
+    with (result.artifact_dir / "trace.csv").open() as f:
+        rows = list(csv.DictReader(f))
+
+    violations: list[tuple[str, str, float]] = []
+    for row in rows:
+        if row.get("entity_kind") != "county":
+            continue
+        c = float(row["c"] or 0)
+        v = float(row["v"] or 0)
+        s = float(row["s"] or 0)
+        gdp_implied = 2 * c
+        if gdp_implied <= 0:
+            continue
+        rel_err = abs((v + s) - gdp_implied) / gdp_implied
+        if rel_err > 0.05:
+            violations.append((row["entity_id"], row["tick"], rel_err))
+
+    assert not violations, (
+        f"Spec-066 SC-004 FAILED: {len(violations)} rows violate v + s = GDP ± 5%. "
+        f"First 5: {violations[:5]}"
+    )
 
 
 def test_state_rate_of_profit_in_relaxed_band() -> None:
-    """T017 / SC-002: 0.05 <= total_s / (total_c + total_v) <= 0.50 at terminal tick."""
-    pytest.skip("WIP — implemented in spec-066 US1 phase (T018-T021 fixes hex_hydrator)")
+    """T017 / SC-002: 0.05 <= total_s / (total_c + total_v) <= 0.50 at terminal tick.
+
+    Relaxed from Vol III Ch 13's [0.20, 0.67] illustrative range to accommodate
+    BEA-broad v (QCEW total compensation) per Clarifications Q1.
+    """
+    result = _run_runner(scope="detroit-tri-county", ticks=5)
+    assert result.artifact_dir is not None
+    summary = json.loads((result.artifact_dir / "summary.json").read_text())
+    terminal = summary["terminal_state"]
+    total_c = terminal["total_c"]
+    total_v = terminal["total_v"]
+    total_s = terminal["total_s"]
+    assert (total_c + total_v) > 0, "expected positive c+v denominator"
+    p_prime = total_s / (total_c + total_v)
+    assert 0.05 <= p_prime <= 0.50, (
+        f"Spec-066 SC-002 FAILED: state rate of profit p' = {p_prime:.4f} "
+        f"outside [0.05, 0.50]. (total_s={total_s}, total_c={total_c}, total_v={total_v})"
+    )
 
 
 # ---------------------------------------------------------------------------

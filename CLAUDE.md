@@ -830,6 +830,8 @@ ADR0XX_descriptive_name:
 - N/A — fully in-memory. Tests use existing `WorldState` and (060-value-form-invariants)
 - Python 3.12+ (backend, engine, persistence); TypeScript 5.7 (frontend) (061-real-backend-wireup)
 - PostgreSQL 16+ with PostGIS, pgvector, uuid-ossp extensions; SQLite for reference data only (`marxist-data-3NF.sqlite`) (061-real-backend-wireup)
+- Python 3.12+ + Pydantic 2.x (frozen models), NetworkX 3.x (graph), SQLAlchemy 2.x (reference DB ORM), psycopg 3.x + psycopg_pool (Postgres runtime), XGI 0.10 (hypergraph — not new in this spec but referenced via existing community/ subsystem) (066-marx-coherence-fixes)
+- PostgreSQL 16+ for runtime state (existing `dynamic_consciousness_state`, `dynamic_relationship_state` etc. from spec-062/065); SQLite for read-only reference data (`marxist-data-3NF.sqlite` for QCEW, BEA, FCC, Census, Hickel/Ricci); no new tables required (migrations 0020-0024 already shipped) (066-marx-coherence-fixes)
 
 ## Recent Changes
 - 062-cross-scale-integration: Two-phase persistence boundary, per-tick transactional atomicity (FR-008a), weekly tick + year-scoped coefficient interpolation, hex-as-source-of-truth aggregation views, 5-flow-type pipeline ordering, Canada boundary node, conservation audit log with determinism hash

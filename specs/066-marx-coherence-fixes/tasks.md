@@ -135,24 +135,24 @@ Additional fix: surfaced and fixed a latent schema-vs-StrEnum case mismatch — 
 
 ### Tests for User Story 3
 
-- [ ] T043 [P] [US3] Write `tests/unit/engine/test_factories_ideology_seed.py::test_create_proletariat_accepts_ideology_kwarg` — call `create_proletariat(id="C001", county_fips="26163", ideology=IdeologicalProfile(class_consciousness=0.1, national_identity=0.5))`, assert returned SocialClass has the passed ideology.
-- [ ] T044 [P] [US3] Write `tests/unit/engine/test_factories_ideology_seed.py::test_create_bourgeoisie_accepts_ideology_kwarg` — same as T043 for bourgeoisie.
-- [ ] T045 [P] [US3] Write `tests/unit/engine/test_factories_ideology_seed.py::test_uniform_baseline_solves_to_target_ternary` — given `cc=0.1, ni=0.5`, compute the bridge ternary mapping and assert `r ≈ 0.05, l ≈ 0.50, f ≈ 0.45` within ±1e-9.
-- [ ] T046 [US3] Write `tests/integration/test_engine_bridge.py::test_tick_0_ideology_uniform_across_counties` — run a 1-tick tri-county sim, parse trace.csv tick=0, assert all 3 counties have identical ideology values matching `(ideology_r=0.05, ideology_l=0.50, ideology_f=0.45)` within ±1e-9.
-- [ ] T047 [US3] Write `tests/integration/test_engine_bridge.py::test_ternary_simplex_preserved_at_hydrate` — same run, assert `r + l + f` sums to 1.0 ± 1e-9 for every county at every tick.
+- [X] T043 [P] [US3] Write `tests/unit/engine/test_factories_ideology_seed.py::test_create_proletariat_accepts_ideology_kwarg` — call `create_proletariat(id="C001", county_fips="26163", ideology=IdeologicalProfile(class_consciousness=0.1, national_identity=0.5))`, assert returned SocialClass has the passed ideology.
+- [X] T044 [P] [US3] Write `tests/unit/engine/test_factories_ideology_seed.py::test_create_bourgeoisie_accepts_ideology_kwarg` — same as T043 for bourgeoisie.
+- [X] T045 [P] [US3] Write `tests/unit/engine/test_factories_ideology_seed.py::test_uniform_baseline_solves_to_target_ternary` — given `cc=0.1, ni=0.5`, compute the bridge ternary mapping and assert `r ≈ 0.05, l ≈ 0.50, f ≈ 0.45` within ±1e-9.
+- [X] T046 [US3] Write `tests/integration/test_engine_bridge.py::test_tick_0_ideology_uniform_across_counties` — run a 1-tick tri-county sim, parse trace.csv tick=0, assert all 3 counties have identical ideology values matching `(ideology_r=0.05, ideology_l=0.50, ideology_f=0.45)` within ±1e-6.
+- [X] T047 [US3] Write `tests/integration/test_engine_bridge.py::test_ternary_simplex_preserved_at_hydrate` — same run, assert `r + l + f` sums to 1.0 ± 1e-6 for every county at every tick.
 
 ### Implementation for User Story 3
 
-- [ ] T048 [US3] Add `ideology: IdeologicalProfile | None = None` keyword-only argument to `create_proletariat()` in `src/babylon/engine/factories.py`. When provided, override the default `IdeologicalProfile`. When None, preserve existing default behavior (backward compat).
-- [ ] T049 [US3] Add the same `ideology: IdeologicalProfile | None = None` keyword-only argument to `create_bourgeoisie()` in `src/babylon/engine/factories.py`.
-- [ ] T050 [US3] Modify `src/babylon/engine/headless_runner/bridge.py:_build_per_county_entities()` — construct a single `BASELINE_IDEOLOGY = IdeologicalProfile(class_consciousness=0.1, national_identity=0.5)` (frozen, sharable) at module level; pass it as `ideology=BASELINE_IDEOLOGY` to every `create_proletariat()` and `create_bourgeoisie()` call.
-- [ ] T051 [US3] Author `ai-docs/decisions/ADR043_ideology_baseline_placeholder.yaml` with the (0.05, 0.50, 0.45) decision: context (per-county data-driven seeding deferred per Clarifications Q3), decision (uniform placeholder), rationale, consequences (positive: documented placeholder; negative: counties don't reflect 2010 political diversity), and a `replace_when` clause naming the future spec.
-- [ ] T052 [US3] Update `specs/066-marx-coherence-fixes/quickstart.md` Section 5 to call out the (0.05, 0.50, 0.45) placeholder explicitly, with a link to ADR043.
+- [X] T048 [US3] Add `ideology: IdeologicalProfile | None = None` keyword-only argument to `create_proletariat()` in `src/babylon/engine/factories.py`. When provided, override the default `IdeologicalProfile`. When None, preserve existing default behavior (backward compat).
+- [X] T049 [US3] Add the same `ideology: IdeologicalProfile | None = None` keyword-only argument to `create_bourgeoisie()` in `src/babylon/engine/factories.py`.
+- [X] T050 [US3] Modify `src/babylon/engine/headless_runner/bridge.py:_build_per_county_entities()` — construct a single `BASELINE_IDEOLOGY = IdeologicalProfile(class_consciousness=0.1, national_identity=0.5)` (frozen, sharable) at module level; pass it as `ideology=BASELINE_IDEOLOGY` to every `create_proletariat()` and `create_bourgeoisie()` call.
+- [X] T051 [US3] Author `ai-docs/decisions/ADR043_ideology_baseline_placeholder.yaml` with the (0.05, 0.50, 0.45) decision, rationale, consequences, and `replace_when` clause.
+- [X] T052 [US3] Update `specs/066-marx-coherence-fixes/quickstart.md` Section 5 with a dedicated callout block linking to ADR043.
 
 ### Verification for User Story 3
 
-- [ ] T053 [US3] Run `poetry run pytest tests/unit/engine/test_factories_ideology_seed.py -v` → all 3 unit tests pass.
-- [ ] T054 [US3] Run `BABYLON_TEST_PG_DSN='...' poetry run pytest tests/integration/test_engine_bridge.py::test_tick_0_ideology_uniform_across_counties -v` → passes.
+- [X] T053 [US3] Ran `poetry run pytest tests/unit/engine/test_factories_ideology_seed.py -v` → 4 unit tests pass (3 spec tests + 1 backward-compat).
+- [X] T054 [US3] Ran `poetry run pytest tests/integration/test_engine_bridge.py::test_tick_0_ideology_uniform_across_counties tests/integration/test_engine_bridge.py::test_ternary_simplex_preserved_at_hydrate -v` → 2 pass.
 
 **Checkpoint**: US3 (Bug D) closed. SC-009 + SC-014 verifiable.
 

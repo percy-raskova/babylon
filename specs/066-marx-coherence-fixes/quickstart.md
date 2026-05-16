@@ -185,6 +185,29 @@ If `ideology_f` doesn't drift:
 | Wayne ≠ Keweenaw | Both byte-identical (engine deferred) | Distinct ideology_f trajectories |
 | What's deferred | "spec-066: full SimulationEngine integration" | "spec-067 (QCEW), spec-068 (BEA I-O), spec-069 (SQLite caching), future spec for SOLIDARITY seeding / player verbs" |
 
+### Ideology baseline placeholder — read this first
+
+Every county at tick 0 starts at the **EXPLICIT PLACEHOLDER** ternary
+`(ideology_r=0.05, ideology_l=0.50, ideology_f=0.45)`, materialized
+from a single shared
+`IdeologicalProfile(class_consciousness=0.1, national_identity=0.5)`
+via the bridge mapping `r = cc * (1 - ni); f = ni * (1 - cc); l = 1 - r - f`.
+
+**This is a placeholder.** It does NOT reflect 2010 per-county political
+diversity — Wayne (Detroit) and Keweenaw start at the SAME ideology, and
+real per-county drift over 520 ticks is small. The placeholder exists
+because per-county data-driven seeding (ACS attitudes + 2010 election
+returns + NLRB union density + ...) is a substantial future spec on its
+own; spec-066 prioritized fixing the SURPLUS-VALUE bug + engine wiring
+first. See [ADR043](../../ai-docs/decisions/ADR043_ideology_baseline_placeholder.yaml)
+for the full rationale (why these specific numbers, what was rejected,
+what "replace_when" looks like).
+
+Tests that lock in this placeholder:
+- `tests/integration/test_engine_bridge.py::test_tick_0_ideology_uniform_across_counties`
+- `tests/integration/test_engine_bridge.py::test_ternary_simplex_preserved_at_hydrate`
+- `tests/unit/engine/test_factories_ideology_seed.py::test_uniform_baseline_solves_to_target_ternary`
+
 ---
 
 ## Walkthrough verification

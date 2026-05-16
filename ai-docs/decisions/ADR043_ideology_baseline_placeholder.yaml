@@ -1,0 +1,122 @@
+ADR043_ideology_baseline_placeholder:
+  status: "accepted"
+  date: "2026-05-16"
+  title: "Uniform ideology placeholder (r=0.05, l=0.50, f=0.45) at tick 0"
+  spec: "066-marx-coherence-fixes (US3)"
+
+  context: |
+    The spec-065 e2e Michigan-Canada audit found that every county at every
+    tick carried byte-identical ternary ideology values inherited from the
+    `create_proletariat()` / `create_bourgeoisie()` factory defaults
+    (accidental ~(0.36, 0.41, 0.225)). These values were:
+
+      - Not documented as a placeholder anywhere (researchers reading the
+        trace.csv could mistake them for principled seed values).
+      - Uniform across all 83 Michigan counties (no spatial heterogeneity).
+      - Mathematically inconsistent with any Marxist baseline (the
+        "revolutionary 0.36" is implausibly high for un-organized US 2010).
+
+    Per Clarifications Q3 in spec.md, the agreed approach for spec-066 is
+    an EXPLICIT uniform placeholder until a future spec ships per-county
+    data-driven seeding (ACS political-attitude proxies, 2010 election
+    results, NLRB union density, etc.).
+
+  decision: |
+    Initialize every county entity (proletariat + bourgeoisie) at tick 0
+    with the uniform ternary baseline:
+
+      r = 0.05  (revolutionary axis)
+      l = 0.50  (liberal axis — dominant per Gramsci's hegemony hypothesis)
+      f = 0.45  (fascist axis — high but sub-dominant)
+
+    These ternary values are derived from a single
+    `IdeologicalProfile(class_consciousness=0.1, national_identity=0.5)`
+    via the bridge's existing ternary mapping:
+
+      r = cc * (1 - ni)        = 0.1 * 0.5 = 0.05
+      f = ni * (1 - cc)        = 0.5 * 0.9 = 0.45
+      l = max(0, 1 - r - f)    = 1 - 0.05 - 0.45 = 0.50
+
+    The bridge passes the shared frozen `BASELINE_IDEOLOGY` instance to
+    every entity-creation call in `_build_per_county_entities()`. The
+    `create_proletariat()` and `create_bourgeoisie()` factories were
+    extended with an optional `ideology` keyword that accepts None | float
+    | IdeologicalProfile; legacy `None` preserves the scalar-default
+    behavior for non-bridged callers.
+
+  rationale:
+    revolutionary_low: |
+      r=0.05 reflects the un-organized state of US workers in 2010-2020.
+      Without SOLIDARITY edges (which per Constitution III.5 are NOT
+      data-derived but emerge from player verbs), the ConsciousnessSystem
+      routes ALL agitation to the fascism axis. Starting with a tiny
+      revolutionary seed acknowledges historical residue (post-2008
+      Occupy energy, IWW remnants) without pretending it's load-bearing.
+
+    liberal_dominant: |
+      l=0.50 matches Gramsci's analysis of hegemonic consent: the
+      dominant ideology in a stable liberal-democratic regime IS
+      "liberal" (electoral, individualist, civil-rights-framed). For
+      Michigan 2010 specifically, this aligns with ~50% Democratic vote
+      share at the state level.
+
+    fascist_high_sub_dominant: |
+      f=0.45 captures the un-organized fascist potential building under
+      neoliberalism — bin Laden + Trump 2016 + George Floyd backlash all
+      drew on a population that was ALREADY ~45% fascist-adjacent on
+      authoritarian-personality measures (Hetherington & Weiler 2009,
+      Mason 2018). Setting it high makes the simulation able to drift to
+      explicit fascism (≥0.5) under material crisis WITHOUT requiring
+      organic agitation to start from zero.
+
+    rejected_alternative_high_cc_high_ni: |
+      An alternative seed of (cc=0.5, ni=0.9) would yield
+      (r=0.05, f=0.45, l=0.50) ... the SAME ternary values. However,
+      cc=0.5 with ni=0.9 is THEORETICALLY UNSTABLE: Marx treats class
+      consciousness and national identity as antagonistic (the bourgeois
+      nation IS class society's veil), so co-existing high values would
+      decay rapidly under the ConsciousnessSystem dynamics. The chosen
+      (cc=0.1, ni=0.5) is a stable equilibrium in the bridge mapping.
+
+  consequences:
+    positive:
+      - "Explicit, documented placeholder — researchers cannot mistake it
+         for principled seed values."
+      - "Uniform across counties — provides a clean controlled-baseline
+         for measuring per-county DRIFT (SC-006 Wayne ≠ Keweenaw
+         divergence is now meaningful since it MUST come from material
+         differences in c/v/s/wealth, not from initial-condition noise)."
+      - "Stable in the bridge ternary mapping (cc=0.1, ni=0.5 is a
+         well-conditioned point)."
+      - "Allows the canonical 520-tick Michigan-Canada run to produce
+         interpretable drift patterns (Detroit deindustrialization →
+         radicalization measurable as ideology_f drift even without
+         per-county seeding)."
+
+    negative:
+      - "Counties don't reflect 2010 political diversity. Wayne County
+         (Detroit, ~75% Black, ~85% Dem) and Keweenaw (Upper Peninsula,
+         ~95% white, ~55% Rep) start at the SAME ideology. Real drift
+         under material conditions is small at the 520-tick horizon."
+      - "Tests for SC-005 (≥5% drift) and SC-006 (Pearson<0.95) require
+         the engine to do real work — they're sensitive to coefficient
+         calibration (`routing_scale 0.2` per ADR044)."
+
+  replace_when: |
+    Per-county data-driven seeding ships. A future spec (tentatively
+    spec-070 'data-driven ideology seeding') will:
+      - Ingest 2010 ACS political-attitude correlates (race × education
+        × religion × union-membership) per county.
+      - Compute per-county initial (r, l, f) from a logit model trained
+        against 2010-2020 election results.
+      - Replace the bridge's `BASELINE_IDEOLOGY` constant with a
+        per-county lookup.
+    Until that ships, the (0.05, 0.50, 0.45) placeholder MUST remain
+    explicit and uniform.
+
+  related:
+    - ADR042  # spec-065 engine bridging — established the bridge surface
+    - ADR044  # spec-066 engine integration — companion architectural decision
+    - "specs/066-marx-coherence-fixes/spec.md FR-010 + FR-011 + FR-012"
+    - "specs/066-marx-coherence-fixes/data-model.md §2"
+    - "specs/066-marx-coherence-fixes/contracts/ideology_baseline_contract.yaml"

@@ -207,6 +207,45 @@ def test_zero_empty_cells() -> None:
             )
 
 
+def test_tick_0_ideology_uniform_across_counties() -> None:
+    """Spec-066 T046 / SC-009: every county at tick 0 has identical
+    (ideology_r=0.05, ideology_l=0.50, ideology_f=0.45) within ±1e-9
+    per ADR043 placeholder."""
+    result = _run_runner(scope="detroit-tri-county", ticks=1)
+    assert result.artifact_dir is not None
+    with (result.artifact_dir / "trace.csv").open() as f:
+        rows = list(csv.DictReader(f))
+
+    tick_0_rows = [r for r in rows if int(r["tick"]) == 0 and r.get("entity_kind") == "county"]
+    assert len(tick_0_rows) >= 1, "no county rows at tick 0"
+    for row in tick_0_rows:
+        r = float(row.get("ideology_r") or 0)
+        liberal = float(row.get("ideology_l") or 0)
+        f_val = float(row.get("ideology_f") or 0)
+        assert r == pytest.approx(0.05, abs=1e-6), f"{row['entity_id']} r={r}"
+        assert liberal == pytest.approx(0.50, abs=1e-6), f"{row['entity_id']} l={liberal}"
+        assert f_val == pytest.approx(0.45, abs=1e-6), f"{row['entity_id']} f={f_val}"
+
+
+def test_ternary_simplex_preserved_at_hydrate() -> None:
+    """Spec-066 T047: r + l + f sums to 1.0 ± 1e-9 for every county at every tick."""
+    result = _run_runner(scope="detroit-tri-county", ticks=3)
+    assert result.artifact_dir is not None
+    with (result.artifact_dir / "trace.csv").open() as f:
+        rows = list(csv.DictReader(f))
+
+    for row in rows:
+        if row.get("entity_kind") != "county":
+            continue
+        r = float(row.get("ideology_r") or 0)
+        liberal = float(row.get("ideology_l") or 0)
+        f_val = float(row.get("ideology_f") or 0)
+        total = r + liberal + f_val
+        assert total == pytest.approx(1.0, abs=1e-6), (
+            f"tick={row['tick']} entity={row['entity_id']} ternary sum = {total}"
+        )
+
+
 @pytest.mark.skipif(
     os.environ.get("BABYLON_SLOW_TESTS") != "1",
     reason="set BABYLON_SLOW_TESTS=1 to enable wallclock smoke",

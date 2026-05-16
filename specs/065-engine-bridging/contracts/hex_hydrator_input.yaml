@@ -23,7 +23,8 @@ sqlite_tables_read:
   - fact_hickel_erdi_annual       # national biocapacity + drain rates
   - fact_state_minerals           # state-level mineral production
   - fact_lodes_commuter_flow      # inter-county commute flows
-  - dim_county                    # county_id ↔ FIPS + land_area_sqmi
+  - dim_county                    # county_id ↔ FIPS
+  - dim_county_geometry           # spec-066: area_sq_km for substrate apportionment (US5)
   - dim_time                      # time_id ↔ year
 
 per_column_sources:

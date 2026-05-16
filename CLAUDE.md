@@ -213,22 +213,46 @@ Three-layer local system (no external servers):
 
 ## Engine Architecture
 
-The simulation engine uses modular Systems with dependency injection:
+The simulation engine uses modular Systems with dependency injection.
+Per spec-066 ADR044, the bridged headless runner now actually invokes
+`SimulationEngine.run_tick(graph, services, context)` on every tick;
+the engine runs the 21 default systems in this materialist-causality
+order (source: `simulation_engine._DEFAULT_SYSTEMS`):
 
 ```
-step(WorldState, SimulationConfig) -> WorldState
-     |
-     v
 SimulationEngine.run_tick(graph, services, context)
      |
-     +-- 1. ImperialRentSystem   (economic.py)      - Wealth extraction via imperial rent
-     +-- 2. SolidaritySystem     (solidarity.py)    - Consciousness transmission
-     +-- 3. ConsciousnessSystem  (ideology.py)      - Ideology drift & bifurcation
-     +-- 4. SurvivalSystem       (survival.py)      - P(S|A), P(S|R) calculations
-     +-- 5. StruggleSystem       (struggle.py)      - Agency Layer (George Floyd Dynamic)
-     +-- 6. ContradictionSystem  (contradiction.py) - Tension/rupture dynamics
-     +-- 7. TerritorySystem      (territory.py)     - Heat, eviction, carceral geography
+     v
+Material Base (positions 1-13, plus Substrate at 2.5):
+   1.  VitalitySystem              - Biological cost + death
+   2.  TerritorySystem             - Land state updates, heat dynamics, eviction pipeline
+   2.5 SubstrateSystem             - Substrate stocks (spec 062 US7 FR-050)
+   3.  ProductionSystem            - Value creation (v, c, s, k per hex)
+   4.  TickDynamicsSystem          - Tick dynamics (Feature 017)
+   5.  ReserveArmySystem           - Reserve-army wage pressure (Feature 021)
+   6.  CommunitySystem             - Community hypergraph layer (Feature 022)
+   7.  LifecycleSystem             - D-P-D' lifecycle circuit (Feature 030)
+   8.  SolidaritySystem            - Consciousness transmission (organization calculation)
+   9.  ImperialRentSystem          - Value extraction (Phi flows along EXPLOITATION edges)
+  10.  DispossessionEventSystem    - Dispossession events (Feature 021)
+  11.  DecompositionSystem         - Labor-aristocracy decomposition (Terminal Crisis)
+  12.  ControlRatioSystem          - Guard:prisoner ratio + terminal decision
+  13.  MetabolismSystem            - Ecological residue of production
+Action Phase (position 14 — Spec 056 F6=alpha reorder):
+  14.  OODASystem                  - Organizations observe + act (Feature 032)
+Consequences (positions 15-21):
+  15.  SurvivalSystem              - Risk assessment (P(S|A), P(S|R))
+  16.  StruggleSystem              - Agency layer (George Floyd dynamic, EXCESSIVE_FORCE / UPRISING)
+  17.  ConsciousnessSystem         - Ideology drift + bifurcation
+  18.  ContradictionSystem         - Systemic tension accounting
+  19.  ContradictionFieldSystem    - Field computation (Feature 002)
+  20.  FieldDerivativeSystem       - Spatial/temporal derivatives + principal (Feature 002)
+  21.  EdgeTransitionSystem        - Compound predicates + edge mode transitions (Feature 002)
 ```
+
+See `ai-docs/decisions/ADR044_engine_integration_into_bridged_runner.yaml`
+for the spec-066 wiring history; the 7-system list previously documented
+here was the early MVP cut from spec-001 (now historical).
 
 **Key Components**:
 - `src/babylon/engine/simulation_engine.py` - Orchestrates Systems

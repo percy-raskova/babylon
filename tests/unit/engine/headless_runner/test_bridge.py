@@ -177,6 +177,56 @@ class TestHydrateInitial:
                 sqlite_path=SQLITE_REF,
             )
 
+    def test_hydrate_initial_seeds_one_exploitation_edge_per_county(
+        self, defines: GameDefines
+    ) -> None:
+        """Spec-066 T026: one EXPLOITATION Relationship per county at tick 0."""
+        from babylon.models.enums import EdgeType
+
+        runtime = _FakeRuntime()
+        bridge = WorldStateBridge(runtime=runtime, defines=defines)
+
+        world = bridge.hydrate_initial(
+            session_id=_SESSION_ID,
+            scope_fips=frozenset({"26163", "26125", "26099"}),
+            sqlite_path=SQLITE_REF,
+        )
+
+        exploitation_rels = [r for r in world.relationships if r.edge_type == EdgeType.EXPLOITATION]
+        assert len(exploitation_rels) == 3, (
+            f"expected exactly 3 EXPLOITATION edges (one per county), got {len(exploitation_rels)}"
+        )
+        # Each edge connects proletariat (C00*) -> bourgeoisie (C50*) per
+        # the bridge's ID scheme.
+        for rel in exploitation_rels:
+            assert rel.source_id.startswith("C0"), f"unexpected source: {rel.source_id}"
+            assert rel.target_id.startswith("C5"), f"unexpected target: {rel.target_id}"
+
+    def test_hydrate_initial_no_solidarity_edges(self, defines: GameDefines) -> None:
+        """Spec-066 T027 / FR-026: SOLIDARITY edges are NOT data-derived.
+
+        Per Constitution III.5, SOLIDARITY edges emerge from player verbs
+        (Mobilize, Organize, Educate) and a future strategic-intervention
+        layer. The bridge's tick-0 hydration must NOT seed any.
+        """
+        from babylon.models.enums import EdgeType
+
+        runtime = _FakeRuntime()
+        bridge = WorldStateBridge(runtime=runtime, defines=defines)
+
+        world = bridge.hydrate_initial(
+            session_id=_SESSION_ID,
+            scope_fips=frozenset({"26163", "26125", "26099"}),
+            sqlite_path=SQLITE_REF,
+        )
+
+        solidarity_rels = [r for r in world.relationships if r.edge_type == EdgeType.SOLIDARITY]
+        assert len(solidarity_rels) == 0, (
+            f"expected NO SOLIDARITY edges from data-driven hydration, "
+            f"got {len(solidarity_rels)}: "
+            f"{[(r.source_id, r.target_id) for r in solidarity_rels]}"
+        )
+
     def test_empty_scope_raises_value_error(self, defines: GameDefines) -> None:
         """An empty scope_fips frozenset raises ValueError."""
         runtime = _FakeRuntime()

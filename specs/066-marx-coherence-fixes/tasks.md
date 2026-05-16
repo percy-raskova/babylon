@@ -267,7 +267,7 @@ user-action operator runs (60-90 min wallclock); all other work — the
 | `950f29d1` | feat | US2 MVP-B — engine integration + edge bootstrap (T024-T042) |
 | `f1c1f10a` | feat | US3 — ideology baseline placeholder (T043-T054) |
 | `db3dfe75` | feat | US4 + US5 — employment unit fix + substrate apportionment (T055-T069) |
-| `<pending>` | feat | Phase 8 polish — ADRs, docs, contract, spec-069 stub (T070-T074, T077-T079) |
+| `9d5c9406` | docs | Phase 8 polish — ADRs, docs, contract, spec-069 stub (T070-T074, T077-T079) |
 
 ### Remaining user-action items
 

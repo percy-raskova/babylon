@@ -29,14 +29,14 @@ independent implementation and testing.
 
 **Purpose**: Test scaffolding and infrastructure for the spec-066 bug-fix sweep.
 
-- [ ] T001 Verify project Python dependencies are unchanged (spec-066 adds no third-party deps — only Pydantic 2.x, NetworkX 3.x, psycopg 3.x, scipy already in pyproject.toml). Confirm via `poetry show | rg -E '^(psycopg|pydantic|networkx|xgi|scipy|hypothesis)\\s'`.
-- [ ] T002 [P] Create `tests/integration/test_marx_identities.py` skeleton with module-level `pytestmark = [pytest.mark.integration, pytest.mark.skipif(not BABYLON_TEST_PG_DSN, ...)]` mirroring `tests/integration/test_engine_bridge.py`.
-- [ ] T003 [P] Create `tests/integration/test_consciousness_evolution.py` skeleton with the same pytestmark plus `pytest.mark.skipif(BABYLON_SLOW_TESTS != "1", ...)` for the 520-tick assertions.
-- [ ] T004 [P] Create `tests/unit/persistence/test_hex_hydrator_marx.py` skeleton (Bug A unit tests).
-- [ ] T005 [P] Create `tests/unit/persistence/test_employment_proxy_units.py` skeleton (Bug B unit tests).
-- [ ] T006 [P] Create `tests/unit/persistence/test_substrate_apportionment.py` skeleton (Bug C unit tests).
-- [ ] T007 [P] Create `tests/unit/engine/test_factories_ideology_seed.py` skeleton (Bug D unit tests).
-- [ ] T008 [P] Create `tests/unit/engine/headless_runner/test_runner_engine_invocation.py` skeleton (Bug E unit tests).
+- [X] T001 Verify project Python dependencies are unchanged (spec-066 adds no third-party deps — only Pydantic 2.x, NetworkX 3.x, psycopg 3.x, scipy already in pyproject.toml). Confirm via `poetry show | rg -E '^(psycopg|pydantic|networkx|xgi|scipy|hypothesis)\\s'`.
+- [X] T002 [P] Create `tests/integration/test_marx_identities.py` skeleton with module-level `pytestmark = [pytest.mark.integration, pytest.mark.skipif(not BABYLON_TEST_PG_DSN, ...)]` mirroring `tests/integration/test_engine_bridge.py`.
+- [X] T003 [P] Create `tests/integration/test_consciousness_evolution.py` skeleton with the same pytestmark plus `pytest.mark.skipif(BABYLON_SLOW_TESTS != "1", ...)` for the 520-tick assertions.
+- [X] T004 [P] Create `tests/unit/persistence/test_hex_hydrator_marx.py` skeleton (Bug A unit tests).
+- [X] T005 [P] Create `tests/unit/persistence/test_employment_proxy_units.py` skeleton (Bug B unit tests).
+- [X] T006 [P] Create `tests/unit/persistence/test_substrate_apportionment.py` skeleton (Bug C unit tests).
+- [X] T007 [P] Create `tests/unit/engine/test_factories_ideology_seed.py` skeleton (Bug D unit tests).
+- [X] T008 [P] Create `tests/unit/engine/headless_runner/test_runner_engine_invocation.py` skeleton (Bug E unit tests).
 
 ---
 

@@ -131,18 +131,12 @@ def test_determinism() -> None:
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "SC-004 (tick-over-tick variance) requires engine system integration "
-        "that mutates entity state per tick. Spec-065 first cut wires the bridge "
-        "but defers full SimulationEngine integration to a follow-up spec. "
-        "Currently the bridge persists byte-identical state at every tick within "
-        "the same year (population/employment are annual; consciousness state is "
-        "engine-driven and the engine is not yet running)."
-    )
-)
 def test_tick_over_tick_evolution() -> None:
-    """T028: SC-004 — ≥3 columns show ≥5% relative change tick 0 → tick 5."""
+    """T028: SC-004 — ≥3 columns show ≥5% relative change tick 0 → tick 5.
+
+    Spec-066 T039: xfail removed — engine.run_tick now drives 21 systems
+    per tick, so consciousness/ideology/agitation values DO evolve.
+    """
     result = _run_runner(scope="detroit-tri-county", ticks=5)
     assert result.artifact_dir is not None
     with (result.artifact_dir / "trace.csv").open() as f:

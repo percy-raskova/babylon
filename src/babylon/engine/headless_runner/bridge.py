@@ -47,6 +47,8 @@ from uuid import UUID
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.engine.event_bus import EventBus
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
+from babylon.models import Relationship
+from babylon.models.enums import EdgeType
 from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
 from babylon.persistence.county_aggregation import (
@@ -270,11 +272,23 @@ class WorldStateBridge:
         # 3. Build per-county entity sets.
         entities = self._build_per_county_entities(scope_fips)
 
-        # 4. Construct initial WorldState. Tick 0 — entities only;
-        #    territories deliberately empty for spec-065 first cut
-        #    (engine systems requiring territories are not part of
-        #    the bridged loop yet).
-        world = WorldState(tick=0, entities=entities)
+        # 3a. Spec-066 T032/T033: seed one EXPLOITATION edge per county
+        #     between proletariat and bourgeoisie. Without this edge,
+        #     ImperialRentSystem has no graph path to walk -> no Φ
+        #     extraction -> no agitation -> no consciousness drift.
+        #     SOLIDARITY edges are deliberately NOT seeded; per
+        #     Constitution III.5 + Clarifications Q4 they are strategic
+        #     intervention from player verbs, not data-derived.
+        relationships = self._build_per_county_relationships(
+            scope_fips=scope_fips,
+            entities=entities,
+        )
+
+        # 4. Construct initial WorldState. Tick 0 — entities + per-county
+        #    EXPLOITATION edges; territories deliberately empty for
+        #    spec-065 first cut (engine systems requiring territories
+        #    are not part of the bridged loop yet).
+        world = WorldState(tick=0, entities=entities, relationships=relationships)
 
         # 5. Commit instance state (LAST — retry-safe).
         self._session_id = session_id
@@ -564,6 +578,54 @@ class WorldStateBridge:
 
         return entities
 
+    def _build_per_county_relationships(
+        self,
+        *,
+        scope_fips: frozenset[str],
+        entities: dict[str, Any],
+    ) -> list[Relationship]:
+        """Spec-066 T032: seed one EXPLOITATION edge per county at tick 0.
+
+        For each county, this maps the proletariat (``C{i:03d}``) -> the
+        bourgeoisie (``C{i+500:03d}``) with edge_type=EXPLOITATION and
+        starting tension=0.1 / value_flow=0.0. The ID scheme mirrors
+        :meth:`_build_per_county_entities`.
+
+        Per Constitution III.5 + Clarifications Q4, SOLIDARITY edges are
+        NOT seeded here: they emerge from player verbs (Mobilize, Organize,
+        Educate per Constitution V) and from a future strategic-intervention
+        layer. This bridge only seeds the EXTRACTIVE relationships that
+        are data-derived from the QCEW + BEA reference data via the
+        ImperialRentSystem.
+
+        Args:
+            scope_fips: 5-digit FIPS codes for the scope counties.
+            entities: The dict returned by :meth:`_build_per_county_entities`,
+                used to confirm both endpoints exist.
+
+        Returns:
+            A list of ``Relationship`` instances, one per county.
+        """
+        relationships: list[Relationship] = []
+        for i, _county_fips in enumerate(sorted(scope_fips), start=1):
+            proletariat_id = f"C{i:03d}"
+            bourgeoisie_id = f"C{i + 500:03d}"
+            if proletariat_id not in entities or bourgeoisie_id not in entities:
+                # _build_per_county_entities is the only producer; this is
+                # defensive — surfaces silent ID drift, not a real failure
+                # mode in the current call chain.
+                continue
+            relationships.append(
+                Relationship(
+                    source_id=proletariat_id,
+                    target_id=bourgeoisie_id,
+                    edge_type=EdgeType.EXPLOITATION,
+                    value_flow=0.0,
+                    tension=0.1,
+                )
+            )
+        return relationships
+
     def _build_relationship_rows(
         self,
         *,
@@ -589,22 +651,26 @@ class WorldStateBridge:
             return []
         assert self._session_id is not None
         rows: list[DynamicRelationshipState] = []
+        allowed = {"EXPLOITATION", "SOLIDARITY", "WAGES", "TRIBUTE", "TENANCY", "ADJACENCY"}
         for rel in world.relationships:
-            edge_type = (
+            edge_type_raw = (
                 rel.edge_type.value if hasattr(rel.edge_type, "value") else str(rel.edge_type)
             )
-            # Truncate to migration's 32-char cap; map unknown edge types
-            # to OTHER so the CHECK constraint accepts them.
-            edge_type_truncated = edge_type[:32]
+            # Spec-066: EdgeType StrEnum values are lowercase ("exploitation"),
+            # but the migration 0024 CHECK constraint requires uppercase
+            # ('EXPLOITATION', 'SOLIDARITY', ...). Uppercase + truncate to
+            # the 32-char cap; map unknown edge types to 'OTHER'.
+            normalized = edge_type_raw.upper()[:32]
+            edge_type = normalized if normalized in allowed else "OTHER"
             tension = float(getattr(rel, "tension", 0.0) or 0.0)
-            solidarity = tension if edge_type_truncated == "SOLIDARITY" else 0.0
+            solidarity = tension if edge_type == "SOLIDARITY" else 0.0
             rows.append(
                 DynamicRelationshipState(
                     session_id=self._session_id,
                     tick=tick,
                     source_node_id=str(rel.source_id)[:64],
                     target_node_id=str(rel.target_id)[:64],
-                    edge_type=edge_type_truncated,
+                    edge_type=edge_type,
                     tension=max(0.0, min(1.0, tension)),
                     solidarity=max(0.0, min(1.0, solidarity)),
                 )

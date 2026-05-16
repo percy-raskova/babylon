@@ -41,6 +41,7 @@ except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.engine.context import TickContext
 from babylon.engine.event_bus import EventBus
 from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
@@ -62,6 +63,9 @@ from babylon.engine.headless_runner.scopes import (
     resolve_scope,
 )
 from babylon.engine.headless_runner.trace_emitter import TRACE_COLUMNS, TraceEmitter
+from babylon.engine.services import ServiceContainer
+from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
+from babylon.models.world_state import WorldState
 
 _LOG = logging.getLogger("babylon.engine.headless_runner")
 
@@ -275,28 +279,38 @@ def _advance_tick(
     world: Any,
     tick: int,
     determinism_hash: str,
-) -> None:
-    """Spec-065 T042: real per-tick advancement via the bridge.
+    engine: SimulationEngine | None = None,
+    services: ServiceContainer | None = None,
+    graph: Any = None,
+) -> Any:
+    """Spec-066 T035: per-tick engine.run_tick() then bridge.persist_tick().
 
-    The runner now invokes ``bridge.persist_tick(world, tick, hash)``
-    on every tick, replacing the spec-064 MVP's no-op carry-forward.
-    Per-tick rows are written to the spec-065 subsystem state tables
-    (consciousness/demographics/employment) plus hex_state +
-    external_node templates re-emitted with the new tick number.
+    When ``engine`` + ``services`` + ``graph`` are provided (the standard
+    spec-066 path), the order is:
 
-    Per spec-065 research.md §R10, the bridge is a derivation/aggregation
-    adapter — its persist_tick computes per-county subsystem rows from
-    the in-memory WorldState + SQLite reference data each tick.
+      1. ``engine.run_tick(graph, services, context)`` mutates ``graph``
+         in place — all 21 engine systems execute (ImperialRent →
+         Consciousness → Struggle → ...) and the per-tick auditor (if
+         configured) runs end-of-tick.
+      2. ``world = WorldState.from_graph(graph, tick=tick)`` reconstitutes
+         the typed model from the mutated graph for ``persist_tick`` to read.
+      3. ``bridge.persist_tick(world, tick, hash)`` derives + writes the
+         per-county subsystem rows.
 
-    Engine system integration (calling ``engine.run_tick(world.graph,
-    services, context)`` to mutate ``world`` between ticks) is deferred
-    to a follow-up spec — the engine system surface (15 systems +
-    ServiceContainer) is large enough to deserve its own integration
-    work. Tick-over-tick variance for SC-004 follows from that future
-    integration; today, the bridge correctly persists whatever world
-    state exists.
+    When ``engine`` is None, falls back to the spec-065 behavior
+    (persist-only, engine bypassed) for tests that exercise the bridge
+    in isolation.
+
+    Returns:
+        The (possibly-reconstructed) ``WorldState`` for the caller to
+        continue using as input to subsequent ticks.
     """
+    if engine is not None and services is not None and graph is not None:
+        context = TickContext(tick=tick)
+        engine.run_tick(graph, services, context)
+        world = WorldState.from_graph(graph, tick=tick)
     bridge.persist_tick(world, tick, determinism_hash)
+    return world
 
 
 def _query_audit_log(*, pool: Any, session_id: UUID) -> list[AuditEntry]:
@@ -594,6 +608,25 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             sqlite_path=config.sqlite_reference_path,
         )
 
+        # Spec-066 T034/T036: construct ServiceContainer + SimulationEngine
+        # ONCE before the tick loop. Share the bridge's event_bus / auditor /
+        # boundary_register so engine systems can publish events that
+        # EventCapture sees and emit conservation audit rows that the
+        # auditor's buffer collects. A fresh SimulationEngine instance (not
+        # the module-level _DEFAULT_ENGINE singleton) avoids test-isolation
+        # contamination if multiple runs share a process.
+        services = ServiceContainer.create(defines=defines)
+        services.event_bus = event_bus
+        services.boundary_register = boundary_register
+        services.auditor = auditor
+        engine = SimulationEngine(_DEFAULT_SYSTEMS, auditor=auditor)
+
+        # Spec-066 T035: snapshot the WorldState to a single nx.DiGraph that
+        # the engine mutates in-place across all ticks. The graph is the
+        # source-of-truth between systems; world is reconstituted from it
+        # after each engine.run_tick so persist_tick can read.
+        graph = world.to_graph()
+
         # Spec-065 T064: end-game detector (US4). Optional dotted path
         # resolved + instantiated; bridge.poll_endgame is called per tick.
         if config.endgame_detector:
@@ -609,6 +642,9 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                 ticks_completed, endgame_event_payload = _tick_loop(
                     bridge=bridge,
                     world=world,
+                    graph=graph,
+                    engine=engine,
+                    services=services,
                     runtime=runtime,
                     session_id=session_id,
                     config=config,
@@ -652,6 +688,11 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         captured_events = bridge.refresh_event_log()
 
         t_artifacts = time.perf_counter()
+        # Spec-066 T030/T036: capture per-system wallclock from the engine
+        # so summary.performance.per_system_ms is populated with one entry
+        # per executed engine system class.
+        per_system_ms = dict(engine.per_system_ms)
+
         artifact_dir = _emit_artifacts(
             config=config,
             session_id=session_id,
@@ -668,6 +709,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                 hex_hydration=t_hex,
                 tick_durations=per_tick_durations,
                 artifact_emission=0.0,
+                per_system_ms=per_system_ms,
             ),
             defines=defines,
             pool=pool,
@@ -683,6 +725,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             hex_hydration=t_hex,
             tick_durations=per_tick_durations,
             artifact_emission=artifact_emission_sec,
+            per_system_ms=per_system_ms,
         )
 
         # Spec-065 T085: write the artifact's summary.json to the
@@ -745,6 +788,9 @@ def _tick_loop(
     session_id: UUID,
     config: SimulationRunConfig,
     per_tick_durations: list[float],
+    graph: Any = None,
+    engine: SimulationEngine | None = None,
+    services: ServiceContainer | None = None,
 ) -> tuple[int, dict[str, Any] | None]:
     """Drive the tick loop with tqdm + cooperative SIGINT.
 
@@ -794,11 +840,17 @@ def _tick_loop(
         # fire events through services.event_bus.publish).
         if bridge.event_capture is not None:
             bridge.event_capture.set_tick(tick)
-        _advance_tick(
+        # Spec-066 T035: _advance_tick now runs the engine when
+        # engine+services+graph are provided. It returns the
+        # reconstituted world from the mutated graph for subsequent ticks.
+        world = _advance_tick(
             bridge=bridge,
             world=world,
             tick=tick,
             determinism_hash=determinism_hash,
+            engine=engine,
+            services=services,
+            graph=graph,
         )
         per_tick_durations.append(time.perf_counter() - t_tick)
         ticks_completed = tick + 1
@@ -829,6 +881,7 @@ def _build_performance(
     hex_hydration: float,
     tick_durations: list[float],
     artifact_emission: float,
+    per_system_ms: dict[str, float] | None = None,
 ) -> PerformanceBreakdown:
     total = time.perf_counter() - total_start
     tick_loop_sec = sum(tick_durations)
@@ -852,6 +905,7 @@ def _build_performance(
         per_tick_median_ms=median_ms,
         per_tick_p99_ms=p99_ms,
         per_tick_max_ms=max_ms,
+        per_system_ms=per_system_ms or {},
     )
 
 

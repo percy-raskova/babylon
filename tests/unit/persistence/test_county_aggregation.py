@@ -383,15 +383,19 @@ class TestFetchEmploymentProxy:
     """Integration tests against the real SQLite reference DB."""
 
     def test_wayne_2010_returns_positive_float(self) -> None:
-        """Wayne County 2010 weekly employment proxy > 0."""
+        """Wayne County 2010 annual-average employment > 0.
+
+        Post spec-066 fix: industry_id=1 + ownership_id=1 (BLS 'Total
+        Covered, All Industries' rollup), returned as-is (no /52 or /12
+        divisor). Wayne 2010 BLS published annual avg employment is
+        ~660K — this test verifies the band [400K, 900K] which
+        accommodates BLS reporting variability.
+        """
         emp = fetch_employment_proxy_for_county_at_tick(
             SQLITE_REF, "26163", tick=0, start_year=2010
         )
         assert emp > 0
-        # Wayne 2010 SUM(employment) = 5.5M; /52 ≈ 106k
-        # This is QCEW double-counted across industries; the relative
-        # number tracks Wayne's labor market.
-        assert 50_000 < emp < 200_000, f"Wayne 2010 emp out of band: {emp}"
+        assert 400_000 < emp < 900_000, f"Wayne 2010 emp out of band: {emp}"
 
     def test_tick_maps_to_year_via_weekly_cadence(self) -> None:
         """tick=104 with start_year=2010 should resolve to year 2012."""

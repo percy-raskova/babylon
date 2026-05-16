@@ -173,6 +173,14 @@ def hydrate_hex_state(
             counties=counties,
             year=start_year,
         )
+        # Spec-066 T065/T066/T067: per-county apportionment factors for
+        # energy (population-weighted) and raw_material (area-weighted).
+        # Returns dict[fips, (pop_factor, area_factor)] mean-normalized to 1.0.
+        substrate_apportionment = _fetch_per_county_substrate_apportionment(
+            conn=sql_conn,
+            counties=counties,
+            year=start_year,
+        )
 
     # 3. Build per-hex DynamicHexState rows.
     hex_rows: list[DynamicHexState] = []
@@ -200,6 +208,12 @@ def hydrate_hex_state(
         c_per_hex = county_row.c_per_week / hex_count
         s_per_hex = county_row.s_per_week / hex_count
         k_per_hex = county_row.k_total / hex_count
+        # Spec-066 T066: substrate apportionment.
+        # energy_stock follows POPULATION (where consumption + storage happens);
+        # raw_material_stock follows AREA (where mining + extraction happens).
+        pop_factor, area_factor = substrate_apportionment.get(county_fips, (1.0, 1.0))
+        energy_per_hex = defines.territory.initial_energy_per_hex * pop_factor
+        raw_material_per_hex = defines.territory.initial_raw_material_per_hex * area_factor
         state_fips = county_fips[:2]
         region_id = region_for_state_fips(state_fips)
         for h3_index in cells:
@@ -216,8 +230,8 @@ def hydrate_hex_state(
                     s=s_per_hex,
                     k=k_per_hex,
                     biocapacity_stock=defines.territory.initial_biocapacity_per_hex,
-                    energy_stock=defines.territory.initial_energy_per_hex,
-                    raw_material_stock=defines.territory.initial_raw_material_per_hex,
+                    energy_stock=energy_per_hex,
+                    raw_material_stock=raw_material_per_hex,
                     internet_access_pct=county_row.internet_access_pct,
                     surveillance_coupling=county_row.surveillance_coupling,
                 )
@@ -304,6 +318,106 @@ def defines_fallback_internet() -> float:
     return 0.7
 
 
+def _fetch_per_county_substrate_apportionment(
+    *,
+    conn: sqlite3.Connection,
+    counties: frozenset[str],
+    year: int,
+    audit_alarms: list[_CalibrationAlarm] | None = None,
+) -> dict[str, tuple[float, float]]:
+    """Spec-066 T065/T066/T067: per-county (pop_factor, area_factor) apportionment.
+
+    Returns a dict keyed by county FIPS with ``(pop_factor, area_factor)``
+    where each factor is dimensionless and normalized so that
+    ``mean(factor) == 1.0`` across the scope counties. Multiplying a
+    per-hex substrate default by these factors yields the spec-066
+    apportioned per-hex value (energy_stock uses pop_factor;
+    raw_material_stock uses area_factor).
+
+    Data sources (SQLite reference DB):
+      - ``fact_census_income.population`` (preferred) → per-county population
+      - ``dim_county_geometry.area_sq_km`` → per-county land area
+
+    Fallbacks (graceful per T067):
+      - If population is missing: pop_factor = 1.0 (uniform).
+      - If area_sq_km is missing or zero: area_factor = pop_factor
+        (degraded mode — area follows population), and a
+        ``severity='warning'`` calibration alarm is appended.
+
+    Args:
+        conn:        Open SQLite connection.
+        counties:    Set of 5-digit FIPS codes in scope.
+        year:        Calendar year for population lookup.
+        audit_alarms: Optional sink for warning alarms about missing area data.
+
+    Returns:
+        ``{fips: (pop_factor, area_factor)}`` keyed by FIPS.
+    """
+    if audit_alarms is None:
+        audit_alarms = []
+    fips_list = sorted(counties)
+    placeholders = _placeholders(fips_list)
+
+    # 1. Population per county (proxied by SUM(fact_census_income.household_count)
+    #    summed across income brackets and races for the target year — mirrors
+    #    babylon.persistence.county_aggregation.fetch_population_for_county_at_tick).
+    pop_rows = conn.execute(
+        f"""
+        SELECT dc.fips, COALESCE(SUM(fci.household_count), 0)
+        FROM fact_census_income fci
+        JOIN dim_county dc ON dc.county_id = fci.county_id
+        JOIN dim_time t ON t.time_id = fci.time_id
+        WHERE dc.fips IN ({placeholders}) AND t.year = ?
+        GROUP BY dc.fips
+        """,
+        (*fips_list, year),
+    ).fetchall()
+    population_by_fips = {fips: float(total or 0) for fips, total in pop_rows}
+
+    # 2. Area per county (from dim_county_geometry; no time dimension).
+    area_rows = conn.execute(
+        f"""
+        SELECT dc.fips, dcg.area_sq_km
+        FROM dim_county_geometry dcg
+        JOIN dim_county dc ON dc.county_id = dcg.county_id
+        WHERE dc.fips IN ({placeholders})
+        """,
+        tuple(fips_list),
+    ).fetchall()
+    area_by_fips = {fips: float(area or 0) for fips, area in area_rows}
+
+    # 3. Compute totals + apportionment factors (mean-normalized to 1.0).
+    n_counties = len(counties) or 1
+    total_pop = sum(population_by_fips.values()) or float(n_counties)
+    total_area = sum(area_by_fips.values()) or float(n_counties)
+    mean_pop = total_pop / n_counties
+    mean_area = total_area / n_counties
+
+    apportionment: dict[str, tuple[float, float]] = {}
+    for fips in counties:
+        pop = population_by_fips.get(fips, mean_pop)
+        area = area_by_fips.get(fips, 0.0)
+        pop_factor = (pop / mean_pop) if mean_pop > 0 else 1.0
+        if area <= 0:
+            # Graceful fallback per T067: area_factor follows pop_factor.
+            area_factor = pop_factor
+            audit_alarms.append(
+                _CalibrationAlarm(
+                    invariant_name="county_area_missing_falls_back_to_population",
+                    county_fips=fips,
+                    year=year,
+                    gdp_per_week=0.0,
+                    v_per_week=0.0,
+                    residual=0.0,
+                )
+            )
+        else:
+            area_factor = (area / mean_area) if mean_area > 0 else 1.0
+        apportionment[fips] = (pop_factor, area_factor)
+
+    return apportionment
+
+
 def _fetch_per_county_data(
     *,
     conn: sqlite3.Connection,
@@ -346,12 +460,14 @@ def _fetch_per_county_data(
 
     # 1. QCEW total_wages_usd per (county, year) — primary v source.
     #
-    # Spec-066 T019: filter to `industry_id = 1` (the BLS 'All Industries'
-    # aggregate). fact_qcew_annual is denormalized across
-    # (industry x ownership x establishment) rows; summing across industries
-    # triple-counts overlapping NAICS hierarchies (Manufacturing + Durable
-    # Goods both contain the same establishments). industry_id=1 is the
-    # BLS publication granularity that researchers cite in QCEW totals.
+    # Spec-066 T019: filter to `industry_id = 1 AND ownership_id = 1`
+    # to land on the BLS 'Total Covered, All Industries' rollup.
+    # fact_qcew_annual is denormalized across (industry x ownership x
+    # establishment); summing without filters double-counts both axes
+    # (NAICS hierarchy AND ownership-rollup-vs-leaves). The
+    # `ownership_id = 1` row IS the sum of the four leaf ownership
+    # categories (Federal, State, Local, Private), so we read it directly
+    # to avoid the 2x rollup duplication.
     qcew_rows = conn.execute(
         f"""
         SELECT dc.fips, COALESCE(SUM(fq.total_wages_usd), 0) AS total_wages
@@ -361,6 +477,7 @@ def _fetch_per_county_data(
         WHERE dc.fips IN ({_placeholders(fips_list)})
           AND t.year = ?
           AND fq.industry_id = 1
+          AND fq.ownership_id = 1
         GROUP BY dc.fips
         """,
         (*fips_list, year),

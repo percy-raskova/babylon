@@ -102,7 +102,7 @@ plus the instrumentation counters and miss-logging state.
 | `hydrate` | `(scope_fips: frozenset[str], year_set: frozenset[int]) -> None` | Issue batched SQL, populate `_entries`, increment counters. Idempotent only via the `_hydrated` guard (calling twice → RuntimeError, mirroring bridge.hydrate_initial). |
 | `lookup_population` | `(county_fips: str, year: int) -> int \| None` | Return cached value or `None` if missing. Does NOT increment any counter (counter is hydrate-time only per R6). |
 | `lookup_employment_proxy` | `(county_fips: str, year: int) -> float \| None` | Same. |
-| `mark_population_miss_logged` | `(county_fips: str, year: int) -> bool` | Return `True` on first call for this tuple, `False` thereafter. Drives SC-005. |
+| `mark_population_miss_logged` | `(county_fips: str, year: int) -> bool` | Return `True` on first call for this tuple, `False` thereafter. Drives SC-004. |
 | `mark_employment_miss_logged` | `(county_fips: str, year: int) -> bool` | Same for employment. |
 | `population_db_reads` | `@property -> int` | Number of `(county, year)` tuples whose population was resolved at hydrate (whether to a value or to `None`). |
 | `employment_db_reads` | `@property -> int` | Same for employment. |
@@ -196,7 +196,7 @@ Lifecycle:
   → stable thereafter for the lifetime of the bridge.
 ```
 
-The tracker is the operational form of SC-005. Verification:
+The tracker is the operational form of SC-004. Verification:
 
 ```python
 # Run a scenario with K missing (county, year) tuples spanning T ticks each.
@@ -248,7 +248,7 @@ focus per file, per the project's testing convention):
 |-----------|-------|---------|
 | `test_reference_data_cache_year_set.py` | `derive_year_set` pure-function correctness | R3 |
 | `test_reference_data_cache_three_state.py` | Per-field nullability semantics | R2 |
-| `test_reference_data_cache_miss_logging.py` | `mark_*_miss_logged` returns True exactly once per tuple | R7 / SC-005 |
+| `test_reference_data_cache_miss_logging.py` | `mark_*_miss_logged` returns True exactly once per tuple | R7 / SC-004 |
 | `test_reference_data_cache_counter.py` | Counter increments at hydrate, not at lookup | R6 / SC-002 |
 | `test_cache_byte_identical_trace.py` | (slow gate) Empirical SC-003 verification | R8 |
 | `test_cache_canonical_wallclock.py` | (slow gate) SC-001 + SC-002 on canonical scenario | R1 |

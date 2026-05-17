@@ -73,10 +73,11 @@ description: "Task list for spec-069 — SQLite per-tick read cache for the brid
 - [ ] T016 [US1] Implement `lookup_population(county_fips, year) -> int | None` and `lookup_employment_proxy(county_fips, year) -> float | None` in `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/reference_data_cache.py` — `RuntimeError` if not hydrated; `KeyError` if out of scope
 - [ ] T017 [US1] Implement `mark_population_miss_logged(county_fips, year) -> bool` and `mark_employment_miss_logged(county_fips, year) -> bool` in `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/reference_data_cache.py` — first call returns `True` and adds tuple to the per-field set; subsequent calls return `False`
 - [ ] T018 [US1] Add `total_ticks: int` keyword-only required parameter to `WorldStateBridge.hydrate_initial` in `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/bridge.py:224` and validate `total_ticks >= 0`
+- [ ] T018b [P] [US1] Update every existing `bridge.hydrate_initial(...)` call site in `/home/user/projects/game/babylon/tests/unit/engine/headless_runner/test_bridge.py` to pass `total_ticks=<test_specific_value>` (≈12 call sites at lines 116, 132, 148, 168, 174, 189, 217, 236, 247, 268, plus the `pytest.raises` blocks); without this update the existing bridge test suite will `TypeError` on the new required parameter. Suggested test value: `total_ticks=1` for hydrate-only tests; larger values where the test exercises multi-tick behavior. Blocked by T018; parallel with T019–T022 (different file).
 - [ ] T019 [US1] Instantiate `ReferenceDataCache` in `WorldStateBridge.hydrate_initial` after validating inputs but before committing instance state (i.e., before `self._hydrated = True`) in `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/bridge.py` — call `cache.hydrate(scope_fips, derive_year_set(start_year, total_ticks))` and assign to `self._ref_cache`
-- [ ] T020 [US1] Refactor `WorldStateBridge._derive_subsystem_rows_for_county` in `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/bridge.py:697` to use `self._ref_cache.lookup_*` instead of `fetch_*_at_tick`; route missing-data through `mark_*_miss_logged` to log the warning at most once per tuple per FR-004 / SC-005
+- [ ] T020 [US1] Refactor `WorldStateBridge._derive_subsystem_rows_for_county` in `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/bridge.py:697` to use `self._ref_cache.lookup_*` instead of `fetch_*_at_tick`; route missing-data through `mark_*_miss_logged` to log the warning at most once per tuple per FR-004 / SC-004
 - [ ] T021 [US1] Plumb `total_ticks=config.ticks` through the existing `bridge.hydrate_initial(...)` call site at `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/runner.py:603` — single-line additive change in the keyword-argument list
-- [ ] T022 [US1] Write slow-gate integration test for SC-001 + SC-002 wallclock + read-count in `/home/user/projects/game/babylon/tests/integration/engine/headless_runner/test_cache_canonical_wallclock.py` — runs canonical scenario (mocked or fixture-backed scope to keep test under a few minutes), asserts elapsed-time bound and counter-equals-`2 × N × Y`; marker `@pytest.mark.slow` so it gates on `mise run test:int` not on `mise run test:unit`
+- [ ] T022 [US1] Write slow-gate integration test for SC-002 read-count + FR-003 persist-tick-no-increment in `/home/user/projects/game/babylon/tests/integration/engine/headless_runner/test_cache_canonical_wallclock.py` — fixture-backed at REDUCED SCALE (4 counties × 2 calendar years × 60 ticks; year-rollover crossed at tick 52) to fit within CI's `mise run test:int` time budget; asserts `bridge.total_db_reads == 2 × 4 × 2 == 16` post-hydrate and that the counter does not change across the 60 persist_tick calls. The absolute 60-minute SC-001 wallclock gate is NOT exercised here — it is verified at canonical 83 × 11 × 520 scale by the operator-side procedure in T036 / quickstart.md. Marker `@pytest.mark.slow` so it gates on `mise run test:int` not on `mise run test:unit`.
 
 **Checkpoint**: US1 fully functional. The MVP slice is shippable here: cache works, run is faster, persist_tick is II.6-compliant.
 
@@ -131,7 +132,7 @@ description: "Task list for spec-069 — SQLite per-tick read cache for the brid
 - [ ] T032 Run `mise run test:int -- tests/integration/engine/headless_runner/test_cache_canonical_wallclock.py tests/integration/engine/headless_runner/test_cache_byte_identical_trace.py` and confirm both pass; capture wall-clock seconds and read-counts into a follow-up commit message
 - [ ] T033 [P] Create `/home/user/projects/game/babylon/ai-docs/decisions/ADR047_sqlite_per_tick_read_cache.yaml` documenting: context (spec-066 R8 deferred work), decision (the cache and its contract), rationale (~5 "why" sections from research.md), consequences (positive: II.6 compliance, ≥30× fetch-wallclock relief; negative: new `total_ticks` parameter is a forward-incompatible signature change for any external callers), references (spec/plan/research/contracts/quickstart paths)
 - [ ] T034 [P] Update `/home/user/projects/game/babylon/ai-docs/decisions/index.yaml` to register `ADR047_sqlite_per_tick_read_cache` and bump the index `version` field by one minor unit
-- [ ] T035 [P] Update `/home/user/projects/game/babylon/ai-docs/state.yaml` — set `last_sprint` to `069-sqlite-cache-optimization`; add a `spec_069_summary` block recording SC-001/SC-002/SC-003 pass/fail per the slow-gate test results
+- [ ] T035 [P] Update `/home/user/projects/game/babylon/ai-docs/state.yaml` — set `last_sprint` to `069-sqlite-cache-optimization`; add a `spec_069_summary` block recording SC-001/SC-002/SC-003/SC-004 pass/fail (SC-001 from operator-side canonical run per T036; SC-002 + SC-004 from unit/integration tests; SC-003 from byte-identical slow-gate)
 - [ ] T036 Validate against `/home/user/projects/game/babylon/specs/069-sqlite-cache-optimization/quickstart.md` step-by-step on a canonical run; confirm SC-001 ≤ 60 min, SC-002 = 1826, SC-003 byte-identical at same seed; if any gate fails, return to the appropriate user-story phase
 
 ---
@@ -153,7 +154,7 @@ description: "Task list for spec-069 — SQLite per-tick read cache for the brid
 
 ### Within Each User Story
 
-- Tests MUST be written and FAIL before implementation (TDD policy). Within US1 the test cluster is T007-T013; the impl cluster is T014-T022.
+- Tests MUST be written and FAIL before implementation (TDD policy). Within US1 the test cluster is T007-T013; the impl cluster is T014-T022 (plus T018b for the existing-call-site update).
 - Models before services. `ReferenceCacheEntry` (T004) before `ReferenceDataCache` methods (T014-T017).
 - Cache class before bridge integration. T014-T017 before T018-T021.
 - Bridge integration before runner plumbing. T018-T020 before T021.
@@ -164,7 +165,7 @@ description: "Task list for spec-069 — SQLite per-tick read cache for the brid
 - Setup: T002 [P] runs in parallel with anything that doesn't need the new module yet.
 - Foundational tests: T005 [P] and T006 [P] are both parallel — different test files, independent of each other.
 - US1 tests: T007–T012 [P] are all parallel — six independent unit-test files. T013 is sequential (single integration file).
-- US1 impl: T014–T017 all edit `reference_data_cache.py` and are sequential within that file; T018–T021 edit `bridge.py` and `runner.py` and are sequential.
+- US1 impl: T014–T017 all edit `reference_data_cache.py` and are sequential within that file; T018–T021 edit `bridge.py` and `runner.py` and are sequential. T018b [P] edits `tests/unit/engine/headless_runner/test_bridge.py` — different file, parallel with T019–T022 once T018 is complete.
 - US2 tests: T023, T024, T025 all [P] — three independent test files.
 - US3 tests: T029 [P] and T030 [P] — two independent test files.
 - Polish: T033, T034, T035 are [P] — three independent YAML/file targets.
@@ -193,8 +194,8 @@ Then T013 sequentially (integration test for the bridge), then T014-T022 sequent
 
 1. Complete Phase 1: Setup (T001, T002).
 2. Complete Phase 2: Foundational (T003, T004, T005, T006). CRITICAL — blocks all stories.
-3. Complete Phase 3: User Story 1 (T007–T022).
-4. **STOP and VALIDATE**: run T022's slow-gate test; confirm SC-001 + SC-002 hold.
+3. Complete Phase 3: User Story 1 (T007–T022, plus T018b).
+4. **STOP and VALIDATE**: run T022's slow-gate test (reduced-scale structural gate: SC-002 read-count + FR-003 persist-tick invariance). For SC-001 absolute-wallclock verification, run the canonical scenario per T036 / quickstart.md on an operator workstation.
 5. Optionally demo at this point. The cache is operationally green.
 
 ### Incremental Delivery

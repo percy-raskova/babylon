@@ -4,8 +4,8 @@
 
 This document defines the **read-only observability surface** that
 the bridge re-exposes from `ReferenceDataCache` so that operators
-and tests can verify SC-002 (exactly `2 × N × Y` reads) and SC-004
-(≥ 30× read-fetch wallclock reduction).
+and tests can verify SC-002 (exactly `2 × N × Y` reads) and FR-003
+(persist_tick performs zero reads against the underlying database).
 
 ---
 
@@ -153,9 +153,10 @@ def test_fr_003_persist_tick_does_not_increment_counter(
   (per-tuple resolutions), not `cursor.execute()` calls. The actual
   number of SQL executions is 2 or 3 (per R4) regardless of
   `(scope × year_set)` size.
-- **No timing data**. SC-004 (≥ 30× wallclock reduction) is measured
-  by external timing (`time.monotonic()` instrumentation in the
-  slow-gate test), not by these counters.
+- **No timing data**. The counters are structural (count of reads),
+  not temporal. Wallclock gates (SC-001) are observed via the
+  runner's existing `manifest.json.wallclock_seconds` field, not
+  via this surface.
 - **No per-tuple miss visibility**. The counters do not distinguish
   "(fips, year) resolved to a value" from "(fips, year) resolved to
   None." The `mark_*_miss_logged` API on the cache is the surface

@@ -45,10 +45,13 @@ All items passed on the first iteration. Specific evidence:
   requirements (FR-001..FR-008) names a single observable behavior —
   enumerable (year set), countable (read counts), boolean (cache miss
   vs hit), or exact-value (numeric equality).
-- **Requirement Completeness / Measurable SCs**: All 5 success criteria
+- **Requirement Completeness / Measurable SCs**: All 4 success criteria
   bind to numbers — sixty minutes wallclock (SC-001), exactly 2 × N × Y
-  reads (SC-002), byte-identical (SC-003), thirty-fold improvement
-  (SC-004), once per tuple (SC-005).
+  reads (SC-002), byte-identical (SC-003), once per tuple (SC-004).
+  (Post-analyze remediation: the directional "thirty-fold improvement"
+  gate originally numbered SC-004 was dropped as ambiguous; the
+  expectation now lives as derived narrative in the spec's Context
+  section.)
 - **Requirement Completeness / Edge cases**: Six edge cases enumerated
   covering missing data, out-of-window years, year-boundary semantics,
   mid-run database revision, cross-run isolation, and degenerate
@@ -56,11 +59,11 @@ All items passed on the first iteration. Specific evidence:
 - **Feature Readiness / FR → SC traceability**:
   - FR-001, FR-002 → SC-002 (read counts match enumeration of in-scope
     tuples)
-  - FR-003 → SC-001, SC-004 (no per-tick reads ⇒ wallclock relief)
-  - FR-004, FR-006 → SC-005 (missing-data warning frequency)
+  - FR-003 → SC-001 (no per-tick reads ⇒ wallclock relief)
+  - FR-004, FR-006 → SC-004 (missing-data warning frequency)
   - FR-005 → SC-003 (byte-identical trace)
-  - FR-007 → SC-002, SC-004 (instrumentation is the verification
-    surface for both performance gates)
+  - FR-007 → SC-002 (the operator-visible verification surface for
+    the read-count gate)
   - FR-008 → out-of-scope cross-run sharing made explicit
 
 ### Readiness assessment

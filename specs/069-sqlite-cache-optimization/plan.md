@@ -29,8 +29,9 @@ The cache is pure latency optimization: `trace.csv` must remain
 byte-identical at the same seed (SC-003), the numeric values written
 to demographics/employment rows must equal the pre-cache values
 exactly (FR-005), and the canonical 520-tick Michigan-Canada run must
-complete in ≤ 60 min (SC-001) — a ~30× reduction in bridge-fetch
-wallclock from ~3.5 s/tick to ~0.1 s/tick (SC-004).
+complete in ≤ 60 min (SC-001). The structural read-count reduction
+(86,320 → 1,826 reads, a 47× factor) is what drives the wallclock
+relief from ~3.5 s/tick to ~0.1 s/tick observed in spec-066 R8.
 
 ## Technical Context
 
@@ -51,16 +52,15 @@ against the canonical Michigan-Canada scenario.
 **Project Type**: Library + CLI extension (bridged headless runner
 internals; no new top-level entry point).
 **Performance Goals**: SC-001 (≤ 60 min wallclock for canonical 520-tick
-run); SC-004 (≥ 30× wallclock reduction in bridge reference-data fetch
-overhead); SC-002 (exactly 2 × N × Y reference-data reads against the
+run); SC-002 (exactly 2 × N × Y reference-data reads against the
 underlying database).
 **Constraints**: SC-003 (`trace.csv` byte-identical at same seed);
-FR-005 (no rounding/quantization/coercion); SC-005 (missing-data
+FR-005 (no rounding/quantization/coercion); SC-004 (missing-data
 warning at most once per (county, year) tuple).
 **Scale/Scope**: 83 counties × 11 calendar years (2010–2020 for the
 canonical run) = ≤ 1,826 cache entries; 86,320 → 1,826 reference-data
-reads (a 47× structural reduction in read count; the 30× SC-004 number
-is wallclock and accounts for connection-open overhead amortization).
+reads (a 47× structural reduction in read count, which is what
+delivers the SC-001 wallclock relief at the system level).
 
 ## Constitution Check
 
@@ -157,9 +157,12 @@ src/babylon/persistence/
 └── county_aggregation.py                  # UNCHANGED — fetcher functions remain authoritative
 
 tests/unit/engine/headless_runner/
+# Illustrative subset; see tasks.md (T005-T012, T023-T024, T030) for
+# the full inventory — Phase 0/1 enumerates 11 new unit-test files
+# total. The four below are the load-bearing structural fixtures.
 ├── test_reference_data_cache_year_set.py     # NEW — year-set enumeration
-├── test_reference_data_cache_three_state.py  # NEW — NOT_FETCHED/VALUE/MISSING semantics
-├── test_reference_data_cache_miss_logging.py # NEW — SC-005 once-per-tuple warning
+├── test_reference_data_cache_three_state.py  # NEW — per-field nullability semantics
+├── test_reference_data_cache_miss_logging.py # NEW — SC-004 once-per-tuple warning
 └── test_reference_data_cache_counter.py      # NEW — instrumentation counter
 
 tests/integration/engine/headless_runner/

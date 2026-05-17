@@ -41,11 +41,23 @@ class FactQcewAnnual(NormalizedBase):
     disclosure_code: Mapped[str | None] = mapped_column(String(5))
 ```
 
-**Pre-067 population**: ~10 M rows across all US counties, 2010-2024. Rows include BOTH BLS-published rollup levels (NAICS 2-5-digit aggregations, "All industries" supersector, "Total covered" ownership) AND the canonical leaves (6-digit National Industry × Federal/State/Local/Private ownership).
+**Pre-067 population** (verified 2026-05-16 T001 pre-flight): **43,305,794** rows across all US counties, 2010-2024 (NOT the ~10M originally estimated; the spec under-estimated by 4×). Rows include BOTH BLS-published rollup levels (NAICS 2-5-digit aggregations, "All industries" supersector, "Total covered" ownership, plus BLS special-aggregation codes at `naics_level ∈ {98, 99}`) AND the canonical leaves (6-digit National Industry × Federal/State/Local/Private ownership).
 
-**Post-067 population** (this spec's deliverable): ~7 M rows. Only canonical-leaf rows survive:
+**Post-067 population** (this spec's deliverable, verified via dry-run): **~15,097,464** rows (≈ 35% of pre-067). Only canonical-leaf rows survive:
 - `industry_id` references rows in `dim_industry` where `naics_level = 6` (National Industry detail)
 - `ownership_id` references rows in `dim_ownership` where `own_code ∈ {'1', '2', '3', '5'}` (Federal / State / Local / Private; NOT '0' Total Covered)
+
+**Pre/post breakdown by rollup class** (Michigan + all US, dry-run measured):
+
+| Class | Pre-067 rows | Action |
+|---|---|---|
+| naics_level=6 × own_code ∈ {1,2,3,5} | 15,097,464 | **SURVIVE** |
+| naics_level ∈ {0,2,3,4,5,98,99} × own_code ∈ {1,2,3,5} | 28,159,281 | DELETE 3a (naics_only) |
+| naics_level=6 × own_code='0' | 0 | DELETE 3b (ownership_only) |
+| naics_level ∈ {0,2,3,4,5,98,99} × own_code='0' | 49,049 | DELETE 3a-or-3b (both_axes) |
+| **TOTAL** | **43,305,794** | — |
+
+Notable: in this DB, **no `(naics_level=6, own_code='0')` rows exist**, so the `ownership_only` subclass is empty. The BLS data only publishes the Total Covered ownership rollup *at the all-industries-rollup level*, not at the 6-digit leaf level. This is structurally consistent with BLS's QCEW publication schema (Total Covered is always paired with All Industries).
 
 **Cardinality estimate** (Michigan scope, 2010-2024):
 - Counties: 83

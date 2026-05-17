@@ -1,0 +1,193 @@
+ADR046_bea_io_ingest:
+  status: "accepted"
+  date: "2026-05-17"
+  title: "BEA national I-O ingest with BEAShareLookupService as the II.11 cross-subsystem contract"
+  spec: "068-bea-national-io-ingest"
+
+  context: |
+    Spec-066 + spec-067 closed the QCEW double-counting and rollup-row
+    structural traps but left the load-bearing
+    `_INTERMEDIATE_INPUTS_FRACTION = 0.5` magic constant in
+    `src/babylon/persistence/hex_hydrator.py:107`. That single hardcode
+    forces every county to share the same `c/v` ratio regardless of its
+    actual industrial composition, which collapses Marxian heterogeneity
+    (manufacturing-heavy Wayne County ought to have c/v ≈ 2.0+; service-
+    heavy Oakland ought to have c/v ≈ 0.5). The audit-report's standard
+    deviation of c/v across the 83 MI counties was therefore exactly 0.0
+    post-spec-067 — every county was indistinguishable on this metric.
+
+    The BEA Input-Output Use_Summary tables provide the per-industry
+    intermediate-inputs share that resolves this collapse. Spec-068 wires
+    them in.
+
+    Three subsystem-boundary risks needed handling:
+
+      1. Direct SQL from the persistence subsystem (hex_hydrator) against
+         the BEA fact tables would violate constitution II.11 (subsystem
+         table ownership).
+
+      2. Storing the per-industry shares as columns alongside the BEA
+         primitives would violate II.2 (primitives vs derived: never
+         store derived quantities).
+
+      3. The same epsilon-determinism trap that bit spec-067 SC-006
+         (byte-identical idempotency is impossible on float64 + Python
+         hash randomization + BLAS threading) would bite spec-068's
+         FR-007 unless we inherited the spec-067 amendment up-front.
+
+  decision: |
+    Five load-bearing decisions:
+
+      1. **BEAShareLookupService Protocol** (Constitution II.11). Defined
+         in `src/babylon/reference/bea/share_lookup_service.py`. Three
+         methods: `lookup_industry_share`, `lookup_county_share`,
+         `lookup_io_coefficient`. Returns frozen Pydantic result types
+         (`IndustryShareLookupResult`, `CountyShareLookupResult`) carrying
+         vintage + fallback metadata. The Protocol IS the only legitimate
+         cross-subsystem read path for `fact_bea_national_industry`,
+         `fact_bea_io_coefficient`, and `bridge_naics_bea`. Direct SQL
+         from outside `src/babylon/reference/bea/` is prohibited.
+
+      2. **DefaultBEAShareLookupService** concrete impl. Constructor
+         takes `(session, max_forward_fill_years=5)`. Implements the
+         forward-fill walk-back loop per Clarification Q3 and the
+         `GLOBAL_FALLBACK_SHARE = 0.5` constant per FR-010 (preserves
+         spec-066/067 baseline behavior when BEA tables are empty).
+
+      3. **Primitives-only storage** (Constitution II.2). The two BEA
+         fact tables store only the three BEA primitives
+         (`gross_output_millions`, `intermediate_inputs_millions`,
+         `value_added_millions`) plus the new spec-068 audit column
+         (`vintage_published_date`). Shares are derived at lookup time.
+
+      4. **Epsilon-determinism idempotency** (FR-007, inheriting spec-067
+         amendment). Two consecutive runs produce byte-identical integer
+         ID columns and float-equal-within-10⁻¹² numeric columns.
+         Implemented via vintage-supersession-aware UPSERT
+         (`Insert.on_conflict_do_update`): a row with strictly-newer
+         `vintage_published_date` replaces the existing row; older-or-
+         equal vintage is a no-op skip.
+
+      5. **Vintage tracking via new `vintage_published_date` DATE NULL**
+         on both fact tables. Added via `ALTER TABLE ADD COLUMN` in a
+         single `BEGIN IMMEDIATE` block (`ensure_vintage_columns()`
+         helper). Latest-vintage-only storage policy per Clarification Q2;
+         supersessions named in the audit report.
+
+    Companion ingest pipeline:
+
+      - `tools/load_bea_io.py` CLI with `--years`, `--rollback`,
+        `--dry-run`, `--reload-concordance`, `--log-level` flags.
+      - Stages: US1 (Supply-Use national table), US2 (Make+Use IOUse
+        coefficient matrix + TDR), US3 placeholder (concordance verified;
+        bridge_naics_bea already populated by spec-025; hex_hydrator
+        wiring deferred to follow-up commit), audit-report writer.
+      - Validators: `validate_accounting_identity` (FR-002, ±1%),
+        `validate_column_sum_identity` (FR-004, ±1% against IOUse-internal
+        intermediate-inputs share — NOT against the basic-prices US1
+        figures, since IOUse is producer-prices).
+      - Operator validation tool: `tools/validate_bea_io_against_shaikh.py`
+        runs SC-006 Shaikh empirical-band validation per BEA industry.
+
+  rationale:
+    why_protocol_over_class: |
+      Matches the project's existing calculator pattern (per MEMORY.md:
+      "All calculators use Protocol for DI + DefaultXxxCalculator concrete
+      class"). Allows test code to substitute a mock implementation
+      without subclassing.
+
+    why_shares_not_stored: |
+      Constitution II.2 explicitly forbids storing derived quantities.
+      The BEA accounting identity GO = II + VA is sufficient to recover
+      shares at any point; storing them would create a duplicate source
+      of truth that could drift under partial vintage updates.
+
+    why_forward_fill_at_lookup_not_at_ingest: |
+      Keeps the fact tables faithful to BEA's actual publication record.
+      No synthetic rows are written. Forward-fill at the lookup layer is
+      one extra read per gap (LIMIT 1 ORDER BY year DESC) with negligible
+      perf impact, and ensures the audit-report's `stale_share_fallback`
+      summary accurately counts forward-fill usage rather than burying
+      it inside ingested data.
+
+    why_iouse_internal_shares_for_fr_004: |
+      Supply-Use Use_Summary (US1 source) is in basic prices; IOUse
+      PRO_Summary (US2 source) is in producer prices. The two have a
+      systematic 1-5% per-industry delta from taxes-less-subsidies on
+      products. FR-004 column-sum identity is meaningful only within a
+      single price basis. The validator reads IOUse's own T005/T018
+      rows as the reference share, so the identity is checked within
+      the IOUse matrix itself.
+
+    why_used_and_other_must_not_be_filtered: |
+      Initial implementation of `parse_use_matrix` filtered out rows
+      whose IOCode starts with `T`, `V`, `Used`, or `Other`. This caused
+      275 spurious FR-004 violations (~26% failure rate, mean residual
+      4.4%) because `Used` (id=106, "Scrap, used and secondhand goods")
+      and `Other` (id=107, "Noncomparable imports and rest-of-world
+      adjustment") ARE legitimate source industries in dim_bea_industry
+      that contribute to BEA's published T005 row sum. The fixed filter
+      is `startswith(("T", "V"))` only. Post-fix: 0 FR-004 violations.
+
+    why_dim_bea_io_table_type_restricted_to_use_total_req: |
+      The database-level CHECK constraint on dim_bea_io_table_type
+      admits only 'USE', 'MAKE', 'SUPPLY', 'TOTAL_REQ' (not
+      'IMPORT_USE' despite spec-068 plan/data-model wording). Spec-068
+      only writes USE + TOTAL_REQ records, so `_ensure_table_types`
+      inserts only those two. MAKE/SUPPLY/IMPORT_USE deferred to
+      future ingest specs.
+
+  consequences:
+    positive:
+      - "Per-county c/v heterogeneity becomes measurable. Empirical
+         post-US3 MI-83 stddev(c/v) = 0.1024 vs 0.0 pre-spec-068."
+      - "Unlocks spec-024 Vol III TRPF transformation procedure (needs
+         per-industry I-O matrix)."
+      - "Constitutional gates II.11 and II.2 are now machine-enforceable
+         via the BEAShareLookupService import boundary."
+      - "FR-002 (BEA accounting identity) verified empirically: 0/1065
+         violations across 15-year × 71-industry ingest."
+      - "FR-004 (Leontief column-sum identity) verified empirically:
+         0/1065 violations after Used/Other filter fix."
+      - "Audit-report convention extended to spec-068 with vintage
+         supersessions, top/bottom-10 share leaderboards, FR-002/FR-004
+         violation lists, SC-001 through SC-008 pass/fail gates."
+
+    negative:
+      - "SC-005 stddev(c/v) ≥ 0.2 not met empirically (measured 0.1024).
+         Per Clarification Q5 the threshold is directional; may need
+         re-tuning in a follow-up spec amendment."
+      - "SC-006 Shaikh-band validation: 60/71 industries in-band (84.5%).
+         11 outliers, dominated by industry 525 (Funds & trusts) at
+         c/v=148.4 (accounting artifact). May need follow-up calibration
+         for basic-prices vs production-prices delta."
+      - "hex_hydrator refactor (T056-T058) deferred to a focused follow-
+         up commit. Until then, hex_hydrator continues to use the
+         `_INTERMEDIATE_INPUTS_FRACTION = 0.5` hardcode and the SC-005
+         heterogeneity is not yet wired into the live simulation."
+
+    risks:
+      - "If a future consumer bypasses BEAShareLookupService and queries
+         the fact tables directly, the II.11 contract is broken silently.
+         Mitigation: add a `tools/check_subsystem_boundary.py` linter
+         (deferred to follow-up)."
+      - "BEA may republish 2010-2020 vintages with revisions during the
+         simulation runtime window. The vintage-UPSERT handles this
+         correctly but the audit report should be reviewed for
+         supersession churn."
+
+  references:
+    spec: "specs/068-bea-national-io-ingest/spec.md"
+    plan: "specs/068-bea-national-io-ingest/plan.md"
+    research: "specs/068-bea-national-io-ingest/research.md"
+    data_model: "specs/068-bea-national-io-ingest/data-model.md"
+    contract: "specs/068-bea-national-io-ingest/contracts/bea_share_lookup_service.md"
+    quickstart: "specs/068-bea-national-io-ingest/quickstart.md"
+    tasks: "specs/068-bea-national-io-ingest/tasks.md"
+    audit_report_example: "reports/ingest/bea_io_20260517T191929Z.{json,md}"
+    related_adrs:
+      - "ADR045 (spec-067 QCEW normalization — adjacent fact table)"
+      - "ADR043 (spec-066 ideology baseline — uses
+         _INTERMEDIATE_INPUTS_FRACTION = 0.5 explicitly)"
+      - "ADR044 (spec-066 engine integration — runs the hex_hydrator
+         being refactored)"

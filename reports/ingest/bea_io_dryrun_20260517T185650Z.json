@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "timestamp": "2026-05-17T18:56:50.078471Z",
+  "duration_seconds": 0.00015425899619003758,
+  "sim_years_in_scope": [
+    2010
+  ],
+  "dry_run": true,
+  "rows_inserted": {},
+  "rows_superseded": {},
+  "rows_unchanged": {},
+  "accounting_identity_violations": [],
+  "column_sum_identity_violations": [],
+  "intermediate_inputs_share_top10": [],
+  "intermediate_inputs_share_bottom10": [],
+  "naics_bea_concordance_coverage": null,
+  "stale_share_fallback_summary": null,
+  "vintage_supersessions": [],
+  "sc_001_pass": null,
+  "sc_002_pass": null,
+  "sc_003_pass": null,
+  "sc_004_pass": null,
+  "sc_005_pass": null,
+  "sc_006_pass": null,
+  "sc_007_pass": true,
+  "sc_008_pass": null,
+  "sc_007_wallclock_seconds": 0.00015425899619003758
+}

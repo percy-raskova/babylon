@@ -31,7 +31,19 @@
 
 ## Validation Notes
 
-**Pass — spec is ready for `/speckit.clarify` or `/speckit.plan`.**
+**Pass — spec is ready for `/speckit.plan`.**
+
+**Clarifications session 2026-05-17 — 5 questions resolved**:
+- Q1: FR-007 amended from "byte-identical" to epsilon-determinism ≤ 10⁻¹²
+  (inheriting spec-067 precedent).
+- Q2: Multi-vintage policy = latest-only with `vintage_published_date`
+  audit column on both fact tables.
+- Q3: Missing-year fallback = forward-fill with `stale_share_fallback`
+  audit category counted against SC-008's <1% threshold.
+- Q4: `gross_output` source = BEA Supply-Use industry output (producer
+  side), not Use-table column total (consumer side).
+- Q5: SC-005 stddev threshold (0.2) is directional; exact value may be
+  re-tuned during implementation plan after first Michigan-83 baseline.
 
 Notes on judgment calls made during drafting:
 

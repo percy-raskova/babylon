@@ -1,6 +1,6 @@
 # Spec-067 Quickstart — QCEW Normalization Operator Guide
 
-**Branch**: `067-qcew-ownership-normalization` | **Plan**: [plan.md](./plan.md) | **Estimated wallclock**: ~10–15 minutes
+**Branch**: `067-qcew-ownership-normalization` | **Plan**: [plan.md](./plan.md) | **Estimated wallclock**: ~75-120 minutes (revised 2026-05-16 post-T036; empirical migration time against the 43M-row reference DB took 60-75 minutes for the `--apply` phase alone, then ~5 min for audit-report computation. The original 10-15 min estimate in plan.md was based on a 10M-row table assumption that turned out to be 4× too small. Plan ahead for at least 2 hours of wallclock for the full workflow.)
 
 This guide walks an operator through running the spec-067 migration end-to-end, from pre-flight checks through the regenerated michigan-e2e baseline. Every step is recorded; every step is reversible until the explicit cleanup at the end.
 
@@ -12,7 +12,7 @@ This guide walks an operator through running the spec-067 migration end-to-end, 
 |---|---|---|
 | On the right branch | `git branch --show-current` | `067-qcew-ownership-normalization` |
 | Reference DB present | `ls -lh data/sqlite/marxist-data-3NF.sqlite` | ~8.79 GB |
-| Disk space free | `df -h .` (the project directory) | ≥ 15 GB free (peak during backup is ~12 GB SQLite + ~1 GB working) |
+| Disk space free | `df -h .` (the project directory) | ≥ 20 GB free (revised 2026-05-16: peak during backup is the 8.2 GB original table + a 2 GB rollback journal during DELETE + ~1 GB working = ~12 GB. Add comfort margin for SQLite VACUUM and the FTS-style index churn) |
 | Python env synced | `poetry env info` | python 3.12+, project venv active |
 | pre-commit installed | `git config --get core.hooksPath || ls .git/hooks/pre-commit` | hook present (per CLAUDE.md setup) |
 
@@ -304,3 +304,48 @@ All eight SCs verifiable from the operator workflow above.
 - **Running Phase 4 (consumer refactor) before Phase 2 (migration)**: the consumer queries hitting the new SUM-the-leaves pattern still work against the un-normalized table (they just include the rollup rows in the SUM, double-counting). Tests will fail with values 2× higher than expected. Always migrate first, then refactor.
 - **Running Phase 6 (baseline regeneration) before Phase 5 (band tightening)**: the slow-gate run uses the band test; if the band is still `[0.05, 0.80]` when you regenerate, you don't know whether the new values would have passed the tighter band. Order: migrate → refactor → tighten band → regenerate baseline.
 - **Skipping Phase 8 (cleanup)**: harmless but leaves 3 GB of dead bytes in the SQLite file. CI's disk-usage gate (if any) may complain.
+
+---
+
+## Operational lessons learned (2026-05-16 T036 run)
+
+The first live run of `--apply` revealed two operational surprises that the spec/plan estimates did not anticipate. Documenting them here so future operators can plan accordingly.
+
+### 1. Migration wallclock is ~10× the spec estimate
+
+Spec plan estimated 5-7 min for the DELETE statements. Actual wallclock for the live `--apply` run against the 43.3M-row reference DB was **60-75 min** for the DELETE phase alone, plus another ~5 min for the audit-report's per-county-delta computation.
+
+**Why**: the spec assumed `fact_qcew_annual` held ~10M rows (likely Michigan-only). The actual table holds **43.3M rows** (all US counties, 2010-2024). Each row deletion writes to the rollback journal + updates 4 secondary indices. The journal grew to ~2 GB before the COMMIT phase began.
+
+**Implication**: budget 90+ min for the migration phase. Run during off-hours; do not block on it interactively. Monitor `ls -la data/sqlite/marxist-data-3NF.sqlite-journal` to confirm progress (the journal grows during DELETE, shrinks to ~0 after COMMIT).
+
+### 2. QCEW data has BLS suppression at the 6-digit NAICS level
+
+Spec FR-006 / SC-001 / SC-007 assumed `SUM(leaves) ≈ BLS-published rollup` within ±5%. Empirically, BLS suppresses 6-digit cells for employer confidentiality, so the SUM(leaves) is **systematically 10-30% LOWER** than the rollup value. Wayne County 2010 example: rollup 657,150 → SUM(leaves) 561,173 (-14.6%). Across all Michigan county-years, **0% fell within the ±5% band**; mean delta was -61%.
+
+**Implication**: the audit report's `per_county_deltas.summary_stats.counties_within_5pct_band_pct` will be 0.0 (not the ≥95% the spec targeted). This is a data-property finding, not an implementation bug. Mitigation options documented in ADR045:
+
+- (a) Loosen tolerance from ±5% to ±20-30% (matches observed suppression)
+- (b) Use `naics_level=4` leaves instead of `naics_level=6` (closer to BLS fidelity)
+- (c) Retain the `naics_level=0 AND own_code='0'` rollup row as the canonical source (back to spec-066's pattern, with explicit predicate)
+- (d) Introduce a synthetic imputed-total row
+
+Until a spec amendment selects one of these, the migration's intent (remove the trap) is achieved but the audit's BLS-agreement target is not. The migration is fully reversible via `--rollback-from-backup`.
+
+### 3. Future optimization: CREATE-TABLE-AS-SELECT strategy
+
+The current DELETE-based migration scales poorly with table size. A faster alternative (deferred to spec-086 or a follow-up amendment):
+
+```sql
+CREATE TABLE fact_qcew_annual__new AS
+SELECT fq.* FROM fact_qcew_annual fq
+JOIN dim_industry i ON fq.industry_id = i.industry_id
+JOIN dim_ownership o ON fq.ownership_id = o.ownership_id
+WHERE i.naics_level = 6 AND o.own_code != '0';
+
+ALTER TABLE fact_qcew_annual RENAME TO fact_qcew_annual__pre_067;
+ALTER TABLE fact_qcew_annual__new RENAME TO fact_qcew_annual;
+-- Recreate indices on the new table
+```
+
+Single-pass O(N) write of ~15M canonical rows instead of O(N log N) row-by-row DELETE of 28M rows with journaling. Estimated: 5-15 min vs 60-75 min observed. Trade-off: deviates from the contract SQL in `contracts/normalization_migration.sql` and changes the rollback story (the original table IS the backup, no separate `__pre_067` snapshot needed).

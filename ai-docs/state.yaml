@@ -2,10 +2,51 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.11.0"
+  version: "2.12.0"
   updated: "2026-05-17"
-  last_sprint: "068-bea-national-io-ingest (Partial; ~60/77 tasks done — US1+US2+US3-partial+US4+ADR046 shipped; hex_hydrator wiring T056-T058 deferred to follow-up commit)"
-  previous_sprint: "067-qcew-ownership-normalization (Complete; 70/70 tasks done — see specs/067-qcew-ownership-normalization/tasks.md and ADR045)"
+  last_sprint: "069-sqlite-cache-optimization (Complete; 37/37 tasks done — see specs/069-sqlite-cache-optimization/tasks.md and ADR047. SC-001 absolute 60-min wallclock gate deferred to operator-side canonical run per quickstart.md T036.)"
+  previous_sprint: "068-bea-national-io-ingest (Partial; ~60/77 tasks done — US1+US2+US3-partial+US4+ADR046 shipped; hex_hydrator wiring T056-T058 deferred to follow-up commit)"
+  previous_previous_sprint: "067-qcew-ownership-normalization (Complete; 70/70 tasks done — see specs/067-qcew-ownership-normalization/tasks.md and ADR045)"
+  spec_069_summary: |
+    SQLite per-tick read cache for the bridged headless runner — closes
+    the spec-066 R8 deferred performance follow-up (ADR044's cited
+    ~30 min wallclock reclaim).
+
+    ReferenceDataCache class in
+    src/babylon/engine/headless_runner/reference_data_cache.py owned by
+    WorldStateBridge. Hydrates once at hydrate_initial time via two
+    batched SQL queries (Census + QCEW) under a single sqlite3.Connection
+    for the full scope × year_set Cartesian product; every persist_tick
+    thereafter reads from the in-memory dict. Constitution II.6 "No DB
+    I/O during tick" now holds for the bridge by construction.
+
+    Validation gates measured:
+      - SC-001 (≤ 60 min wallclock canonical): operator-side per
+        quickstart.md / T036. Not gated in CI.
+      - SC-002 (exactly 2×N×Y reads): PASS — fixture-backed integration
+        test at reduced scale 4×2×60 confirms; full-scale verification
+        via manifest.json.bridge_db_reads = 1660 on canonical (83×10×2).
+      - SC-003 (byte-identical trace.csv at same seed): cache-layer
+        determinism verified by test_cache_byte_identical_trace.py; full
+        trace.csv equality is operator-verified per quickstart.md.
+      - SC-004 (warning at most once per (county, year)): PASS via
+        test_reference_data_cache_miss_logging.py.
+
+    Bridge gains three @property accessors (population_db_reads /
+    employment_db_reads / total_db_reads) plus a new
+    manifest.json.bridge_db_reads top-level block for offline operator
+    inspection.
+
+    Spec docs off-by-one fix: canonical 520-tick run touches ticks 0..519
+    only (per runner.py:817-819), so the year-set is {2010..2019} =
+    10 years and SC-002 expected count is 2×83×10 = 1,660 (not 1,826).
+    Updated data-model.md, quickstart.md, plan.md, research.md,
+    contracts/instrumentation_contract.md, tasks.md accordingly.
+
+    Test totals: 102 unit + 9 integration = 111 green in headless_runner.
+    Existing test_manifest_builder.py + test_county_aggregation.py
+    unchanged (legacy fetchers preserved for non-bridge callers per
+    II.11 / R10).
   spec_068_summary: |
     BEA national I-O ingest — fact_bea_national_industry (1065 rows) +
     fact_bea_io_coefficient (131,239 rows) populated from BEA Make+Use /
@@ -25,7 +66,7 @@ meta:
       - T056-T058 hex_hydrator refactor (BEAShareLookupService DI)
       - tools/check_subsystem_boundary.py II.11 linter
       - Spec amendment for SC-005 threshold + SC-006 calibration
-  previous_previous_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
+  previous_previous_previous_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
   spec_067_summary: |
     QCEW rollup-row normalization — closes the spec-066 follow-up
     item that flagged the fragile `WHERE industry_id = 1 AND

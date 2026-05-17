@@ -29,15 +29,16 @@ def _build_minimal_sqlite(
     *,
     fips: str = "26163",
     year: int = 2010,
-    total_wages_industry_1: float = 50_000_000_000.0,  # $50B/yr Wayne Cty all-industries
-    total_wages_industry_2: float = 30_000_000_000.0,  # $30B/yr Wayne Cty Manufacturing
+    total_wages_industry_1: float = 50_000_000_000.0,  # $50B/yr canonical-leaves total
+    total_wages_industry_2: float = 30_000_000_000.0,  # retained for sig compat; unused post-067
     bea_gdp_millions: float = 200_000.0,  # $200B Wayne Cty GDP
 ) -> sqlite3.Connection:
     """In-memory SQLite with the four tables ``_fetch_per_county_data`` reads.
 
-    Inserts TWO QCEW rows (industry_id=1 'All Industries' AND industry_id=2
-    'Manufacturing') to verify the spec-066 industry_id=1 filter prevents
-    the double-counting bug.
+    Post-spec-067: inserts ONE QCEW row representing the SUM of canonical
+    leaves for the (county, year). Spec-066's multi-row fixture verified
+    the now-removed filter; post-067 the consumer has no filter so the
+    test invariants are simpler.
     """
     conn = sqlite3.connect(":memory:")
     conn.executescript(
@@ -77,24 +78,19 @@ def _build_minimal_sqlite(
     )
     conn.execute("INSERT INTO dim_county (county_id, fips) VALUES (?, ?)", (1, fips))
     conn.execute("INSERT INTO dim_time (time_id, year) VALUES (?, ?)", (1, year))
-    # Two QCEW rows: industry 1 (All Industries) + industry 2 (Manufacturing).
-    # Pre-spec-066, the SUM would double-count by adding both.
-    # Spec-066: industry_id=1 + ownership_id=1 = BLS rollup row
+    # **Post-spec-067 contract** (commit 3b7568ec): hex_hydrator SUMs all
+    # rows for a (county, year) without filtering. Spec-067's data-layer
+    # migration guarantees only canonical leaves (naics_level=6 × own_code
+    # ∈ {'1','2','3','5'}) exist in fact_qcew_annual, so SUM-of-everything
+    # is the BLS-publication aggregate.
+    #
+    # The fixture inserts ONE row whose total_wages_usd equals
+    # `total_wages_industry_1` — the tests' v_per_week expectations
+    # then trivially match `total_wages_industry_1 / 52`. Multi-row
+    # SUM coverage is in test_employment_proxy_units.py.
     conn.execute(
         "INSERT INTO fact_qcew_annual VALUES (?, ?, ?, ?, ?, ?)",
-        (1, 1, 1, 1, 1_200_000, total_wages_industry_1),
-    )
-    # Sibling industry_id=2 row (manufacturing): would over-count if
-    # industry_id=1 filter were missing.
-    conn.execute(
-        "INSERT INTO fact_qcew_annual VALUES (?, ?, ?, ?, ?, ?)",
-        (1, 2, 1, 1, 700_000, total_wages_industry_2),
-    )
-    # Sibling ownership_id=5 (Private) row at industry_id=1: would
-    # over-count if ownership_id=1 filter were missing.
-    conn.execute(
-        "INSERT INTO fact_qcew_annual VALUES (?, ?, ?, ?, ?, ?)",
-        (1, 1, 5, 1, 1_100_000, total_wages_industry_1 * 0.9),
+        (1, 2, 2, 1, 1_200_000, total_wages_industry_1),
     )
     conn.execute(
         "INSERT INTO fact_bea_county_gdp VALUES (?, ?, ?, ?)",
@@ -131,29 +127,27 @@ def test_s_formula_uses_value_added_identity() -> None:
 
 
 def test_qcew_query_filters_industry_id_1() -> None:
-    """T013 / FR-002: QCEW SUM only counts industry_id=1 rows.
+    """T013 / FR-002 (amended post-spec-067): QCEW SUM aggregates over the
+    canonical leaves for a (county, year).
 
-    The fixture inserts two QCEW rows for the same county-year: industry_id=1
-    ($50B All Industries) and industry_id=2 ($30B Manufacturing). Without
-    the spec-066 filter, the SUM would be $80B (the bug). With the filter,
-    SUM is $50B (the BLS publication granularity).
+    Post-067 the consumer has no `WHERE industry_id = 1` filter — the
+    data-layer migration deleted all non-canonical (rollup) rows, so
+    the fixture's single row IS the canonical leaves total.
+
+    The test name is retained for git-history continuity; the assertion
+    body is now the SUM-of-leaves contract.
     """
     conn = _build_minimal_sqlite(
         total_wages_industry_1=50_000_000_000.0,
-        total_wages_industry_2=30_000_000_000.0,
     )
     rows = _fetch_per_county_data(conn=conn, counties=frozenset({"26163"}), year=2010)
     row = rows["26163"]
 
-    # If the filter were missing, v_per_week would be $80B/52 ≈ $1.538B/wk.
-    # With the filter, v_per_week is $50B/52 ≈ $961.5M/wk.
-    expected_v_filtered = 50_000_000_000.0 / 52.0
-    naive_buggy_v = 80_000_000_000.0 / 52.0
-
-    assert row.v_per_week == pytest.approx(expected_v_filtered, rel=1e-9)
-    assert row.v_per_week != pytest.approx(naive_buggy_v, rel=1e-3), (
-        f"v_per_week={row.v_per_week} matches the un-filtered SUM "
-        f"(${naive_buggy_v:.0f}/wk); industry_id=1 filter is missing"
+    # Single fixture row → SUM equals total_wages_industry_1 = $50B/yr.
+    # v_per_week = $50B / 52 weeks ≈ $961.5M/wk.
+    expected_v = 50_000_000_000.0 / 52.0
+    assert row.v_per_week == pytest.approx(expected_v, rel=1e-9), (
+        f"v_per_week={row.v_per_week} ≠ canonical-leaves SUM / 52 = {expected_v:.0f}"
     )
 
 

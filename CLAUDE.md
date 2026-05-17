@@ -858,6 +858,8 @@ ADR0XX_descriptive_name:
 - PostgreSQL 16+ for runtime state (existing `dynamic_consciousness_state`, `dynamic_relationship_state` etc. from spec-062/065); SQLite for read-only reference data (`marxist-data-3NF.sqlite` for QCEW, BEA, FCC, Census, Hickel/Ricci); no new tables required (migrations 0020-0024 already shipped) (066-marx-coherence-fixes)
 - Python 3.12+ (per project standard) + SQLAlchemy 2.x (`DeclarativeBase` + `Mapped[]` ORM in `src/babylon/reference/schema.py`), `sqlite3` (stdlib, atomic transaction wrapper), Pydantic 2.x (audit-report schema), no new deps (067-qcew-ownership-normalization)
 - SQLite reference DB at `data/sqlite/marxist-data-3NF.sqlite`; affected tables: `fact_qcew_annual` (DELETE), `dim_industry` (read), `dim_ownership` (read), `dim_time` (read for vintage classification in audit report) (067-qcew-ownership-normalization)
+- Python 3.12+ (existing project standard). + `sqlite3` stdlib (existing); Pydantic 2.x for (069-sqlite-cache-optimization)
+- Reads from existing `marxist-data-3NF.sqlite` via the (069-sqlite-cache-optimization)
 
 ## Recent Changes
 - 062-cross-scale-integration: Two-phase persistence boundary, per-tick transactional atomicity (FR-008a), weekly tick + year-scoped coefficient interpolation, hex-as-source-of-truth aggregation views, 5-flow-type pipeline ordering, Canada boundary node, conservation audit log with determinism hash

@@ -226,6 +226,7 @@ from tools.normalize_qcew_rollups import (  # noqa: E402
     RowCountsExcluded,
     RunMetadata,
     SummaryStats,
+    _per_county_deltas,
     backup_fact_qcew_annual,
     delete_naics_rollups,
     delete_ownership_rollups,
@@ -470,6 +471,180 @@ def test_apply_idempotency_byte_identical_state_post_rerun(
     assert post1 == post2
     # Sanity: the first pass actually did delete the rollups.
     assert naics1 + own1 > 0
+
+
+# Larger-fixture end-to-end test (added 2026-05-16 while T036 was in flight
+# against the live reference DB; validates the full apply path against a
+# non-trivial in-memory dataset without depending on the locked live DB).
+def test_full_apply_path_against_larger_fixture(tmp_path: Path) -> None:
+    """Exercise the full migration sequence against a 1000-row synthetic DB.
+
+    The tiny fixture (6 rows) doesn't reach all execution paths in
+    `_per_county_deltas` (which scans backup vs. current and computes
+    delta_pct). This test scales up to 1000 rows across 5 counties × 15
+    years, with realistic rollup/leaf ratios, and confirms:
+
+    * The integrity check passes (pre - post == naics_only +
+      ownership_only + both_axes).
+    * `post_migration_validation` finds zero non-canonical rows.
+    * The audit-report's `_per_county_deltas` produces sensible counts.
+    * Idempotent re-run yields zero additional excluded rows.
+
+    Real-DB validation happens in T036; this test exists to catch
+    regressions in the migration tool's row-class-accounting paths
+    without requiring a live --apply.
+    """
+
+    db_path = tmp_path / "larger_qcew.sqlite"
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.begin() as conn:
+        for stmt in _TINY_DDL.strip().split(";"):
+            if stmt.strip():
+                conn.execute(text(stmt))
+    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    session = session_factory()
+
+    try:
+        _seed_tiny_dims(session)
+        # Add more counties + years to reach 1000+ rows.
+        # 5 counties: Wayne (already exists at id=1), Macomb (id=2),
+        # plus 3 new ones.
+        session.execute(
+            text(
+                "INSERT INTO dim_county (county_id, fips, county_name) VALUES "
+                "(3, '26125', 'Oakland County'), "
+                "(4, '26049', 'Genesee County'), "
+                "(5, '26161', 'Washtenaw County')"
+            )
+        )
+        # 15 years.
+        for offset in range(15):
+            session.execute(
+                text(
+                    "INSERT OR IGNORE INTO dim_time (time_id, year, is_annual) VALUES (:t, :y, 1)"
+                ),
+                {"t": offset + 10, "y": 2010 + offset},
+            )
+        # Seed rows: for each (county, year), generate
+        #   * 3 NAICS rollups × 4 ownership leaves = 12 naics_only rows
+        #   * 1 ownership rollup × 1 canonical industry = 1 ownership_only row
+        #   * 1 both_axes row
+        #   * 4 canonical leaves
+        rows: list[dict[str, int | float]] = []
+        for county_id in range(1, 6):
+            for time_id in range(10, 25):
+                # naics_only (industry_id=1=rollup, ownership_id ∈ {2,3,4,5})
+                for own in (2, 3, 4, 5):
+                    rows.append(
+                        {
+                            "c": county_id,
+                            "i": 1,
+                            "o": own,
+                            "t": time_id,
+                            "e": 100,
+                            "w": 5_000_000.0,
+                        }
+                    )
+                # ownership_only (industry_id=2 OR 3 = canonical leaf, ownership_id=1=rollup)
+                for ind in (2, 3):
+                    rows.append(
+                        {
+                            "c": county_id,
+                            "i": ind,
+                            "o": 1,
+                            "t": time_id,
+                            "e": 100,
+                            "w": 5_000_000.0,
+                        }
+                    )
+                # both_axes (industry_id=1=rollup, ownership_id=1=rollup)
+                rows.append(
+                    {
+                        "c": county_id,
+                        "i": 1,
+                        "o": 1,
+                        "t": time_id,
+                        "e": 200,
+                        "w": 10_000_000.0,
+                    }
+                )
+                # canonical leaves (industry_id ∈ {2,3} × ownership_id ∈ {2,3,4,5})
+                for ind in (2, 3):
+                    for own in (2, 3, 4, 5):
+                        rows.append(
+                            {
+                                "c": county_id,
+                                "i": ind,
+                                "o": own,
+                                "t": time_id,
+                                "e": 75,
+                                "w": 3_750_000.0,
+                            }
+                        )
+        session.execute(
+            text(
+                "INSERT INTO fact_qcew_annual "
+                "(county_id, industry_id, ownership_id, time_id, employment, "
+                "total_wages_usd) VALUES (:c, :i, :o, :t, :e, :w)"
+            ),
+            rows,
+        )
+        session.commit()
+
+        # Pre-flight + preflight count consistency.
+        # 5 counties × 15 years × 15 rows-per-cell = 1125 rows.
+        # Per cell: 4 naics_only + 2 ownership_only + 1 both_axes + 8 canonical.
+        pre_result = preflight_assertions(session)
+        assert pre_result.fact_qcew_annual_pre == 1125
+        assert pre_result.naics_only_count == 5 * 15 * 4  # 300
+        assert pre_result.ownership_only_count == 5 * 15 * 2  # 150
+        assert pre_result.both_axes_count == 5 * 15 * 1  # 75
+        assert pre_result.canonical_count == 5 * 15 * 8  # 600
+        assert pre_result.total_rollups == 525
+
+        # Backup.
+        backup_count = backup_fact_qcew_annual(session)
+        assert backup_count == 1125
+
+        # DELETEs.
+        naics_n = delete_naics_rollups(session)
+        ownership_n = delete_ownership_rollups(session)
+        assert naics_n == 300 + 75  # naics_only + both_axes (which 3a catches)
+        assert ownership_n == 150  # ownership_only remaining after 3a
+        session.commit()
+
+        # Integrity check.
+        assert integrity_check(
+            pre=1125,
+            post=600,  # only the canonical-leaf rows survive
+            excluded_naics=pre_result.naics_only_count,
+            excluded_ownership=pre_result.ownership_only_count,
+            excluded_both=pre_result.both_axes_count,
+        )
+
+        # Post-migration validation passes.
+        post_migration_validation(session)
+
+        post = session.execute(text("SELECT COUNT(*) FROM fact_qcew_annual")).scalar()
+        assert post == 600
+
+        # Idempotent re-run.
+        re_naics = delete_naics_rollups(session)
+        re_ownership = delete_ownership_rollups(session)
+        assert (re_naics, re_ownership) == (0, 0)
+
+        # _per_county_deltas executes without error.
+        deltas = _per_county_deltas(session, michigan_scope_only=True)
+        # The fixture's `fips` codes are 26xxx so the michigan filter matches.
+        # post_sum (canonical leaves) is 75 employment × 8 rows = 600 per cell.
+        # pre_sum from backup (naics_level=0, own_code='0') = the both_axes row,
+        # employment=200. Delta vs 600 is +200% → outlier.
+        assert deltas.summary_stats.counties_with_delta_gt_10pct >= 1, (
+            "expected at least one outlier in the synthetic fixture"
+        )
+    finally:
+        session.close()
+        engine.dispose()
 
 
 # T032 — Rollback recovers the pre-migration state. Implemented via direct

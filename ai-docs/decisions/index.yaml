@@ -1,5 +1,5 @@
 meta:
-  version: 1.14.0
+  version: 1.15.0
   updated: '2026-05-17'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -154,3 +154,8 @@ decisions:
     status: accepted
     date: '2026-05-17'
     file: ADR046_bea_io_ingest.yaml
+  ADR047_sqlite_per_tick_read_cache:
+    title: 'Spec 069: Per-bridge SQLite reference-data cache to remove DB I/O from the per-tick path'
+    status: accepted
+    date: '2026-05-17'
+    file: ADR047_sqlite_per_tick_read_cache.yaml

@@ -1,0 +1,198 @@
+ADR047_sqlite_per_tick_read_cache:
+  status: "accepted"
+  date: "2026-05-17"
+  title: "Per-bridge SQLite reference-data cache to remove DB I/O from the per-tick path"
+  spec: "069-sqlite-cache-optimization"
+
+  context: |
+    Post-spec-066 the bridged headless runner's `persist_tick` step
+    opens fresh `sqlite3.Connection` instances per (county, tick) for
+    two reference-data lookups in
+    `babylon.persistence.county_aggregation`:
+
+      * `fetch_population_for_county_at_tick`
+      * `fetch_employment_proxy_for_county_at_tick`
+
+    Both functions resolve to a value that is invariant within a calendar
+    year (Census ACS / QCEW are annual aggregates), but under the weekly
+    cadence the same value is re-fetched 51 redundant times before the
+    year rolls over. For the canonical 520-tick Michigan-Canada run
+    (83 counties × 520 ticks × 2 fetches = 86,320 SQLite reads), this
+    dominates wallclock at ~3.5 s/tick post-spec-066, against the
+    SC-011 90-minute budget. spec-066 R8 named this as the load-bearing
+    follow-up; ADR044 cited it as the planned reclaim of ~30 min
+    wallclock if needed.
+
+    Two constitutional principles were tensioned by the existing code:
+
+      * **II.6 "State is Data, Engine is Transformation"** — explicitly
+        includes a "No DB I/O during tick" rule. Pre-spec-069 the bridge
+        opens new connections per (county, tick), the prima facie
+        violation.
+
+      * **II.11 Subsystem Table Ownership** — the legacy fetchers in
+        `babylon.persistence.county_aggregation` are the declared
+        cross-subsystem read path for Census and QCEW tables. Bypassing
+        them with direct SQL from the bridge would create a parallel
+        read path — itself a II.11 violation.
+
+  decision: |
+    Six load-bearing decisions:
+
+      1. **`ReferenceDataCache` class** in
+         `src/babylon/engine/headless_runner/reference_data_cache.py`.
+         Owned by the bridge subsystem (II.11 — only the bridge may
+         construct or call it; the cache is not a Protocol-typed
+         contract for cross-subsystem consumption). One instance per
+         `WorldStateBridge` instance.
+
+      2. **One-shot `hydrate(scope_fips, year_set)`** issues exactly two
+         batched SQL queries under a single `sqlite3.Connection` —
+         Census-by-(fips, year) and QCEW-by-(fips, year) — for the full
+         Cartesian product. Census + QCEW × 0.33 fallback computation
+         happens in Python after both queries return. Double-hydrate is
+         a `RuntimeError`; empty year_set is a no-op (degenerate
+         zero-tick case).
+
+      3. **Per-field nullable `ReferenceCacheEntry`** frozen Pydantic
+         model: `(population: int | None, employment_proxy: float | None)`.
+         All four combinations of present/None are legitimate empirical
+         states because Census/QCEW coverage is asymmetric (Census
+         missing but QCEW present yields `population=int(QCEW × 0.33)`
+         via the fallback; QCEW missing yields both `None`).
+
+      4. **`derive_year_set(start_year, total_ticks)`** pure function:
+         `{start_year + t // 52 for t in range(total_ticks)}`. For
+         canonical (`start_year=2010, total_ticks=520`) → 10 years
+         (`{2010, …, 2019}`); year 2020 is never touched since the
+         runner persists ticks 0..519 (`range(1, config.ticks)` +
+         explicit tick-0 persist).
+
+      5. **Required keyword-only `total_ticks: int`** on
+         `WorldStateBridge.hydrate_initial`. The runner passes
+         `config.ticks` at the existing call site
+         (`runner.py:603`); no operator-facing CLI flag changes.
+
+      6. **`manifest.json.bridge_db_reads` block** with
+         `{population_db_reads, employment_db_reads, total_db_reads}`
+         emitted at run-end for offline operator inspection of SC-002.
+         Bridge gains three `@property` accessors that delegate to the
+         cache (returning 0 if `self._ref_cache is None`).
+
+    `mark_population_miss_logged` / `mark_employment_miss_logged` provide
+    once-per-tuple coordination for the bridge's existing missing-data
+    warning (SC-004 — emit at most once per (county, year), never
+    once per (county, tick) cell).
+
+    The legacy fetchers in `babylon.persistence.county_aggregation`
+    remain available with unchanged semantics for non-bridge callers
+    (operator tools, ad-hoc scripts, legacy tests).
+
+  rationale:
+    why_one_class_owned_by_bridge_not_a_protocol: |
+      Unlike spec-068's `BEAShareLookupService` (which serves multiple
+      consumer subsystems — hex_hydrator, RAG, future calculators), the
+      reference-data cache has exactly one consumer: the bridge's
+      `_derive_subsystem_rows_for_county`. A Protocol + Default impl
+      pattern would over-engineer for a single-consumer optimization.
+
+    why_per_field_nullability_not_a_three_state_enum: |
+      Inspection of `fetch_population_for_county_at_tick` and
+      `fetch_employment_proxy_for_county_at_tick` reveals an asymmetric
+      fallback path: `population` derives from Census primary + QCEW×0.33
+      fallback, but `employment_proxy` reads only QCEW. A single
+      `MISSING` enum value can't capture the empirical case where Census
+      is missing AND QCEW is present (population fallbacks succeed,
+      employment proxy succeeds — both fields are non-None but came from
+      different SQL sources). Per-field `int | None` matches the
+      existing fetcher contract exactly.
+
+    why_two_queries_not_three: |
+      Data-model.md §2 algorithm describes Query A (Census), Query B
+      (QCEW fallback for Census-missing tuples), and Query C (QCEW for
+      employment_proxy). Implementation collapses Query B and Query C
+      into a single QCEW-for-all-tuples query: the QCEW result feeds
+      both the fallback computation AND the employment proxy. Saves one
+      cursor.execute and one round of placeholder generation. Contract
+      allows 2-or-3.
+
+    why_required_keyword_only_total_ticks: |
+      An optional `total_ticks=None` would force the cache to defer
+      year-set enumeration to first-tick — adding complexity, violating
+      FR-001's "before the first tick is persisted" wording, and
+      creating a wallclock spike at tick 1 instead of amortizing the
+      hydrate cost. Making it required is forward-incompatible for
+      external callers but the only caller outside the test suite is
+      `runner.py:603`.
+
+    why_empty_year_set_is_a_noop_hydrate: |
+      Spec.md Edge Cases enumerates the degenerate zero-tick case
+      (operator runs with `--ticks 0`). The cache marks itself hydrated
+      with zero entries; any subsequent `persist_tick` invocation will
+      raise `KeyError` on the first lookup (because no entries exist),
+      but that's the same failure mode the legacy fetcher would surface
+      via `ReferenceDataMissingError` and is the operator's
+      configuration bug to fix, not a defect of the cache.
+
+    why_counter_at_hydrate_not_at_lookup: |
+      Per R6: the unit of "read" is a `(county, year)` tuple-resolution,
+      not a `cursor.execute` call. Incrementing at lookup time would
+      conflate "DB read" with "cache hit," defeating SC-002's purpose
+      (verifying structural reduction, not lookup volume). Hydrate-time
+      counting cleanly counts each tuple once.
+
+  consequences:
+    positive:
+      - "Bridge is now II.6-compliant on the persist_tick path. Zero
+         SQLite connections opened after hydrate."
+      - "Structural read reduction: 86,320 → 1,660 reads on the
+         canonical scenario (a 52× factor). Wallclock relief at the
+         system level moves the 520-tick run from ~5400 s (90 min) to
+         the SC-001 ≤ 60 min budget on the published hardware."
+      - "SC-002 falsifiable from `manifest.json.bridge_db_reads`
+         directly — operator confirms `2 × N × Y` without needing to
+         re-instrument."
+      - "FR-005 / SC-003 byte-identity preserved at the cache layer
+         (test_cache_value_equality.py + test_cache_byte_identical_trace.py)."
+      - "II.11 boundary preserved: legacy fetchers in
+         `babylon.persistence.county_aggregation` are unchanged for all
+         non-bridge callers."
+
+    negative:
+      - "Adding `total_ticks` as a REQUIRED keyword-only parameter to
+         `WorldStateBridge.hydrate_initial` is a forward-incompatible
+         signature change for any external callers. Mitigated by
+         updating all ~10 existing call sites in
+         `tests/unit/engine/headless_runner/test_bridge.py` in the same
+         change (T018b)."
+      - "The full SC-001 60-min canonical wallclock gate is verified
+         operator-side per quickstart.md T036, not in CI. The CI
+         slow-gate test (`test_cache_canonical_wallclock.py`) runs at
+         reduced scale (4 counties × 2 years × 60 ticks) — sufficient
+         to verify SC-002 read-count + FR-003 invariance, but not the
+         absolute 60-min wallclock claim."
+
+    risks:
+      - "If a future spec extends the bridge to read a new reference
+         table (beyond Census + QCEW), the cache must be updated in
+         lockstep — otherwise the per-tick path silently re-introduces
+         DB I/O. Mitigation: the integration test
+         `test_persist_tick_opens_no_new_sqlite_connection` patches
+         `sqlite3.connect` after hydrate and asserts NO call during
+         persist_tick — this guard catches the regression class
+         immediately."
+
+  references:
+    spec: "specs/069-sqlite-cache-optimization/spec.md"
+    plan: "specs/069-sqlite-cache-optimization/plan.md"
+    research: "specs/069-sqlite-cache-optimization/research.md"
+    data_model: "specs/069-sqlite-cache-optimization/data-model.md"
+    cache_contract: "specs/069-sqlite-cache-optimization/contracts/reference_data_cache_contract.md"
+    instrumentation_contract: "specs/069-sqlite-cache-optimization/contracts/instrumentation_contract.md"
+    quickstart: "specs/069-sqlite-cache-optimization/quickstart.md"
+    tasks: "specs/069-sqlite-cache-optimization/tasks.md"
+    related_adrs:
+      - "ADR044 (engine integration into bridged runner — cited spec-069
+         as planned reclaim of ~30 min wallclock)"
+      - "ADR045 (spec-067 QCEW normalization — cited spec-069 as TBD
+         follow-up in the perf-optimization queue)"

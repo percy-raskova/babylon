@@ -385,11 +385,14 @@ class TestFetchEmploymentProxy:
     def test_wayne_2010_returns_positive_float(self) -> None:
         """Wayne County 2010 annual-average employment > 0.
 
-        Post spec-066 fix: industry_id=1 + ownership_id=1 (BLS 'Total
-        Covered, All Industries' rollup), returned as-is (no /52 or /12
-        divisor). Wayne 2010 BLS published annual avg employment is
-        ~660K — this test verifies the band [400K, 900K] which
-        accommodates BLS reporting variability.
+        Post spec-067 normalization: SUM over canonical leaves
+        (``naics_level=6 AND own_code in {'1','2','3','5'}``). QCEW
+        suppresses 6-digit cells for employer confidentiality, so the
+        leaf SUM is systematically ~10-30 % below the BLS Total Covered
+        rollup value (Wayne 2010 BLS-published ~660K → post-067 SUM
+        ~561K). This test verifies the band [400K, 900K] which
+        accommodates both the original rollup target and the post-067
+        suppression-aware floor.
         """
         emp = fetch_employment_proxy_for_county_at_tick(
             SQLITE_REF, "26163", tick=0, start_year=2010

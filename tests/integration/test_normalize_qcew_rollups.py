@@ -226,6 +226,7 @@ from tools.normalize_qcew_rollups import (  # noqa: E402
     RowCountsExcluded,
     RunMetadata,
     SummaryStats,
+    _apply_fast_strategy,
     _per_county_deltas,
     backup_fact_qcew_annual,
     delete_naics_rollups,
@@ -645,6 +646,57 @@ def test_full_apply_path_against_larger_fixture(tmp_path: Path) -> None:
     finally:
         session.close()
         engine.dispose()
+
+
+def test_fast_strategy_produces_same_canonical_population(tiny_qcew_fixture: Session) -> None:
+    """The CREATE-TABLE-AS-SELECT path lands on the same post-067 row set
+    as the DELETE path, with the original table preserved as
+    ``fact_qcew_annual__pre_067``."""
+
+    session = tiny_qcew_fixture
+    # Add the secondary indices the fast strategy expects to drop+recreate.
+    session.execute(
+        text("CREATE INDEX idx_qcew_county_time ON fact_qcew_annual (county_id, time_id)")
+    )
+    session.execute(
+        text("CREATE INDEX idx_qcew_industry_time ON fact_qcew_annual (industry_id, time_id)")
+    )
+    session.execute(text("CREATE INDEX idx_qcew_ownership ON fact_qcew_annual (ownership_id)"))
+    session.commit()
+
+    pre = preflight_assertions(session)
+    assert pre.fact_qcew_annual_pre == 6
+
+    new_count = _apply_fast_strategy(session, pre)
+    assert new_count == 4, f"expected 4 canonical leaves, got {new_count}"
+
+    # Original table renamed to __pre_067 with all 6 rows preserved.
+    backup_count = session.execute(text("SELECT COUNT(*) FROM fact_qcew_annual__pre_067")).scalar()
+    assert backup_count == 6
+
+    # Current table contains only canonical leaves.
+    survivors = session.execute(
+        text(
+            "SELECT COUNT(*) FROM fact_qcew_annual fq "
+            "JOIN dim_industry i ON fq.industry_id = i.industry_id "
+            "JOIN dim_ownership o ON fq.ownership_id = o.ownership_id "
+            "WHERE i.naics_level = 6 AND o.own_code != '0'"
+        )
+    ).scalar()
+    assert survivors == 4
+
+    # Secondary indices restored on the new table.
+    indices = {
+        row[0]
+        for row in session.execute(
+            text(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='fact_qcew_annual'"
+            )
+        ).all()
+    }
+    assert "idx_qcew_county_time" in indices
+    assert "idx_qcew_industry_time" in indices
+    assert "idx_qcew_ownership" in indices
 
 
 # T032 — Rollback recovers the pre-migration state. Implemented via direct

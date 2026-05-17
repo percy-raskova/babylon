@@ -652,12 +652,78 @@ def _run_dry_run(
     return 0
 
 
+def _apply_fast_strategy(session: Session, pre: PreflightResult) -> int:
+    """Use CREATE-TABLE-AS-SELECT + atomic rename instead of bulk DELETE.
+
+    The DELETE strategy in ``_apply_delete_strategy`` scales linearly with
+    rollup-row count and indices, which makes it impractical for the live
+    reference DB (~75 min wallclock against 28 M deleted rows). This
+    alternative scans the source table ONCE writing only canonical leaves
+    into a new table, then swaps the tables. Empirically ~5-15 min vs
+    60-75 min for the same dataset.
+
+    Trade-off: deviates from the contract SQL in
+    ``contracts/normalization_migration.sql``. Used when ``--use-fast-strategy``
+    is set on the CLI. The post-067 row-class accounting is identical.
+
+    Steps:
+      1. CREATE TABLE __new AS SELECT canonical-leaf-rows.
+      2. DROP secondary indices on the old table to allow the rename.
+      3. ALTER TABLE rename: old → ``fact_qcew_annual__pre_067`` (backup),
+         new → ``fact_qcew_annual``.
+      4. CREATE INDEX statements re-establish the secondary indices on
+         the new (now-renamed) table.
+
+    Returns the post-migration row count.
+    """
+
+    print("  fast-strategy: CREATE TABLE __new AS SELECT canonical leaves ...")
+    session.execute(
+        text(
+            "CREATE TABLE fact_qcew_annual__new AS "
+            "SELECT fq.* FROM fact_qcew_annual fq "
+            "JOIN dim_industry i ON fq.industry_id = i.industry_id "
+            "JOIN dim_ownership o ON fq.ownership_id = o.ownership_id "
+            "WHERE i.naics_level = 6 AND o.own_code != '0'"
+        )
+    )
+    session.commit()
+
+    new_count = session.execute(text("SELECT COUNT(*) FROM fact_qcew_annual__new")).scalar() or 0
+    new_count = int(new_count)
+    expected_post = pre.fact_qcew_annual_pre - pre.total_rollups
+    if new_count != expected_post:
+        raise IntegrityCheckError(
+            f"fast-strategy: new table has {new_count} rows; expected {expected_post}"
+        )
+
+    print("  fast-strategy: dropping secondary indices ...")
+    for idx in ("idx_qcew_county_time", "idx_qcew_industry_time", "idx_qcew_ownership"):
+        session.execute(text(f"DROP INDEX IF EXISTS {idx}"))
+
+    print("  fast-strategy: renaming tables ...")
+    session.execute(text("ALTER TABLE fact_qcew_annual RENAME TO fact_qcew_annual__pre_067"))
+    session.execute(text("ALTER TABLE fact_qcew_annual__new RENAME TO fact_qcew_annual"))
+
+    print("  fast-strategy: re-creating secondary indices ...")
+    session.execute(
+        text("CREATE INDEX idx_qcew_county_time ON fact_qcew_annual (county_id, time_id)")
+    )
+    session.execute(
+        text("CREATE INDEX idx_qcew_industry_time ON fact_qcew_annual (industry_id, time_id)")
+    )
+    session.execute(text("CREATE INDEX idx_qcew_ownership ON fact_qcew_annual (ownership_id)"))
+    session.commit()
+    return new_count
+
+
 def _run_apply(
     session: Session,
     db_path: Path,
     scope: Literal["michigan", "all"],
     keep_backup: bool,
     report_dir: Path,
+    use_fast_strategy: bool = False,
 ) -> int:
     started = perf_counter()
     timestamp_utc = datetime.now(UTC).isoformat(timespec="seconds")
@@ -667,48 +733,53 @@ def _run_apply(
     pre = preflight_assertions(session)
     print(f"  fact_qcew_annual rows pre: {pre.fact_qcew_annual_pre:,}")
 
-    # Step 2: Backup table. CREATE TABLE AS is a heavy operation
-    # (~8 GB of I/O for the full reference DB). Commit it as its own
-    # transaction so the rollback journal is FLUSHED before the
-    # DELETE-bound transaction begins; otherwise SQLite serialises
-    # both into a single ~10 GB rollback journal and the DELETE phase
-    # spends most of its time on ext4 jbd2_log_wait_commit.
-    print("[spec-067 apply] creating backup table ...")
-    backup_count = backup_fact_qcew_annual(session)
-    if backup_count != pre.fact_qcew_annual_pre:
-        raise IntegrityCheckError(
-            f"backup row count {backup_count} != pre {pre.fact_qcew_annual_pre}"
-        )
-    session.commit()  # flush backup; new transaction for DELETEs
-
-    # Step 3: Atomic DELETE transaction. Idempotent rollback target.
-    print("[spec-067 apply] BEGIN DELETE transaction ...")
-    session.execute(text("BEGIN"))
-    try:
-        naics_deleted = delete_naics_rollups(session)
-        print(f"  3a: deleted {naics_deleted:,} NAICS-rollup rows")
-        ownership_deleted = delete_ownership_rollups(session)
-        print(f"  3b: deleted {ownership_deleted:,} ownership-rollup rows")
-
-        post = session.execute(text("SELECT COUNT(*) FROM fact_qcew_annual")).scalar() or 0
-        post = int(post)
-
-        if not integrity_check(
-            pre.fact_qcew_annual_pre,
-            post,
-            pre.naics_only_count,
-            pre.ownership_only_count,
-            pre.both_axes_count,
-        ):
+    if use_fast_strategy:
+        print("[spec-067 apply] using fast strategy (CREATE-TABLE-AS-SELECT + rename) ...")
+        post = _apply_fast_strategy(session, pre)
+        print(f"  post-migration row count: {post:,}")
+    else:
+        # Step 2: Backup table. CREATE TABLE AS is a heavy operation
+        # (~8 GB of I/O for the full reference DB). Commit it as its own
+        # transaction so the rollback journal is FLUSHED before the
+        # DELETE-bound transaction begins; otherwise SQLite serialises
+        # both into a single ~10 GB rollback journal and the DELETE phase
+        # spends most of its time on ext4 jbd2_log_wait_commit.
+        print("[spec-067 apply] creating backup table ...")
+        backup_count = backup_fact_qcew_annual(session)
+        if backup_count != pre.fact_qcew_annual_pre:
             raise IntegrityCheckError(
-                f"integrity check failed: pre={pre.fact_qcew_annual_pre} "
-                f"post={post} excluded sums={pre.total_rollups}"
+                f"backup row count {backup_count} != pre {pre.fact_qcew_annual_pre}"
             )
+        session.commit()  # flush backup; new transaction for DELETEs
 
-        session.execute(text("COMMIT"))
-    except Exception:
-        session.execute(text("ROLLBACK"))
-        raise
+        # Step 3: Atomic DELETE transaction. Idempotent rollback target.
+        print("[spec-067 apply] BEGIN DELETE transaction ...")
+        session.execute(text("BEGIN"))
+        try:
+            naics_deleted = delete_naics_rollups(session)
+            print(f"  3a: deleted {naics_deleted:,} NAICS-rollup rows")
+            ownership_deleted = delete_ownership_rollups(session)
+            print(f"  3b: deleted {ownership_deleted:,} ownership-rollup rows")
+
+            post = session.execute(text("SELECT COUNT(*) FROM fact_qcew_annual")).scalar() or 0
+            post = int(post)
+
+            if not integrity_check(
+                pre.fact_qcew_annual_pre,
+                post,
+                pre.naics_only_count,
+                pre.ownership_only_count,
+                pre.both_axes_count,
+            ):
+                raise IntegrityCheckError(
+                    f"integrity check failed: pre={pre.fact_qcew_annual_pre} "
+                    f"post={post} excluded sums={pre.total_rollups}"
+                )
+
+            session.execute(text("COMMIT"))
+        except Exception:
+            session.execute(text("ROLLBACK"))
+            raise
 
     print("[spec-067 apply] post-migration validation ...")
     post_migration_validation(session)
@@ -884,6 +955,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default="michigan",
         help="Audit-report per-county delta scope (default: michigan).",
     )
+    parser.add_argument(
+        "--use-fast-strategy",
+        action="store_true",
+        help=(
+            "Use CREATE-TABLE-AS-SELECT + atomic rename instead of bulk DELETE. "
+            "~10x faster (5-15 min vs 60-90 min for the live reference DB) but "
+            "deviates from the contract SQL in normalization_migration.sql. "
+            "Same post-067 row-class accounting; backup table created by the "
+            "rename rather than as a separate snapshot."
+        ),
+    )
     return parser
 
 
@@ -905,7 +987,14 @@ def main(argv: Iterable[str] | None = None) -> int:
             return _run_dry_run(session, args.scope)
         if args.apply:
             keep_backup = not args.drop_backup_immediately
-            return _run_apply(session, db_path, args.scope, keep_backup, report_dir)
+            return _run_apply(
+                session,
+                db_path,
+                args.scope,
+                keep_backup,
+                report_dir,
+                use_fast_strategy=args.use_fast_strategy,
+            )
         if args.rollback_from_backup:
             return _run_rollback(session, report_dir)
         if args.drop_backup:

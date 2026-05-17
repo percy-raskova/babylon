@@ -667,14 +667,22 @@ def _run_apply(
     pre = preflight_assertions(session)
     print(f"  fact_qcew_annual rows pre: {pre.fact_qcew_annual_pre:,}")
 
+    # Step 2: Backup table. CREATE TABLE AS is a heavy operation
+    # (~8 GB of I/O for the full reference DB). Commit it as its own
+    # transaction so the rollback journal is FLUSHED before the
+    # DELETE-bound transaction begins; otherwise SQLite serialises
+    # both into a single ~10 GB rollback journal and the DELETE phase
+    # spends most of its time on ext4 jbd2_log_wait_commit.
     print("[spec-067 apply] creating backup table ...")
     backup_count = backup_fact_qcew_annual(session)
     if backup_count != pre.fact_qcew_annual_pre:
         raise IntegrityCheckError(
             f"backup row count {backup_count} != pre {pre.fact_qcew_annual_pre}"
         )
+    session.commit()  # flush backup; new transaction for DELETEs
 
-    print("[spec-067 apply] BEGIN ...")
+    # Step 3: Atomic DELETE transaction. Idempotent rollback target.
+    print("[spec-067 apply] BEGIN DELETE transaction ...")
     session.execute(text("BEGIN"))
     try:
         naics_deleted = delete_naics_rollups(session)

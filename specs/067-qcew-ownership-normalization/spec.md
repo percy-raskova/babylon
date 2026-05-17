@@ -137,6 +137,14 @@ Re-running ingestion materially changes the contents of `fact_qcew_annual`. Oper
 - **SC-007**: Per-county employment totals summed from `fact_qcew_annual` agree with BLS publication within ±5 % for ≥ 95 % of (county × year) pairs in the 2010-2024 Michigan scope.
 - **SC-008**: The normalization audit report correctly classifies every excluded row by rollup class (ownership-only / NAICS-only / both), and the per-class excluded-row counts sum to the total excluded-row count (no row miscounted, no row counted twice).
 
+### Known limitation discovered during T036 (2026-05-16)
+
+**SC-001, SC-006, SC-007** are infeasible against the live reference DB as currently written: QCEW data carries 10-30 % BLS confidentiality suppression at the 6-digit National Industry detail level (BLS withholds cells with low establishment counts). After spec-067 normalization, `SUM(canonical leaves)` is systematically **lower** than the BLS-published Total Covered rollup by ~14.6 % for Wayne County 2010 (rollup 657,150 → post-067 SUM 561,173) and similar magnitudes across all Michigan county-years (empirically 0 % within the ±5 % band; mean delta -61 %).
+
+The spec-067 migration **is correct** (rollup rows ARE redundant when summed alongside leaves, and removing them eliminates the double-count trap). The SC ±5 % band is a data-property tension, not an implementation bug.
+
+Resolution is deferred to **spec-070 (QCEW BLS Suppression Spec Amendment)**, which will pick among four mitigation strategies (loosen tolerance, use `naics_level=4` leaves, retain rollup row, synthetic imputed total) and amend the affected SCs. Until spec-070 lands, downstream consumers should treat post-067 `v` and `employment_proxy` values as lower-bound estimates of the BLS publication total (10-30 % low). See `specs/070-qcew-suppression-amendment/spec.md` and ADR045 negative consequences for the full rationale.
+
 ## Assumptions
 
 - The raw QCEW CSV source data already on disk at `/media/user/data/babylon-data/qcew/` (loaded prior to this spec) contains BOTH the canonical per-ownership and per-National-Industry rows AND the BLS-published rollup rows on both axes (the "All-ownership Total" ownership rollup AND the NAICS-hierarchy aggregation rows at each level above National-Industry, plus the "10 — Total, all industries" supersector), per BLS's standard publication format. Spec-067 does not re-download from BLS — it re-ingests from the existing local CSVs.

@@ -10,4 +10,18 @@ Spec: 068-bea-national-io-ingest.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from babylon.reference.bea.lookup_results import (
+    CountyShareLookupResult,
+    IndustryShareLookupResult,
+)
+from babylon.reference.bea.share_lookup_service import (
+    BEAShareLookupService,
+    DefaultBEAShareLookupService,
+)
+
+__all__: list[str] = [
+    "BEAShareLookupService",
+    "CountyShareLookupResult",
+    "DefaultBEAShareLookupService",
+    "IndustryShareLookupResult",
+]

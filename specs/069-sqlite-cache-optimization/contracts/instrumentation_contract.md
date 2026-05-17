@@ -47,13 +47,16 @@ employment_db_reads  = same for employment proxy
 total_db_reads       = population_db_reads + employment_db_reads
 ```
 
-For the canonical Michigan-Canada run (`N=83 counties, Y=11 years`),
-after `hydrate_initial(total_ticks=520, start_year=2010, ...)`:
+For the canonical Michigan-Canada run (`N=83 counties, Y=10 years` —
+2010..2019, per `research.md` R3; year 2020 would require tick 520
+to be touched, but the runner only persists ticks 0..519 for
+`config.ticks=520`), after
+`hydrate_initial(total_ticks=520, start_year=2010, ...)`:
 
 ```text
-population_db_reads  == 913
-employment_db_reads  == 913
-total_db_reads       == 1826
+population_db_reads  == 830
+employment_db_reads  == 830
+total_db_reads       == 1660
 ```
 
 ---
@@ -124,7 +127,7 @@ b = WorldStateBridge(...); b.hydrate_initial(...)
 def test_sc_002_canonical_read_count(canonical_bridge_post_hydrate):
     """SC-002 — exactly 2 × N × Y reference-data reads."""
     N = 83  # MI + Canada-adjacent counties
-    Y = 11  # 2010-2020 inclusive
+    Y = 10  # 2010-2019 inclusive (per research.md R3)
 
     bridge = canonical_bridge_post_hydrate
     assert bridge.population_db_reads == N * Y, (

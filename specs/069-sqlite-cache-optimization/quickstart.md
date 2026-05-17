@@ -23,9 +23,9 @@ mise run sim:headless -- --scenario canonical --ticks 520 --start-year 2010
 
 # Verify SC-002 (2 × N × Y reads).
 # Look at the new `bridge_db_reads` block in the manifest:
-#   population_db_reads:  913   # 83 counties × 11 years
-#   employment_db_reads:  913
-#   total_db_reads:      1826
+#   population_db_reads:  830   # 83 counties × 10 years (2010..2019)
+#   employment_db_reads:  830
+#   total_db_reads:      1660
 
 # Verify SC-003 (byte-identical trace.csv).
 # Run twice at the same seed, diff the trace.csv files:
@@ -84,13 +84,15 @@ cat reports/sim-runs/$(ls -t reports/sim-runs | head -1)/manifest.json | jq '.br
 ```
 
 Expected output for canonical Michigan-Canada
-(`N = 83 counties, Y = 11 years for 2010-2020`):
+(`N = 83 counties, Y = 10 years for 2010-2019` — see `research.md` R3
+for the year-set derivation; the runner persists ticks 0..519, never
+reaching tick 520 which would correspond to year 2020):
 
 ```json
 {
-  "population_db_reads": 913,
-  "employment_db_reads": 913,
-  "total_db_reads": 1826
+  "population_db_reads": 830,
+  "employment_db_reads": 830,
+  "total_db_reads": 1660
 }
 ```
 
@@ -126,7 +128,7 @@ grep -c "persist_tick: employment missing"  "reports/sim-runs/$RUN/run.log"
 ```
 
 For the canonical scenario both counts should be `0` (no missing
-tuples in 2010-2020 MI+Canada). For a stress-test scenario that
+tuples in 2010-2019 MI+Canada). For a stress-test scenario that
 includes a known-missing county / year, the count should equal the
 number of missing **tuples**, not the number of missing tuple-ticks
 (52 × missing tuples).

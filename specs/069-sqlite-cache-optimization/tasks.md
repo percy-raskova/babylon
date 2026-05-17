@@ -43,7 +43,7 @@ description: "Task list for spec-069 — SQLite per-tick read cache for the brid
 
 - [ ] T003 Implement `derive_year_set(start_year: int, total_ticks: int) -> frozenset[int]` pure function in `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/reference_data_cache.py` per research R3 (returns `frozenset()` for `total_ticks <= 0`)
 - [ ] T004 Implement frozen Pydantic `ReferenceCacheEntry` model (`population: int | None`, `employment_proxy: float | None`) in `/home/user/projects/game/babylon/src/babylon/engine/headless_runner/reference_data_cache.py` per data-model.md §1
-- [ ] T005 [P] Write unit tests for `derive_year_set` in `/home/user/projects/game/babylon/tests/unit/engine/headless_runner/test_reference_data_cache_year_set.py` — degenerate (0, 1, 52, 53 ticks), canonical (520 ticks → 11 years), and weekly-boundary cases
+- [ ] T005 [P] Write unit tests for `derive_year_set` in `/home/user/projects/game/babylon/tests/unit/engine/headless_runner/test_reference_data_cache_year_set.py` — degenerate (0, 1, 52, 53 ticks), canonical (520 ticks → 10 years per R3), and weekly-boundary cases
 - [ ] T006 [P] Write unit tests for `ReferenceCacheEntry` validation in `/home/user/projects/game/babylon/tests/unit/engine/headless_runner/test_reference_data_cache_entry.py` — all four nullability combinations, non-negative validators, frozen semantics
 
 **Checkpoint**: Foundation ready — user story implementation can begin.
@@ -54,7 +54,7 @@ description: "Task list for spec-069 — SQLite per-tick read cache for the brid
 
 **Goal**: The cache is wired end-to-end. Every per-tick population / employment-proxy lookup is served from the in-memory cache populated at `bridge.hydrate_initial`. The canonical 520-tick Michigan-Canada run completes in ≤ 60 min (SC-001) on the published seed.
 
-**Independent Test**: Run `mise run sim:headless -- --scenario canonical --ticks 520 --start-year 2010 --seed 42`; assert `manifest.json.wallclock_seconds <= 3600` AND `manifest.json.bridge_db_reads.total_db_reads == 1826`. If both hold, US1 is fully functional.
+**Independent Test**: Run `mise run sim:headless -- --scenario canonical --ticks 520 --start-year 2010 --seed 42`; assert `manifest.json.wallclock_seconds <= 3600` AND `manifest.json.bridge_db_reads.total_db_reads == 1660`. If both hold, US1 is fully functional.
 
 ### Tests for User Story 1 (TDD — write FIRST, ensure they FAIL before implementation)
 
@@ -133,7 +133,7 @@ description: "Task list for spec-069 — SQLite per-tick read cache for the brid
 - [ ] T033 [P] Create `/home/user/projects/game/babylon/ai-docs/decisions/ADR047_sqlite_per_tick_read_cache.yaml` documenting: context (spec-066 R8 deferred work), decision (the cache and its contract), rationale (~5 "why" sections from research.md), consequences (positive: II.6 compliance, ≥30× fetch-wallclock relief; negative: new `total_ticks` parameter is a forward-incompatible signature change for any external callers), references (spec/plan/research/contracts/quickstart paths)
 - [ ] T034 [P] Update `/home/user/projects/game/babylon/ai-docs/decisions/index.yaml` to register `ADR047_sqlite_per_tick_read_cache` and bump the index `version` field by one minor unit
 - [ ] T035 [P] Update `/home/user/projects/game/babylon/ai-docs/state.yaml` — set `last_sprint` to `069-sqlite-cache-optimization`; add a `spec_069_summary` block recording SC-001/SC-002/SC-003/SC-004 pass/fail (SC-001 from operator-side canonical run per T036; SC-002 + SC-004 from unit/integration tests; SC-003 from byte-identical slow-gate)
-- [ ] T036 Validate against `/home/user/projects/game/babylon/specs/069-sqlite-cache-optimization/quickstart.md` step-by-step on a canonical run; confirm SC-001 ≤ 60 min, SC-002 = 1826, SC-003 byte-identical at same seed; if any gate fails, return to the appropriate user-story phase
+- [ ] T036 Validate against `/home/user/projects/game/babylon/specs/069-sqlite-cache-optimization/quickstart.md` step-by-step on a canonical run; confirm SC-001 ≤ 60 min, SC-002 = 1660, SC-003 byte-identical at same seed; if any gate fails, return to the appropriate user-story phase
 
 ---
 

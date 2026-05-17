@@ -32,8 +32,10 @@ every `(scope_fips × year_set)` tuple before returning.
   on its own without spinning up a bridge.
 - For the canonical 520-tick Michigan-Canada run, year-set enumeration
   is deterministic from `(start_year=2010, total_ticks=520)` →
-  `{2010, 2011, ..., 2019, 2020}` (11 years). No per-run discovery
-  needed.
+  `{2010, 2011, ..., 2019}` (10 years; per the R3 formula
+  `{start_year + t // 52 for t in range(total_ticks)}`, the runner
+  persists ticks 0..519 — see `runner.py:817-819` — so year 2020 is
+  never touched). No per-run discovery needed.
 
 **Alternatives considered**:
 
@@ -45,7 +47,7 @@ every `(scope_fips × year_set)` tuple before returning.
   (c) doesn't match FR-001's literal wording.
 - *Per-tick fetch with simple memoization*: Wrap the existing
   `fetch_*_at_tick` calls in `@functools.cache`. Rejected because the
-  per-call connection-open overhead still dominates: with 913 distinct
+  per-call connection-open overhead still dominates: with 830 distinct
   `(county, year)` tuples and `sqlite3.connect()` taking ~1-3 ms each,
   this is ~1-3 s of connection overhead even at the structurally
   optimal read count — a substantial improvement, but missing the
@@ -183,7 +185,7 @@ defaults to 999, which is comfortably above the canonical run's
   dim_time*: Rejected as unnecessarily complex. Three legible queries
   beat one inscrutable one.
 - *Reuse the existing per-tick fetchers in a loop*: Rejected. Even at
-  the structurally optimal 913 calls (one per `(county, year)` tuple),
+  the structurally optimal 830 calls (one per `(county, year)` tuple),
   the connection-open overhead is ~1-3 s of pure connect/close work
   — non-trivial against the SC-001 wallclock budget and entirely
   wasted given that all reads can share one connection.
@@ -365,9 +367,9 @@ and diffs the resulting `trace.csv` at the byte level.
 ## R9 — Cache eviction policy
 
 **Decision**: No eviction. Bridge-instance lifetime is one canonical
-run. Max cache size = 83 counties × 11 years × 1 entry per tuple ≈
-913 entries × ~64 bytes (Pydantic frozen model with two scalar fields)
-≈ 60 KB. Not memory-bound.
+run. Max cache size = 83 counties × 10 years × 1 entry per tuple ≈
+830 entries × ~64 bytes (Pydantic frozen model with two scalar fields)
+≈ 55 KB. Not memory-bound.
 
 **Rationale**:
 
@@ -381,7 +383,7 @@ run. Max cache size = 83 counties × 11 years × 1 entry per tuple ≈
 
 - *LRU eviction*: Rejected — see above.
 - *Spill-to-disk for very-long runs*: Rejected as YAGNI. A 10× scale
-  bump (831 counties × 11 years × 8 bytes/entry ≈ 73 KB) is still
+  bump (831 counties × 10 years × 8 bytes/entry ≈ 66 KB) is still
   trivial.
 
 ---

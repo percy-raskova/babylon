@@ -159,7 +159,11 @@ authoritative carrier.
 
 - `total_ticks >= 0`. (`< 0` → `ValueError` raised at bridge.)
 - For canonical Michigan-Canada (`start_year=2010, total_ticks=520`):
-  the year-set is `{2010, 2011, ..., 2020}` (11 distinct years).
+  the year-set is `{2010, 2011, ..., 2019}` (10 distinct years). The
+  runner persists ticks 0..519 (`range(1, config.ticks)` + the explicit
+  tick-0 persist at `runner.py:817`), so tick 520 — which would
+  correspond to year 2020 — is never reached. Research R3 is
+  authoritative here: `{start_year + t // 52 for t in range(total_ticks)}`.
 
 ---
 

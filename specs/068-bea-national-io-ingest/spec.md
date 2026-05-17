@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: "068 BEA national industry I-O ingest"
 
+## Clarifications
+
+### Session 2026-05-17
+
+- Q: Should FR-007 hold to "byte-identical" idempotency or match spec-067's amended epsilon-determinism contract? → A: **Epsilon-determinism ≤ 10⁻¹² on every float column; integer ID columns remain byte-identical.** Float64 weighted sums won't bit-match across runs (Python hash randomization, BLAS threading); this is the same failure mode that forced spec-067 to amend its idempotency SC mid-implementation. Inheriting that precedent up-front rather than re-discovering it.
+- Q: How should multi-vintage BEA tables be stored (e.g., 2019 Use table published 2021, revised 2023)? → A: **Latest-vintage-only with a `vintage_published_date` audit column on `fact_bea_national_industry` and `fact_bea_io_coefficient`.** When BEA re-publishes, the new vintage replaces the prior row and the audit report names the supersession. Matches BEA's "use most recent vintage" recommendation; avoids per-vintage row-count bloat.
+- Q: When a BEA industry has no I-O data for a year in scope (latest year not yet published), what does the per-(county, year) lookup return? → A: **Forward-fill from the most-recent-available year for that BEA industry, logged to the audit report under a `stale_share_fallback` category and counted against SC-008's <1 % uncovered threshold.** Matches BEA's own forward-fill convention.
+- Q: Where does `fact_bea_national_industry.gross_output` come from — BEA Use table column total (consumer side) or Supply-Use industry output (producer side)? → A: **Supply-Use industry output (producer side).** Matches BEA's published industry-GDP figure exactly and reconciles cleanly with the FR-002 accounting identity (`intermediate_inputs_share + value_added_share = 1`).
+- Q: Is the SC-005 stddev threshold (0.2) empirical or a placeholder? → A: **Directional threshold, not empirical.** Post-spec-067 baseline is exactly 0.0 (every county got the same hardcoded `0.5`), so any sub-uniform distribution proves the wiring works. The exact threshold may be re-tuned during the implementation plan after the first post-068 Michigan-83 baseline run measures the actual magnitude.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Populate the BEA national industry table (Priority: P1)
@@ -110,10 +120,21 @@ between-county heterogeneity within a single industry).
 
 - **Multi-vintage I-O tables**: BEA publishes I-O tables on different
   schedules (Make+Use yearly, Supply-Use yearly, Total Domestic
-  Requirements with a 2-3 year lag). The ingest needs to handle
-  per-year vintage differences and reconcile across the three table
-  families. Default rule: use the most recently published vintage that
-  covers the simulation year; flag mismatches in the audit report.
+  Requirements with a 2-3 year lag) and revises prior years on later
+  publications. Storage policy: **latest-vintage-only**, with a
+  `vintage_published_date` column on `fact_bea_national_industry` and
+  `fact_bea_io_coefficient` that records when BEA published the
+  vintage actually loaded. When BEA re-publishes a year, the new
+  vintage replaces the prior row and the audit report names every
+  supersession. Older vintages are not retained in the reference DB;
+  if historical-vintage analysis is needed, archive snapshots via
+  the spec-037 Parquet archival pipeline.
+- **Missing-year I-O data**: If a BEA industry has no I-O data for a
+  year in simulation scope (e.g., latest year is unpublished by BEA),
+  the per-(county, year) lookup **forward-fills** from the most-recent
+  available year for that BEA industry. Every forward-fill is logged
+  to the audit report under a `stale_share_fallback` category and
+  counted against SC-008's < 1 % uncovered threshold.
 - **NAICS→BEA concordance gaps**: The BEA Summary-level I-O has
   ~70 industries; QCEW has 6-digit NAICS detail (~1100 industries).
   Many-to-one mapping is the default; QCEW NAICS codes lacking a BEA
@@ -145,7 +166,10 @@ between-county heterogeneity within a single industry).
   (2010-2024), reading from `data/input-output/make-use/` and
   `data/input-output/supply-use/`.
 - **FR-002**: Each `fact_bea_national_industry` row MUST include:
-  industry GDP, intermediate-inputs total, intermediate-inputs share
+  `gross_output` (sourced from BEA **Supply-Use industry output** —
+  producer side, matching BEA's published industry-GDP figure;
+  **not** the Use-table column total, which is the consumer side),
+  intermediate-inputs total, intermediate-inputs share
   (= intermediate_inputs / gross_output), and value-added share. The
   shares are constrained to `[0, 1]` and the sum
   `intermediate_inputs_share + value_added_share ≈ 1` within ±1 %
@@ -167,9 +191,20 @@ between-county heterogeneity within a single industry).
   reference table (likely `dim_naics_bea_concordance`) from
   `data/bea/loader_concordance.py` source data. Concordance gaps fall
   back to NAICS-2-digit sector aggregation.
-- **FR-007**: The ingest MUST be idempotent — running it twice in
-  succession produces a byte-identical `fact_bea_national_industry`
-  and `fact_bea_io_coefficient` state on both runs.
+- **FR-007**: The ingest MUST be idempotent under epsilon-determinism
+  semantics (inherited from spec-067's amended idempotency contract).
+  Running it twice in succession produces:
+  - **Byte-identical** integer/categorical columns
+    (`bea_industry_id`, `source_industry_id`, `target_industry_id`,
+    `time_id`, `table_type_id`, `vintage_published_date`).
+  - **Float-equal within ≤ 10⁻¹² relative error** on every numeric
+    column (`gross_output`, `intermediate_inputs`, `value_added`,
+    `intermediate_inputs_share`, `value_added_share`,
+    `coefficient_value`).
+  Byte-identical idempotency on floats is not enforceable on this stack
+  (Python hash randomization + BLAS threading + accumulated float64
+  rounding), which is the failure mode spec-067 hit in its T054b
+  byte-identical regen test.
 - **FR-008**: An audit report (`reports/ingest/bea_io_ingest_<timestamp>.{md,json}`)
   MUST summarize: per-year row counts, accounting-identity violations
   (FR-002 and FR-004), per-industry intermediate-inputs share top-10
@@ -203,7 +238,11 @@ between-county heterogeneity within a single industry).
   shows per-county `c/v` standard deviation across the 83 Michigan
   counties of at least 0.2 (vs the post-067 baseline where every county
   had identical `c/v` because every county got the same 0.5 hardcoded
-  fraction).
+  fraction). The 0.2 figure is a **directional threshold** — the
+  post-067 baseline is exactly 0.0, so any sub-uniform distribution
+  proves the wiring works. The exact threshold may be re-tuned during
+  the implementation plan after the first post-068 Michigan-83 baseline
+  measures the real magnitude.
 - **SC-006**: For each BEA-summary industry, the population-weighted
   mean per-county `c/v` falls within ±50 % of Shaikh's documented
   empirical band for that industry, as validated by
@@ -270,12 +309,15 @@ between-county heterogeneity within a single industry).
 - **fact_bea_national_industry** (existing schema, currently empty):
   Per-(BEA-industry, year) aggregate I-O metrics. Columns expected:
   `bea_industry_id`, `time_id`, `gross_output`, `intermediate_inputs`,
-  `value_added`, `intermediate_inputs_share`, `value_added_share`.
+  `value_added`, `intermediate_inputs_share`, `value_added_share`,
+  `vintage_published_date` (audit column tracking which BEA publication
+  vintage the row was sourced from; latest-only policy per Clarifications Q2).
 - **fact_bea_io_coefficient** (existing schema, currently empty):
   Per-(source-industry, target-industry, table-type, year) direct
   coefficient `a_ij`. Columns: `source_industry_id`,
   `target_industry_id`, `table_type_id`, `time_id`,
-  `coefficient_value`.
+  `coefficient_value`, `vintage_published_date` (same audit
+  semantics as `fact_bea_national_industry`).
 - **dim_bea_io_table_type** (existing schema): Discriminator for the
   three BEA table families (Make+Use, Supply-Use, Total Domestic
   Requirements). Already has its check-constraint defined.

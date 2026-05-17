@@ -154,3 +154,19 @@ If a future spec re-introduces rollup rows (e.g., as a denormalization performan
 3. Run a fresh audit comparable to the spec-067 audit-report format.
 
 This contract document is the schema-stability anchor — schema changes that break it require an explicit spec amendment.
+
+---
+
+## Known limitation: BLS confidentiality suppression at 6-digit NAICS (2026-05-16)
+
+The post-067 SUM-the-leaves pattern returns a value that is **systematically lower** than the BLS-published Total Covered rollup by **10-30%** for QCEW data, due to BLS's confidentiality suppression of low-establishment-count 6-digit cells. Wayne County, MI 2010 example: pre-067 rollup row returned 657,150 employment; post-067 SUM(leaves) returns 561,173 (−14.6%).
+
+**Implications for consumers**:
+
+- The acceptance test at the bottom of this document assumes `SUM(leaves) ∈ [627K, 693K]` (Wayne 2010 ±5% band). That assumption is **false** for QCEW data; the post-067 SUM is closer to 561K. Either:
+  - The test target should be widened to ±20-30% (the empirically-observed QCEW suppression band), OR
+  - The query should aggregate from a coarser NAICS level (e.g., `naics_level=4` industry-group) that retains more of the suppressed leaf data.
+- Consumers that need BLS-publication-fidelity totals (not approximate sums) should use the variant queries described above with explicit `WHERE` clauses against `dim_industry.naics_level` or use a higher-aggregation rollup that's been retained — see spec-070 stub for the four mitigation options being evaluated.
+- The spec-067 migration itself is **correct**: the rollup rows ARE redundant when summed alongside the leaves, and removing them eliminates the double-count trap. The trade-off is purely about the fidelity of the resulting aggregate vs. the BLS publication.
+
+See `specs/067-qcew-ownership-normalization/research.md` "T036 finding" and `ai-docs/decisions/ADR045_qcew_normalization.yaml` "negative consequences" for the full empirical analysis and mitigation options.

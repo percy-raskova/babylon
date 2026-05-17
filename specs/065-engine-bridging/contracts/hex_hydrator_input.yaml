@@ -1,0 +1,172 @@
+contract: hex_hydrator_input
+contract_version: "1.0"
+feature: 065-engine-bridging
+description: >-
+  Per-column source matrix for the upgraded hex hydrator
+  (FR-002a / R7). Declares which SQLite reference tables the
+  hydrator reads at tick-0 seeding time, and the formula that
+  produces each trace.csv column's initial value. This contract
+  is the test fixture for tests/integration/test_hex_hydrator_real_data.py
+  and the canonical reference for the hex hydrator's implementation.
+
+  Columns NOT seeded by the hydrator (engine-computed at tick 0)
+  are explicitly marked.
+
+sqlite_tables_read:
+  - fact_qcew_annual              # employment + total_wages per county-year
+  - fact_bea_county_gdp           # GDP_county per year
+  - fact_bea_national_industry    # intermediate_inputs_fraction
+  - fact_census_median_income     # cross-check on v
+  - fact_census_*                 # ACS-derived population (via dim_county joins)
+  - fact_broadband_coverage       # FCC pct_25_3, pct_100_20
+  - fact_coercive_infrastructure  # police + carceral facility counts
+  - fact_hickel_erdi_annual       # national biocapacity + drain rates
+  - fact_state_minerals           # state-level mineral production
+  - fact_lodes_commuter_flow      # inter-county commute flows
+  - dim_county                    # county_id ↔ FIPS
+  - dim_county_geometry           # spec-066: area_sq_km for substrate apportionment (US5)
+  - dim_time                      # time_id ↔ year
+
+per_column_sources:
+  v:
+    description: "Variable capital (wages) per tick (week)."
+    source_tables: [fact_qcew_annual, dim_time]
+    formula: >-
+      SUM(fact_qcew_annual.total_wages over all industries
+      WHERE county_id = X AND time_id = year_at_start_year) / 52
+    units: "USD per week"
+    seeded_by: hex_hydrator
+
+  c:
+    description: "Constant capital consumed per tick."
+    source_tables: [fact_bea_county_gdp, fact_bea_national_industry, dim_time]
+    formula: >-
+      (fact_bea_county_gdp.gdp_millions * 1e6 *
+       SUM(fact_bea_national_industry.intermediate_inputs_millions) /
+       SUM(fact_bea_national_industry.gross_output_millions)) / 52
+    units: "USD per week"
+    seeded_by: hex_hydrator
+    cross_check: "0.5 <= c / v <= 5.0 (national OCC band)"
+
+  s:
+    description: "Surplus value extracted per tick."
+    source_tables: [fact_bea_county_gdp]
+    formula: >-
+      (fact_bea_county_gdp.gdp_millions * 1e6 / 52) - v - c
+    units: "USD per week"
+    seeded_by: hex_hydrator
+    on_negative: "clamp to 0; flag via conservation_audit_log severity='warn'"
+
+  k:
+    description: "Accumulated capital stock at tick 0."
+    source_tables: [fact_bea_county_gdp]
+    formula: >-
+      capital_output_ratio * fact_bea_county_gdp.gdp_millions * 1e6
+    constants:
+      capital_output_ratio: 3.0  # BEA national fixed-asset accounts 2010
+    units: "USD (stock)"
+    seeded_by: hex_hydrator
+
+  surveillance_coupling:
+    description: "State surveillance saturation."
+    source_tables: [fact_broadband_coverage, fact_coercive_infrastructure]
+    formula: >-
+      clip(0.3 + 0.4 * broadband.pct_100_20 +
+           0.3 * coercive.facility_count_normalized, 0, 1)
+    units: "ratio [0, 1]"
+    seeded_by: hex_hydrator
+
+  internet_access_pct:
+    description: "Fraction of county population with FCC 25/3 broadband."
+    source_tables: [fact_broadband_coverage]
+    formula: "fact_broadband_coverage.pct_25_3"
+    units: "ratio [0, 1]"
+    seeded_by: hex_hydrator
+
+  biocapacity_stock:
+    description: "Remaining ecological biocapacity allocated to county."
+    source_tables: [fact_hickel_erdi_annual, dim_county]
+    formula: >-
+      national_biocapacity_at_year *
+      dim_county.land_area_sqmi / SUM(dim_county.land_area_sqmi over US)
+    units: "abstract units"
+    seeded_by: hex_hydrator
+
+  energy_stock:
+    description: "Remaining energy reserves allocated to county."
+    source_tables: [fact_state_minerals, dim_county]
+    formula: >-
+      state_energy_production_value *
+      dim_county.population / SUM(state's counties' population)
+    units: "abstract units"
+    seeded_by: hex_hydrator
+
+  raw_material_stock:
+    description: "Remaining non-fuel mineral reserves allocated to county."
+    source_tables: [fact_state_minerals, dim_county]
+    formula: >-
+      state_non_fuel_production_value *
+      dim_county.land_area_sqmi / SUM(state's counties' land_area_sqmi)
+    units: "abstract units"
+    seeded_by: hex_hydrator
+
+  population:
+    description: "County resident population at start_year."
+    source_tables: [fact_census_*, dim_county]
+    formula: "fact_census_*.total_households * avg_household_size  (or direct from ACS)"
+    units: "persons"
+    seeded_by: hex_hydrator
+
+  employment_proxy:
+    description: "Employed labor force proxy from QCEW."
+    source_tables: [fact_qcew_annual]
+    formula: "SUM(fact_qcew_annual.employment over all industries) for (county, year)"
+    units: "FTE-equivalent"
+    seeded_by: hex_hydrator
+
+  p_acquiescence:
+    description: "Probability of survival by acquiescence."
+    seeded_by: engine
+    engine_system: SurvivalSystem
+    formula: "Sigmoid(v − subsistence_threshold) per spec-001"
+
+  p_revolution:
+    description: "Probability of survival by revolution."
+    seeded_by: engine
+    engine_system: SurvivalSystem
+    formula: "Organization / Repression per spec-001"
+
+  ideology_r:
+    description: "Reactionary ternary simplex coordinate."
+    seeded_by: engine
+    engine_system: ConsciousnessSystem
+    formula: "Initialized to 1/3 at tick 0; evolves per spec-034 / 043"
+
+  ideology_l:
+    description: "Liberal ternary simplex coordinate."
+    seeded_by: engine
+    engine_system: ConsciousnessSystem
+    formula: "Initialized to 1/3 at tick 0"
+
+  ideology_f:
+    description: "Front (left-radical) ternary simplex coordinate."
+    seeded_by: engine
+    engine_system: ConsciousnessSystem
+    formula: "Initialized to 1/3 at tick 0"
+
+  tick: {seeded_by: implicit, value: 0}
+  simulated_year: {seeded_by: implicit, value: "start_year + tick/52.0"}
+  entity_id: {seeded_by: implicit, value: "county_fips"}
+  entity_kind: {seeded_by: implicit, value: '"county"'}
+  profit_rate: {seeded_by: view_computed, formula: "s / (c + v) when (c + v) > 0"}
+  exploitation_rate: {seeded_by: view_computed, formula: "s / v when v > 0"}
+
+acceptance_test_anchor:
+  description: >-
+    SC-005 (Wayne County tick-0 v within ±50% of BLS QCEW 2010
+    wages / 52) is the canonical accuracy gate. FR-002b's 5-county
+    sample test extends this to a broader robustness check.
+  wayne_fips: "26163"
+  start_year: 2010
+  expected_v_range_usd_per_week:
+    note: "Computed at test time from fact_qcew_annual; baseline ~ $50B/year / 52 ≈ $960M/week"

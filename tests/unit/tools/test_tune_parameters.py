@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -169,6 +170,11 @@ class TestSimulationRunner:
             "Module needs a function to run simulations (run_simulation or run_single_simulation)"
         )
 
+    @pytest.mark.skipif(
+        os.environ.get("BABYLON_TEST_PG_DSN") is None,
+        reason="spec-064: run_simulation routes through headless_runner; "
+        "BABYLON_TEST_PG_DSN required",
+    )
     def test_simulation_returns_result_dict(self) -> None:
         """Verify simulation returns a structured result."""
         module = load_tune_parameters_module()

@@ -1,0 +1,118 @@
+ADR044_engine_integration_into_bridged_runner:
+  status: "accepted"
+  date: "2026-05-16"
+  title: "Wire SimulationEngine.run_tick through the headless bridged runner"
+  spec: "066-marx-coherence-fixes (US2 + companion to ADR043)"
+
+  context: |
+    Spec-065 shipped the persistence bridge (`WorldStateBridge`) that
+    derives + writes the spec-062 per-tick subsystem rows, plus the
+    boundary/event/audit wiring. But it did NOT actually invoke the
+    21-system `SimulationEngine`: each tick simply called
+    `bridge.persist_tick(world, tick, hash)` with a `WorldState` that
+    never changed. The spec-065 e2e Michigan-Canada audit confirmed:
+
+      - `summary.performance.per_system_ms` was empty (no engine systems ran)
+      - `summary.events[]` was empty (no events published)
+      - county-tick rows were byte-identical across all 520 ticks
+        (ideology never drifted; consciousness frozen)
+
+    Spec-066 US2 wires the engine through the bridge so the per-tick loop
+    actually does work, and the persisted rows reflect the simulation's
+    evolving state.
+
+  decision: |
+    The bridged runner now:
+
+      1. Constructs a `ServiceContainer` exactly ONCE before the tick
+         loop, sharing the bridge's `event_bus`, `auditor`, and
+         `boundary_register` instances.
+      2. Constructs a FRESH `SimulationEngine(_DEFAULT_SYSTEMS,
+         auditor=auditor)` (NOT the module-level `_DEFAULT_ENGINE`
+         singleton — avoids test-isolation contamination across runs).
+      3. Snapshots the initial `WorldState` to a single `nx.DiGraph`
+         (`graph = world.to_graph()`) that the engine mutates in place
+         across all ticks.
+      4. Per tick: `engine.run_tick(graph, services, TickContext(tick=tick))`
+         then `world = WorldState.from_graph(graph, tick=tick)` to
+         reconstitute the typed model for `bridge.persist_tick`.
+      5. After the loop: surfaces `engine.per_system_ms` (per-system
+         wallclock from spec-065 T074) into `PerformanceBreakdown.per_system_ms`.
+
+    Companion bridge change: `_build_per_county_relationships()` seeds
+    one EXPLOITATION edge per county at tick 0 between proletariat and
+    bourgeoisie, so `ImperialRentSystem` has graph edges to walk and
+    extract Φ along (without these edges, Φ extraction is zero and
+    consciousness never moves).
+
+    Coefficient calibration: `defines.consciousness.routing_scale`
+    bumped 0.1 → 0.2 (FR-027 + Phase 0 R4). At 0.1 the spec-065 run
+    showed <0.1% ideology drift across 520 ticks; doubling makes drift
+    visible within the 10-year canonical horizon. Cascade: decoupled
+    `defines.ooda.action_base_provide_service` from the historical
+    `k + routing_scale` derivation invariant (kept at the BPP-empirical
+    0.6).
+
+  rationale:
+    why_construct_services_once: |
+      Engine systems read from `services` per tick but don't mutate it.
+      A fresh container per tick would force re-wiring of the bridge's
+      event_bus/auditor/boundary_register each cycle, adding latency
+      without semantic value. Phase 0 R2 confirmed `ServiceContainer.create()`
+      is stateful enough to allow one-shot construction.
+
+    why_fresh_engine_not_singleton: |
+      `simulation_engine._DEFAULT_ENGINE` is a module-level singleton.
+      In a multi-test process (pytest with random order), engine state
+      from a previous run (especially `_per_system_ms`) bleeds into the
+      next. Fresh per-run engine instances solve this; the cost is
+      negligible (engine __init__ just stores the system list).
+
+    why_graph_mutate_not_copy: |
+      The systems mutate the graph IN PLACE (per the `System.step` protocol).
+      Reconstructing from WorldState each tick would force `to_graph()`
+      to re-serialize everything (~83×2 entities × ~10 fields = ~1660
+      dict operations) every tick. Phase 0 R1 confirmed round-trip
+      preserves all needed fields, so the graph IS the canonical state
+      across the loop; `world` is reconstructed only for `persist_tick`
+      to read.
+
+    why_no_solidarity_edges: |
+      Per Constitution III.5 + Clarifications Q4, SOLIDARITY edges are
+      strategic intervention from player verbs (Mobilize, Organize,
+      Educate per Constitution V) AND a future scenario layer — they
+      are NOT data-derived. The bridge only seeds EXTRACTIVE
+      relationships that are data-justified by QCEW + BEA. A future
+      spec (tentatively spec-070 'data-driven seeding' OR spec-080
+      'player verbs') will introduce SOLIDARITY seeding via its
+      own mechanism.
+
+  consequences:
+    positive:
+      - "Engine actually runs per tick — 21 default systems all execute."
+      - "Consciousness/ideology evolves under material conditions."
+      - "Events fire (BIFURCATION_THRESHOLD, EXCESSIVE_FORCE, etc.)."
+      - "Wayne ≠ Keweenaw — counties diverge under material differences."
+      - "summary.performance.per_system_ms populated (operator can see
+         which systems dominate wallclock)."
+      - "ConservationAuditor evaluates end-of-tick (alarm events fire)."
+      - "Spec-066 unblocks subsequent specs that depend on the engine
+         actually being live (spec-067 QCEW, spec-068 BEA I-O, etc.)."
+
+    negative:
+      - "Per-tick wallclock increased by ~50-500ms (engine system cost).
+         Phase 0 R8 documented that the bridge's SQLite reads still
+         dominate (~3.5s/tick) — engine cost is small in comparison."
+      - "Without SOLIDARITY edges, ConsciousnessSystem routes ALL
+         agitation to the fascism axis. Revolutionary trajectories
+         require player intervention or a future SOLIDARITY layer."
+      - "The 520-tick canonical run now takes ~60-90 min (vs spec-065's
+         48 min). Per SC-011, this is within budget; spec-069 (SQLite
+         caching) will reclaim ~30 min if needed."
+
+  related:
+    - ADR042  # spec-065 engine bridging — the persistence surface this builds on
+    - ADR043  # spec-066 ideology baseline — companion decision
+    - "spec-066 FR-013 through FR-019"
+    - "spec-066 contracts/engine_invocation_contract.yaml"
+    - "spec-069 (TBD) — SQLite read caching for canonical-run wallclock budget"

@@ -1,6 +1,6 @@
 meta:
-  version: 1.10.0
-  updated: '2026-01-01'
+  version: 1.13.0
+  updated: '2026-05-16'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
@@ -124,3 +124,28 @@ decisions:
     status: accepted
     date: '2025-12-26'
     file: ADR029_hybrid_graph_architecture.yaml
+  ADR041_spec_064_headless_simulation_runner:
+    title: 'Spec 064: Headless Postgres-backed simulation runner as canonical CLI'
+    status: accepted
+    date: '2026-05-14'
+    file: ADR041_spec_064_headless_simulation_runner.yaml
+  ADR042_spec_065_engine_bridging:
+    title: 'Spec 065: Engine-bridging — real per-tick state behind the headless runner'
+    status: accepted
+    date: '2026-05-15'
+    file: ADR042_spec_065_engine_bridging.yaml
+  ADR043_ideology_baseline_placeholder:
+    title: 'Spec 066: Explicit ideology baseline placeholder (r=0.05, l=0.50, f=0.45)'
+    status: accepted
+    date: '2026-05-16'
+    file: ADR043_ideology_baseline_placeholder.yaml
+  ADR044_engine_integration_into_bridged_runner:
+    title: 'Spec 066: Wire SimulationEngine.run_tick through the headless bridged runner'
+    status: accepted
+    date: '2026-05-16'
+    file: ADR044_engine_integration_into_bridged_runner.yaml
+  ADR045_qcew_normalization:
+    title: 'Spec 067: Normalize fact_qcew_annual — DELETE BLS rollups, downstream consumers SUM the leaves'
+    status: accepted
+    date: '2026-05-16'
+    file: ADR045_qcew_normalization.yaml

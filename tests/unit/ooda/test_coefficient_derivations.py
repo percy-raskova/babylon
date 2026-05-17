@@ -39,9 +39,17 @@ class TestLevel0ToLevel1:
         """Agitation entropy operates on same half-life as consciousness."""
         assert defines.consciousness.agitation_decay_rate == defines.consciousness.decay_lambda
 
-    def test_routing_scale_equals_decay_lambda(self, defines: GameDefines) -> None:
-        """Agitation→consciousness routing on same timescale."""
-        assert defines.consciousness.routing_scale == defines.consciousness.decay_lambda
+    def test_routing_scale_doubles_decay_lambda_spec_066(self, defines: GameDefines) -> None:
+        """Spec-066 bump: routing_scale = 2 × decay_lambda for drift visibility.
+
+        Historical invariant was routing_scale == decay_lambda (same 7-week
+        half-life). Spec-066 doubled it to 0.2 because the spec-065 e2e run
+        showed <0.1% ideology drift across 520 ticks, well below the SC-005
+        >=5% threshold. See spec-066 FR-027 + Phase 0 R4.
+        """
+        assert defines.consciousness.routing_scale == pytest.approx(
+            2 * defines.consciousness.decay_lambda
+        )
 
     def test_heat_decay_equals_decay_lambda(self, defines: GameDefines) -> None:
         """Territory heat entropy on same half-life as consciousness."""
@@ -167,10 +175,15 @@ class TestLevel1ToLevel2:
         expected = 1 - defines.economy.extraction_efficiency
         assert abs(defines.ooda.action_base_surveil - expected) < 0.001
 
-    def test_provide_service_from_sensitivity_and_routing(self, defines: GameDefines) -> None:
-        """PROVIDE_SERVICE = k + routing_scale."""
-        expected = defines.consciousness.sensitivity + defines.consciousness.routing_scale
-        assert abs(defines.ooda.action_base_provide_service - expected) < 0.001
+    def test_provide_service_decoupled_post_spec_066(self, defines: GameDefines) -> None:
+        """PROVIDE_SERVICE = 0.6 (BPP-empirical) decoupled from k + routing_scale.
+
+        Historical derivation (Category B mnemonic): provide_service = 0.5 + 0.1 = 0.6.
+        Spec-066 bumped routing_scale 0.1 -> 0.2 but kept provide_service at the
+        BPP-empirical 0.6 since the BPP survival-programs calibration is the
+        primary source. See defines/ooda.py docstring + spec-066 R4.
+        """
+        assert defines.ooda.action_base_provide_service == pytest.approx(0.6)
 
     def test_organize_equals_sensitivity(self, defines: GameDefines) -> None:
         """ORGANIZE = k (operationalizes material sensitivity)."""

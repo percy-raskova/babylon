@@ -1,0 +1,205 @@
+contract: subsystem_state_tables
+contract_version: "1.0"
+feature: 065-engine-bridging
+description: >-
+  Schemas for the three new per-tick subsystem state tables that
+  this feature introduces. All three are keyed on
+  (session_id, tick, county_fips) and owned by distinct subsystems
+  per Constitution II.11. The trace-emission view
+  (view_runtime_trace_emission, migration 0023) JOINs all three
+  via LEFT JOIN to source the previously-NULL columns.
+
+migrations:
+  - "0020_dynamic_consciousness_state.sql"
+  - "0021_dynamic_demographics_state.sql"
+  - "0022_dynamic_employment_state.sql"
+  - "0023_trace_view_engine_bridged.sql"
+
+tables:
+
+  dynamic_consciousness_state:
+    owner_subsystem: consciousness
+    owner_engine_class: ConsciousnessSystem
+    write_path: "PerTickTransactionEnvelope.consciousness_state_rows → persist_tick_atomic"
+    read_path: "view_runtime_trace_emission only (II.11)"
+    columns:
+      - name: session_id
+        type: UUID
+        nullable: false
+        role: identity
+      - name: tick
+        type: INTEGER
+        nullable: false
+        constraints: ["tick >= 0"]
+        role: identity
+      - name: county_fips
+        type: TEXT
+        nullable: false
+        constraints: ['county_fips ~ ''^\\d{5}$''']
+        role: identity
+      - name: p_acquiescence
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "probability"
+        source: "engine-computed → aggregated"
+        derivation: >-
+          Population-weighted mean of entity.p_acquiescence over
+          all SocialClass entities in world.entities where
+          entity.county_fips == fips. See research.md R10 +
+          babylon.persistence.county_aggregation.aggregate_survival_for_county.
+      - name: p_revolution
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "probability"
+        source: "engine-computed → aggregated"
+        derivation: >-
+          Population-weighted mean of entity.p_revolution over
+          all SocialClass entities in world.entities where
+          entity.county_fips == fips. See research.md R10 +
+          babylon.persistence.county_aggregation.aggregate_survival_for_county.
+      - name: ideology_r
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "simplex coordinate"
+        source: "engine-computed → mapped → aggregated"
+        derivation: >-
+          Per entity in county: r = class_consciousness × (1 - national_identity)
+          where (class_consciousness, national_identity) are fields of
+          entity.ideology (IdeologicalProfile). Then population-weighted
+          mean across all entities with entity.county_fips == fips.
+          Bridge mapping defined in research.md R10.
+      - name: ideology_l
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "simplex coordinate"
+        source: "engine-computed → mapped → aggregated"
+        derivation: >-
+          Per entity in county: l = max(0, 1 - r - f) where r and f are
+          computed per the ideology_r and ideology_f derivations.
+          Then population-weighted mean across all entities with
+          entity.county_fips == fips. Simplex sum r+l+f=1 is preserved
+          by construction. Bridge mapping defined in research.md R10.
+      - name: ideology_f
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["BETWEEN 0 AND 1"]
+        units: "simplex coordinate"
+        source: "engine-computed → mapped → aggregated"
+        derivation: >-
+          Per entity in county: f = national_identity × (1 - class_consciousness)
+          where (class_consciousness, national_identity) are fields of
+          entity.ideology (IdeologicalProfile). Then population-weighted
+          mean across all entities with entity.county_fips == fips.
+          Bridge mapping defined in research.md R10.
+    primary_key: ["session_id", "tick", "county_fips"]
+    indexes:
+      - name: ix_consciousness_session_tick
+        columns: ["session_id", "tick"]
+    append_only: true
+    invariants:
+      - name: ternary_simplex_sum
+        rule: "abs((ideology_r + ideology_l + ideology_f) - 1.0) <= 1e-9"
+        enforced_by: ConsciousnessSystem (not DB CHECK — float drift)
+        gated_by: spec-053 US3 invariant test
+
+  dynamic_demographics_state:
+    owner_subsystem: demographics
+    owner_engine_class: "(read-derived from Census; no dedicated engine system)"
+    write_path: "PerTickTransactionEnvelope.demographics_state_rows → persist_tick_atomic"
+    read_path: "view_runtime_trace_emission only (II.11)"
+    columns:
+      - name: session_id
+        type: UUID
+        nullable: false
+        role: identity
+      - name: tick
+        type: INTEGER
+        nullable: false
+        constraints: ["tick >= 0"]
+        role: identity
+      - name: county_fips
+        type: TEXT
+        nullable: false
+        constraints: ['county_fips ~ ''^\\d{5}$''']
+        role: identity
+      - name: population
+        type: BIGINT
+        nullable: false
+        constraints: ["population >= 0"]
+        units: "persons"
+        source: "reference data"
+        derivation: >-
+          SQLite query against fact_census_* tables for (county_fips, year)
+          interpolated to weekly cadence per spec-062 year-scoped policy.
+          Fall back to fact_qcew_annual.employment × 2.5 (employment-to-
+          population proxy) if Census coverage is missing for the
+          (county, year) pair; an audit row with severity='warning' is
+          emitted on fallback. See research.md R10 +
+          babylon.persistence.county_aggregation.fetch_population_for_county_at_tick.
+    primary_key: ["session_id", "tick", "county_fips"]
+    indexes:
+      - name: ix_demographics_session_tick
+        columns: ["session_id", "tick"]
+    append_only: true
+
+  dynamic_employment_state:
+    owner_subsystem: employment
+    owner_engine_class: "ImperialRentSystem (modulates) / (read-derived from QCEW)"
+    write_path: "PerTickTransactionEnvelope.employment_state_rows → persist_tick_atomic"
+    read_path: "view_runtime_trace_emission only (II.11)"
+    columns:
+      - name: session_id
+        type: UUID
+        nullable: false
+        role: identity
+      - name: tick
+        type: INTEGER
+        nullable: false
+        constraints: ["tick >= 0"]
+        role: identity
+      - name: county_fips
+        type: TEXT
+        nullable: false
+        constraints: ['county_fips ~ ''^\\d{5}$''']
+        role: identity
+      - name: employment_proxy
+        type: DOUBLE PRECISION
+        nullable: false
+        constraints: ["employment_proxy >= 0"]
+        units: "FTE-equivalent"
+        source: "reference data"
+        derivation: >-
+          SQLite query: SUM(fact_qcew_annual.employment) over all
+          industries for (county_id, year) divided by 52 for weekly
+          cadence. Same data source as hex v (which uses total_wages
+          from the same table). See research.md R10 +
+          babylon.persistence.county_aggregation.fetch_employment_proxy_for_county_at_tick.
+    primary_key: ["session_id", "tick", "county_fips"]
+    indexes:
+      - name: ix_employment_session_tick
+        columns: ["session_id", "tick"]
+    append_only: true
+
+view_extension:
+
+  view_runtime_trace_emission_v2:
+    migration: "0023_trace_view_engine_bridged.sql"
+    operation: DROP + CREATE (column count + JOIN cardinality changes)
+    upstream_tables_added:
+      - dynamic_consciousness_state
+      - dynamic_demographics_state
+      - dynamic_employment_state
+    join_pattern: |
+      LEFT JOIN per (session_id, tick, county_fips) so a missing
+      subsystem row emits NULL (preserves edge case E3 behavior).
+    column_count_unchanged: true
+    column_ordering_unchanged: true
+    semantics_changed:
+      - >-
+        Previously-NULL columns (p_acquiescence, p_revolution,
+        ideology_r/l/f, population, employment_proxy) now sourced
+        from the new subsystem tables.

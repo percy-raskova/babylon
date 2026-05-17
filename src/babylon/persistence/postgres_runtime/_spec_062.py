@@ -89,6 +89,57 @@ ON CONFLICT (session_id, tick, scale, invariant_name) DO NOTHING
 """
 
 
+# Spec-065: per-tick county-resolution subsystem state inserts.
+_CONSCIOUSNESS_INSERT = """
+INSERT INTO dynamic_consciousness_state (
+    session_id, tick, county_fips,
+    p_acquiescence, p_revolution,
+    ideology_r, ideology_l, ideology_f
+) VALUES (
+    %(session_id)s, %(tick)s, %(county_fips)s,
+    %(p_acquiescence)s, %(p_revolution)s,
+    %(ideology_r)s, %(ideology_l)s, %(ideology_f)s
+)
+ON CONFLICT (session_id, tick, county_fips) DO NOTHING
+"""
+
+_DEMOGRAPHICS_INSERT = """
+INSERT INTO dynamic_demographics_state (
+    session_id, tick, county_fips, population
+) VALUES (
+    %(session_id)s, %(tick)s, %(county_fips)s, %(population)s
+)
+ON CONFLICT (session_id, tick, county_fips) DO NOTHING
+"""
+
+_EMPLOYMENT_INSERT = """
+INSERT INTO dynamic_employment_state (
+    session_id, tick, county_fips, employment_proxy
+) VALUES (
+    %(session_id)s, %(tick)s, %(county_fips)s, %(employment_proxy)s
+)
+ON CONFLICT (session_id, tick, county_fips) DO NOTHING
+"""
+
+# Spec-065 T080: per-tick dyadic relationship state (migration 0024).
+# Empty in spec-065 first cut (WorldState.relationships unused); fills
+# naturally when spec-066 wires ContradictionSystem + SolidaritySystem
+# through the bridged engine.
+_RELATIONSHIP_INSERT = """
+INSERT INTO dynamic_relationship_state (
+    session_id, tick,
+    source_node_id, target_node_id, edge_type,
+    tension, solidarity
+) VALUES (
+    %(session_id)s, %(tick)s,
+    %(source_node_id)s, %(target_node_id)s, %(edge_type)s,
+    %(tension)s, %(solidarity)s
+)
+ON CONFLICT (session_id, tick, source_node_id, target_node_id, edge_type)
+DO NOTHING
+"""
+
+
 def _hex_row_dict(row: Any) -> dict[str, Any]:
     """Serialize a DynamicHexState row to psycopg param dict."""
     return {
@@ -153,6 +204,49 @@ def _audit_row_dict(row: Any) -> dict[str, Any]:
     }
 
 
+def _consciousness_row_dict(row: Any) -> dict[str, Any]:
+    return {
+        "session_id": str(row.session_id),
+        "tick": row.tick,
+        "county_fips": row.county_fips,
+        "p_acquiescence": row.p_acquiescence,
+        "p_revolution": row.p_revolution,
+        "ideology_r": row.ideology_r,
+        "ideology_l": row.ideology_l,
+        "ideology_f": row.ideology_f,
+    }
+
+
+def _demographics_row_dict(row: Any) -> dict[str, Any]:
+    return {
+        "session_id": str(row.session_id),
+        "tick": row.tick,
+        "county_fips": row.county_fips,
+        "population": row.population,
+    }
+
+
+def _employment_row_dict(row: Any) -> dict[str, Any]:
+    return {
+        "session_id": str(row.session_id),
+        "tick": row.tick,
+        "county_fips": row.county_fips,
+        "employment_proxy": row.employment_proxy,
+    }
+
+
+def _relationship_row_dict(row: Any) -> dict[str, Any]:
+    return {
+        "session_id": str(row.session_id),
+        "tick": row.tick,
+        "source_node_id": row.source_node_id,
+        "target_node_id": row.target_node_id,
+        "edge_type": row.edge_type,
+        "tension": row.tension,
+        "solidarity": row.solidarity,
+    }
+
+
 def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvelope) -> None:
     """Persist every row in the envelope inside one Postgres transaction.
 
@@ -162,9 +256,10 @@ def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvel
     Idempotent on retry-after-crash via ``ON CONFLICT DO NOTHING`` on every
     composite primary key.
 
-    The four buffered INSERTs (hex_state, external_node, boundary_register,
-    audit_log) execute in a fixed order so that any constraint violation
-    in audit_log still rolls back the earlier hex_state inserts.
+    The seven buffered INSERTs (hex_state, external_node, boundary_register,
+    audit_log, plus the spec-065 trio: consciousness_state, demographics_state,
+    employment_state) execute in a fixed order so that any constraint
+    violation in a later table still rolls back the earlier inserts.
     """
     with self._pool.connection() as conn, conn.transaction():
         if envelope.hex_state_rows:
@@ -186,6 +281,28 @@ def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvel
             conn.cursor().executemany(
                 _AUDIT_INSERT,
                 [_audit_row_dict(r) for r in envelope.audit_log_rows],
+            )
+        # Spec-065: per-tick county-resolution subsystem state rows.
+        if envelope.consciousness_state_rows:
+            conn.cursor().executemany(
+                _CONSCIOUSNESS_INSERT,
+                [_consciousness_row_dict(r) for r in envelope.consciousness_state_rows],
+            )
+        if envelope.demographics_state_rows:
+            conn.cursor().executemany(
+                _DEMOGRAPHICS_INSERT,
+                [_demographics_row_dict(r) for r in envelope.demographics_state_rows],
+            )
+        if envelope.employment_state_rows:
+            conn.cursor().executemany(
+                _EMPLOYMENT_INSERT,
+                [_employment_row_dict(r) for r in envelope.employment_state_rows],
+            )
+        # Spec-065 T080: per-tick dyadic relationship state.
+        if envelope.relationship_state_rows:
+            conn.cursor().executemany(
+                _RELATIONSHIP_INSERT,
+                [_relationship_row_dict(r) for r in envelope.relationship_state_rows],
             )
 
 

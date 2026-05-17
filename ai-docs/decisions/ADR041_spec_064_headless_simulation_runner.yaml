@@ -1,0 +1,108 @@
+ADR041_spec_064_headless_simulation_runner:
+  status: "accepted"
+  date: "2026-05-14"
+  title: "Spec 064: Headless Postgres-backed simulation runner as canonical CLI"
+  context: |
+    Babylon prior to spec-064 had three competing simulation entry points:
+    `python -m babylon` (legacy in-memory smoke test), the per-tool
+    `tools/shared.run_simulation()` (legacy in-memory imperial-circuit),
+    and the new spec-061/062 PostgresRuntime — but no operator-facing
+    CLI that ran the canonical Babylon simulation against Postgres
+    end-to-end. The legacy in-memory paths violated SC-007 (no
+    pre-Postgres engine imports in `tools/`) and produced output that
+    LLM agents could not parse without source access.
+
+    Three load-bearing concerns drove the design:
+
+      1. The runner needed to be a single deterministic CLI surface
+         producing an LLM-parseable artifact bundle (trace.csv +
+         summary.json + manifest.json) so a coding agent could diagnose
+         a run from artifacts alone.
+      2. Cross-subsystem reads for trace emission risked violating
+         II.11 (subsystem table ownership) — the trace needs c/v/s/k
+         from economics, ideology from consciousness, surveillance
+         from territory, etc., across multiple per-tick tables.
+      3. The 6 in-scope `tools/` analysis scripts that today bypass
+         Postgres needed a migration seam (`tools/shared.py`) so they
+         continue to work without source rewrite.
+
+  decision: |
+    Three architectural decisions captured by this spec:
+
+    1. **Headless runner as canonical entry point.** The new package
+       `babylon.engine.headless_runner` is the single CLI surface for
+       end-to-end Babylon runs. `mise run sim:e2e-michigan` and
+       `python -m babylon.engine.headless_runner` both dispatch to
+       `runner.run(SimulationRunConfig)`. Predefined scopes
+       (michigan-canada, michigan-statewide-no-canada,
+       detroit-tri-county, national) are documented in
+       `contracts/cli_contract.yaml`.
+
+    2. **`view_runtime_trace_emission` as the II.11-compliant trace
+       contract.** Migration `0019_trace_emission_view.sql` defines
+       a Postgres view that owns the cross-subsystem read for trace
+       emission. Subsystem tables retain their owners; the view's
+       column list IS the trace contract. Schema drift is detected by
+       `tests/unit/persistence/test_trace_view_columns.py` (US1
+       acceptance criterion).
+
+    3. **`tools/shared.py:run_simulation` is the migration seam.**
+       Per ADR036, `shared.py` is the single source of truth for
+       common simulation utilities. Spec-064 replaces its in-memory
+       imperial-circuit body with a routed call to
+       `babylon.engine.headless_runner.run` — preserving the function
+       signature so downstream tools compile, but with degraded
+       fidelity for fields the headless MVP does not yet compute
+       (`final_state=None`, all `phase_milestones=None`,
+       `max_tension=0.0`).
+
+  rationale:
+    deterministic_output_for_llm_consumers: |
+      LLM coding agents diagnose runs from `trace.csv` + `summary.json`
+      + `manifest.json` without source access. `manifest.input_hash`
+      provides byte-equality determinism testing.
+    declared_view_satisfies_ii11: |
+      Per Constitution II.11, cross-subsystem reads MUST go through
+      declared interfaces. A Postgres view IS such an interface; it
+      moves the cross-subsystem coupling from ad-hoc Python joins to
+      a single SQL contract owned by this feature.
+    signature_preservation_avoids_tool_churn: |
+      ADR036 established `tools/shared.py` as the single source of
+      truth. Replacing the function body but preserving the signature
+      lets all 6 in-scope tools (audit_simulation, monte_carlo,
+      parameter_analysis, sensitivity_analysis, profiler,
+      landscape_analysis) inherit the new backend without per-tool
+      rewrites.
+    scope_substrate_anchored_in_constitution: |
+      Default scope is Michigan + Canada per Article IV (Michigan Test
+      Case) + IV.1 (Detroit-Windsor boundary). Configurable via flag
+      so tests, profiling, and Monte Carlo can use smaller scopes.
+
+  consequences:
+    positive:
+      - "Single LLM-parseable artifact bundle replaces ad-hoc per-tool output."
+      - "SC-007 enforced by AST audit: 6 in-scope tools no longer import the legacy in-memory engine path."
+      - "Deterministic byte-equality testable via input_hash."
+      - "Cooperative SIGINT preserves partial artifacts without half-committed transactions."
+      - "Postgres-resident state (spec-062) becomes the canonical runtime; in-memory WorldState retreats to test fixtures."
+      - "Operators can drop into LLM-agent quickstart workflow with a single mise command."
+    negative:
+      - "Tools/* now pay session-init + hex-hydration cost (~9s) per call instead of running purely in-memory; Monte Carlo / sweeps slow accordingly."
+      - "Several legacy result-dict fields (final_state, phase_milestones, terminal_outcome) degrade to None until real engine systems are wired into the headless tick loop in a future spec."
+      - "The MVP runner carries hex state forward unchanged — no real economic dynamics. End-game detection is deferred."
+    deferred:
+      - "End-game detection wiring (T024a + T033)."
+      - "Real engine→Postgres bridging so tools/* recover full result fidelity."
+      - "Full Michigan-statewide baseline regeneration once wallclock budget is validated at the 83-county scale."
+
+  references:
+    - "specs/064-headless-sim-runner/spec.md"
+    - "specs/064-headless-sim-runner/plan.md"
+    - "specs/064-headless-sim-runner/tasks.md"
+    - "specs/064-headless-sim-runner/contracts/"
+    - "ADR036 (tools/shared.py as canonical helper)"
+    - "ADR040 (spec-062 cross-scale integration)"
+    - "Constitution II.11 (subsystem table ownership)"
+    - "Constitution II.5 (AI observes, never controls)"
+    - "Constitution III.7 (determinism hash)"
+    - "Constitution IV / IV.1 (Michigan + Detroit-Windsor)"

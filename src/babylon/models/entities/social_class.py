@@ -375,6 +375,27 @@ class SocialClass(BaseModel):
         description="Intra-class Gini coefficient. 0=equality, 1=tyranny (bottom gets nothing)",
     )
 
+    # Spec-065 engine-bridging: optional per-county attribution.
+    # When set, this entity is included in the bridge's per-county
+    # aggregations (p_acquiescence, p_revolution, ideology r/l/f).
+    # Pattern allows the 5-digit US county FIPS or an empty string
+    # (the latter encodes "explicitly unattributed" for tests that
+    # round-trip the field but don't want a real attribution).
+    # spec-064 and earlier callers that leave the field unset
+    # (None) remain backwards compatible — entities without a FIPS
+    # do not appear in county aggregates but otherwise participate
+    # in all engine logic normally.
+    county_fips: str | None = Field(
+        default=None,
+        pattern=r"^\d{5}$|^$",
+        description=(
+            "Optional 5-digit US county FIPS code attributing this "
+            "class entity to a county for spec-065 per-county "
+            "aggregation. None = unattributed; empty string = "
+            "explicitly unattributed; 5-digit string = attributed."
+        ),
+    )
+
     # Community membership (Feature 022 - Hypergraph Community Layer)
     community_memberships: list[Any] = Field(
         default_factory=list,

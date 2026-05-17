@@ -1,0 +1,52 @@
+# Bug B — Employment proxy unit fix
+# Closes: FR-005, FR-006
+# Maps to: SC-007
+# User story: US4 (P2)
+
+contract_id: employment_proxy_contract
+spec: 066-marx-coherence-fixes
+bug_category: B
+status: draft
+
+guarantees:
+  state_aggregate_in_band:
+    description: |
+      The state-aggregate sum of employment_proxy across all 83 Michigan counties
+      at tick 0 falls within +/- 15% of the BLS QCEW Michigan 2010 published
+      total (~4.2M employed).
+    formal: "SUM(employment_proxy) over 83 counties at tick 0 in [3.5M, 4.8M]"
+    falsified_by: "State sum < 3.5M OR > 4.8M"
+
+  per_county_lfpr_plausible:
+    description: |
+      For any single county at any tick, the implied labor-force participation
+      ratio (employment_proxy / population) falls within the BLS-published
+      empirical range for US counties.
+    formal: "ALL rows: 0.30 <= employment_proxy / population <= 0.65"
+    falsified_by: "Any row where the LFPR ratio falls outside [0.30, 0.65]"
+
+  unit_correctness:
+    description: |
+      employment_proxy is in units of 'average employed persons during the year',
+      NOT 'employment-weeks per week'. A monthly-stock divided by 12 yields the
+      correct annual average; dividing by 52 (weeks) is a unit error since
+      employment is a stock not a flow.
+    formal: "employment_proxy = SUM(qcew.employment) / 12 (NOT / 52)"
+    falsified_by: "Code path that divides QCEW employment by anything other than 12"
+
+producer_obligations:
+  hex_hydrator_unit_fix:
+    file: src/babylon/persistence/hex_hydrator.py
+    line: ~410  # current `employment_proxy = SUM(qcew.employment) / 52`
+    new: "employment_proxy = SUM(qcew.employment) / 12"
+    rationale: |-
+      BLS QCEW reports monthly average employment (stock). Dividing by 52
+      weeks treats stock as flow; correct division is by 12 months for
+      annual average.
+
+acceptance_tests:
+  unit:
+    - tests/unit/persistence/test_employment_proxy_units.py::test_divides_by_12_not_52
+    - tests/unit/persistence/test_employment_proxy_units.py::test_state_aggregate_in_BLS_band
+  integration:
+    - tests/integration/test_marx_identities.py::test_per_county_LFPR_plausible

@@ -1,0 +1,167 @@
+# Bug E + Bug F — Engine integration + edge bootstrap
+# Closes: FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-023, FR-025, FR-026, FR-027, FR-028
+# Maps to: SC-005, SC-006, SC-010, SC-011, SC-012, SC-013
+# User story: US2 (P1) — the load-bearing MVP requirement
+
+contract_id: engine_invocation_contract
+spec: 066-marx-coherence-fixes
+bug_category: [E, F]
+status: draft
+
+guarantees:
+  engine_invoked_per_tick:
+    description: |
+      The bridged headless runner invokes SimulationEngine.run_tick(graph,
+      services, context) on every tick between bridge.hydrate_initial(...) and
+      bridge.persist_tick(...). The 21 canonical systems run in their declared
+      order per simulation_engine.py:_DEFAULT_SYSTEMS.
+    formal: |
+      summary.performance.per_system_ms contains exactly 21 entries (one per
+      system in the canonical order) AND every value is strictly positive.
+    falsified_by: "per_system_ms missing entries OR has values <= 0 OR has wrong system count"
+
+  no_graceful_degradation:
+    description: |
+      Per Clarifications Q2, any engine system raising an exception fails the
+      tick (and therefore the run with exit code 1). Per-system try/except
+      wrappers that swallow errors are NOT acceptable.
+    formal: "Any engine system exception => run.exit_reason == ERRORED AND exit code 1"
+    falsified_by: "Run completes with COMPLETED exit_reason despite a system raising an exception"
+
+  exploitation_edges_seeded:
+    description: |
+      The bridge's hydrate_initial seeds exactly one EdgeType.EXPLOITATION
+      relationship per county (proletariat -> bourgeoisie within county).
+      Per Clarifications Q4 + Constitution III.5, NO EdgeType.SOLIDARITY
+      relationships are seeded - those are strategic intervention from
+      player verbs, not data-loaded.
+    formal: |
+      world.relationships at tick 0 contains exactly 83 Relationship objects
+      (one per Michigan county) AND every one has edge_type=EdgeType.EXPLOITATION
+      AND none have edge_type=EdgeType.SOLIDARITY.
+    falsified_by: "Wrong edge count OR any SOLIDARITY edge present at tick 0"
+
+  consciousness_evolves:
+    description: |
+      For at least one county across the canonical 520-tick run, ideology_f
+      (fascism axis) changes by >= 5% relative magnitude between tick 0 and
+      tick 519. Per Clarifications Q4, the un-organized canonical run drifts
+      on the fascism axis (no SOLIDARITY edges => all agitation routes to
+      national_identity). Drift on ideology_r is NOT expected.
+    formal: |
+      EXISTS county c: |trace[c, tick=519].ideology_f - trace[c, tick=0].ideology_f|
+                       / trace[c, tick=0].ideology_f >= 0.05
+    falsified_by: "No county shows >= 5% relative ideology_f drift over 520 ticks"
+
+  per_county_divergence:
+    description: |
+      Wayne County (high-Φ industrial core) and Keweenaw County (low-Φ
+      rural periphery) show distinct ideology_f trajectories driven by
+      differential EXTRACTIVE edge weights. Pearson correlation < 0.95.
+    formal: "pearsonr(trace[Wayne].ideology_f, trace[Keweenaw].ideology_f) < 0.95"
+    falsified_by: "Pearson correlation >= 0.95 (counties evolve identically despite different material conditions)"
+
+  expected_event_families:
+    description: |
+      summary.events contains at least one event from each of:
+      BIFURCATION_THRESHOLD, CONSCIOUSNESS_SHIFT, and one of
+      {EXCESSIVE_FORCE, FASCIST_REVANCHISM, FASCIST_CONVERGENCE}. The
+      un-organized canonical run produces fascism-side events. Solidarity-side
+      events (SOLIDARITY_AWAKENING, UPRISING, REVOLUTIONARY_OFFENSIVE) are
+      NOT expected and their absence is NOT a contract violation.
+    formal: |
+      EVENT_FAMILIES_REQUIRED = {BIFURCATION_THRESHOLD, CONSCIOUSNESS_SHIFT}
+        AND |summary.events filter (event_type IN required_families)| >= 2
+        AND EXISTS event in summary.events with event_type IN
+            {EXCESSIVE_FORCE, FASCIST_REVANCHISM, FASCIST_CONVERGENCE}
+    falsified_by: "Any required event family is missing"
+
+  wallclock_budget:
+    description: |
+      The canonical 520-tick Michigan-Canada run completes within 90 minutes
+      (5400 seconds), giving a per-tick mean of <= 10 seconds. Per Phase 0
+      research R8, the SQLite per-tick reads dominate this cost; future spec
+      (provisionally spec-069) will optimize.
+    formal: "summary.performance.total_wallclock_sec <= 5400.0"
+    falsified_by: "Total wallclock > 90 minutes"
+
+  consciousness_coefficient_calibrated:
+    description: |
+      ConsciousnessSystem's routing_scale coefficient is set to >= 0.2 (or
+      a documented justification for a smaller value). Default 0.1 produces
+      ~0.000045 drift/tick which does not clear SC-005's >= 5% threshold
+      over 520 ticks per Phase 0 research R4.
+    formal: "GameDefines.consciousness.routing_scale >= 0.2 (default in src/babylon/config/defines/consciousness.py)"
+    falsified_by: "routing_scale < 0.2 in defines AND no compensating override AND SC-005 fails"
+
+  spec_065_baseline_preserved:
+    description: |
+      All spec-065 acceptance tests continue to pass. The MVP commit on
+      066-marx-coherence-fixes does NOT regress the persistence pipeline;
+      it ADDS engine integration on top.
+    formal: |-
+      All tests/unit/engine/headless_runner/* and
+      tests/integration/test_engine_bridge.py pre-spec-066 tests still pass
+    falsified_by: "Any pre-existing test breaks"
+
+producer_obligations:
+  runner_constructs_service_container:
+    file: src/babylon/engine/headless_runner/runner.py
+    method: "run()"
+    new: |
+      Before the tick loop, construct ONE ServiceContainer:
+      services = ServiceContainer.create(
+          config=SimulationConfig(),
+          defines=defines,
+          event_bus=bridge.event_bus,
+          auditor=bridge.auditor,
+          boundary_register=bridge.boundary_register,
+      )
+      Reuse `services` for all 520 calls to engine.run_tick(...).
+    rationale: "Phase 0 R2 + spec-065 wiring infrastructure already in place"
+
+  runner_invokes_engine_per_tick:
+    file: src/babylon/engine/headless_runner/runner.py
+    method: "_tick_loop / _advance_tick"
+    new: |
+      Replace `bridge.persist_tick(world, tick, hash)` with the sequence:
+        1. graph = world.to_graph()  # one-shot at session init, then mutated in-place
+        2. context = TickContext(tick=tick, correlation_id=uuid4())  # from babylon.engine.context
+        3. engine.run_tick(graph, services, context)
+        4. world = WorldState.from_graph(graph)  # reconstitute (excludes computed fields)
+        5. bridge.persist_tick(world, tick, hash)
+    rationale: "Phase 0 R1 — bridge owns graph; engine mutates in place; bridge reads world.relationships post-engine"
+
+  bridge_seeds_exploitation_edges:
+    file: src/babylon/engine/headless_runner/bridge.py
+    method: "hydrate_initial"
+    new: |
+      After _build_per_county_entities(), call _build_per_county_relationships()
+      that returns one Relationship(source_id=proletariat_id, target_id=bourgeoisie_id,
+      edge_type=EdgeType.EXPLOITATION, value_flow=0.0, tension=0.1) per county.
+      Pass the result to WorldState(tick=0, entities=entities, relationships=rels).
+    rationale: "FR-025 + Phase 0 R5; satisfies III.5 (empirical edges from data, no strategic SOLIDARITY)"
+
+  routing_scale_coefficient_bump:
+    file: src/babylon/config/defines/consciousness.py
+    field: "routing_scale"
+    new: "Default value 0.1 -> 0.2 (or document why a smaller value is sufficient)"
+    rationale: "FR-027 + Phase 0 R4"
+
+  remove_xfail_t028:
+    file: tests/integration/test_engine_bridge.py
+    test: "test_tick_over_tick_evolution"
+    new: "Remove the @pytest.mark.xfail decorator; test should now pass per FR-014/SC-013"
+
+acceptance_tests:
+  unit:
+    - tests/unit/engine/headless_runner/test_runner_engine_invocation.py::test_service_container_constructed_once
+    - tests/unit/engine/headless_runner/test_runner_engine_invocation.py::test_engine_run_tick_called_per_tick
+    - tests/unit/engine/headless_runner/test_bridge.py::test_hydrate_initial_seeds_exploitation_edges
+    - tests/unit/engine/headless_runner/test_bridge.py::test_hydrate_initial_no_solidarity_edges
+  integration:
+    - tests/integration/test_consciousness_evolution.py::test_ideology_f_drifts_geq_5pct_over_520_ticks
+    - tests/integration/test_consciousness_evolution.py::test_wayne_keweenaw_pearson_lt_0_95
+    - tests/integration/test_consciousness_evolution.py::test_expected_event_families_fire
+    - tests/integration/test_engine_bridge.py::test_tick_over_tick_evolution  # xfail removed
+    - tests/integration/test_engine_bridge.py::test_canonical_wallclock_budget  # <= 5400s, slow gate

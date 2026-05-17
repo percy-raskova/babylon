@@ -195,7 +195,12 @@ class OODADefines(BaseModel):
     action_base_provide_service: float = Field(
         default=0.6,
         ge=0,
-        description="[B] = k + routing_scale = 0.5 + 0.1: material sensitivity + routing (BPP survival programs).",
+        description=(
+            "[C-empirical] BPP survival-programs calibration. Historically derived "
+            "as k + routing_scale = 0.5 + 0.1 = 0.6 (Category B mnemonic); spec-066 "
+            "bumped routing_scale to 0.2 for consciousness-drift visibility but kept "
+            "action_base_provide_service at the BPP-empirical 0.6 (decoupled)."
+        ),
     )
     action_base_recruit: float = Field(
         default=0.3,
@@ -365,11 +370,8 @@ class OODADefines(BaseModel):
             ("action_base_propagandize", self.action_base_propagandize, 1 - 2 * c.decay_lambda),
             ("action_base_repress", self.action_base_repress, e.extraction_efficiency),
             ("action_base_surveil", self.action_base_surveil, 1 - e.extraction_efficiency),
-            (
-                "action_base_provide_service",
-                self.action_base_provide_service,
-                c.sensitivity + c.routing_scale,
-            ),
+            # action_base_provide_service decoupled per spec-066: BPP-empirical 0.6
+            # no longer tracks k + routing_scale (routing_scale bumped 0.1 -> 0.2)
             ("action_base_organize", self.action_base_organize, c.sensitivity),
             ("action_base_recruit", self.action_base_recruit, s.activation_threshold),
             ("contestation_threshold", self.contestation_threshold, s.activation_threshold),

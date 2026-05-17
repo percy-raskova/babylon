@@ -519,9 +519,15 @@ python:
       "test:int": "Run integration tests (mechanics & systems)"
       "test:scenario": "Run scenario tests (slow, full arcs)"
       "test:all": "Run all non-AI tests"
-      "sim:run": "Main simulation entry point"
+      "sim:run": "Legacy in-memory smoke test (use sim:e2e-michigan for canonical run)"
+      "sim:e2e-michigan": "Headless Postgres-backed 520-tick (10-year) Michigan + Canada e2e — spec-065 canonical (rescoped from spec-064's 1000 ticks to fit the 2010-2020 real-data window)"
       "sim:trace": "Time-series CSV + JSON output"
-      "sim:profile": "cProfile performance analysis"
+      "sim:profile": "cProfile performance analysis (spec-064: routed through headless runner)"
+      "qa:e2e-regression": "Run headless e2e with --strict then compare to michigan-e2e baseline (spec-065: --strict default for CI hard-fail on critical conservation violations)"
+      # Spec-065 CLI flag additions:
+      #   --strict           : exit 1 on first severity='alarm' conservation_audit row
+      #   --endgame-detector : optional dotted import path to an EndgameDetector (e.g. babylon.engine.observer.ImperialCollapseDetector)
+      # See specs/065-engine-bridging/contracts/cli_contract.yaml.
       "tune:optuna": "Bayesian optimization (Optuna TPE)"
       "tune:landscape": "2D parameter grid search"
       "tune:dashboard": "Optuna Dashboard visualization"

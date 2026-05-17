@@ -185,6 +185,12 @@ class ConservationAuditor:
         # Plug-in registry for invariant evaluators. Each entry is a
         # callable (pre, post, context) -> Iterable[_InvariantResult].
         self._evaluators: dict[str, Any] = {}
+        # Spec-065 T049: in-memory buffers populated by audit_end_of_tick
+        # so the headless runner can read alarm rows directly without a
+        # Postgres round-trip. The bridge also drains these into the
+        # per-tick envelope so they hit conservation_audit_log durably.
+        self.audit_log_buffer: list[ConservationAuditRow] = []
+        self.alarms_buffer: list[ConservationAlarmEvent] = []
 
     def register_invariant(self, name: str, evaluator: Any) -> None:
         """Register an evaluator callable for a named invariant.
@@ -256,6 +262,52 @@ class ConservationAuditor:
                         )
                     )
         return rows, alarms
+
+    def audit_end_of_tick(
+        self,
+        *,
+        session_id: UUID,
+        tick: int,
+        hex_rows: Iterable[Any],
+        pre_state: Any = None,
+        post_state: Any = None,
+        context: Any = None,
+        action_list: Iterable[Any] | None = None,
+    ) -> tuple[list[ConservationAuditRow], list[ConservationAlarmEvent]]:
+        """Run :meth:`evaluate` and append results to the auditor's buffers.
+
+        Spec-065 T049 entry point. The headless runner (or the engine in
+        spec-066) calls this once per tick after persist completes. The
+        method returns the freshly-computed rows + alarms AND appends them
+        to ``audit_log_buffer`` / ``alarms_buffer`` so subscribers
+        (``runner._check_strict_alarms``, persistence layer, observers)
+        can read them without recomputing.
+
+        The buffers grow for the whole run; callers can clear them by
+        slicing or by calling :meth:`reset_buffers`. The MVP run is short
+        enough (a few hundred ticks × a few dozen invariants) that the
+        memory cost is negligible.
+        """
+        rows, alarms = self.evaluate(
+            session_id=session_id,
+            tick=tick,
+            hex_rows=hex_rows,
+            pre_state=pre_state,
+            post_state=post_state,
+            context=context,
+            action_list=action_list,
+        )
+        self.audit_log_buffer.extend(rows)
+        self.alarms_buffer.extend(alarms)
+        return rows, alarms
+
+    def reset_buffers(self) -> None:
+        """Clear ``audit_log_buffer`` and ``alarms_buffer``.
+
+        Useful for tests that share an auditor instance across cases.
+        """
+        self.audit_log_buffer.clear()
+        self.alarms_buffer.clear()
 
     @property
     def invariant_names(self) -> tuple[str, ...]:

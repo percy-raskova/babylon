@@ -1,0 +1,110 @@
+# Bug A — Marx accounting identities + rate of profit band
+# Closes: FR-001, FR-002, FR-003, FR-004, FR-020, FR-021
+# Maps to: SC-001, SC-002, SC-004
+# Note: FR-019 / SC-003 (gross-output identity c+v+s=W) were dropped per
+#       /speckit.analyze U1 — tautological after the FR-001 formula fix.
+# User story: US1 (P1)
+
+contract_id: marx_identity_invariants
+spec: 066-marx-coherence-fixes
+bug_category: A
+status: draft
+
+# What the consumer (researcher inspecting trace.csv + summary.json) is guaranteed:
+
+guarantees:
+  surplus_value_positive:
+    description: |
+      For every persisted county-tick row (43,160+ rows in canonical Michigan run),
+      the surplus value `s` is non-negative. When the underlying residual would be
+      negative (e.g., commuter wages reported in work county but GDP reported in
+      residence county), `s` is clamped to 0 AND a `severity='alarm'` row is
+      written to conservation_audit_log naming the county FIPS + year.
+    formal: "ALL rows: s >= 0"
+    falsified_by: "Any row with s < 0"
+
+  formula_value_added_identity:
+    description: |
+      The corrected hex hydrator formula uses Marx's value-added identity, NOT the
+      gross-output formula. Specifically `s = max(0, GDP_per_week - v_per_week)`,
+      not `max(0, GDP_per_week - v_per_week - c_per_week)`.
+    formal: "ALL rows: s = max(0, GDP_per_week - v_per_week) within $1"
+    where:
+      GDP_per_week: "BEA county GDP / 52"
+    falsified_by: "Any row where computed s differs from max(0, GDP/52 - v) by > $1"
+
+  gross_output_identity:
+    description: |
+      The Marx gross-output identity holds: c + v + s = W where W is the implied
+      gross output (≈ GDP × 1.85 per BEA national gross-output / GDP ratio).
+    formal: "ALL rows: |c + v + s - W| <= $1"
+    where:
+      W: "approximately GDP * 1.85 per BEA empirical (national gross-output / value-added ratio)"
+    falsified_by: "Any row where |c + v + s - W| > $1"
+
+  rate_of_profit_band:
+    description: |
+      The implied state-aggregate rate of profit at any tick falls within
+      [0.05, 0.50] - relaxed from Vol III Ch 13's [0.20, 0.67] illustrative
+      range to accommodate BEA-broad v (QCEW total compensation), per
+      Clarifications Q1.
+    formal: "ALL ticks: 0.05 <= total_s / (total_c + total_v) <= 0.50"
+    where:
+      total_*: "sum across all 83 Michigan counties"
+    falsified_by: "Any tick where state rate of profit falls outside [0.05, 0.50]"
+
+  qcew_normalization:
+    description: |
+      Per-county v_per_week aligns with BLS-published establishment-survey wage
+      totals within +/- 50%. The current denormalized SQLite snapshot is fixed
+      via the `industry_id = 1` filter at hex hydration time (R6 decision).
+    formal: "Per Wayne County 2010: $640M/wk <= v <= $1.92B/wk (BLS published $960M/wk +/- 50%)"
+    falsified_by: |-
+      Wayne 2010 v outside the 640M-1920M band, OR state aggregate v differs
+      from BLS Michigan 2010 by > 50%
+
+# What the producer (hex_hydrator + bridge + engine) MUST do to satisfy:
+
+producer_obligations:
+  hex_hydrator_formula_change:
+    file: src/babylon/persistence/hex_hydrator.py
+    line: 373  # current `s_per_week = max(0, gdp_per_week - v_per_week - c_per_week)`
+    new: "s_per_week = max(0, gdp_per_week - v_per_week)"
+    rationale: |-
+      Marx Vol I Ch 9 + BEA accounting: GDP = value-added = v + s; so
+      s = max(0, GDP - v). Subtracting c double-counts the constant-capital
+      pass-through.
+
+  hex_hydrator_qcew_filter:
+    file: src/babylon/persistence/hex_hydrator.py
+    line: 312  # current SUM(fact_qcew_annual.total_wages_usd) without industry filter
+    new: "Add `AND fq.industry_id = 1` to the WHERE clause (the BLS 'All Industries' aggregate)"
+    rationale: |-
+      fact_qcew_annual is denormalized across (industry x ownership x
+      establishment) rows; summing across industries triple-counts overlapping
+      NAICS hierarchies (Manufacturing + Durable Goods both contain the same
+      establishments). industry_id=1 is the BLS publication granularity.
+
+  audit_negative_residual:
+    file: src/babylon/persistence/hex_hydrator.py
+    method: "compute_per_county_marx_data (or equivalent)"
+    new: |-
+      When raw GDP/52 - v < 0, emit a ConservationAuditRow(
+        severity='alarm',
+        invariant_name='s_residual_negative',
+        details={county_fips, year, gdp_per_week, v_per_week}
+      )
+    rationale: "FR-004; the alarm row is a calibration signal, not a hard error"
+
+# Test harness:
+
+acceptance_tests:
+  unit:
+    - tests/unit/persistence/test_hex_hydrator_marx.py::test_s_formula_drops_c_subtraction
+    - tests/unit/persistence/test_hex_hydrator_marx.py::test_qcew_industry_filter
+    - tests/unit/persistence/test_hex_hydrator_marx.py::test_negative_residual_emits_alarm
+  integration:
+    - tests/integration/test_marx_identities.py::test_state_rate_of_profit_in_band
+    - tests/integration/test_marx_identities.py::test_value_added_identity_per_county_per_tick
+    - tests/integration/test_marx_identities.py::test_gross_output_identity_per_county_per_tick
+    - tests/integration/test_marx_identities.py::test_total_s_strictly_positive

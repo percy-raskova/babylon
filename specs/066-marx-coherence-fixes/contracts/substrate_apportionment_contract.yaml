@@ -1,0 +1,63 @@
+# Bug C — Substrate stocks: distinct apportionment formulas
+# Closes: FR-007, FR-008, FR-009
+# Maps to: SC-008
+# User story: US5 (P3)
+
+contract_id: substrate_apportionment_contract
+spec: 066-marx-coherence-fixes
+bug_category: C
+status: draft
+
+guarantees:
+  distinguishability:
+    description: |
+      For at least 50% of Michigan counties at tick 0, energy_stock and
+      raw_material_stock differ in value (they're computed from distinct
+      apportionment formulas, not the same one).
+    formal: "AT LEAST 42 of 83 counties: energy_stock != raw_material_stock"
+    falsified_by: "Fewer than 42 counties show distinct values"
+
+  area_proportionality:
+    description: |
+      For two counties with similar population but different land area, the
+      raw_material_stock values differ in proportion to the area ratio.
+    formal: |
+      For Wayne (614 sq mi) vs Marquette (1,808 sq mi):
+      |raw_material_stock(Marquette) / raw_material_stock(Wayne) - 1808/614| / (1808/614) <= 0.10
+    falsified_by: "Ratio differs by > 10% from area ratio"
+
+  population_proportionality:
+    description: |
+      For two counties with similar land area but different population, the
+      energy_stock values differ in proportion to the population ratio.
+    formal: "Similar to area_proportionality but for population-vs-energy"
+    falsified_by: "Ratio differs by > 10% from population ratio"
+
+producer_obligations:
+  hex_hydrator_apportionment_fix:
+    file: src/babylon/persistence/hex_hydrator.py
+    method: "compute_per_county_substrate_stocks (or equivalent)"
+    new: |
+      energy_stock = state_energy_value * (county_population / state_population)
+      raw_material_stock = state_nonfuel_mineral_value * (county_land_area_sqmi / state_land_area_sqmi)
+    rationale: |-
+      Energy reserves follow population (where consumption + storage
+      happens). Raw material stocks follow geological / land area (where
+      mining happens). Currently both fall back to population-weighted
+      because area-weighted branch is missing.
+
+  county_land_area_source:
+    description: |
+      The TIGER county geometry table loaded per spec-063 already contains
+      `land_area_sqmi` per county. Read from the `dim_county_geometry` view or
+      similar.
+    file: src/babylon/persistence/hex_hydrator.py
+    new: "JOIN dim_county_geometry to obtain county_land_area_sqmi for each county in scope"
+
+acceptance_tests:
+  unit:
+    - tests/unit/persistence/test_substrate_apportionment.py::test_energy_population_weighted
+    - tests/unit/persistence/test_substrate_apportionment.py::test_raw_material_area_weighted
+    - tests/unit/persistence/test_substrate_apportionment.py::test_energy_neq_raw_material_majority
+  integration:
+    - tests/integration/test_engine_bridge.py::test_substrate_distinguishability

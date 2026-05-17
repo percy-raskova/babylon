@@ -30,7 +30,7 @@ byte-identical at the same seed (SC-003), the numeric values written
 to demographics/employment rows must equal the pre-cache values
 exactly (FR-005), and the canonical 520-tick Michigan-Canada run must
 complete in ≤ 60 min (SC-001). The structural read-count reduction
-(86,320 → 1,826 reads, a 47× factor) is what drives the wallclock
+(86,320 → 1,660 reads, a 47× factor) is what drives the wallclock
 relief from ~3.5 s/tick to ~0.1 s/tick observed in spec-066 R8.
 
 ## Technical Context
@@ -58,7 +58,7 @@ underlying database).
 FR-005 (no rounding/quantization/coercion); SC-004 (missing-data
 warning at most once per (county, year) tuple).
 **Scale/Scope**: 83 counties × 11 calendar years (2010–2020 for the
-canonical run) = ≤ 1,826 cache entries; 86,320 → 1,826 reference-data
+canonical run) = ≤ 1,660 cache entries; 86,320 → 1,660 reference-data
 reads (a 47× structural reduction in read count, which is what
 delivers the SC-001 wallclock relief at the system level).
 

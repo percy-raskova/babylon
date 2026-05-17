@@ -28,11 +28,12 @@ Note:
     race-disaggregated analysis (15 years x 10 race groups).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     Float,
     ForeignKey,
     Index,
@@ -1436,6 +1437,10 @@ class FactBEANationalIndustry(NormalizedBase):
     intermediate_inputs_millions: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     value_added_millions: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
 
+    # Spec-068: BEA publication vintage tracking (Clarification Q2 — latest-only
+    # supersession policy; NULL permitted for partial-load tolerance during dev).
+    vintage_published_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     __table_args__ = (
         Index("idx_bea_national_time", "time_id"),
         Index("idx_bea_national_industry", "bea_industry_id"),
@@ -2297,6 +2302,9 @@ class FactBEAIOCoefficient(NormalizedBase):
         ForeignKey("dim_bea_industry.bea_industry_id"), nullable=False
     )
     coefficient: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Spec-068: BEA publication vintage tracking (Clarification Q2).
+    vintage_published_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     __table_args__ = (
         Index("idx_bea_io_coeff_time", "time_id"),

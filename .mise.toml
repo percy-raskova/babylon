@@ -519,6 +519,22 @@ run = "sqlite3 data/sqlite/marxist-data-3NF.sqlite"
 description = "Initialize SQLite database schema"
 run = "poetry run python tools/init_db.py"
 
+[tasks."data:bea-load"]
+description = "Ingest BEA national I-O tables (spec-068). Years 2010-2024 default."
+usage = '''
+arg "[years]" help="Year range as START-END" default="2010-2024"
+flag "--rollback" help="Truncate fact_bea_* tables to empty pre-spec-068 state"
+flag "--dry-run" help="Parse and validate but do not write to DB"
+flag "--reload-concordance" help="Force re-population of bridge_naics_bea"
+'''
+run = """
+poetry run python tools/load_bea_io.py \\
+  --years ${usage_years} \\
+  ${usage_rollback:+--rollback} \\
+  ${usage_dry_run:+--dry-run} \\
+  ${usage_reload_concordance:+--reload-concordance}
+"""
+
 # =============================================================================
 # DATABASE (Namespaced)
 # Isolated Postgres instance via Docker to avoid OS daemon collisions

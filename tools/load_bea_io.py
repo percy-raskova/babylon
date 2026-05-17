@@ -43,13 +43,24 @@ from babylon.reference.bea.ingest.audit_report import (
     BEAIngestAuditReport,
     IndustrySnapshot,
 )
+from babylon.reference.bea.ingest.io_coefficient_writer import (
+    upsert_io_coefficient_records,
+)
+from babylon.reference.bea.ingest.io_matrix_parser import (
+    extract_iouse_internal_shares,
+    parse_total_req_matrix,
+    parse_use_matrix,
+)
 from babylon.reference.bea.ingest.national_writer import upsert_national_records
 from babylon.reference.bea.ingest.schema_migration import ensure_vintage_columns
 from babylon.reference.bea.ingest.supply_use_parser import (
     BEAIngestError,
     parse_use_summary,
 )
-from babylon.reference.bea.ingest.validators import validate_accounting_identity
+from babylon.reference.bea.ingest.validators import (
+    validate_accounting_identity,
+    validate_column_sum_identity,
+)
 from babylon.reference.database import get_normalized_session, normalized_engine
 from babylon.reference.schema import DimBEAIndustry, FactBEANationalIndustry
 
@@ -128,7 +139,8 @@ def _run_rollback_stage(audit_report: BEAIngestAuditReport) -> None:
     """Truncate spec-068 fact tables to empty state (FR-009).
 
     Populates ``audit_report.rows_inserted`` with negative counts to
-    indicate the deletion magnitude.
+    indicate the deletion magnitude. VACUUM is run outside the
+    transaction since SQLite forbids VACUUM inside a transaction.
     """
     from sqlalchemy import text
 
@@ -143,6 +155,8 @@ def _run_rollback_stage(audit_report: BEAIngestAuditReport) -> None:
             conn.execute(text(f"DELETE FROM {table_name}"))
             log.info("rollback: truncated %s (rows removed: %d)", table_name, before)
             audit_report.rows_inserted[table_name] = -int(before)
+    # VACUUM outside the transaction (SQLite requires this).
+    with engine.connect() as conn:
         conn.execute(text("VACUUM"))
     log.info("rollback complete; bridge_naics_bea left intact (shared with spec-025)")
 
@@ -271,15 +285,69 @@ def _populate_share_leaderboards(
     ]
 
 
+_IOUSE_DEFAULT_PATH = Path("data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx")
+_TDR_DEFAULT_PATH = Path("data/input-output/total-domestic-requirements/IxI_TR_Summary.xlsx")
+
+
 def _run_us2_stage(
     audit_report: BEAIngestAuditReport,
     years: range,
-    dry_run: bool,  # noqa: ARG001
+    dry_run: bool,
 ) -> None:
-    """US2: populate fact_bea_io_coefficient. Wired in T038."""
+    """US2: populate fact_bea_io_coefficient from Make+Use + TDR XLSX (T038).
+
+    Wires the USE matrix (a_ij coefficients) + TOTAL_REQ (Leontief inverse
+    for cross-validation). Validates FR-004 column-sum identity against
+    IOUse's own producer-prices intermediate-inputs share.
+    """
     log = logging.getLogger("load_bea_io.us2")
-    _ = audit_report, years
-    log.info("US2 stage: not yet wired (T038 — Phase 4 US2 work pending)")
+    log.info(
+        "US2 stage: parsing IOUse_Summary + TDR for years %d-%d",
+        years.start,
+        years.stop - 1,
+    )
+
+    with get_normalized_session() as session:
+        try:
+            use_records = list(parse_use_matrix(_IOUSE_DEFAULT_PATH, years, session))
+            tdr_records = list(parse_total_req_matrix(_TDR_DEFAULT_PATH, years, session))
+            expected_shares = extract_iouse_internal_shares(_IOUSE_DEFAULT_PATH, years, session)
+        except BEAIngestError as exc:
+            log.error("US2 stage: parser failed — %s", exc)
+            audit_report.sc_002_pass = False
+            audit_report.sc_004_pass = False
+            raise
+
+        # FR-004 column-sum validation (USE table only, IOUse-internal shares).
+        violations = validate_column_sum_identity(use_records, expected_shares)
+        audit_report.column_sum_identity_violations.extend(violations)
+
+        if not dry_run:
+            all_records = use_records + tdr_records
+            stats = upsert_io_coefficient_records(session, all_records)
+            audit_report.rows_inserted["fact_bea_io_coefficient"] = stats.rows_inserted
+            audit_report.rows_superseded["fact_bea_io_coefficient"] = stats.rows_superseded
+            audit_report.rows_unchanged["fact_bea_io_coefficient"] = stats.rows_unchanged
+            audit_report.vintage_supersessions.extend(stats.supersessions)
+        else:
+            audit_report.rows_inserted["fact_bea_io_coefficient"] = len(use_records) + len(
+                tdr_records
+            )
+            log.info("US2 stage: dry-run — skipping DB write")
+
+    total_rows = audit_report.rows_inserted.get(
+        "fact_bea_io_coefficient", 0
+    ) + audit_report.rows_unchanged.get("fact_bea_io_coefficient", 0)
+    audit_report.sc_002_pass = total_rows >= 50_000
+    audit_report.sc_004_pass = len(violations) == 0
+    log.info(
+        "US2 stage: %d USE + %d TDR records, %d FR-004 violations, sc_002_pass=%s sc_004_pass=%s",
+        len(use_records),
+        len(tdr_records),
+        len(violations),
+        audit_report.sc_002_pass,
+        audit_report.sc_004_pass,
+    )
 
 
 def _run_us3_stage(

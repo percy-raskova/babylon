@@ -7,6 +7,31 @@
 **MVP**: Phase 3 (US1) + Phase 4 (US3) ship as a single shippable unit; the table is normalized AND downstream consumers are repaired.
 **Critical path**: Phase 1 → 2 → 3 → 4 → 5 → 6 → 7 (Phases 4 and 5 are sequential; Phase 6 can run in parallel with Phase 5 against the US1 deliverable).
 
+## Commit ledger (2026-05-16)
+
+| # | SHA | Type | Summary |
+|---|---|---|---|
+| 1 | `d33ae8cc` | feat | US1+US3+US4 tooling — migration tool, audit harness, ADR045 |
+| 2 | `de3e34c4` | fix | mypy --strict cleanup on normalize_qcew_rollups.py |
+| 3 | `defc3593` | docs | quickstart — empirical wallclock + BLS suppression + CREATE-TABLE alternative |
+| 4 | `0a09fd54` | test | backup_fact_qcew_annual idempotent when backup already exists |
+| 5 | `98010f88` | docs | data-model — empirical pre/post row counts from T001 |
+| 6 | `3b7568ec` | feat | US3 consumer refactor + US2 band tighten (T041-T044, T049-T050) |
+| 7 | `104e3668` | docs | tasks.md reconciliation — 57/70 done, 13 blocked on T036 |
+| 8 | `f14ede0d` | test | larger synthetic fixture exercising per-county-delta computation |
+| 9 | `4e583dbc` | perf | split backup creation from DELETE transaction (~10× wallclock) |
+| 10 | `185967c9` | docs | spec-070 stub for QCEW BLS suppression spec amendment |
+| 11 | `bbf95d00` | feat | --use-fast-strategy CLI flag — CREATE-TABLE-AS-SELECT alternative |
+| 12 | `0af0aef6` | docs | post-067 query contract — known BLS suppression limitation |
+
+**Remaining work** (blocked on T036 completion):
+- T036 (in flight at 1:23+ elapsed against the 43.3 M-row reference DB)
+- T037 (commit audit artifact under `reports/ingest/`)
+- T047 (run integration tests against post-067 state)
+- T051-T055 (michigan-e2e baseline regen + qa:e2e-regression — 60-90 min wallclock)
+- T061 (audit-validation tests against the live artifact)
+- T067-T069 (--drop-backup + final check + polish commit)
+
 ---
 
 ## Phase 1: Setup (project scaffolding)

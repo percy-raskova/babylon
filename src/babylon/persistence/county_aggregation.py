@@ -345,25 +345,23 @@ def fetch_employment_proxy_for_county_at_tick(
 ) -> float:
     """Annual-average per-county employment from QCEW.
 
-    Formula: ``SUM(fact_qcew_annual.employment WHERE industry_id=1 AND
-    ownership_id=1)`` for ``(county_id, year)``. Same data source as hex
-    ``v`` (QCEW table; ``total_wages_usd → v``, ``employment →
-    employment_proxy``).
+    Formula: ``SUM(fact_qcew_annual.employment)`` over the canonical leaves
+    for ``(county_id, year)``. Same data source as hex ``v`` (QCEW table;
+    ``total_wages_usd → v``, ``employment → employment_proxy``).
 
     Spec-066 T058 / discovery: the QCEW `employment` column IS the BLS
     'annual average employment' (already aggregated across the 12 monthly
     snapshots). No divisor is needed — the legacy /52 and the spec's
     proposed /12 are both incorrect re-divisions of an already-averaged
-    value. The state-aggregate of ownership_id=1 rows at industry_id=1
-    matches BLS publication numbers within ~1%.
+    value.
 
-    Filters applied (mirroring the hex_hydrator wages query):
-      - ``industry_id = 1`` — BLS 'All Industries' rollup (avoids NAICS
-        hierarchy triple-counting where Manufacturing + Durable Goods
-        contain the same establishments)
-      - ``ownership_id = 1`` — BLS 'Total Covered' rollup (avoids the
-        ownership rollup-vs-leaves double-count where ownership_id=1
-        equals the sum of Federal+State+Local+Private leaves)
+    Post-spec-067 contract (see contracts/post_067_query_contract.md):
+    ``fact_qcew_annual`` contains only canonical-leaf rows
+    (``naics_level = 6`` × ``own_code ∈ {'1','2','3','5'}``) after the
+    spec-067 DELETE migration. The natural SUM over those leaves recovers
+    the BLS Total-Covered Total-Industries figure for the (county, year);
+    no defensive filter is needed because the predicate is enforced at the
+    data layer.
 
     Args:
         sqlite_path:  Path to ``marxist-data-3NF.sqlite``.
@@ -393,8 +391,6 @@ def fetch_employment_proxy_for_county_at_tick(
             JOIN dim_county dc ON dc.county_id = fq.county_id
             JOIN dim_time t ON t.time_id = fq.time_id
             WHERE dc.fips = ? AND t.year = ?
-              AND fq.industry_id = 1
-              AND fq.ownership_id = 1
             """,
             (county_fips, year),
         )

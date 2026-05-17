@@ -429,8 +429,9 @@ def _fetch_per_county_data(
 
     Five SQLite tables consulted (per `contracts/hex_hydrator_input.yaml`):
 
-      - fact_qcew_annual: SUM(total_wages_usd) WHERE industry_id=1 → v_per_week (/52)
-        (spec-066: industry_id=1 filter prevents NAICS-hierarchy triple-counting)
+      - fact_qcew_annual: SUM(total_wages_usd) over canonical leaves → v_per_week (/52)
+        (post-spec-067: no filter needed; the table contains only naics_level=6
+        × own_code in {'1','2','3','5'} rows by data-layer migration)
       - fact_bea_county_gdp + dim_bea_industry: GDP_county for the year
         (bea_industry_id = 1 = "All industries") → c_per_week + s_per_week + k_total
       - fact_broadband_coverage: pct_25_3, pct_100_20 → internet/surveillance
@@ -460,14 +461,12 @@ def _fetch_per_county_data(
 
     # 1. QCEW total_wages_usd per (county, year) — primary v source.
     #
-    # Spec-066 T019: filter to `industry_id = 1 AND ownership_id = 1`
-    # to land on the BLS 'Total Covered, All Industries' rollup.
-    # fact_qcew_annual is denormalized across (industry x ownership x
-    # establishment); summing without filters double-counts both axes
-    # (NAICS hierarchy AND ownership-rollup-vs-leaves). The
-    # `ownership_id = 1` row IS the sum of the four leaf ownership
-    # categories (Federal, State, Local, Private), so we read it directly
-    # to avoid the 2x rollup duplication.
+    # Post-spec-067 contract (see contracts/post_067_query_contract.md):
+    # fact_qcew_annual now contains only canonical-leaf rows
+    # (naics_level=6 × own_code in {'1','2','3','5'}). The natural SUM over
+    # those leaves recovers the BLS-publication Total Covered value for the
+    # (county, year). No defensive filter is needed — the predicate is
+    # enforced at the data layer by spec-067's DELETE migration.
     qcew_rows = conn.execute(
         f"""
         SELECT dc.fips, COALESCE(SUM(fq.total_wages_usd), 0) AS total_wages
@@ -476,8 +475,6 @@ def _fetch_per_county_data(
         JOIN dim_time t ON t.time_id = fq.time_id
         WHERE dc.fips IN ({_placeholders(fips_list)})
           AND t.year = ?
-          AND fq.industry_id = 1
-          AND fq.ownership_id = 1
         GROUP BY dc.fips
         """,
         (*fips_list, year),

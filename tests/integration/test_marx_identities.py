@@ -135,13 +135,17 @@ def test_value_added_identity_per_county_per_tick() -> None:
 
 
 def test_state_rate_of_profit_in_relaxed_band() -> None:
-    """T017 / SC-002: 0.05 <= total_s / (total_c + total_v) <= 0.80 at terminal tick.
+    """T017 / SC-002: 0.05 <= total_s / (total_c + total_v) <= 0.50 at terminal tick.
 
-    Widened upper bound from 0.50 to 0.80 after spec-066 ownership_id
-    filter halved v (no longer over-counted by the QCEW ownership
-    rollup). With corrected v, the per-county rate of profit lands
-    near Vol III's illustrative ~25-67% range; tri-county aggregate
-    can hit ~0.6 due to Detroit's high c/v decomposition.
+    Spec-067 SC-002: band tightened from spec-066's relaxed [0.05, 0.80]
+    back to the spec-original [0.05, 0.50] after spec-067 normalized
+    `fact_qcew_annual` (removed BLS rollups; consumers now SUM the
+    canonical leaves). With the normalized table, per-county rate of
+    profit no longer over-counts v through the ownership rollup row.
+
+    Note: the test name is preserved verbatim from spec-066 for
+    git-history continuity (FR-009). Only the band parameter and this
+    docstring change.
     """
     result = _run_runner(scope="detroit-tri-county", ticks=5)
     assert result.artifact_dir is not None
@@ -152,9 +156,9 @@ def test_state_rate_of_profit_in_relaxed_band() -> None:
     total_s = terminal["total_s"]
     assert (total_c + total_v) > 0, "expected positive c+v denominator"
     p_prime = total_s / (total_c + total_v)
-    assert 0.05 <= p_prime <= 0.80, (
-        f"Spec-066 SC-002 FAILED: state rate of profit p' = {p_prime:.4f} "
-        f"outside [0.05, 0.80]. (total_s={total_s}, total_c={total_c}, total_v={total_v})"
+    assert 0.05 <= p_prime <= 0.50, (
+        f"Spec-067 SC-002 FAILED: state rate of profit p' = {p_prime:.4f} "
+        f"outside [0.05, 0.50]. (total_s={total_s}, total_c={total_c}, total_v={total_v})"
     )
 
 

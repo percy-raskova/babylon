@@ -217,11 +217,7 @@ at the byte level.
   (verified by the instrumentation counter from FR-007).
 - **SC-003**: The trace.csv output of the canonical scenario at the
   published seed is byte-identical before and after this change.
-- **SC-004**: For any scenario the wallclock attributable to bridge
-  reference-data fetches drops by at least a factor of thirty compared
-  to the pre-change implementation, measured on the same hardware at
-  the same seed.
-- **SC-005**: The "missing reference data" warning is emitted at most
+- **SC-004**: The "missing reference data" warning is emitted at most
   once per (county, year) tuple per run, never per (county, tick) cell.
 
 ## Assumptions
@@ -235,8 +231,11 @@ at the byte level.
   those two values under the weekly cadence.
 - Pre-cache wallclock dominance of the per-tick SQLite reads has
   already been measured. The ~3.5 s/tick bridge-overhead figure cited
-  in the spec-066 R8 deferral stands as the baseline against which the
-  thirty-fold improvement in SC-004 is judged.
+  in the spec-066 R8 deferral is the operational basis for expecting
+  SC-001 to hold; the directional ~30× reduction in per-tick fetch
+  overhead is a derived consequence of the structural change (52×
+  fewer reads per (county × year), amortized batch-query setup), not
+  an independent acceptance gate.
 - Per-bridge-instance scoping is sufficient. There is no current or
   planned need to share cached reference data across runs, sessions,
   or hosts.

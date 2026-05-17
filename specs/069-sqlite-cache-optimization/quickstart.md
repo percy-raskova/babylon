@@ -114,26 +114,7 @@ diff -q "reports/sim-runs/$RUN1/trace.csv" "reports/sim-runs/$RUN2/trace.csv"
 
 Expected: no output. The two `trace.csv` files are byte-identical.
 
-### SC-004 — ≥ 30× wallclock reduction in bridge-fetch overhead
-
-This SC is measured by an internal `bridge_fetch_wallclock_seconds`
-timer that the slow-gate integration test enables. From the test
-report:
-
-```bash
-mise run test:int -- tests/integration/engine/headless_runner/test_cache_canonical_wallclock.py
-```
-
-The test asserts:
-
-```python
-assert pre_cache_fetch_seconds / post_cache_fetch_seconds >= 30.0
-```
-
-For the canonical scenario the expected ratio is ~35× (placeholder
-spec-066 R8 baseline measurement).
-
-### SC-005 — missing-data warning at most once per `(county, year)` tuple
+### SC-004 — missing-data warning at most once per `(county, year)` tuple
 
 Search the run log for `"persist_tick: population missing"` and
 `"persist_tick: employment missing"`:

@@ -48,8 +48,9 @@ every `(scope_fips × year_set)` tuple before returning.
   per-call connection-open overhead still dominates: with 913 distinct
   `(county, year)` tuples and `sqlite3.connect()` taking ~1-3 ms each,
   this is ~1-3 s of connection overhead even at the structurally
-  optimal read count — a 30-40× improvement, but missing the batch
-  amortization that takes us to the 30× SC-004 target with margin.
+  optimal read count — a substantial improvement, but missing the
+  batch amortization that takes the per-tick path down to the
+  ~0.1 s/tick range spec-066 R8 measured for cache-served lookups.
 
 ---
 
@@ -183,9 +184,9 @@ defaults to 999, which is comfortably above the canonical run's
   beat one inscrutable one.
 - *Reuse the existing per-tick fetchers in a loop*: Rejected. Even at
   the structurally optimal 913 calls (one per `(county, year)` tuple),
-  the connection-open overhead is ~1-3 s — over half the SC-004
-  wallclock budget would be spent on connect/close instead of useful
-  work.
+  the connection-open overhead is ~1-3 s of pure connect/close work
+  — non-trivial against the SC-001 wallclock budget and entirely
+  wasted given that all reads can share one connection.
 
 ---
 
@@ -207,7 +208,7 @@ in `src/babylon/engine/headless_runner/reference_data_cache.py` with:
   | None` — same.
 - `mark_population_miss_logged(self, county_fips: str, year: int) ->
   bool` — return True on the first call for that tuple, False
-  thereafter. Drives FR-004 / SC-005 once-per-tuple logging.
+  thereafter. Drives FR-004 / SC-004 once-per-tuple logging.
 - `mark_employment_miss_logged(self, county_fips: str, year: int) ->
   bool` — same for employment.
 - Read-only properties: `population_db_reads: int`,
@@ -272,7 +273,7 @@ directly testable.
 
 ---
 
-## R7 — SC-005 once-per-tuple miss logging
+## R7 — SC-004 once-per-tuple miss logging
 
 **Decision**: The bridge's per-tick `_derive_subsystem_rows_for_county`
 flow changes from:

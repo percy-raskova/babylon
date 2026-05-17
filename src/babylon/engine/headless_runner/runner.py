@@ -604,6 +604,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             session_id=session_id,
             scope_fips=config.scope_fips,
             event_capture=event_capture,
+            total_ticks=config.ticks,
             start_year=config.start_year,
             sqlite_path=config.sqlite_reference_path,
         )

@@ -47,17 +47,18 @@ from uuid import UUID
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.engine.event_bus import EventBus
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
+from babylon.engine.headless_runner.reference_data_cache import (
+    ReferenceDataCache,
+    derive_year_set,
+)
 from babylon.models import Relationship
 from babylon.models.entities.social_class import IdeologicalProfile
 from babylon.models.enums import EdgeType
 from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
 from babylon.persistence.county_aggregation import (
-    ReferenceDataMissingError,
     aggregate_consciousness_for_county,
     aggregate_survival_for_county,
-    fetch_employment_proxy_for_county_at_tick,
-    fetch_population_for_county_at_tick,
 )
 from babylon.persistence.county_state import (
     DynamicConsciousnessState,
@@ -172,6 +173,11 @@ class WorldStateBridge:
         # ``audit_log_buffer`` lets runner._check_strict_alarms read alarms
         # without a Postgres round-trip.
         self._auditor: ConservationAuditor | None = auditor
+        # Spec-069: per-bridge reference-data cache. None until hydrate_initial
+        # populates it. Constitution II.6 — no DB I/O during tick — is enforced
+        # by routing all per-tick population / employment-proxy reads through
+        # this cache.
+        self._ref_cache: ReferenceDataCache | None = None
 
     @property
     def runtime(self) -> Any:
@@ -227,6 +233,7 @@ class WorldStateBridge:
         scope_fips: frozenset[str],
         event_capture: EventCapture | None = None,
         *,
+        total_ticks: int,
         start_year: int = 2010,
         sqlite_path: Path | None = None,
     ) -> WorldState:
@@ -245,13 +252,21 @@ class WorldStateBridge:
         4. (Optional) store the ``event_capture`` reference for later
            subscription to the engine's EventBus (US5 / T071 wires
            the actual subscription).
-        5. Commit instance state — ``_hydrated`` is set LAST so any
+        5. Spec-069: hydrate the per-bridge ``ReferenceDataCache`` with
+           the full ``(scope_fips × year_set)`` covered by the run.
+           ``year_set`` is derived from ``(start_year, total_ticks)``
+           under the weekly cadence; the cache then serves all per-tick
+           population / employment-proxy reads from memory.
+        6. Commit instance state — ``_hydrated`` is set LAST so any
            failure above is retry-safe.
 
         Args:
             session_id:    Active session UUID.
             scope_fips:    5-digit FIPS codes for the scope counties.
             event_capture: Optional EventCapture instance (US5).
+            total_ticks:   Total tick count for the run; drives the
+                spec-069 cache hydrate year-set derivation. Must be
+                ``>= 0``. (Spec-069 FR-001.)
             start_year:    Calendar year for tick 0 (FR-022; default 2010).
             sqlite_path:   Optional override for the SQLite reference DB.
 
@@ -261,8 +276,8 @@ class WorldStateBridge:
 
         Raises:
             RuntimeError: If called twice on the same bridge instance.
-            FileNotFoundError: If ``sqlite_path`` does not exist
-                (deferred — the SQLite reads happen at persist_tick).
+            ValueError: If ``scope_fips`` is empty or ``total_ticks < 0``.
+            FileNotFoundError: If ``sqlite_path`` does not exist.
         """
         if self._hydrated:
             raise RuntimeError(
@@ -271,6 +286,8 @@ class WorldStateBridge:
             )
         if not scope_fips:
             raise ValueError("scope_fips must be non-empty")
+        if total_ticks < 0:
+            raise ValueError(f"total_ticks must be >= 0; got {total_ticks}")
 
         sqlite_path_resolved = sqlite_path or _DEFAULT_SQLITE_PATH
 
@@ -301,7 +318,17 @@ class WorldStateBridge:
         #    are not part of the bridged loop yet).
         world = WorldState(tick=0, entities=entities, relationships=relationships)
 
-        # 5. Commit instance state (LAST — retry-safe).
+        # 5. Spec-069: hydrate the reference-data cache for the full
+        #    (scope × year) Cartesian product the run will touch. After
+        #    this call the per-tick path NEVER opens a new connection
+        #    to the SQLite reference DB (FR-003 / II.6 compliance).
+        ref_cache = ReferenceDataCache(sqlite_path_resolved)
+        ref_cache.hydrate(
+            scope_fips=scope_fips,
+            year_set=derive_year_set(start_year, total_ticks),
+        )
+
+        # 6. Commit instance state (LAST — retry-safe).
         self._session_id = session_id
         self._scope_fips = scope_fips
         self._event_capture = event_capture
@@ -309,6 +336,7 @@ class WorldStateBridge:
         self._sqlite_path = sqlite_path_resolved
         self._hex_template = tuple(hex_rows)
         self._external_template = tuple(external_rows)
+        self._ref_cache = ref_cache
         # Spec-065 T055: BoundaryFlowRegister is now owned by runner.run()
         # and injected at __init__; no per-hydrate instantiation needed.
 
@@ -729,46 +757,45 @@ class WorldStateBridge:
                 ideology_f=consciousness.f,
             )
 
-        # Reference-data fetchers — may raise ReferenceDataMissingError
-        # if outside the SQLite year window.
+        # Spec-069: reference-data reads come from the in-memory cache
+        # populated at hydrate_initial. No new SQLite connection is opened
+        # on this per-tick path (II.6 / FR-003).
+        assert self._ref_cache is not None  # hydrate_initial sets this
         demographics_row: DynamicDemographicsState | None = None
         employment_row: DynamicEmploymentState | None = None
-        try:
-            population = fetch_population_for_county_at_tick(
-                self._sqlite_path, county_fips, tick, self._start_year
-            )
+        year = self._start_year + tick // 52
+
+        population = self._ref_cache.lookup_population(county_fips, year)
+        if population is not None:
             demographics_row = DynamicDemographicsState(
                 session_id=self._session_id,  # type: ignore[arg-type]
                 tick=tick,
                 county_fips=county_fips,
                 population=population,
             )
-        except ReferenceDataMissingError as exc:
+        elif self._ref_cache.mark_population_miss_logged(county_fips, year):
             logger.warning(
-                "persist_tick: population missing for county=%s tick=%d (year=%d): %s",
+                "persist_tick: population missing for county=%s tick=%d (year=%d): "
+                "no data in Census or QCEW fallback",
                 county_fips,
                 tick,
-                self._start_year + tick // 52,
-                exc,
+                year,
             )
 
-        try:
-            employment_proxy = fetch_employment_proxy_for_county_at_tick(
-                self._sqlite_path, county_fips, tick, self._start_year
-            )
+        employment_proxy = self._ref_cache.lookup_employment_proxy(county_fips, year)
+        if employment_proxy is not None:
             employment_row = DynamicEmploymentState(
                 session_id=self._session_id,  # type: ignore[arg-type]
                 tick=tick,
                 county_fips=county_fips,
                 employment_proxy=employment_proxy,
             )
-        except ReferenceDataMissingError as exc:
+        elif self._ref_cache.mark_employment_miss_logged(county_fips, year):
             logger.warning(
-                "persist_tick: employment missing for county=%s tick=%d (year=%d): %s",
+                "persist_tick: employment missing for county=%s tick=%d (year=%d): no QCEW data",
                 county_fips,
                 tick,
-                self._start_year + tick // 52,
-                exc,
+                year,
             )
 
         return consciousness_row, demographics_row, employment_row

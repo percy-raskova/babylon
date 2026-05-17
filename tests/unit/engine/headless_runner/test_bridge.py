@@ -117,6 +117,7 @@ class TestHydrateInitial:
             session_id=_SESSION_ID,
             scope_fips=frozenset({"26163", "26125", "26099"}),
             sqlite_path=SQLITE_REF,
+            total_ticks=1,
         )
 
         assert world.tick == 0
@@ -133,6 +134,7 @@ class TestHydrateInitial:
             session_id=_SESSION_ID,
             scope_fips=frozenset({"26163", "26125"}),
             sqlite_path=SQLITE_REF,
+            total_ticks=1,
         )
 
         fips_set = {entity.county_fips for entity in world.entities.values()}
@@ -149,6 +151,7 @@ class TestHydrateInitial:
             session_id=_SESSION_ID,
             scope_fips=frozenset({"26163", "26125"}),
             sqlite_path=SQLITE_REF,
+            total_ticks=1,
         )
 
         prole_count = sum(
@@ -169,12 +172,14 @@ class TestHydrateInitial:
             session_id=_SESSION_ID,
             scope_fips=frozenset({"26163"}),
             sqlite_path=SQLITE_REF,
+            total_ticks=1,
         )
         with pytest.raises(RuntimeError, match="called twice"):
             bridge.hydrate_initial(
                 session_id=_SESSION_ID,
                 scope_fips=frozenset({"26163"}),
                 sqlite_path=SQLITE_REF,
+                total_ticks=1,
             )
 
     def test_hydrate_initial_seeds_one_exploitation_edge_per_county(
@@ -190,6 +195,7 @@ class TestHydrateInitial:
             session_id=_SESSION_ID,
             scope_fips=frozenset({"26163", "26125", "26099"}),
             sqlite_path=SQLITE_REF,
+            total_ticks=1,
         )
 
         exploitation_rels = [r for r in world.relationships if r.edge_type == EdgeType.EXPLOITATION]
@@ -218,6 +224,7 @@ class TestHydrateInitial:
             session_id=_SESSION_ID,
             scope_fips=frozenset({"26163", "26125", "26099"}),
             sqlite_path=SQLITE_REF,
+            total_ticks=1,
         )
 
         solidarity_rels = [r for r in world.relationships if r.edge_type == EdgeType.SOLIDARITY]
@@ -237,6 +244,7 @@ class TestHydrateInitial:
                 session_id=_SESSION_ID,
                 scope_fips=frozenset(),
                 sqlite_path=SQLITE_REF,
+                total_ticks=1,
             )
 
     def test_start_year_cached_for_persist_tick(self, defines: GameDefines) -> None:
@@ -248,6 +256,7 @@ class TestHydrateInitial:
             session_id=_SESSION_ID,
             scope_fips=frozenset({"26163"}),
             sqlite_path=SQLITE_REF,
+            total_ticks=1,
             start_year=2015,
         )
 
@@ -269,6 +278,7 @@ class TestPersistTick:
             session_id=_SESSION_ID,
             scope_fips=frozenset({"26163", "26099", "26125"}),
             sqlite_path=SQLITE_REF,
+            total_ticks=1,
         )
         return bridge
 

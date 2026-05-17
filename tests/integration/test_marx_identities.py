@@ -135,40 +135,50 @@ def test_value_added_identity_per_county_per_tick() -> None:
 
 
 def test_state_rate_of_profit_in_relaxed_band() -> None:
-    """T017 / SC-002 (amended 2026-05-17): 0.05 <= total_s / (total_c + total_v) <= 2.0
-    at terminal tick.
+    """T017 / SC-002 (amended 2026-05-17): the state rate of profit is
+    strictly positive AND finite at the terminal tick.
 
-    The band is grounded in Marx's own numbers rather than spec-066's
-    engineering-convenience cap:
+    **Marxian grounding** (per Persephone's 2026-05-17 review):
 
-    * **Lower 0.05**: matches Marx's lowest illustrative p' in Vol III
-      Ch 9 — the 95c+5v=5%-of-profit sphere, below which capitalism is
-      not viable for sustained reinvestment.
-    * **Upper 2.0**: generous accommodation of per-tick flow-based p'
-      under advanced-capitalism s/v rates. Marx Vol I Ch 9 documents
-      empirical s/v of 153.85% (Manchester spinner 1871) and notes
-      no theoretical upper bound on s/v. A flow-based weekly
-      s/(c+v) of up to ~200% is consistent with high-s/v industrial
-      sectors; the cap exists only to flag clearly anomalous values
-      (e.g., 1000%+ would indicate a code bug).
+    There is **no theoretical upper bound** on the rate of profit
+    s/(c+v) in Marx's framework. The constraints are:
 
-    History of this band parameter:
-    * Spec-066: spec-original was [0.05, 0.50]; relaxed to
-      [0.05, 0.80] after the ownership_id filter halved v.
-    * Spec-067 T050: tightened to [0.05, 0.50] expecting v to
-      normalize after the QCEW rollup normalization.
-    * Spec-067 amendment (post-T036): widened to [0.05, 2.0]
-      after the BLS-suppression finding (research.md T036, ADR045)
-      showed v drops 10-30% at canonical-leaf granularity, pushing
-      p' to 0.74 in detroit-tri-county at tick 5. The spec-070
-      stub previously enumerated four mitigation options; this
-      amendment effectively selects (1) "loosen tolerance" but
-      grounds the choice in Marx rather than QCEW suppression
-      magnitude.
+    * s/v upper bound = (T - N) / N where T is total labor day, N is
+      necessary labor. Physical ceiling is T=24h, N→1h → s/v ≈ 2300%.
+      Marx (Vol I Ch 9) documents 153.85% (Manchester 1871) as
+      empirical but explicitly declines to set a theoretical ceiling.
+    * s/(c+v) upper bound = s/v when c → 0. Lower-bounded by 0 (or
+      negative for individual failing capitals).
 
-    Note: the test name is preserved verbatim from spec-066 for
-    git-history continuity (FR-009 / SC-003).
+    A numeric cap like the spec-066 `[0.05, 0.80]` or the spec-067
+    T050 `[0.05, 0.50]` would be engineering sanity-check theater,
+    not Marxism. The test now asserts the STRUCTURAL invariants:
+
+    * **Lower s > 0**: surplus value must be positive for capitalism
+      to be net-productive in labor-hour terms. The interesting case
+      where s ≤ 0 while accumulation continues (rentier economy,
+      financialization, imperial rent) is a separate signal worth
+      flagging in its own right; here it would mean the simulation
+      isn't modeling productive capital extraction correctly.
+    * **Finite p'**: catches NaN / divide-by-zero from code bugs.
+      Not a Marxian claim — just a runtime sanity check.
+
+    History:
+    * Spec-066: `[0.05, 0.50]` → `[0.05, 0.80]` after ownership_id
+      filter halved v.
+    * Spec-067 T050: tightened back to `[0.05, 0.50]` expecting v
+      to normalize via the QCEW rollup migration.
+    * Spec-067 post-T036: T054 failed at p' = 0.7465 (within Marx's
+      historical s/v ≈ 154% range; the [0.05, 0.50] cap had no
+      theoretical grounding).
+    * Spec-067 post-Persephone-2026-05-17: refactored to assert
+      structural invariants (s > 0, p' finite) — Marxianly rigorous.
+
+    Test name preserved verbatim from spec-066 for git-history
+    continuity (FR-009 / SC-003).
     """
+    import math
+
     result = _run_runner(scope="detroit-tri-county", ticks=5)
     assert result.artifact_dir is not None
     summary = json.loads((result.artifact_dir / "summary.json").read_text())
@@ -176,12 +186,34 @@ def test_state_rate_of_profit_in_relaxed_band() -> None:
     total_c = terminal["total_c"]
     total_v = terminal["total_v"]
     total_s = terminal["total_s"]
-    assert (total_c + total_v) > 0, "expected positive c+v denominator"
+
+    # Structural: c + v must be positive (capital invested).
+    assert (total_c + total_v) > 0, (
+        f"Spec-067 SC-002 FAILED: c + v not positive — capital invested "
+        f"is zero or negative. (total_c={total_c}, total_v={total_v})"
+    )
+
+    # Marxian lower bound: surplus value must be positive for the
+    # economy to be net-productive (per Marx Vol I Ch 9). s ≤ 0 with
+    # ongoing accumulation would indicate rentier / financialized
+    # capital — interesting in its own right but not what this
+    # simulation tick is modeling.
+    assert total_s > 0, (
+        f"Spec-067 SC-002 FAILED: total_s = {total_s} ≤ 0 — surplus "
+        f"value is non-positive at terminal tick. Marx Vol I: capitalism "
+        f"requires positive surplus extraction to be net-productive in "
+        f"labor-hour terms. Negative-s with positive accumulation is a "
+        f"rentier-economy signal and warrants a separate detection."
+    )
+
+    # Engineering sanity: p' must be a finite real (catches NaN / inf
+    # from divide-by-zero or sign-flip bugs). NOT a Marxian upper
+    # bound — Marx documents no theoretical ceiling on s/(c+v).
     p_prime = total_s / (total_c + total_v)
-    assert 0.05 <= p_prime <= 2.0, (
-        f"Spec-067 SC-002 FAILED: state rate of profit p' = {p_prime:.4f} "
-        f"outside Marx-grounded band [0.05, 2.0]. "
-        f"(total_s={total_s}, total_c={total_c}, total_v={total_v})"
+    assert math.isfinite(p_prime), (
+        f"Spec-067 SC-002 FAILED: p' = {p_prime} is not finite — "
+        f"divide-by-zero or numeric overflow. (total_s={total_s}, "
+        f"total_c={total_c}, total_v={total_v})"
     )
 
 

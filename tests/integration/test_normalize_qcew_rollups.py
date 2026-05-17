@@ -228,6 +228,7 @@ from tools.normalize_qcew_rollups import (  # noqa: E402
     SummaryStats,
     _apply_fast_strategy,
     _per_county_deltas,
+    _run_dry_run,
     backup_fact_qcew_annual,
     delete_naics_rollups,
     delete_ownership_rollups,
@@ -646,6 +647,19 @@ def test_full_apply_path_against_larger_fixture(tmp_path: Path) -> None:
     finally:
         session.close()
         engine.dispose()
+
+
+def test_run_dry_run_returns_zero_and_makes_no_changes(tiny_qcew_fixture: Session) -> None:
+    """The dry-run mode wraps preflight + spot-check helpers and never
+    mutates the DB. This is the smoke test for `_run_dry_run` itself
+    (the CLI dispatch target), not the underlying helpers."""
+
+    session = tiny_qcew_fixture
+    pre = session.execute(text("SELECT COUNT(*) FROM fact_qcew_annual")).scalar()
+    rc = _run_dry_run(session, "michigan")
+    post = session.execute(text("SELECT COUNT(*) FROM fact_qcew_annual")).scalar()
+    assert rc == 0
+    assert pre == post
 
 
 def test_fast_strategy_produces_same_canonical_population(tiny_qcew_fixture: Session) -> None:

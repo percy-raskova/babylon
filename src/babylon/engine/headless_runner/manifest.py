@@ -227,6 +227,7 @@ def build_manifest(
     defines_hash: str,
     data_versions: dict[str, Any],
     engine_systems_invoked: list[str] | None = None,
+    bridge_db_reads: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Construct the manifest payload as a plain dict.
 
@@ -242,6 +243,13 @@ def build_manifest(
         defines_hash: SHA-256 over the canonical GameDefines serialization.
         data_versions: Reference-data vintages (TIGER year, LODES max year,
             etc.). Free-form; all entries land in ``deterministic_inputs``.
+        engine_systems_invoked: Ordered list of engine system class names
+            actually executed during the run (spec-065 T081 / spec-066
+            T036). Empty list when the engine is not wired.
+        bridge_db_reads: Spec-069 SC-002 instrumentation block. If
+            provided, emitted as a top-level ``bridge_db_reads`` key with
+            ``{population_db_reads, employment_db_reads, total_db_reads}``.
+            Omit when running a non-bridged path.
 
     Returns:
         Dict ready to be JSON-encoded as manifest.json.
@@ -282,7 +290,7 @@ def build_manifest(
             entry["row_count"] = row_count
         file_entries.append(entry)
 
-    return {
+    payload: dict[str, Any] = {
         "schema_version": "1.0",
         "generator": {
             "tool": "babylon.engine.headless_runner",
@@ -301,6 +309,9 @@ def build_manifest(
             "trace_csv": [dict(c) for c in TRACE_COLUMN_DICT],
         },
     }
+    if bridge_db_reads is not None:
+        payload["bridge_db_reads"] = dict(bridge_db_reads)
+    return payload
 
 
 def input_hash(deterministic_inputs: dict[str, Any]) -> str:

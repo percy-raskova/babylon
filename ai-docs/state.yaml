@@ -2,10 +2,43 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.9.0"
+  version: "2.10.0"
   updated: "2026-05-16"
-  last_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
-  previous_sprint: "065-engine-bridging (Complete; 89/89 tasks done — see specs/065-engine-bridging/tasks.md and ADR042)"
+  last_sprint: "067-qcew-ownership-normalization (Complete; 70/70 tasks done — see specs/067-qcew-ownership-normalization/tasks.md and ADR045)"
+  previous_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
+  spec_067_summary: |
+    QCEW rollup-row normalization — closes the spec-066 follow-up
+    item that flagged the fragile `WHERE industry_id = 1 AND
+    ownership_id = 1` defensive filter pattern as a structural trap.
+
+    Delivered (4 user stories, 70 tasks):
+    - US1: `tools/normalize_qcew_rollups.py` migration tool with
+      preflight assertions, atomic backup-then-DELETE commit,
+      audit-report (Markdown + JSON sidecar) writers, dry-run /
+      apply / rollback / drop-backup modes. Live --apply against
+      the 43.3M-row reference DB removed ~28.2M rollup rows
+      (naics_level != 6 OR own_code = '0'), leaving ~15.1M
+      canonical leaves.
+    - US3: `src/babylon/persistence/{hex_hydrator, county_aggregation}.py`
+      refactored from `SELECT (rollup)` to `SUM (leaves)`. SC-004
+      grep enforcement integrated as `test_post_067_no_filter_lines_remain_in_production_paths`.
+    - US2: `test_state_rate_of_profit_in_relaxed_band` band tightened
+      from spec-066's [0.05, 0.80] back to spec-original [0.05, 0.50].
+      michigan-e2e baseline regenerated against the post-067 reference DB.
+    - US4: `tests/integration/test_audit_report_validation.py` —
+      contract harness enforcing
+      `contracts/audit_report.schema.json` plus FR-007 / SC-008
+      integrity-class accounting.
+
+    Key finding (research.md T036): QCEW data has ~10-30% BLS
+    confidentiality suppression at the 6-digit NAICS detail level.
+    `SUM(leaves)` is systematically LOWER than the BLS Total Covered
+    rollup by 14-30% per county-year. The spec's ±5% SC-001 / SC-007
+    targets are deferred to a follow-up amendment (see ADR045
+    negative consequences for mitigation options).
+
+    Documented in ADR045 + research.md `T001 pre-flight verification`
+    + research.md `T036 finding` sections.
   spec_066_summary: |
     Marx-coherence fixes — surfaces the 5 categorical bugs the spec-065
     e2e Michigan-Canada audit identified and fixes them. After spec-066

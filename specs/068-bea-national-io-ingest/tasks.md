@@ -69,6 +69,7 @@
 - [ ] T019 [P] [US1] Unit test the UPSERT writer at `tests/unit/reference/bea/test_national_writer_upsert.py` — write same record twice; second write is a no-op (idempotent); second write with newer `vintage_published_date` updates the row
 - [ ] T020 [P] [US1] Property test (Hypothesis) for FR-002 invariance at `tests/unit/reference/bea/test_accounting_identity_hypothesis.py` — generated records satisfying `II + VA == GO` always pass; records violating it always produce a violation
 - [ ] T021 [P] [US1] Integration test full US1 happy path at `tests/integration/reference/bea/test_us1_end_to_end.py` — fixture: 2-year mini supply-use XLSX → run ingest → assert ≥ 2 × 70 rows + audit report present + identity-violation list empty
+- [ ] T021a [P] [US1] Negative test for missing-source-XLSX halt at `tests/unit/reference/bea/test_supply_use_parser_missing_input.py` — parsing a non-existent or empty XLSX raises a clear `FileNotFoundError` or `BEAIngestError` with the missing path in the message; covers the spec.md "Empty source CSVs" edge case
 
 ### Implementation for User Story 1
 
@@ -302,11 +303,11 @@ Every task in this document follows the required checklist format:
 - ✅ Has `[US1]` / `[US2]` / `[US3]` / `[US4]` label on user-story phase tasks; absent on Setup / Foundational / Polish tasks
 - ✅ Description includes exact file path
 
-**Total task count**: 76
+**Total task count**: 77 (76 sequential + T021a inserted post-analyze for M2 remediation)
 **Per-story breakdown**:
 - Setup (T001-T006): 6 tasks
 - Foundational (T007-T015): 9 tasks
-- US1 (T016-T027): 12 tasks
+- US1 (T016-T027 + T021a): 13 tasks
 - US2 (T028-T039): 12 tasks
 - US3 (T040-T058): 19 tasks
 - US4 (T059-T064): 6 tasks

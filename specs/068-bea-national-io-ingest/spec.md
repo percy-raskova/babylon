@@ -15,6 +15,37 @@
 - Q: Where does `fact_bea_national_industry.gross_output` come from — BEA Use table column total (consumer side) or Supply-Use industry output (producer side)? → A: **Supply-Use industry output (producer side).** Matches BEA's published industry-GDP figure exactly and reconciles cleanly with the FR-002 accounting identity (`intermediate_inputs_share + value_added_share = 1`).
 - Q: Is the SC-005 stddev threshold (0.2) empirical or a placeholder? → A: **Directional threshold, not empirical.** Post-spec-067 baseline is exactly 0.0 (every county got the same hardcoded `0.5`), so any sub-uniform distribution proves the wiring works. The exact threshold may be re-tuned during the implementation plan after the first post-068 Michigan-83 baseline run measures the actual magnitude.
 
+### Session 2026-05-17 (post-analyze remediation)
+
+Seven findings from `/speckit.analyze` were remediated in this pass.
+Summary (full provenance in the commit message):
+
+- **C1 (CRITICAL)** Constitutional III.4 violation — BEA I-O sources
+  were not registered in `.specify/memory/data-catalog.yaml`. Added
+  four entries (`BEA_IO_NATIONAL_USE`, `BEA_IO_NATIONAL_SUPPLY`,
+  `BEA_IO_TOTAL_REQ`, `BEA_NAICS_CONCORDANCE`); catalog version
+  bumped 2.6.2 → 2.6.3.
+- **H1 (HIGH)** Concordance table name drift — FR-006 + Key Entities
+  amended from `dim_naics_bea_concordance` to `bridge_naics_bea`
+  (existing table reused per research.md R2).
+- **H2 (HIGH)** FR-002 conflicted with constitution II.2 — rewrote
+  FR-002 to clarify that only the three BEA primitives are stored;
+  shares are derived at read time by `BEAShareLookupService`. SC-003
+  updated to reference the primitives-form identity check.
+- **H3 (HIGH)** FR-008 filename drift — `bea_io_ingest_<timestamp>`
+  → `bea_io_<timestamp>` (matches plan/quickstart/data-model and the
+  spec-067 audit-report convention).
+- **M1 (MEDIUM)** Column name drift — `coefficient_value` →
+  `coefficient` in Key Entities and US2 independent test (matches
+  the actual schema column at `schema.py:2299`). FR-007's numeric-
+  column list also updated to match real column names
+  (`gross_output_millions`, `intermediate_inputs_millions`, etc.).
+- **M2 (MEDIUM)** Empty-source-XLSX edge case had no test — added
+  T021a in tasks.md.
+- **M4 (MEDIUM)** Two year-range scopes (2010-2024 ingest vs 2010-
+  2020 simulation) were uncentralized — added a one-line Assumption
+  clarifying both ranges are intentional.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Populate the BEA national industry table (Priority: P1)
@@ -66,10 +97,10 @@ average-rate-of-profit transformation procedure.
 **Independent test**: `SELECT COUNT(*) FROM fact_bea_io_coefficient`
 returns ~N² rows per year × years where N is the BEA-industry count
 (~5,000 - 10,000 rows per year for the BEA-summary I-O level). Each row's
-`coefficient_value` ∈ [0, 1] when normalized. The row-sum identity
-holds: for every target industry `j`, the column-sum of input
-coefficients matches the per-industry aggregate share from US1 within
-±0.1 %.
+`coefficient` ∈ [0, 1.5] (the upper bound admits the rare recycled-input
+case per data-model.md §Entity 2). The column-sum identity holds: for
+every target industry `j`, the column-sum of input coefficients matches
+the per-industry aggregate share from US1 within ±0.1 %.
 
 ---
 
@@ -165,15 +196,20 @@ between-county heterogeneity within a single industry).
   with one row per (BEA-industry × year) in the simulation scope
   (2010-2024), reading from `data/input-output/make-use/` and
   `data/input-output/supply-use/`.
-- **FR-002**: Each `fact_bea_national_industry` row MUST include:
-  `gross_output` (sourced from BEA **Supply-Use industry output** —
-  producer side, matching BEA's published industry-GDP figure;
-  **not** the Use-table column total, which is the consumer side),
-  intermediate-inputs total, intermediate-inputs share
-  (= intermediate_inputs / gross_output), and value-added share. The
-  shares are constrained to `[0, 1]` and the sum
-  `intermediate_inputs_share + value_added_share ≈ 1` within ±1 %
-  (per BEA accounting identity).
+- **FR-002**: Each `fact_bea_national_industry` row MUST store exactly
+  the three BEA primitives — `gross_output_millions` (sourced from BEA
+  **Supply-Use industry output**, the producer-side figure matching
+  BEA's published industry-GDP value — **not** the Use-table column
+  total, which is the consumer side), `intermediate_inputs_millions`,
+  and `value_added_millions`. Per constitution II.2 (Primitives vs
+  Derived), the shares (`intermediate_inputs_share`,
+  `value_added_share`) are **derived, never stored** — they are
+  computed at read time by `BEAShareLookupService`. The BEA
+  accounting identity (`intermediate_inputs + value_added ≈
+  gross_output` within ±1 % of `gross_output`) is enforced at ingest
+  validation time and recorded in the audit report; rows violating
+  the identity are surfaced as `AccountingViolation` entries (see
+  FR-008) but still written.
 - **FR-003**: The ingest tool MUST populate `fact_bea_io_coefficient`
   with the full direct-requirements matrix `a_ij` from the BEA Use
   table, normalized to "dollar of input industry `i` per dollar of
@@ -187,10 +223,15 @@ between-county heterogeneity within a single industry).
   = 0.5` with a per-(county, industry-mix) computation that derives
   the intermediate-inputs share from `fact_bea_national_industry`
   weighted by the county's QCEW industry employment shares.
-- **FR-006**: The NAICS→BEA-summary concordance MUST be loaded into a
-  reference table (likely `dim_naics_bea_concordance`) from
-  `data/bea/loader_concordance.py` source data. Concordance gaps fall
-  back to NAICS-2-digit sector aggregation.
+- **FR-006**: The NAICS→BEA-summary concordance MUST be loaded into the
+  existing `bridge_naics_bea` reference table (verified extant in
+  `src/babylon/reference/schema.py` as `BridgeNAICSBEA`; originally
+  shipped by spec-025 Tensor Hierarchy). Source data comes from the
+  BEA-published NAICS↔BEA concordance bundle at
+  `data/bea/MAKE-USE-IMPORTS (BEFORE REDEFINITIONS).zip`, loaded via
+  the existing `data/bea/loader_concordance.py` stub (completed in
+  spec-068). Concordance gaps fall back to NAICS-2-digit sector
+  aggregation.
 - **FR-007**: The ingest MUST be idempotent under epsilon-determinism
   semantics (inherited from spec-067's amended idempotency contract).
   Running it twice in succession produces:
@@ -198,17 +239,20 @@ between-county heterogeneity within a single industry).
     (`bea_industry_id`, `source_industry_id`, `target_industry_id`,
     `time_id`, `table_type_id`, `vintage_published_date`).
   - **Float-equal within ≤ 10⁻¹² relative error** on every numeric
-    column (`gross_output`, `intermediate_inputs`, `value_added`,
-    `intermediate_inputs_share`, `value_added_share`,
-    `coefficient_value`).
+    column (`gross_output_millions`, `intermediate_inputs_millions`,
+    `value_added_millions`, `coefficient`). Shares are NOT stored
+    (per II.2 and the amended FR-002); the share-form epsilon-determinism
+    is verified at the lookup-service layer instead.
   Byte-identical idempotency on floats is not enforceable on this stack
   (Python hash randomization + BLAS threading + accumulated float64
   rounding), which is the failure mode spec-067 hit in its T054b
   byte-identical regen test.
-- **FR-008**: An audit report (`reports/ingest/bea_io_ingest_<timestamp>.{md,json}`)
+- **FR-008**: An audit report (`reports/ingest/bea_io_<timestamp>.{md,json}`)
   MUST summarize: per-year row counts, accounting-identity violations
   (FR-002 and FR-004), per-industry intermediate-inputs share top-10
-  and bottom-10, NAICS→BEA concordance coverage percentage.
+  and bottom-10, NAICS→BEA concordance coverage percentage, vintage
+  supersessions, and stale-share-fallback summary. Filename pattern
+  matches the spec-067 audit-report convention (`<workload>_<timestamp>.{md,json}`).
 - **FR-009**: A `--rollback` mode MUST restore `fact_bea_national_industry`
   and `fact_bea_io_coefficient` to their empty pre-spec-068 state in
   case the post-ingest validation flags critical mismatches.
@@ -229,9 +273,13 @@ between-county heterogeneity within a single industry).
 - **SC-002**: `SELECT COUNT(*) FROM fact_bea_io_coefficient` returns
   ≥ 50,000 rows after ingest (70² × 12 years ≈ 58,800; allow
   zero-coefficient cells to be omitted).
-- **SC-003**: 100 % of `fact_bea_national_industry` rows satisfy
-  `intermediate_inputs_share + value_added_share = 1 ± 0.01` (the
-  BEA accounting identity).
+- **SC-003**: 100 % of `fact_bea_national_industry` rows satisfy the
+  BEA accounting identity at ingest validation time:
+  `|gross_output_millions − intermediate_inputs_millions −
+  value_added_millions| / gross_output_millions ≤ 0.01`. The identity
+  is checked on the three stored primitives; the equivalent
+  share-form identity (`II_share + VA_share = 1 ± 0.01`) holds
+  automatically when shares are computed by `BEAShareLookupService`.
 - **SC-004**: 100 % of (target-industry, year) pairs satisfy the
   Leontief column-sum identity from FR-004 within ±0.1 %.
 - **SC-005**: Post-US3 wiring, the `mise run sim:e2e-michigan` baseline
@@ -283,6 +331,13 @@ between-county heterogeneity within a single industry).
   rollup-row removal. Spec-068's only fact-table writes are to
   `fact_bea_national_industry` and `fact_bea_io_coefficient` (both
   currently empty); no spec-067 contracts are renegotiated.
+- **Two year ranges, two scopes**: spec-068's **ingest scope** is
+  2010-2024 (the years BEA has published as of 2026-05-17). The
+  **simulation runtime scope** is 2010-2020 (per spec-062 cross-
+  scale integration). The extra ingest years 2021-2024 are stored for
+  downstream specs and to provide forward-fill source data when
+  spec-062 eventually extends. Both ranges appear in this spec
+  intentionally — neither is a typo.
 
 ## Dependencies
 
@@ -307,23 +362,31 @@ between-county heterogeneity within a single industry).
 ## Key Entities
 
 - **fact_bea_national_industry** (existing schema, currently empty):
-  Per-(BEA-industry, year) aggregate I-O metrics. Columns expected:
-  `bea_industry_id`, `time_id`, `gross_output`, `intermediate_inputs`,
-  `value_added`, `intermediate_inputs_share`, `value_added_share`,
-  `vintage_published_date` (audit column tracking which BEA publication
-  vintage the row was sourced from; latest-only policy per Clarifications Q2).
+  Per-(BEA-industry, year) aggregate I-O metrics. Columns (matching
+  `src/babylon/reference/schema.py` exactly): `bea_industry_id` (PK
+  part 1, FK), `time_id` (PK part 2, FK), `gross_output_millions`
+  (Numeric(15,2), nullable), `intermediate_inputs_millions`
+  (Numeric(15,2), nullable), `value_added_millions` (Numeric(15,2),
+  nullable), `vintage_published_date` (audit column tracking which
+  BEA publication vintage the row was sourced from; latest-only
+  policy per Clarifications Q2). **Shares are NOT stored** (per
+  constitution II.2); they are computed at read time by
+  `BEAShareLookupService`.
 - **fact_bea_io_coefficient** (existing schema, currently empty):
   Per-(source-industry, target-industry, table-type, year) direct
-  coefficient `a_ij`. Columns: `source_industry_id`,
-  `target_industry_id`, `table_type_id`, `time_id`,
-  `coefficient_value`, `vintage_published_date` (same audit
-  semantics as `fact_bea_national_industry`).
+  coefficient `a_ij`. Columns: `id` (surrogate PK),
+  `source_industry_id`, `target_industry_id`, `table_type_id`,
+  `time_id`, `coefficient` (Float — the `a_ij` value),
+  `vintage_published_date` (same audit semantics as
+  `fact_bea_national_industry`). Unique constraint on
+  `(time_id, table_type_id, source_industry_id, target_industry_id)`.
 - **dim_bea_io_table_type** (existing schema): Discriminator for the
   three BEA table families (Make+Use, Supply-Use, Total Domestic
   Requirements). Already has its check-constraint defined.
-- **dim_naics_bea_concordance** (new or existing): Per-(NAICS-6-digit,
-  BEA-summary-industry) many-to-one mapping. Populated from BEA's
-  published NAICS-to-BEA concordance file.
+- **bridge_naics_bea** (existing, populated by spec-068): Per-
+  (NAICS-6-digit, BEA-summary-industry) many-to-one mapping. Schema
+  shipped by spec-025; spec-068 populates the BEA-summary rows from
+  BEA's published NAICS-to-BEA concordance file.
 - **fact_qcew_annual** (post-spec-067 canonical leaves): The per-
   (county, NAICS-6-digit, ownership, year) employment + wages base
   that drives the county industry-mix weights used in US3.

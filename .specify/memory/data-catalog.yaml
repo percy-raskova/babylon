@@ -3,7 +3,7 @@
 # Canonical machine-readable catalog for III.4 Data Source Traceability.
 # Runtime data sources are fetched/updated during operation.
 # Fixtures are pinned snapshots for reproducible tests and NEVER runtime dependencies.
-version: "2.6.2"
+version: "2.6.3"
 categories:
   - name: Federal Economic
     sources:
@@ -35,6 +35,34 @@ categories:
         granularity: EA (county aggregate)
         cadence: Static
         class: Fixture
+      - id: BEA_IO_NATIONAL_USE
+        agency: BEA
+        dataset: Make-Use Tables, Before Redefinitions, Producer-Value (Use_Summary)
+        vintage: Annual
+        granularity: National-Industry (BEA Summary ~70 industries)
+        cadence: Annual
+        class: Runtime
+      - id: BEA_IO_NATIONAL_SUPPLY
+        agency: BEA
+        dataset: Supply-Use Tables (Use_Summary producer-side industry output)
+        vintage: Annual
+        granularity: National-Industry (BEA Summary ~70 industries)
+        cadence: Annual
+        class: Runtime
+      - id: BEA_IO_TOTAL_REQ
+        agency: BEA
+        dataset: Total Domestic Requirements (Leontief inverse, IxI_TR_Summary)
+        vintage: Annual
+        granularity: National-Industry (BEA Summary ~70 industries)
+        cadence: Annual
+        class: Runtime
+      - id: BEA_NAICS_CONCORDANCE
+        agency: BEA
+        dataset: NAICS-to-BEA-summary industry concordance
+        vintage: Periodic (revised when NAICS structure changes)
+        granularity: NAICS-6-digit → BEA-Summary industry mapping
+        cadence: Periodic
+        class: Runtime
       - id: FRED
         agency: St. Louis Fed
         dataset: Federal Reserve Economic Data

@@ -124,7 +124,7 @@ SQLAlchemy `Core.execute(insert(...).values(...))` batched at 10K rows.
 | I.20 Spatial Substrate | **PASS** | No substrate mutation; consumes county QCEW; writes industry-keyed tables only. |
 | II.9 Morphism Dyadic | N/A | No morphism graph changes. |
 | III.7 Determinism Hash | **PASS** | FR-007 epsilon-determinism is the operational form of the determinism-hash principle; replayability preserved (same inputs → same outputs within ε). |
-| III.8 Aleksandrov Test | **PASS** | Every column traces to a BEA-published material relation: `gross_output_millions` ⇄ Supply-Use industry output, `intermediate_inputs_millions` ⇄ Use-table column sum, `coefficient_value` ⇄ direct-requirements per dollar of output. |
+| III.8 Aleksandrov Test | **PASS** | Every column traces to a BEA-published material relation: `gross_output_millions` ⇄ Supply-Use industry output, `intermediate_inputs_millions` ⇄ Use-table column sum, `coefficient` ⇄ direct-requirements per dollar of output. |
 | V Verb Atomicity | N/A | No player verbs invoked. |
 
 ### P1 (Load-Bearing) — domain-relevant
@@ -137,7 +137,7 @@ SQLAlchemy `Core.execute(insert(...).values(...))` batched at 10K rows.
 | II.6 State is Data, Engine is Transformation | **PASS** | `fact_bea_*` is reference data (immutable post-load); hex_hydrator is a transformation. |
 | II.11 Subsystem Table Ownership | **PASS w/ gate** | The BEA tables belong to the *reference / national-economic-accounts* subsystem. The hex_hydrator (persistence subsystem) consumes them **only** through the new `BEAShareLookupService` interface defined under `contracts/`. Direct SQL on `fact_bea_*` from outside the BEA subsystem is explicitly prohibited by this plan. |
 | III.1 No Magic Constants | **PASS** | The 0.5 constant being **removed** IS the spec-068 work; the fallback retention under FR-010 is gated behind an explicit "BEA tables empty" log warning. |
-| III.4 Data Catalog | **PASS** | BEA Make+Use / Supply-Use / TDR is already enumerated in `.specify/memory/data-catalog.yaml` under Federal Economic, Runtime class. |
+| III.4 Data Catalog | **PASS** (post-remediation) | Pre-remediation: data-catalog.yaml listed only `BEA_GDP`, `BEA_TiVA`, `BEA_EA` — none of which are the I-O tables this spec ingests. Spec-068's /speckit.analyze C1 finding flagged this as a CRITICAL III.4 P1 violation. Resolved by adding four new entries — `BEA_IO_NATIONAL_USE`, `BEA_IO_NATIONAL_SUPPLY`, `BEA_IO_TOTAL_REQ`, `BEA_NAICS_CONCORDANCE` — all classified Federal Economic / Runtime. data-catalog.yaml version bumped 2.6.2 → 2.6.3. |
 | IV Michigan Test Case | **PASS** | SC-005 validates against all 83 Michigan counties; SC-006 against Shaikh's empirical bands. |
 
 ### P2 (Elaboration)

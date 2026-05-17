@@ -6,6 +6,29 @@ One-shot migration that DELETEs BLS-published rollup rows from
 table contains only canonical-leaf rows (``naics_level = 6`` ×
 ``own_code in {'1', '2', '3', '5'}``).
 
+CLI modes:
+    --dry-run                 read-only audit + Wayne spot-check
+    --apply                   full migration (use --use-fast-strategy for
+                              the ~10x faster CREATE-TABLE-AS-SELECT path
+                              instead of the bulk DELETE)
+    --rollback-from-backup    restore from fact_qcew_annual__pre_067
+    --drop-backup             cleanup the backup table after verification
+
+Empirical wallclock (live reference DB, 43 M rows):
+    DELETE strategy (default): ~60-90 min — slow because the rollback
+        journal accumulates ~2 GB of undo entries and serialises on
+        ext4 jbd2_log_wait_commit.
+    Fast strategy (--use-fast-strategy): ~5-15 min — single CREATE
+        TABLE AS SELECT scan + atomic rename.
+
+Known limitation (2026-05-16 T036 finding): QCEW data carries 10-30 %
+BLS confidentiality suppression at the 6-digit NAICS detail level.
+Post-067 SUM(canonical leaves) is systematically lower than the
+BLS-published Total Covered rollup by ~14.6 % for Wayne 2010
+(reference county). The migration is correct (rollup rows ARE
+redundant); spec amendment under spec-070 will resolve the ±5 %
+acceptance band tension. See ``specs/070-qcew-suppression-amendment/``.
+
 See ``specs/067-qcew-ownership-normalization/`` for the full design.
 """
 

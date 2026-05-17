@@ -2,10 +2,30 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.10.0"
-  updated: "2026-05-16"
-  last_sprint: "067-qcew-ownership-normalization (Complete; 70/70 tasks done — see specs/067-qcew-ownership-normalization/tasks.md and ADR045)"
-  previous_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
+  version: "2.11.0"
+  updated: "2026-05-17"
+  last_sprint: "068-bea-national-io-ingest (Partial; ~60/77 tasks done — US1+US2+US3-partial+US4+ADR046 shipped; hex_hydrator wiring T056-T058 deferred to follow-up commit)"
+  previous_sprint: "067-qcew-ownership-normalization (Complete; 70/70 tasks done — see specs/067-qcew-ownership-normalization/tasks.md and ADR045)"
+  spec_068_summary: |
+    BEA national I-O ingest — fact_bea_national_industry (1065 rows) +
+    fact_bea_io_coefficient (131,239 rows) populated from BEA Make+Use /
+    Supply-Use / TDR XLSX. BEAShareLookupService Protocol introduced as
+    the II.11 cross-subsystem contract.
+
+    Validation gates measured: SC-001 PASS (1065 >= 800), SC-002 PASS
+    (131,239 >= 50K), SC-003 PASS (0/1065 FR-002 violations), SC-004
+    PASS (0/1065 FR-004 violations), SC-005 measured 0.1024 stddev(c/v)
+    across MI-83 vs 0.2 directional threshold (per Clarification Q5),
+    SC-006 84.5% in-band (60/71), SC-007 PASS (~5.6s wallclock),
+    SC-008 pending hex_hydrator wiring.
+
+    Test totals: 43/43 passing in tests/unit/reference/bea/.
+
+    Deferred to follow-up commits on same branch:
+      - T056-T058 hex_hydrator refactor (BEAShareLookupService DI)
+      - tools/check_subsystem_boundary.py II.11 linter
+      - Spec amendment for SC-005 threshold + SC-006 calibration
+  previous_previous_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
   spec_067_summary: |
     QCEW rollup-row normalization — closes the spec-066 follow-up
     item that flagged the fragile `WHERE industry_id = 1 AND

@@ -88,10 +88,10 @@
 - [X] T042 [US3] Refactor `src/babylon/persistence/hex_hydrator.py` wages query (the cascade-fix site spec-066 added). Same pattern: rewrite from SELECT(rollup) to SUM(leaves). **Single QCEW query in hex_hydrator covers both c-calc and wages reads; combined refactor with T041.**
 - [X] T043 [US3] Refactor `src/babylon/persistence/county_aggregation.py` `fetch_employment_proxy_for_county_at_tick` (lines ~348-397 region per plan.md): rewrite the SQL block to SUM(leaves). Update the surrounding docstring to reference the post-067 contract.
 - [X] T044 [US3] Run `rg "WHERE ownership_id\s*=\s*1|WHERE industry_id\s*=\s*1" src/babylon/persistence/` and confirm zero matches (SC-004). **Verified: only the legitimate `bea_industry_id = 1` BEA filter remains.**
-- [ ] T045 [P] [US3] Update any existing unit tests for `hex_hydrator` that asserted on the SELECT(rollup) semantics — they need to expect SUM(leaves) shape now. Affected files: `tests/unit/persistence/test_hex_hydrator.py` (or its current location).
-- [ ] T046 [P] [US3] Same for `county_aggregation` unit tests: `tests/unit/persistence/test_county_aggregation.py`.
-- [ ] T047 [US3] Run `mise run test:int` and verify all integration tests pass. Specifically: zero new failures in `tests/integration/test_post_067_consumer_queries.py`, `tests/integration/test_normalize_qcew_rollups.py`, and the existing spec-065/spec-066 persistence-bridge tests.
-- [ ] T048 [US3] Commit: `feat(spec-067): US3 refactor consumer queries from SELECT(rollup) to SUM(leaves)`.
+- [X] T045 [P] [US3] Update any existing unit tests for `hex_hydrator` that asserted on the SELECT(rollup) semantics — they need to expect SUM(leaves) shape now. Affected files: `tests/unit/persistence/test_hex_hydrator.py` (or its current location). **No spec-066-pattern assertions found in hex_hydrator unit tests; only `test_county_aggregation.py::test_wayne_2010_returns_positive_float` needed docstring update.**
+- [X] T046 [P] [US3] Same for `county_aggregation` unit tests: `tests/unit/persistence/test_county_aggregation.py`. **Docstring updated to reflect post-067 SUM(leaves) semantics and acknowledge BLS suppression at 6-digit NAICS.**
+- [ ] T047 [US3] Run `mise run test:int` and verify all integration tests pass. Specifically: zero new failures in `tests/integration/test_post_067_consumer_queries.py`, `tests/integration/test_normalize_qcew_rollups.py`, and the existing spec-065/spec-066 persistence-bridge tests. **Deferred: blocked by DB lock during T036.**
+- [X] T048 [US3] Commit: `feat(spec-067): US3 refactor consumer queries from SELECT(rollup) to SUM(leaves)`. **Shipped via commit 3b7568ec.**
 
 **US3 deliverable**: Consumer code refactored, all integration tests pass, SC-004 verified.
 
@@ -105,12 +105,12 @@
 
 - [X] T049 [US2] Locate the rate-of-profit band test in `tests/`: it is named `test_state_rate_of_profit_in_relaxed_band` per spec-066 (the spec-066 commit 3423dd20 baseline refresh references this name). **Do NOT rename** — the name and file location are preserved for git-history continuity per FR-009. Only the band parameter and docstring change. **Located: `tests/integration/test_marx_identities.py:137`.**
 - [X] T050 [US2] Edit the band parameter: change `RATE_OF_PROFIT_BAND = (0.05, 0.80)` (or equivalent inline assertion bounds) to `(0.05, 0.50)`. Update the test's docstring to reference spec-067's restoration of the spec-original band (currently the docstring references the spec-066 relaxation). Test name stays `test_state_rate_of_profit_in_relaxed_band`.
-- [ ] T051 [US2] Regenerate the michigan-e2e baseline: `mise run sim:e2e-michigan -- --regenerate-baseline`. Expected wallclock 60–90 min. Capture the resulting `reports/sim-runs/<new-ISO-timestamp>/{trace.csv,summary.json,manifest.json}`.
-- [ ] T052 [US2] Update `tests/baselines/michigan-e2e.json` to point at the new artifact set (or replace its contents with the new summary.json — match whichever format the spec-066 baseline uses; the 2026-05-16 baseline commit was 520-tick Michigan-Canada shape).
-- [ ] T053 [US2] Run `mise run qa:e2e-regression` and confirm the gate passes against the regenerated baseline.
-- [ ] T054 [US2] Run `poetry run pytest -k test_state_rate_of_profit_in_relaxed_band -v` (use `-k` to locate the test by name regardless of file path); confirm the test passes with the tightened band (SC-003).
-- [ ] T054b [US2] Verify reproducibility (SC-006): re-run `mise run sim:e2e-michigan -- --regenerate-baseline` a second time with the same seed (default 2010); diff the two resulting `trace.csv` files; assert byte-identical content. Capture the diff command output in the commit message of T055 as evidence. If diff is non-empty, investigate determinism breakage before proceeding (likely culprit: a system newly introduced in spec-067 that consumes rng without seed propagation).
-- [ ] T055 [US2] Commit: `feat(spec-067): US2 tighten rate-of-profit band [0.05, 0.80] → [0.05, 0.50] + regenerate michigan-e2e baseline`. Files staged: the test file, `tests/baselines/michigan-e2e.json`, the new `reports/sim-runs/<timestamp>/` directory. Include the T054b reproducibility-verification diff result in the commit-message body.
+- [ ] T051 [US2] Regenerate the michigan-e2e baseline: `mise run sim:e2e-michigan -- --regenerate-baseline`. Expected wallclock 60–90 min. Capture the resulting `reports/sim-runs/<new-ISO-timestamp>/{trace.csv,summary.json,manifest.json}`. **Deferred to follow-up commit: requires T036 to complete first; the regen is 60-90 min wallclock and exceeds the interactive session budget.**
+- [ ] T052 [US2] Update `tests/baselines/michigan-e2e.json` to point at the new artifact set (or replace its contents with the new summary.json — match whichever format the spec-066 baseline uses; the 2026-05-16 baseline commit was 520-tick Michigan-Canada shape). **Deferred (follows T051).**
+- [ ] T053 [US2] Run `mise run qa:e2e-regression` and confirm the gate passes against the regenerated baseline. **Deferred (follows T051-T052).**
+- [ ] T054 [US2] Run `poetry run pytest -k test_state_rate_of_profit_in_relaxed_band -v` (use `-k` to locate the test by name regardless of file path); confirm the test passes with the tightened band (SC-003). **Deferred: blocked by DB lock during T036; band tightening already committed via 3b7568ec.**
+- [ ] T054b [US2] Verify reproducibility (SC-006): re-run `mise run sim:e2e-michigan -- --regenerate-baseline` a second time with the same seed (default 2010); diff the two resulting `trace.csv` files; assert byte-identical content. Capture the diff command output in the commit message of T055 as evidence. If diff is non-empty, investigate determinism breakage before proceeding (likely culprit: a system newly introduced in spec-067 that consumes rng without seed propagation). **Deferred (follows T051).**
+- [ ] T055 [US2] Commit: `feat(spec-067): US2 tighten rate-of-profit band [0.05, 0.80] → [0.05, 0.50] + regenerate michigan-e2e baseline`. Files staged: the test file, `tests/baselines/michigan-e2e.json`, the new `reports/sim-runs/<timestamp>/` directory. Include the T054b reproducibility-verification diff result in the commit-message body. **Partial: band tighten shipped via 3b7568ec; baseline regen deferred.**
 
 **US2 deliverable**: Band restored, baseline regenerated, qa:e2e-regression passes.
 
@@ -127,8 +127,8 @@
 - [X] T058 [P] [US4] Write `test_audit_report_bls_suppressed_county_years_enumerated` — JSON `bls_suppressed_county_years` is a list; each entry has valid `county_fips` (5-digit string), `year` (integer ∈ [2010, 2050]), `reason` (one of the three enum values).
 - [X] T059 [P] [US4] Write `test_audit_report_summary_stats_show_ge_95pct_within_5pct_band` — JSON `per_county_deltas.summary_stats.counties_within_5pct_band_pct >= 95.0` (SC-007). **Relaxed to `0 <= pct <= 100` floor per T036 finding; the ≥95% target is deferred to spec amendment after observing the empirical distribution.**
 - [X] T060 [P] [US4] Write `test_audit_report_integrity_class_accounting_sums_correctly` — JSON `rows_excluded.naics_only + ownership_only + both_axes == rows_excluded.total` AND `row_counts.fact_qcew_annual_pre - fact_qcew_annual_post == rows_excluded.total` (SC-008).
-- [ ] T061 [US4] Run `poetry run pytest tests/integration/test_audit_report_validation.py -v` against the actual T036 output. All five tests pass.
-- [ ] T062 [US4] Commit: `feat(spec-067): US4 audit-report validation tests`.
+- [ ] T061 [US4] Run `poetry run pytest tests/integration/test_audit_report_validation.py -v` against the actual T036 output. All five tests pass. **Deferred: blocked by T036 artifact materialization.**
+- [X] T062 [US4] Commit: `feat(spec-067): US4 audit-report validation tests`. **Shipped via commit d33ae8cc.**
 
 **US4 deliverable**: Audit-report contract enforced by automated tests; SC-007 + SC-008 + FR-007 verified.
 
@@ -141,10 +141,10 @@
 - [X] T063 Write `ai-docs/decisions/ADR045_qcew_normalization.yaml` capturing the decision (in-place DELETE with backup-then-commit), rationale (R1–R6 from research.md), consequences (downstream query rewrite, peak disk doubled during migration, 30 min wallclock impact pre-spec-069), and amendments (none). Follow the ADR format used by ADR044.
 - [X] T064 [P] Update `ai-docs/state.yaml` — bump `meta.version` to `2.10.0`, set `meta.last_sprint` to `067-qcew-ownership-normalization`, add `spec_067_summary` block describing the delivered work (paralleling the `spec_066_summary` style).
 - [X] T065 [P] Update `ai-docs/decisions/index.yaml` to add ADR045 reference (date, title, file path, status: accepted). **Also backfilled missing ADR043 + ADR044 entries in the same pass.**
-- [ ] T066 [P] Update `ai-docs/epochs/epoch2/data-quality.yaml` (if it covers QCEW) OR add a note in `ai-docs/state.yaml` referencing spec-067 as the closure of the spec-066 deferred-cleanup item from ADR042 lines 130-131.
-- [ ] T067 Run `poetry run python tools/normalize_qcew_rollups.py --drop-backup` to reclaim ~3 GB of SQLite disk space. Confirm `data/sqlite/marxist-data-3NF.sqlite` shrinks from ~12 GB peak back to ~5.5 GB.
-- [ ] T068 Run final verification suite: `mise run check && mise run qa:e2e-regression`. Both pass. Capture the test report summary in the commit message.
-- [ ] T069 Commit: `docs(spec-067): ADR045 + state.yaml v2.10.0 + ai-docs reconciliation + backup cleanup`. Files staged: `ai-docs/decisions/ADR045_qcew_normalization.yaml`, `ai-docs/state.yaml`, `ai-docs/decisions/index.yaml`, possibly `ai-docs/epochs/epoch2/data-quality.yaml`.
+- [X] T066 [P] Update `ai-docs/epochs/epoch2/data-quality.yaml` (if it covers QCEW) OR add a note in `ai-docs/state.yaml` referencing spec-067 as the closure of the spec-066 deferred-cleanup item from ADR042 lines 130-131. **Covered via `spec_067_summary` block in state.yaml; no `ai-docs/epochs/epoch2/data-quality.yaml` exists in the repo.**
+- [ ] T067 Run `poetry run python tools/normalize_qcew_rollups.py --drop-backup` to reclaim ~3 GB of SQLite disk space. Confirm `data/sqlite/marxist-data-3NF.sqlite` shrinks from ~12 GB peak back to ~5.5 GB. **Deferred: requires T036 to complete and a separate operator decision after qa:e2e-regression passes.**
+- [ ] T068 Run final verification suite: `mise run check && mise run qa:e2e-regression`. Both pass. Capture the test report summary in the commit message. **Deferred: requires T051 baseline regen first.**
+- [ ] T069 Commit: `docs(spec-067): ADR045 + state.yaml v2.10.0 + ai-docs reconciliation + backup cleanup`. Files staged: `ai-docs/decisions/ADR045_qcew_normalization.yaml`, `ai-docs/state.yaml`, `ai-docs/decisions/index.yaml`, possibly `ai-docs/epochs/epoch2/data-quality.yaml`. **Partial: ADR045 + state.yaml + index.yaml shipped via d33ae8cc; backup cleanup deferred.**
 
 **Polish deliverable**: ADR + state.yaml + cleanup commits closing out spec-067.
 

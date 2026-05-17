@@ -198,11 +198,12 @@ def preflight_assertions(session: Session) -> PreflightResult:
     missing the rollup row, dim_industry empty at level 6, etc.).
     """
 
-    industries_at_each_level = dict(
-        session.execute(
+    industries_at_each_level: dict[int, int] = {
+        int(row[0]): int(row[1])
+        for row in session.execute(
             text("SELECT naics_level, COUNT(*) FROM dim_industry GROUP BY naics_level")
         ).all()
-    )
+    }
     if 6 not in industries_at_each_level or industries_at_each_level[6] == 0:
         raise PreflightAssertionError(
             "dim_industry has no rows at naics_level=6 (canonical leaves)"
@@ -293,7 +294,7 @@ def delete_naics_rollups(session: Session) -> int:
             ")"
         )
     )
-    return int(result.rowcount or 0)
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 def delete_ownership_rollups(session: Session) -> int:
@@ -306,7 +307,7 @@ def delete_ownership_rollups(session: Session) -> int:
             ")"
         )
     )
-    return int(result.rowcount or 0)
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 def integrity_check(

@@ -35,10 +35,23 @@ import sys
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
-from babylon.reference.bea.ingest.audit_report import BEAIngestAuditReport
+from sqlalchemy import select
+
+from babylon.reference.bea.ingest.audit_report import (
+    BEAIngestAuditReport,
+    IndustrySnapshot,
+)
+from babylon.reference.bea.ingest.national_writer import upsert_national_records
 from babylon.reference.bea.ingest.schema_migration import ensure_vintage_columns
-from babylon.reference.database import normalized_engine
+from babylon.reference.bea.ingest.supply_use_parser import (
+    BEAIngestError,
+    parse_use_summary,
+)
+from babylon.reference.bea.ingest.validators import validate_accounting_identity
+from babylon.reference.database import get_normalized_session, normalized_engine
+from babylon.reference.schema import DimBEAIndustry, FactBEANationalIndustry
 
 
 def _parse_years(value: str) -> range:
@@ -134,15 +147,128 @@ def _run_rollback_stage(audit_report: BEAIngestAuditReport) -> None:
     log.info("rollback complete; bridge_naics_bea left intact (shared with spec-025)")
 
 
+_USE_SUMMARY_DEFAULT_PATH = Path("data/input-output/supply-use/Use_Summary.xlsx")
+
+
 def _run_us1_stage(
     audit_report: BEAIngestAuditReport,
     years: range,
-    dry_run: bool,  # noqa: ARG001 — future-use; current impl is parser-only
+    dry_run: bool,
 ) -> None:
-    """US1: populate fact_bea_national_industry. Wired in T026."""
+    """US1: populate fact_bea_national_industry from Supply-Use XLSX (T026).
+
+    Parses ``Use_Summary.xlsx``, validates FR-002 accounting identity per
+    record, and (unless dry_run) UPSERTs into the fact table. Populates
+    the SC-001 and SC-003 audit gates.
+    """
     log = logging.getLogger("load_bea_io.us1")
-    _ = audit_report, years
-    log.info("US1 stage: not yet wired (T026 — Phase 3 US1 work pending)")
+    log.info("US1 stage: parsing Use_Summary.xlsx for years %d-%d", years.start, years.stop - 1)
+
+    with get_normalized_session() as session:
+        try:
+            records = list(parse_use_summary(_USE_SUMMARY_DEFAULT_PATH, years, session))
+        except BEAIngestError as exc:
+            log.error("US1 stage: parser failed — %s", exc)
+            audit_report.sc_001_pass = False
+            audit_report.sc_003_pass = False
+            raise
+
+        # FR-002 validation per record (always run, even on dry-run).
+        violations = [v for r in records for v in [validate_accounting_identity(r)] if v]
+        audit_report.accounting_identity_violations.extend(violations)
+
+        if not dry_run:
+            stats = upsert_national_records(session, records)
+            audit_report.rows_inserted["fact_bea_national_industry"] = stats.rows_inserted
+            audit_report.rows_superseded["fact_bea_national_industry"] = stats.rows_superseded
+            audit_report.rows_unchanged["fact_bea_national_industry"] = stats.rows_unchanged
+            audit_report.vintage_supersessions.extend(stats.supersessions)
+
+            # Top/bottom-10 leaderboards (post-write snapshot).
+            _populate_share_leaderboards(session, audit_report)
+        else:
+            audit_report.rows_inserted["fact_bea_national_industry"] = len(records)
+            log.info("US1 stage: dry-run — skipping DB write")
+
+    # SC-001: row count >= 800 (after full ingest, not per-year)
+    total_rows = audit_report.rows_inserted.get(
+        "fact_bea_national_industry", 0
+    ) + audit_report.rows_unchanged.get("fact_bea_national_industry", 0)
+    audit_report.sc_001_pass = total_rows >= 800
+
+    # SC-003: 100 % of rows pass FR-002.
+    audit_report.sc_003_pass = len(violations) == 0
+    log.info(
+        "US1 stage: %d records, %d FR-002 violations, sc_001_pass=%s sc_003_pass=%s",
+        len(records),
+        len(violations),
+        audit_report.sc_001_pass,
+        audit_report.sc_003_pass,
+    )
+
+
+def _populate_share_leaderboards(
+    session: object,  # SQLAlchemy Session
+    audit_report: BEAIngestAuditReport,
+) -> None:
+    """Compute top-10 / bottom-10 intermediate-inputs share for the audit report.
+
+    Uses a SQL-side division of intermediate_inputs / gross_output,
+    excluding rows where either is NULL or GO == 0.
+    """
+    from sqlalchemy.orm import Session as _SessionType
+
+    assert isinstance(session, _SessionType)
+    rows = session.execute(
+        select(
+            FactBEANationalIndustry.bea_industry_id,
+            DimBEAIndustry.industry_name,
+            FactBEANationalIndustry.time_id,
+            (
+                FactBEANationalIndustry.intermediate_inputs_millions
+                / FactBEANationalIndustry.gross_output_millions
+            ).label("ii_share"),
+        )
+        .join(
+            DimBEAIndustry,
+            DimBEAIndustry.bea_industry_id == FactBEANationalIndustry.bea_industry_id,
+        )
+        .where(FactBEANationalIndustry.gross_output_millions > 0)
+        .where(FactBEANationalIndustry.intermediate_inputs_millions.is_not(None))
+    ).all()
+
+    if not rows:
+        return
+
+    # Sort by share, ascending and descending; collect top/bottom 10.
+    sorted_rows = sorted(rows, key=lambda r: float(r.ii_share))
+    bottom = sorted_rows[:10]
+    top = sorted_rows[-10:][::-1]
+
+    # We also need year for IndustrySnapshot — but the query returned time_id,
+    # not year. Map back via dim_time:
+    from babylon.reference.schema import DimTime as _DimTime
+
+    time_id_to_year = dict(session.execute(select(_DimTime.time_id, _DimTime.year)).all())
+
+    audit_report.intermediate_inputs_share_top10 = [
+        IndustrySnapshot(
+            bea_industry_id=r.bea_industry_id,
+            bea_industry_name=r.industry_name,
+            year=int(time_id_to_year[r.time_id]),
+            intermediate_inputs_share=float(r.ii_share),
+        )
+        for r in top
+    ]
+    audit_report.intermediate_inputs_share_bottom10 = [
+        IndustrySnapshot(
+            bea_industry_id=r.bea_industry_id,
+            bea_industry_name=r.industry_name,
+            year=int(time_id_to_year[r.time_id]),
+            intermediate_inputs_share=float(r.ii_share),
+        )
+        for r in bottom
+    ]
 
 
 def _run_us2_stage(

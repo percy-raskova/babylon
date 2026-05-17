@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/percy-raskova/babylon/specs/067-qcew-ownership-normalization/audit_report.schema.json",
+  "title": "QCEW Normalization Audit Report",
+  "description": "Machine-readable sidecar emitted alongside the Markdown summary by tools/normalize_qcew_rollups.py per spec-067 FR-007.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_metadata",
+    "row_counts",
+    "naics_vintages",
+    "bls_suppressed_county_years",
+    "per_county_deltas"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semantic version of this audit-report schema. Initial value: 1.0.0."
+    },
+    "run_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timestamp_utc",
+        "migration_version",
+        "database_path",
+        "database_sha256_pre",
+        "database_sha256_post",
+        "migration_duration_seconds",
+        "git_branch",
+        "git_sha"
+      ],
+      "properties": {
+        "timestamp_utc": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 UTC timestamp of migration start."
+        },
+        "migration_version": {
+          "type": "string",
+          "pattern": "^spec-[0-9]{3}-v[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+          "description": "Migration script version tag. Initial: spec-067-v1.0."
+        },
+        "database_path": {
+          "type": "string",
+          "description": "Filesystem path to the SQLite database being migrated."
+        },
+        "database_sha256_pre": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 of the SQLite file BEFORE migration."
+        },
+        "database_sha256_post": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 of the SQLite file AFTER migration (and audit report write)."
+        },
+        "migration_duration_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wallclock duration from migration start to COMMIT."
+        },
+        "operator": {
+          "type": "string",
+          "description": "Optional human operator who initiated the run (e.g., $USER or CI identifier)."
+        },
+        "git_branch": {
+          "type": "string",
+          "description": "Git branch the migration was run from. Used for traceability."
+        },
+        "git_sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{7,40}$",
+          "description": "Git commit SHA of the migration script."
+        }
+      }
+    },
+    "row_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact_qcew_annual_pre", "fact_qcew_annual_post", "rows_excluded", "integrity_check_passed"],
+      "properties": {
+        "fact_qcew_annual_pre": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Row count in fact_qcew_annual BEFORE the DELETE statements."
+        },
+        "fact_qcew_annual_post": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Row count AFTER the DELETE statements. MUST equal fact_qcew_annual_pre - rows_excluded.total."
+        },
+        "rows_excluded": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["naics_only", "ownership_only", "both_axes", "total"],
+          "properties": {
+            "naics_only": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Rows where DimIndustry.naics_level != 6 AND DimOwnership.own_code != '0'. (NAICS rollup but canonical ownership.)"
+            },
+            "ownership_only": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Rows where DimIndustry.naics_level = 6 AND DimOwnership.own_code = '0'. (Canonical industry but ownership rollup.)"
+            },
+            "both_axes": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Rows where DimIndustry.naics_level != 6 AND DimOwnership.own_code = '0'. (Rollup on both axes.)"
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "naics_only + ownership_only + both_axes. SC-008 integrity check."
+            }
+          }
+        },
+        "integrity_check_passed": {
+          "type": "boolean",
+          "description": "True iff (a) fact_qcew_annual_pre - fact_qcew_annual_post == rows_excluded.total AND (b) rows_excluded.{naics_only + ownership_only + both_axes} == rows_excluded.total."
+        }
+      }
+    },
+    "naics_vintages": {
+      "type": "object",
+      "description": "Year-to-NAICS-vintage classification per R3.",
+      "patternProperties": {
+        "^[0-9]{4}$": {
+          "type": "string",
+          "enum": ["2007", "2012", "2017", "2022", "2027"],
+          "description": "BLS-adopted NAICS revision governing QCEW publication for this year."
+        }
+      },
+      "additionalProperties": false
+    },
+    "bls_suppressed_county_years": {
+      "type": "array",
+      "description": "County-year pairs where only rollup rows were available in the source data (BLS confidentiality suppression). Spec-067 preserves the lowest-aggregation rollup available for these, but flags them so downstream consumers know granularity is degraded.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["county_fips", "year", "reason"],
+        "properties": {
+          "county_fips": {
+            "type": "string",
+            "pattern": "^[0-9]{5}$"
+          },
+          "year": {
+            "type": "integer",
+            "minimum": 2010,
+            "maximum": 2050
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["low-establishment-count", "non-disclosure-flag", "missing-source-data"]
+          }
+        }
+      }
+    },
+    "per_county_deltas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["michigan_scope_only", "summary_stats", "outliers"],
+      "properties": {
+        "michigan_scope_only": {
+          "type": "boolean",
+          "description": "True iff the delta analysis was restricted to the 83 Michigan counties (the canonical test scope per IV). False iff full US continental scope was analyzed."
+        },
+        "summary_stats": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "counties_within_5pct_band",
+            "counties_within_5pct_band_pct",
+            "counties_with_delta_gt_10pct",
+            "max_abs_delta_pct"
+          ],
+          "properties": {
+            "counties_within_5pct_band": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of (county × year) pairs whose post-067 SUM(employment) agrees with BLS publication within ±5% per FR-006 / SC-007."
+            },
+            "counties_within_5pct_band_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Percentage of (county × year) pairs within the ±5% band. SC-007 target: ≥ 95%."
+            },
+            "counties_with_delta_gt_10pct": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of (county × year) pairs whose absolute delta exceeds 10% — these are surfaced as outliers below for manual review."
+            },
+            "max_abs_delta_pct": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Largest single |delta_pct| observed across all (county × year) pairs in scope."
+            }
+          }
+        },
+        "outliers": {
+          "type": "array",
+          "description": "All (county × year) pairs with |delta_pct| > 10%. Each entry MUST include a reason field referencing the audit-trail explanation (typically: BLS suppression, data-quality anomaly, or genuine rollup-removal effect).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["county_fips", "year", "pre_sum", "post_sum", "delta_pct", "reason"],
+            "properties": {
+              "county_fips": {
+                "type": "string",
+                "pattern": "^[0-9]{5}$"
+              },
+              "year": {
+                "type": "integer",
+                "minimum": 2010,
+                "maximum": 2050
+              },
+              "pre_sum": {
+                "type": "number",
+                "description": "Employment SUM via spec-066 rollup-selection method (industry_id=1 AND ownership_id=1)."
+              },
+              "post_sum": {
+                "type": "number",
+                "description": "Employment SUM via spec-067 leaf-aggregation method (no filter, SUM all rows for county-year)."
+              },
+              "delta_pct": {
+                "type": "number",
+                "description": "100 * (post_sum - pre_sum) / pre_sum. Negative iff post-067 is smaller than pre-067."
+              },
+              "reason": {
+                "type": "string",
+                "description": "Human-readable explanation of why this county-year is an outlier."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

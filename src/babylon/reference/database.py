@@ -81,9 +81,11 @@ def get_normalized_engine(echo: bool = False) -> Engine:
     * ``cache_size = -2097152`` — 2 GiB page cache (negative = KiB).
       Reduces disk reads dramatically for the canonical 520-tick e2e run,
       which re-reads QCEW/BEA reference tables ~166K times.
-    * ``mmap_size = 30000000000`` — memory-map up to 30 GB of the DB file.
-      The OS page cache becomes the de facto cache backend; reads complete
-      without syscall overhead.
+    * ``mmap_size = 12000000000`` — memory-map up to 12 GB of the DB file
+      (more than enough headroom over the current ~8 GB reference DB while
+      keeping a safe ceiling on a 32 GB RAM host). The OS page cache
+      becomes the de facto cache backend; reads complete without syscall
+      overhead.
 
     Atomicity is preserved (WAL is fully ACID); only the journaling
     mechanism changes. Concurrent readers see a consistent snapshot.
@@ -110,7 +112,7 @@ def get_normalized_engine(echo: bool = False) -> Engine:
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.execute("PRAGMA cache_size=-2097152")
-            cursor.execute("PRAGMA mmap_size=30000000000")
+            cursor.execute("PRAGMA mmap_size=12000000000")
             cursor.close()
 
     return engine

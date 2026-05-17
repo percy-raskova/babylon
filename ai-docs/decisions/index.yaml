@@ -1,6 +1,6 @@
 meta:
-  version: 1.13.0
-  updated: '2026-05-16'
+  version: 1.14.0
+  updated: '2026-05-17'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
@@ -149,3 +149,8 @@ decisions:
     status: accepted
     date: '2026-05-16'
     file: ADR045_qcew_normalization.yaml
+  ADR046_bea_io_ingest:
+    title: 'Spec 068: BEA national I-O ingest with BEAShareLookupService as the II.11 cross-subsystem contract'
+    status: accepted
+    date: '2026-05-17'
+    file: ADR046_bea_io_ingest.yaml

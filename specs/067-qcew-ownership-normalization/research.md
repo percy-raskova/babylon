@@ -263,6 +263,8 @@ Max |delta|:              94%
 
 Spec-067 proceeds with the current approach (delete both NAICS and ownership rollups; expose the suppression in the audit report) because the migration is fully reversible via the backup table. The audit report is the authoritative ground truth for what fraction of MI county-years meet SC-007; if that fraction is below 95% the user will need to choose among the mitigation options above before the spec is closed.
 
+The four mitigation options are formally captured as a follow-up at `specs/070-qcew-suppression-amendment/spec.md` (placeholder stub). The post-067 query contract at `contracts/post_067_query_contract.md` and the spec.md "Known limitation" subsection in `## Success Criteria` both cross-reference spec-070 as the resolution path. ADR045's negative-consequences section enumerates the same four options. Operators inspecting the audit report can use `tools/inspect_qcew_audit.py` to view the empirical delta distribution and bring data to the spec-070 decision.
+
 ## Risk register (for plan.md awareness)
 
 - **R1 risk**: if `DimIndustry.naics_level` is populated incorrectly for some rows (data-quality bug in the existing reference DB), the predicate will mis-classify. Mitigation: the audit report's per-county delta check (FR-007 / SC-007) catches this within ±5 % BLS-agreement bound.

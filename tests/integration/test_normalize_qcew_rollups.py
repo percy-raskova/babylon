@@ -283,6 +283,31 @@ def test_backup_table_created_with_identical_row_count(
     assert backup_count == int(pre)
 
 
+def test_backup_table_idempotent_when_already_exists(
+    tiny_qcew_fixture: Session,
+) -> None:
+    """Re-running backup_fact_qcew_annual leaves the existing backup intact.
+
+    Real-world scenario: a prior migration run created the backup table but
+    crashed before COMMIT; the operator re-runs --apply. The backup table
+    already exists; the tool should not re-create it (which would lose the
+    pre-067 snapshot) or fail noisily — it should treat the existing backup
+    as authoritative.
+    """
+
+    first = backup_fact_qcew_annual(tiny_qcew_fixture)
+    # Simulate a partial DELETE happening between the two backup calls.
+    tiny_qcew_fixture.execute(text("DELETE FROM fact_qcew_annual WHERE industry_id = 1"))
+    tiny_qcew_fixture.commit()
+    second = backup_fact_qcew_annual(tiny_qcew_fixture)
+    # Second call must return the ORIGINAL backup count, not the
+    # post-partial-DELETE count. The CREATE TABLE IF NOT EXISTS clause
+    # is the load-bearing detail.
+    assert second == first, (
+        f"backup_fact_qcew_annual re-overwrote on second call: first={first}, second={second}"
+    )
+
+
 # T016
 def test_naics_rollups_deleted_count_matches_preflight(
     tiny_qcew_fixture: Session,

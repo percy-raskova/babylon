@@ -1,0 +1,76 @@
+# Bug D — Ideology baseline initialization
+# Closes: FR-010, FR-011, FR-012
+# Maps to: SC-009, SC-014
+# User story: US3 (P2)
+
+contract_id: ideology_baseline_contract
+spec: 066-marx-coherence-fixes
+bug_category: D
+status: draft
+
+guarantees:
+  uniform_baseline_at_tick_0:
+    description: |
+      Every Michigan county at tick 0 has identical ideology values: 50% liberal,
+      45% fascist, 5% revolutionary. This is an explicit placeholder per
+      Clarifications Q3 of /speckit.specify.
+    formal: "ALL 83 counties at tick 0: ideology_r=0.05 AND ideology_l=0.50 AND ideology_f=0.45 (each within +/- 1e-9)"
+    falsified_by: "Any county at tick 0 with values differing by > 1e-9"
+
+  ternary_simplex_invariant:
+    description: |
+      The ternary simplex is preserved at tick 0 (and per spec-053/055 must
+      remain preserved post-engine-mutation, but that's a separate contract).
+    formal: "ALL 83 counties at tick 0: |r + l + f - 1.0| < 1e-9"
+    falsified_by: "Any county at tick 0 where r+l+f differs from 1.0 by > 1e-9"
+
+  documented_placeholder:
+    description: |
+      The (0.05, 0.50, 0.45) baseline is a deliberate placeholder pending a
+      future spec to design principled per-county data-driven seeding. This
+      placeholder MUST be documented prominently in quickstart.md and ADR043.
+    formal: |
+      ai-docs/decisions/ADR043_ideology_baseline_placeholder.yaml exists AND
+      mentions the (0.05, 0.50, 0.45) values AND a "REPLACE WHEN" condition
+      pointing to the future per-county seeding spec.
+    falsified_by: "ADR043 missing or doesn't mention the values + future spec link"
+
+producer_obligations:
+  factory_signature_change:
+    file: src/babylon/engine/factories.py
+    methods: [create_proletariat, create_bourgeoisie]
+    new: |
+      Both factories accept an optional `ideology=IdeologicalProfile(...)`
+      keyword argument. When provided, overrides the factory default. The
+      bridge passes `IdeologicalProfile(class_consciousness=0.1,
+      national_identity=0.5)` to ALL 83 x 2 = 166 entities so the bridge's
+      ternary mapping yields (0.05, 0.50, 0.45).
+    rationale: |-
+      Factories currently use hardcoded IdeologicalProfile defaults;
+      spec-066 needs per-call override capability without changing existing
+      default behavior.
+
+  bridge_passes_uniform_ideology:
+    file: src/babylon/engine/headless_runner/bridge.py
+    method: "_build_per_county_entities"
+    new: |
+      Construct one IdeologicalProfile(class_consciousness=0.1, national_identity=0.5)
+      and pass it to every create_proletariat() and create_bourgeoisie() call.
+    rationale: |-
+      Per FR-010 every county uses the same baseline; the IdeologicalProfile
+      instance can be shared (it's frozen).
+
+  adr043_authored:
+    file: ai-docs/decisions/ADR043_ideology_baseline_placeholder.yaml
+    new: |-
+      Author the ADR with the (0.05, 0.50, 0.45) decision + rationale +
+      'REPLACE WHEN' clause naming the future spec
+
+acceptance_tests:
+  unit:
+    - tests/unit/engine/test_factories_ideology_seed.py::test_proletariat_accepts_ideology_override
+    - tests/unit/engine/test_factories_ideology_seed.py::test_bourgeoisie_accepts_ideology_override
+    - tests/unit/engine/test_factories_ideology_seed.py::test_uniform_baseline_solves_to_target_ternary
+  integration:
+    - tests/integration/test_engine_bridge.py::test_tick_0_ideology_uniform_across_counties
+    - tests/integration/test_engine_bridge.py::test_ternary_simplex_preserved_at_hydrate

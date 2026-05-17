@@ -21,11 +21,30 @@ from __future__ import annotations
 import csv
 import importlib.util
 import inspect
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+# Spec-064 transition: classes that exercise the legacy in-memory
+# `run_trace` / `run_sweep` / `extract_sweep_summary` contracts now run
+# through the headless Postgres-backed runner instead. Tests that hit
+# Postgres are gated behind ``BABYLON_TEST_PG_DSN``; tests against the
+# old TickStateRecorder-shaped result are skipped because the contract
+# is gone (the new ``extract_sweep_summary(value, result_dict)`` no
+# longer accepts a collector).
+_NO_PG = os.environ.get("BABYLON_TEST_PG_DSN") is None
+_SKIP_LEGACY_RECORDER = pytest.mark.skip(
+    reason="spec-064: extract_sweep_summary now accepts (value, result_dict); "
+    "TickStateRecorder-shaped tests retired with the legacy in-memory engine path",
+)
+_SKIP_NEEDS_PG = pytest.mark.skipif(
+    _NO_PG,
+    reason="spec-064: run_trace/run_sweep route through headless_runner; "
+    "BABYLON_TEST_PG_DSN required",
+)
 
 # Path to the project root (babylon/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -108,8 +127,16 @@ class TestModuleStructure:
         assert "__main__" in source_code, "Missing __main__ check"
 
 
+@_SKIP_LEGACY_RECORDER
 class TestRunTrace:
-    """Test the run_trace function."""
+    """Test the run_trace function.
+
+    Spec-064: ``run_trace`` no longer returns
+    ``(TickStateRecorder, SimulationConfig, GameDefines)``; it returns
+    ``(Path, GameDefines)`` (path to the headless runner's trace.csv).
+    The TickStateRecorder-shaped tests below are retired with the
+    legacy in-memory engine path.
+    """
 
     def test_run_trace_returns_collector_config_defines(self) -> None:
         """Verify run_trace returns (TickStateRecorder, SimulationConfig, GameDefines)."""
@@ -178,7 +205,12 @@ class TestRunTrace:
         assert len(result_low) > 0, "Low extraction trace should produce results"
 
 
+@_SKIP_LEGACY_RECORDER
 class TestWriteCsv:
+    """Spec-064: write_csv tests exercise the legacy
+    TickStateRecorder-derived CSV shape (entity_id/edge columns); the
+    headless runner emits a different 22-column trace.csv contract."""
+
     """Test CSV writing functionality."""
 
     def test_write_csv_creates_file(self, tmp_path: Path) -> None:
@@ -288,6 +320,7 @@ class TestCLI:
 # =============================================================================
 
 
+@_SKIP_LEGACY_RECORDER
 class TestExtractSweepSummary:
     """Tests for extract_sweep_summary function with TickStateRecorder.
 
@@ -737,6 +770,7 @@ class TestExtractSweepSummary:
         assert result["max_tension"] == 0.05
 
 
+@_SKIP_NEEDS_PG
 class TestRunSweep:
     """Tests for run_sweep function."""
 
@@ -810,8 +844,15 @@ class TestRunSweep:
         assert "outcome" in result[0]
         assert result[0]["outcome"] in ("SURVIVED", "DIED", "ERROR")
 
+    @_SKIP_LEGACY_RECORDER
     def test_run_sweep_result_has_entity_final_states(self) -> None:
-        """Each result should have final wealth for all entities."""
+        """Each result should have final wealth for all entities.
+
+        Spec-064: per-entity final wealth keys (final_p_w_wealth,
+        final_p_c_wealth, final_c_b_wealth, final_c_w_wealth) are gone
+        with the legacy in-memory imperial-circuit scenario. The new
+        result dict only carries scope-level ``final_wealth``.
+        """
         module = load_parameter_analysis_module()
         result = module.run_sweep(
             param_path="economy.extraction_efficiency",

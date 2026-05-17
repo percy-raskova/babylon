@@ -31,6 +31,7 @@ See Also:
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +41,9 @@ from uuid import UUID
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
     from babylon.persistence import PostgresRuntime
+
+
+logger = logging.getLogger(__name__)
 
 
 class InitializationError(RuntimeError):
@@ -121,6 +125,103 @@ def _validate_alpha_invariant(defines: GameDefines) -> None:
             f"Pick a smaller alpha_annual (current value: "
             f"{defines.economy.alpha_annual!r})."
         )
+
+
+# ---------------------------------------------------------------------------
+# Spec-065 T036 / FR-022: reference-data window preflight
+# ---------------------------------------------------------------------------
+
+
+# Required reference tables and their column-bound source-of-truth queries.
+# Each entry: table_name → SQL returning (min_year, max_year). Used by
+# _preflight_reference_data_window to compute available windows.
+_REQUIRED_REFERENCE_TABLES: dict[str, str] = {
+    "fact_qcew_annual": (
+        "SELECT MIN(t.year), MAX(t.year) FROM fact_qcew_annual fq "
+        "JOIN dim_time t ON t.time_id = fq.time_id"
+    ),
+    "fact_bea_county_gdp": (
+        "SELECT MIN(t.year), MAX(t.year) FROM fact_bea_county_gdp fbg "
+        "JOIN dim_time t ON t.time_id = fbg.time_id"
+    ),
+    "fact_census_income": (
+        "SELECT MIN(t.year), MAX(t.year) FROM fact_census_income fci "
+        "JOIN dim_time t ON t.time_id = fci.time_id"
+    ),
+}
+
+
+def _preflight_reference_data_window(
+    *,
+    sqlite_path: Path,
+    start_year: int,
+    scenario_length_years: int,
+) -> tuple[int, list[str]]:
+    """Probe each required reference table; return (clamped_length, warnings).
+
+    Three-mode policy (FR-022 / spec-065 T036):
+
+      - **silent**: requested window ⊆ every table's window — return
+        (scenario_length_years, []).
+      - **warn-and-clamp**: requested window extends beyond at least
+        one table — clamp scenario_length to fit the smallest available
+        window, return (clamped, warnings).
+      - **hard-refuse**: ``start_year`` is BEFORE the earliest year in
+        any required table — raise :class:`InitializationError` with
+        the FR-022 named-triple format. The CLI is expected to map
+        :class:`InitializationError` to exit code 3.
+
+    Args:
+        sqlite_path:           Path to ``marxist-data-3NF.sqlite``.
+        start_year:            Requested first simulation year.
+        scenario_length_years: Requested number of years.
+
+    Returns:
+        ``(allowed_scenario_length_years, warning_messages)``. If silent,
+        the second element is an empty list.
+
+    Raises:
+        InitializationError: If start_year predates any table's first
+            year (the hard-refuse mode).
+        FileNotFoundError: If sqlite_path doesn't exist.
+    """
+    if not sqlite_path.is_file():
+        raise FileNotFoundError(
+            f"SQLite reference DB not found at {sqlite_path}; FR-022 preflight cannot run"
+        )
+
+    requested_end_year = start_year + scenario_length_years - 1
+    allowed_end_year = requested_end_year
+    warnings_collected: list[str] = []
+
+    with sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True) as conn:
+        for table_name, query in _REQUIRED_REFERENCE_TABLES.items():
+            row = conn.execute(query).fetchone()
+            if row is None or row[0] is None or row[1] is None:
+                # Table is empty entirely — hard-refuse.
+                raise InitializationError(
+                    f"ERROR REFERENCE_DATA_MISSING: {table_name} is empty; "
+                    f"cannot run any simulation against this SQLite snapshot."
+                )
+            tbl_min, tbl_max = int(row[0]), int(row[1])
+
+            if start_year < tbl_min:
+                raise InitializationError(
+                    f"ERROR REFERENCE_DATA_MISSING: {table_name} starts at "
+                    f"year={tbl_min}; requested start_year={start_year} predates "
+                    f"the available window."
+                )
+            if tbl_max < allowed_end_year:
+                # Clamp the allowed end year to fit this table's coverage.
+                warnings_collected.append(
+                    f"WARN REFERENCE_DATA_CLAMP: {table_name} ends at "
+                    f"year={tbl_max}; requested end_year={requested_end_year} "
+                    f"exceeds the available window. Clamping scenario length."
+                )
+                allowed_end_year = tbl_max
+
+    allowed_length = max(1, allowed_end_year - start_year + 1)
+    return allowed_length, warnings_collected
 
 
 def copy_reference_series(
@@ -339,6 +440,21 @@ def initialize_session(
         if scenario_length_years is not None
         else defines.economy.scenario_length_years
     )
+
+    # Spec-065 T036 / FR-022: reference-data window preflight.
+    # Three-mode policy: silent / warn-and-clamp / hard-refuse (raise).
+    # Hard-refuse manifests as InitializationError → CLI exit 3.
+    allowed_length, preflight_warnings = _preflight_reference_data_window(
+        sqlite_path=sqlite_path,
+        start_year=start_year,
+        scenario_length_years=scenario_length,
+    )
+    for msg in preflight_warnings:
+        # FR-022 requires stderr; logger at WARNING level routes to stderr
+        # by default in the headless runner's logging config.
+        logger.warning("%s", msg)
+    if allowed_length < scenario_length:
+        scenario_length = allowed_length
 
     report = InitializationReport(session_id=session_id, sqlite_path=sqlite_path.resolve())
 

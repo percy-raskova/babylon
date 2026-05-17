@@ -10,6 +10,17 @@ maintaining type safety through Pydantic validation.
 Sprint 3.4.3 (George Jackson Refactor): ideology parameter accepts both
 float (legacy) and IdeologicalProfile (new format). Float values are
 automatically converted to IdeologicalProfile by the SocialClass validator.
+
+Spec-066 baseline (placeholder) per ADR043 + data-model.md section 2:
+the bridged runner passes ``IdeologicalProfile(class_consciousness=0.1,
+national_identity=0.5)`` to every entity. The bridge's ternary mapping
+(r = cc * (1 - ni), f = ni * (1 - cc), l = 1 - r - f) yields the target
+placeholder (r=0.05, l=0.50, f=0.45) per Clarifications Q3. The rejected
+high-cc / high-ni alternative ``(cc=0.5, ni=0.9)`` is theoretically dubious:
+Marx treats class consciousness and national identity as antagonistic, so
+co-existing high values are unstable. Per-county data-driven seeding is
+deferred to a future spec; the placeholder must remain explicit and
+uniform across all 83 x 2 = 166 entities until that work lands.
 """
 
 from __future__ import annotations
@@ -29,7 +40,7 @@ def create_proletariat(
     id: str = PERIPHERY_WORKER_ID,
     name: str = "Proletariat",
     wealth: Currency = 0.5,
-    ideology: float | IdeologicalProfile = -0.3,
+    ideology: float | IdeologicalProfile | None = None,
     organization: Probability = 0.1,
     repression_faced: Probability = 0.5,
     subsistence_threshold: Currency = 0.3,
@@ -39,6 +50,7 @@ def create_proletariat(
     effective_wealth: Currency = 0.0,
     unearned_increment: Currency = 0.0,
     ppp_multiplier: float = 1.0,
+    county_fips: str | None = None,
 ) -> SocialClass:
     """Create a proletariat (exploited class) social class.
 
@@ -53,7 +65,13 @@ def create_proletariat(
         id: Unique identifier matching ^C[0-9]{3}$ pattern (default: "C001")
         name: Human-readable name (default: "Proletariat")
         wealth: Economic resources (default: 0.5)
-        ideology: Ideological position, -1=revolutionary to +1=reactionary (default: -0.3)
+        ideology: Ideological position. Accepts ``float`` (legacy, scalar
+            -1=revolutionary..+1=reactionary), ``IdeologicalProfile``
+            (spec-066 placeholder + future per-county data), or ``None``
+            to use the legacy default ``-0.3``. The spec-066 bridged
+            runner passes ``IdeologicalProfile(class_consciousness=0.1,
+            national_identity=0.5)`` to every county entity to materialize
+            the placeholder (r=0.05, l=0.50, f=0.45).
         organization: Collective cohesion (default: 0.1)
         repression_faced: State violence level (default: 0.5)
         subsistence_threshold: Minimum wealth for survival (default: 0.3)
@@ -74,6 +92,8 @@ def create_proletariat(
         >>> worker.wealth
         0.5
     """
+    if ideology is None:
+        ideology = -0.3  # legacy scalar default; validator converts to IdeologicalProfile
     return SocialClass(
         id=id,
         name=name,
@@ -89,6 +109,7 @@ def create_proletariat(
         effective_wealth=effective_wealth,
         unearned_increment=unearned_increment,
         ppp_multiplier=ppp_multiplier,
+        county_fips=county_fips,
     )
 
 
@@ -96,7 +117,7 @@ def create_bourgeoisie(
     id: str = COMPRADOR_ID,
     name: str = "Bourgeoisie",
     wealth: Currency = 10.0,
-    ideology: float | IdeologicalProfile = 0.8,
+    ideology: float | IdeologicalProfile | None = None,
     organization: Probability = 0.7,
     repression_faced: Probability = 0.1,
     subsistence_threshold: Currency = 0.1,
@@ -106,6 +127,7 @@ def create_bourgeoisie(
     effective_wealth: Currency = 0.0,
     unearned_increment: Currency = 0.0,
     ppp_multiplier: float = 1.0,
+    county_fips: str | None = None,
 ) -> SocialClass:
     """Create a bourgeoisie (exploiter class) social class.
 
@@ -120,7 +142,13 @@ def create_bourgeoisie(
         id: Unique identifier matching ^C[0-9]{3}$ pattern (default: "C002")
         name: Human-readable name (default: "Bourgeoisie")
         wealth: Economic resources (default: 10.0)
-        ideology: Ideological position, -1=revolutionary to +1=reactionary (default: 0.8)
+        ideology: Ideological position. Accepts ``float`` (legacy, scalar
+            -1=revolutionary..+1=reactionary), ``IdeologicalProfile``
+            (spec-066 placeholder + future per-county data), or ``None``
+            to use the legacy default ``0.8``. The spec-066 bridged
+            runner passes ``IdeologicalProfile(class_consciousness=0.1,
+            national_identity=0.5)`` to every county entity to materialize
+            the placeholder (r=0.05, l=0.50, f=0.45).
         organization: Collective cohesion (default: 0.7)
         repression_faced: State violence level (default: 0.1)
         subsistence_threshold: Minimum wealth for survival (default: 0.1)
@@ -141,6 +169,8 @@ def create_bourgeoisie(
         >>> owner.wealth
         10.0
     """
+    if ideology is None:
+        ideology = 0.8  # legacy scalar default; validator converts to IdeologicalProfile
     return SocialClass(
         id=id,
         name=name,
@@ -156,6 +186,7 @@ def create_bourgeoisie(
         effective_wealth=effective_wealth,
         unearned_increment=unearned_increment,
         ppp_multiplier=ppp_multiplier,
+        county_fips=county_fips,
     )
 
 

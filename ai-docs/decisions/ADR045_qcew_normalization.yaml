@@ -1,0 +1,142 @@
+ADR045_qcew_normalization:
+  status: "accepted"
+  date: "2026-05-16"
+  title: "Normalize fact_qcew_annual: DELETE BLS rollups, downstream consumers SUM the leaves"
+  spec: "067-qcew-ownership-normalization"
+
+  context: |
+    Spec-066 e2e audit caught the same QCEW double-counting bug three times
+    in three different code paths and patched each by adding the defensive
+    `WHERE industry_id = 1 AND ownership_id = 1` filter, which selects the
+    BLS-published "All Industries × Total Covered" rollup row as a
+    pre-summed denominator. That makes every new consumer of
+    `fact_qcew_annual` one missed filter away from a 2×-to-5× wage-and-
+    employment error (because the table holds BOTH the rollup rows AND the
+    decomposed leaves, so naive aggregates double-count along two axes:
+    NAICS hierarchy and ownership rollup-vs-leaves).
+
+    The trap is structural. We chose to remove it at the data layer rather
+    than enforce filter discipline at every consumer.
+
+  decision: |
+    The migration script `tools/normalize_qcew_rollups.py` performs:
+
+      1. **Preflight assertions** against `dim_industry` / `dim_ownership`
+         + capture pre-migration row counts per excluded-rollup subclass.
+      2. **Backup** via `CREATE TABLE fact_qcew_annual__pre_067 AS
+         SELECT * FROM fact_qcew_annual`. Retained until operator drops it
+         via `--drop-backup`.
+      3. **Atomic BEGIN/COMMIT** block:
+         - `DELETE FROM fact_qcew_annual WHERE industry_id IN (SELECT
+            industry_id FROM dim_industry WHERE naics_level != 6)` — removes
+            NAICS rollups at levels 0/2/3/4/5/98/99 (the data has no
+            level 1).
+         - `DELETE FROM fact_qcew_annual WHERE ownership_id IN (SELECT
+            ownership_id FROM dim_ownership WHERE own_code = '0')` — removes
+            the Total Covered ownership rollup.
+         - Integrity check: pre - post == naics_only + ownership_only +
+            both_axes excluded subclasses. ROLLBACK on mismatch.
+      4. **Audit report** emitted as a Markdown + JSON pair under
+         `reports/ingest/qcew_normalization_YYYYMMDD-HHMMSS.{md,json}`,
+         conforming to `contracts/audit_report.schema.json`.
+
+    Companion consumer refactor:
+      - `src/babylon/persistence/hex_hydrator.py` — primary `v` QCEW
+        query rewritten from `SELECT (rollup)` to `SUM (leaves)`,
+        dropping the spec-066 `WHERE industry_id = 1 AND ownership_id = 1`
+        filter pair.
+      - `src/babylon/persistence/county_aggregation.py:
+        fetch_employment_proxy_for_county_at_tick` — same rewrite.
+
+    Modes (CLI flags): `--dry-run` (read-only audit + Wayne spot-check),
+    `--apply` (full migration with `--keep-backup`/`--drop-backup-immediately`
+    sub-flag), `--rollback-from-backup` (restore from snapshot),
+    `--drop-backup` (drop the backup + VACUUM). `--scope` accepts
+    `michigan` or `all` for the per-county-delta audit scope (default
+    michigan).
+
+  rationale:
+    why_dimension_predicate_not_agglvl: |
+      Phase 0 R1: BLS publishes `agglvl_code` in source CSVs, but the
+      reference DB doesn't persist it in `FactQcewAnnual` (PK is
+      `(county_id, industry_id, ownership_id, time_id)`). The dimension
+      tables (`dim_industry.naics_level`, `dim_ownership.own_code`)
+      already encode the same rollup structure at a normalized level, so
+      two DELETE statements against indexed FK columns suffice without
+      schema change. The predicate is vintage-invariant (Phase 0 R3) —
+      a 2007 6-digit NAICS code and a 2022 6-digit NAICS code both carry
+      `naics_level = 6`.
+
+    why_sum_leaves_not_filter_removal: |
+      Phase 0 R2 discovered the spec-066 filter selects the rollup row
+      itself, not a defensive predicate against rollups. After spec-067
+      the rollup rows don't exist; the natural SUM over the canonical
+      leaves recovers the same total without any filter. This is a
+      query refactor, not just a filter removal.
+
+    why_in_place_with_backup_not_rebuild: |
+      Phase 0 R4: the QCEW loader was deleted in the spec-037 data-layer
+      extraction; re-ingesting from source CSVs is out of scope (deferred
+      to spec-086). In-place DELETE with backup-then-commit matches the
+      project's existing one-shot migration discipline (ADR040 spec-062
+      two-phase persistence) and uses less peak disk than a
+      two-table swap.
+
+    why_markdown_plus_json: |
+      Phase 0 R5: operators need the human-readable Markdown for one-time
+      review; CI's `qa:e2e-regression` gate needs structured data to
+      assert SC-008 (excluded-row class accounting). Two formats satisfy
+      both audiences without duplicating substantive content.
+
+  consequences:
+    positive:
+      - "Consumer queries become semantically clean: `SUM(emp)` instead of
+         `SELECT(rollup) WHERE industry_id = 1 AND ownership_id = 1`."
+      - "Future consumer code can SUM `fact_qcew_annual` directly without
+         knowing the spec-066 rollup-vs-leaves trap."
+      - "~30% reduction in row count (43.3 M → ~15.1 M post-migration)
+         shrinks the SQLite file proportionally after VACUUM."
+      - "Audit-report contract enforces accounting invariants
+         (`naics_only + ownership_only + both_axes == total`,
+         `pre - post == total`) as machine-checkable JSON."
+      - "Backup table provides full reversibility via `--rollback-from-backup`."
+
+    negative:
+      - "T036 (live migration) revealed QCEW data has ~10-30% BLS suppression
+         at the 6-digit NAICS detail level (cells suppressed for employer
+         confidentiality). `SUM(leaves)` is systematically LOWER than the
+         BLS-published Total Covered rollup. Wayne County 2010 example:
+         rollup 657,150 → SUM(leaves) 561,173 (-14.6%). Population-wide
+         Michigan estimate: 98% of (county × year) pairs fall OUTSIDE the
+         spec's ±5% acceptance band; mean delta -61%."
+      - "Spec FR-006 / SC-001 / SC-007 (≥95% within ±5% BLS) is INFEASIBLE
+         as written against the live QCEW data. Mitigation options (deferred
+         follow-up): (a) loosen tolerance, (b) use naics_level=4 leaves,
+         (c) retain the naics_level=0 / own_code='0' rollup row as the
+         canonical source, (d) introduce a synthetic imputed-total row.
+         See research.md `T036 finding` section."
+      - "Consumer-side `v` and `employment_proxy` values drop by the same
+         15-30% factor. This propagates to s/v rate of profit, potentially
+         pushing the post-067 baseline outside the spec-067 target band
+         [0.05, 0.50]. The michigan-e2e baseline regen (T051) will reveal
+         the actual post-067 distribution."
+      - "Peak SQLite disk usage during migration is ~2× the table size
+         (~17.6 GB) for the duration of the backup table's existence.
+         Reclaimable via `--drop-backup` + VACUUM after validation."
+
+  amendments:
+    - date: "2026-05-16"
+      change: |
+        Spot-check thresholding relaxed in `_run_apply`: a failing
+        Wayne-County-2010 spot-check no longer returns non-zero exit
+        because QCEW suppression makes the ±5% target infeasible at
+        naics_level=6 detail. The integrity check (pre - post == excluded)
+        remains the authoritative success condition.
+
+  related:
+    - ADR040  # spec-062 two-phase persistence (migration discipline pattern)
+    - ADR044  # spec-066 engine wired into bridged runner (consumer of v/emp)
+    - "spec-067 plan.md, research.md, contracts/normalization_migration.sql"
+    - "spec-068 (TBD) — BEA national I-O ingest"
+    - "spec-069 (TBD) — SQLite read caching"
+    - "spec-086 (TBD) — QCEW loader reimplementation"

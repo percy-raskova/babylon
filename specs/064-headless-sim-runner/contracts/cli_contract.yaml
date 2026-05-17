@@ -1,0 +1,216 @@
+contract: cli
+contract_version: "1.0"
+feature: 064-headless-sim-runner
+description: >-
+  Command-line contract for the headless simulation runner. Lists every
+  accepted flag, its default, and the canonical scope-predefined-name
+  registry. Also lists every exit code and the semantic meaning. Tests in
+  tests/unit/engine/test_headless_runner_cli.py assert against this
+  contract.
+
+entry_points:
+  - mise: "sim:e2e-michigan"
+    invocation: "mise run sim:e2e-michigan -- [flags]"
+  - python_module: "python -m babylon.engine.headless_runner [flags]"
+  - python_import: |
+      from babylon.engine.headless_runner import run
+      result = run(SimulationRunConfig(...))
+
+flags:
+  - name: "--ticks"
+    type: "int"
+    default: 1000
+    constraints: "1 <= ticks <= 100000"
+    description: "Number of weekly ticks to simulate."
+
+  - name: "--start-year"
+    type: "int"
+    default: 2010
+    constraints: "1900 <= year <= 2100"
+    description: >-
+      Calendar year corresponding to tick 0. Default 2010 anchors the
+      run inside the historical data window per spec clarification Q5.
+
+  - name: "--seed"
+    type: "int"
+    default: 2010
+    description: >-
+      Top-level RNG seed plumbed via SimulationConfig.random_seed.
+      Default is the constant 2010 (NOT time-derived) so the canonical
+      invocation is deterministic.
+
+  - name: "--scope"
+    type: "str"
+    default: "michigan-canada"
+    enum:
+      - "michigan-canada"
+      - "michigan-statewide-no-canada"
+      - "detroit-tri-county"
+      - "national"
+    description: >-
+      Predefined scope name. See `predefined_scopes` section below.
+      Mutually exclusive with --fips.
+
+  - name: "--fips"
+    type: "comma-separated string list"
+    default: null
+    description: >-
+      Explicit list of 5-digit FIPS codes overriding --scope. Example:
+      `--fips=26163,26125,26099` for Detroit tri-county.
+
+  - name: "--external"
+    type: "comma-separated string list"
+    default: "canada"
+    enum_members:
+      - "canada"
+      - "china"
+      - "rest_of_usa"
+    description: "External boundary nodes to include in the simulation graph."
+
+  - name: "--output-dir"
+    type: "path"
+    default: "reports/sim-runs/<UTC-ISO-timestamp>/"
+    description: >-
+      Override the artifact directory. If the path exists, contents are
+      overwritten silently per spec clarification Q2.
+
+  - name: "--defines"
+    type: "path"
+    default: null
+    description: >-
+      Optional TOML overlay applied on top of GameDefines.load_default().
+      Used by tools/parameter_analysis.py for parameter sweeps.
+
+  - name: "--verbose"
+    aliases:
+      - "-v"
+    type: "str"
+    default: "INFO"
+    enum:
+      - "DEBUG"
+      - "INFO"
+      - "WARNING"
+      - "ERROR"
+    description: >-
+      stderr logging level. stdout remains reserved for the artifact path.
+
+  - name: "--dry-run"
+    type: "bool"
+    default: false
+    description: >-
+      Bootstrap session + run tick 0 only; useful for smoke-testing the
+      hydration + persistence path without paying the full tick-loop cost.
+
+predefined_scopes:
+  michigan-canada:
+    fips_count: 83
+    description: "All 83 Michigan counties + Canada boundary node (canonical)"
+    external:
+      - "canada"
+
+  michigan-statewide-no-canada:
+    fips_count: 83
+    description: "All 83 Michigan counties; no external boundary nodes"
+    external: []
+
+  detroit-tri-county:
+    fips:
+      - "26163"
+      - "26125"
+      - "26099"
+    description: "Wayne / Oakland / Macomb tri-county; the spec-063 fixture"
+    external:
+      - "canada"
+
+  national:
+    description: "All 3,222 US counties (from SQLite reference) + Canada + China"
+    external:
+      - "canada"
+      - "china"
+    note: "WARNING - perf budget not validated at this scale; opt-in only"
+
+exit_codes:
+  "0":
+    name: "SUCCESS"
+    triggers:
+      - "Full --ticks completed without error"
+      - "End-game condition fired (valid early termination)"
+    artifacts: "Full bundle written"
+
+  "130":
+    name: "USER_INTERRUPTED"
+    triggers:
+      - "SIGINT received during tick loop (Ctrl-C)"
+    artifacts: "Partial bundle written; manifest.json flagged partial=true"
+    semantic: "Standard Unix SIGINT exit code (128 + SIGINT signal 2)"
+
+  "1":
+    name: "ENGINE_FAILURE"
+    triggers:
+      - "Engine raised an exception not caught by any system"
+    artifacts: "Best-effort partial bundle"
+
+  "2":
+    name: "CONFIG_ERROR"
+    triggers:
+      - "Invalid CLI flag value"
+      - "Unknown predefined scope"
+      - "Conflicting --scope and --fips"
+      - "FIPS code malformed (not 5 digits)"
+    artifacts: "None"
+
+  "3":
+    name: "REFERENCE_DATA_MISSING"
+    triggers:
+      - "SQLite reference DB not found"
+      - "Hex hydration produced zero rows"
+      - "LODES data missing for target year range"
+    artifacts: "None"
+    operator_hint: "Run `mise run data:tiger-sqlite` to bootstrap reference data"
+
+  "4":
+    name: "POSTGRES_UNREACHABLE"
+    triggers:
+      - "Connection pool initialization failure"
+      - "Migration apply failed"
+      - "Schema mismatch detected at session init"
+    artifacts: "None"
+
+stdout_contract:
+  description: >-
+    On exit code 0 ONLY, stdout receives exactly one line: the absolute
+    path of the artifact directory, terminated by a newline. No other
+    output is permitted on stdout. This is the FR-012 capture contract
+    for $(mise run sim:e2e-michigan).
+  examples:
+    - "/home/user/projects/game/babylon/reports/sim-runs/2026-05-14T16-30-00Z/\n"
+
+stderr_contract:
+  description: >-
+    All progress, logging, errors, and tqdm output goes to stderr. The
+    interactive tqdm progress bar is auto-suppressed when stderr is not
+    a TTY (CI, piped output, redirected logs). Logging respects
+    --verbose level.
+  error_message_format:
+    template: "ERROR <exit_code_name>: <message> | partial_artifacts=<path-or-NONE>"
+    description: >-
+      On every non-zero exit, the runner MUST emit exactly one line in
+      this format to stderr immediately before process termination.
+      <exit_code_name> is a name from `exit_codes` (e.g., ENGINE_FAILURE).
+      <message> is a single-sentence explanation. <path-or-NONE> is
+      either the absolute artifact-directory path (when a partial bundle
+      was written, e.g., on SIGINT or mid-run exception) or the literal
+      token NONE.
+    examples:
+      - >-
+        ERROR REFERENCE_DATA_MISSING: SQLite reference DB not found at
+        data/sqlite/marxist-data-3NF.sqlite | partial_artifacts=NONE
+      - >-
+        ERROR POSTGRES_UNREACHABLE: Connection pool failed to open
+        (port 5433) | partial_artifacts=NONE
+      - >-
+        ERROR ENGINE_FAILURE: ValueError in ImperialRentSystem at tick 247
+        | partial_artifacts=/home/user/projects/game/babylon/reports/sim-runs/2026-05-14T16-30-00Z/
+      - >-
+        ERROR USER_INTERRUPTED: SIGINT received at tick 412
+        | partial_artifacts=/home/user/projects/game/babylon/reports/sim-runs/2026-05-14T16-30-00Z/

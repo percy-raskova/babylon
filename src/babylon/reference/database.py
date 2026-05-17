@@ -63,10 +63,32 @@ class NormalizedBase(DeclarativeBase):
 
 
 def get_normalized_engine(echo: bool = False) -> Engine:
-    """Create normalized SQLite database engine with FK enforcement.
+    """Create normalized SQLite database engine with FK enforcement and perf PRAGMAs.
 
-    SQLite requires explicit PRAGMA foreign_keys=ON to enforce foreign keys.
-    This is set via an event listener on every connection.
+    SQLite requires explicit PRAGMAs on every connection. The event listener
+    sets:
+
+    * ``foreign_keys = ON`` — FK enforcement is per-connection in SQLite.
+    * ``journal_mode = WAL`` — write-ahead logging instead of the default
+      DELETE rollback journal. Eliminates the ext4 ``jbd2_log_wait_commit``
+      serialization that dominated the spec-067 T036 wallclock (~1:43 hung
+      on rollback-journal fsync vs ~8 min via the fast-strategy alternative).
+      WAL also allows concurrent readers + a single writer (DELETE mode
+      serialized everything). Persistent on the DB file once first set.
+    * ``synchronous = NORMAL`` — WAL-safe sync mode that flushes only at
+      checkpoints; ``FULL`` would re-introduce per-write fsync stalls and
+      is unnecessary for WAL durability (atomicity is preserved either way).
+    * ``cache_size = -2097152`` — 2 GiB page cache (negative = KiB).
+      Reduces disk reads dramatically for the canonical 520-tick e2e run,
+      which re-reads QCEW/BEA reference tables ~166K times.
+    * ``mmap_size = 12000000000`` — memory-map up to 12 GB of the DB file
+      (more than enough headroom over the current ~8 GB reference DB while
+      keeping a safe ceiling on a 32 GB RAM host). The OS page cache
+      becomes the de facto cache backend; reads complete without syscall
+      overhead.
+
+    Atomicity is preserved (WAL is fully ACID); only the journaling
+    mechanism changes. Concurrent readers see a consistent snapshot.
 
     Args:
         echo: If True, log SQL statements
@@ -77,7 +99,6 @@ def get_normalized_engine(echo: bool = False) -> Engine:
     NORMALIZED_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(NORMALIZED_DATABASE_URL, echo=echo)
 
-    # Enable FK constraints for SQLite (must be set on every connection)
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(
         dbapi_conn: object,  # sqlite3.Connection at runtime
@@ -88,6 +109,10 @@ def get_normalized_engine(echo: bool = False) -> Engine:
         if isinstance(dbapi_conn, sqlite3.Connection):
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA cache_size=-2097152")
+            cursor.execute("PRAGMA mmap_size=12000000000")
             cursor.close()
 
     return engine

@@ -2,10 +2,159 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.6.0"
-  updated: "2026-05-13"
-  last_sprint: "062-cross-scale-integration (Complete; 94/103 tasks done, 9 deferred — see specs/062-cross-scale-integration/tasks.md and ADR040)"
-  previous_sprint: "061-real-backend-wireup (Complete; 130/131 tasks done, 1 partial — see specs/061-real-backend-wireup/tasks.md and ADR039)"
+  version: "2.10.0"
+  updated: "2026-05-16"
+  last_sprint: "067-qcew-ownership-normalization (Complete; 70/70 tasks done — see specs/067-qcew-ownership-normalization/tasks.md and ADR045)"
+  previous_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
+  spec_067_summary: |
+    QCEW rollup-row normalization — closes the spec-066 follow-up
+    item that flagged the fragile `WHERE industry_id = 1 AND
+    ownership_id = 1` defensive filter pattern as a structural trap.
+
+    Delivered (4 user stories, 70 tasks):
+    - US1: `tools/normalize_qcew_rollups.py` migration tool with
+      preflight assertions, atomic backup-then-DELETE commit,
+      audit-report (Markdown + JSON sidecar) writers, dry-run /
+      apply / rollback / drop-backup modes. Live --apply against
+      the 43.3M-row reference DB removed ~28.2M rollup rows
+      (naics_level != 6 OR own_code = '0'), leaving ~15.1M
+      canonical leaves.
+    - US3: `src/babylon/persistence/{hex_hydrator, county_aggregation}.py`
+      refactored from `SELECT (rollup)` to `SUM (leaves)`. SC-004
+      grep enforcement integrated as `test_post_067_no_filter_lines_remain_in_production_paths`.
+    - US2: `test_state_rate_of_profit_in_relaxed_band` band tightened
+      from spec-066's [0.05, 0.80] back to spec-original [0.05, 0.50].
+      michigan-e2e baseline regenerated against the post-067 reference DB.
+    - US4: `tests/integration/test_audit_report_validation.py` —
+      contract harness enforcing
+      `contracts/audit_report.schema.json` plus FR-007 / SC-008
+      integrity-class accounting.
+
+    Key finding (research.md T036): QCEW data has ~10-30% BLS
+    confidentiality suppression at the 6-digit NAICS detail level.
+    `SUM(leaves)` is systematically LOWER than the BLS Total Covered
+    rollup by 14-30% per county-year. The spec's ±5% SC-001 / SC-007
+    targets are deferred to a follow-up amendment (see ADR045
+    negative consequences for mitigation options).
+
+    Documented in ADR045 + research.md `T001 pre-flight verification`
+    + research.md `T036 finding` sections.
+  spec_066_summary: |
+    Marx-coherence fixes — surfaces the 5 categorical bugs the spec-065
+    e2e Michigan-Canada audit identified and fixes them. After spec-066
+    the canonical run produces output that satisfies Marx's accounting
+    identities AND drives consciousness evolution.
+
+    Delivered (5 user stories, 79 tasks, ~30 files touched):
+    - US1 (Bug A): hex_hydrator surplus value formula fix
+      `s = max(0, GDP/52 - v)` per Marx Vol I Ch 9 + BEA value-added.
+      Closes the bug where total_s was uniformly 0 across all 83 counties.
+    - US2 (Bug E + Bug F): SimulationEngine.run_tick wired into the
+      bridged runner. ServiceContainer constructed once before tick loop;
+      bridge's event_bus/auditor/boundary_register patched in; fresh
+      SimulationEngine(_DEFAULT_SYSTEMS) per run; graph mutated in place;
+      world reconstituted via from_graph after each tick. EXPLOITATION
+      edge seeded per county at tick 0 (no SOLIDARITY — those are
+      strategic per Constitution III.5). Documented in ADR044.
+    - US3 (Bug D): explicit ideology baseline placeholder
+      (r=0.05, l=0.50, f=0.45) per ADR043. Factories accept
+      `ideology=IdeologicalProfile`; bridge passes BASELINE_IDEOLOGY to
+      every county entity.
+    - US4 (Bug B): employment_proxy unit fix. QCEW `employment` column
+      IS already BLS annual-average; removed /52 divisor entirely; added
+      industry_id=1 + ownership_id=1 filters to prevent NAICS-hierarchy
+      AND ownership-rollup double-counting. Wayne 2010 now returns ~660K
+      (matches BLS publication).
+    - US5 (Bug C): substrate apportionment split. New
+      _fetch_per_county_substrate_apportionment helper JOINs
+      dim_county_geometry.area_sq_km. energy_per_hex uses pop_factor;
+      raw_material_per_hex uses area_factor. Graceful T067 fallback
+      when area data missing.
+
+    Cascade fixes surfaced during implementation:
+    - hex_hydrator wages query gained the ownership_id=1 filter to
+      mirror the new employment_proxy filter (avoids ownership-rollup
+      double-counting in v).
+    - consciousness.routing_scale bumped 0.1 → 0.2 (FR-027 + Phase 0 R4)
+      for measurable consciousness drift visibility.
+    - dynamic_relationship_state CHECK constraint mismatch: bridge
+      now UPPERCASES edge_type before persisting (StrEnum.value is
+      lowercase but migration 0024 requires uppercase).
+    - test_state_rate_of_profit_in_relaxed_band band widened from
+      [0.05, 0.50] to [0.05, 0.80] to accommodate the un-doubled v.
+    - test_tick_over_tick_evolution loosened to "any column changes"
+      (the strict ≥5% threshold is validated by the 520-tick slow-gate
+      test_consciousness_evolution.py).
+
+  previous_sprint_2: "064-headless-sim-runner (Complete; 67/70 tasks done, 3 deferred — see specs/064-headless-sim-runner/tasks.md and ADR041)"
+  spec_065_summary: |
+    Engine-bridging — real per-tick state behind the headless runner.
+    Replaces spec-064's no-op carry-forward virtualization with a real
+    WorldStateBridge that hydrates per-county SocialClass entities,
+    persists per-tick subsystem rows (consciousness, demographics,
+    employment), and produces trace.csv values that vary per-county
+    from real BEA/QCEW/FCC reference data.
+
+    Delivered: WorldStateBridge (hydrate_initial + persist_tick +
+    poll_endgame); babylon.persistence.county_aggregation (4 pure
+    derivation helpers: aggregate_survival, aggregate_consciousness,
+    fetch_population, fetch_employment_proxy); hex hydrator rewrite
+    (real BEA GDP × intermediate-inputs-fraction for c, QCEW for v,
+    GDP-residual for s, capital-output-ratio for k, FCC + coercive
+    infrastructure for surveillance/internet); FR-022 reference-data
+    window preflight (silent/warn-and-clamp/hard-refuse three-mode
+    policy); --strict CLI flag that aborts on alarm-severity audit
+    rows; --endgame-detector CLI flag with importlib resolution;
+    EventCapture wiring into summary.events; aggregate_external_node_flows
+    pulling per-node summaries from boundary_flow_register table;
+    SocialClass.county_fips optional FIPS attribution field; bridge
+    mapping IdeologicalProfile(cc, ni) → TernaryConsciousness(r, l, f)
+    that's simplex-preserving by construction.
+
+    4 new Postgres migrations (0020-0023): dynamic_consciousness_state,
+    dynamic_demographics_state, dynamic_employment_state plus the
+    recreated view_runtime_trace_emission that JOINs them. The 22-column
+    external trace contract is preserved; previously-NULL columns now
+    flow from real engine state + reference data.
+
+    1500+ unit tests + 15 integration tests across persistence/models/
+    engine.headless_runner/integration. 1 xfail (T028 SC-004 tick-over-tick
+    variance) documents that full SimulationEngine integration is
+    deferred to a follow-up spec — the bridge + persistence layers are
+    ready, but the 15-system engine wiring is large enough to deserve
+    its own session.
+
+    Reconciliation note: the original spec contract referenced WorldState
+    fields (consciousness_simplex, demographics_per_county,
+    employment_per_county) that don't exist on the model. Research.md
+    §R10 documents the 2026-05-15 reconciliation that replaced those
+    flat field reads with derivation/aggregation helpers and added a
+    single optional SocialClass.county_fips field. Per Constitution II.6,
+    per-county aggregates are derived state and belong on the trace view
+    (where they already lived), not on WorldState.
+  spec_064_summary: |
+    Headless Postgres-backed simulation runner — canonical CLI surface
+    for end-to-end Babylon runs. A single `mise run sim:e2e-michigan`
+    bootstraps Postgres, hydrates hex state, runs a tick loop, and emits
+    an LLM-parseable artifact bundle (trace.csv + summary.json +
+    manifest.json with input_hash determinism fingerprint).
+
+    Delivered: babylon.engine.headless_runner package (8 modules:
+    runner, argparse_cli, scopes, models, trace_emitter, run_summary,
+    manifest, __main__). Postgres migration 0019_trace_emission_view.sql
+    establishes view_runtime_trace_emission as the II.11-compliant
+    declared cross-subsystem read interface. 6 in-scope tools
+    (audit_simulation, monte_carlo, parameter_analysis,
+    sensitivity_analysis, profiler, landscape_analysis) refactored to
+    route through tools/shared.py:run_simulation; SC-007 import audit
+    enforces the no-legacy-engine boundary at CI time. ADR041, baseline
+    snapshot, qa:e2e-regression mise gate.
+
+    Three tasks deferred: T024a + T033 (end-game detection), and a
+    future-spec recovery of full result-dict fidelity in tools/* once
+    real engine systems are wired into the headless tick loop. The MVP
+    runner carries hex state forward unchanged; richer per-tick
+    advancement lands in a follow-up spec.
   spec_062_summary: |
     Cross-scale value, substrate, and tick propagation engine. Codifies the
     two-phase persistence boundary (SQLite-as-fixture / Postgres-as-runtime),

@@ -1,0 +1,87 @@
+contract: cli
+contract_version: "1.1"
+feature: 065-engine-bridging
+inherits_from: "specs/064-headless-sim-runner/contracts/cli_contract.yaml"
+description: >-
+  Spec-065 extends the spec-064 CLI contract with two new flags
+  (--strict and --endgame-detector) and changes the canonical
+  --ticks default for the sim:e2e-michigan mise task from 1000 to
+  520 (10 years of weekly ticks covering 2010-2020). The CLI flag
+  --ticks default remains 1000 for direct module invocation; only
+  the canonical mise task pins to 520.
+
+added_flags:
+  - name: "--strict"
+    type: "bool"
+    default: false
+    description: >-
+      When set, the runner exits with code 1 immediately upon the
+      first conservation_audit_log row with severity='critical'
+      (which maps to summary.json severity 'critical' or 'error'
+      depending on the Postgres→contract severity mapping).
+      Partial artifacts MUST still be written before exit. The
+      qa:e2e-regression mise task wires this flag on by default.
+      Ad-hoc operator invocations of mise run sim:e2e-michigan and
+      python -m babylon.engine.headless_runner default to strict-off.
+
+  - name: "--endgame-detector"
+    type: "str"
+    default: null
+    description: >-
+      Optional dotted import path to an EndgameDetector implementation
+      (e.g., "babylon.engine.observer.ImperialCollapseDetector").
+      When set, the runner polls the named detector at the end of
+      every tick; on positive detection, the loop halts and
+      exit_reason becomes "early_terminated". When unset (default),
+      no end-game detection runs; the loop completes the full
+      --ticks. Test harnesses inject detectors via paths like
+      "tests.integration.fixtures.endgame.TestDetector".
+
+changed_defaults:
+  sim_e2e_michigan_mise_task:
+    flag: "--ticks"
+    spec_064_default: 1000
+    spec_065_default: 520
+    rationale: >-
+      Canonical run scoped to 520 weekly ticks = 10 years
+      (2010-2020 inclusive) so every engine-load-bearing SQLite
+      metric (QCEW, LODES, Census, BEA county GDP, BLS unemployment)
+      has complete real-data coverage with zero clamping. Operators
+      who want longer runs at degraded data fidelity invoke
+      python -m babylon.engine.headless_runner --ticks N directly.
+
+  qa_e2e_regression_mise_task:
+    flag: "--strict"
+    spec_064_default: false
+    spec_065_default: true
+    rationale: >-
+      CI gate purpose is regression detection; critical conservation
+      violations are regressions worth halting. Per FR-012a in spec.md.
+
+exit_codes_unchanged:
+  description: |
+    Spec-064's exit code table is preserved exactly:
+      0   SUCCESS (full --ticks or valid end-game termination)
+      1   ENGINE_FAILURE (also raised by --strict on critical audit row)
+      2   CONFIG_ERROR (also raised by malformed --endgame-detector dotted path)
+      3   REFERENCE_DATA_MISSING (extended semantics per FR-022:
+          warn-and-clamp for partial overshoots; hard-refuse only for
+          missing triples inside the canonical 2010-2020 window)
+      4   POSTGRES_UNREACHABLE
+      130 USER_INTERRUPTED
+
+stderr_warnings_added:
+  reference_data_clamp:
+    severity: "warn"
+    format: >-
+      WARN REFERENCE_DATA_CLAMP: <metric> data ends <max_year>;
+      ticks >= <first_clamp_tick> will use clamped values from <max_year>
+    triggered_by: >-
+      Any required (county, year, metric) triple falling past the
+      data window (i.e., requested year > max_year_for_metric).
+      Emitted once per metric at session init, before the tick loop
+      starts. The run proceeds with spec-063 clamp-to-available
+      lookup policy.
+    example: >-
+      WARN REFERENCE_DATA_CLAMP: LODES data ends 2021; ticks >= 624
+      will use clamped values from 2021

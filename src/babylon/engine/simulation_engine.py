@@ -33,6 +33,7 @@ ADR032: Reordered systems for materialist causality.
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 
@@ -132,11 +133,30 @@ class SimulationEngine:
         """
         self._systems = systems
         self._auditor = auditor
+        # Spec-065 T074: cumulative wallclock per system class name.
+        # Populated by :meth:`run_tick` via the ``time.perf_counter()``
+        # wrapper around each ``system.step(...)`` call. Empty until the
+        # engine actually runs (i.e., until spec-066 wires the bridged
+        # runner through ``run_tick``).
+        self._per_system_ms: dict[str, float] = {}
 
     @property
     def systems(self) -> list[System]:
         """Read-only access to registered systems."""
         return list(self._systems)
+
+    @property
+    def per_system_ms(self) -> dict[str, float]:
+        """Cumulative wallclock (ms) per system class name.
+
+        Spec-065 T074. Reset via :meth:`reset_per_system_ms` between
+        runs if the same engine instance is reused.
+        """
+        return dict(self._per_system_ms)
+
+    def reset_per_system_ms(self) -> None:
+        """Clear the per-system wallclock accumulator (T074)."""
+        self._per_system_ms.clear()
 
     @property
     def auditor(self) -> Any:
@@ -181,7 +201,18 @@ class SimulationEngine:
         # T027: Wrap system execution with log_context_scope
         with log_context_scope(tick=tick, correlation_id=correlation_id):
             for system in self._systems:
-                system.step(graph, services, context)
+                # Spec-065 T074: thin per-system wallclock wrapper. Accumulates
+                # elapsed milliseconds per system class name into
+                # ``self._per_system_ms`` for summary.json.performance.
+                system_name = type(system).__name__
+                t0 = time.perf_counter()
+                try:
+                    system.step(graph, services, context)
+                finally:
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    self._per_system_ms[system_name] = (
+                        self._per_system_ms.get(system_name, 0.0) + elapsed_ms
+                    )
 
             # Spec 062 T068: end-of-tick conservation audit.
             if self._auditor is not None:

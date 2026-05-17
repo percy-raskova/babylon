@@ -1,0 +1,453 @@
+{
+  "schema_version": "1.0.0",
+  "run_metadata": {
+    "timestamp_utc": "2026-05-17T05:56:44+00:00",
+    "migration_version": "spec-067-v1.0",
+    "database_path": "/home/user/projects/game/babylon/data/sqlite/marxist-data-3NF.sqlite",
+    "database_sha256_pre": "5a82b797a163f7f856c766d026941b803405561720307ff457bcdd50a84ab39e",
+    "database_sha256_post": "ddf4ed238d81f750e17cbfde86fa530aedefde96e81aaa4d3be2dd630b2bc4b4",
+    "migration_duration_seconds": 490.23567000100047,
+    "git_branch": "067-qcew-ownership-normalization",
+    "git_sha": "e9defe1ea8e769a131448e2eac9142f0d42e97d4"
+  },
+  "row_counts": {
+    "fact_qcew_annual_pre": 43305794,
+    "fact_qcew_annual_post": 15097464,
+    "rows_excluded": {
+      "naics_only": 28159281,
+      "ownership_only": 0,
+      "both_axes": 49049,
+      "total": 28208330
+    },
+    "integrity_check_passed": true
+  },
+  "naics_vintages": {
+    "2010": "2007",
+    "2011": "2007",
+    "2012": "2012",
+    "2013": "2012",
+    "2014": "2012",
+    "2015": "2012",
+    "2016": "2012",
+    "2017": "2017",
+    "2018": "2017",
+    "2019": "2017",
+    "2020": "2017",
+    "2021": "2017",
+    "2022": "2022",
+    "2023": "2022",
+    "2024": "2022"
+  },
+  "bls_suppressed_county_years": [],
+  "per_county_deltas": {
+    "michigan_scope_only": true,
+    "summary_stats": {
+      "counties_within_5pct_band": 0,
+      "counties_within_5pct_band_pct": 0.0,
+      "counties_with_delta_gt_10pct": 1236,
+      "max_abs_delta_pct": 94.04205607476635
+    },
+    "outliers": [
+      {
+        "county_fips": "26001",
+        "year": 2010,
+        "pre_sum": 1484.0,
+        "post_sum": 286.0,
+        "delta_pct": -80.7277628032345,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2011,
+        "pre_sum": 1553.0,
+        "post_sum": 372.0,
+        "delta_pct": -76.04636188023181,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2012,
+        "pre_sum": 1550.0,
+        "post_sum": 398.0,
+        "delta_pct": -74.3225806451613,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2013,
+        "pre_sum": 1613.0,
+        "post_sum": 480.0,
+        "delta_pct": -70.24178549287043,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2014,
+        "pre_sum": 1670.0,
+        "post_sum": 382.0,
+        "delta_pct": -77.12574850299401,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2015,
+        "pre_sum": 1686.0,
+        "post_sum": 200.0,
+        "delta_pct": -88.13760379596678,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2016,
+        "pre_sum": 1718.0,
+        "post_sum": 174.0,
+        "delta_pct": -89.87194412107101,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2017,
+        "pre_sum": 1789.0,
+        "post_sum": 251.0,
+        "delta_pct": -85.96981553940749,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2018,
+        "pre_sum": 1763.0,
+        "post_sum": 354.0,
+        "delta_pct": -79.92058990357346,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2019,
+        "pre_sum": 1840.0,
+        "post_sum": 403.0,
+        "delta_pct": -78.09782608695652,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2020,
+        "pre_sum": 1711.0,
+        "post_sum": 442.0,
+        "delta_pct": -74.16715371127995,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2021,
+        "pre_sum": 1772.0,
+        "post_sum": 440.0,
+        "delta_pct": -75.16930022573364,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2022,
+        "pre_sum": 1864.0,
+        "post_sum": 450.0,
+        "delta_pct": -75.85836909871244,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2023,
+        "pre_sum": 1520.0,
+        "post_sum": 448.0,
+        "delta_pct": -70.52631578947368,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26001",
+        "year": 2024,
+        "pre_sum": 1494.0,
+        "post_sum": 271.0,
+        "delta_pct": -81.86077643908969,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2010,
+        "pre_sum": 2602.0,
+        "post_sum": 528.0,
+        "delta_pct": -79.70791698693313,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2011,
+        "pre_sum": 2539.0,
+        "post_sum": 488.0,
+        "delta_pct": -80.77983458054352,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2012,
+        "pre_sum": 2555.0,
+        "post_sum": 490.0,
+        "delta_pct": -80.82191780821918,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2013,
+        "pre_sum": 2522.0,
+        "post_sum": 344.0,
+        "delta_pct": -86.36003172085647,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2014,
+        "pre_sum": 2466.0,
+        "post_sum": 272.0,
+        "delta_pct": -88.96999188969991,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2015,
+        "pre_sum": 2424.0,
+        "post_sum": 282.0,
+        "delta_pct": -88.36633663366337,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2016,
+        "pre_sum": 2494.0,
+        "post_sum": 240.0,
+        "delta_pct": -90.37690457097032,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2017,
+        "pre_sum": 2568.0,
+        "post_sum": 153.0,
+        "delta_pct": -94.04205607476635,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2018,
+        "pre_sum": 2521.0,
+        "post_sum": 287.0,
+        "delta_pct": -88.6156287187624,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2019,
+        "pre_sum": 2497.0,
+        "post_sum": 382.0,
+        "delta_pct": -84.70164197036443,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2020,
+        "pre_sum": 2312.0,
+        "post_sum": 473.0,
+        "delta_pct": -79.54152249134948,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2021,
+        "pre_sum": 2463.0,
+        "post_sum": 326.0,
+        "delta_pct": -86.76410881039382,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2022,
+        "pre_sum": 2590.0,
+        "post_sum": 452.0,
+        "delta_pct": -82.54826254826254,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2023,
+        "pre_sum": 2575.0,
+        "post_sum": 384.0,
+        "delta_pct": -85.0873786407767,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26003",
+        "year": 2024,
+        "pre_sum": 2650.0,
+        "post_sum": 280.0,
+        "delta_pct": -89.43396226415095,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2010,
+        "pre_sum": 31544.0,
+        "post_sum": 11299.0,
+        "delta_pct": -64.18019274663962,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2011,
+        "pre_sum": 33507.0,
+        "post_sum": 10542.0,
+        "delta_pct": -68.53791745008506,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2012,
+        "pre_sum": 34140.0,
+        "post_sum": 12142.0,
+        "delta_pct": -64.43468072642062,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2013,
+        "pre_sum": 36175.0,
+        "post_sum": 16238.0,
+        "delta_pct": -55.112646855563234,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2014,
+        "pre_sum": 36626.0,
+        "post_sum": 15225.0,
+        "delta_pct": -58.43116911483646,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2015,
+        "pre_sum": 37676.0,
+        "post_sum": 15945.0,
+        "delta_pct": -57.67862830449092,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2016,
+        "pre_sum": 38155.0,
+        "post_sum": 16025.0,
+        "delta_pct": -58.00026208884812,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2017,
+        "pre_sum": 38324.0,
+        "post_sum": 16327.0,
+        "delta_pct": -57.39745329297568,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2018,
+        "pre_sum": 39348.0,
+        "post_sum": 16616.0,
+        "delta_pct": -57.77167835722273,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2019,
+        "pre_sum": 40196.0,
+        "post_sum": 14069.0,
+        "delta_pct": -64.99900487610708,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2020,
+        "pre_sum": 37717.0,
+        "post_sum": 13882.0,
+        "delta_pct": -63.19431556062253,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2021,
+        "pre_sum": 38557.0,
+        "post_sum": 14221.0,
+        "delta_pct": -63.11694374562336,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2022,
+        "pre_sum": 39440.0,
+        "post_sum": 14660.0,
+        "delta_pct": -62.82961460446248,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2023,
+        "pre_sum": 40949.0,
+        "post_sum": 15447.0,
+        "delta_pct": -62.27746709321351,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26005",
+        "year": 2024,
+        "pre_sum": 41360.0,
+        "post_sum": 13985.0,
+        "delta_pct": -66.18713733075435,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26007",
+        "year": 2010,
+        "pre_sum": 10896.0,
+        "post_sum": 2832.0,
+        "delta_pct": -74.00881057268722,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26007",
+        "year": 2011,
+        "pre_sum": 10828.0,
+        "post_sum": 2669.0,
+        "delta_pct": -75.35094200221647,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26007",
+        "year": 2012,
+        "pre_sum": 11263.0,
+        "post_sum": 2829.0,
+        "delta_pct": -74.8823581638995,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26007",
+        "year": 2013,
+        "pre_sum": 10889.0,
+        "post_sum": 2910.0,
+        "delta_pct": -73.27578290017449,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      },
+      {
+        "county_fips": "26007",
+        "year": 2014,
+        "pre_sum": 11009.0,
+        "post_sum": 2954.0,
+        "delta_pct": -73.16740848396766,
+        "reason": "rollup-vs-leaves discrepancy (manual review required)"
+      }
+    ]
+  }
+}

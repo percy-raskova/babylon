@@ -717,6 +717,11 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             end_game_event=end_game_event,
             error=error_payload,
             events=captured_events,
+            bridge_db_reads={
+                "population_db_reads": bridge.population_db_reads,
+                "employment_db_reads": bridge.employment_db_reads,
+                "total_db_reads": bridge.total_db_reads,
+            },
         )
         artifact_emission_sec = time.perf_counter() - t_artifacts
 
@@ -927,6 +932,7 @@ def _emit_artifacts(
     end_game_event: dict[str, Any] | None,
     error: dict[str, Any] | None,
     events: tuple[Any, ...] = (),
+    bridge_db_reads: dict[str, int] | None = None,
 ) -> Path:
     """Write trace.csv + summary.json + manifest.json into ``config.output_dir``."""
     _prepare_output_dir(config.output_dir)
@@ -996,6 +1002,7 @@ def _emit_artifacts(
             "tiger_vintage": "2024",
             "sqlite_sha256": _sqlite_sha256(config.sqlite_reference_path),
         },
+        bridge_db_reads=bridge_db_reads,
     )
     (artifact_dir / "manifest.json").write_text(json.dumps(manifest_payload, indent=2))
     return artifact_dir

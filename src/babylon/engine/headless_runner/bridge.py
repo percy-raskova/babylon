@@ -213,6 +213,25 @@ class WorldStateBridge:
         return self._hydrated
 
     @property
+    def population_db_reads(self) -> int:
+        """Spec-069 SC-002: count of population reads issued at hydrate time.
+
+        Returns 0 before ``hydrate_initial`` is called (per
+        ``contracts/instrumentation_contract.md`` §I1).
+        """
+        return 0 if self._ref_cache is None else self._ref_cache.population_db_reads
+
+    @property
+    def employment_db_reads(self) -> int:
+        """Spec-069 SC-002: count of employment-proxy reads issued at hydrate time."""
+        return 0 if self._ref_cache is None else self._ref_cache.employment_db_reads
+
+    @property
+    def total_db_reads(self) -> int:
+        """Spec-069 SC-002: ``population_db_reads + employment_db_reads``."""
+        return 0 if self._ref_cache is None else self._ref_cache.total_db_reads
+
+    @property
     def boundary_register(self) -> BoundaryFlowRegister:
         """The session's BoundaryFlowRegister (T055).
 

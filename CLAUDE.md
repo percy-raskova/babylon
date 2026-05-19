@@ -860,6 +860,8 @@ ADR0XX_descriptive_name:
 - SQLite reference DB at `data/sqlite/marxist-data-3NF.sqlite`; affected tables: `fact_qcew_annual` (DELETE), `dim_industry` (read), `dim_ownership` (read), `dim_time` (read for vintage classification in audit report) (067-qcew-ownership-normalization)
 - Python 3.12+ (existing project standard). + `sqlite3` stdlib (existing); Pydantic 2.x for (069-sqlite-cache-optimization)
 - Reads from existing `marxist-data-3NF.sqlite` via the (069-sqlite-cache-optimization)
+- Python 3.12+ (project standard) + Pydantic 2.x (frozen models per II.6 + I.19), (070-balkanization)
+- PostgreSQL 16+ via existing graph bridge (spec-037 + (070-balkanization)
 
 ## Recent Changes
 - 062-cross-scale-integration: Two-phase persistence boundary, per-tick transactional atomicity (FR-008a), weekly tick + year-scoped coefficient interpolation, hex-as-source-of-truth aggregation views, 5-flow-type pipeline ordering, Canada boundary node, conservation audit log with determinism hash

@@ -55,6 +55,10 @@ class EdgeType(StrEnum):
     JURISDICTION = "jurisdiction"  # LegalFramework → Territory
     # Institution Base Model (Feature 040)
     HOUSES = "houses"  # Institution → Organization (housing relationship)
+    # Spec-070 Balkanization (political topology overlay per Constitution I.20)
+    CLAIMS = "claims"  # Sovereign → Territory (FR-009)
+    INFLUENCES = "influences"  # BalkanizationFaction → Territory (FR-014)
+    ADMINISTERS = "administers"  # Sovereign → Sovereign (FR-018; acyclic DAG)
 
 
 class EdgeMode(StrEnum):

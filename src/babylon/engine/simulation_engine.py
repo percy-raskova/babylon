@@ -42,6 +42,7 @@ from babylon.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
+from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.engine.systems.community import CommunitySystem
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
@@ -345,6 +346,7 @@ _DEFAULT_SYSTEMS: list[System] = [
     ContradictionSystem(),  # 18. Tension aggregation
     ContradictionFieldSystem(),  # 19. Contradiction field computation (Feature 002)
     FieldDerivativeSystem(),  # 20. Spatial/temporal derivatives + principal (Feature 002)
+    CollapseTransitionSystem(),  # 20.5. Spec-070 sovereign-collapse + territory partition
     EdgeTransitionSystem(),  # 21. Compound predicates + edge mode transitions (Feature 002)
 ]
 
@@ -382,6 +384,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         ConsciousnessSystem,
         FactionInfluenceSystem,  # Spec-070 FR-042 (research.md R-003)
         SovereigntySystem,  # Spec-070 FR-042
+        CollapseTransitionSystem,  # Spec-070 FR-042
         ContradictionSystem,
         ContradictionFieldSystem,
         FieldDerivativeSystem,

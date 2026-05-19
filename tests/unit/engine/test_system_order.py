@@ -77,6 +77,7 @@ class TestMaterialistCausalityOrder:
             "Contradiction Tension",  # 18. ContradictionSystem
             "contradiction_field",  # 19. ContradictionFieldSystem (Feature 002)
             "field_derivative",  # 20. FieldDerivativeSystem (Feature 002)
+            "CollapseTransition",  # 20.5. CollapseTransitionSystem (Spec 070 FR-023)
             "edge_transition",  # 21. EdgeTransitionSystem (Feature 002)
         ]
         actual_order = [s.name for s in _DEFAULT_SYSTEMS]
@@ -162,11 +163,12 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_twenty_four_systems_present(self) -> None:
-        """All 24 systems must be registered.
+    def test_all_twenty_five_systems_present(self) -> None:
+        """All 25 systems must be registered.
 
         13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology
-        + 1 OODA + 1 substrate (Spec 062 US7) + 2 Spec-070 systems
-        (FactionInfluenceSystem at 14.5 + SovereigntySystem at 17.5).
+        + 1 OODA + 1 substrate (Spec 062 US7) + 3 Spec-070 systems
+        (FactionInfluenceSystem at 14.5 + SovereigntySystem at 17.5 +
+        CollapseTransitionSystem at 20.5).
         """
-        assert len(_DEFAULT_SYSTEMS) == 24, f"Expected 24 systems, got {len(_DEFAULT_SYSTEMS)}"
+        assert len(_DEFAULT_SYSTEMS) == 25, f"Expected 25 systems, got {len(_DEFAULT_SYSTEMS)}"

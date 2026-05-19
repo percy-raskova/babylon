@@ -1,0 +1,62 @@
+{
+  "version": "1.0.0",
+  "sovereigns": [
+    {
+      "id": "SOV_USA_FED",
+      "name": "United States Federal Government",
+      "sovereignty_type": "recognized_state",
+      "legitimacy": 1.0,
+      "color_hex": "#3c3b6e",
+      "capital_territory_id": null,
+      "ruling_faction_id": "FAC_RESTORATIONIST",
+      "extraction_policy": "intensify",
+      "founded_tick": 0,
+      "dissolved_tick": null,
+      "initial_claims": []
+    },
+    {
+      "id": "SOV_CAN_FED",
+      "name": "Government of Canada",
+      "sovereignty_type": "recognized_state",
+      "legitimacy": 0.85,
+      "color_hex": "#bf2c2c",
+      "capital_territory_id": null,
+      "ruling_faction_id": "FAC_LIBERAL_IMPERIAL",
+      "extraction_policy": "continue",
+      "founded_tick": 0,
+      "dissolved_tick": null,
+      "initial_claims": [
+        {
+          "territory_id": "canada",
+          "control_level": 1.0,
+          "fiscal_status": "taxed",
+          "legal_status": "de_jure",
+          "recognition_level": 1.0,
+          "claimed_since_tick": 0
+        }
+      ]
+    },
+    {
+      "id": "SOV_EXTERIOR_NULL",
+      "name": "Exterior Boundary Sovereign (provisional)",
+      "sovereignty_type": "provisional",
+      "legitimacy": 0.0,
+      "color_hex": "#404040",
+      "capital_territory_id": null,
+      "ruling_faction_id": null,
+      "extraction_policy": "continue",
+      "founded_tick": 0,
+      "dissolved_tick": null,
+      "initial_claims": [
+        {
+          "territory_id": "rest_of_usa",
+          "control_level": 1.0,
+          "fiscal_status": "taxed",
+          "legal_status": "de_jure",
+          "recognition_level": 1.0,
+          "claimed_since_tick": 0
+        }
+      ]
+    }
+  ]
+}

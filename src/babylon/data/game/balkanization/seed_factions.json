@@ -1,0 +1,57 @@
+{
+  "version": "1.0.0",
+  "factions": [
+    {
+      "id": "FAC_RESTORATIONIST",
+      "name": "Settler Restoration Coalition",
+      "ideology": "settler-restorationism",
+      "colonial_stance": "uphold",
+      "is_settler_formation": true,
+      "extraction_modifier": 1.5,
+      "violence_modifier": 2.0,
+      "class_reduction": 0.0,
+      "metabolic_reduction": -0.5,
+      "color_hex": "#aa1f1f",
+      "founded_tick": 0
+    },
+    {
+      "id": "FAC_WORKERS_CONGRESS",
+      "name": "Workers' Congress",
+      "ideology": "class-first social democracy",
+      "colonial_stance": "ignore",
+      "is_settler_formation": true,
+      "extraction_modifier": 0.8,
+      "violence_modifier": 0.5,
+      "class_reduction": 0.7,
+      "metabolic_reduction": 0.0,
+      "color_hex": "#bf6b1f",
+      "founded_tick": 0
+    },
+    {
+      "id": "FAC_DECOLONIAL",
+      "name": "Decolonial Front",
+      "ideology": "anti-settler abolitionism",
+      "colonial_stance": "abolish",
+      "is_settler_formation": false,
+      "extraction_modifier": 0.0,
+      "violence_modifier": 0.3,
+      "class_reduction": 0.5,
+      "metabolic_reduction": 0.8,
+      "color_hex": "#1f6b1f",
+      "founded_tick": 0
+    },
+    {
+      "id": "FAC_LIBERAL_IMPERIAL",
+      "name": "Liberal Imperial Bloc",
+      "ideology": "soft-imperial liberalism",
+      "colonial_stance": "ignore",
+      "is_settler_formation": true,
+      "extraction_modifier": 0.8,
+      "violence_modifier": 0.5,
+      "class_reduction": 0.7,
+      "metabolic_reduction": 0.0,
+      "color_hex": "#1f4fbf",
+      "founded_tick": 0
+    }
+  ]
+}

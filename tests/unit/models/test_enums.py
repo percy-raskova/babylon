@@ -152,8 +152,8 @@ class TestEdgeType:
             EdgeType("friendship")  # Not a structural relationship
 
     def test_edge_type_count(self) -> None:
-        """Exactly 21 edge types defined (9 original + 5 org + 2 OODA + 3 state AI + 1 F039 + 1 F040)."""
-        assert len(EdgeType) == 21
+        """Exactly 24 edge types defined (9 original + 5 org + 2 OODA + 3 state AI + 1 F039 + 1 F040 + 3 Spec 070 balkanization: CLAIMS, INFLUENCES, ADMINISTERS)."""
+        assert len(EdgeType) == 24
 
     def test_territory_edge_types_exist(self) -> None:
         """Territory edge types for Layer 0 (Sprint 3.5.1).
@@ -331,8 +331,8 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """61 event types (55 prior + 3 Institution F040 + 3 Spec 057 CalibrationWarning)."""
-        assert len(EventType) == 61
+        """70 event types (55 prior + 3 Institution F040 + 3 Spec 057 CalibrationWarning + 9 Spec 070 balkanization)."""
+        assert len(EventType) == 70
 
     def test_terminal_crisis_event_types_exist(self) -> None:
         """Terminal Crisis Dynamics: Events for endgame arc.

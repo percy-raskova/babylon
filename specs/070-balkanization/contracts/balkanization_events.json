@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylon.local/schemas/070-balkanization/balkanization_events.json",
+  "title": "Balkanization Event Payloads",
+  "description": "JSON Schemas for each of the nine new event types introduced by spec-070. Events are published via the existing EventBus; payloads are JSON-serializable per existing project convention.",
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "required": ["event_type", "tick"],
+      "properties": {
+        "event_type": { "type": "string" },
+        "tick": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "SOVEREIGN_COLLAPSE": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "sovereign_id", "trigger"],
+          "properties": {
+            "event_type": { "const": "sovereign_collapse" },
+            "sovereign_id": { "type": "string", "pattern": "^SOV_[A-Z][A-Z0-9_]*$" },
+            "trigger": {
+              "type": "string",
+              "enum": ["legitimacy_zero", "ecological_overshoot", "nuclear_exchange", "general_uprising"]
+            },
+            "claimed_territories_count": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "TERRITORY_TRANSITION": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "territory_id", "from_sovereign_id", "to_sovereign_id"],
+          "properties": {
+            "event_type": { "const": "territory_transition" },
+            "territory_id": { "type": "string" },
+            "from_sovereign_id": { "type": ["string", "null"] },
+            "to_sovereign_id": { "type": ["string", "null"] },
+            "from_winning_faction_id": { "type": ["string", "null"] },
+            "to_winning_faction_id": { "type": ["string", "null"] },
+            "reason": {
+              "type": "string",
+              "enum": ["influence_flip", "collapse_partition", "fracture", "conquest"]
+            }
+          }
+        }
+      ]
+    },
+    "FACTION_VICTORY": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "faction_id", "aggregate_influence_share"],
+          "properties": {
+            "event_type": { "const": "faction_victory" },
+            "faction_id": { "type": "string", "pattern": "^FAC_[A-Z][A-Z0-9_]*$" },
+            "aggregate_influence_share": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+          }
+        }
+      ]
+    },
+    "SECESSION_DECLARED": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "secessionist_faction_id", "parent_sovereign_id", "contiguous_territory_ids"],
+          "properties": {
+            "event_type": { "const": "secession_declared" },
+            "secessionist_faction_id": { "type": "string", "pattern": "^FAC_[A-Z][A-Z0-9_]*$" },
+            "parent_sovereign_id": { "type": "string", "pattern": "^SOV_[A-Z][A-Z0-9_]*$" },
+            "contiguous_territory_ids": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "observer_triggered": { "type": "boolean", "default": false }
+          }
+        }
+      ]
+    },
+    "CIVIL_WAR_DECLARED": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "parent_sovereign_id", "secessionist_faction_id"],
+          "properties": {
+            "event_type": { "const": "civil_war_declared" },
+            "parent_sovereign_id": { "type": "string" },
+            "secessionist_faction_id": { "type": "string" },
+            "contested_territory_count": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "RED_SETTLER_TRAP_DETECTED": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "faction_id", "class_reduction", "colonial_stance"],
+          "properties": {
+            "event_type": { "const": "red_settler_trap_detected" },
+            "faction_id": { "type": "string", "pattern": "^FAC_[A-Z][A-Z0-9_]*$" },
+            "class_reduction": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "colonial_stance": { "type": "string", "enum": ["uphold", "ignore"] }
+          }
+        }
+      ]
+    },
+    "DUAL_POWER_ACTIVE": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "territory_id", "competing_sovereign_ids"],
+          "properties": {
+            "event_type": { "const": "dual_power_active" },
+            "territory_id": { "type": "string" },
+            "competing_sovereign_ids": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 2
+            },
+            "control_level_sum": { "type": "number", "minimum": 0.0 }
+          }
+        }
+      ]
+    },
+    "RED_OGV_ENDGAME": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "ignore_aligned_sovereign_share", "class_tension", "aggregate_habitability", "habitability_slope"],
+          "properties": {
+            "event_type": { "const": "red_ogv_endgame" },
+            "ignore_aligned_sovereign_share": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "class_tension": { "type": "number" },
+            "aggregate_habitability": { "type": "number" },
+            "habitability_slope": { "type": "number", "description": "Negative slope confirms ecological decline." },
+            "user_facing_message": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "FRAGMENTED_COLLAPSE_ENDGAME": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "required": ["event_type", "tick", "surviving_sovereign_count", "configuration_duration_ticks"],
+          "properties": {
+            "event_type": { "const": "fragmented_collapse_endgame" },
+            "surviving_sovereign_count": { "type": "integer", "minimum": 3 },
+            "configuration_duration_ticks": { "type": "integer", "minimum": 10 },
+            "insurgent_or_occupation_count": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    }
+  }
+}

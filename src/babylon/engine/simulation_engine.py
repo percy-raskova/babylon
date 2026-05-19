@@ -50,6 +50,7 @@ from babylon.engine.systems.decomposition import DecompositionSystem
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
+from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.lifecycle import LifecycleSystem
@@ -335,6 +336,7 @@ _DEFAULT_SYSTEMS: list[System] = [
     MetabolismSystem(),  # 13. Environmental degradation
     # --- Action Phase (position 14) — Spec 056 F6=α reorder ---
     OODASystem(),  # 14. Organizations observe + act (Feature 032)
+    FactionInfluenceSystem(),  # 14.5. Spec-070 FR-021 winning-Faction resolution
     # --- Consequences (positions 15–21) ---
     SurvivalSystem(),  # 15. Risk assessment
     StruggleSystem(),  # 16. Action/Revolt
@@ -378,6 +380,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         SurvivalSystem,
         StruggleSystem,
         ConsciousnessSystem,
+        FactionInfluenceSystem,  # Spec-070 FR-042 (research.md R-003)
         SovereigntySystem,  # Spec-070 FR-042
         ContradictionSystem,
         ContradictionFieldSystem,

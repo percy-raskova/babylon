@@ -242,6 +242,17 @@ def create_in_progress_state() -> WorldState:
 class TestSimulationTermination:
     """Test that simulation terminates on endgame conditions."""
 
+    @pytest.mark.xfail(
+        reason=(
+            "Spec-070 FR-031 augmented REVOLUTIONARY_VICTORY with "
+            "ABOLISH-Sovereign-majority + CEASE-policy + habitability-slope "
+            "+ cross-divide-solidarity gates. This scenario exercises the "
+            "pre-spec-070 contract (percolation + consciousness alone, no "
+            "Sovereigns/Factions seeded) which now correctly routes to "
+            "IN_PROGRESS / RED_OGV instead. Replaced by tests under "
+            "tests/unit/balkanization/ + tests/integration/balkanization/."
+        )
+    )
     def test_simulation_terminates_on_revolutionary_victory(
         self,
         config: SimulationConfig,
@@ -312,6 +323,14 @@ class TestSimulationTermination:
 class TestRunReturnsOutcome:
     """Test that run methods return final state and outcome."""
 
+    @pytest.mark.xfail(
+        reason=(
+            "Spec-070 FR-031 augmented REVOLUTIONARY_VICTORY contract; this "
+            "scenario relies on the pre-spec-070 percolation+consciousness "
+            "alone gate. See sibling xfail on "
+            "test_simulation_terminates_on_revolutionary_victory."
+        )
+    )
     def test_run_returns_final_state_and_outcome(
         self,
         config: SimulationConfig,
@@ -565,6 +584,14 @@ class TestEndgameStability:
 class TestMultipleObservers:
     """Test EndgameDetector works alongside other observers."""
 
+    @pytest.mark.xfail(
+        reason=(
+            "Spec-070 FR-031 augmented REVOLUTIONARY_VICTORY contract; this "
+            "scenario relies on the pre-spec-070 percolation+consciousness "
+            "alone gate. See sibling xfail on "
+            "test_simulation_terminates_on_revolutionary_victory."
+        )
+    )
     def test_endgame_detector_with_other_observers(
         self,
         config: SimulationConfig,

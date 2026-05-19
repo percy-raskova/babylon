@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylon.local/schemas/070-balkanization/seed_sovereigns.schema.json",
+  "title": "Seed Sovereigns",
+  "description": "Schema for src/babylon/data/game/balkanization/seed_sovereigns.json. Per FR-040 + R-002, at least SOV_USA_FED and SOV_CAN_FED must be present.",
+  "type": "object",
+  "required": ["version", "sovereigns"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "sovereigns": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/Sovereign" }
+    }
+  },
+  "$defs": {
+    "Sovereign": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "sovereignty_type",
+        "legitimacy",
+        "color_hex",
+        "ruling_faction_id",
+        "extraction_policy",
+        "founded_tick",
+        "initial_claims"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^SOV_[A-Z][A-Z0-9_]*$",
+          "description": "Format SOV_{CODE}, e.g. SOV_USA_FED."
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sovereignty_type": {
+          "type": "string",
+          "enum": [
+            "recognized_state",
+            "provisional",
+            "insurgent",
+            "occupation",
+            "secessionist",
+            "emergency"
+          ]
+        },
+        "legitimacy": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "color_hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "capital_territory_id": { "type": ["string", "null"] },
+        "ruling_faction_id": {
+          "type": ["string", "null"],
+          "pattern": "^FAC_[A-Z][A-Z0-9_]*$",
+          "description": "Must reference a Faction.id in seed_factions.json (validated at load time)."
+        },
+        "extraction_policy": {
+          "type": "string",
+          "enum": ["intensify", "continue", "cease"],
+          "description": "MUST be derivable from ruling_faction.colonial_stance per StanceToPolicyMapping (data-model.md §3.2). Validator in Sovereign Pydantic model enforces this."
+        },
+        "founded_tick": { "type": "integer", "minimum": 0 },
+        "dissolved_tick": { "type": ["integer", "null"], "minimum": 0 },
+        "initial_claims": {
+          "type": "array",
+          "description": "List of CLAIMS edges to seed at game start. Per FR-040, at least one Sovereign must claim all in-scope Territories.",
+          "items": { "$ref": "#/$defs/InitialClaim" }
+        }
+      }
+    },
+    "InitialClaim": {
+      "type": "object",
+      "required": ["territory_id", "control_level", "fiscal_status", "legal_status"],
+      "additionalProperties": false,
+      "properties": {
+        "territory_id": { "type": "string" },
+        "control_level": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "fiscal_status": {
+          "type": "string",
+          "enum": ["taxed", "revolt", "blockade", "liberated", "occupied"]
+        },
+        "legal_status": {
+          "type": "string",
+          "enum": ["de_jure", "de_facto", "disputed", "occupied", "ceded"]
+        },
+        "recognition_level": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "claimed_since_tick": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

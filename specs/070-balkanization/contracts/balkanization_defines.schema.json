@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylon.local/schemas/070-balkanization/balkanization_defines.schema.json",
+  "title": "BalkanizationDefines",
+  "description": "Tunable thresholds and multipliers for spec-070. Realized as a Pydantic BaseModel in src/babylon/config/defines/balkanization.py. All values have theoretical defaults from balkanization-spec.yaml v1.2.0 (research.md R-001 documents provenance).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "metabolic_impact_intensify": {
+      "type": "number",
+      "default": -0.02,
+      "description": "FR-004 per-tick habitability change under INTENSIFY extraction."
+    },
+    "metabolic_impact_continue": {
+      "type": "number",
+      "default": -0.005,
+      "description": "FR-004 per-tick habitability change under CONTINUE."
+    },
+    "metabolic_impact_cease": {
+      "type": "number",
+      "default": 0.01,
+      "description": "FR-004 per-tick habitability change under CEASE."
+    },
+    "stance_extraction_modifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": { "uphold": 1.5, "ignore": 0.8, "abolish": 0.0 },
+      "properties": {
+        "uphold": { "type": "number", "minimum": 0.0 },
+        "ignore": { "type": "number", "minimum": 0.0 },
+        "abolish": { "type": "number", "minimum": 0.0 }
+      }
+    },
+    "stance_violence_modifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": { "uphold": 2.0, "ignore": 0.5, "abolish": 0.3 },
+      "properties": {
+        "uphold": { "type": "number", "minimum": 0.0 },
+        "ignore": { "type": "number", "minimum": 0.0 },
+        "abolish": { "type": "number", "minimum": 0.0 }
+      }
+    },
+    "stance_class_reduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": { "uphold": 0.0, "ignore": 0.7, "abolish": 0.5 },
+      "properties": {
+        "uphold": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "ignore": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "abolish": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+      }
+    },
+    "stance_metabolic_reduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": { "uphold": -0.5, "ignore": 0.0, "abolish": 0.8 },
+      "properties": {
+        "uphold": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+        "ignore": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+        "abolish": { "type": "number", "minimum": -1.0, "maximum": 1.0 }
+      }
+    },
+    "secession_influence_threshold": {
+      "type": "number",
+      "default": 0.5,
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "FR-029a (2) — non-incumbent Faction must hold influence_level above this in each hex of the contiguous sub-region."
+    },
+    "secession_hysteresis_ticks": {
+      "type": "integer",
+      "default": 3,
+      "minimum": 1,
+      "description": "FR-029c — predicate must hold for this many consecutive ticks before SECESSION_DECLARED fires."
+    },
+    "min_contiguous_hex_count": {
+      "type": "integer",
+      "default": 12,
+      "minimum": 1,
+      "description": "FR-029b + R-004 — minimum H3 res-7 hex count for a secession sub-region. ≈ 1 county-equivalent area at res-7."
+    },
+    "red_ogv_class_tension_floor": {
+      "type": "number",
+      "default": 0.3,
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "FR-032 — RED_OGV predicate requires class_tension below this."
+    },
+    "red_ogv_habitability_floor": {
+      "type": "number",
+      "default": 0.4,
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "FR-032 — RED_OGV predicate requires aggregate_habitability below this."
+    },
+    "red_ogv_slope_window_ticks": {
+      "type": "integer",
+      "default": 10,
+      "minimum": 1,
+      "description": "FR-032 — habitability slope is computed over this rolling window of ticks."
+    },
+    "fragmented_collapse_min_sovereigns": {
+      "type": "integer",
+      "default": 3,
+      "minimum": 2,
+      "description": "FR-032a — minimum surviving Sovereign count for FRAGMENTED_COLLAPSE."
+    },
+    "fragmented_collapse_min_duration_ticks": {
+      "type": "integer",
+      "default": 10,
+      "minimum": 1,
+      "description": "FR-032a — configuration must persist for at least this many ticks."
+    },
+    "faction_victory_supermajority_threshold": {
+      "type": "number",
+      "default": 0.66,
+      "minimum": 0.5,
+      "maximum": 1.0,
+      "description": "FR-026 — Faction must hold this aggregate influence share to fire FACTION_VICTORY."
+    },
+    "initial_post_collapse_control_level": {
+      "type": "number",
+      "default": 0.8,
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "FR-024 step 4 — new Sovereigns post-collapse-partition start at this control_level (not 1.0; consolidation takes time)."
+    },
+    "red_settler_trap_class_reduction_threshold": {
+      "type": "number",
+      "default": 0.6,
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "FR-034 — Faction with class_reduction above this AND colonial_stance ∈ {UPHOLD, IGNORE} triggers diagnostic."
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylon.local/schemas/070-balkanization/seed_factions.schema.json",
+  "title": "Seed PoliticalFactions",
+  "description": "Schema for src/babylon/data/game/balkanization/seed_factions.json. Per FR-008 + FR-038, at least three canonical Factions must be seeded; per R-002, four are required to include FAC_LIBERAL_IMPERIAL for SOV_CAN_FED.",
+  "type": "object",
+  "required": ["version", "factions"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version (semantic versioning).",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "factions": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/Faction" }
+    }
+  },
+  "$defs": {
+    "Faction": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "ideology",
+        "colonial_stance",
+        "is_settler_formation",
+        "color_hex",
+        "founded_tick"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^FAC_[A-Z][A-Z0-9_]*$",
+          "description": "Format FAC_{CODE}, e.g. FAC_RESTORATIONIST."
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "ideology": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "colonial_stance": {
+          "type": "string",
+          "enum": ["uphold", "ignore", "abolish"]
+        },
+        "is_settler_formation": { "type": "boolean" },
+        "extraction_modifier": {
+          "type": "number",
+          "minimum": 0.0,
+          "description": "Optional override; defaults from FactionStanceMapping in data-model.md §3.1."
+        },
+        "violence_modifier": { "type": "number", "minimum": 0.0 },
+        "class_reduction": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "metabolic_reduction": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+        "color_hex": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "founded_tick": { "type": "integer", "minimum": 0 },
+        "dissolved_tick": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    }
+  }
+}

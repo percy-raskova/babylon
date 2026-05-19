@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylon.local/schemas/070-balkanization/audit_row.schema.json",
+  "title": "Balkanization Audit Row",
+  "description": "Per FR-046 + R-005, CLAIMS and INFLUENCES mutations are persisted as audit rows in dedicated PostgreSQL tables (balkanization_claims_audit, balkanization_influences_audit). This schema documents the row shape for both tables.",
+  "oneOf": [
+    { "$ref": "#/$defs/ClaimsAuditRow" },
+    { "$ref": "#/$defs/InfluencesAuditRow" }
+  ],
+  "$defs": {
+    "ClaimsAuditRow": {
+      "title": "balkanization_claims_audit row",
+      "type": "object",
+      "required": [
+        "audit_id",
+        "tick",
+        "sovereign_id",
+        "territory_id",
+        "operation",
+        "control_level",
+        "fiscal_status",
+        "legal_status",
+        "recognition_level",
+        "observer_mutation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "audit_id": { "type": "integer", "minimum": 1 },
+        "tick": { "type": "integer", "minimum": 0 },
+        "sovereign_id": { "type": "string", "pattern": "^SOV_[A-Z][A-Z0-9_]*$" },
+        "territory_id": { "type": "string" },
+        "operation": {
+          "type": "string",
+          "enum": ["CREATE", "UPDATE", "DELETE"]
+        },
+        "control_level": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "fiscal_status": {
+          "type": "string",
+          "enum": ["taxed", "revolt", "blockade", "liberated", "occupied"]
+        },
+        "legal_status": {
+          "type": "string",
+          "enum": ["de_jure", "de_facto", "disputed", "occupied", "ceded"]
+        },
+        "recognition_level": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "observer_mutation": {
+          "type": "boolean",
+          "description": "Per FR-049, true if this mutation was performed by an OBSERVER-mode player verb bypassing in-simulation predicates."
+        },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "InfluencesAuditRow": {
+      "title": "balkanization_influences_audit row",
+      "type": "object",
+      "required": [
+        "audit_id",
+        "tick",
+        "faction_id",
+        "territory_id",
+        "operation",
+        "influence_level",
+        "support_type",
+        "cadre_count",
+        "sympathizer_count",
+        "observer_mutation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "audit_id": { "type": "integer", "minimum": 1 },
+        "tick": { "type": "integer", "minimum": 0 },
+        "faction_id": { "type": "string", "pattern": "^FAC_[A-Z][A-Z0-9_]*$" },
+        "territory_id": { "type": "string" },
+        "operation": {
+          "type": "string",
+          "enum": ["CREATE", "UPDATE", "DELETE"]
+        },
+        "influence_level": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "support_type": {
+          "type": "string",
+          "enum": ["material", "ideological", "military", "electoral", "labor"]
+        },
+        "cadre_count": { "type": "integer", "minimum": 0 },
+        "sympathizer_count": { "type": "integer", "minimum": 0 },
+        "observer_mutation": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

@@ -68,6 +68,7 @@ class TestMaterialistCausalityOrder:
             "Metabolism",  # 13. MetabolismSystem
             # --- Action Phase (position 14) — Spec 056 F6=α reorder ---
             "ooda",  # 14. OODASystem (Feature 032)
+            "FactionInfluence",  # 14.5. FactionInfluenceSystem (Spec 070 FR-021)
             # --- Consequences (positions 15-21) ---
             "Survival Calculus",  # 15. SurvivalSystem
             "Struggle",  # 16. StruggleSystem
@@ -161,11 +162,11 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_twenty_three_systems_present(self) -> None:
-        """All 23 systems must be registered.
+    def test_all_twenty_four_systems_present(self) -> None:
+        """All 24 systems must be registered.
 
         13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology
-        + 1 OODA + 1 substrate (Spec 062 US7) + 1 SovereigntySystem
-        (Spec 070 FR-019).
+        + 1 OODA + 1 substrate (Spec 062 US7) + 2 Spec-070 systems
+        (FactionInfluenceSystem at 14.5 + SovereigntySystem at 17.5).
         """
-        assert len(_DEFAULT_SYSTEMS) == 23, f"Expected 23 systems, got {len(_DEFAULT_SYSTEMS)}"
+        assert len(_DEFAULT_SYSTEMS) == 24, f"Expected 24 systems, got {len(_DEFAULT_SYSTEMS)}"

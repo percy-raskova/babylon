@@ -77,6 +77,22 @@ class MetabolismSystem(SystemBase):
         entropy_factor = services.defines.metabolism.entropy_factor
         overshoot_threshold = services.defines.metabolism.overshoot_threshold
 
+        # Spec-070 FR-043: apply Sovereign-driven metabolic_impact additive
+        # term to territory.habitability BEFORE the biocapacity update.
+        # Read-only from SovereigntySystem's persistent_data write.
+        if isinstance(context, dict):
+            persistent = context.get("persistent_data", {})
+        else:
+            persistent = getattr(context, "persistent_data", {}) or {}
+        sovereign_impact = persistent.get("balkanization.metabolic_impact_by_territory", {})
+        for territory_id, impact in sovereign_impact.items():
+            node = graph.get_node(territory_id)
+            if node is None:
+                continue
+            current_hab = float(node.attributes.get("habitability", 1.0))
+            new_hab = max(0.0, min(1.0, current_hab + float(impact)))
+            graph.update_node(territory_id, habitability=new_hab)
+
         # Phase 1: Update each territory's biocapacity
         for node in graph.query_nodes(node_type="territory"):
             attrs = node.attributes

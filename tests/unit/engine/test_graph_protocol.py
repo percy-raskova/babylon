@@ -358,6 +358,36 @@ class MockGraphAdapter:
     def set_graph_attr(self, key: str, value: Any) -> None:
         """Set graph attribute stub."""
 
+    # Spec-070 balkanization extensions.
+    def query_faction_influence_by_territory(
+        self, territory_id: str
+    ) -> list[tuple[str, float, str]]:
+        return []
+
+    def query_sovereign_claims(self, sovereign_id: str) -> list[tuple[str, float, str]]:
+        return []
+
+    def query_territory_claims(self, territory_id: str) -> list[tuple[str, float, str]]:
+        return []
+
+    def query_adjacent_territories(self, territory_id: str) -> list[str]:
+        return []
+
+    def bulk_partition_claims(
+        self,
+        from_sovereign_id: str,
+        to_sovereign_id: str,
+        territories: set[str],
+    ) -> int:
+        return 0
+
+    def query_contiguous_component_under_predicate(
+        self,
+        territory_seed: str,
+        predicate: Any,
+    ) -> set[str]:
+        return set()
+
 
 @pytest.mark.topology
 class TestProtocolCompliance:

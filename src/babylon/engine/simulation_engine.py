@@ -59,6 +59,7 @@ from babylon.engine.systems.production import ProductionSystem
 from babylon.engine.systems.protocol import ContextType, System
 from babylon.engine.systems.reserve_army import ReserveArmySystem
 from babylon.engine.systems.solidarity import SolidaritySystem
+from babylon.engine.systems.sovereignty import SovereigntySystem
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.engine.systems.substrate import SubstrateSystem
 from babylon.engine.systems.survival import SurvivalSystem
@@ -338,6 +339,7 @@ _DEFAULT_SYSTEMS: list[System] = [
     SurvivalSystem(),  # 15. Risk assessment
     StruggleSystem(),  # 16. Action/Revolt
     ConsciousnessSystem(),  # 17. Ideological drift
+    SovereigntySystem(),  # 17.5. Spec-070 sovereign metabolic_impact (FR-019, FR-043)
     ContradictionSystem(),  # 18. Tension aggregation
     ContradictionFieldSystem(),  # 19. Contradiction field computation (Feature 002)
     FieldDerivativeSystem(),  # 20. Spatial/temporal derivatives + principal (Feature 002)
@@ -376,6 +378,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         SurvivalSystem,
         StruggleSystem,
         ConsciousnessSystem,
+        SovereigntySystem,  # Spec-070 FR-042
         ContradictionSystem,
         ContradictionFieldSystem,
         FieldDerivativeSystem,

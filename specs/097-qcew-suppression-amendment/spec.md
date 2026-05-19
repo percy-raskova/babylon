@@ -1,7 +1,10 @@
-# Spec-070: QCEW BLS Suppression Spec Amendment (placeholder)
+# Spec-097: QCEW BLS Suppression Spec Amendment (placeholder)
 
 **Status**: PLACEHOLDER (deferred from spec-067 T036 finding)
 **Created**: 2026-05-16
+**Renumbered**: 2026-05-17 (was spec-070; relocated to free the audit-assigned
+spec-070 slot for Sovereign Topology + Faction Influence + Balkanization per
+`reports/aidocs-vs-code-audit-2026-05-16.md` Part 3-FULL Wave 1)
 **Owner**: TBD
 
 ## Scope (one-paragraph stub)
@@ -22,7 +25,7 @@ the band target unattainable at `naics_level=6` aggregation.
 
 ## Decision needed
 
-Spec-070 will pick ONE of these four mitigation strategies and amend the
+Spec-097 will pick ONE of these four mitigation strategies and amend the
 SC-001 / SC-006 / SC-007 / FR-006 numeric targets accordingly:
 
 1. **Loosen tolerance to ±20-30%**: Pragmatic acceptance of QCEW's
@@ -51,7 +54,7 @@ SC-001 / SC-006 / SC-007 / FR-006 numeric targets accordingly:
    as `MAX(naics_level=0 sum, SUM(naics_level=6 leaves))` and persist as
    a flagged `is_imputed_total = TRUE` row. Consumers explicitly select
    this row for "BLS-fidelity total" use cases. Most complex; introduces
-   a new data attribute. Reserved for the case where spec-070 also
+   a new data attribute. Reserved for the case where spec-097 also
    wants to support sub-(county, year) granularity recovery for
    suppressed cells.
 
@@ -70,12 +73,12 @@ SC-001 / SC-006 / SC-007 / FR-006 numeric targets accordingly:
 
 ## Acceptance criteria (high-level)
 
-- Spec-070 selects one of strategies (1)-(4) with documented rationale
+- Spec-097 selects one of strategies (1)-(4) with documented rationale
   in `decisions/` ADR046 (or amendment to ADR045).
 - spec-067 SC-001 / SC-006 / SC-007 / FR-006 targets are updated in
   `specs/067-qcew-ownership-normalization/spec.md` to reflect the
   chosen tolerance.
-- If strategy (2) or (3) is selected, spec-070 ships the migration-
+- If strategy (2) or (3) is selected, spec-097 ships the migration-
   rerun or query-pattern restoration as a coordinated change.
 - All 70 spec-067 tasks marked complete in `tasks.md` (the four
   blocked-on-amendment SCs are now resolvable).

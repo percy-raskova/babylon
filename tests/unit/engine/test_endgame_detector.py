@@ -181,6 +181,16 @@ class TestEndgameDetectorInitialState:
 class TestRevolutionaryVictoryDetection:
     """Test detection of revolutionary victory condition."""
 
+    @pytest.mark.xfail(
+        reason=(
+            "Spec-070 FR-031 augmented REVOLUTIONARY_VICTORY with "
+            "ABOLISH-Sovereign-majority + CEASE-policy + habitability-slope "
+            "+ cross-divide-solidarity gates. This test exercises the "
+            "pre-spec-070 contract (percolation + consciousness alone) which "
+            "now correctly routes to RED_OGV / FASCIST_CONSOLIDATION instead. "
+            "Replaced by tests in test_endgame_revolutionary_victory_augmented.py."
+        )
+    )
     def test_endgame_detector_detects_revolutionary_victory(
         self,
         config: SimulationConfig,
@@ -864,6 +874,16 @@ class TestEndgameDetectorLifecycle:
 class TestEndgamePriority:
     """Test precedence when multiple endgame conditions are met."""
 
+    @pytest.mark.xfail(
+        reason=(
+            "Spec-070 FR-033 reordered priority: RED_OGV → FRAGMENTED_COLLAPSE "
+            "→ ECOLOGICAL_COLLAPSE → FASCIST_CONSOLIDATION → "
+            "REVOLUTIONARY_VICTORY. The augmented REVOLUTIONARY_VICTORY also "
+            "now requires Sovereign + colonial-stance gates per FR-031, "
+            "which this fixture doesn't establish. Replaced by tests in "
+            "test_endgame_priority_order.py."
+        )
+    )
     def test_revolutionary_victory_takes_precedence(
         self,
         config: SimulationConfig,

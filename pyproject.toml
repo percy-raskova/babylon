@@ -121,7 +121,7 @@ pytest-json-report = "^1.5.0"
 pytest-html = "^4.1.0"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = ">=7,<9"
+sphinx = ">=7,<10"
 sphinx-rtd-theme = "^3.0.2"
 sphinx-autodoc-typehints = "<3.6"
 myst-parser = "^5.0.0"

@@ -1,0 +1,276 @@
+{
+  "schema_version": "1.0",
+  "generator": {
+    "tool": "babylon.engine.headless_runner",
+    "babylon_version": "0.3.0",
+    "git_sha": "47f24fb9aa74721e023e294a0676b7221b3fd405",
+    "python_version": "3.13.5",
+    "partial": false
+  },
+  "files": [
+    {
+      "name": "trace.csv",
+      "schema_ref": "trace_csv_v1",
+      "sha256": "a39ffcd650618b18c79d9e3b8e4f592f0708e85752656d467e2b0fa255bde2ec",
+      "size_bytes": 4327,
+      "row_count": 15
+    },
+    {
+      "name": "summary.json",
+      "schema_ref": "summary_json_v1",
+      "sha256": "b89e5205b650113e2d298827e4c46cc62a9b1e313a7d041ab32939801290c37a",
+      "size_bytes": 13920
+    }
+  ],
+  "reproducibility": {
+    "deterministic_inputs": {
+      "seed": 2010,
+      "ticks": 5,
+      "start_year": 2010,
+      "scope_fips": [
+        "26099",
+        "26125",
+        "26163"
+      ],
+      "external_node_ids": [
+        "canada"
+      ],
+      "defines_hash": "96ed2c9b4874fbb210dc8b55a2db2374894e4506b9a611932b2de81716dc9a8a",
+      "data_versions": {
+        "tiger_vintage": "2024",
+        "sqlite_sha256": "ddf4ed238d81f750e17cbfde86fa530aedefde96e81aaa4d3be2dd630b2bc4b4"
+      },
+      "engine_systems_invoked": []
+    },
+    "non_deterministic_inputs": {
+      "session_id": "72465935-aadf-4023-b08b-8b2041816032",
+      "wallclock_start": "2026-05-17T15:43:40.210342Z",
+      "wallclock_end": "2026-05-17T15:43:46.023154Z",
+      "hostname": "host",
+      "working_dir": "/home/user/projects/game/babylon"
+    },
+    "input_hash": "b2314000a3b04dd2f4f2188498294eb568ba7ce909953e3f225e9e1bf5971214"
+  },
+  "column_dictionaries": {
+    "trace_csv": [
+      {
+        "name": "tick",
+        "type": "int",
+        "units": "weekly_tick",
+        "semantics": "Zero-indexed tick.",
+        "nullable": false
+      },
+      {
+        "name": "simulated_year",
+        "type": "float",
+        "units": "calendar_year",
+        "semantics": "start_year + tick/52.",
+        "nullable": false
+      },
+      {
+        "name": "entity_id",
+        "type": "str",
+        "units": "id",
+        "semantics": "5-digit FIPS / canonical short name.",
+        "nullable": false
+      },
+      {
+        "name": "entity_kind",
+        "type": "str",
+        "units": "enum",
+        "semantics": "county | external | national | hex_aggregate.",
+        "nullable": false
+      },
+      {
+        "name": "v",
+        "type": "float",
+        "units": "USD/week",
+        "semantics": "Variable capital this tick.",
+        "nullable": true,
+        "applies_to": [
+          "county",
+          "national",
+          "hex_aggregate"
+        ]
+      },
+      {
+        "name": "c",
+        "type": "float",
+        "units": "USD/week",
+        "semantics": "Constant capital consumed.",
+        "nullable": true,
+        "applies_to": [
+          "county",
+          "national",
+          "hex_aggregate"
+        ]
+      },
+      {
+        "name": "s",
+        "type": "float",
+        "units": "USD/week",
+        "semantics": "Surplus value extracted.",
+        "nullable": true,
+        "applies_to": [
+          "county",
+          "national",
+          "hex_aggregate"
+        ]
+      },
+      {
+        "name": "k",
+        "type": "float",
+        "units": "USD/stock",
+        "semantics": "Accumulated capital stock.",
+        "nullable": true,
+        "applies_to": [
+          "county",
+          "national",
+          "hex_aggregate"
+        ]
+      },
+      {
+        "name": "p_acquiescence",
+        "type": "float",
+        "units": "prob",
+        "semantics": "P(S|A).",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "p_revolution",
+        "type": "float",
+        "units": "prob",
+        "semantics": "P(S|R).",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "ideology_r",
+        "type": "float",
+        "units": "simplex",
+        "semantics": "Reactionary weight.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "ideology_l",
+        "type": "float",
+        "units": "simplex",
+        "semantics": "Liberal weight.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "ideology_f",
+        "type": "float",
+        "units": "simplex",
+        "semantics": "Front weight.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "surveillance_coupling",
+        "type": "float",
+        "units": "ratio",
+        "semantics": "State surveillance coupling.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "internet_access_pct",
+        "type": "float",
+        "units": "ratio",
+        "semantics": "Broadband-population fraction.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "biocapacity_stock",
+        "type": "float",
+        "units": "abstract",
+        "semantics": "Remaining biocapacity.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "energy_stock",
+        "type": "float",
+        "units": "abstract",
+        "semantics": "Remaining energy stock.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "raw_material_stock",
+        "type": "float",
+        "units": "abstract",
+        "semantics": "Remaining raw material stock.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "profit_rate",
+        "type": "float",
+        "units": "ratio",
+        "semantics": "s/(c+v).",
+        "nullable": true,
+        "applies_to": [
+          "county",
+          "national"
+        ]
+      },
+      {
+        "name": "exploitation_rate",
+        "type": "float",
+        "units": "ratio",
+        "semantics": "s/v.",
+        "nullable": true,
+        "applies_to": [
+          "county",
+          "national"
+        ]
+      },
+      {
+        "name": "population",
+        "type": "int",
+        "units": "persons",
+        "semantics": "Resident population.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      },
+      {
+        "name": "employment_proxy",
+        "type": "float",
+        "units": "FTE",
+        "semantics": "QCEW-derived employment proxy.",
+        "nullable": true,
+        "applies_to": [
+          "county"
+        ]
+      }
+    ]
+  }
+}

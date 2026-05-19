@@ -370,7 +370,7 @@ filelock = ">=3.8.2"
 jsonschema = ">=4.10.0"
 packaging = ">=22.0"
 pathspec = ">=1.0.3,<1.1.0"
-pyyaml = ">=6.0.1"
+pyyaml = {version = ">=6.0.1", markers = "python_version < \"3.14\""}
 referencing = ">=0.36.2"
 ruamel-yaml = ">=0.18.11"
 ruamel-yaml-clib = {version = ">=0.2.12", markers = "python_version < \"3.14\""}
@@ -8346,14 +8346,14 @@ numpy = ">=1.20"
 
 [[package]]
 name = "types-pyyaml"
-version = "6.0.12.20260408"
+version = "6.0.12.20260518"
 description = "Typing stubs for PyYAML"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "types_pyyaml-6.0.12.20260408-py3-none-any.whl", hash = "sha256:fbc42037d12159d9c801ebfcc79ebd28335a7c13b08a4cfbc6916df78fee9384"},
-    {file = "types_pyyaml-6.0.12.20260408.tar.gz", hash = "sha256:92a73f2b8d7f39ef392a38131f76b970f8c66e4c42b3125ae872b7c93b556307"},
+    {file = "types_pyyaml-6.0.12.20260518-py3-none-any.whl", hash = "sha256:d2150f75a231c9fe9c7463bd29487d93e60bac90400287351384bc2284eba7cd"},
+    {file = "types_pyyaml-6.0.12.20260518.tar.gz", hash = "sha256:d917f83fb38462550338c1297faedd860b3ec83912b96b1e3d73255f7473e466"},
 ]
 
 [[package]]
@@ -9051,4 +9051,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "d93acf6c980724f2feda87685a881b9617737c245265b32dff7f61bc1d22ec9a"
+content-hash = "e443be817329a3f21a67fdf23a9f50cf3067f5eb616cedca9f22e9e5928f2971"

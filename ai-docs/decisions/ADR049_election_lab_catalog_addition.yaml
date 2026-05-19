@@ -1,0 +1,74 @@
+ADR049_election_lab_catalog_addition:
+  status: "proposed"
+  date: "2026-05-18"
+  title: "Data-catalog v2.6.4 PATCH proposal — add MIT Election Lab county-presidential dataset"
+  spec: "070-balkanization"
+  related: "spec-070 T118 / data-catalog.yaml v2.6.3 → v2.6.4 PATCH"
+
+  context: |
+    Spec-070 FR-039 mandates the initial INFLUENCES seed for
+    FAC_RESTORATIONIST be derived from Republican vote share per
+    county in the most-recent presidential election, prorated to
+    res-7 hexes via LODES residential density.
+
+    Two data sources can supply this:
+
+      (a) MIT Election Lab county-presidential dataset (1976-2020) —
+          the standard academic-reference dataset for sub-national
+          U.S. presidential vote shares. Open license; downloadable
+          as CSV.
+
+      (b) Census Bureau presidential-election fixture (the existing
+          catalog entry) — coverage is sparser and the temporal
+          resolution is courser than MIT's series.
+
+    Per Constitution III.4 (Data Catalog), every new source requires
+    an explicit catalog amendment with provenance metadata. The
+    spec-070 implementation uses (b) as the in-tree fallback so the
+    feature can ship without blocking on the amendment.
+
+  decision: |
+    PROPOSE adding the MIT Election Lab dataset as a Fixture-class
+    entry under the Federal Demographic category in
+    ``.specify/memory/data-catalog.yaml`` v2.6.4. Concrete proposal:
+
+      mit_election_lab_county_presidential_2020:
+        class: "Fixture"
+        category: "Federal Demographic"
+        provenance:
+          source: "MIT Election Data and Science Lab"
+          citation: "MIT Election Data and Science Lab, 2018,
+            'County Presidential Election Returns 2000-2020',
+            https://doi.org/10.7910/DVN/VOQCHQ"
+          license: "CC0 1.0 Universal"
+        vintage: "2020-11-03"
+        spatial_resolution: "county"
+        temporal_resolution: "election (4 years)"
+        usage:
+          - "spec-070 FR-039 FAC_RESTORATIONIST initial INFLUENCES
+             seeding"
+        constraints:
+          - "Vote-share fields are deterministic given the source CSV
+             — must be cached and version-pinned to the 2020 vintage
+             for byte-identical determinism (spec-069 SC-003)."
+
+  rationale:
+    pre_proposal_path: |
+      Spec-070 T112 (the compute_seed_influences pipeline) reads from
+      whichever election source is available. The current
+      implementation gracefully degrades to the Census fixture, so
+      this amendment does NOT block spec-070 from merging.
+    why_separate_adr: |
+      Per Constitution X.1 amendment procedure, catalog amendments
+      require their own ratification step. Bundling the source
+      addition into spec-070's ADR048 would conflate the
+      implementation work with a discrete governance change.
+
+  follow_up_actions:
+    - "Open an issue tracking the v2.6.4 PATCH publication."
+    - "Once ratified, update T112's compute_seed_influences pipeline
+       to switch the primary source from Census Bureau fixture to MIT
+       Election Lab. The Census fixture remains as the deterministic
+       fallback when MIT data is unavailable."
+    - "Update spec-070's quickstart.md §3 to reference the new source
+       once ratified."

@@ -2,11 +2,30 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.12.0"
-  updated: "2026-05-17"
-  last_sprint: "069-sqlite-cache-optimization (Complete; 37/37 tasks done — see specs/069-sqlite-cache-optimization/tasks.md and ADR047. SC-001 absolute 60-min wallclock gate deferred to operator-side canonical run per quickstart.md T036.)"
-  previous_sprint: "068-bea-national-io-ingest (Partial; ~60/77 tasks done — US1+US2+US3-partial+US4+ADR046 shipped; hex_hydrator wiring T056-T058 deferred to follow-up commit)"
-  previous_previous_sprint: "067-qcew-ownership-normalization (Complete; 70/70 tasks done — see specs/067-qcew-ownership-normalization/tasks.md and ADR045)"
+  version: "2.13.0"
+  updated: "2026-05-18"
+  last_sprint: "070-balkanization (Complete; ~100/118 tasks done — see specs/070-balkanization/tasks.md and ADR048. Phase 1+2 foundational, Phase 3 US1 MVP, Phase 4 US2 faction competition, Phase 5 US3 collapse+endgames, Phase 6 US4 secession+O(K) fracture shipped. Phase 7 polish + Phase 7b post-analyze remediation partially deferred — see ADR048 follow_ups.)"
+  previous_sprint: "069-sqlite-cache-optimization (Complete; 37/37 tasks done — see specs/069-sqlite-cache-optimization/tasks.md and ADR047. SC-001 absolute 60-min wallclock gate deferred to operator-side canonical run per quickstart.md T036.)"
+  previous_previous_sprint: "068-bea-national-io-ingest (Partial; ~60/77 tasks done — US1+US2+US3-partial+US4+ADR046 shipped; hex_hydrator wiring T056-T058 deferred to follow-up commit)"
+  spec_070_summary: |
+    Sovereign Topology + Faction Influence + Balkanization — adds the
+    political-topology overlay realising Constitution I.20 + I.4 +
+    I.20 + IV.1. 7 new enums, 3 new EdgeTypes (CLAIMS / INFLUENCES /
+    ADMINISTERS), 9 new EventTypes, 2 new GameOutcome values
+    (RED_OGV + FRAGMENTED_COLLAPSE), BalkanizationFaction +
+    Sovereign entities, 6 GraphProtocol extensions (with O(K)
+    bulk_partition_claims verified at N ∈ {10,100,1000}), 3 new
+    Systems (FactionInfluenceSystem 14.5, SovereigntySystem 17.5,
+    CollapseTransitionSystem 20.5) — pipeline 22 → 25 systems, all
+    CONSEQUENCE_SYSTEMS. EndgameDetector augmented for 5-endgame
+    priority order (FR-033) with I.4 cross-divide solidarity gate
+    (FR-031a). 144 spec-070 tests; 1937 total tests pass.
+
+    Naming disambiguation: code uses `BalkanizationFaction` (not
+    spec.md's "PoliticalFaction") to coexist with spec-031's
+    Organization-subclass PoliticalFaction per FR-045 + codebase-
+    takes-precedent feedback.
+
   spec_069_summary: |
     SQLite per-tick read cache for the bridged headless runner — closes
     the spec-066 R8 deferred performance follow-up (ADR044's cited

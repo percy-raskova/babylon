@@ -1,0 +1,133 @@
+ADR048_spec_070_balkanization:
+  status: "accepted"
+  date: "2026-05-18"
+  title: "Sovereign Topology + Faction Influence + Balkanization (spec-070)"
+  spec: "070-balkanization"
+
+  context: |
+    The codebase modelled imperial dynamics (extraction, consciousness,
+    metabolism) but lacked an explicit political-topology layer
+    realising Constitution I.20 ("Political claims are first-class
+    state: a hex or county can have multiple overlapping claims, zero
+    claims, or claims that change without the substrate changing.").
+    The 2026-05-16 ai-docs-vs-code audit identified this as the largest
+    gap in the Epoch 3 surface (~140-180h estimate).
+
+    Five clarifications resolved 2026-05-18:
+      Q1 — Dual-mode player (CAMPAIGN + OBSERVER).
+      Q2 — Composite fracture trigger (collapse-passive + contiguity-active).
+      Q3 — ≤5% steady-state / ≤15% spike wallclock budget for the
+           three new Systems combined.
+      Q4 — GameOutcome mapping: REVOLUTIONARY_VICTORY = "TRUE LIBERATION",
+           FASCIST_VICTORY = "FASCIST_CONSOLIDATION", + RED_OGV +
+           FRAGMENTED_COLLAPSE as new enum values.
+      Q5 — SOV_USA_FED hard-starts ruled by FAC_RESTORATIONIST with
+           INTENSIFY extraction from t=0.
+
+  decision: |
+    Implement the spec-070 political-topology layer in 24+ commits on
+    branch ``070-balkanization``. Six load-bearing decisions:
+
+      1. **Two new entity types**: `BalkanizationFaction` (renamed from
+         spec.md's "PoliticalFaction" to disambiguate from spec-031's
+         existing PoliticalFaction Organization subclass per FR-045 +
+         codebase-takes-precedent feedback) and `Sovereign` (with
+         `@computed_field` `metabolic_impact` and FR-040b validator
+         permitting NULL ruling_faction only with CONTINUE policy for
+         SOV_EXTERIOR_NULL).
+
+      2. **Three new EdgeTypes**: CLAIMS (Sovereign→Territory),
+         INFLUENCES (BalkanizationFaction→Territory), ADMINISTERS
+         (Sovereign→Sovereign DAG).
+
+      3. **Three new Systems** classified into CONSEQUENCE_SYSTEMS per
+         FR-042: FactionInfluenceSystem at pipeline position 14.5,
+         SovereigntySystem at 17.5, CollapseTransitionSystem at 20.5.
+         Pipeline expands from 22 → 25 systems.
+
+      4. **Six new GraphProtocol methods** with deterministic ordering:
+         `query_faction_influence_by_territory`,
+         `query_sovereign_claims`, `query_territory_claims`,
+         `query_adjacent_territories`, `bulk_partition_claims` (O(K)
+         per FR-018/SC-004), `query_contiguous_component_under_predicate`.
+
+      5. **EndgameDetector augmentation** per FR-031 + FR-031a + FR-032 +
+         FR-032a + FR-033: REVOLUTIONARY_VICTORY now requires ABOLISH-
+         Sovereign majority + CEASE policy + habitability slope +
+         cross-divide solidarity edges; FASCIST_CONSOLIDATION has a
+         new political-violence route (UPHOLD majority + max violence +
+         INTENSIFY); RED_OGV + FRAGMENTED_COLLAPSE are new outcomes;
+         priority order is RED_OGV → FRAGMENTED_COLLAPSE →
+         ECOLOGICAL_COLLAPSE → FASCIST_CONSOLIDATION →
+         REVOLUTIONARY_VICTORY (FR-033).
+
+      6. **Migration 0025_balkanization.sql** introduces 7 tables under
+         the balkanization subsystem (II.11): 2 entity tables, 3 edge
+         tables, 2 append-only audit tables. SOV_EXTERIOR_NULL is
+         specially exempt from orphan-cleanup so the exterior fallback
+         survives pruning.
+
+  rationale:
+    constitution_realisation: |
+      I.20 (Political Claims as Overlay) is now mechanically realised.
+      I.4 (George Jackson Bifurcation) gets a load-bearing realisation
+      via FR-031a's cross-divide solidarity gate (SC-016).
+      I.16 (Org vs Institution) — BalkanizationFaction is org-side
+      (dissolvable), Sovereign is institution-side (survives
+      ruling-faction-change via CLAIMS persistence).
+      I.18 (Material-Ideological) — INFLUENCES is the material
+      dimension; ColonialStance enum is the ideological dimension;
+      v2-dyadic-compatible (II.9).
+    spec_056_compliance: |
+      All three new Systems classified into CONSEQUENCE_SYSTEMS per
+      FR-042. Import-time partition assertion still passes (25 systems
+      total).
+    iv_1_detroit_windsor: |
+      SOV_CAN_FED seeded with FAC_LIBERAL_IMPERIAL per research.md R-002.
+      Cross-border CLAIMS established via existing LODES-Canada flow.
+    fr_040b_exterior_fallback: |
+      SOV_EXTERIOR_NULL with NULL ruling_faction + CONTINUE policy is
+      the documented exterior fallback for unclaimed Territories.
+      Sovereign Pydantic validator permits this exact combination
+      while rejecting any other NULL-ruling pairing.
+
+  consequences:
+    positive:
+      - "Political topology now first-class — supports player verbs
+        (spec-072) and narrative differentiation (4 distinct endgames
+        per SC-002)."
+      - "O(K) fracture cost (SC-004) verified at N ∈ {10, 100, 1000} —
+        secession scales with boundary, not with N."
+      - "PoliticalFaction (spec-031 Organization subclass) and
+        BalkanizationFaction (spec-070 political-coalition) coexist
+        as distinct concepts via naming disambiguation."
+      - "EndgameDetector now distinguishes RED_OGV (settler-socialist
+        trap) from FASCIST_CONSOLIDATION + REVOLUTIONARY_VICTORY +
+        FRAGMENTED_COLLAPSE — SC-012 user-facing pedagogy enabled."
+    negative:
+      - "GameOutcome enum widened by 2; preserved 4 existing values
+        but the REVOLUTIONARY_VICTORY contract changed (now requires
+        ABOLISH Sovereign majority + cross-divide solidarity edges).
+        Pre-spec-070 unit tests for REVOLUTIONARY_VICTORY are
+        explicitly xfailed with documentation."
+      - "Pipeline grew from 22 → 25 systems; per-tick wallclock
+        budget should be re-benchmarked vs spec-069 baseline (T096
+        scenario test deferred)."
+    cleared_findings: |
+      All 11 /speckit.analyze findings (0 CRITICAL / 2 HIGH / 6 MEDIUM
+      / 3 LOW) cleared during 2026-05-18 remediation pass. C1 / C8
+      INFLUENCES seeding pipeline (T111-T114) is the largest single
+      follow-up not yet landed — proxy-data computation remains a
+      v2.6.4 patch concern.
+
+  follow_ups:
+    spec_072: "Player CAMPAIGN-mode verbs route through spec-072's
+      economy/budget framework; spec-070 ships the OBSERVER-mode
+      god-mode path."
+    catalog_v264: "T118 — MIT Election Lab county-presidential dataset
+      proposal as a v2.6.4 PATCH addition to data-catalog.yaml."
+    influences_seeding: "T111-T113 — QCEW + AIANNH + election proxy
+      data pipeline for initial INFLUENCES edges. Spec-070 itself
+      ships with seed_factions.json + seed_sovereigns.json; the
+      INFLUENCES seed remains a pre-computed-and-not-checked-in
+      artifact."

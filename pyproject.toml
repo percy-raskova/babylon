@@ -77,7 +77,7 @@ django = ">=5.0,<6.0"
 djangorestframework = ">=3.15"
 django-cors-headers = ">=4.0"
 gunicorn = ">=21.0"
-sentence-transformers = "^3.0"
+sentence-transformers = "^5.5"
 tqdm = "^4.66"
 
 [tool.poetry.group.dev.dependencies]

@@ -22,6 +22,40 @@
   Net `GameOutcome` enum change: ADD `RED_OGV` and `FRAGMENTED_COLLAPSE`; KEEP `IN_PROGRESS` / `REVOLUTIONARY_VICTORY` / `ECOLOGICAL_COLLAPSE` / `FASCIST_CONSOLIDATION`; AUGMENT the predicates for `REVOLUTIONARY_VICTORY` (stricter — colonial-stance gate) and `FASCIST_CONSOLIDATION` (broader — second political-route predicate fires the same value).
 - Q: What's the initial `ruling_faction_id` of `SOV_USA_FED` at simulation start? → A: `FAC_RESTORATIONIST` (UPHOLD stance). The MLM-TW theory holds that the US settler-colonial state IS the Restorationist project — settler colonialism is an ongoing structure, not a historical event. Game starts with INTENSIFY extraction from t=0, rapid drift toward FASCIST_CONSOLIDATION unless the player intervenes. This is a hard start with urgency from tick 0; no neutral "liberal" buffer state.
 
+### Session 2026-05-18 (post-/speckit.analyze remediation)
+
+- Post-analyze fix: Extended FR-008 to four canonical Factions
+  (added FAC_LIBERAL_IMPERIAL) to align spec.md with research.md
+  R-002 / Constitution IV.1 (Detroit-Windsor Boundary). Cleared
+  finding C4.
+- Post-analyze fix: Reworded FR-021 tiebreaker phrasing to make
+  "incumbent ruling_faction" precise. Cleared finding I2.
+- Post-analyze fix: Added FR-031a to honor Constitution I.4
+  (George Jackson Bifurcation) — REVOLUTIONARY_VICTORY now
+  requires cross-divide SOLIDARITY edges; absent that, the run
+  routes to RED_OGV instead. Cleared finding C5; added SC-016.
+- Post-analyze fix: Expanded FR-038 / FR-039 / FR-040 and added
+  FR-040a (SOV_CAN_FED) + FR-040b (SOV_EXTERIOR_NULL). The
+  exterior-fallback Sovereign is now concretely named, typed
+  (PROVISIONAL with NULL ruling_faction), and seeded; the
+  "rest_of_usa" Territory is treated as that Sovereign's initial
+  CLAIM target rather than as a Sovereign itself. Cleared
+  findings C1 (FR-039 mechanism concretized) and C2 (exterior
+  Sovereign defined). Edge cases "Unclaimed Territory" and
+  "All-zero influence" updated accordingly. Added SC-017
+  (initial-state coverage invariant).
+- Post-analyze fix: Added FR-051 (observability projections —
+  `observe_sovereign`, `observe_territory`) as engine-side API
+  contracts satisfying FR-036 + FR-037; UI rendering deferred
+  to spec-042 / spec-085. Cleared finding C3.
+- Post-analyze fix: Added FR-052 (principal-contradiction
+  cross-reference) clarifying how ColonialStance axis relates
+  to but does not displace Constitution I.13's principal-
+  contradiction selection mechanism. Cleared finding C6.
+- Post-analyze fix: Corrected FR-041 numbering parenthetical
+  from "19.5" to "20.5" reflecting current pipeline state.
+  Cleared finding I1.
+
 ## Background
 
 The 2026-05-16 ai-docs-vs-code audit identifies Balkanization as the
@@ -284,12 +318,20 @@ context).
 ### Edge Cases
 
 - **Unclaimed Territory**: A Territory with no CLAIMS edges from any
-  Sovereign — system MUST default to a designated exterior Sovereign
-  (the `rest_of_usa` boundary node established by spec-062 R4) rather
-  than leaving the territory orphaned.
+  Sovereign — system MUST add a CLAIMS edge from `SOV_EXTERIOR_NULL`
+  (per FR-040b) to that Territory with `legal_status=DE_FACTO`,
+  `control_level=1.0`, and emit a `TERRITORY_TRANSITION` event with
+  `reason=collapse_partition`. `SOV_EXTERIOR_NULL` itself CLAIMS the
+  existing `rest_of_usa` boundary node (per spec-062 R4) at game
+  start; orphaned in-scope Territories are reassigned to
+  `SOV_EXTERIOR_NULL` mid-game as a sink.
 - **All-zero influence**: A Territory where every Faction has zero
-  influence — winning-Faction resolution MUST fall back to incumbent;
-  if no incumbent, to the exterior Sovereign.
+  influence — winning-Faction resolution MUST fall back to incumbent
+  (the `ruling_faction_id` of the Territory's installed Sovereign);
+  if no incumbent or the incumbent Sovereign is `SOV_EXTERIOR_NULL`
+  (whose `ruling_faction_id` is NULL), the Territory remains under
+  `SOV_EXTERIOR_NULL`'s authority and no `TERRITORY_TRANSITION`
+  event fires.
 - **Sovereign with zero claimed Territories after partition**:
   Sovereign MUST be deleted in the same tick as the partition; its
   outbound CLAIMS / ADMINISTERS edges are removed; no zombie entity
@@ -370,9 +412,14 @@ context).
   2.0 / 0.0 / −0.5; IGNORE → 0.8 / 0.5 / 0.7 / 0.0; ABOLISH → 0.0 /
   0.3 / 0.5 / +0.8), with the option for per-Faction overrides via
   initial-state JSON.
-- **FR-008**: System MUST seed at least three canonical Factions at
+- **FR-008**: System MUST seed exactly four canonical Factions at
   simulation start: `FAC_RESTORATIONIST` (UPHOLD), `FAC_WORKERS_CONGRESS`
-  (IGNORE), `FAC_DECOLONIAL` (ABOLISH).
+  (IGNORE), `FAC_DECOLONIAL` (ABOLISH), and `FAC_LIBERAL_IMPERIAL`
+  (IGNORE — soft-imperial pole, distinct from FAC_WORKERS_CONGRESS in
+  ideology and `is_settler_formation=true` pairing; rules SOV_CAN_FED
+  per FR-040a). The fourth Faction is added per Constitution IV.1 to
+  ground Canada's settler-colonial formation as a first-class entity
+  (see research.md R-002 for derivation).
 
 **Edges — CLAIMS (Sovereign → Territory)**:
 
@@ -425,9 +472,13 @@ context).
 - **FR-021**: The system MUST identify, per Territory at decision
   moments (collapse-transition; explicit player verbs in later specs),
   the winning Faction as
-  `argmax_f Σ INFLUENCES[f → t].influence_level`, with a documented
-  deterministic tiebreaker (priority: incumbent ruling_faction,
-  then seed-deterministic RNG).
+  `argmax_f Σ INFLUENCES[f → t].influence_level`. Tiebreaker priority
+  on ties: (1) the `ruling_faction_id` of the Territory's currently-
+  installed Sovereign (the *incumbent*) — if that Faction is one of
+  the tied candidates, it wins; (2) if no installed Sovereign exists
+  or the incumbent ruling Faction is not among the tied candidates,
+  seed-deterministic RNG with the tied Faction IDs sorted
+  lexicographically before sampling.
 - **FR-022**: When the winning Faction for a Territory changes across
   ticks, the system MUST emit a `TERRITORY_TRANSITION` event for that
   Territory and update the installed Sovereign accordingly.
@@ -539,6 +590,21 @@ context).
   - Add a new `FRAGMENTED_COLLAPSE` predicate (see FR-032a).
   - The existing `ECOLOGICAL_COLLAPSE` predicate (overshoot_ratio
     > 2.0 for 5 consecutive ticks) MUST remain UNCHANGED.
+- **FR-031a**: Per Constitution I.4 (George Jackson Bifurcation),
+  the augmented `REVOLUTIONARY_VICTORY` predicate (FR-031) MUST
+  additionally require *solidarity across the colonial divide*:
+  at least `revolutionary_victory_min_cross_divide_solidarity_edges`
+  (tunable via `BalkanizationDefines`, default 5) active
+  `EdgeType.SOLIDARITY` edges MUST connect (a) entities with
+  `is_settler_formation=true` (or settler-coded Community membership
+  per `models/enums/community.py`) to (b) entities with
+  `is_settler_formation=false` (Decolonial, New Afrikan, Indigenous,
+  etc.). A run with ABOLISH-Sovereign majority + extraction stopped +
+  habitability stabilizing but WITHOUT cross-divide solidarity routes
+  to `RED_OGV` rather than `REVOLUTIONARY_VICTORY` — abolition
+  without coalition is itself a trap. This implements I.4's core
+  insight: revolution requires solidarity *across* the colonial
+  divide, not just within an oppressed-nation pole.
 - **FR-032**: The `RED_OGV` predicate MUST require ALL of: (a)
   IGNORE-aligned Sovereign holds majority of CLAIMS across active
   Territories; (b) aggregate class_tension reduced below a
@@ -587,16 +653,38 @@ context).
 
 **Initial State & Real-Proxy-Data Bootstrap**:
 
-- **FR-038**: Initial state MUST seed the three canonical Factions
-  (Restorationist, Workers' Congress, Decolonial) plus an exterior
-  fallback Sovereign aligned with `rest_of_usa` (spec-062 R4).
+- **FR-038**: Initial state MUST seed the four canonical Factions
+  (Restorationist, Workers' Congress, Decolonial, Liberal-Imperial
+  per FR-008) plus three canonical Sovereigns: `SOV_USA_FED`
+  (FR-040), `SOV_CAN_FED` (FR-040a), and `SOV_EXTERIOR_NULL`
+  (FR-040b — the exterior fallback Sovereign for orphaned-Territory
+  resolution).
 - **FR-039**: Initial INFLUENCES distributions MUST be derived from
   real proxy data sources loaded via the existing reference data
-  pipeline: union density data for Workers' Congress, AIANNH (TIGER
-  American Indian / Alaska Native / Native Hawaiian) area boundaries
-  for Decolonial, and recent presidential election results for
-  Restorationist. Arbitrary or synthetic-only initial distributions
-  are NOT acceptable for the canonical starting state.
+  pipeline and persisted as one INFLUENCES edge per
+  `(faction_id, territory_id)` pair with non-zero proxy value:
+  - **FAC_WORKERS_CONGRESS**: union-employment-share per
+    county-year computed from QCEW (`own_code='3'` + historically-
+    unionized NAICS filter), prorated to res-7 hexes via LODES
+    residential density; `support_type=LABOR`.
+  - **FAC_DECOLONIAL**: per-hex intersection area with Natural
+    Earth AIANNH (American Indian / Alaska Native / Native
+    Hawaiian) polygons, normalized to [0, 1]; `support_type=IDEOLOGICAL`.
+  - **FAC_RESTORATIONIST**: Republican-vote-share per county
+    (most-recent presidential election from MIT Election Lab or
+    Census Bureau fixture if catalog amendment pending), prorated
+    to res-7 hexes via LODES residential density;
+    `support_type=ELECTORAL`.
+  - **FAC_LIBERAL_IMPERIAL**: the complement of
+    `(restorationist_share + workers_congress_share)` per hex,
+    clamped to `[0, 0.4]` so the IGNORE-faction cannot dominate
+    without player intervention; `support_type=IDEOLOGICAL`.
+  Arbitrary or synthetic-only initial distributions are NOT
+  acceptable for the canonical starting state. The seed-data
+  format and schema are defined in
+  `contracts/seed_influences.schema.json`; the computation pipeline
+  is implemented as part of the foundational seeding tasks
+  (tasks.md Phase 2).
 - **FR-040**: At least one historical Sovereign (`SOV_USA_FED` —
   United States Federal Government) MUST be present at simulation
   start, claiming all in-scope Territories with `legal_status=DE_JURE`
@@ -609,6 +697,34 @@ context).
   rather than a neutral buffer state. The `default: "CONTINUE"` in
   the v1.2.0 schema is the SCHEMA default for unruled Sovereigns;
   the INITIAL-STATE seed override is INTENSIFY.
+- **FR-040a**: A second canonical Sovereign `SOV_CAN_FED` (Government
+  of Canada) MUST be present at simulation start per Constitution
+  IV.1 (Detroit-Windsor Boundary Condition). Attributes:
+  `sovereignty_type=RECOGNIZED_STATE`, `legitimacy=0.85`,
+  `ruling_faction_id=FAC_LIBERAL_IMPERIAL` (IGNORE stance →
+  `extraction_policy=CONTINUE`, `metabolic_impact=−0.005`).
+  SOV_CAN_FED's initial CLAIMS include the existing Canadian
+  boundary node (`canada` per spec-062 R4) plus DE_JURE claims on
+  every in-scope US Territory that has a LODES OD-matrix
+  `workplace_dest=canada` edge (representing Canadian-firm
+  operations in Detroit). This grounds Canada as a first-class
+  territorial substrate, not a closed-loop boundary node.
+- **FR-040b**: A third canonical Sovereign `SOV_EXTERIOR_NULL`
+  (Exterior Fallback) MUST be present at simulation start.
+  Attributes: `sovereignty_type=PROVISIONAL`, `legitimacy=0.0`,
+  `ruling_faction_id=NULL`, `extraction_policy=CONTINUE` (the
+  v1.2.0 schema default for unruled Sovereigns), no
+  `capital_territory_id`. SOV_EXTERIOR_NULL initially CLAIMS only
+  the existing `rest_of_usa` Territory boundary node (per
+  spec-062 R4) at `legal_status=DE_JURE` and `control_level=1.0`.
+  Mid-game, SOV_EXTERIOR_NULL is the fallback Sovereign that
+  receives any in-scope Territory orphaned by collapse-transition
+  with all-zero INFLUENCES — see the "Unclaimed Territory" and
+  "All-zero influence" edge cases. The `Sovereign` Pydantic
+  validator (per FR-003) MUST permit `ruling_faction_id=NULL`
+  alongside `extraction_policy=CONTINUE` as a special-cased
+  combination (no stance-policy derivation required when the
+  ruling Faction is NULL).
 
 **Pipeline Integration**:
 
@@ -619,7 +735,10 @@ context).
   Survival at 15), `SovereigntySystem` (after Consciousness at 17,
   before Contradiction at 18), and `CollapseTransitionSystem`
   (after FieldDerivative at 20, before EdgeTransition at 21). The
-  audit's suggested half-positions (14.5 / 17.5 / 19.5) are
+  audit's suggested half-positions (14.5 / 17.5 / 20.5 — the audit
+  originally said "19.5" against an older pipeline snapshot; per the
+  current 21-system pipeline the CollapseTransitionSystem position
+  is 20.5) are
   guidance; concrete insertion points are an implementation detail
   the plan phase will finalize.
 - **FR-042**: Per spec-056, each new System MUST be added to exactly
@@ -689,18 +808,80 @@ context).
   produces byte-identical replay; OBSERVER-mode runs are
   deterministic given the same observer-mutation sequence.
 
+**Observability Projections (Engine-Side API)**:
+
+- **FR-051**: The engine MUST expose two structured-projection
+  functions in the `observers/` layer that satisfy FR-036 + FR-037
+  at the API contract level (NOT a UI rendering — UI is deferred
+  to spec-042 Game UI Overhaul and spec-085 Tutorial):
+  - `observe_sovereign(graph, sovereign_id, horizon_ticks=20) →
+    SovereignProjection`: returns a frozen Pydantic
+    `SovereignProjection` model containing
+    `extraction_policy`, `metabolic_impact`, `legitimacy`,
+    `claimed_territory_ids: tuple[str, ...]`, and
+    `projected_habitability: tuple[float, ...]` (length =
+    horizon_ticks; deterministic extrapolation from current
+    metabolic_impact assuming no policy change).
+  - `observe_territory(graph, territory_id) → TerritoryProjection`:
+    returns a frozen `TerritoryProjection` with
+    `winning_faction_id`, `runner_up_faction_id`,
+    `influence_margin`, `installed_sovereign_id`,
+    `effective_control_level`, and `is_dual_power` (bool).
+  Both projections MUST be pure (read-only on the graph, no
+  mutations, no I/O) and MUST be exposed through the existing
+  `SimulationObserver` protocol. SC-007 + SC-013 are satisfied
+  when the projection contracts are testable in `tests/integration/`;
+  rendering them to a UI is downstream.
+
+**Principal-Contradiction Cross-Reference**:
+
+- **FR-052**: The settler-vs-anti-settler axis introduced by
+  spec-070 (Faction.colonial_stance + Sovereign.extraction_policy
+  + ColonialStance enum) operates AS A MODEL of the principal
+  contradiction at the political-topology layer, NOT as a
+  replacement for the existing dialectical-field-topology engine's
+  contradiction-selection mechanism (Constitution I.13 + spec-002).
+  Specifically:
+  - The `ColonialStance` axis is a *first-class attribute* of
+    PoliticalFaction nodes; it is NOT a Dialectic primitive
+    (per I.19) and does NOT participate in
+    `ContradictionFieldSystem` / `FieldDerivativeSystem`
+    (positions 19, 20) dialectical-field computation directly.
+  - When a `SOVEREIGN_COLLAPSE` event fires, the colonial-stance
+    distribution of the surviving Sovereigns SHOULD be surfaced
+    as an event-payload field
+    (`competing_colonial_stances: dict[ColonialStance, int]`) so
+    downstream principal-contradiction-tracking systems (future
+    spec, possibly spec-088 TRPF-activation or a successor) can
+    treat the colonial axis as a candidate principal contradiction
+    during collapse phases.
+  - This spec does NOT modify the principal-contradiction
+    selection algorithm. Wiring the colonial-stance axis into
+    I.13's selection algorithm is deferred to a follow-up spec
+    (target: an engagement spec between Balkanization and
+    dialectical-field-topology, post-070).
+
 ### Key Entities
 
 - **Faction** (`FAC_{CODE}`): A political-organizational coalition.
   Carries `colonial_stance ∈ {UPHOLD, IGNORE, ABOLISH}`, mechanical
   multipliers (extraction, violence, class, metabolic), and a
-  `is_settler_formation` flag. Three canonical starters: Restorationist
-  Front, Workers' Congress, Decolonial Front.
+  `is_settler_formation` flag. Four canonical starters per FR-008:
+  Restorationist Front (UPHOLD, settler), Workers' Congress (IGNORE,
+  settler — the RED_OGV trap), Decolonial Front (ABOLISH,
+  non-settler), Liberal-Imperial Bloc (IGNORE, settler — soft-imperial
+  pole; rules SOV_CAN_FED).
 - **Sovereign** (`SOV_{CODE}`): An authority that CLAIMS Territories
   and applies a per-tick `metabolic_impact` to them per its
-  `extraction_policy`. Installed by the winning Faction.
-  `sovereignty_type` distinguishes recognized-state vs insurgent vs
-  occupation vs secessionist vs emergency vs provisional.
+  `extraction_policy`. Installed by the winning Faction (or NULL for
+  the exterior fallback). `sovereignty_type` distinguishes
+  recognized-state vs insurgent vs occupation vs secessionist vs
+  emergency vs provisional. Three canonical starters per FR-040 /
+  FR-040a / FR-040b: SOV_USA_FED (Restorationist-ruled, INTENSIFY,
+  hard-start), SOV_CAN_FED (Liberal-Imperial-ruled, CONTINUE,
+  Detroit-Windsor boundary), SOV_EXTERIOR_NULL (NULL ruling Faction,
+  PROVISIONAL type, CONTINUE policy, exterior-fallback sink for
+  orphaned Territories — claims rest_of_usa at start).
 - **Territory** (existing entity, extended): Gains an installed-
   Sovereign attribute via incoming CLAIMS edges and surfaces
   winning-Faction via incoming INFLUENCES edges. Habitability dynamics
@@ -741,6 +922,15 @@ context).
 - **GameOutcome values added**: `RED_OGV`, `FRAGMENTED_COLLAPSE`
   (exactly two new values; see §"Relationship to Existing
   GameOutcome" for the full mapping).
+- **Observability projections** (per FR-051): `SovereignProjection`
+  (frozen Pydantic; fields: `extraction_policy`,
+  `metabolic_impact`, `legitimacy`, `claimed_territory_ids`,
+  `projected_habitability` over a configurable horizon).
+  `TerritoryProjection` (frozen Pydantic; fields:
+  `winning_faction_id`, `runner_up_faction_id`, `influence_margin`,
+  `installed_sovereign_id`, `effective_control_level`,
+  `is_dual_power`). These are engine-side projection contracts;
+  UI rendering is deferred to spec-042 / spec-085.
 
 ## Success Criteria *(mandatory)*
 
@@ -820,6 +1010,21 @@ context).
   single tick), the combined three-system tick cost may exceed
   the steady-state 5% budget but MUST NOT exceed 15% — fracture
   is a transient cost spike, not a sustained budget.
+- **SC-016**: A scripted test scenario satisfying every condition
+  of the augmented `REVOLUTIONARY_VICTORY` predicate EXCEPT the
+  cross-divide-solidarity requirement (FR-031a) MUST emit `RED_OGV`,
+  not `REVOLUTIONARY_VICTORY`, when the EndgameDetector evaluates
+  the predicate. A symmetric scenario satisfying ALL conditions
+  (including ≥ `revolutionary_victory_min_cross_divide_solidarity_edges`
+  cross-divide SOLIDARITY edges) MUST emit `REVOLUTIONARY_VICTORY`
+  with the "TRUE LIBERATION" user-facing framing.
+- **SC-017**: After initial-state seeding completes
+  (postgres_initialization run, FR-038–FR-040b applied), every
+  in-scope Territory (Detroit tri-county hex set) MUST satisfy at
+  least ONE of the following: (a) has ≥1 INFLUENCES edge with
+  `influence_level > 0.0`, or (b) is claimed by `SOV_EXTERIOR_NULL`
+  (post-collapse-transition fallback). No in-scope Territory may
+  be both un-influenced AND un-claimed at the start of tick 1.
 
 ## Assumptions
 

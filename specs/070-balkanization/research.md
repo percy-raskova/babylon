@@ -226,9 +226,18 @@ SOV_CAN_FED's CLAIMS:
 - **SEED**: `seed_factions.json` includes 4 canonical
   PoliticalFactions: FAC_RESTORATIONIST, FAC_WORKERS_CONGRESS,
   FAC_DECOLONIAL, FAC_LIBERAL_IMPERIAL.
-- **SEED**: `seed_sovereigns.json` includes 2 Sovereigns:
-  SOV_USA_FED (ruled by FAC_RESTORATIONIST) and SOV_CAN_FED
-  (ruled by FAC_LIBERAL_IMPERIAL).
+- **SEED**: `seed_sovereigns.json` includes 3 Sovereigns:
+  SOV_USA_FED (ruled by FAC_RESTORATIONIST), SOV_CAN_FED (ruled by
+  FAC_LIBERAL_IMPERIAL), and SOV_EXTERIOR_NULL (NULL ruling Faction,
+  PROVISIONAL, CONTINUE policy — exterior-fallback sink; claims
+  rest_of_usa at start). Per the 2026-05-18 post-analyze
+  remediation (finding C2): the spec previously referenced an
+  "exterior Sovereign aligned with rest_of_usa" without naming it,
+  creating a type/identity gap. SOV_EXTERIOR_NULL closes that gap.
+  The Pydantic `Sovereign` validator MUST permit
+  `ruling_faction_id=NULL` paired with `extraction_policy=CONTINUE`
+  (the v1.2.0 schema default for unruled Sovereigns) — this is the
+  only configuration where stance-policy derivation is bypassed.
 - **CROSS-BORDER**: The LODES OD matrix's existing `canada`
   destination feeds into SOV_CAN_FED's CLAIMS at game start.
   No new ingestion pipeline.

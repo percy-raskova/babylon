@@ -89,7 +89,7 @@ Single project — Babylon engine library. All paths relative to repo root `/hom
 ### Seed data + loaders
 
 - [ ] T028 [P] Create `src/babylon/data/game/balkanization/seed_factions.json` with 4 canonical PoliticalFactions per data-model.md §8: FAC_RESTORATIONIST (UPHOLD), FAC_WORKERS_CONGRESS (IGNORE), FAC_DECOLONIAL (ABOLISH), FAC_LIBERAL_IMPERIAL (IGNORE) per research.md R-002. Validate against `contracts/seed_factions.schema.json`
-- [ ] T029 [P] Create `src/babylon/data/game/balkanization/seed_sovereigns.json` with 2 starting Sovereigns: SOV_USA_FED (ruled by FAC_RESTORATIONIST, INTENSIFY, all-Detroit-tri-county DE_JURE claims at control_level=1.0) and SOV_CAN_FED (ruled by FAC_LIBERAL_IMPERIAL, CONTINUE) per research.md R-002 + FR-040. Validate against `contracts/seed_sovereigns.schema.json`
+- [ ] T029 [P] Create `src/babylon/data/game/balkanization/seed_sovereigns.json` with 3 starting Sovereigns per FR-040 / FR-040a / FR-040b: SOV_USA_FED (ruled by FAC_RESTORATIONIST, INTENSIFY, all-Detroit-tri-county DE_JURE claims at control_level=1.0), SOV_CAN_FED (ruled by FAC_LIBERAL_IMPERIAL, CONTINUE, claims `canada` boundary + cross-border claims), and SOV_EXTERIOR_NULL (PROVISIONAL, NULL ruling_faction, CONTINUE policy, claims `rest_of_usa` boundary at DE_JURE / control_level=1.0). Validate against `contracts/seed_sovereigns.schema.json` (minItems=3). The Sovereign Pydantic validator from T018 MUST be updated to permit `ruling_faction_id=NULL` paired with `extraction_policy=CONTINUE` (special-cased combination per FR-040b).
 - [ ] T030 Write test `tests/unit/balkanization/test_seed_loaders.py` — verify `load_seed_factions()` and `load_seed_sovereigns()` return correctly-typed lists, validate JSON-Schema conformance (RED)
 - [ ] T031 Create `src/babylon/data/game/balkanization/__init__.py` exporting `load_seed_factions() -> list[PoliticalFaction]` and `load_seed_sovereigns() -> list[Sovereign]` with JSON-Schema validation on load (GREEN)
 - [ ] T032 Extend `src/babylon/persistence/postgres_initialization.py` to invoke `load_seed_factions()` + `load_seed_sovereigns()` and insert into the new runtime tables during db-init, alongside the existing `DOMESTIC_REST_NODE` initialization
@@ -101,9 +101,9 @@ Single project — Babylon engine library. All paths relative to repo root `/hom
 
 ### Helper formulas (parallel-safe — same file but logically grouped writes)
 
-- [ ] T035 Extend `src/babylon/formulas/balkanization.py` with `derive_extraction_policy_from_stance(stance: ColonialStance) -> ExtractionPolicy` per FR-003 + data-model.md §3.2
-- [ ] T036 Extend `src/babylon/formulas/balkanization.py` with `derive_default_multipliers_from_stance(stance: ColonialStance, defines: BalkanizationDefines) -> tuple[float, float, float, float]` per FR-007 + data-model.md §3.1
-- [ ] T037 Write tests `tests/unit/balkanization/test_stance_mappings.py` for both derive-functions — exhaustive table verification (RED+GREEN)
+- [ ] T035 Write tests `tests/unit/balkanization/test_stance_mappings.py` for both derive-functions — exhaustive table verification of (ColonialStance → ExtractionPolicy) per FR-003 + data-model.md §3.2 and (ColonialStance → mechanical multipliers) per FR-007 + data-model.md §3.1 (RED — tests fail until T036+T037 land)
+- [ ] T036 Extend `src/babylon/formulas/balkanization.py` with `derive_extraction_policy_from_stance(stance: ColonialStance) -> ExtractionPolicy` per FR-003 + data-model.md §3.2 (GREEN for the policy half of T035)
+- [ ] T037 Extend `src/babylon/formulas/balkanization.py` with `derive_default_multipliers_from_stance(stance: ColonialStance, defines: BalkanizationDefines) -> tuple[float, float, float, float]` per FR-007 + data-model.md §3.1 (GREEN for the multipliers half of T035)
 
 **Checkpoint**: All enums, entities, defines, GraphProtocol extensions, migration, audit writer, seed loaders, event payloads, and helper formulas in place. User-story implementation can now begin.
 
@@ -271,7 +271,38 @@ Single project — Babylon engine library. All paths relative to repo root `/hom
 - [ ] T109 Run the scenario gate: `mise run test:scenario -- -k "test_five_endgames_reachable"` and verify SC-001 + SC-002 satisfied
 - [ ] T110 Execute every step in `specs/070-balkanization/quickstart.md` § 1-8 manually; resolve any drift between docs and implementation; commit any fixes
 
-**Final checkpoint**: All 4 user stories work independently and integrated. All 55 FRs implemented. All 15 SCs verified empirically. ai-docs synced. Quickstart manually validated.
+---
+
+## Phase 7b: Post-Analyze Remediation (2026-05-18)
+
+**Purpose**: New tasks added during the `/speckit.analyze` remediation pass to address findings C1, C3, C5, C8, and F1. T029, T035–T037 were also modified in-place to address C2 and C7 (no new task IDs needed).
+
+### INFLUENCES seeding pipeline (C1 — addresses FR-039 coverage gap)
+
+- [ ] T111 [P] Create `src/babylon/data/game/balkanization/__init__.py` `load_seed_influences() -> list[InfluencesEdgeSeed]` loader. Validate against `contracts/seed_influences.schema.json`. RED+GREEN with `tests/unit/balkanization/test_seed_influences_loader.py`.
+- [ ] T112 Create `src/babylon/data/game/balkanization/compute_seed_influences.py` — proxy-data computation pipeline producing `seed_influences.json` per FR-039 + data-model.md §8: (a) compute QCEW union-employment-share per county-year (`own_code='3'` + historically-unionized NAICS filter), prorate to res-7 hexes via LODES residential density → FAC_WORKERS_CONGRESS edges (`support_type=LABOR`); (b) intersect Natural Earth AIANNH polygons with res-7 hexes → FAC_DECOLONIAL edges (`support_type=IDEOLOGICAL`); (c) load presidential-election Republican vote share per county (MIT Election Lab if available, Census Bureau fixture otherwise), prorate to res-7 hexes → FAC_RESTORATIONIST edges (`support_type=ELECTORAL`); (d) compute complement → FAC_LIBERAL_IMPERIAL edges clamped to `liberal_imperial_influence_cap` (`support_type=IDEOLOGICAL`). Output validates against `contracts/seed_influences.schema.json`. Deterministic given upstream data + seed RNG.
+- [ ] T113 Extend `src/babylon/persistence/postgres_initialization.py` (after T032 `load_seed_factions()` + `load_seed_sovereigns()` calls) to invoke `load_seed_influences()` and INSERT into `runtime_influences_edges`. Update T026 audit writer to record the seed insertions with `tick=0` and `operation='CREATE'`.
+
+### Initial-state coverage invariant (C8 — addresses SC-017)
+
+- [ ] T114 [P] Write integration test `tests/integration/balkanization/test_seed_coverage_invariant.py` per SC-017: after db-init, assert for every in-scope Detroit-tri-county Territory `t`: `EXISTS (INFLUENCES.* WHERE territory_id=t AND influence_level > 0) OR EXISTS (CLAIMS WHERE sovereign_id='SOV_EXTERIOR_NULL' AND territory_id=t)`. Fail loudly if any Territory is both un-influenced AND un-claimed at the start of tick 1.
+
+### Observability projections (C3 — addresses FR-036, FR-037, SC-007, SC-013)
+
+- [ ] T115 [P] Write tests `tests/unit/balkanization/test_observability_projections.py` for `observe_sovereign(graph, sovereign_id, horizon_ticks)` and `observe_territory(graph, territory_id)` per FR-051: verify `SovereignProjection` / `TerritoryProjection` are frozen Pydantic models with the documented fields, return deterministic snapshots, are read-only on the graph, and pass through the existing `SimulationObserver` protocol (RED)
+- [ ] T116 Create `src/babylon/engine/observers/balkanization_projections.py` with `SovereignProjection` + `TerritoryProjection` Pydantic frozen models and `observe_sovereign()` + `observe_territory()` functions per FR-051. `SovereignProjection.projected_habitability` extrapolates current `metabolic_impact` over `horizon_ticks` (default 20 from BalkanizationDefines) assuming no policy change. Re-export via `engine/observers/__init__.py`. (GREEN for T115; satisfies FR-036 + FR-037; SC-007 + SC-013 verifiable as integration tests against the projection contract — UI rendering deferred to spec-042 / spec-085.)
+
+### Cross-divide solidarity test (C5 — addresses FR-031a, SC-016)
+
+- [ ] T117 [P] [US3] Write test `tests/integration/balkanization/test_cross_divide_solidarity_gate.py` per FR-031a + SC-016: construct two scripted scenarios — both satisfy ABOLISH-Sovereign-majority + extraction_policy=CEASE + habitability-slope ≥ 0 + percolation + class_consciousness; scenario A has < `revolutionary_victory_min_cross_divide_solidarity_edges` cross-divide SOLIDARITY edges (must route to RED_OGV); scenario B has ≥ threshold cross-divide SOLIDARITY edges (must route to REVOLUTIONARY_VICTORY with TRUE LIBERATION framing). Extend `EndgameDetector` REVOLUTIONARY_VICTORY predicate (T069) implementation to check the cross-divide SOLIDARITY edge count against `BalkanizationDefines.revolutionary_victory_min_cross_divide_solidarity_edges` (default 5).
+
+### Catalog amendment proposal (F1 — addresses III.4 PASS-WITH-FOLLOW-UP)
+
+- [ ] T118 [P] Draft `.specify/memory/data-catalog.yaml` v2.6.4 PATCH proposal adding MIT Election Lab county-presidential (1976–2020) dataset as a Fixture-class entry under Federal Demographic. Record as a separate proposal file in `ai-docs/decisions/` (e.g., `ADR049_election_lab_catalog_addition.yaml`) rather than directly mutating the canonical data-catalog.yaml (constitutional X.1 amendment procedure requires a separate ratification step). T112's compute pipeline gracefully degrades to the Census Bureau fixture until the amendment lands.
+
+**Phase 7b checkpoint**: All 11 `/speckit.analyze` findings cleared. spec-070 ready for `/speckit.implement`.
+
+**Final checkpoint**: All 4 user stories work independently and integrated. All 60 FRs implemented (55 original + FR-031a + FR-040a + FR-040b + FR-051 + FR-052). All 17 SCs verified empirically (15 original + SC-016 + SC-017). ai-docs synced. Quickstart manually validated.
 
 ---
 
@@ -338,6 +369,8 @@ US3 (T059–T077)
 US4 (T078–T090)
         ↓
 Polish (T091–T110)
+        ↓
+Post-analyze remediation (T111–T118)  # 2026-05-18 added; addresses /speckit.analyze findings
 ```
 
 ---
@@ -376,6 +409,7 @@ Task: "test_endgame_predicates.py — integration: each outcome reachable + exac
 | 3. + US3 | T059–T077 | +24–34 hrs | "Five endgames reachable + RED_OGV pedagogy works" |
 | 4. + US4 | T078–T090 | +18–28 hrs | "Active secession + O(1) fracture + civil war" |
 | 5. + Polish | T091–T110 | +10–15 hrs | "Determinism gate green; ai-docs synced; quickstart validated" |
+| 6. + Post-analyze remediation | T111–T118 | +8–12 hrs | "INFLUENCES proxy seeding, observability projections, cross-divide-solidarity gate, MIT Election Lab catalog amendment proposal" |
 
 Cumulative: ~103–150 hrs, consistent with the audit's ~140–180h estimate.
 

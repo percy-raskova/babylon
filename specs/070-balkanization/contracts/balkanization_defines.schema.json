@@ -132,6 +132,25 @@
       "minimum": 0.0,
       "maximum": 1.0,
       "description": "FR-034 — Faction with class_reduction above this AND colonial_stance ∈ {UPHOLD, IGNORE} triggers diagnostic."
+    },
+    "revolutionary_victory_min_cross_divide_solidarity_edges": {
+      "type": "integer",
+      "default": 5,
+      "minimum": 0,
+      "description": "FR-031a — minimum number of active EdgeType.SOLIDARITY edges between settler-formation and non-settler-formation entities required for REVOLUTIONARY_VICTORY. Below this count, an ABOLISH-majority + extraction-stopped + habitability-stabilizing run routes to RED_OGV instead. Implements Constitution I.4 (George Jackson Bifurcation): revolution requires solidarity across the colonial divide."
+    },
+    "liberal_imperial_influence_cap": {
+      "type": "number",
+      "default": 0.4,
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "FR-039 — clamp on FAC_LIBERAL_IMPERIAL's initial influence per hex (computed as complement of Restorationist + Workers' Congress shares). Prevents the soft-imperial pole from dominating the seed without player intervention."
+    },
+    "projected_habitability_horizon_ticks": {
+      "type": "integer",
+      "default": 20,
+      "minimum": 1,
+      "description": "FR-036 + FR-051 — default horizon for SovereignProjection.projected_habitability extrapolation."
     }
   }
 }

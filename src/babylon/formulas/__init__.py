@@ -23,6 +23,17 @@ Key Formulas:
 
 from babylon.config.defines import GameDefines as _GameDefines
 
+# Re-export Balkanization formulas (Spec 070)
+from babylon.formulas.balkanization import (
+    calculate_metabolic_impact,
+    contiguous_influence_majority_subregion,
+    derive_default_multipliers_from_stance,
+    derive_extraction_policy_from_stance,
+    detect_red_settler_trap,
+    extrapolate_habitability,
+    winning_faction_for_territory,
+)
+
 # Re-export Class Dynamics formulas (FRED DFA-derived)
 from babylon.formulas.class_dynamics import (
     ClassDynamicsParams,
@@ -192,4 +203,12 @@ __all__ = [
     "compute_pareto_gini",
     "compute_ideology_transmission",
     "compute_shadow_subsidy",
+    # Balkanization (Spec 070)
+    "calculate_metabolic_impact",
+    "contiguous_influence_majority_subregion",
+    "derive_default_multipliers_from_stance",
+    "derive_extraction_policy_from_stance",
+    "detect_red_settler_trap",
+    "extrapolate_habitability",
+    "winning_faction_for_territory",
 ]

@@ -19,6 +19,7 @@ All models use Pydantic v2 with Sprint 1 constrained types.
 """
 
 from babylon.models.entities.attention_thread import AttentionThread, SparrowAnalysis
+from babylon.models.entities.balkanization_faction import BalkanizationFaction
 from babylon.models.entities.consciousness import (
     OrgContribution,
     ProvenanceLevel,
@@ -73,6 +74,7 @@ from babylon.models.entities.social_class import (
     SocialClass,
     SurvivalComponent,
 )
+from babylon.models.entities.sovereign import Sovereign
 from babylon.models.entities.state_apparatus_ai import (
     ALL_SUB_VERBS,
     TOP_LEVEL_VERBS,
@@ -159,4 +161,7 @@ __all__ = [
     "FactionShiftEvent",
     "ReproductionEvent",
     "BonapartistModeEvent",
+    # Balkanization (Spec 070)
+    "BalkanizationFaction",
+    "Sovereign",
 ]

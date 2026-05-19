@@ -370,3 +370,125 @@ class GraphProtocol(Protocol):
             value: Value to store.
         """
         ...
+
+    # ─────────────────────────────────────────────────────────────────────
+    # SPEC-070 BALKANIZATION EXTENSIONS
+    # See specs/070-balkanization/contracts/graph_protocol_extensions.md
+    # ─────────────────────────────────────────────────────────────────────
+
+    def query_faction_influence_by_territory(
+        self,
+        territory_id: str,
+    ) -> list[tuple[str, float, str]]:
+        """Return all INFLUENCES edges pointing at a Territory.
+
+        Spec-070 FR-021 winning-faction resolution. Each row is
+        ``(faction_id, influence_level, support_type)``. Sorted by
+        ``influence_level`` descending, lex-ID ascending on ties.
+
+        Args:
+            territory_id: Target Territory node ID.
+
+        Returns:
+            Deterministic list of influencing factions; empty if none.
+        """
+        ...
+
+    def query_sovereign_claims(
+        self,
+        sovereign_id: str,
+    ) -> list[tuple[str, float, str]]:
+        """Return all CLAIMS edges originating from a Sovereign.
+
+        Each row is ``(territory_id, control_level, legal_status)``.
+        Sorted by ``control_level`` descending, lex-ID ascending on
+        ties. Used by SovereigntySystem + CollapseTransitionSystem.
+
+        Args:
+            sovereign_id: Sovereign node ID.
+
+        Returns:
+            Deterministic list of claims; empty if none.
+        """
+        ...
+
+    def query_territory_claims(
+        self,
+        territory_id: str,
+    ) -> list[tuple[str, float, str]]:
+        """Return all CLAIMS edges pointing at a Territory.
+
+        Each row is ``(sovereign_id, control_level, legal_status)``.
+        Sorted by ``control_level`` descending, lex-ID ascending on
+        ties. Used by SovereigntySystem for dual-power detection
+        (FR-035) and effective-controller resolution (FR-020).
+
+        Args:
+            territory_id: Target Territory node ID.
+
+        Returns:
+            Deterministic list of claimants; empty if none.
+        """
+        ...
+
+    def query_adjacent_territories(self, territory_id: str) -> list[str]:
+        """Return sorted list of Territory IDs adjacent via
+        :attr:`EdgeType.ADJACENCY`.
+
+        ADJACENCY edges are conceptually bidirectional; this method
+        abstracts the in/out edge direction. Output is sorted
+        lexicographically for determinism.
+
+        Args:
+            territory_id: Anchor Territory node ID.
+
+        Returns:
+            Sorted list of adjacent Territory IDs; empty if isolated.
+        """
+        ...
+
+    def bulk_partition_claims(
+        self,
+        from_sovereign_id: str,
+        to_sovereign_id: str,
+        territories: set[str],
+    ) -> int:
+        """Atomically rewire CLAIMS edges from one Sovereign to another
+        for the given Territory set (spec-070 FR-027).
+
+        Performance requirement (FR-018 / SC-004): MUST be implementable
+        in ``O(K)`` where ``K = len(territories)`` — NOT ``O(N)`` in the
+        unchanged-territory count.
+
+        Args:
+            from_sovereign_id: Current owner Sovereign.
+            to_sovereign_id: New owner Sovereign.
+            territories: Set of Territory IDs to migrate.
+
+        Returns:
+            Count of edges actually rewired.
+        """
+        ...
+
+    def query_contiguous_component_under_predicate(
+        self,
+        territory_seed: str,
+        predicate: Callable[[str], bool],
+    ) -> set[str]:
+        """BFS over :attr:`EdgeType.ADJACENCY` from ``territory_seed``,
+        collecting Territories satisfying ``predicate``.
+
+        Bounded by the predicate-satisfying contiguous region size, not
+        global graph size (per FR-018).
+
+        Args:
+            territory_seed: BFS start node.
+            predicate: ``(territory_id) -> bool``; only matching nodes
+                are included and traversed through.
+
+        Returns:
+            Set of Territory IDs in the contiguous predicate-satisfying
+            component containing ``territory_seed`` (empty if the seed
+            itself fails the predicate).
+        """
+        ...

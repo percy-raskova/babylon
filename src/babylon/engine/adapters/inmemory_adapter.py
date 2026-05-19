@@ -603,3 +603,156 @@ class NetworkXAdapter(AggregationMixin, QueryMixin):
 
     # Aggregation methods inherited from AggregationMixin:
     # - aggregate(target, group_by, agg_func, agg_attr)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # SPEC-070 BALKANIZATION EXTENSIONS
+    # ─────────────────────────────────────────────────────────────────────
+
+    def query_faction_influence_by_territory(
+        self,
+        territory_id: str,
+    ) -> list[tuple[str, float, str]]:
+        """Return all INFLUENCES edges pointing at the given Territory.
+
+        Sorted by influence_level descending, then by faction_id
+        lexicographically (determinism guarantee).
+        """
+        if territory_id not in self._graph:
+            return []
+        rows: list[tuple[str, float, str]] = []
+        for source, _target, data in self._graph.in_edges(territory_id, data=True):
+            if data.get("_edge_type") != "influences":
+                continue
+            rows.append(
+                (
+                    source,
+                    float(data.get("influence_level", 0.0)),
+                    str(data.get("support_type", "ideological")),
+                )
+            )
+        rows.sort(key=lambda row: (-row[1], row[0]))
+        return rows
+
+    def query_sovereign_claims(
+        self,
+        sovereign_id: str,
+    ) -> list[tuple[str, float, str]]:
+        """Return all CLAIMS edges originating from a Sovereign.
+
+        Sorted by control_level descending, then territory_id ascending.
+        """
+        if sovereign_id not in self._graph:
+            return []
+        rows: list[tuple[str, float, str]] = []
+        for _source, target, data in self._graph.out_edges(sovereign_id, data=True):
+            if data.get("_edge_type") != "claims":
+                continue
+            rows.append(
+                (
+                    target,
+                    float(data.get("control_level", 0.0)),
+                    str(data.get("legal_status", "de_jure")),
+                )
+            )
+        rows.sort(key=lambda row: (-row[1], row[0]))
+        return rows
+
+    def query_territory_claims(
+        self,
+        territory_id: str,
+    ) -> list[tuple[str, float, str]]:
+        """Return all CLAIMS edges pointing at a Territory.
+
+        Sorted by control_level descending, then sovereign_id ascending.
+        """
+        if territory_id not in self._graph:
+            return []
+        rows: list[tuple[str, float, str]] = []
+        for source, _target, data in self._graph.in_edges(territory_id, data=True):
+            if data.get("_edge_type") != "claims":
+                continue
+            rows.append(
+                (
+                    source,
+                    float(data.get("control_level", 0.0)),
+                    str(data.get("legal_status", "de_jure")),
+                )
+            )
+        rows.sort(key=lambda row: (-row[1], row[0]))
+        return rows
+
+    def query_adjacent_territories(self, territory_id: str) -> list[str]:
+        """Return sorted list of Territory IDs adjacent via ADJACENCY edges.
+
+        ADJACENCY is conceptually bidirectional; we union in- and
+        out-edges to abstract direction.
+        """
+        if territory_id not in self._graph:
+            return []
+        neighbors: set[str] = set()
+        for _source, target, data in self._graph.out_edges(territory_id, data=True):
+            if data.get("_edge_type") == "adjacency":
+                neighbors.add(target)
+        for source, _target, data in self._graph.in_edges(territory_id, data=True):
+            if data.get("_edge_type") == "adjacency":
+                neighbors.add(source)
+        return sorted(neighbors)
+
+    def bulk_partition_claims(
+        self,
+        from_sovereign_id: str,
+        to_sovereign_id: str,
+        territories: set[str],
+    ) -> int:
+        """Atomically rewire CLAIMS edges between two Sovereigns.
+
+        FR-018 / SC-004: O(K) in moving-territory count, NOT O(N) in
+        unchanged-territory count. We touch exactly len(territories)
+        edges.
+        """
+        if from_sovereign_id not in self._graph:
+            raise KeyError(f"Sovereign '{from_sovereign_id}' does not exist")
+        if to_sovereign_id not in self._graph:
+            raise KeyError(f"Sovereign '{to_sovereign_id}' does not exist")
+        rewired = 0
+        for territory_id in territories:
+            if not self._graph.has_edge(from_sovereign_id, territory_id):
+                continue
+            edge_data = dict(self._graph.edges[from_sovereign_id, territory_id])
+            if edge_data.get("_edge_type") != "claims":
+                continue
+            self._graph.remove_edge(from_sovereign_id, territory_id)
+            self._graph.add_edge(to_sovereign_id, territory_id, **edge_data)
+            rewired += 1
+        return rewired
+
+    def query_contiguous_component_under_predicate(
+        self,
+        territory_seed: str,
+        predicate: Any,
+    ) -> set[str]:
+        """BFS over ADJACENCY-linked Territories satisfying ``predicate``.
+
+        Visit order is by lex-sorted Territory ID per frontier level
+        (determinism guarantee). Bounded by component size, NOT global
+        graph size.
+        """
+        if territory_seed not in self._graph:
+            return set()
+        if not predicate(territory_seed):
+            return set()
+        visited: set[str] = set()
+        frontier: list[str] = [territory_seed]
+        while frontier:
+            next_frontier: list[str] = []
+            for node in sorted(frontier):
+                if node in visited:
+                    continue
+                visited.add(node)
+                for adj in sorted(self.query_adjacent_territories(node)):
+                    if adj in visited:
+                        continue
+                    if predicate(adj):
+                        next_frontier.append(adj)
+            frontier = next_frontier
+        return visited

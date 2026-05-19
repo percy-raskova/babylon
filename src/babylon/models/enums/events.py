@@ -138,6 +138,16 @@ class EventType(StrEnum):
     """QCEW data missing for (county, year); employment shares carried forward (FR-004)."""
     CALIBRATION_PHI_HOUR_OUTLIER = "calibration_warning.phi_hour_outlier"
     """Per-county phi_hour fell outside the LeontiefRentDefines plausibility bounds (FR-008)."""
+    # Spec-070 Balkanization (political-topology overlay events)
+    SOVEREIGN_COLLAPSE = "sovereign_collapse"  # FR-023
+    TERRITORY_TRANSITION = "territory_transition"  # FR-022
+    FACTION_VICTORY = "faction_victory"  # FR-026
+    SECESSION_DECLARED = "secession_declared"  # FR-029a (2)
+    CIVIL_WAR_DECLARED = "civil_war_declared"  # FR-028
+    RED_SETTLER_TRAP_DETECTED = "red_settler_trap_detected"  # FR-034
+    DUAL_POWER_ACTIVE = "dual_power_active"  # FR-035
+    RED_OGV_ENDGAME = "red_ogv_endgame"  # FR-031
+    FRAGMENTED_COLLAPSE_ENDGAME = "fragmented_collapse_endgame"  # FR-031
 
 
 class GameOutcome(StrEnum):
@@ -168,6 +178,9 @@ class GameOutcome(StrEnum):
     REVOLUTIONARY_VICTORY = "revolutionary_victory"
     ECOLOGICAL_COLLAPSE = "ecological_collapse"
     FASCIST_CONSOLIDATION = "fascist_consolidation"
+    # Spec-070 Balkanization endgames
+    RED_OGV = "red_ogv"  # FR-031: settler-socialist trap (IGNORE-majority + class-tension-down)
+    FRAGMENTED_COLLAPSE = "fragmented_collapse"  # FR-032a: no-majority + ≥3 sovereigns
 
 
 __all__ = [

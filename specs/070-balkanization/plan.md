@@ -426,7 +426,9 @@ component additions. Preserve manual-edit markers.
 
 ## Post-Design Constitution Re-Check
 
-After Phase 0 + Phase 1 artifact generation, re-evaluating gates:
+After Phase 0 + Phase 1 artifact generation **and the 2026-05-18
+post-`/speckit.analyze` remediation pass** (findings C1–C8 + I1 +
+I2 + F1), re-evaluating gates:
 
 | Principle | Pre-Design | Post-Design | Notes |
 |---|---|---|---|
@@ -443,7 +445,29 @@ After Phase 0 + Phase 1 artifact generation, re-evaluating gates:
 
 **Post-design RESULT**: All gates PASS. The III.4 follow-up (MIT
 Election Lab catalog amendment) is a future maintenance task; it
-does NOT block spec-070 from progressing to /speckit.tasks.
+does NOT block spec-070 from progressing.
+
+### Post-Analyze Remediation Summary (2026-05-18)
+
+`/speckit.analyze` produced 11 findings (0 CRITICAL, 2 HIGH, 6
+MEDIUM, 3 LOW). All were resolved in a single remediation pass:
+
+| Finding | Severity | Resolution |
+|---|---|---|
+| C1 — FR-039 INFLUENCES seeding incomplete | HIGH | Spec FR-039 expanded with per-Faction seed mechanism; new `contracts/seed_influences.schema.json`; data-model.md §8 updated; tasks T111–T113 added for proxy-data computation pipeline + db-init wiring. |
+| C2 — Exterior fallback Sovereign undefined | HIGH | New FR-040b defines `SOV_EXTERIOR_NULL` (PROVISIONAL, NULL ruling_faction, CONTINUE policy, claims rest_of_usa). Edge cases "Unclaimed Territory" + "All-zero influence" updated to reference it. Sovereign Pydantic validator permits the NULL-ruling-faction + CONTINUE combination. seed_sovereigns.schema.json minItems raised to 3. |
+| C3 — FR-036/037 observability tasks missing | MEDIUM | New FR-051 defines `observe_sovereign` + `observe_territory` projections as engine-side API contracts (UI deferred to spec-042/085). Tasks T115–T116 add the projection implementations + tests for SC-007 + SC-013. |
+| C4 — FAC_LIBERAL_IMPERIAL + SOV_CAN_FED not in spec | MEDIUM | FR-008 updated to four canonical Factions; FR-040a added requiring SOV_CAN_FED. Spec now sync with research.md R-002 / Constitution IV.1. |
+| C5 — I.4 Bifurcation under-engaged | MEDIUM | New FR-031a requires cross-divide SOLIDARITY edges for REVOLUTIONARY_VICTORY; below-threshold ABOLISH-majority routes to RED_OGV. New BalkanizationDefines field `revolutionary_victory_min_cross_divide_solidarity_edges` (default 5). New SC-016. Task T117 added for the test. |
+| C6 — I.13 Principal Contradiction not engaged | MEDIUM | New FR-052 cross-references how ColonialStance axis relates to I.13's principal-contradiction selection without displacing it. Adds `competing_colonial_stances` event-payload field on SOVEREIGN_COLLAPSE for downstream consumers. Defers full wiring to a follow-up spec. |
+| C7 — TDD ordering T035/T036/T037 | MEDIUM | T035 and T037 content swapped: test now precedes implementations per the tasks.md TDD preamble. |
+| C8 — SC-005 explicit test missing | MEDIUM | New SC-017 (initial-state coverage invariant). New task T114 (integration test verifying every in-scope Territory either has ≥1 INFLUENCES or is claimed by SOV_EXTERIOR_NULL). |
+| I1 — Position numbering drift (19.5 vs 20.5) | LOW | Spec FR-041 parenthetical corrected. |
+| I2 — Tiebreaker phrasing | LOW | FR-021 reworded to make "incumbent ruling_faction" precise (defines incumbent as the ruling_faction of the Territory's installed Sovereign; specifies sorted-IDs RNG fallback when no incumbent). |
+| F1 — MIT Election Lab catalog amendment not concrete | LOW | New Polish-phase task T118 drafts the `data-catalog.yaml` v2.6.4 PATCH proposal. |
+
+All eleven findings cleared. Spec-070 is now ready for
+`/speckit.implement`.
 
 ## Complexity Tracking
 

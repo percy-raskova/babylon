@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://babylon.local/schemas/070-balkanization/seed_sovereigns.schema.json",
   "title": "Seed Sovereigns",
-  "description": "Schema for src/babylon/data/game/balkanization/seed_sovereigns.json. Per FR-040 + R-002, at least SOV_USA_FED and SOV_CAN_FED must be present.",
+  "description": "Schema for src/babylon/data/game/balkanization/seed_sovereigns.json. Per FR-040 + FR-040a + FR-040b, three canonical Sovereigns must be present: SOV_USA_FED, SOV_CAN_FED, SOV_EXTERIOR_NULL. SOV_EXTERIOR_NULL has ruling_faction_id=null and extraction_policy='continue' (the v1.2.0 schema default for unruled Sovereigns) — the Pydantic validator MUST permit this special-cased combination per FR-040b.",
   "type": "object",
   "required": ["version", "sovereigns"],
   "properties": {
@@ -12,7 +12,7 @@
     },
     "sovereigns": {
       "type": "array",
-      "minItems": 2,
+      "minItems": 3,
       "items": { "$ref": "#/$defs/Sovereign" }
     }
   },

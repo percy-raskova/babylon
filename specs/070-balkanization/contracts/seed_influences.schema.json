@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylon.local/schemas/070-balkanization/seed_influences.schema.json",
+  "title": "Seed INFLUENCES Edges",
+  "description": "Schema for the proxy-data-derived INFLUENCES edge seed per FR-039. The artifact is NOT a hand-authored JSON file; it is produced by the foundational seeding pipeline (tasks Phase 2) that intersects QCEW union density (Workers' Congress), Natural Earth AIANNH polygons (Decolonial), and presidential election results (Restorationist) with the Detroit tri-county H3 res-7 hex grid. The Liberal-Imperial entries are computed as the complement clamped to the configured cap (BalkanizationDefines.liberal_imperial_influence_cap, default 0.4). Determinism: given the same upstream data + seed RNG, the same edge set is produced byte-identically (per FR-044 + SC-011).",
+  "type": "object",
+  "required": ["version", "computed_at_iso", "proxy_data_provenance", "edges"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "computed_at_iso": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp the seed was computed (informational; not used at runtime)."
+    },
+    "proxy_data_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Source identifiers per Constitution III.4. Each entry MUST appear in data-catalog.yaml.",
+      "required": ["qcew_vintage", "natural_earth_version", "election_source", "election_year"],
+      "properties": {
+        "qcew_vintage": {
+          "type": "string",
+          "description": "QCEW annual vintage used for union-density computation (e.g., '2024' for 2024-Q4 release)."
+        },
+        "natural_earth_version": {
+          "type": "string",
+          "description": "Natural Earth SQLite version (e.g., '5.1.2')."
+        },
+        "election_source": {
+          "type": "string",
+          "enum": ["MIT_ELECTION_LAB", "CENSUS_BUREAU_FIXTURE"],
+          "description": "Source of presidential-election results. MIT Election Lab is preferred but requires v2.6.4 catalog amendment; until amended, fall back to the Census Bureau presidential-election fixture."
+        },
+        "election_year": {
+          "type": "integer",
+          "minimum": 2008,
+          "description": "Year of the presidential election used."
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/InfluencesSeedEdge" }
+    }
+  },
+  "$defs": {
+    "InfluencesSeedEdge": {
+      "type": "object",
+      "required": [
+        "faction_id",
+        "territory_id",
+        "influence_level",
+        "support_type",
+        "cadre_count",
+        "sympathizer_count",
+        "established_tick"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "faction_id": {
+          "type": "string",
+          "pattern": "^FAC_[A-Z][A-Z0-9_]*$",
+          "description": "Must reference a Faction.id in seed_factions.json."
+        },
+        "territory_id": {
+          "type": "string",
+          "description": "H3 res-7 hex ID for in-scope territories, or 'canada' / 'rest_of_usa' boundary node IDs."
+        },
+        "influence_level": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Per-hex influence; for FAC_WORKERS_CONGRESS = union-employment-share prorated by LODES residential density; for FAC_DECOLONIAL = AIANNH intersection area; for FAC_RESTORATIONIST = Republican vote share prorated by LODES; for FAC_LIBERAL_IMPERIAL = complement clamped to liberal_imperial_influence_cap."
+        },
+        "support_type": {
+          "type": "string",
+          "enum": ["material", "ideological", "military", "electoral", "labor"]
+        },
+        "cadre_count": { "type": "integer", "minimum": 0, "default": 0 },
+        "sympathizer_count": { "type": "integer", "minimum": 0, "default": 0 },
+        "established_tick": { "type": "integer", "minimum": 0, "default": 0 }
+      }
+    }
+  }
+}

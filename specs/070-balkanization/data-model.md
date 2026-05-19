@@ -476,19 +476,57 @@ Per R-002:
 | FAC_DECOLONIAL | ABOLISH | false | Seeded via AIANNH; the abolitionist coalition |
 | FAC_LIBERAL_IMPERIAL | IGNORE | true | Rules SOV_CAN_FED; soft-imperial pole (also exists in US at lower influence) |
 
-**2 starting Sovereigns** in `seed_sovereigns.json`:
+**3 starting Sovereigns** in `seed_sovereigns.json` (per FR-040 /
+FR-040a / FR-040b):
 
 | ID | Type | Legitimacy | Ruling Faction | Initial CLAIMS |
 |---|---|---|---|---|
 | SOV_USA_FED | RECOGNIZED_STATE | 1.0 | FAC_RESTORATIONIST | All in-scope US Territories (Wayne + Oakland + Macomb hexes), DE_JURE, control_level=1.0 |
 | SOV_CAN_FED | RECOGNIZED_STATE | 0.85 | FAC_LIBERAL_IMPERIAL | Canadian boundary node (`canada` per spec-062 R4); cross-border DE_JURE claims on US Territories with LODES-Canada workplace_dest edges (representing Canadian-firm operations in Detroit) |
+| SOV_EXTERIOR_NULL | PROVISIONAL | 0.0 | *NULL* (extraction_policy=CONTINUE — special-cased combination per FR-040b) | Existing `rest_of_usa` Territory boundary node (per spec-062 R4), DE_JURE, control_level=1.0. Mid-game: fallback sink for any orphaned in-scope Territory (unclaimed Territory edge case + all-zero-influence edge case). |
 
-**Initial INFLUENCES seeding** (FR-039, per R-001 proxies):
+**Initial INFLUENCES seeding** (FR-039 — produced as
+`seed_influences.json` by the foundational seeding pipeline; schema
+in `contracts/seed_influences.schema.json`):
 
-- FAC_RESTORATIONIST: seeded from MIT Election Lab 2020 presidential results (Republican vote share per county), prorated to res-7 hexes via LODES residential density.
-- FAC_WORKERS_CONGRESS: seeded from QCEW union-employment-share per county-year (proxy: `own_code='3'` + historically-unionized NAICS filter), prorated to res-7 hexes.
-- FAC_DECOLONIAL: seeded from Natural Earth AIANNH polygon intersection with res-7 hexes (no major AIANNH in Detroit tri-county MVP — initial Decolonial influence is low, reflecting empirical reality).
-- FAC_LIBERAL_IMPERIAL: seeded as the complement of (Restorationist + Workers' Congress) per hex, capped at `influence_level <= 0.4` to prevent the IGNORE-faction from dominating without player intervention.
+The seeding pipeline computes one INFLUENCES edge per
+`(faction_id, territory_id)` pair with non-zero proxy value:
+
+- FAC_RESTORATIONIST: Republican vote share per county from the
+  most-recent presidential election (MIT Election Lab if catalog
+  amendment landed, else Census Bureau fixture), prorated to res-7
+  hexes via LODES residential density; `support_type=ELECTORAL`.
+- FAC_WORKERS_CONGRESS: QCEW union-employment-share per county-year
+  (proxy: `own_code='3'` + historically-unionized NAICS filter),
+  prorated to res-7 hexes via LODES residential density;
+  `support_type=LABOR`.
+- FAC_DECOLONIAL: Natural Earth AIANNH polygon intersection area
+  per res-7 hex, normalized to [0, 1] (no major AIANNH in Detroit
+  tri-county MVP — initial Decolonial influence is low, reflecting
+  empirical reality); `support_type=IDEOLOGICAL`.
+- FAC_LIBERAL_IMPERIAL: complement of (Restorationist + Workers'
+  Congress) per hex, clamped to
+  `[0, liberal_imperial_influence_cap]` (default cap 0.4 in
+  BalkanizationDefines); `support_type=IDEOLOGICAL`.
+
+The pipeline's output is persisted (a) to
+`src/babylon/data/game/balkanization/seed_influences.json` as a
+debug/audit artifact and (b) to `runtime_influences_edges` in
+Postgres at db-init via `postgres_initialization.py`.
 
 All initial INFLUENCES values are deterministic given the proxy
 data inputs and seed RNG (III.7).
+
+**Initial-state coverage invariant (SC-017)**: After seeding
+completes, for every in-scope Territory `t`, the following MUST
+hold:
+
+```
+exists((f, t) in INFLUENCES with influence_level > 0)
+  OR
+exists((SOV_EXTERIOR_NULL, t) in CLAIMS)
+```
+
+No in-scope Territory may be both un-influenced AND un-claimed at
+the start of tick 1. The foundational seeding tasks enforce this
+invariant via an integration test (tasks Phase 2).

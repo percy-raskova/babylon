@@ -10,40 +10,45 @@ Babylon models class struggle as a deterministic output of material conditions w
 
 The simulation runs locally without external servers, using the **Embedded Trinity** architecture:
 
-- **The Ledger** (SQLite/Pydantic) — Rigid material state: 17 JSON entity collections validated against JSON Schema Draft 2020-12
+- **The Ledger** (PostgreSQL runtime + Pydantic) — Rigid material state. Runtime simulation state lives in PostgreSQL (spec-037); a read-only SQLite reference database (`marxist-data-3NF.sqlite`) supplies QCEW/BEA/Census source data
 - **The Topology** (NetworkX/GraphProtocol) — Fluid relational state; `to_graph()`/`from_graph()` bridge Pydantic ↔ DiGraph
-- **The Archive** (ChromaDB) — Semantic history for AI narrative; AI observes state, never controls mechanics
+- **The Archive** (pgvector) — Semantic history for AI narrative; AI observes state, never controls mechanics (ChromaDB was replaced by pgvector in spec-037)
 
 **Architecture Principle:** State is pure data. Engine is pure transformation. They never mix.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-poetry install
-poetry run pre-commit install
+# Install the toolchain (Python 3.12 + Poetry) and dependencies
+mise trust
+mise install
+mise run install
 
-# Run tests (9,100+ tests)
-mise run test:all
-
-# Run simulation
+# Verify your install with the self-contained smoke test
 mise run sim:run
+
+# Run the full test suite (9,500+ tests)
+mise run test:all
 ```
 
-**Requirements:** Python 3.12+, Poetry, mise
+**Requirements:** [mise](https://mise.jdx.dev) (it provisions Python 3.12 and
+Poetry for you). New to the project? See [SETUP_GUIDE.md](SETUP_GUIDE.md) for a
+beginner-friendly, OS-by-OS walkthrough.
 
 ## Project Structure
 
 ```
 src/babylon/
 ├── engine/              # Simulation engine (step function, systems, event bus, observers)
-│   ├── systems/         # 23 modular Systems (economic, ideology, survival, territory, ...)
+│   ├── systems/         # 25 modular Systems (economic, ideology, survival, territory, sovereignty, ...)
+│   ├── headless_runner/ # Postgres-backed full-scale run (sim:e2e-michigan)
 │   └── formula_registry.py  # Hot-swappable formula dispatch
-├── formulas/            # Mathematical formulas (15 modules covering all MLM-TW theory)
+├── formulas/            # Mathematical formulas (18 modules covering all MLM-TW theory)
 ├── models/              # Pydantic entities (SocialClass, Territory, WorldState)
-├── rag/                 # ChromaDB integration for semantic history
+├── persistence/         # PostgreSQL runtime + pgvector store
+├── rag/                 # Retrieval pipeline over pgvector (semantic history)
 ├── config/              # GameDefines, logging configuration
-└── data/game/           # JSON entity definitions (17 collections)
+└── data/game/           # JSON entity/seed definitions (factions, sovereigns, personas)
 
 tests/
 ├── unit/                # Fast deterministic tests
@@ -58,26 +63,25 @@ docs/                    # Sphinx API documentation
 
 ## Engine Systems
 
-The simulation engine runs modular Systems with strict dependency injection:
+The simulation engine runs **25 modular Systems** in strict materialist-causality
+order each tick (source of truth: `_DEFAULT_SYSTEMS` in
+[`simulation_engine.py`](src/babylon/engine/simulation_engine.py)). They fall
+into three phases:
 
 ```
-step(WorldState, SimulationConfig) -> WorldState
-     |
-     v
-SimulationEngine.run_tick(graph, services, context)
-     |
-     +-- 1. ImperialRentSystem   (economic.py)      - Wealth extraction via imperial rent
-     +-- 2. SolidaritySystem     (solidarity.py)    - Consciousness transmission
-     +-- 3. ConsciousnessSystem  (ideology.py)      - Ideology drift & bifurcation
-     +-- 4. SurvivalSystem       (survival.py)      - P(S|A), P(S|R) calculations
-     +-- 5. StruggleSystem       (struggle.py)      - Agency Layer (George Floyd Dynamic)
-     +-- 6. ContradictionSystem  (contradiction.py) - Tension/rupture dynamics
-     +-- 7. TerritorySystem      (territory.py)     - Heat, eviction, carceral geography
-     +-- 8. MetabolismSystem     (metabolism.py)    - Biocapacity depletion, ecological overshoot
+step(WorldState, SimulationConfig) -> WorldState  ──►  SimulationEngine.run_tick(graph, services, context)
+
+Material Base   Vitality · Territory · Substrate · Production · TickDynamics ·
+                ReserveArmy · Community · Lifecycle · Solidarity · ImperialRent ·
+                Dispossession · Decomposition · ControlRatio · Metabolism
+Action Phase    OODA · FactionInfluence
+Consequences    Survival · Struggle · Consciousness · Sovereignty · Contradiction ·
+                ContradictionField · FieldDerivative · CollapseTransition · EdgeTransition
 ```
 
-Additional specialized systems (23 total): `VitalitySystem`, `ReserveArmySystem`, `CommunitySystem`,
-`ProductionSystem`, `OODASystem`, `ContradictionFieldSystem`, `EdgeTransitionSystem`, `LifecycleSystem`, and others.
+The base produces material conditions, organizations observe and act, and the
+consequences (survival calculus, consciousness drift, contradiction fields,
+sovereign collapse) follow. See `CLAUDE.md` for the per-system annotations.
 
 **Key components:**
 
@@ -85,7 +89,7 @@ Additional specialized systems (23 total): `VitalitySystem`, `ReserveArmySystem`
 | ----------------------------------------- | ---------------------------------------------------------- |
 | `src/babylon/engine/simulation_engine.py` | Orchestrates all Systems                                   |
 | `src/babylon/engine/services.py`          | ServiceContainer (dependency injection)                    |
-| `src/babylon/engine/event_bus.py`         | Publish/subscribe events (12 EventTypes)                   |
+| `src/babylon/engine/event_bus.py`         | Publish/subscribe events (70 EventTypes)                   |
 | `src/babylon/engine/formula_registry.py`  | Hot-swappable formula dispatch                             |
 | `src/babylon/engine/topology_monitor.py`  | Phase transition detection via percolation                 |
 | `src/babylon/engine/observer.py`          | `SimulationObserver`, `SessionRecorder`, `EndgameDetector` |
@@ -93,7 +97,9 @@ Additional specialized systems (23 total): `VitalitySystem`, `ReserveArmySystem`
 
 ## Formula System
 
-15 formula modules in `src/babylon/formulas/`:
+18 formula modules in `src/babylon/formulas/` (selected highlights below; see the
+directory for the full set, including `balkanization.py`, `consciousness_routing.py`,
+and `state_ai.py`):
 
 | Module                   | Theory                                                     |
 | ------------------------ | ---------------------------------------------------------- |
@@ -138,7 +144,7 @@ mise run ci
 mise run test:unit          # Fast unit tests only
 mise run test:int           # Integration tests
 mise run test:scenario      # Full scenario arcs (slow)
-mise run test:all           # All non-AI tests (9,100+)
+mise run test:all           # All non-AI tests (9,500+)
 mise run test:cov           # With coverage report
 
 # Quality
@@ -179,7 +185,8 @@ mise run qa:schemas                       # JSON schema validation
 mise run qa:security                      # Dependency security audit
 
 # UI
-mise run ui                               # DearPyGui Synopticon dashboard
+mise run web:dev                          # React + Django map UI (current; needs Node — run web:install first)
+mise run ui                               # DearPyGui Synopticon dashboard (legacy desktop dashboard)
 ```
 
 ## Testing Standards
@@ -190,7 +197,7 @@ Pytest markers:
 @pytest.mark.math        # Deterministic formulas (fast, pure)
 @pytest.mark.ledger      # Economic/political state
 @pytest.mark.topology    # Graph/network operations
-@pytest.mark.integration # Database/ChromaDB (I/O bound)
+@pytest.mark.integration # Database/pgvector (I/O bound)
 @pytest.mark.ai          # AI/RAG evaluation (slow, non-deterministic)
 @pytest.mark.red_phase   # TDD RED phase (intentionally failing)
 ```
@@ -199,27 +206,24 @@ Test constants are centralized in `tests/constants.py` (see ADR031). All code fo
 
 ## Current State
 
-**Epoch 1: "The Demonstration" — COMPLETE**
-**Current: Slice 1.5 "The Dashboard" — IN PROGRESS**
+**Most recent sprint: spec-070 "Balkanization" (Sovereign Topology + Faction
+Influence) — complete.** For canonical, always-current status (test counts,
+sprint state, per-feature detail) see [`ai-docs/state.yaml`](ai-docs/state.yaml).
 
-Completed systems:
+Features 001–070 have shipped, including:
 
-- Imperial Rent extraction (EXPLOITATION edges) — 4-phase extraction
-- Solidarity transmission (SOLIDARITY edges)
-- Consciousness drift and bifurcation
-- Survival calculus (P(S|A), P(S|R))
-- George Floyd Dynamic (EXCESSIVE_FORCE → UPRISING)
-- Territory heat, eviction, and displacement pipeline
-- Topology monitoring (percolation, resilience, phase transitions)
+- Imperial Rent extraction, unequal exchange, and the D–P–D′ lifecycle circuit
+- Solidarity transmission, consciousness drift, and ternary-consciousness routing
+- Survival calculus (P(S|A), P(S|R)) and the George Floyd Dynamic (EXCESSIVE_FORCE → UPRISING)
+- Territory heat, eviction, and the carceral-geography pipeline
 - Metabolic Rift (biocapacity depletion, ecological overshoot)
-- OODA Loop system (organization decision cycles)
-- Community hyperedge layer (XGI hypergraph)
-- DPD lifecycle circuit (legitimation crisis modeling)
+- OODA-loop organizations, the community hyperedge layer (XGI), and state-apparatus AI
+- Dialectical field topology (contradiction fields, curvature, principal-contradiction tracking)
+- Cross-scale integration with a PostgreSQL runtime and county-scale headless runs
+- **Sovereign topology + faction influence + balkanization** (secession, civil war,
+  sovereign collapse, and endgame detection)
 
-In progress:
-
-- Slice 1.5: Wire 4-node circuit metrics to DearPyGui Synopticon dashboard
-- Feature 033: Bifurcation Topology Analysis (George Jackson model extended with community consciousness weighting)
+Active development happens on the `dev` branch.
 
 ## Contributing
 
@@ -239,13 +243,13 @@ git checkout -b feature/your-feature
 
 ## Documentation
 
-| Location                                           | Content                                                         |
-| -------------------------------------------------- | --------------------------------------------------------------- |
-| [`ai-docs/`](ai-docs/)                             | Machine-readable YAML specs (architecture, ADRs, current state) |
-| [`ai-docs/state.yaml`](ai-docs/state.yaml)         | Canonical project status, test counts, sprint state             |
-| [`ai-docs/decisions.yaml`](ai-docs/decisions.yaml) | Architecture Decision Records (ADR001–ADR036+)                  |
-| [`specs/`](specs/)                                 | Per-feature specifications                                      |
-| [`docs/`](docs/)                                   | Sphinx API documentation (`mise run docs:live`)                 |
+| Location                                   | Content                                                         |
+| ------------------------------------------ | --------------------------------------------------------------- |
+| [`ai-docs/`](ai-docs/)                     | Machine-readable YAML specs (architecture, ADRs, current state) |
+| [`ai-docs/state.yaml`](ai-docs/state.yaml) | Canonical project status, test counts, sprint state             |
+| [`ai-docs/decisions/`](ai-docs/decisions/) | Architecture Decision Records (one YAML per ADR)                |
+| [`specs/`](specs/)                         | Per-feature specifications                                      |
+| [`docs/`](docs/)                           | Sphinx API documentation (`mise run docs:live`)                 |
 
 ## License
 

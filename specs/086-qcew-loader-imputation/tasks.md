@@ -116,7 +116,7 @@
 
 **Purpose**: Run against the real staged source + canonical DB, prove the SCs, re-baseline downstream, close the docs loop.
 
-- [ ] T034 Operator: single-year live dry-run `mise run data:qcew -- --dry-run --years 2010`; review audit vs research expectations (≈72 % cell suppression 2010; Wayne 2010 gate true; exclusions ≈914 VI rows + ~25.6 K SS999 rows)
+- [x] T034 Operator: single-year live dry-run `mise run data:qcew -- --dry-run --years 2010`; review audit vs research expectations (≈72 % cell suppression 2010; Wayne 2010 gate true; exclusions ≈914 VI rows + ~25.6 K SS999 rows)
 - [ ] T035 Operator: full live dry-run then `--apply --years 2010-2024` (≤90 min budget; resume on interrupt); confirm swap + `__pre_086` backups + `_cache_national_wages_bea` dropped
 - [ ] T036 SC-008: re-run recompute and compare both table digests to the audit's `table_hashes` per contracts/determinism_contract.md (must match exactly)
 - [ ] T037 Live-DB gated integration test in REPO-B `tests/integration/test_qcew_live_reconciliation.py` (collection-skip when reference DB absent, pattern of `test_post_067_consumer_queries.py`): Wayne 2010 within ±2 % of 657,150 **via the real consumer paths** (`hex_hydrator` wages query + `county_aggregation.fetch_employment_proxy`) [SC-003, FR-010]; ≥99 % of county-years within ±2 % for employment AND wages via rollup-table join [SC-001/SC-002]; ≥95 % of county-ownership-years within ±2 % [SC-004]; national ±1 % per year [SC-005]

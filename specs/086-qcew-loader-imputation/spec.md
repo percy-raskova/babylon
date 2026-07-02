@@ -2,7 +2,7 @@
 
 **Feature Branch**: `086-qcew-loader-imputation`
 **Created**: 2026-05-27
-**Status**: Draft
+**Status**: Draft (amended 2026-07-02 — owner decisions on loader home and write target; see Assumptions)
 **Input**: User description: "Reimplement the QCEW loader deleted in spec-037 and reconstruct BLS-suppressed county employment/wage cells so the reference database's county totals match the figures BLS actually publishes. Supersedes spec-067's lossy normalization and resolves the spec-097 suppression placeholder."
 
 ## Overview
@@ -115,9 +115,11 @@ As an analyst or auditor, I can tell which stored values are observed (BLS-discl
 - **Tolerance**: ±2% is adopted as the working reconciliation target; spec-097 ratifies the final figure. (This re-bases spec-067's acceptance criteria, which were infeasible because they expected raw suppressed leaves to match published totals.)
 - **Establishment counts survive suppression**: Verified in the 2023 source (suppressed cells publish establishment counts while employment/wages are blank); assumed to hold across 2010–2024.
 - **Published constraints are largely disclosed**: County and intermediate rollups are mostly non-suppressed and serve as reliable reconciliation targets.
-- **Target schema**: The canonical reference schema in this repository is the build target; the stale schema copy in the external data trove is not used.
+- **Target schema**: The canonical reference schema in this repository (`src/babylon/reference/schema.py`) is the build target; the stale schema copy in the external data trove is not used.
+- **Write target** *(owner decision 2026-07-02)*: The canonical reference database lives in the data trove at `/media/user/data/babylon-data/sqlite/marxist-data-3NF.sqlite`, reached from this repository via the `data/sqlite` directory symlink. The loader writes there; there is exactly one database file.
 - **Staged source**: BLS annual source files for 2010–2024 are present locally; no download is required.
-- **Recovery reference**: The deleted loader is available in version-control history as a starting reference, but is re-homed into the reference package and corrected (it never handled suppression).
+- **Loader home** *(owner decision 2026-07-02, supersedes the original "re-homed into the reference package" wording)*: The reimplemented loader lives in the external `babylon-data` package (`/home/user/projects/game/babylon-data`). This spec includes only the **minimal viable packaging** needed to run it: rename the package directory to an importable `babylon_data`, add a `pyproject.toml`, fix the QCEW subtree's imports (they still reference the deleted `babylon.data.*` paths), and consume it from this repository as a path dependency. Full packaging of the remaining ~24 loaders (remote, CI, versioned release) belongs to spec-098.
+- **Recovery reference**: The deleted loader is available in version-control history (`4ce7c96a^`, mirrored in `mutants/` and the babylon-data repo) as a starting reference, but is corrected in place (it never handled suppression).
 
 ## Dependencies & Relationships
 

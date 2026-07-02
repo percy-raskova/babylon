@@ -141,7 +141,14 @@ class TestHydrateInitial:
         assert fips_set == {"26163", "26125"}
 
     def test_entities_split_proletariat_and_bourgeoisie(self, defines: GameDefines) -> None:
-        """One proletariat + one bourgeoisie per county."""
+        """One labor-aristocracy worker + one bourgeoisie per county.
+
+        Class character updated 2026-07-02 (theory-grounded): core county
+        workers hydrate as LABOR_ARISTOCRACY (super-waged, pacified — Cope,
+        Amin, Fundamental Theorem W_c > V_c), not PERIPHERY_PROLETARIAT,
+        whose starvation baseline made the Terminal-Crisis rule sever the
+        EXPLOITATION edge at tick 1.
+        """
         from babylon.models.enums import SocialRole
 
         runtime = _FakeRuntime()
@@ -155,7 +162,7 @@ class TestHydrateInitial:
         )
 
         prole_count = sum(
-            1 for e in world.entities.values() if e.role == SocialRole.PERIPHERY_PROLETARIAT
+            1 for e in world.entities.values() if e.role == SocialRole.LABOR_ARISTOCRACY
         )
         bourg_count = sum(
             1 for e in world.entities.values() if e.role == SocialRole.CORE_BOURGEOISIE

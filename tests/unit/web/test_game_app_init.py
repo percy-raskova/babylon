@@ -17,6 +17,21 @@ from django.conf import settings
 from game.apps import GameConfig
 
 
+@pytest.fixture(autouse=True)
+def _reset_gameconfig_class_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reset GameConfig's class-level idempotence flag between tests.
+
+    ``GameConfig._initialized`` is deliberately class-level (Django calls
+    ``ready()`` more than once in test contexts), so any test that drives
+    ``ready()`` to success poisons every later test in the process — the
+    exact cross-test leak that made these tests fail only in full-suite
+    runs (pre-existing since spec-061).
+    """
+    monkeypatch.setattr(GameConfig, "_initialized", False)
+    monkeypatch.setattr(GameConfig, "last_boot_attempts", 0)
+    monkeypatch.setattr(GameConfig, "boot_succeeded_at", None)
+
+
 @pytest.mark.unit
 def test_ready_skips_for_non_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
     """Do not initialize the bridge when DB engine is not PostgreSQL/PostGIS."""

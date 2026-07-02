@@ -1,0 +1,558 @@
+{
+  "schema_version": "1.0",
+  "run_metadata": {
+    "session_id": "a1b52099-fdc5-4cd1-a6a5-5738ff67ffea",
+    "exit_reason": "completed",
+    "ticks_requested": 5,
+    "ticks_completed": 5,
+    "start_year": 2010,
+    "seed": 2010,
+    "scope_name": "detroit-tri-county",
+    "scope_fips": [
+      "26099",
+      "26125",
+      "26163"
+    ],
+    "external_node_ids": [
+      "canada"
+    ],
+    "wallclock_start": "2026-07-02T20:13:04.461443Z",
+    "wallclock_end": "2026-07-02T20:13:10.050440Z"
+  },
+  "terminal_state": {
+    "tick": 4,
+    "counties_alive": 3,
+    "total_population": null,
+    "total_v": 1496702270.2884655,
+    "total_c": 1759843201.9230785,
+    "total_s": 2022984133.5576897,
+    "total_k": 549071079000.00183,
+    "mean_p_acquiescence": null,
+    "mean_p_revolution": null,
+    "mean_ideology_r": null,
+    "mean_ideology_l": null,
+    "mean_ideology_f": null,
+    "max_tension": 1.0
+  },
+  "external_node_flows": [],
+  "county_terminal_snapshot": [
+    {
+      "entity_id": "26099",
+      "v": 246750326.71153876,
+      "c": 287873538.46153986,
+      "s": 328996750.21153903,
+      "k": 89816544000.0004,
+      "p_acquiescence": 0.3183124905660377,
+      "p_revolution": 0.42641509433962266,
+      "ideology_r": 0.05,
+      "ideology_l": 0.5,
+      "ideology_f": 0.45,
+      "population": 956679,
+      "delta_k_vs_initial": 0.0
+    },
+    {
+      "entity_id": "26125",
+      "v": 611029583.9423078,
+      "c": 736126259.6153895,
+      "s": 861222935.2884539,
+      "k": 229671393000.0022,
+      "p_acquiescence": 0.323413173076923,
+      "p_revolution": 0.43076923076923074,
+      "ideology_r": 0.05,
+      "ideology_l": 0.5,
+      "ideology_f": 0.45,
+      "population": 1351008,
+      "delta_k_vs_initial": 0.0
+    },
+    {
+      "entity_id": "26163",
+      "v": 638922359.634619,
+      "c": 735843403.8461493,
+      "s": 832764448.0576967,
+      "k": 229583141999.99924,
+      "p_acquiescence": 0.323413173076923,
+      "p_revolution": 0.43076923076923074,
+      "ideology_r": 0.05,
+      "ideology_l": 0.5,
+      "ideology_f": 0.45,
+      "population": 1771994,
+      "delta_k_vs_initial": 0.0
+    }
+  ],
+  "conservation_audit": [],
+  "performance": {
+    "total_wallclock_sec": 5.5890144019995205,
+    "session_init_sec": 4.897989478000454,
+    "hex_hydration_sec": 4.897989478000454,
+    "tick_loop_sec": 0.4249380649998784,
+    "artifact_emission_sec": 0.0,
+    "per_tick_median_ms": 107.09359999964363,
+    "per_tick_p99_ms": 109.78117000013299,
+    "per_tick_max_ms": 109.78117000013299,
+    "per_system_ms": {
+      "VitalitySystem": 1.0018479988502804,
+      "TerritorySystem": 0.19612799951573834,
+      "SubstrateSystem": 0.3197800015186658,
+      "ProductionSystem": 0.2879610001400579,
+      "TickDynamicsSystem": 0.07313699825317599,
+      "ReserveArmySystem": 0.027592999686021358,
+      "CommunitySystem": 0.0656040010653669,
+      "LifecycleSystem": 0.07666400051675737,
+      "SolidaritySystem": 0.086460999227711,
+      "ImperialRentSystem": 0.6570830009877682,
+      "DispossessionEventSystem": 0.024865998057066463,
+      "DecompositionSystem": 0.22882799930812325,
+      "ControlRatioSystem": 0.07107300007191952,
+      "MetabolismSystem": 0.28039700009685475,
+      "OODASystem": 0.15718600116088055,
+      "FactionInfluenceSystem": 0.34968600084539503,
+      "SurvivalSystem": 0.4307189992687199,
+      "StruggleSystem": 0.507902002937044,
+      "ConsciousnessSystem": 0.5580750002991408,
+      "SovereigntySystem": 0.11741900198103394,
+      "ContradictionSystem": 1.0092419979628175,
+      "ContradictionFieldSystem": 0.07941900003061164,
+      "FieldDerivativeSystem": 0.05847799911862239,
+      "CollapseTransitionSystem": 0.11742800234060269,
+      "EdgeTransitionSystem": 0.060422997194109485
+    }
+  },
+  "events": [
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C001",
+          "deaths": 20,
+          "remaining_population": 65,
+          "attrition_rate": 0.2433823529411765
+        },
+        "timestamp": "2026-07-02 16:13:09.600880"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C002",
+          "deaths": 20,
+          "remaining_population": 65,
+          "attrition_rate": 0.2433823529411765
+        },
+        "timestamp": "2026-07-02 16:13:09.600958"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C003",
+          "deaths": 20,
+          "remaining_population": 65,
+          "attrition_rate": 0.2433823529411765
+        },
+        "timestamp": "2026-07-02 16:13:09.601006"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "ecological_overshoot",
+        "payload": {
+          "overshoot_ratio": 999.0,
+          "total_consumption": 2.4,
+          "total_biocapacity": 0
+        },
+        "timestamp": "2026-07-02 16:13:09.601776"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "organizational_action",
+        "payload": {
+          "layer0_count": 0,
+          "action_count": 0,
+          "org_count": 0
+        },
+        "timestamp": "2026-07-02 16:13:09.601822"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "peripheral_revolt",
+        "payload": {
+          "node_id": "C001",
+          "edges_severed": 1,
+          "p_acquiescence": 0.050507133160036466,
+          "p_revolution": 0.19999999960000003,
+          "narrative_hint": "PERIPHERAL REVOLT: Colonial extraction ends. The periphery refuses to subsidize the empire."
+        },
+        "timestamp": "2026-07-02 16:13:09.602156"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C001",
+          "deaths": 13,
+          "remaining_population": 52,
+          "attrition_rate": 0.20656720340236684
+        },
+        "timestamp": "2026-07-02 16:13:09.707991"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C002",
+          "deaths": 13,
+          "remaining_population": 52,
+          "attrition_rate": 0.20656720340236684
+        },
+        "timestamp": "2026-07-02 16:13:09.708057"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C003",
+          "deaths": 13,
+          "remaining_population": 52,
+          "attrition_rate": 0.20656720340236684
+        },
+        "timestamp": "2026-07-02 16:13:09.708101"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "ecological_overshoot",
+        "payload": {
+          "overshoot_ratio": 999.0,
+          "total_consumption": 2.0100000000000002,
+          "total_biocapacity": 0
+        },
+        "timestamp": "2026-07-02 16:13:09.708681"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "organizational_action",
+        "payload": {
+          "layer0_count": 0,
+          "action_count": 0,
+          "org_count": 0
+        },
+        "timestamp": "2026-07-02 16:13:09.708724"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "peripheral_revolt",
+        "payload": {
+          "node_id": "C001",
+          "edges_severed": 0,
+          "p_acquiescence": 0.050852168262910336,
+          "p_revolution": 0.19999999960000003,
+          "narrative_hint": "PERIPHERAL REVOLT: Colonial extraction ends. The periphery refuses to subsidize the empire."
+        },
+        "timestamp": "2026-07-02 16:13:09.709027"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "rupture",
+        "payload": {
+          "edge": "C002->C502"
+        },
+        "timestamp": "2026-07-02 16:13:09.709242"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "rupture",
+        "payload": {
+          "edge": "C003->C503"
+        },
+        "timestamp": "2026-07-02 16:13:09.709273"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C001",
+          "deaths": 8,
+          "remaining_population": 44,
+          "attrition_rate": 0.17070900425295854
+        },
+        "timestamp": "2026-07-02 16:13:09.818370"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C002",
+          "deaths": 9,
+          "remaining_population": 43,
+          "attrition_rate": 0.17578257016489957
+        },
+        "timestamp": "2026-07-02 16:13:09.818443"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C003",
+          "deaths": 9,
+          "remaining_population": 43,
+          "attrition_rate": 0.17578257016489957
+        },
+        "timestamp": "2026-07-02 16:13:09.818492"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "ecological_overshoot",
+        "payload": {
+          "overshoot_ratio": 999.0,
+          "total_consumption": 1.75,
+          "total_biocapacity": 0
+        },
+        "timestamp": "2026-07-02 16:13:09.819077"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "organizational_action",
+        "payload": {
+          "layer0_count": 0,
+          "action_count": 0,
+          "org_count": 0
+        },
+        "timestamp": "2026-07-02 16:13:09.819118"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "excessive_force",
+        "payload": {
+          "node_id": "C003",
+          "repression": 0.5,
+          "spark_probability": 0.05
+        },
+        "timestamp": "2026-07-02 16:13:09.819374"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "peripheral_revolt",
+        "payload": {
+          "node_id": "C001",
+          "edges_severed": 0,
+          "p_acquiescence": 0.0510685563673854,
+          "p_revolution": 0.19999999960000003,
+          "narrative_hint": "PERIPHERAL REVOLT: Colonial extraction ends. The periphery refuses to subsidize the empire."
+        },
+        "timestamp": "2026-07-02 16:13:09.819448"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C001",
+          "deaths": 6,
+          "remaining_population": 38,
+          "attrition_rate": 0.14833791411713282
+        },
+        "timestamp": "2026-07-02 16:13:09.919846"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C002",
+          "deaths": 6,
+          "remaining_population": 37,
+          "attrition_rate": 0.1508437219356239
+        },
+        "timestamp": "2026-07-02 16:13:09.919919"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "population_attrition",
+        "payload": {
+          "entity_id": "C003",
+          "deaths": 6,
+          "remaining_population": 37,
+          "attrition_rate": 0.1508437219356239
+        },
+        "timestamp": "2026-07-02 16:13:09.919967"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "ecological_overshoot",
+        "payload": {
+          "overshoot_ratio": 999.0,
+          "total_consumption": 1.57,
+          "total_biocapacity": 0
+        },
+        "timestamp": "2026-07-02 16:13:09.920541"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "organizational_action",
+        "payload": {
+          "layer0_count": 0,
+          "action_count": 0,
+          "org_count": 0
+        },
+        "timestamp": "2026-07-02 16:13:09.920583"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "excessive_force",
+        "payload": {
+          "node_id": "C003",
+          "repression": 0.5,
+          "spark_probability": 0.05
+        },
+        "timestamp": "2026-07-02 16:13:09.920837"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "peripheral_revolt",
+        "payload": {
+          "node_id": "C001",
+          "edges_severed": 0,
+          "p_acquiescence": 0.051243545446670355,
+          "p_revolution": 0.19999999960000003,
+          "narrative_hint": "PERIPHERAL REVOLT: Colonial extraction ends. The periphery refuses to subsidize the empire."
+        },
+        "timestamp": "2026-07-02 16:13:09.920910"
+      }
+    }
+  ]
+}

@@ -451,13 +451,13 @@ description = "Generate regression baselines (after intentional changes)"
 run = "poetry run python tools/regression_test.py generate --force"
 
 [tasks."qa:e2e-regression"]
-description = "Run headless e2e sim with --strict, then compare to michigan-e2e baseline (spec-065)"
+description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038)"
 run = """
 ARTIFACT_DIR=$(poetry run python -m babylon.engine.headless_runner \\
   --scope detroit-tri-county --ticks 5 --strict)
 poetry run python tools/regression_test.py compare-bundle \\
   --bundle "$ARTIFACT_DIR" \\
-  --baseline tests/baselines/michigan-e2e.json
+  --baseline tests/baselines/detroit-tri-county-5t.json
 """
 
 [tasks."qa:hexagon-isolation"]

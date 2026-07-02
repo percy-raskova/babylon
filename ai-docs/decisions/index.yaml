@@ -224,3 +224,8 @@ decisions:
     status: proposed
     date: '2026-05-18'
     file: ADR049_election_lab_catalog_addition.yaml
+  ADR050_qcew_suppression_imputation:
+    title: 'Spec 086: QCEW loader reimplementation with synthetic suppression imputation'
+    status: accepted
+    date: '2026-07-02'
+    file: ADR050_qcew_suppression_imputation.yaml

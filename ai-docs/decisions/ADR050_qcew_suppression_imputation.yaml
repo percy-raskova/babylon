@@ -1,0 +1,77 @@
+# =============================================================================
+# ADR-050: QCEW Synthetic Suppression Imputation (Spec 086)
+# =============================================================================
+#
+# Decision: Rebuild fact_qcew_annual from staged BLS annual singlefiles with
+# top-down hierarchical imputation of BLS-suppressed cells, implemented in
+# the version-controlled babylon-data package, replacing both the deleted
+# spec-037 loader and spec-067's suppression-blind leaf table.
+#
+# Status: ACCEPTED (2026-07-02)
+# Implements: spec-097 FINAL (strategy 4, generalized); supersedes the
+#             spec-067 ±5%-on-raw-leaves acceptance targets
+# Related: specs/086-qcew-loader-imputation/ (spec, plan, research D1-D12,
+#          data-model, contracts), ADR045 (spec-067 normalization),
+#          spec-098 (planned: generalize the loader-restoration pattern)
+
+adr_050_qcew_suppression_imputation:
+  status: "accepted"
+  date: "2026-07-02"
+  title: "QCEW loader reimplementation with synthetic suppression imputation (spec-086)"
+
+  context: |
+    BLS withholds 67.7-72.4% of 6-digit county QCEW cells for employer
+    confidentiality (measured across the staged 2010-2024 singlefiles).
+    The pre-086 table stored those cells as literal zeros, so summed
+    county employment/wages ran 10-30%+ below BLS publication (Wayne
+    County MI 2010: -14.6%), silently biasing v, exploitation rate, and
+    imperial rent for most counties. The loader that built the table was
+    deleted in spec-037; the physical table had also drifted from the ORM
+    (its composite PK was never applied) and ~25.6K SS999 pseudo-county
+    rows per year had been loaded.
+
+  decision: |
+    New loader in the babylon-data repo (babylon_data.qcew: singlefile /
+    hierarchy / imputation / writer / validation / audit / __main__),
+    consuming babylon's canonical ORM. Per county-year, the BLS-published
+    constraint hierarchy (agglvl 70 county total -> 71 per-ownership ->
+    74-77 NAICS subtotals) is rebuilt from the same singlefile; suppressed
+    cells receive their disclosed-descendant floor plus an
+    establishments-weighted, largest-remainder-rounded share of the
+    parent remainder, top-down. Disclosed values are never mutated.
+    Every row carries is_imputed provenance; published constraints
+    persist in the new fact_qcew_county_rollup table; loads are staged
+    (__new -> validated -> atomic swap with __pre_086 backup), per-year
+    checkpointed, offline, and deterministic (ordered-projection sha256).
+    Every run emits a jsonschema-validated audit artifact pair.
+
+  rationale:
+    establishments_basis: >
+      Establishment counts are the only cell-size signal BLS publishes
+      under suppression and are materially grounded (III.8): an
+      establishment is a workplace.
+    tree_not_ras: >
+      The constraint structure is a tree per ownership, not a two-margin
+      matrix — one top-down pass reconciles exactly; no iteration, no
+      convergence tolerance, trivially deterministic (FR-008/III.7).
+    floors: >
+      A suppressed subtotal must receive at least the sum of its disclosed
+      descendants; disclosed data is never contradicted, and shortfalls
+      surface as audit anomalies instead of being smoothed over.
+    loader_home: >
+      Owner decision 2026-07-02: loaders live in the babylon-data repo
+      (minimal viable packaging in 086; full packaging spec-098). The
+      babylon src/babylon_data symlink was repointed from the un-versioned
+      data trove to the git repo.
+
+  consequences:
+    positive:
+      - "Live full-range dry-run: 99.94-100.00% of ~3,220 counties within ±2% per year (SC-001/002); Wayne 2010 = 657,158 vs published 657,150 (+0.001%), wages exact (SC-003)"
+      - "National identity closes at +0.19% to +0.41% per year vs US000 with excluded pseudo-area mass added back (SC-005)"
+      - "County identity resolved: Shannon->Oglala 1,454 rows mapped, the 2015 double-publication deduped (288 rows); CT-2024 planning regions flagged; SS999/VI/MSA/CSA excluded with counted audit classes"
+      - "Composite PK restored on the physical table (ORM drift closed); stale _cache_national_wages_bea dropped at swap"
+      - "8 low-confidence county-years across 48,296, each flagged with a reason"
+    negative:
+      - "67-72% of leaf cells are reconstructed estimates (flagged is_imputed=1); analysts must weight or exclude them deliberately"
+      - "michigan-e2e baseline shifts by design (county v rises 10-30%+) and must be regenerated (spec-086 T038)"
+      - "babylon_data tests skip in CI until the babylon-data repo gains its own CI (spec-098)"

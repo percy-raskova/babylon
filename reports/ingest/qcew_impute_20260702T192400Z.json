@@ -1,0 +1,863 @@
+{
+  "schema_version": "1.0.0",
+  "run_metadata": {
+    "timestamp_utc": "2026-07-02T19:23:58Z",
+    "mode": "apply",
+    "years": [
+      2010,
+      2011,
+      2012,
+      2013,
+      2014,
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
+      2024
+    ],
+    "database_path": "/home/user/projects/game/babylon/data/sqlite/marxist-data-3NF.sqlite",
+    "database_sha256_pre": "c75267901071ba1aa8d8fce1e8aa65b7848a409b1c7a49ca6720776797f53fef",
+    "database_sha256_post": "166dda43ae73c25c373de001cb0c8d7de46103d8023569776e32b5697d0b4561",
+    "duration_seconds": 1934.127347533,
+    "babylon_git": {
+      "branch": "086-qcew-loader-imputation",
+      "sha": "a7ec34bca056bd2606393c75ff5f538604dffbed"
+    },
+    "babylon_data_git": {
+      "branch": "main",
+      "sha": "0e7809bc3b48ae520408422c8a47a2e6cfd74c9c"
+    },
+    "source_file_sha256": {
+      "2010": "24cf74e2a02ddbd7f4c6ee9c92e8fca1908160a28854265768d7915d2573f743",
+      "2011": "606e5497d73f1f6f1341de047a42e31f550e6dd9c8a6cd3fc22795322fcab174",
+      "2012": "e561a15b2682a010f29f81e2971b5f16b201ac2a676fb843a68d37576cdee81b",
+      "2013": "8872d9f799dcea1b9cef974c3e1a42091895252406abba7ef0b2b908d9e78371",
+      "2014": "e3b96d392091ddd68be7562a68d6a09cd47846d402c0d84a57ca9096ed08b5cc",
+      "2015": "1ee8e5b9f29e98b0faafb104612fc1f73238ae21ed176ef43e74d15d2493e3ff",
+      "2016": "711362831d044368d888662de0fca361c09f4fe04c70885ece0e64ef02330a9e",
+      "2017": "6c77f4ab288e4914521ccfc53b6f7453815a13d9362246607d1ed671d1e16ec3",
+      "2018": "1e32657c3c212c89bdf9b758f9d6c7e226c9d1f84d8be9a989d6be881d829545",
+      "2019": "ed022e0d1968c6a209001affbd8b329e03bc5ec74a4ce5f324d8c472e9aff622",
+      "2020": "376b20f3eb358ea55583a8b2eea5c74367bdf20227d029d0b651f66dff97b0f9",
+      "2021": "ce613fd1bc89efce55e89f2b259ac4e6c1e7b80b339bc5e4b3f0030cf71d9222",
+      "2022": "c0b4895c157ca3f9edfab1366458d677ebe511972359b6bd4eabe22840e50927",
+      "2023": "fe2918648aaa57b0b6ab3ddf35fa41027a3a4aef9451652068e0382b063bc026",
+      "2024": "e54de6fd8b12470afb18c30f02014039501faa0bf2a053be2faf1fa9e358db52"
+    },
+    "table_hashes": {
+      "fact_qcew_annual": "932b194fb9d013cc30422d35c4974c50648a5fee6595f8eaee0a8384b5f2d4a0",
+      "fact_qcew_county_rollup": "8c9f448f4dd7a5878c7b233594bedd6f64ab0abec26f33e21c1fd0829735b347"
+    }
+  },
+  "per_year": [
+    {
+      "year": 2010,
+      "rows_scanned": 3600171,
+      "leaf_rows": 985152,
+      "constraint_rows": 16043,
+      "excluded": {
+        "us_national": 4773,
+        "msa": 550589,
+        "statewide": 142731,
+        "ss999_unknown_county": 63256,
+        "fips_not_in_dim_county": 2503,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87930
+      },
+      "suppression": {
+        "leaf_cells": 985152,
+        "suppressed_cells": 712981,
+        "suppression_rate": 0.7237268969661534,
+        "exact_recovery": 541653,
+        "estabs_apportioned": 171288,
+        "equal_split": 38,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3219,
+        "within_2pct_employment_pct": 99.96894409937889,
+        "within_2pct_wages": 3219,
+        "within_2pct_wages_pct": 99.96894409937889,
+        "residual_abs_pct": {
+          "p50": 0.015072349131097323,
+          "p90": 0.0653274538624857,
+          "p99": 0.21156558533145275,
+          "max": 630.379746835443
+        },
+        "outliers": [
+          {
+            "county_fips": "42113",
+            "metric": "employment",
+            "published": 0.0,
+            "reconstructed": 0.0,
+            "delta_pct": 630.379746835443
+          }
+        ],
+        "low_confidence_county_years": [
+          {
+            "county_fips": "42113",
+            "reason": "county_total_suppressed"
+          }
+        ]
+      },
+      "national_check": {
+        "sum_counties_employment": 126464161,
+        "excluded_pseudo_mass_employment": 1884833,
+        "bls_us000_employment": 127820442,
+        "delta_pct": 0.413511322390827,
+        "pass": true
+      }
+    },
+    {
+      "year": 2011,
+      "rows_scanned": 3560725,
+      "leaf_rows": 970880,
+      "constraint_rows": 16043,
+      "excluded": {
+        "us_national": 4602,
+        "msa": 541698,
+        "statewide": 138851,
+        "ss999_unknown_county": 63019,
+        "fips_not_in_dim_county": 2447,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87965
+      },
+      "suppression": {
+        "leaf_cells": 970880,
+        "suppressed_cells": 699689,
+        "suppression_rate": 0.7206750576796308,
+        "exact_recovery": 538631,
+        "estabs_apportioned": 161000,
+        "equal_split": 58,
+        "zero_negative_remainder": 0
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3220,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3220,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.013917561830409219,
+          "p90": 0.05990073592332706,
+          "p99": 0.17881090746535538,
+          "max": 0.5494505494505495
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 127933758,
+        "excluded_pseudo_mass_employment": 1963698,
+        "bls_us000_employment": 129411095,
+        "delta_pct": 0.37582635399229103,
+        "pass": true
+      }
+    },
+    {
+      "year": 2012,
+      "rows_scanned": 3556289,
+      "leaf_rows": 969349,
+      "constraint_rows": 16043,
+      "excluded": {
+        "us_national": 4574,
+        "msa": 541364,
+        "statewide": 138646,
+        "ss999_unknown_county": 63585,
+        "fips_not_in_dim_county": 2423,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87754
+      },
+      "suppression": {
+        "leaf_cells": 969349,
+        "suppressed_cells": 697905,
+        "suppression_rate": 0.7199728890213948,
+        "exact_recovery": 537615,
+        "estabs_apportioned": 160240,
+        "equal_split": 48,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3219,
+        "within_2pct_employment_pct": 99.96894409937889,
+        "within_2pct_wages": 3219,
+        "within_2pct_wages_pct": 99.96894409937889,
+        "residual_abs_pct": {
+          "p50": 0.01400289432634743,
+          "p90": 0.062034739454094295,
+          "p99": 0.199203187250996,
+          "max": 20.510304219823354
+        },
+        "outliers": [
+          {
+            "county_fips": "19003",
+            "metric": "employment",
+            "published": 0.0,
+            "reconstructed": 0.0,
+            "delta_pct": 20.510304219823354
+          }
+        ],
+        "low_confidence_county_years": [
+          {
+            "county_fips": "19003",
+            "reason": "county_total_suppressed"
+          }
+        ]
+      },
+      "national_check": {
+        "sum_counties_employment": 130141412,
+        "excluded_pseudo_mass_employment": 2078218,
+        "bls_us000_employment": 131696378,
+        "delta_pct": 0.3973169254510553,
+        "pass": true
+      }
+    },
+    {
+      "year": 2013,
+      "rows_scanned": 3567316,
+      "leaf_rows": 966218,
+      "constraint_rows": 16038,
+      "excluded": {
+        "us_national": 4580,
+        "msa": 562712,
+        "statewide": 138208,
+        "ss999_unknown_county": 63940,
+        "fips_not_in_dim_county": 2379,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87536
+      },
+      "suppression": {
+        "leaf_cells": 966218,
+        "suppressed_cells": 696969,
+        "suppression_rate": 0.7213372137550739,
+        "exact_recovery": 536836,
+        "estabs_apportioned": 160099,
+        "equal_split": 30,
+        "zero_negative_remainder": 4
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3218,
+        "within_2pct_employment_pct": 99.93788819875776,
+        "within_2pct_wages": 3217,
+        "within_2pct_wages_pct": 99.90683229813665,
+        "residual_abs_pct": {
+          "p50": 0.013629876861429024,
+          "p90": 0.058445353594389245,
+          "p99": 0.1798561151079137,
+          "max": 2865.714285714286
+        },
+        "outliers": [
+          {
+            "county_fips": "19003",
+            "metric": "employment",
+            "published": 0.0,
+            "reconstructed": 0.0,
+            "delta_pct": 2865.714285714286
+          },
+          {
+            "county_fips": "19159",
+            "metric": "employment",
+            "published": 0.0,
+            "reconstructed": 0.0,
+            "delta_pct": 1225.7575757575758
+          },
+          {
+            "county_fips": "48301",
+            "metric": "wages",
+            "published": 0.0,
+            "reconstructed": 0.0,
+            "delta_pct": 359.743824336688
+          }
+        ],
+        "low_confidence_county_years": [
+          {
+            "county_fips": "19003",
+            "reason": "county_total_suppressed"
+          },
+          {
+            "county_fips": "19159",
+            "reason": "county_total_suppressed"
+          },
+          {
+            "county_fips": "48301",
+            "reason": "county_total_suppressed"
+          }
+        ]
+      },
+      "national_check": {
+        "sum_counties_employment": 132273731,
+        "excluded_pseudo_mass_employment": 2168415,
+        "bls_us000_employment": 133968434,
+        "delta_pct": 0.3535997143924217,
+        "pass": true
+      }
+    },
+    {
+      "year": 2014,
+      "rows_scanned": 3569127,
+      "leaf_rows": 966041,
+      "constraint_rows": 16032,
+      "excluded": {
+        "us_national": 4588,
+        "msa": 563525,
+        "statewide": 138335,
+        "ss999_unknown_county": 66385,
+        "fips_not_in_dim_county": 2370,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87492
+      },
+      "suppression": {
+        "leaf_cells": 966041,
+        "suppressed_cells": 697243,
+        "suppression_rate": 0.7217530104829919,
+        "exact_recovery": 536777,
+        "estabs_apportioned": 160428,
+        "equal_split": 36,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3219,
+        "within_2pct_employment": 3219,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3219,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.01379421332750911,
+          "p90": 0.061804697156983925,
+          "p99": 0.19120458891013384,
+          "max": 0.9803921568627451
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 134753495,
+        "excluded_pseudo_mass_employment": 2353143,
+        "bls_us000_employment": 136613609,
+        "delta_pct": 0.36089303518802435,
+        "pass": true
+      }
+    },
+    {
+      "year": 2015,
+      "rows_scanned": 3576934,
+      "leaf_rows": 968460,
+      "constraint_rows": 16036,
+      "excluded": {
+        "us_national": 4574,
+        "msa": 563872,
+        "statewide": 138322,
+        "ss999_unknown_county": 68031,
+        "fips_not_in_dim_county": 2315,
+        "duplicate_identity_rows": 288,
+        "agglvl_72_73_unused": 87581
+      },
+      "suppression": {
+        "leaf_cells": 968460,
+        "suppressed_cells": 698303,
+        "suppression_rate": 0.7210447514610825,
+        "exact_recovery": 537560,
+        "estabs_apportioned": 160697,
+        "equal_split": 44,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3219,
+        "within_2pct_employment_pct": 99.96894409937889,
+        "within_2pct_wages": 3219,
+        "within_2pct_wages_pct": 99.96894409937889,
+        "residual_abs_pct": {
+          "p50": 0.013832935339550736,
+          "p90": 0.062237435817644314,
+          "p99": 0.18726591760299627,
+          "max": 6.294964028776978
+        },
+        "outliers": [
+          {
+            "county_fips": "19003",
+            "metric": "employment",
+            "published": 0.0,
+            "reconstructed": 0.0,
+            "delta_pct": 6.294964028776978
+          }
+        ],
+        "low_confidence_county_years": [
+          {
+            "county_fips": "19003",
+            "reason": "county_total_suppressed"
+          }
+        ]
+      },
+      "national_check": {
+        "sum_counties_employment": 137478878,
+        "excluded_pseudo_mass_employment": 2489056,
+        "bls_us000_employment": 139491699,
+        "delta_pct": 0.34140741235075217,
+        "pass": true
+      }
+    },
+    {
+      "year": 2016,
+      "rows_scanned": 3574154,
+      "leaf_rows": 967563,
+      "constraint_rows": 16026,
+      "excluded": {
+        "us_national": 4585,
+        "msa": 563687,
+        "statewide": 138369,
+        "ss999_unknown_county": 68926,
+        "fips_not_in_dim_county": 2318,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87374
+      },
+      "suppression": {
+        "leaf_cells": 967563,
+        "suppressed_cells": 697297,
+        "suppression_rate": 0.720673485860869,
+        "exact_recovery": 536928,
+        "estabs_apportioned": 160331,
+        "equal_split": 36,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3219,
+        "within_2pct_employment": 3219,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3219,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.013192612137203165,
+          "p90": 0.05995203836930455,
+          "p99": 0.1779359430604982,
+          "max": 0.7246376811594203
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 139744615,
+        "excluded_pseudo_mass_employment": 2580051,
+        "bls_us000_employment": 141870066,
+        "delta_pct": 0.3204340512536309,
+        "pass": true
+      }
+    },
+    {
+      "year": 2017,
+      "rows_scanned": 3561646,
+      "leaf_rows": 964948,
+      "constraint_rows": 16026,
+      "excluded": {
+        "us_national": 4550,
+        "msa": 561908,
+        "statewide": 137789,
+        "ss999_unknown_county": 69551,
+        "fips_not_in_dim_county": 2333,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87223
+      },
+      "suppression": {
+        "leaf_cells": 964948,
+        "suppressed_cells": 694248,
+        "suppression_rate": 0.7194667484672749,
+        "exact_recovery": 531477,
+        "estabs_apportioned": 162724,
+        "equal_split": 47,
+        "zero_negative_remainder": 0
+      },
+      "reconciliation": {
+        "counties": 3219,
+        "within_2pct_employment": 3219,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3219,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.01296512381693245,
+          "p90": 0.06027727546714888,
+          "p99": 0.19502681618722573,
+          "max": 0.7874015748031495
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 141592152,
+        "excluded_pseudo_mass_employment": 2703335,
+        "bls_us000_employment": 143859855,
+        "delta_pct": 0.30281693249308506,
+        "pass": true
+      }
+    },
+    {
+      "year": 2018,
+      "rows_scanned": 3575687,
+      "leaf_rows": 970150,
+      "constraint_rows": 16023,
+      "excluded": {
+        "us_national": 4559,
+        "msa": 563926,
+        "statewide": 137890,
+        "ss999_unknown_county": 70913,
+        "fips_not_in_dim_county": 2328,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87123
+      },
+      "suppression": {
+        "leaf_cells": 970150,
+        "suppressed_cells": 697564,
+        "suppression_rate": 0.7190269545946503,
+        "exact_recovery": 533981,
+        "estabs_apportioned": 163527,
+        "equal_split": 54,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3219,
+        "within_2pct_employment": 3218,
+        "within_2pct_employment_pct": 99.96893445169307,
+        "within_2pct_wages": 3218,
+        "within_2pct_wages_pct": 99.96893445169307,
+        "residual_abs_pct": {
+          "p50": 0.013176966662274345,
+          "p90": 0.060790273556231005,
+          "p99": 0.18315018315018314,
+          "max": 6.899810964083176
+        },
+        "outliers": [
+          {
+            "county_fips": "19003",
+            "metric": "employment",
+            "published": 0.0,
+            "reconstructed": 0.0,
+            "delta_pct": 6.899810964083176
+          }
+        ],
+        "low_confidence_county_years": [
+          {
+            "county_fips": "19003",
+            "reason": "county_total_suppressed"
+          }
+        ]
+      },
+      "national_check": {
+        "sum_counties_employment": 143756346,
+        "excluded_pseudo_mass_employment": 2844988,
+        "bls_us000_employment": 146131754,
+        "delta_pct": 0.3213401517099425,
+        "pass": true
+      }
+    },
+    {
+      "year": 2019,
+      "rows_scanned": 3588374,
+      "leaf_rows": 974709,
+      "constraint_rows": 16024,
+      "excluded": {
+        "us_national": 4562,
+        "msa": 565030,
+        "statewide": 137989,
+        "ss999_unknown_county": 71804,
+        "fips_not_in_dim_county": 2320,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87215
+      },
+      "suppression": {
+        "leaf_cells": 974709,
+        "suppressed_cells": 699845,
+        "suppression_rate": 0.7180040401801974,
+        "exact_recovery": 535089,
+        "estabs_apportioned": 164708,
+        "equal_split": 48,
+        "zero_negative_remainder": 0
+      },
+      "reconciliation": {
+        "counties": 3219,
+        "within_2pct_employment": 3219,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3219,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.012310217480508822,
+          "p90": 0.05991611743559017,
+          "p99": 0.19047619047619047,
+          "max": 0.641025641025641
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 145708195,
+        "excluded_pseudo_mass_employment": 2893934,
+        "bls_us000_employment": 148105092,
+        "delta_pct": 0.33559750936855026,
+        "pass": true
+      }
+    },
+    {
+      "year": 2020,
+      "rows_scanned": 3602760,
+      "leaf_rows": 979745,
+      "constraint_rows": 16030,
+      "excluded": {
+        "us_national": 4549,
+        "msa": 566915,
+        "statewide": 138240,
+        "ss999_unknown_county": 73346,
+        "fips_not_in_dim_county": 2312,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87272
+      },
+      "suppression": {
+        "leaf_cells": 979745,
+        "suppressed_cells": 704775,
+        "suppression_rate": 0.7193453398588409,
+        "exact_recovery": 537974,
+        "estabs_apportioned": 166753,
+        "equal_split": 48,
+        "zero_negative_remainder": 0
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3220,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3220,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.01402295182313253,
+          "p90": 0.06423123243677238,
+          "p99": 0.2066115702479339,
+          "max": 0.41841004184100417
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 136648574,
+        "excluded_pseudo_mass_employment": 2903495,
+        "bls_us000_employment": 139103773,
+        "delta_pct": 0.3222745079675157,
+        "pass": true
+      }
+    },
+    {
+      "year": 2021,
+      "rows_scanned": 3631807,
+      "leaf_rows": 990158,
+      "constraint_rows": 16029,
+      "excluded": {
+        "us_national": 4542,
+        "msa": 570023,
+        "statewide": 138716,
+        "ss999_unknown_county": 75854,
+        "fips_not_in_dim_county": 2325,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87407
+      },
+      "suppression": {
+        "leaf_cells": 990158,
+        "suppressed_cells": 714850,
+        "suppression_rate": 0.7219554858921505,
+        "exact_recovery": 543425,
+        "estabs_apportioned": 171355,
+        "equal_split": 68,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3220,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3220,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.013129406491872232,
+          "p90": 0.060313630880579006,
+          "p99": 0.1890359168241966,
+          "max": 0.8
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 140743428,
+        "excluded_pseudo_mass_employment": 3465939,
+        "bls_us000_employment": 143780068,
+        "delta_pct": 0.2985803289507416,
+        "pass": true
+      }
+    },
+    {
+      "year": 2022,
+      "rows_scanned": 3619437,
+      "leaf_rows": 990027,
+      "constraint_rows": 16032,
+      "excluded": {
+        "us_national": 4466,
+        "msa": 561137,
+        "statewide": 136273,
+        "ss999_unknown_county": 77134,
+        "fips_not_in_dim_county": 2280,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87572
+      },
+      "suppression": {
+        "leaf_cells": 990027,
+        "suppressed_cells": 670133,
+        "suppression_rate": 0.6768835597413,
+        "exact_recovery": 500691,
+        "estabs_apportioned": 169382,
+        "equal_split": 58,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3220,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3220,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.01774286060164445,
+          "p90": 0.0831255195344971,
+          "p99": 0.3167062549485352,
+          "max": 1.5384615384615385
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 146158953,
+        "excluded_pseudo_mass_employment": 4359899,
+        "bls_us000_employment": 150025655,
+        "delta_pct": 0.3287417741985529,
+        "pass": true
+      }
+    },
+    {
+      "year": 2023,
+      "rows_scanned": 3650651,
+      "leaf_rows": 1002302,
+      "constraint_rows": 16028,
+      "excluded": {
+        "us_national": 4533,
+        "msa": 564809,
+        "statewide": 136760,
+        "ss999_unknown_county": 78049,
+        "fips_not_in_dim_county": 2323,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87579
+      },
+      "suppression": {
+        "leaf_cells": 1002302,
+        "suppressed_cells": 679507,
+        "suppression_rate": 0.6779463674621022,
+        "exact_recovery": 506137,
+        "estabs_apportioned": 173274,
+        "equal_split": 94,
+        "zero_negative_remainder": 2
+      },
+      "reconciliation": {
+        "counties": 3220,
+        "within_2pct_employment": 3219,
+        "within_2pct_employment_pct": 99.96894409937889,
+        "within_2pct_wages": 3219,
+        "within_2pct_wages_pct": 99.96894409937889,
+        "residual_abs_pct": {
+          "p50": 0.016815201417102726,
+          "p90": 0.0784313725490196,
+          "p99": 0.2597402597402597,
+          "max": 111.0091743119266
+        },
+        "outliers": [
+          {
+            "county_fips": "32011",
+            "metric": "employment",
+            "published": 0.0,
+            "reconstructed": 0.0,
+            "delta_pct": 111.0091743119266
+          }
+        ],
+        "low_confidence_county_years": [
+          {
+            "county_fips": "32011",
+            "reason": "county_total_suppressed"
+          }
+        ]
+      },
+      "national_check": {
+        "sum_counties_employment": 148894073,
+        "excluded_pseudo_mass_employment": 4678752,
+        "bls_us000_employment": 153140899,
+        "delta_pct": 0.28204483767592353,
+        "pass": true
+      }
+    },
+    {
+      "year": 2024,
+      "rows_scanned": 3664909,
+      "leaf_rows": 1004547,
+      "constraint_rows": 16035,
+      "excluded": {
+        "us_national": 4528,
+        "msa": 574226,
+        "statewide": 136807,
+        "ss999_unknown_county": 79011,
+        "fips_not_in_dim_county": 2338,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 87583
+      },
+      "suppression": {
+        "leaf_cells": 1004547,
+        "suppressed_cells": 718458,
+        "suppression_rate": 0.7152059585066701,
+        "exact_recovery": 529025,
+        "estabs_apportioned": 189231,
+        "equal_split": 198,
+        "zero_negative_remainder": 4
+      },
+      "reconciliation": {
+        "counties": 3221,
+        "within_2pct_employment": 3221,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 3221,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.010225576211219502,
+          "p90": 0.06213753106876554,
+          "p99": 0.2288329519450801,
+          "max": 1.1235955056179776
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 150436912,
+        "excluded_pseudo_mass_employment": 4852717,
+        "bls_us000_employment": 154990441,
+        "delta_pct": 0.19303642087191686,
+        "pass": true
+      }
+    }
+  ],
+  "identity_resolutions": {
+    "shannon_to_oglala_rows": 1454,
+    "shannon_2015_duplicates_dropped": 288,
+    "ct_2024_planning_regions": true
+  },
+  "sc_gates": {
+    "sc001_employment_99pct_within_2pct": true,
+    "sc002_wages_99pct_within_2pct": true,
+    "sc003_wayne_2010_within_2pct": true,
+    "sc004_ownership_95pct_within_2pct": null,
+    "sc005_national_within_1pct": true,
+    "sc006_provenance_marker_total": true,
+    "sc008_table_hashes_reproduced": null
+  }
+}

@@ -53,14 +53,15 @@
           "excluded": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["us_national", "msa", "statewide", "ss999_unknown_county", "fips_not_in_dim_county", "duplicate_identity_rows"],
+            "required": ["us_national", "msa", "statewide", "ss999_unknown_county", "fips_not_in_dim_county", "duplicate_identity_rows", "agglvl_72_73_unused"],
             "properties": {
               "us_national": { "type": "integer", "minimum": 0 },
               "msa": { "type": "integer", "minimum": 0 },
               "statewide": { "type": "integer", "minimum": 0 },
               "ss999_unknown_county": { "type": "integer", "minimum": 0 },
               "fips_not_in_dim_county": { "type": "integer", "minimum": 0 },
-              "duplicate_identity_rows": { "type": "integer", "minimum": 0 }
+              "duplicate_identity_rows": { "type": "integer", "minimum": 0 },
+              "agglvl_72_73_unused": { "type": "integer", "minimum": 0 }
             }
           },
           "suppression": {
@@ -135,7 +136,7 @@
               "sum_counties_employment": { "type": "integer", "minimum": 0 },
               "excluded_pseudo_mass_employment": { "type": "integer", "minimum": 0 },
               "bls_us000_employment": { "type": "integer", "minimum": 0 },
-              "delta_pct": { "type": "number" },
+              "delta_pct": { "type": ["number", "null"] },
               "pass": { "type": "boolean" }
             }
           }

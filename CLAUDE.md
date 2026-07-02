@@ -877,6 +877,8 @@ ADR0XX_descriptive_name:
 - Reads from existing `marxist-data-3NF.sqlite` via the (069-sqlite-cache-optimization)
 - Python 3.12+ (project standard) + Pydantic 2.x (frozen models per II.6 + I.19), (070-balkanization)
 - PostgreSQL 16+ via existing graph bridge (spec-037 + (070-balkanization)
+- Python 3.12 (babylon venv; babylon-data code must avoid >3.12-only syntax it doesn't already use) + SQLAlchemy 2.x (canonical ORM `src/babylon/reference/schema.py` + sessions via `babylon.reference.database`), pandas (chunked singlefile streaming, existing pattern), Pydantic 2.x (audit-report models), jsonschema (audit contract validation), stdlib sqlite3/argparse (086-qcew-loader-imputation)
+- SQLite reference DB `/media/user/data/babylon-data/sqlite/marxist-data-3NF.sqlite` (canonical, reached via the repo's `data/sqlite` directory symlink — exactly one DB file); source: staged BLS annual singlefile CSVs 2010–2024 at `/media/user/data/babylon-data/qcew/` (8.3 GB, complete) (086-qcew-loader-imputation)
 
 ## Recent Changes
 - 062-cross-scale-integration: Two-phase persistence boundary, per-tick transactional atomicity (FR-008a), weekly tick + year-scoped coefficient interpolation, hex-as-source-of-truth aggregation views, 5-flow-type pipeline ordering, Canada boundary node, conservation audit log with determinism hash

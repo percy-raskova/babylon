@@ -276,7 +276,7 @@ meta:
     captured in this file + ADR039). See ai-docs/decisions/ADR039_spec_061_real_backend_wireup.yaml.
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
-  canonical_roadmap: "ai-docs/epochs-overview.md"
+  canonical_roadmap: "reports/aidocs-vs-code-audit-2026-05-16.md (living roadmap per owner decision 2026-07-02; ai-docs/epochs/ is historical vision)"
   last_audit: "Documentation Accuracy Audit (2025-12-26)"
   last_calibration: "Marxian Value Tensor BEA/CEX Calibration (2026-01-28)"
 

@@ -1,6 +1,6 @@
 meta:
-  version: 1.15.0
-  updated: '2026-05-17'
+  version: 1.16.0
+  updated: '2026-07-02'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
@@ -124,6 +124,61 @@ decisions:
     status: accepted
     date: '2025-12-26'
     file: ADR029_hybrid_graph_architecture.yaml
+  ADR030_unified_sqlite_runtime:
+    title: Unified SQLite Runtime Architecture
+    status: accepted
+    date: '2026-01-30'
+    file: ADR030_unified_sqlite_runtime.yaml
+  ADR031_tick_keyed_temporal_tables:
+    title: Tick-Keyed Temporal Tables for State History
+    status: accepted
+    date: '2026-01-30'
+    file: ADR031_tick_keyed_temporal_tables.yaml
+  ADR032_networkx_hydration_pattern:
+    title: NetworkX Hydration Pattern (Persist to SQLite, Compute in Memory)
+    status: accepted
+    date: '2026-01-30'
+    file: ADR032_networkx_hydration_pattern.yaml
+  ADR033_deterministic_simulation:
+    title: Deterministic Simulation over Cryptographic Auditability
+    status: accepted
+    date: '2026-01-30'
+    file: ADR033_deterministic_simulation.yaml
+  ADR034_deferred_rag_architecture:
+    title: Deferred RAG Architecture (ChromaDB When Needed)
+    status: accepted
+    date: '2026-01-30'
+    file: ADR034_deferred_rag_architecture.yaml
+  ADR035_leontief_imperial_rent_pipeline:
+    title: 'Spec 057: Leontief production-chain imperial rent replaces per-worker TVT calculator'
+    status: accepted
+    date: '2026-05-09'
+    file: ADR035_leontief_imperial_rent_pipeline.yaml
+  ADR036_orphan_schema_audit:
+    title: 'Spec 059: Orphan JSON schema audit — per-schema disposition (US6 / FR-015 / SC-008)'
+    status: accepted
+    date: '2026-05-10'
+    file: ADR036_orphan_schema_audit.yaml
+  ADR037_test_skip_remediation:
+    title: 'Spec 059 follow-up: Test-skip remediation audit (76 skips classified by reason)'
+    status: accepted
+    date: '2026-05-10'
+    file: ADR037_test_skip_remediation.yaml
+  ADR038_invariant_test_bundle:
+    title: 'Spec 060: Invariant test bundle — property/metamorphic cross-domain invariants'
+    status: accepted
+    date: '2026-05-11'
+    file: ADR038_invariant_test_bundle.yaml
+  ADR039_spec_061_real_backend_wireup:
+    title: 'Spec 061: Real Backend Wire-Up — cutover, model pin, hybrid retry, custom DRF handler'
+    status: accepted
+    date: '2026-05-12'
+    file: ADR039_spec_061_real_backend_wireup.yaml
+  ADR040_spec_062_cross_scale_integration:
+    title: 'Spec 062: Cross-Scale Integration — value, substrate, and tick propagation'
+    status: accepted
+    date: '2026-05-12'
+    file: ADR040_spec_062_cross_scale_integration.yaml
   ADR041_spec_064_headless_simulation_runner:
     title: 'Spec 064: Headless Postgres-backed simulation runner as canonical CLI'
     status: accepted
@@ -159,3 +214,13 @@ decisions:
     status: accepted
     date: '2026-05-17'
     file: ADR047_sqlite_per_tick_read_cache.yaml
+  ADR048_spec_070_balkanization:
+    title: 'Sovereign Topology + Faction Influence + Balkanization (spec-070)'
+    status: accepted
+    date: '2026-05-18'
+    file: ADR048_spec_070_balkanization.yaml
+  ADR049_election_lab_catalog_addition:
+    title: 'Data-catalog v2.6.4 PATCH proposal — add MIT Election Lab county-presidential dataset'
+    status: proposed
+    date: '2026-05-18'
+    file: ADR049_election_lab_catalog_addition.yaml

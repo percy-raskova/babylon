@@ -100,6 +100,7 @@ class TestExclusions:
         )  # US-level detail
         rows.append(leaf_row("USMSA", "5", "336111", estabs=1, employment=1, wages=1))
         rows.append(leaf_row("C1002", "5", "336111", estabs=1, employment=1, wages=1))  # MSA
+        rows.append(leaf_row("CS102", "5", "336111", estabs=1, employment=1, wages=1))  # CSA
         rows.append(leaf_row("26000", "5", "336111", estabs=1, employment=1, wages=1))  # statewide
         rows.append(leaf_row("26999", "5", "336111", estabs=1, employment=1, wages=1))  # SS999
         rows.append(leaf_row("78010", "5", "336111", estabs=1, employment=1, wages=1))  # VI
@@ -107,7 +108,7 @@ class TestExclusions:
         assert len(data.leaves) == 1
         counts = data.exclusions
         assert counts[singlefile.ExclusionClass.US_NATIONAL] == 2
-        assert counts[singlefile.ExclusionClass.MSA] == 1
+        assert counts[singlefile.ExclusionClass.MSA] == 2  # C#### MSA + CS### CSA
         assert counts[singlefile.ExclusionClass.STATEWIDE] == 1
         assert counts[singlefile.ExclusionClass.SS999_UNKNOWN_COUNTY] == 1
         assert counts[singlefile.ExclusionClass.FIPS_NOT_IN_DIM_COUNTY] == 1

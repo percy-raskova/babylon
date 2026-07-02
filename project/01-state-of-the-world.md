@@ -1,14 +1,31 @@
 # 01 — State of the World
 
-**As of**: 2026-07-02 ~19:00 EDT. Update this file whenever a unit completes.
+**As of**: 2026-07-03 ~00:30 EDT. Update this file whenever a unit completes.
+
+## PROGRAM PIVOT (2026-07-02 evening, owner directive)
+
+Percy re-prioritized: the **Lawverian dialectics refactor** is now the most
+important foundation of the active goal — it precedes spec-071. Contract:
+`06-lawverian-dialectics.md`. Owner decisions: direct refactor (NO speckit),
+re-ground in place, executable + law-tested category theory, Fable designs
+and reviews / implementation delegated. Branch:
+`refactor/lawverian-dialectics` (off `fix/web-local-play-wireup`).
+
+- Phase A DONE (`091f6f74`): `src/babylon/dialectics/` core
+  (GaloisConnection, AdjointCylinder, LevelLattice/Aufhebung,
+  OppositionRegistry), 43 law tests, mypy --strict clean.
+- Phases B–E: per `06-lawverian-dialectics.md` §4–§7 (delegated sessions).
+- After Phase E: resume the catalog at spec-071, which then CONSUMES the
+  categorical machinery (fascist pull as gap/monad computation).
 
 ## Catalog scoreboard
 
 - **DONE**: spec-070 Balkanization (shipped pre-session), spec-086 QCEW
   loader + imputation (this session; not an audit-catalog spec but the
   ratified data prerequisite), spec-097 finalized as decision record.
+- **IN PROGRESS**: Lawverian dialectics refactor (see pivot above).
 - **NOT STARTED**: 25 catalog specs (071–083 per audit Part 3, plus Waves 6–7
-  content). Next: **spec-071** (see `03-next-spec-071.md`).
+  content). Next after the refactor: **spec-071** (see `03-next-spec-071.md`).
 
 ## What shipped 2026-07-02 (one session), by commit
 

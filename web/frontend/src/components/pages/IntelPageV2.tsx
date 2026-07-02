@@ -3,8 +3,9 @@
  *
  * Spec 061 US6 (T101): wired to the live snapshot. The detail
  * inspectors render directly from the snapshot for territories /
- * orgs / edges; communities surface as an empty state until the
- * US6-followup XGI persistence query lands.
+ * orgs / edges; the communities variant renders the snapshot's
+ * hyperedges (XGI community layer — label, category, material basis,
+ * identity strength; local-play wire-up sprint 2026-07-02).
  */
 
 import { useMemo, useState } from "react";
@@ -12,7 +13,7 @@ import { useNavigate, useParams } from "react-router";
 import { BblBadge, BblData, BblLabel, BblPanel, Stat } from "@/components/bbl";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useGameState } from "@/hooks/useGameState";
-import type { OrgState } from "@/types/game";
+import type { HyperedgeState, OrgState } from "@/types/game";
 
 type IntelTab = "territories" | "orgs" | "edges" | "communities";
 
@@ -54,11 +55,20 @@ interface IndexListProps {
   territories: SnapshotTerritory[];
   orgs: OrgState[];
   edges: SnapshotEdge[];
+  communities: HyperedgeState[];
   gameId: string | undefined;
   navigate: (path: string) => void;
 }
 
-function IndexList({ tab, territories, orgs, edges, gameId, navigate }: IndexListProps) {
+function IndexList({
+  tab,
+  territories,
+  orgs,
+  edges,
+  communities,
+  gameId,
+  navigate,
+}: IndexListProps) {
   if (tab === "territories") {
     if (territories.length === 0) return <EmptyState label="No territories surfaced." />;
     return (
@@ -116,7 +126,23 @@ function IndexList({ tab, territories, orgs, edges, gameId, navigate }: IndexLis
       </div>
     );
   }
-  return <EmptyState label="Community surveillance not yet wired (spec 061 US6 followup)." />;
+  if (communities.length === 0) return <EmptyState label="No communities surfaced." />;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {communities.slice(0, 100).map((c) => (
+        <button
+          key={c.id}
+          onClick={() => navigate(`/games/${gameId}/intel/community/${c.id}`)}
+          className="rounded border border-soot bg-void p-2 text-left hover:border-gold"
+        >
+          <div className="text-[11px] font-semibold text-bone">{c.label}</div>
+          <div className="text-[9px] text-ash">
+            {c.category} · {c.member_ids.length} member(s)
+          </div>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 interface DetailProps {
@@ -125,6 +151,7 @@ interface DetailProps {
   territories: SnapshotTerritory[];
   orgs: OrgState[];
   edges: SnapshotEdge[];
+  communities: HyperedgeState[];
 }
 
 function TerritoryDetail({ t }: { t: SnapshotTerritory }) {
@@ -184,7 +211,33 @@ function EdgeDetail({ e }: { e: SnapshotEdge }) {
   );
 }
 
-function DetailPanel({ targetType, targetId, territories, orgs, edges }: DetailProps) {
+function CommunityDetail({ c }: { c: HyperedgeState }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <BblLabel color="#c8a860">{c.label}</BblLabel>
+      <div className="flex items-center gap-2">
+        <BblBadge color="#a070d0">{c.category}</BblBadge>
+        <Stat
+          label="Identity"
+          value={`${(c.ideological_dimension.collective_identity_strength * 100).toFixed(0)}%`}
+          color="#80b0e0"
+        />
+        <Stat label="Members" value={String(c.member_ids.length)} color="#c8a860" />
+      </div>
+      <div className="text-[10px] text-ash">{c.material_basis.description}</div>
+      <div className="flex flex-wrap gap-1">
+        {c.material_basis.indicators.map((indicator) => (
+          <BblBadge key={indicator} color="#787878">
+            {indicator}
+          </BblBadge>
+        ))}
+      </div>
+      <BblData size={10}>Members: {c.member_ids.join(", ")}</BblData>
+    </div>
+  );
+}
+
+function DetailPanel({ targetType, targetId, territories, orgs, edges, communities }: DetailProps) {
   if (!targetType || !targetId) return <EmptyState label="Pick a target from the index." />;
   if (targetType === "territory") {
     const t = territories.find((x) => x.id === targetId);
@@ -197,6 +250,10 @@ function DetailPanel({ targetType, targetId, territories, orgs, edges }: DetailP
   if (targetType === "edge") {
     const e = edges.find((x) => x.id === targetId);
     return e ? <EdgeDetail e={e} /> : <EmptyState label="Edge not found." />;
+  }
+  if (targetType === "community") {
+    const c = communities.find((x) => x.id === targetId);
+    return c ? <CommunityDetail c={c} /> : <EmptyState label="Community not found." />;
   }
   return <EmptyState label="Unknown target type." />;
 }
@@ -223,12 +280,13 @@ export function IntelPageV2() {
     () => (snapshot?.edges ?? []) as unknown as SnapshotEdge[],
     [snapshot],
   );
+  const communities: HyperedgeState[] = useMemo(() => snapshot?.hyperedges ?? [], [snapshot]);
 
   const tabs: { key: IntelTab; label: string; count: number }[] = [
     { key: "territories", label: "Territories", count: territories.length },
     { key: "orgs", label: "Orgs", count: enemyOrgs.length },
     { key: "edges", label: "Edges", count: edges.length },
-    { key: "communities", label: "Communities", count: 0 },
+    { key: "communities", label: "Communities", count: communities.length },
   ];
 
   return (
@@ -266,6 +324,7 @@ export function IntelPageV2() {
             territories={territories}
             orgs={enemyOrgs}
             edges={edges}
+            communities={communities}
             gameId={gameId}
             navigate={navigate}
           />
@@ -278,6 +337,7 @@ export function IntelPageV2() {
             territories={territories}
             orgs={enemyOrgs}
             edges={edges}
+            communities={communities}
           />
         </BblPanel>
       </div>

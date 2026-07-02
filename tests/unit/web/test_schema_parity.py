@@ -563,10 +563,8 @@ class TestBridgeAPIParity:
 
         bridges.append(("EngineBridge", EngineBridge))
 
-        from game.mock_bridge import MockEngineBridge
-
-        bridges.append(("MockEngineBridge", MockEngineBridge))
-
+        # MockEngineBridge was deleted in spec-061 Phase 9 "mock sunset"
+        # (6d015f72); the live pair is EngineBridge vs StubEngineBridge.
         from game.stub_bridge import StubEngineBridge
 
         bridges.append(("StubEngineBridge", StubEngineBridge))

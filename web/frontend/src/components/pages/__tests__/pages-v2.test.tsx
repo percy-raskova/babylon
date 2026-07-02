@@ -2,7 +2,8 @@
  * Tests for v2 pages — BriefingPage, OrgsPage, VerbPage, ResultsPage.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { seedGameStore, resetGameStore } from "@/__tests__/helpers/seedSnapshot";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { BriefingPage } from "@/components/pages/BriefingPage";
@@ -23,6 +24,14 @@ function renderAtRoute(path: string, element: React.ReactElement) {
 // ---------------------------------------------------------------------------
 // BriefingPage
 // ---------------------------------------------------------------------------
+beforeEach(() => {
+  seedGameStore();
+});
+
+afterEach(() => {
+  resetGameStore();
+});
+
 describe("BriefingPage", () => {
   it("renders the Briefing page heading", () => {
     renderAtRoute("/games/g1", <BriefingPage />);
@@ -122,8 +131,8 @@ describe("ResultsPage", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Results");
   });
 
-  it("shows player actions section", () => {
+  it("shows player orgs section", () => {
     renderAtRoute("/games/g1/results", <ResultsPage />);
-    expect(screen.getByText(/Player Actions/)).toBeInTheDocument();
+    expect(screen.getByText(/Player Orgs/)).toBeInTheDocument();
   });
 });

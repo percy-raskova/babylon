@@ -25,7 +25,23 @@ export function Sparkline({
   label,
   value,
 }: SparklineProps) {
-  if (!data || data.length === 0) return null;
+  // Empty series: keep the label visible with a placeholder value so the
+  // metrics strip reads correctly before the first tick lands (live
+  // sessions start with no history; hiding the row made the strip vanish).
+  if (!data || data.length === 0) {
+    if (!label) return null;
+    return (
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-baseline justify-between">
+          <BblLabel>{label}</BblLabel>
+          <BblData color={color} size={11}>
+            —
+          </BblData>
+        </div>
+        <div style={{ width: w, height: h }} />
+      </div>
+    );
+  }
 
   const min = Math.min(...data);
   const max = Math.max(...data);

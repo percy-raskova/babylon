@@ -17,7 +17,7 @@ hierarchy = pytest.importorskip(
     reason="babylon-data symlink not resolved (CI)",
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.ledger, pytest.mark.red_phase]
+pytestmark = [pytest.mark.unit, pytest.mark.ledger]
 
 
 def _cell(estabs: int, employment: int | None, wages: int | None, *, disclosed: bool = True):  # type: ignore[no-untyped-def]

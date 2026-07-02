@@ -129,6 +129,34 @@ Integration-test form of the same harness:
 `tests/integration/test_bridge_income_circuit.py` (9 tests; module-scoped
 fixture; skip-gated on Postgres + the live SQLite).
 
+## 5b. Landmines found in claude-mem history (2026-07-02 review)
+
+- **DecompositionSystem enforcer gap**: position 11 in the default pipeline
+  implements the LA terminal arc (theory.yaml: when super-wages fail, LA
+  decomposes ~30% CARCERAL_ENFORCER / ~70% internal proletariat via
+  `defines.carceral.n_fraction`). It resolves the enforcer by role lookup
+  (`_find_entity_by_role`, role CARCERAL_ENFORCER, include_inactive=True).
+  **The bridge seeds no such entity**, so the enforcer branch no-ops
+  (returns None) when decomposition fires. Harmless
+  inside the 10-year canonical (rent exhaustion ≈ year 43) but MUST be fixed
+  before any spec that induces SUPERWAGE_CRISIS (071's crisis tests, 074,
+  081). Fix shape: seed an inactive carceral-enforcer entity per county, or
+  teach the system to create one.
+- **Dormant dialectics layer**: `src/babylon/engine/dialectics/` is a full
+  parallel framework (24 Dialectic classes mapping Capital I–III, sublation
+  rules, World.tick(), invariants) — NOT referenced by `simulation_engine`
+  or the headless runner. It is a separate abstraction tier, currently
+  unwired. Do not assume it runs; do not wire it casually (that's a spec).
+- **Intended full arc length**: theory.yaml pins the TRPF multiplier floor
+  at 10% after ~1,800 ticks (~35 years) — the 520-tick canonical is only the
+  opening decade BY DESIGN. Long-arc behaviors (decomposition, superwage
+  crisis, carceral equilibrium) need induced-crisis tests or longer runs.
+- **SOLIDARITY transmits periphery→core** (proletarian internationalism) —
+  and the bridged world has no periphery entities and no SOLIDARITY edges
+  (player-verb-created per Constitution III.5). Consciousness routing to
+  revolution therefore requires player action or spec-worked periphery
+  presence; this is intended.
+
 ## 6. Misc engine facts that cost hours to learn
 
 - `TickContext` lives in `babylon.engine.context`, kwarg is `tick=`.

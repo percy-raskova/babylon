@@ -536,6 +536,26 @@ poetry run python tools/load_bea_io.py \\
   ${usage_reload_concordance:+--reload-concordance}
 """
 
+[tasks."data:qcew"]
+description = "Rebuild fact_qcew_annual 2010-2024 from staged BLS singlefiles with suppression imputation (spec-086)"
+usage = '''
+arg "[years]" help="Year range as START-END or comma list" default="2010-2024"
+flag "--dry-run" help="Full pipeline + validation, no writes"
+flag "--apply" help="Staged build + validated atomic swap (keeps __pre_086 backup)"
+flag "--restart" help="Drop staging tables + v086 checkpoints before loading"
+flag "--rollback-from-backup" help="Restore the __pre_086 tables to canonical"
+flag "--drop-backup" help="Remove the __pre_086 backups after verification"
+'''
+run = """
+poetry run python -m babylon_data.qcew \\
+  --years ${usage_years} \\
+  ${usage_dry_run:+--dry-run} \\
+  ${usage_apply:+--apply} \\
+  ${usage_restart:+--restart} \\
+  ${usage_rollback_from_backup:+--rollback-from-backup} \\
+  ${usage_drop_backup:+--drop-backup}
+"""
+
 # =============================================================================
 # DATABASE (Namespaced)
 # Isolated Postgres instance via Docker to avoid OS daemon collisions

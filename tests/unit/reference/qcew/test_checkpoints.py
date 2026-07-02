@@ -18,7 +18,7 @@ qcew_writer = pytest.importorskip(
     reason="babylon-data symlink not resolved (CI)",
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.ledger, pytest.mark.red_phase]
+pytestmark = [pytest.mark.unit, pytest.mark.ledger]
 
 
 def _insert_legacy_checkpoint(session: Session) -> None:

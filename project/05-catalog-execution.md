@@ -67,6 +67,10 @@ Remaining, in rough order of player-visible value:
    UNSUPPORTED from the engine bridge — they need engine-side handlers.
    Most of these belong INSIDE catalog specs (076 investigate/intel, 075
    move/attack, 077/negotiate) — implement them there, not as one-offs.
+   The authoritative verb surface is the 9-verb, 16-route frontend vision
+   in `docs/agents/babylon-frontend-reset-prompt.md` (Educate, Aid, Attack,
+   Mobilize, Campaign, Move, Investigate, Reproduce, Negotiate — player
+   acts through Organizations only, per the Constitution).
 1. **Django `accounts` app has no `migrations/` directory** — generate the
    initial migration (`mise run web:migrate` after `makemigrations accounts`)
    and commit it.

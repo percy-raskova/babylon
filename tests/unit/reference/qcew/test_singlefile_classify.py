@@ -29,7 +29,7 @@ singlefile = pytest.importorskip(
     reason="babylon-data symlink not resolved (CI)",
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.ledger, pytest.mark.red_phase]
+pytestmark = [pytest.mark.unit, pytest.mark.ledger]
 
 KNOWN_FIPS = {"26163", "26099", "46102", "46113", "09110"}
 

@@ -53,7 +53,8 @@ from babylon.engine.headless_runner.reference_data_cache import (
 )
 from babylon.models import Relationship
 from babylon.models.entities.social_class import IdeologicalProfile
-from babylon.models.enums import EdgeType
+from babylon.models.entities.territory import Territory
+from babylon.models.enums import EdgeType, SectorType
 from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
 from babylon.persistence.county_aggregation import (
@@ -319,23 +320,32 @@ class WorldStateBridge:
         # 3. Build per-county entity sets.
         entities = self._build_per_county_entities(scope_fips)
 
-        # 3a. Spec-066 T032/T033: seed one EXPLOITATION edge per county
-        #     between proletariat and bourgeoisie. Without this edge,
-        #     ImperialRentSystem has no graph path to walk -> no Φ
-        #     extraction -> no agitation -> no consciousness drift.
+        # 3a. Spec-066 T032/T033 + ADR044 completion (2026-07-02): seed
+        #     one EXPLOITATION edge (proletariat -> bourgeoisie) AND one
+        #     TENANCY edge (proletariat -> territory) per county. Without
+        #     EXPLOITATION, ImperialRentSystem has no path to walk; without
+        #     TENANCY, ProductionSystem pays no wages and every class burns
+        #     its fixed endowment to statewide extinction by tick ~70 (the
+        #     closed-drain economy diagnosed 2026-07-02).
         #     SOLIDARITY edges are deliberately NOT seeded; per
         #     Constitution III.5 + Clarifications Q4 they are strategic
         #     intervention from player verbs, not data-derived.
+        territories = self._build_per_county_territories(scope_fips)
         relationships = self._build_per_county_relationships(
             scope_fips=scope_fips,
             entities=entities,
+            territories=territories,
         )
 
-        # 4. Construct initial WorldState. Tick 0 — entities + per-county
-        #    EXPLOITATION edges; territories deliberately empty for
-        #    spec-065 first cut (engine systems requiring territories
-        #    are not part of the bridged loop yet).
-        world = WorldState(tick=0, entities=entities, relationships=relationships)
+        # 4. Construct initial WorldState. Tick 0 — entities, per-county
+        #    territories (income circuit + real metabolic base), and the
+        #    EXPLOITATION + TENANCY edges.
+        world = WorldState(
+            tick=0,
+            entities=entities,
+            relationships=relationships,
+            territories=territories,
+        )
 
         # 5. Spec-069: hydrate the reference-data cache for the full
         #    (scope × year) Cartesian product the run will touch. After
@@ -642,38 +652,73 @@ class WorldStateBridge:
 
         return entities
 
+    def _build_per_county_territories(
+        self,
+        scope_fips: frozenset[str],
+    ) -> dict[str, Territory]:
+        """Seed one Territory per county (ADR044 completion, 2026-07-02).
+
+        ID scheme: ``T{i:03d}`` over the same sorted-FIPS index as
+        :meth:`_build_per_county_entities`. Biocapacity fields use the
+        Territory model defaults — the metabolic base the engine's
+        MetabolismSystem regenerates/depletes and ProductionSystem's
+        ``bio_ratio`` scales wages by. Spec-065's first cut deliberately
+        left this empty ("engine systems requiring territories are not
+        part of the bridged loop yet"), which severed the income circuit.
+
+        Returns:
+            ``{territory_id: Territory}`` for ``WorldState.territories``.
+        """
+        territories: dict[str, Territory] = {}
+        for i, county_fips in enumerate(sorted(scope_fips), start=1):
+            territory_id = f"T{i:03d}"
+            territories[territory_id] = Territory(
+                id=territory_id,
+                name=f"County {county_fips}",
+                sector_type=SectorType.INDUSTRIAL,
+            )
+        return territories
+
     def _build_per_county_relationships(
         self,
         *,
         scope_fips: frozenset[str],
         entities: dict[str, Any],
+        territories: dict[str, Territory],
     ) -> list[Relationship]:
-        """Spec-066 T032: seed one EXPLOITATION edge per county at tick 0.
+        """Seed the per-county tick-0 edges (spec-066 T032 + ADR044 completion).
 
-        For each county, this maps the proletariat (``C{i:03d}``) -> the
-        bourgeoisie (``C{i+500:03d}``) with edge_type=EXPLOITATION and
-        starting tension=0.1 / value_flow=0.0. The ID scheme mirrors
-        :meth:`_build_per_county_entities`.
+        For each county ``i`` over sorted FIPS:
+
+        - EXPLOITATION: proletariat (``C{i:03d}``) -> bourgeoisie
+          (``C{i+500:03d}``), tension=0.1 — the path ImperialRentSystem
+          walks (Φ extraction -> agitation -> consciousness drift).
+        - TENANCY: proletariat -> territory (``T{i:03d}``) — the path
+          ProductionSystem requires to generate production and pay wages.
+          Without it the entity economy is a closed drain (statewide
+          extinction at tick ~70, diagnosed 2026-07-02).
 
         Per Constitution III.5 + Clarifications Q4, SOLIDARITY edges are
         NOT seeded here: they emerge from player verbs (Mobilize, Organize,
         Educate per Constitution V) and from a future strategic-intervention
-        layer. This bridge only seeds the EXTRACTIVE relationships that
-        are data-derived from the QCEW + BEA reference data via the
-        ImperialRentSystem.
+        layer. This bridge only seeds the EXTRACTIVE + material-base
+        relationships that are data-derived.
 
         Args:
             scope_fips: 5-digit FIPS codes for the scope counties.
             entities: The dict returned by :meth:`_build_per_county_entities`,
                 used to confirm both endpoints exist.
+            territories: The dict returned by
+                :meth:`_build_per_county_territories`.
 
         Returns:
-            A list of ``Relationship`` instances, one per county.
+            A list of ``Relationship`` instances, two per county.
         """
         relationships: list[Relationship] = []
         for i, _county_fips in enumerate(sorted(scope_fips), start=1):
             proletariat_id = f"C{i:03d}"
             bourgeoisie_id = f"C{i + 500:03d}"
+            territory_id = f"T{i:03d}"
             if proletariat_id not in entities or bourgeoisie_id not in entities:
                 # _build_per_county_entities is the only producer; this is
                 # defensive — surfaces silent ID drift, not a real failure
@@ -688,6 +733,15 @@ class WorldStateBridge:
                     tension=0.1,
                 )
             )
+            if territory_id in territories:
+                relationships.append(
+                    Relationship(
+                        source_id=proletariat_id,
+                        target_id=territory_id,
+                        edge_type=EdgeType.TENANCY,
+                        value_flow=0.0,
+                    )
+                )
         return relationships
 
     def _build_relationship_rows(

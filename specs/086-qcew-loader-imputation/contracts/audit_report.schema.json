@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylon.local/specs/086/audit_report.schema.json",
+  "title": "QCEW Imputation Load Audit Report (spec-086)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_metadata", "per_year", "identity_resolutions", "sc_gates"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "run_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timestamp_utc", "mode", "years", "database_path", "database_sha256_pre", "database_sha256_post", "duration_seconds", "babylon_git", "babylon_data_git", "table_hashes"],
+      "properties": {
+        "timestamp_utc": { "type": "string", "format": "date-time" },
+        "mode": { "enum": ["dry-run", "apply", "rollback-from-backup", "drop-backup"] },
+        "years": { "type": "array", "items": { "type": "integer", "minimum": 2010, "maximum": 2050 }, "minItems": 1 },
+        "database_path": { "type": "string" },
+        "database_sha256_pre": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "database_sha256_post": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "duration_seconds": { "type": "number", "minimum": 0 },
+        "babylon_git": { "$ref": "#/$defs/git_ref" },
+        "babylon_data_git": { "$ref": "#/$defs/git_ref" },
+        "source_file_sha256": {
+          "type": "object",
+          "propertyNames": { "pattern": "^\\d{4}$" },
+          "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "table_hashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fact_qcew_annual", "fact_qcew_county_rollup"],
+          "properties": {
+            "fact_qcew_annual": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "fact_qcew_county_rollup": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        "operator": { "type": "string" }
+      }
+    },
+    "per_year": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["year", "rows_scanned", "leaf_rows", "constraint_rows", "excluded", "suppression", "reconciliation", "national_check"],
+        "properties": {
+          "year": { "type": "integer", "minimum": 2010, "maximum": 2050 },
+          "rows_scanned": { "type": "integer", "minimum": 0 },
+          "leaf_rows": { "type": "integer", "minimum": 0 },
+          "constraint_rows": { "type": "integer", "minimum": 0 },
+          "excluded": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["us_national", "msa", "statewide", "ss999_unknown_county", "fips_not_in_dim_county", "duplicate_identity_rows"],
+            "properties": {
+              "us_national": { "type": "integer", "minimum": 0 },
+              "msa": { "type": "integer", "minimum": 0 },
+              "statewide": { "type": "integer", "minimum": 0 },
+              "ss999_unknown_county": { "type": "integer", "minimum": 0 },
+              "fips_not_in_dim_county": { "type": "integer", "minimum": 0 },
+              "duplicate_identity_rows": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "suppression": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["leaf_cells", "suppressed_cells", "suppression_rate", "exact_recovery", "estabs_apportioned", "equal_split", "zero_negative_remainder"],
+            "properties": {
+              "leaf_cells": { "type": "integer", "minimum": 0 },
+              "suppressed_cells": { "type": "integer", "minimum": 0 },
+              "suppression_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+              "exact_recovery": { "type": "integer", "minimum": 0 },
+              "estabs_apportioned": { "type": "integer", "minimum": 0 },
+              "equal_split": { "type": "integer", "minimum": 0 },
+              "zero_negative_remainder": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "reconciliation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["counties", "within_2pct_employment", "within_2pct_employment_pct", "within_2pct_wages", "within_2pct_wages_pct", "residual_abs_pct", "outliers", "low_confidence_county_years"],
+            "properties": {
+              "counties": { "type": "integer", "minimum": 0 },
+              "within_2pct_employment": { "type": "integer", "minimum": 0 },
+              "within_2pct_employment_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+              "within_2pct_wages": { "type": "integer", "minimum": 0 },
+              "within_2pct_wages_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+              "residual_abs_pct": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["p50", "p90", "p99", "max"],
+                "properties": {
+                  "p50": { "type": "number", "minimum": 0 },
+                  "p90": { "type": "number", "minimum": 0 },
+                  "p99": { "type": "number", "minimum": 0 },
+                  "max": { "type": "number", "minimum": 0 }
+                }
+              },
+              "outliers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["county_fips", "metric", "published", "reconstructed", "delta_pct"],
+                  "properties": {
+                    "county_fips": { "type": "string", "pattern": "^\\d{5}$" },
+                    "metric": { "enum": ["employment", "wages"] },
+                    "published": { "type": "number" },
+                    "reconstructed": { "type": "number" },
+                    "delta_pct": { "type": "number" }
+                  }
+                }
+              },
+              "low_confidence_county_years": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["county_fips", "reason"],
+                  "properties": {
+                    "county_fips": { "type": "string", "pattern": "^\\d{5}$" },
+                    "reason": { "enum": ["county_total_suppressed", "all_ownership_totals_suppressed", "negative_remainder", "no_establishment_basis"] }
+                  }
+                }
+              }
+            }
+          },
+          "national_check": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sum_counties_employment", "excluded_pseudo_mass_employment", "bls_us000_employment", "delta_pct", "pass"],
+            "properties": {
+              "sum_counties_employment": { "type": "integer", "minimum": 0 },
+              "excluded_pseudo_mass_employment": { "type": "integer", "minimum": 0 },
+              "bls_us000_employment": { "type": "integer", "minimum": 0 },
+              "delta_pct": { "type": "number" },
+              "pass": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "identity_resolutions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shannon_to_oglala_rows", "shannon_2015_duplicates_dropped", "ct_2024_planning_regions"],
+      "properties": {
+        "shannon_to_oglala_rows": { "type": "integer", "minimum": 0 },
+        "shannon_2015_duplicates_dropped": { "type": "integer", "minimum": 0 },
+        "ct_2024_planning_regions": { "type": "boolean" }
+      }
+    },
+    "sc_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sc001_employment_99pct_within_2pct", "sc002_wages_99pct_within_2pct", "sc003_wayne_2010_within_2pct", "sc004_ownership_95pct_within_2pct", "sc005_national_within_1pct", "sc006_provenance_marker_total", "sc008_table_hashes_reproduced"],
+      "properties": {
+        "sc001_employment_99pct_within_2pct": { "type": ["boolean", "null"] },
+        "sc002_wages_99pct_within_2pct": { "type": ["boolean", "null"] },
+        "sc003_wayne_2010_within_2pct": { "type": ["boolean", "null"] },
+        "sc004_ownership_95pct_within_2pct": { "type": ["boolean", "null"] },
+        "sc005_national_within_1pct": { "type": ["boolean", "null"] },
+        "sc006_provenance_marker_total": { "type": ["boolean", "null"] },
+        "sc008_table_hashes_reproduced": { "type": ["boolean", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "git_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "sha"],
+      "properties": {
+        "branch": { "type": "string" },
+        "sha": { "type": "string", "pattern": "^[a-f0-9]{7,40}$" }
+      }
+    }
+  }
+}

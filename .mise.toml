@@ -791,14 +791,6 @@ description = "Show info about the current soundfont"
 run = "echo \"Current: $SOUNDFONT\" && ls -lh \"$SOUNDFONT\""
 
 # =============================================================================
-# UI / DASHBOARD
-# =============================================================================
-
-[tasks.ui]
-description = "Launch the Synopticon dashboard (Dear PyGui)"
-run = "poetry run python -m babylon.ui.dpg_runner"
-
-# =============================================================================
 # VISUALIZATION (Namespaced)
 # =============================================================================
 

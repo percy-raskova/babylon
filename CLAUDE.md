@@ -165,16 +165,17 @@ mise run demo:persona                             # Persephone persona voice tes
 mise run demo:narrative                           # Narrative U-curve sweep
 
 # Data (data:* namespace)
-mise run data:ingest                              # Ingest Marxist corpus into ChromaDB
-mise run data:db-init                             # Initialize SQLite database
+mise run data:query                               # Open SQLite CLI for 3NF reference database
+mise run data:db-init                             # Initialize SQLite database schema
+mise run data:bea-load                            # Ingest BEA national I-O tables (spec-068)
+mise run data:lodes-od                            # Download LODES OD commuter flow data
+mise run data:tiger-counties                      # Ingest TIGER county geometry into Postgres
+mise run data:tiger-sqlite                        # Bootstrap SQLite reference DB with TIGER + H3 res-7
 
 # Documentation (docs:* namespace)
 mise run docs:build                               # Build Sphinx documentation
 mise run docs:live                                # Live-reload documentation server
 mise run docs:strict                              # Build with warnings as errors
-
-# UI
-mise run ui                                       # Launch DearPyGui Synopticon dashboard
 
 # Web App (web:* namespace)
 mise run web:dev                                  # Start Django + Vite as background daemons
@@ -207,8 +208,8 @@ Three-layer local system (no external servers):
    - Two node types: `SocialClass` (entities) and `Territory` (spatial)
    - Edges: EXPLOITATION, SOLIDARITY, WAGES, TRIBUTE, TENANCY, ADJACENCY, etc.
 
-3. **The Archive** (ChromaDB) - `src/babylon/rag/`
-   - Semantic history for AI narrative generation
+3. **The Archive** (pgvector) - `src/babylon/persistence/pgvector_store.py`
+   - Semantic history for AI narrative generation (ChromaDB removed in spec-037; pgvector in Postgres replaced it)
    - AI observes state changes, never controls mechanics
 
 ## Engine Architecture
@@ -216,8 +217,9 @@ Three-layer local system (no external servers):
 The simulation engine uses modular Systems with dependency injection.
 Per spec-066 ADR044, the bridged headless runner now actually invokes
 `SimulationEngine.run_tick(graph, services, context)` on every tick;
-the engine runs the 21 default systems in this materialist-causality
-order (source: `simulation_engine._DEFAULT_SYSTEMS`):
+the engine runs the 25 default systems in this materialist-causality
+order (source: `simulation_engine._DEFAULT_SYSTEMS`; spec-070 added the
+three x.5 balkanization systems marked below):
 
 ```
 SimulationEngine.run_tick(graph, services, context)
@@ -240,13 +242,16 @@ Material Base (positions 1-13, plus Substrate at 2.5):
   13.  MetabolismSystem            - Ecological residue of production
 Action Phase (position 14 — Spec 056 F6=alpha reorder):
   14.  OODASystem                  - Organizations observe + act (Feature 032)
-Consequences (positions 15-21):
+Consequences (positions 14.5-21, incl. spec-070 x.5 systems):
+  14.5 FactionInfluenceSystem      - Faction influence propagation (spec-070; classified CONSEQUENCE per FR-042 despite post-OODA position)
   15.  SurvivalSystem              - Risk assessment (P(S|A), P(S|R))
   16.  StruggleSystem              - Agency layer (George Floyd dynamic, EXCESSIVE_FORCE / UPRISING)
   17.  ConsciousnessSystem         - Ideology drift + bifurcation
+  17.5 SovereigntySystem           - Sovereign legitimacy + secession dynamics (spec-070)
   18.  ContradictionSystem         - Systemic tension accounting
   19.  ContradictionFieldSystem    - Field computation (Feature 002)
   20.  FieldDerivativeSystem       - Spatial/temporal derivatives + principal (Feature 002)
+  20.5 CollapseTransitionSystem    - Collapse partition + territory transition (spec-070)
   21.  EdgeTransitionSystem        - Compound predicates + edge mode transitions (Feature 002)
 ```
 
@@ -257,7 +262,7 @@ here was the early MVP cut from spec-001 (now historical).
 **Key Components**:
 - `src/babylon/engine/simulation_engine.py` - Orchestrates Systems
 - `src/babylon/engine/services.py` - ServiceContainer (DI container)
-- `src/babylon/engine/event_bus.py` - Publish/subscribe events (12 EventTypes)
+- `src/babylon/engine/event_bus.py` - Publish/subscribe event bus (plain-str event types; the EventType enum — 70 values — lives in `src/babylon/models/enums/events.py`)
 - `src/babylon/engine/formula_registry.py` - 12 hot-swappable formulas
 - `src/babylon/engine/simulation.py` - Stateful facade for multi-tick runs
 - `src/babylon/engine/factories.py` - `create_proletariat()`, `create_bourgeoisie()`
@@ -265,13 +270,13 @@ here was the early MVP cut from spec-001 (now historical).
 - `src/babylon/engine/topology_monitor.py` - Phase transition detection via percolation theory
 - `src/babylon/engine/systems/struggle.py` - George Floyd Dynamic (EXCESSIVE_FORCE, UPRISING events)
 - `src/babylon/engine/systems/territory.py` - Carceral geography, heat dynamics, eviction pipeline
-- `src/babylon/config/defines.py` - GameDefines (all tunable game coefficients)
+- `src/babylon/config/defines/` - GameDefines (all tunable game coefficients)
 
-**Observer System** (`src/babylon/engine/observer.py`):
-- `SimulationObserver` - Protocol for state change notifications
-- `SessionRecorder` - Black box recording for debugging/replay
-- `EndgameDetector` - Detects simulation outcomes (IMPERIAL_COLLAPSE, etc.)
-- `TopologyMonitor` - Phase transition detection via percolation theory
+**Observer System**:
+- `SimulationObserver` - Protocol for state change notifications (`src/babylon/engine/observer.py` — the protocol only; implementations live in `engine/observers/`)
+- `SessionRecorder` - Black box recording for debugging/replay (`engine/observers/`)
+- `EndgameDetector` - Detects the 5 terminal GameOutcomes: REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE (`engine/observers/endgame_detector.py`)
+- `TopologyMonitor` - Phase transition detection via percolation theory (`src/babylon/engine/topology_monitor.py`)
 
 ## Type System
 
@@ -291,16 +296,26 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 
 ## Formula System
 
-17 formulas in `src/babylon/formulas/` (modular structure):
+55 public formula functions across 17 modules in `src/babylon/formulas/`:
 
-| Category | Formulas |
-|----------|----------|
-| Fundamental Theorem | `calculate_imperial_rent`, `calculate_labor_aristocracy_ratio`, `is_labor_aristocracy`, `calculate_consciousness_drift` |
-| Survival Calculus | `calculate_acquiescence_probability`, `calculate_revolution_probability`, `calculate_crossover_threshold`, `apply_loss_aversion` |
-| Unequal Exchange | `calculate_exchange_ratio`, `calculate_exploitation_rate`, `calculate_value_transfer`, `prebisch_singer_effect` |
-| Solidarity | `calculate_solidarity_transmission`, `calculate_ideological_routing` |
-| Dynamic Balance | `calculate_bourgeoisie_decision` |
-| Metabolic Rift | `calculate_biocapacity_delta`, `calculate_overshoot_ratio` |
+| Module | Formulas |
+|--------|----------|
+| `fundamental_theorem` | `calculate_labor_aristocracy_ratio`, `is_labor_aristocracy`, `calculate_consciousness_drift` |
+| `survival_calculus` | `calculate_acquiescence_probability`, `calculate_revolution_probability`, `calculate_crossover_threshold`, `apply_loss_aversion` |
+| `unequal_exchange` | `calculate_exchange_ratio`, `calculate_exploitation_rate`, `calculate_value_transfer`, `prebisch_singer_effect` |
+| `solidarity` | `calculate_solidarity_transmission` |
+| `dynamic_balance` | `calculate_bourgeoisie_decision` |
+| `metabolic_rift` | `calculate_biocapacity_delta`, `calculate_overshoot_ratio` |
+| `trpf` | `calculate_trpf_multiplier`, `calculate_rent_pool_decay`, `calculate_rate_of_profit`, `calculate_organic_composition` |
+| `consciousness` / `consciousness_routing` | `compute_ternary_consciousness`, `compute_agitation_delta`, `compute_exploitation_visibility`, `compute_reification_buffer`, `route_agitation_to_ternary`, `normalize_to_simplex` |
+| `state_ai` | `calculate_faction_shift`, `is_fascist_convergence`, `check_fascist_reversion` |
+| `community` | `calculate_solidarity_potential`, `calculate_threat_score`, `calculate_infrastructure_decay`, `calculate_solidarity_amplification`, `compute_community_cost_modifier` |
+| `class_dynamics` | `calculate_wealth_flow`, `calculate_class_dynamics_derivative`, `calculate_wealth_acceleration`, `calculate_full_dynamics`, `calculate_equilibrium_deviation`, `invert_wealth_to_population` |
+| `lifecycle` | `compute_population_flow`, `compute_dependency_ratio`, `compute_legitimation_index`, `compute_pareto_gini`, `compute_ideology_transmission`, `compute_shadow_subsidy` |
+| `balkanization` (spec-070) | `calculate_metabolic_impact`, `derive_extraction_policy_from_stance`, `derive_default_multipliers_from_stance`, `winning_faction_for_territory`, `detect_red_settler_trap`, `contiguous_influence_majority_subregion`, `extrapolate_habitability` |
+| `contradiction` / `vitality` / `curvature` | `calculate_contradiction_intensity`, `calculate_mortality_rate`, `compute_ollivier_ricci` |
+
+Note: imperial-rent math lives in `src/babylon/economics/` (tensor + Leontief pipeline, specs 011/057), not in `formulas/`.
 
 ## Pytest Markers
 
@@ -308,7 +323,7 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 @pytest.mark.math        # Deterministic formulas (fast, pure)
 @pytest.mark.ledger      # Economic/political state
 @pytest.mark.topology    # Graph/network operations
-@pytest.mark.integration # Database/ChromaDB (I/O bound)
+@pytest.mark.integration # Database/Postgres (I/O bound)
 @pytest.mark.ai          # AI/RAG evaluation (slow, non-deterministic)
 @pytest.mark.unit        # Unit tests (default)
 @pytest.mark.red_phase   # TDD RED phase (intentionally failing until GREEN)
@@ -542,7 +557,7 @@ All tunable game coefficients are centralized in `GameDefines` (Pydantic model):
 ```python
 from babylon.config.defines import GameDefines
 
-defines = GameDefines()  # Load defaults from pyproject.toml [tool.babylon]
+defines = GameDefines()  # Dataclass defaults; GameDefines.load_default() applies the optional src/babylon/data/defines.yaml override if present
 defines.economy.extraction_efficiency  # 0.8 default
 defines.consciousness.drift_sensitivity_k  # Consciousness drift rate
 ```

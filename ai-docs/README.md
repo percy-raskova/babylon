@@ -10,15 +10,16 @@ This directory helps AI assistants understand context, use correct terminology, 
 
 | File | Purpose |
 |------|---------|
-| `epochs/overview.md` | **CANONICAL ROADMAP** - Four Epochs (Engine, Foundation, Game, Platform) |
-| `epochs/epoch1-complete.md` | Epoch 1 completion record (13 Systems, 25 EventTypes, 4646 tests) |
-| `epochs/epoch2/` | Epoch 2: The Foundation - data infrastructure, H3, PyQt |
-| `epochs/epoch3/` | Epoch 3: The Game - game features (17 specs, renumbered from epoch2/) |
-| `epochs/epoch4/` | Epoch 4: The Platform - DuckDB, RAG, API |
-| `state.yaml` | Current project state, test counts, slice status |
+| `../reports/aidocs-vs-code-audit-2026-05-16.md` | **LIVING ROADMAP** (owner decision 2026-07-02) — epoch-vs-code audit + 27-spec full-vision catalog in 7 waves. Spec numbers in the catalog are advisory; actual numbers are first-come at spec-creation time (086/097 were consumed by the QCEW data-quality track). |
+| `state.yaml` | Current project state, test counts, sprint status |
+| `epochs/overview.md` | Historical vision: Four Epochs (Engine, Foundation, Game, Platform). Status tables frozen ~Jan 2026 — see the audit report for what actually shipped. |
+| `epochs/epoch1-complete.md` | Epoch 1 completion record (counts as of 2026-01-05; since grown: 25 systems, 70 EventTypes, 55 formula functions) |
+| `epochs/epoch2/` | Epoch 2: The Foundation - data infrastructure, H3 (PyQt slice OBSOLETE — React/Django/deck.gl shipped instead, specs 041/042/061) |
+| `epochs/epoch3/` | Epoch 3: The Game - game features (17 specs, renumbered from epoch2/; 3.9 Balkanization shipped as spec-070) |
+| `epochs/epoch4/` | Epoch 4: The Platform - vision only (DuckDB unification + ChromaDB superseded by Postgres 16 + pgvector, spec-037/ADR030) |
 | `architecture.yaml` | Technical Stack (Embedded Trinity: Ledger, Topology, Archive) |
 | `tooling.yaml` | CI/CD, Testing, Parameter Tuning, Monte Carlo UQ |
-| `formulas-spec.yaml` | All 31 mathematical formulas with signatures |
+| `formulas-spec.yaml` | Formula signatures (historical; actual: 55 public functions across 17 modules in `src/babylon/formulas/`) |
 | `observer-layer.yaml` | Observer system, EventTypes, TopologyMonitor |
 
 ---
@@ -72,11 +73,11 @@ See `epochs/epoch2/overview.md` for specifications.
 | 2.2 | Census Loaders | COMPLETE |
 | 2.3 | Economic Loaders | COMPLETE |
 | 2.4 | Circulatory Loaders | COMPLETE |
-| 2.5 | H3 Geographic System | PLANNED |
-| 2.6 | PyQt Visualization | PLANNED |
-| 2.7 | Schema Integration | PLANNED |
-| 2.8 | LODES & Freight Flows | PLANNED |
-| 2.9 | Ideological Cartography | PLANNED |
+| 2.5 | H3 Geographic System | COMPLETE (shipped at res-7, not the spec's res-4) |
+| 2.6 | PyQt Visualization | OBSOLETE (superseded by React 19 + Django + deck.gl, specs 041/042/061) |
+| 2.7 | Schema Integration | PARTIAL |
+| 2.8 | LODES & Freight Flows | PARTIAL |
+| 2.9 | Ideological Cartography | PARTIAL |
 
 **Epoch 2 Spec Files**: `epochs/epoch2/`
 - `data-infrastructure.yaml`, `data-quality.yaml` (2.1-2.4)
@@ -87,9 +88,9 @@ See `epochs/epoch2/overview.md` for specifications.
 - `lodes-freight-flows.yaml` (2.8)
 - `ideological-geography.yaml` (2.9)
 
-### Epoch 3: The Game - PLANNED
+### Epoch 3: The Game - IN PROGRESS
 
-See `epochs/epoch3/overview.md` for specifications. All specs in `epochs/epoch3/`:
+Substrate ~60-70% built via specs 011-066; slice 3.9 (Balkanization) shipped as spec-070; 3.7 partially covered by spec-039 (state-apparatus AI). See `reports/aidocs-vs-code-audit-2026-05-16.md` Part 3-FULL for the per-slice verdicts and the forward catalog. All vision specs in `epochs/epoch3/`:
 
 | Slice | File | Purpose |
 |-------|------|---------|
@@ -118,7 +119,7 @@ See `epochs/epoch4/overview.md` for specifications.
 |------|---------|
 | `game-loop-architecture.yaml` | Engine/State separation, Systems, formulas |
 | `entities.yaml` | 17 game entity types and relationships |
-| `decisions/index.yaml` | Architecture Decision Records index (24 ADRs) |
+| `decisions/index.yaml` | Architecture Decision Records index (ADR001-ADR049; 021-025 were never assigned) |
 | `ontology.yaml` | Domain terms (MLM-TW, architecture, game) |
 | `patterns.yaml` | How to do things here |
 | `anti-patterns.yaml` | What NOT to do |
@@ -146,8 +147,8 @@ See `epochs/epoch4/overview.md` for specifications.
 ## Usage
 
 When starting a session, an AI assistant should:
-1. Read `ai-docs/epochs/overview.md` for current roadmap (Four Epochs)
-2. Read `ai-docs/state.yaml` for current slice status and test counts
+1. Read `reports/aidocs-vs-code-audit-2026-05-16.md` for the living roadmap (`ai-docs/epochs/overview.md` is the historical vision)
+2. Read `ai-docs/state.yaml` for current sprint status and test counts
 3. Reference `ai-docs/ontology.yaml` when encountering domain terms
 4. Check `ai-docs/patterns.yaml` before implementing new features
 5. Consult `ai-docs/decisions/index.yaml` to understand why things are the way they are

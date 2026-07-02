@@ -550,6 +550,23 @@ def _compare_bundle_command(args: Any) -> int:
     else:
         print(f"  ✓ counties_alive == {actual_alive}")
 
+    # 1b. Population liveness (ADR044-completion gate, 2026-07-02): every
+    # econ-alive county must still hold a living population at the terminal
+    # tick. Guards against the closed-drain extinction class of failure
+    # (statewide death at tick ~68-70) that hid for two months because no
+    # gate asserted survival. Tolerant of old bundles/baselines that
+    # predate the field.
+    actual_pop = actual["terminal_state"].get("counties_with_population")
+    if actual_pop is not None:
+        actual_pop = int(actual_pop)
+        if actual_pop != actual_alive:
+            failures.append(
+                f"population liveness: only {actual_pop} of {actual_alive} "
+                "econ-alive counties have living populations at the terminal tick"
+            )
+        else:
+            print(f"  ✓ population liveness: {actual_pop}/{actual_alive} counties alive")
+
     # 2. total_v: within ±tolerance%.
     actual_v = float(actual["terminal_state"]["total_v"])
     expected_v = float(expected["terminal_state"]["total_v"])

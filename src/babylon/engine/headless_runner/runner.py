@@ -417,7 +417,13 @@ def _query_terminal_aggregates(
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FILTER (WHERE v > 0), "
-            "       SUM(v), SUM(c), SUM(s), SUM(k) "
+            "       SUM(v), SUM(c), SUM(s), SUM(k), "
+            # Liveness (ADR044-completion gate, 2026-07-02): the trace view
+            # LEFT JOINs dynamic_consciousness_state, and the bridge only
+            # writes a consciousness row while a county's engine population
+            # is > 0 — so non-NULL ideology at the terminal tick counts
+            # counties whose populations are still alive.
+            "       COUNT(*) FILTER (WHERE ideology_r IS NOT NULL) "
             "FROM view_runtime_trace_emission "
             "WHERE session_id = %s AND tick = %s",
             (str(session_id), terminal_tick),
@@ -427,6 +433,7 @@ def _query_terminal_aggregates(
     return {
         "tick": terminal_tick,
         "counties_alive": counties_alive,
+        "counties_with_population": int(row[5] or 0) if row else 0,
         "total_population": None,
         "total_v": float(row[1] or 0.0) if row else 0.0,
         "total_c": float(row[2] or 0.0) if row else 0.0,

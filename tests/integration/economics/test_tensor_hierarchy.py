@@ -73,7 +73,16 @@ class TestInterIndustryFlowPipeline:
         Returns a ``sessionmaker`` bound to an in-memory SQLite engine;
         each test checks out its own session.
         """
-        pytest.importorskip("babylon_data", reason="BEA pipeline requires babylon-data package")
+        pytest.importorskip(
+            "babylon_data.bea.io_loader",
+            reason="BEA pipeline requires importable babylon_data.bea loaders "
+            "(legacy babylon.data.* imports pending spec-098 re-home)",
+        )
+        pytest.importorskip(
+            "babylon_data.bea.loader_national",
+            reason="BEA pipeline requires importable babylon_data.bea loaders "
+            "(legacy babylon.data.* imports pending spec-098 re-home)",
+        )
         if not _GDP_FILE.exists():
             pytest.skip(
                 f"BEA GDP-by-industry XLSX absent; needs babylon-data mount at {_BABYLON_DATA_ROOT}"

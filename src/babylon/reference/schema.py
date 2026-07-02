@@ -43,6 +43,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import DateTime
@@ -1268,7 +1269,13 @@ class FactCensusIncomeSources(NormalizedBase):
 
 
 class FactQcewAnnual(NormalizedBase):
-    """QCEW annual employment/wage data."""
+    """QCEW annual employment/wage data.
+
+    Canonical grain (spec-067): county × 6-digit NAICS × ownership × year
+    leaves only. Since spec-086, BLS-suppressed cells store imputed
+    employment/wage magnitudes (``is_imputed = True``) instead of masking
+    zeros; ``disclosure_code`` keeps the raw BLS flag.
+    """
 
     __tablename__ = "fact_qcew_annual"
 
@@ -1289,12 +1296,40 @@ class FactQcewAnnual(NormalizedBase):
     lq_employment: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     lq_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     disclosure_code: Mapped[str | None] = mapped_column(String(5))
+    is_imputed: Mapped[bool] = mapped_column(nullable=False, server_default=text("0"))
 
     __table_args__ = (
         Index("idx_qcew_county_time", "county_id", "time_id"),
         Index("idx_qcew_industry_time", "industry_id", "time_id"),
         Index("idx_qcew_ownership", "ownership_id"),
     )
+
+
+class FactQcewCountyRollup(NormalizedBase):
+    """BLS-published county reconciliation constraints (spec-086).
+
+    One row per county × year × ownership holding the published rollup the
+    imputed leaves in :class:`FactQcewAnnual` must sum to: the ``own_code``
+    ``'0'`` row carries the county Total Covered figure (agglvl 70); rows
+    for ``own_code`` 1/2/3/5 carry the per-ownership totals (agglvl 71).
+    ``is_imputed`` marks the rare constraint that was itself reconstructed
+    via the documented fallback (FR-015); such county-years are flagged
+    low-confidence in the load audit report.
+    """
+
+    __tablename__ = "fact_qcew_county_rollup"
+
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    ownership_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_ownership.ownership_id"), primary_key=True
+    )
+
+    establishments: Mapped[int | None] = mapped_column()
+    employment: Mapped[int | None] = mapped_column()
+    total_wages_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    disclosure_code: Mapped[str | None] = mapped_column(String(5))
+    is_imputed: Mapped[bool] = mapped_column(nullable=False, server_default=text("0"))
 
 
 class FactQcewStateAnnual(NormalizedBase):

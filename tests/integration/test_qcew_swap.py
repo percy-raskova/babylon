@@ -17,9 +17,18 @@ qcew_writer = pytest.importorskip(
     reason="babylon-data symlink not resolved (CI)",
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.ledger, pytest.mark.red_phase]
+pytestmark = [pytest.mark.integration, pytest.mark.ledger]
 
 _CANONICAL_INDEXES = {"idx_qcew_county_time", "idx_qcew_industry_time", "idx_qcew_ownership"}
+
+
+@pytest.fixture()
+def qcew_orm_session():  # type: ignore[no-untyped-def]
+    from tests.fixtures.qcew.orm import create_qcew_engine, seed_qcew_dims
+
+    with Session(create_qcew_engine()) as session:
+        seed_qcew_dims(session)
+        yield session
 
 
 def _table_names(session: Session) -> set[str]:

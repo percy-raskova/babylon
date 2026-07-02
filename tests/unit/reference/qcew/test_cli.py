@@ -29,7 +29,7 @@ qcew_main = pytest.importorskip(
     reason="babylon-data symlink not resolved (CI)",
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.ledger, pytest.mark.red_phase]
+pytestmark = [pytest.mark.unit, pytest.mark.ledger]
 
 KNOWN_ROWS = [
     constraint_70_row("26163", estabs=6, employment=1000, wages=50_000_000),

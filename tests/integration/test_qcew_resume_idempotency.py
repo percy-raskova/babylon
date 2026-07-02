@@ -33,7 +33,7 @@ qcew_writer = pytest.importorskip(
     "babylon_data.qcew.writer", reason="babylon-data symlink not resolved (CI)"
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.ledger, pytest.mark.red_phase]
+pytestmark = [pytest.mark.integration, pytest.mark.ledger]
 
 KNOWN_FIPS = {"26163", "26099", "46102", "46113", "09110"}
 

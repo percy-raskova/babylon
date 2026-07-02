@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Load raw QCEW 2022 employment/wage data into SQLite research database.
+"""Tombstone: QCEW loading moved to the babylon-data package (spec-086).
 
-NOTE: This tool has been moved to the babylon-data package.
-The data loading infrastructure was extracted from babylon into
-a separate repository. Use the babylon-data CLI instead:
+The suppression-imputing loader (spec-086) lives in the babylon-data repo
+and is importable here through the ``src/babylon_data`` symlink. Use:
 
-    cd /path/to/babylon-data
-    poetry run python -m babylon_data.cli qcew ...
+    mise run data:qcew -- --dry-run           # full pipeline, no writes
+    mise run data:qcew -- --apply             # staged build + validated swap
+    poetry run python -m babylon_data.qcew --help
 
-For more information, see the babylon-data repository.
+See specs/086-qcew-loader-imputation/quickstart.md for the operator guide.
 """
 
 import sys
@@ -17,9 +17,10 @@ import sys
 def main() -> int:
     """Entry point."""
     print(
-        "ERROR: ingest_qcew_full.py has been moved to the babylon-data package.\n"
-        "The data loading infrastructure was extracted from babylon.\n"
-        "Use the babylon-data CLI instead.",
+        "ERROR: QCEW loading moved to the babylon-data package (spec-086).\n"
+        "Use: mise run data:qcew -- --dry-run|--apply\n"
+        "  or: poetry run python -m babylon_data.qcew --help\n"
+        "Operator guide: specs/086-qcew-loader-imputation/quickstart.md",
         file=sys.stderr,
     )
     return 1

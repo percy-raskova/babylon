@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0.0",
+  "run_metadata": {
+    "timestamp_utc": "2026-07-02T18:26:12Z",
+    "mode": "apply",
+    "years": [
+      2010
+    ],
+    "database_path": "/tmp/pytest-of-user/pytest-17/test_restart_flag_accepted_wit0/ref.sqlite",
+    "database_sha256_pre": "e11a2b6d1d65ba7b041f9fa789d2fde4702c0fcee0a097797f7a7b8978b8dba7",
+    "database_sha256_post": "a8d24c46891c0d8a7521198d9594034a5e2888d426632bcd30a6c9a7b5e57c95",
+    "duration_seconds": 0.01421330700031831,
+    "babylon_git": {
+      "branch": "086-qcew-loader-imputation",
+      "sha": "a9abb05cd62ee6678e35c3eb0789f1966a092209"
+    },
+    "babylon_data_git": {
+      "branch": "main",
+      "sha": "a92ee5138659856f36b241ffbfc9020be17ab0a9"
+    },
+    "source_file_sha256": {
+      "2010": "f713b05da31ab6acbc5a951f9f0db2e4d1c82fc4b1fe518ba8af423905859f41"
+    },
+    "table_hashes": {
+      "fact_qcew_annual": "ad696dd313a422a65d48cd1fa042cc5c2500ca79dbc3377d9c1707e760e72149",
+      "fact_qcew_county_rollup": "88ef142ea49e8e787f5ef6d92b87a3b0e0d0c614724df47c0634ba84a1cbbdf6"
+    }
+  },
+  "per_year": [
+    {
+      "year": 2010,
+      "rows_scanned": 4,
+      "leaf_rows": 2,
+      "constraint_rows": 2,
+      "excluded": {
+        "us_national": 0,
+        "msa": 0,
+        "statewide": 0,
+        "ss999_unknown_county": 0,
+        "fips_not_in_dim_county": 0,
+        "duplicate_identity_rows": 0,
+        "agglvl_72_73_unused": 0
+      },
+      "suppression": {
+        "leaf_cells": 2,
+        "suppressed_cells": 1,
+        "suppression_rate": 0.5,
+        "exact_recovery": 1,
+        "estabs_apportioned": 0,
+        "equal_split": 0,
+        "zero_negative_remainder": 0
+      },
+      "reconciliation": {
+        "counties": 1,
+        "within_2pct_employment": 1,
+        "within_2pct_employment_pct": 100.0,
+        "within_2pct_wages": 1,
+        "within_2pct_wages_pct": 100.0,
+        "residual_abs_pct": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p99": 0.0,
+          "max": 0.0
+        },
+        "outliers": [],
+        "low_confidence_county_years": []
+      },
+      "national_check": {
+        "sum_counties_employment": 1000,
+        "excluded_pseudo_mass_employment": 0,
+        "bls_us000_employment": 0,
+        "delta_pct": null,
+        "pass": false
+      }
+    }
+  ],
+  "identity_resolutions": {
+    "shannon_to_oglala_rows": 0,
+    "shannon_2015_duplicates_dropped": 0,
+    "ct_2024_planning_regions": false
+  },
+  "sc_gates": {
+    "sc001_employment_99pct_within_2pct": true,
+    "sc002_wages_99pct_within_2pct": true,
+    "sc003_wayne_2010_within_2pct": true,
+    "sc004_ownership_95pct_within_2pct": null,
+    "sc005_national_within_1pct": false,
+    "sc006_provenance_marker_total": true,
+    "sc008_table_hashes_reproduced": null
+  }
+}

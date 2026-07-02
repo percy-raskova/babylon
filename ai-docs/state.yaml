@@ -2,10 +2,46 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.13.0"
-  updated: "2026-05-18"
-  last_sprint: "070-balkanization (Complete; ~100/118 tasks done — see specs/070-balkanization/tasks.md and ADR048. Phase 1+2 foundational, Phase 3 US1 MVP, Phase 4 US2 faction competition, Phase 5 US3 collapse+endgames, Phase 6 US4 secession+O(K) fracture shipped. Phase 7 polish + Phase 7b post-analyze remediation partially deferred — see ADR048 follow_ups.)"
-  previous_sprint: "069-sqlite-cache-optimization (Complete; 37/37 tasks done — see specs/069-sqlite-cache-optimization/tasks.md and ADR047. SC-001 absolute 60-min wallclock gate deferred to operator-side canonical run per quickstart.md T036.)"
+  version: "2.14.0"
+  updated: "2026-07-02"
+  last_sprint: "086-qcew-loader-imputation (Implementation complete + LIVE APPLIED 2026-07-02; 37/41 tasks — see specs/086-qcew-loader-imputation/tasks.md and ADR050. Remaining: T038 michigan-e2e re-baseline (running), T039-T041 docs/ledger close-out.)"
+  previous_sprint: "070-balkanization (Complete; ~100/118 tasks done — see specs/070-balkanization/tasks.md and ADR048. Phase 1+2 foundational, Phase 3 US1 MVP, Phase 4 US2 faction competition, Phase 5 US3 collapse+endgames, Phase 6 US4 secession+O(K) fracture shipped. Phase 7 polish + Phase 7b post-analyze remediation partially deferred — see ADR048 follow_ups.)"
+  previous_sprint_069: "069-sqlite-cache-optimization (Complete; 37/37 tasks done — see specs/069-sqlite-cache-optimization/tasks.md and ADR047. SC-001 absolute 60-min wallclock gate deferred to operator-side canonical run per quickstart.md T036.)"
+  spec_086_summary: |
+    QCEW loader reimplementation + synthetic suppression imputation —
+    the #1 data-correctness fix. Implements spec-097 FINAL (strategy 4);
+    supersedes spec-067's infeasible ±5%-on-raw-leaves targets.
+
+    New loader in the babylon-data repo (babylon_data.qcew: singlefile /
+    hierarchy / imputation / writer / validation / audit / __main__),
+    consuming babylon's canonical ORM; babylon's src/babylon_data symlink
+    repointed from the un-versioned trove to the git repo (minimal viable
+    packaging; full packaging = spec-098). Schema delta:
+    FactQcewAnnual.is_imputed provenance flag + new fact_qcew_county_rollup
+    constraints table; physical composite PK restored via the staged
+    rebuild. mise task: data:qcew (dry-run/apply/restart/rollback/
+    drop-backup).
+
+    LIVE APPLY (2026-07-02, 32.2 min): fact_qcew_annual rebuilt
+    15,097,464 -> 14,670,249 leaves (SS999/VI pseudo-rows excluded);
+    240,488 published constraints persisted; 10,479,767 rows (71.4%)
+    imputed and flagged. ALL SCs green against the live DB:
+    SC-001/002 99.94-100.00% of counties within ±2% per year;
+    SC-003 Wayne 2010 = 657,158 vs 657,150 published (+0.001%, was
+    -14.6%), wages exact to the penny; SC-004 ownership bands >=95%;
+    SC-005 national identity +0.19..+0.41% per year; SC-006 100%
+    provenance; SC-007 single offline operation; SC-008 digests
+    reproduce; SC-009 jsonschema-validated audit artifacts in
+    reports/ingest/. Identity: Shannon->Oglala 1,454 rows mapped,
+    2015 double-publication deduped (288); CT-2024 planning regions
+    flagged; 8 low-confidence county-years across 48,296.
+
+    86 spec-086 tests green (unit/integration/contract; importorskip-
+    gated in CI until babylon-data has its own CI per spec-098).
+    fact_qcew_annual__pre_086 backup retained pending operator
+    drop-backup. Downstream: michigan-e2e baseline regenerated (county v
+    rises by design; structural rate-of-profit invariants s>0, p' finite
+    unaffected).
   previous_previous_sprint: "068-bea-national-io-ingest (Partial; ~60/77 tasks done — US1+US2+US3-partial+US4+ADR046 shipped; hex_hydrator wiring T056-T058 deferred to follow-up commit)"
   spec_070_summary: |
     Sovereign Topology + Faction Influence + Balkanization — adds the

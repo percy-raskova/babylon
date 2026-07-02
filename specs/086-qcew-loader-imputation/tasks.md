@@ -98,15 +98,15 @@
 
 ### Tests for User Story 3 (RED first)
 
-- [ ] T028 [P] [US3] RED — audit contract test in REPO-B `tests/contract/qcew/test_audit_report_contract.py`: fixture e2e emission validates against `specs/086-qcew-loader-imputation/contracts/audit_report.schema.json` (jsonschema, Draft 2020-12); md sidecar written next to JSON; report filenames `qcew_impute_<UTC>.{json,md}`
-- [ ] T029 [P] [US3] RED — audit model tests in REPO-B `tests/unit/reference/qcew/test_audit_models.py`: Pydantic round-trip (to_json/from_json); suppression method counts sum to suppressed_cells; per-class excluded counts; identity_resolutions counters; national_check math per D8 (`sum_counties + excluded_pseudo_mass` vs US000, ±1 % gate); sc_gates booleans populated (null when not computable for subset years)
-- [ ] T030 [P] [US3] RED — provenance queryability e2e in REPO-B `tests/integration/test_qcew_provenance.py` (extends fixture e2e): 100 % of rows have `is_imputed ∈ {0,1}` (SC-006); `is_imputed=1 ⇒ disclosure_code='N' AND avg/lq NULL`; suppressed-70 fixture county-year appears in `low_confidence_county_years` with reason `county_total_suppressed`; rollup rows built by fallback carry `is_imputed=1`
+- [x] T028 [P] [US3] RED — audit contract test in REPO-B `tests/contract/qcew/test_audit_report_contract.py`: fixture e2e emission validates against `specs/086-qcew-loader-imputation/contracts/audit_report.schema.json` (jsonschema, Draft 2020-12); md sidecar written next to JSON; report filenames `qcew_impute_<UTC>.{json,md}`
+- [x] T029 [P] [US3] RED — audit model tests in REPO-B `tests/unit/reference/qcew/test_audit_models.py`: Pydantic round-trip (to_json/from_json); suppression method counts sum to suppressed_cells; per-class excluded counts; identity_resolutions counters; national_check math per D8 (`sum_counties + excluded_pseudo_mass` vs US000, ±1 % gate); sc_gates booleans populated (null when not computable for subset years)
+- [x] T030 [P] [US3] RED — provenance queryability e2e in REPO-B `tests/integration/test_qcew_provenance.py` (extends fixture e2e): 100 % of rows have `is_imputed ∈ {0,1}` (SC-006); `is_imputed=1 ⇒ disclosure_code='N' AND avg/lq NULL`; suppressed-70 fixture county-year appears in `low_confidence_county_years` with reason `county_total_suppressed`; rollup rows built by fallback carry `is_imputed=1`
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] `audit.py`: Pydantic report models mirroring the contract schema, per-stage collectors, `write_to_disk(report_dir)` with pre-write jsonschema validation, run metadata (mode/years/db sha256 pre-post/duration/git branch+sha of BOTH repos/source-file sha256/table hashes) → GREEN T028 + T029
-- [ ] T032 [US3] Wire collectors through `singlefile.py` (exclusion + identity counters), `imputation.py` (method + anomaly counts), `validation.py` (reconciliation distributions + low-confidence), `writer.py` (row counts + hashes), `__main__.py` (US000 national-check rows routed to audit, never to county tables; sc_gates assembly; report emission in every mode) → GREEN T030 and re-green e2e suites
-- [ ] T033 [US3] Checkpoint: all three story suites green; `mise run check` clean; commit both repos
+- [x] T031 [US3] `audit.py`: Pydantic report models mirroring the contract schema, per-stage collectors, `write_to_disk(report_dir)` with pre-write jsonschema validation, run metadata (mode/years/db sha256 pre-post/duration/git branch+sha of BOTH repos/source-file sha256/table hashes) → GREEN T028 + T029
+- [x] T032 [US3] Wire collectors through `singlefile.py` (exclusion + identity counters), `imputation.py` (method + anomaly counts), `validation.py` (reconciliation distributions + low-confidence), `writer.py` (row counts + hashes), `__main__.py` (US000 national-check rows routed to audit, never to county tables; sc_gates assembly; report emission in every mode) → GREEN T030 and re-green e2e suites
+- [x] T033 [US3] Checkpoint: all three story suites green; `mise run check` clean; commit both repos
 
 **Checkpoint**: All user stories independently functional at fixture scale.
 

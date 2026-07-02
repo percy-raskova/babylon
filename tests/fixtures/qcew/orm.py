@@ -73,9 +73,13 @@ OWNERSHIPS = [
 YEARS = [2010, 2015, 2024]
 
 
-def create_qcew_engine() -> Engine:
-    """In-memory engine with the spec-086 table subset created from the ORM."""
-    engine = create_engine("sqlite:///:memory:")
+def create_qcew_engine(url: str = "sqlite:///:memory:") -> Engine:
+    """Engine with the spec-086 table subset created from the ORM.
+
+    Pass a file URL (``sqlite:///path``) when the database must survive a
+    second connection (CLI end-to-end tests).
+    """
+    engine = create_engine(url)
     tables = [NormalizedBase.metadata.tables[name] for name in QCEW_TABLES]
     NormalizedBase.metadata.create_all(engine, tables=tables)
     return engine

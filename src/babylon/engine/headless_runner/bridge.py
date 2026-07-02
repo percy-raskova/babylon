@@ -46,7 +46,7 @@ from uuid import UUID
 
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.engine.event_bus import EventBus
-from babylon.engine.factories import create_bourgeoisie, create_proletariat
+from babylon.engine.factories import create_bourgeoisie, create_labor_aristocracy
 from babylon.engine.headless_runner.reference_data_cache import (
     ReferenceDataCache,
     derive_year_set,
@@ -616,15 +616,23 @@ class WorldStateBridge:
         self,
         scope_fips: frozenset[str],
     ) -> dict[str, Any]:
-        """Instantiate one proletariat + one bourgeoisie per county.
+        """Instantiate one labor-aristocracy worker + one bourgeoisie per county.
 
-        ID scheme: proletariat IDs are ``C001..C{N:03d}`` over sorted
-        FIPS; bourgeoisie IDs are offset by 500 (``C501..C{N+500:03d}``).
-        Default ideology/wealth values come from the factories;
-        spec-065 first cut uses small synthetic populations (proletariat
-        block size 85, bourgeoisie block size 15 per county). The
-        engine will evolve these over time; the bridge just needs a
-        valid initial state with per-county attribution.
+        ID scheme: worker IDs are ``C001..C{N:03d}`` over sorted FIPS;
+        bourgeoisie IDs are offset by 500 (``C501..C{N+500:03d}``).
+        Small synthetic populations (worker block 85, bourgeoisie block 15
+        per county); the engine evolves these over time.
+
+        Class character (theory-grounded, 2026-07-02): core county workers
+        are LABOR_ARISTOCRACY — super-waged above subsistence, pacified by
+        imperial rent (Cope, *Divided World Divided Class*; Amin, *The Law
+        of Worldwide Value*; Fundamental Theorem W_c > V_c). The prior
+        PERIPHERY_PROLETARIAT hydration at starvation wealth made the
+        engine's Terminal-Crisis rule (P(S|R) > P(S|A) for periphery
+        proletariat → revolt) fire at tick 1 and sever the EXPLOITATION
+        edge — ending extraction, agitation, and the imperial circuit in
+        the opening move. Rupture belongs to the LATE game (rent-pool
+        exhaustion), not tick 1.
 
         Returns:
             ``{entity_id: SocialClass}`` mapping suitable for
@@ -632,15 +640,15 @@ class WorldStateBridge:
         """
         entities: dict[str, Any] = {}
         for i, county_fips in enumerate(sorted(scope_fips), start=1):
-            proletariat_id = f"C{i:03d}"
+            worker_id = f"C{i:03d}"
             bourgeoisie_id = f"C{i + 500:03d}"
 
             # Spec-066 T050: pass the BASELINE_IDEOLOGY placeholder to
             # both factories so every county starts at (r=0.05, l=0.50,
             # f=0.45) per ADR043. The IdeologicalProfile is frozen, so
             # sharing the same instance is safe.
-            entities[proletariat_id] = create_proletariat(
-                id=proletariat_id,
+            entities[worker_id] = create_labor_aristocracy(
+                id=worker_id,
                 county_fips=county_fips,
                 ideology=BASELINE_IDEOLOGY,
             ).model_copy(update={"population": 85})
@@ -690,13 +698,18 @@ class WorldStateBridge:
 
         For each county ``i`` over sorted FIPS:
 
-        - EXPLOITATION: proletariat (``C{i:03d}``) -> bourgeoisie
+        - EXPLOITATION: worker (``C{i:03d}``) -> bourgeoisie
           (``C{i+500:03d}``), tension=0.1 — the path ImperialRentSystem
           walks (Φ extraction -> agitation -> consciousness drift).
-        - TENANCY: proletariat -> territory (``T{i:03d}``) — the path
-          ProductionSystem requires to generate production and pay wages.
+        - TENANCY: worker -> territory (``T{i:03d}``) — the path
+          ProductionSystem requires to generate production.
           Without it the entity economy is a closed drain (statewide
           extinction at tick ~70, diagnosed 2026-07-02).
+        - WAGES: bourgeoisie -> worker — the Amin/Wallerstein circuit:
+          ``_find_employer`` resolves the LA's employer via this edge
+          (production routes to the employer), and the wages phase pays
+          back productivity + the super-wage bonus from the rent pool
+          (SUPERWAGE_CRISIS when the pool exhausts).
 
         Per Constitution III.5 + Clarifications Q4, SOLIDARITY edges are
         NOT seeded here: they emerge from player verbs (Mobilize, Organize,
@@ -742,6 +755,14 @@ class WorldStateBridge:
                         value_flow=0.0,
                     )
                 )
+            relationships.append(
+                Relationship(
+                    source_id=bourgeoisie_id,
+                    target_id=proletariat_id,
+                    edge_type=EdgeType.WAGES,
+                    value_flow=0.0,
+                )
+            )
         return relationships
 
     def _build_relationship_rows(

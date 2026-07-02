@@ -118,6 +118,40 @@ class TestHydrationShape:
         exploitation = [r for r in world.relationships if r.edge_type.value == "exploitation"]
         assert len(exploitation) == 1
 
+    def test_worker_is_labor_aristocracy(self, bridged) -> None:  # type: ignore[no-untyped-def]
+        """Core county workers are the LABOR ARISTOCRACY, not the periphery.
+
+        Cope (Divided World Divided Class), Amin (Law of Worldwide Value),
+        and the project's Fundamental Theorem (W_c > V_c): the core working
+        class is pacified by super-wages from imperial rent. Hydrating US
+        counties as PERIPHERY_PROLETARIAT at starvation wealth made the
+        engine (correctly, per its own Terminal Crisis rule) fire revolt at
+        tick 1 and sever the EXPLOITATION edge — ending extraction,
+        agitation, and the bourgeoisie in one stroke.
+        """
+        from babylon.models.enums import SocialRole
+
+        worker = bridged["world"].entities["C001"]
+        assert worker.role is SocialRole.LABOR_ARISTOCRACY
+        assert worker.wealth > worker.subsistence_threshold, (
+            "the imperial bribe starts ABOVE subsistence (hegemony holds)"
+        )
+
+    def test_wages_edge_employer_to_worker(self, bridged) -> None:  # type: ignore[no-untyped-def]
+        """WAGES edge (bourgeoisie -> worker): the Amin/Wallerstein circuit.
+
+        ProductionSystem routes LA production to the employer found via
+        the incoming WAGES edge; the wages phase pays back productivity +
+        the super-wage bonus from the rent pool (SUPERWAGE_CRISIS when the
+        pool exhausts — the intended ~year-43 arc).
+        """
+        world = bridged["world"]
+        wages = [r for r in world.relationships if r.edge_type.value == "wages"]
+        assert len(wages) == 1, "one WAGES edge per county"
+        (edge,) = wages
+        assert edge.source_id == "C501"
+        assert edge.target_id == "C001"
+
 
 class TestIncomeFlows:
     def test_worker_receives_production_income(self, bridged) -> None:  # type: ignore[no-untyped-def]
@@ -151,15 +185,25 @@ class TestIncomeFlows:
         assert worker_population > 0, "workers extinct by tick 80 (historical cliff ~42)"
         assert worker_population + bourgeois_population > 0
 
-    @pytest.mark.xfail(
-        reason="Rent/consciousness calibration pending: extraction scales with "
-        "worker_wealth × (1 − consciousness); rising consciousness chokes Φ "
-        "below bourgeois consumption (0.15/tick), starving C5xx by ~tick 67. "
-        "Follow-up: tune extraction_efficiency/consumption balance against the "
-        "20-Year Entropy Standard (ai-docs/tuning-standard.yaml).",
-        strict=False,
-    )
-    def test_bourgeoisie_survive_on_extracted_rent(self, bridged) -> None:  # type: ignore[no-untyped-def]
+    def test_hegemony_holds_exploitation_edge_persists(self, bridged) -> None:  # type: ignore[no-untyped-def]
+        """No tick-1 rupture: with LA class character the exploitation
+        relation survives — rupture is the LATE-game event (rent-pool
+        exhaustion), not the opening move."""
+        from babylon.engine.context import TickContext
+
+        graph = bridged["world"].to_graph()
+        for tick in range(1, 81):
+            bridged["engine"].run_tick(graph, bridged["services"], TickContext(tick=tick))
+        exploitation_edges = [
+            (u, v)
+            for u, v, d in graph.edges(data=True)
+            if str(d.get("edge_type", "")).endswith("exploitation")
+        ]
+        assert exploitation_edges, "EXPLOITATION edge ruptured before tick 80"
+
+    def test_bourgeoisie_survive_on_captured_production(self, bridged) -> None:  # type: ignore[no-untyped-def]
+        """The employer captures LA production (Amin/Wallerstein routing),
+        so the bourgeoisie no longer starve on their endowment."""
         from babylon.engine.context import TickContext
 
         graph = bridged["world"].to_graph()

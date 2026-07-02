@@ -28,7 +28,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
-from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import SocialRole
 from babylon.models.types import Currency, Probability
 
@@ -98,6 +102,89 @@ def create_proletariat(
         id=id,
         name=name,
         role=SocialRole.PERIPHERY_PROLETARIAT,
+        wealth=wealth,
+        ideology=ideology,  # type: ignore[arg-type]  # Validator converts float to IdeologicalProfile
+        organization=organization,
+        repression_faced=repression_faced,
+        subsistence_threshold=subsistence_threshold,
+        p_acquiescence=p_acquiescence,
+        p_revolution=p_revolution,
+        description=description,
+        effective_wealth=effective_wealth,
+        unearned_increment=unearned_increment,
+        ppp_multiplier=ppp_multiplier,
+        county_fips=county_fips,
+    )
+
+
+def create_labor_aristocracy(
+    id: str = LABOR_ARISTOCRACY_ID,
+    name: str = "Labor Aristocracy",
+    wealth: Currency = 0.8,
+    ideology: float | IdeologicalProfile | None = None,
+    organization: Probability = 0.05,
+    repression_faced: Probability = 0.3,
+    subsistence_threshold: Currency = 0.3,
+    p_acquiescence: Probability = 0.0,
+    p_revolution: Probability = 0.0,
+    description: str = "Super-waged core working class (pacified by imperial rent)",
+    effective_wealth: Currency = 0.0,
+    unearned_increment: Currency = 0.0,
+    ppp_multiplier: float = 1.0,
+    county_fips: str | None = None,
+) -> SocialClass:
+    """Create a labor-aristocracy (super-waged core worker) social class.
+
+    Per Cope (*Divided World Divided Class*), Amin (*The Law of Worldwide
+    Value*), and the project's Fundamental Theorem (W_c > V_c): the core
+    working class receives wages above the value it produces, funded by
+    imperial rent — pacifying it (P(S|A) > P(S|R)) until the rent pool
+    decays. Defaults mirror ``create_labor_aristocracy_scenario`` in the
+    legacy scenarios (well-off worker, very low organization, low
+    repression needed).
+
+    The LA is defined by:
+
+    - LABOR_ARISTOCRACY role (employed producer in the Amin/Wallerstein
+      circuit: production routes to the employer via the incoming WAGES
+      edge; the wages phase pays back productivity + super-wage bonus)
+    - Wealth above subsistence (default 0.8 vs threshold 0.3)
+    - Very low organization (0.05) — the bribe substitutes for solidarity
+    - Low repression faced (0.3) — hegemony, not force
+
+    Args:
+        id: Unique identifier matching ^C[0-9]{3}$ pattern.
+        name: Human-readable name.
+        wealth: Economic resources (default 0.8 — above subsistence).
+        ideology: Ideological position (float, IdeologicalProfile, or None
+            for the legacy scalar default, as in :func:`create_proletariat`).
+        organization: Collective cohesion (default 0.05).
+        repression_faced: State violence level (default 0.3).
+        subsistence_threshold: Minimum wealth for survival (default 0.3).
+        p_acquiescence: P(S|A) (default 0.0, calculated by engine).
+        p_revolution: P(S|R) (default 0.0, calculated by engine).
+        description: Optional description.
+        effective_wealth: PPP-adjusted wealth (calculated by engine).
+        unearned_increment: PPP bonus (calculated by engine).
+        ppp_multiplier: PPP multiplier applied to wages.
+        county_fips: Optional 5-digit county attribution (bridged runs).
+
+    Returns:
+        SocialClass configured as labor aristocracy.
+
+    Example:
+        >>> worker = create_labor_aristocracy()
+        >>> worker.role
+        <SocialRole.LABOR_ARISTOCRACY: 'labor_aristocracy'>
+        >>> worker.wealth > worker.subsistence_threshold
+        True
+    """
+    if ideology is None:
+        ideology = -0.3  # legacy scalar default; validator converts to IdeologicalProfile
+    return SocialClass(
+        id=id,
+        name=name,
+        role=SocialRole.LABOR_ARISTOCRACY,
         wealth=wealth,
         ideology=ideology,  # type: ignore[arg-type]  # Validator converts float to IdeologicalProfile
         organization=organization,

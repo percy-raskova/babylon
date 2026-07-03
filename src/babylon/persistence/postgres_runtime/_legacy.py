@@ -1002,6 +1002,29 @@ class PostgresRuntime:
 
         return session_id
 
+    def ensure_session(self, session_id: UUID, *, scenario: str = "headless") -> None:
+        """Idempotently insert a minimal ``game_session`` parent row (C1.4).
+
+        The headless runner generates its ``session_id`` with ``uuid4`` and
+        writes runtime-state tables that carry NO ``game_session`` foreign key
+        (``dynamic_hex_state``, ``dynamic_consciousness_state`` …), so a
+        game-management row was never required. ``contradiction_field`` DOES
+        enforce ``REFERENCES game_session(id)``, so its parent must exist before
+        the Lawverian opposition snapshot can be persisted. ``ON CONFLICT DO
+        NOTHING`` makes repeated per-tick calls cheap no-ops; every non-``id``
+        column of ``game_session`` has a DDL default except ``scenario``.
+
+        Args:
+            session_id: The runtime session UUID to register.
+            scenario: Scenario label for the row (default ``"headless"``).
+        """
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO game_session (id, scenario) VALUES (%s, %s) "
+                "ON CONFLICT (id) DO NOTHING",
+                (session_id, scenario),
+            )
+
     def get_session(self, session_id: UUID) -> dict[str, Any] | None:
         """Retrieve session details."""
         with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:

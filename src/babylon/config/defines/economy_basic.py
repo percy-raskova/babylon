@@ -328,18 +328,44 @@ class EconomyDefines(BaseModel):
         description="Emergency repression spike during crisis",
     )
 
-    # Tension thresholds for bourgeoisie decisions
+    # Tension thresholds for bourgeoisie decisions.
+    #
+    # Lawverian recalibration (Phase C1.5): the bourgeoisie now reads the
+    # capital_labor OPPOSITION GAP (scale-free wealth asymmetry in [0, 1],
+    # ImperialRentSystem._calculate_aggregate_tension) instead of the old
+    # add-only mean edge tension. The gap has a different range, so the
+    # thresholds are recalibrated against measured worlds:
+    #
+    #   Bridged labor-aristocracy (county 26163, 45-tick engine probe): the
+    #   capital_labor gap peaks at 0.667 (t1, worker≈2 vs bourgeois≈10) and
+    #   settles ~0.42-0.44 as the income circuit lifts the worker. It never
+    #   exceeds 0.7 while the rent pool is high.
+    #
+    #   Canonical super-exploited periphery: worker wealth ~0.8-2, bourgeois
+    #   ~10-35 → gap = |b-w|/(b+w) ≈ 0.67 (w=2,b=10) up to 0.94 (w=1,b=35),
+    #   typically ~0.85-0.95.
+    #
+    # bribery=0.70 sits just above the bridged aristocracy's 0.667 peak (so
+    # BRIBERY holds whenever the pool is high — hegemony per project/02 §3)
+    # and below the periphery's ~0.85 floor (so the super-exploited are never
+    # bribed — only the aristocracy is, per Cope/Amin).
     bribery_tension_threshold: float = Field(
-        default=0.3,
+        default=0.7,
         ge=0.0,
         le=1.0,
-        description="Maximum aggregate tension for bribery policy",
+        description="Maximum capital_labor opposition gap for bribery policy (C1.5).",
     )
+    # iron_fist stays 0.5: when the pool collapses (pool < low), the bridged
+    # aristocracy (gap 0.42-0.667 > 0.5) draws IRON_FIST = repression, NOT
+    # AUSTERITY = wage cuts — the historically correct response to core-worker
+    # unrest and the one that preserves the income keeping them alive
+    # (liveness gate). The canonical periphery (gap ~0.85-0.95 > 0.5) also
+    # draws IRON_FIST when the pool collapses.
     iron_fist_tension_threshold: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Minimum aggregate tension for iron fist policy",
+        description="Minimum capital_labor opposition gap for iron fist policy (C1.5).",
     )
 
     # TRPF efficiency floor

@@ -632,7 +632,12 @@ class StruggleSystem(SystemBase):
         for source_id, target_id, edge_type in edges_to_remove:
             graph.remove_edge(source_id, target_id, edge_type)
 
-        # Emit PERIPHERAL_REVOLT event
+        # Emit PERIPHERAL_REVOLT event. C1.5: surface the capital_labor
+        # opposition gap (from ContradictionSystem's ``opposition_states``
+        # snapshot) in the payload for narrative/observers — no change to the
+        # revolt CONDITION, which stays P(S|R) > P(S|A).
+        opposition_states = graph.get_graph_attr("opposition_states", {}) or {}
+        capital_labor = opposition_states.get("capital_labor", {})
         services.event_bus.publish(
             Event(
                 type=EventType.PERIPHERAL_REVOLT,
@@ -642,6 +647,7 @@ class StruggleSystem(SystemBase):
                     "edges_severed": len(edges_to_remove),
                     "p_acquiescence": p_acq,
                     "p_revolution": p_rev,
+                    "capital_labor_gap": float(capital_labor.get("gap", 0.0)),
                     "narrative_hint": (
                         "PERIPHERAL REVOLT: Colonial extraction ends. "
                         "The periphery refuses to subsidize the empire."

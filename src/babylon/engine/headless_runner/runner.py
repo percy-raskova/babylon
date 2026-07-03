@@ -305,11 +305,17 @@ def _advance_tick(
         The (possibly-reconstructed) ``WorldState`` for the caller to
         continue using as input to subsequent ticks.
     """
+    opposition_states: dict[str, Any] | None = None
     if engine is not None and services is not None and graph is not None:
         context = TickContext(tick=tick)
         engine.run_tick(graph, services, context)
         world = WorldState.from_graph(graph, tick=tick)
-    bridge.persist_tick(world, tick, determinism_hash)
+        # C1.4: hand ContradictionSystem's per-tick OppositionRegistry snapshot
+        # (graph attribute `opposition_states`, written at position 18) to
+        # persist_tick so contradiction_field rows flow. WorldState.from_graph
+        # does not carry arbitrary graph attrs, so read it off the graph here.
+        opposition_states = graph.graph.get("opposition_states")
+    bridge.persist_tick(world, tick, determinism_hash, opposition_states)
     return world
 
 

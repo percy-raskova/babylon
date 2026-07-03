@@ -760,16 +760,27 @@ class ImperialRentSystem(SystemBase):
             )
 
     def _calculate_aggregate_tension(self, graph: nx.DiGraph[str] | GraphProtocol) -> float:
-        """Calculate aggregate tension across class relationships.
+        """Return the capital_labor opposition gap for the bourgeois decision.
 
-        Returns the average tension value across all edges in the graph.
-        Tension ranges from 0 (peaceful) to 1 (revolutionary).
+        Lawverian handoff (Phase C1.5): ContradictionSystem (position 18)
+        stashes the per-tick :class:`OppositionRegistry` snapshot on the graph
+        attribute ``opposition_states`` (``key -> {gap, rate, ...}``). This
+        system runs at position 9 — BEFORE ContradictionSystem — so it reads
+        LAST tick's capital_labor gap, exactly the one-tick-stale read the old
+        mean-edge-tension consumer already performed (edge ``tension`` was
+        likewise written at position 18). On the first engine tick the snapshot
+        is absent, so the gap is ``0.0`` (BRIBERY while the rent pool is high).
+
+        The gap is the scale-free wealth asymmetry of the EXPLOITATION relation
+        (``|W_capital - W_labor| / (W_capital + W_labor)`` in ``[0, 1]``), which
+        replaces the degenerate saturating mean edge tension.
 
         Args:
-            graph: The simulation graph
+            graph: The simulation graph.
 
         Returns:
-            Average tension, or 0.0 if no edges have tension values
+            The capital_labor opposition gap in ``[0, 1]``; ``0.0`` if no
+            snapshot exists yet.
         """
         from babylon.engine.graph_protocol import GraphProtocol
 
@@ -778,16 +789,11 @@ class ImperialRentSystem(SystemBase):
 
             graph = NetworkXAdapter.wrap(graph)
 
-        tensions = []
-        for edge in graph.query_edges():
-            tension = edge.attributes.get("tension", 0.0)
-            if isinstance(tension, int | float):
-                tensions.append(float(tension))
-
-        if not tensions:
+        states = graph.get_graph_attr("opposition_states", {}) or {}
+        capital_labor = states.get("capital_labor")
+        if not capital_labor:
             return 0.0
-
-        return sum(tensions) / len(tensions)
+        return float(capital_labor.get("gap", 0.0))
 
     def _load_economy(
         self,

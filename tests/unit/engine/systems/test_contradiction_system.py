@@ -173,3 +173,21 @@ class TestRuptureGate:
         graph.nodes["owner"]["wealth"] = 100.0  # gap ~ 0.98, falling -> rate < 0
         system.step(graph, services, {"tick": 2})
         assert _rupture_events(services) == []
+
+    def test_no_rupture_when_gap_low_but_rising(self) -> None:
+        # The LEVEL half of the gate: rate > 0 alone must never fire —
+        # quantity has not yet accumulated to the threshold (I.7).
+        # Kills the mutant that deletes `gap > threshold` from _maybe_rupture.
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("worker", wealth=10.0)
+        graph.add_node("owner", wealth=12.0)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        system.step(graph, services, {"tick": 1})
+        graph.nodes["owner"]["wealth"] = 14.0  # gap 0.09 -> 0.17: rising, far below 0.9
+        system.step(graph, services, {"tick": 2})
+        cap = graph.graph["opposition_states"]["capital_labor"]
+        assert cap["rate"] > 0.0  # the rising precondition really holds
+        assert cap["gap"] < float(services.defines.tension.rupture_gap_threshold)
+        assert _rupture_events(services) == []

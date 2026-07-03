@@ -12,6 +12,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import ActionType, CommunityType, EdgeType, OrgType
 from babylon.ooda.action_costs import compute_action_cost
 from babylon.ooda.types import ActionCostModifier
@@ -27,7 +28,7 @@ def _build_graph(
     member_community_type: str = CommunityType.NEW_AFRIKAN.value,
 ) -> nx.DiGraph[str]:
     """Build a graph with an org, community, and optional membership edges."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
 
     default_org: dict[str, Any] = {
         "_node_type": "organization",

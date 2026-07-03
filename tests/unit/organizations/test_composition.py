@@ -6,9 +6,9 @@ and effective_capacity calculators.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType, OrgType
 from babylon.organizations.composition import (
     class_composition,
@@ -25,7 +25,7 @@ class TestClassComposition:
     @pytest.mark.math
     def test_single_membership(self) -> None:
         """Single MEMBERSHIP edge with weight."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization", org_type=OrgType.POLITICAL_FACTION)
         G.add_node("sc-001", _node_type="social_class", role="labor_aristocracy")
         G.add_edge("org-001", "sc-001", edge_type=EdgeType.MEMBERSHIP, weight=100)
@@ -40,7 +40,7 @@ class TestClassComposition:
     @pytest.mark.math
     def test_multiple_classes(self) -> None:
         """Multiple MEMBERSHIP edges to different classes."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization")
         G.add_node("sc-prole", _node_type="social_class", role="internal_proletariat")
         G.add_node("sc-la", _node_type="social_class", role="labor_aristocracy")
@@ -55,7 +55,7 @@ class TestClassComposition:
     @pytest.mark.math
     def test_no_memberships(self) -> None:
         """No MEMBERSHIP edges = empty distribution."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization")
 
         result = class_composition("org-001", G)
@@ -65,7 +65,7 @@ class TestClassComposition:
     @pytest.mark.math
     def test_ignores_non_membership_edges(self) -> None:
         """Only counts MEMBERSHIP edges, not PRESENCE or COMMAND."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization")
         G.add_node("sc-001", _node_type="social_class", role="proletariat")
         G.add_node("t-001", _node_type="territory")
@@ -81,7 +81,7 @@ class TestCommunityComposition:
 
     @pytest.mark.math
     def test_single_community(self) -> None:
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization")
         G.add_node("sc-001", _node_type="social_class", community="new_afrikan")
         G.add_edge("org-001", "sc-001", edge_type=EdgeType.MEMBERSHIP, weight=80)
@@ -93,7 +93,7 @@ class TestCommunityComposition:
 
     @pytest.mark.math
     def test_mixed_communities(self) -> None:
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization")
         G.add_node("sc-001", _node_type="social_class", community="new_afrikan")
         G.add_node("sc-002", _node_type="social_class", community="settler")
@@ -106,7 +106,7 @@ class TestCommunityComposition:
 
     @pytest.mark.math
     def test_no_memberships(self) -> None:
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization")
 
         result = community_composition("org-001", G)
@@ -119,7 +119,7 @@ class TestLifecycleComposition:
 
     @pytest.mark.math
     def test_single_phase(self) -> None:
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization")
         G.add_node("sc-001", _node_type="social_class", lifecycle_phase="adult")
         G.add_edge("org-001", "sc-001", edge_type=EdgeType.MEMBERSHIP, weight=100)
@@ -131,7 +131,7 @@ class TestLifecycleComposition:
 
     @pytest.mark.math
     def test_mixed_phases(self) -> None:
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org-001", _node_type="organization")
         G.add_node("sc-p", _node_type="social_class", lifecycle_phase="adult")
         G.add_node("sc-d", _node_type="social_class", lifecycle_phase="youth")

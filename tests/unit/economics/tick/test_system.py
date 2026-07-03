@@ -31,6 +31,7 @@ from babylon.economics.tick.types import (
     SmoothedCoefficients,
 )
 from babylon.engine.context import TickContext
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from tests.unit.economics.tick.conftest import (
     WAYNE_FIPS,
@@ -399,14 +400,14 @@ class TestBootstrapCountyStates:
     def test_bootstrap_empty_graph(self) -> None:
         """Empty graph produces empty dict."""
         system = TickDynamicsSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         result = system._bootstrap_county_states(graph, 2015)
         assert result == {}
 
     def test_bootstrap_non_territory_skipped(self) -> None:
         """Non-territory nodes are skipped."""
         system = TickDynamicsSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("proletariat_26163", _node_type="social_class")
         result = system._bootstrap_county_states(graph, 2015)
         assert result == {}
@@ -555,7 +556,7 @@ class TestDetermineYear:
     def test_determine_year_from_graph_metadata(self) -> None:
         """Graph with base_year metadata uses it."""
         system = TickDynamicsSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.graph["base_year"] = 2010
         result = system._determine_year(tick=52, graph=graph)
         assert result == 2011
@@ -563,7 +564,7 @@ class TestDetermineYear:
     def test_determine_year_default_base(self) -> None:
         """Graph without base_year uses default 2010."""
         system = TickDynamicsSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         result = system._determine_year(tick=104, graph=graph)
         assert result == 2012
 
@@ -576,7 +577,7 @@ class TestDetermineYear:
     def test_determine_year_tick_zero(self) -> None:
         """Tick 0 returns base_year itself."""
         system = TickDynamicsSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.graph["base_year"] = 2015
         result = system._determine_year(tick=0, graph=graph)
         assert result == 2015
@@ -584,7 +585,7 @@ class TestDetermineYear:
     def test_determine_year_custom_base_year(self) -> None:
         """Custom base_year in graph metadata is respected."""
         system = TickDynamicsSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.graph["base_year"] = 2007
         # 3 years of ticks
         result = system._determine_year(tick=3 * WEEKS_PER_YEAR, graph=graph)
@@ -617,7 +618,7 @@ class TestGetTerritoryFips:
     def test_empty_graph(self) -> None:
         """Empty graph returns empty list."""
         system = TickDynamicsSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         result = system._get_territory_fips(graph)
         assert result == []
 

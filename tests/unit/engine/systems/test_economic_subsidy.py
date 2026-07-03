@@ -23,10 +23,10 @@ to client states when they become unstable. This tests:
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, EventType
@@ -47,7 +47,7 @@ class TestSubsidyTriggerLogic:
         state is stable and doesn't need imperial intervention.
         """
         # Arrange: Graph with CLIENT_STATE edge
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Source: Core bourgeoisie with wealth to spend
         graph.add_node(
@@ -115,7 +115,7 @@ class TestSubsidyTriggerLogic:
         becomes a rational survival strategy), the core provides a subsidy.
         """
         # Arrange: Graph with CLIENT_STATE edge
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Source: Core bourgeoisie with wealth
         graph.add_node(
@@ -178,7 +178,7 @@ class TestSubsidyTriggerLogic:
         impossible (zero wealth), but revolutionary capacity exists.
         The stability_ratio should be 1.0, triggering subsidy.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=10.0)
 
@@ -236,7 +236,7 @@ class TestSubsidyTriggerLogic:
         This is the edge case where both survival strategies are impossible.
         No subsidy is needed because there's no revolutionary threat.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=10.0)
 
@@ -297,7 +297,7 @@ class TestSubsidyAmountCalculation:
 
         max_subsidy = min(subsidy_cap, tribute_inflow * conversion_rate)
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -345,7 +345,7 @@ class TestSubsidyAmountCalculation:
 
         Even if subsidy_cap is high, can't spend more than you have.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=0.3)  # Low wealth
         graph.add_node(
@@ -394,7 +394,7 @@ class TestSubsidyAmountCalculation:
 
         Sprint 3.4.4: Pool tracking means subsidy is limited by current_pool.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)  # High wealth
         graph.add_node(
@@ -442,7 +442,7 @@ class TestSubsidyAmountCalculation:
 
         Floating point noise should not trigger subsidy events.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -497,7 +497,7 @@ class TestRepressionBoostApplication:
         repression_boost = max_subsidy * subsidy_conversion_rate
         new_repression = target_repression + repression_boost
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -548,7 +548,7 @@ class TestRepressionBoostApplication:
 
         new_repression = min(1.0, target_repression + repression_boost)
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -601,7 +601,7 @@ class TestSubsidyEventEmission:
 
     def test_subsidy_emits_event(self) -> None:
         """IMPERIAL_SUBSIDY event emitted when subsidy is sent."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -660,7 +660,7 @@ class TestSubsidyEdgeCases:
 
     def test_non_client_state_edges_ignored(self) -> None:
         """Only CLIENT_STATE edges trigger subsidy logic."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -707,7 +707,7 @@ class TestSubsidyEdgeCases:
 
     def test_string_edge_type_converted(self) -> None:
         """String edge_type is converted to EdgeType enum."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -752,7 +752,7 @@ class TestSubsidyEdgeCases:
 
     def test_missing_subsidy_cap_defaults_to_zero(self) -> None:
         """Missing subsidy_cap on edge defaults to 0.0, meaning no subsidy."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -797,7 +797,7 @@ class TestSubsidyEdgeCases:
 
     def test_missing_node_attributes_use_defaults(self) -> None:
         """Missing node attributes use defines defaults."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         # Target with minimal attributes

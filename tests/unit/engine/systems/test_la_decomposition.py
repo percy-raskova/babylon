@@ -20,6 +20,7 @@ import networkx as nx
 import pytest
 
 from babylon.engine.event_bus import Event
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.decomposition import DecompositionSystem
 from babylon.models.enums import EdgeType, EventType, SocialRole
@@ -127,7 +128,7 @@ class TestLADecomposition:
         - 850 go to INTERNAL_PROLETARIAT (was dormant at 0 = 850 total)
         - LA becomes inactive (pop remains but entity dead)
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         # Capture original populations
@@ -157,7 +158,7 @@ class TestLADecomposition:
         self, services: ServiceContainer
     ) -> None:
         """CLASS_DECOMPOSITION event emitted with population details."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         captured_events: list[Event] = []
@@ -178,7 +179,7 @@ class TestLADecomposition:
 
     def test_no_decomposition_without_crisis(self, services: ServiceContainer) -> None:
         """LA remains stable if no SUPERWAGE_CRISIS occurs."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         la_pop_before = graph.nodes["C_w"]["population"]
@@ -197,7 +198,7 @@ class TestLADecomposition:
 
     def test_decomposition_only_once_per_la(self, services: ServiceContainer) -> None:
         """LA can only decompose once - subsequent crises ignored."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         system = DecompositionSystem()
@@ -223,7 +224,7 @@ class TestLADecomposition:
         LA still decomposes, but enforcer population is lost (no target).
         Internal proletariat still receives 85% (default from GameDefines).
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         # Remove the enforcer entity
@@ -246,7 +247,7 @@ class TestLADecomposition:
 
         Enforcers get their 15% (default from GameDefines), proletariat portion is lost.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         # Remove the internal proletariat entity
@@ -265,7 +266,7 @@ class TestLADecomposition:
         self, services: ServiceContainer
     ) -> None:
         """Wealth is transferred along with population."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         la_wealth_before = graph.nodes["C_w"]["wealth"]  # 500.0
@@ -284,7 +285,7 @@ class TestLADecomposition:
 
     def test_decomposition_includes_narrative_hint(self, services: ServiceContainer) -> None:
         """CLASS_DECOMPOSITION event includes narrative for AI observer."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         captured_events: list[Event] = []
@@ -310,7 +311,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_decomposition_at_exact_delay_boundary(self, services: ServiceContainer) -> None:
         """Decomposition fires exactly when tick == superwage_tick + delay."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         system = DecompositionSystem()
@@ -329,7 +330,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_no_decomposition_one_tick_before_delay(self, services: ServiceContainer) -> None:
         """No decomposition when tick == superwage_tick + delay - 1."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         system = DecompositionSystem()
@@ -350,7 +351,7 @@ class TestDecompositionDelayAndTrigger:
         """With delay=0, decomposition fires at superwage_tick itself."""
         from babylon.config.defines import CarceralDefines, GameDefines
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         # Create services with zero-delay carceral config
@@ -371,7 +372,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_approaching_death_triggers_superwage_event(self, services: ServiceContainer) -> None:
         """LA approaching death (wealth < subsistence + 2*consumption) emits SUPERWAGE_CRISIS."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         # Set LA wealth close to death threshold
@@ -398,7 +399,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_not_approaching_death_above_formula(self, services: ServiceContainer) -> None:
         """LA not approaching death when wealth > subsistence + 2*consumption."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         graph.nodes["C_w"]["subsistence_threshold"] = 100.0
@@ -427,7 +428,7 @@ class TestDecompositionDelayAndTrigger:
         self, services: ServiceContainer
     ) -> None:
         """LA about to die (wealth < subsistence) triggers immediate decomposition."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         # Set LA below subsistence (about to die)
@@ -445,7 +446,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_enforcer_population_is_int_truncated(self, services: ServiceContainer) -> None:
         """Population split uses int() truncation, not rounding."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         # 101 population → 15% = 15.15 → int() = 15
@@ -461,7 +462,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_wealth_split_proportional(self, services: ServiceContainer) -> None:
         """Wealth is transferred in exact proportion (no int truncation)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         graph.nodes["C_w"]["wealth"] = 333.33
@@ -480,7 +481,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_fallback_overrides_delay_when_about_to_die(self, services: ServiceContainer) -> None:
         """Fallback trigger (about to die) overrides delay - decomposes immediately."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         # LA is about to die (below subsistence)
@@ -501,7 +502,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_completion_flag_prevents_reentry(self, services: ServiceContainer) -> None:
         """_decomposition_complete flag prevents repeated decomposition."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         system = DecompositionSystem()
@@ -518,7 +519,7 @@ class TestDecompositionDelayAndTrigger:
 
     def test_completion_flag_set_after_decomposition(self, services: ServiceContainer) -> None:
         """After decomposition, _decomposition_complete is set in context."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_pre_crisis_circuit(graph)
 
         system = DecompositionSystem()

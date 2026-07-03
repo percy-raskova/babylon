@@ -23,6 +23,7 @@ from babylon.economics.substrate.hex_graph_bridge import (
     write_hex_state_to_graph,
 )
 from babylon.economics.substrate.types import HexGrid
+from babylon.engine.graph import BabylonGraph
 
 # Fixtures are inherited from conftest.py in the substrate directory
 
@@ -36,11 +37,10 @@ def _make_mock_graph_with_r6_territories(
     r6_ids: list[str],
 ) -> object:
     """Create a NetworkXAdapter-wrapped graph with territory nodes at R6 IDs."""
-    import networkx as nx
 
     from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
-    G: nx.DiGraph[str] = nx.DiGraph()
+    G = BabylonGraph()
     for r6_id in r6_ids:
         G.add_node(
             r6_id,
@@ -242,14 +242,13 @@ class TestWriteHexStateToGraph:
 
     def test_hex_prefix_no_collision_with_tick(self, hydrated_hex_grid: HexGrid) -> None:
         """hex_ and tick_ attributes coexist on the same node."""
-        import networkx as nx
 
         from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
         r6_states = aggregate_r7_to_r6(hydrated_hex_grid)
         r6_ids = list(r6_states.keys())
 
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         for r6_id in r6_ids:
             G.add_node(
                 r6_id,
@@ -379,14 +378,13 @@ class TestFeedbackStubs:
 
     def test_read_organizational_pressure_stub(self) -> None:
         """read_organizational_pressure returns empty dict stub."""
-        import networkx as nx
 
         from babylon.economics.substrate.hex_graph_bridge import (
             read_organizational_pressure,
         )
         from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         graph = NetworkXAdapter.wrap(G)
 
         result = read_organizational_pressure(graph)

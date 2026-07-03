@@ -13,6 +13,7 @@ from babylon.economics.lifecycle.dual_circuit import DefaultDualCircuitCalculato
 from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculator
 from babylon.economics.lifecycle.types import LegitimationState
 from babylon.engine.context import TickContext
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.graph_protocol import GraphProtocol
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.lifecycle import LifecycleSystem
@@ -56,11 +57,10 @@ def _build_graph_with_territory(
     extra_attrs: dict[str, object] | None = None,
 ) -> GraphProtocol:
     """Build a graph with a single territory node."""
-    import networkx as nx
 
     from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
-    G: nx.DiGraph[str] = nx.DiGraph()
+    G = BabylonGraph()
     attrs = territory.model_dump()
     attrs["_node_type"] = "territory"
     if extra_attrs:

@@ -22,6 +22,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines, StruggleDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.models.entity_registry import (
@@ -74,7 +75,7 @@ def _create_test_graph(
     Returns:
         NetworkX DiGraph with test entities.
     """
-    graph: nx.DiGraph = nx.DiGraph()
+    graph: nx.DiGraph = BabylonGraph()
 
     # Comprador Bourgeoisie (p_c)
     graph.add_node(
@@ -185,7 +186,7 @@ class TestPowerVacuumTrigger:
         self, services: ServiceContainer, seeded_random: None
     ) -> None:
         """No POWER_VACUUM when there is no Comprador entity."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         # Only add a periphery proletariat, no comprador
         graph.add_node(
             PERIPHERY_WORKER_ID,

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import networkx as nx
 
 from babylon.config.defines import GameDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.ooda import OODASystem
 from babylon.models.enums import OrgType
 
@@ -24,7 +25,7 @@ def _make_services() -> MagicMock:
 
 def _make_graph_with_orgs() -> nx.DiGraph[str]:
     """Create a graph with a mix of org types."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
 
     # Business org
     graph.add_node(
@@ -107,7 +108,7 @@ class TestThreePhaseOrchestration:
     def test_empty_graph_no_error(self) -> None:
         """Empty graph should not crash."""
         system = OODASystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         services = _make_services()
         context = {"tick": 0}
         system.step(graph, services, context)

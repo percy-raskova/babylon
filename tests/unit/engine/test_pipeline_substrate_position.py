@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
 from babylon.engine.systems.substrate import SubstrateSystem
 
@@ -84,9 +85,8 @@ class TestSubstrateZeroPropagation:
 
     def test_substrate_pass_through_preserves_zero(self) -> None:
         """A zero raw_material_stock entering Substrate stays zero leaving."""
-        import networkx as nx
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "872d34a89ffffff",
             _node_type="hex",
@@ -99,9 +99,8 @@ class TestSubstrateZeroPropagation:
 
     def test_substrate_fills_missing_stock_attrs(self) -> None:
         """FR-050: every hex carries all three substrate stocks after Substrate."""
-        import networkx as nx
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("872d34a89ffffff", _node_type="hex")
         SubstrateSystem().step(graph, services=object(), context={})  # type: ignore[arg-type]
         attrs = graph.nodes["872d34a89ffffff"]
@@ -111,9 +110,8 @@ class TestSubstrateZeroPropagation:
 
     def test_substrate_skips_non_hex_nodes(self) -> None:
         """External nodes and other types are NOT touched by SubstrateSystem."""
-        import networkx as nx
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("canada", _node_type="external")
         SubstrateSystem().step(graph, services=object(), context={})  # type: ignore[arg-type]
         assert "raw_material_stock" not in graph.nodes["canada"]

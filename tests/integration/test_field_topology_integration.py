@@ -12,6 +12,7 @@ import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
@@ -25,7 +26,7 @@ def _make_detroit_metro_graph() -> nx.DiGraph[str]:
     Wayne County (proletariat): high exploitation, declining wealth
     Oakland County (petit bourgeoisie): low exploitation, stable wealth
     """
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
 
     # Wayne County - proletariat (auto workers)
     graph.add_node(

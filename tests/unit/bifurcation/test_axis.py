@@ -18,6 +18,7 @@ from babylon.bifurcation.axis import (
     crosses_contradiction_axis,
 )
 from babylon.config.defines import BifurcationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import (
     CommunityState,
 )
@@ -71,7 +72,7 @@ def _build_typed_graph(
     Returns:
         DiGraph with configured nodes and edges.
     """
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     for node_id, attrs in agents.items():
         G.add_node(node_id, _node_type="social_class", **attrs)
     for src, tgt, etype, extra in edges:
@@ -731,7 +732,7 @@ class TestComputeAxisTendency:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """AxisTendency result is a frozen Pydantic model."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         graph.add_node("a", _node_type="social_class", wealth=50.0)
 
         memberships: dict[str, set[CommunityType]] = {"a": {CommunityType.SETTLER}}

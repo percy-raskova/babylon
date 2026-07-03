@@ -25,6 +25,7 @@ from babylon.economics.tick.types import (
     CountyEconomicState,
     CrisisState,
 )
+from babylon.engine.graph import BabylonGraph
 from babylon.models.types import Currency
 
 # =============================================================================
@@ -160,7 +161,6 @@ class TestGraphBridgeSerialization:
 
     def test_write_circulation_attributes(self) -> None:
         """write_tick_state_to_graph writes tick_liquidity_ratio etc."""
-        import networkx as nx
 
         from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
         from babylon.economics.tick.types import (
@@ -170,7 +170,7 @@ class TestGraphBridgeSerialization:
         )
         from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
-        g = nx.DiGraph()
+        g = BabylonGraph()
         g.add_node("26163", node_type="territory")
         graph = NetworkXAdapter.wrap(g)
 
@@ -217,7 +217,6 @@ class TestGraphBridgeSerialization:
 
     def test_write_circulation_values_correct(self) -> None:
         """Written circulation attribute values match the source state."""
-        import networkx as nx
 
         from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
         from babylon.economics.tick.types import (
@@ -227,7 +226,7 @@ class TestGraphBridgeSerialization:
         )
         from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
-        g = nx.DiGraph()
+        g = BabylonGraph()
         g.add_node("26163", node_type="territory")
         graph = NetworkXAdapter.wrap(g)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import networkx as nx
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.reserve_army import ReserveArmySystem
 from babylon.models.enums import EventType
@@ -13,7 +14,7 @@ def _make_territory_graph(
     territories: dict[str, dict[str, object]],
 ) -> nx.DiGraph[str]:
     """Build a test graph with territory nodes."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     for node_id, attrs in territories.items():
         attrs.setdefault("_node_type", "Territory")
         graph.add_node(node_id, **attrs)
@@ -99,7 +100,7 @@ class TestReserveArmySystem:
 
     def test_skips_non_territory_nodes(self) -> None:
         """Non-territory nodes are skipped."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker1", _node_type="SocialClass", reserve_ratio=0.15, median_wage=500.0)
         services = _make_services()
         system = ReserveArmySystem()

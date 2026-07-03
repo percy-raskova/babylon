@@ -5,6 +5,7 @@ from collections import defaultdict
 import networkx as nx
 import xgi
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import (
     CommunityConsciousness,
     CommunityState,
@@ -42,7 +43,7 @@ def build_star_graph(
     strength: float = 0.8,
 ) -> nx.DiGraph:
     """Build a star topology."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     G.add_node("C_HUB", _node_type="social_class", wealth=50.0)
     for i in range(num_spokes):
         node_id = f"C{i:03d}"
@@ -57,7 +58,7 @@ def build_mesh_graph(
     strength: float = 0.8,
 ) -> nx.DiGraph:
     """Build a fully-connected mesh topology."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     node_ids = [f"C{i:03d}" for i in range(num_nodes)]
     for node_id in node_ids:
         G.add_node(node_id, _node_type="social_class", wealth=30.0)
@@ -73,7 +74,7 @@ def build_disconnected_graph(
     """Build a graph with disconnected components."""
     if component_sizes is None:
         component_sizes = [3, 2, 1]
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     node_counter = 0
     for comp_size in component_sizes:
         comp_nodes = []
@@ -159,7 +160,7 @@ def build_ceiling_test_graph(
     node_b_id: str = "worker_b",
 ) -> nx.DiGraph:
     """Build a minimal graph for solidarity ceiling tests."""
-    graph: nx.DiGraph = nx.DiGraph()
+    graph: nx.DiGraph = BabylonGraph()
     graph.add_node(node_a_id, _node_type="social_class", wealth=wealth_a)
     graph.add_node(node_b_id, _node_type="social_class", wealth=wealth_b)
 

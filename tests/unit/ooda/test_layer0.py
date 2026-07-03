@@ -8,8 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import networkx as nx
-
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import ActionType, OrgType
 from babylon.ooda.layer0 import process_layer0
 
@@ -25,7 +24,7 @@ class TestLayer0Processing:
     """Business orgs auto-record metabolism."""
 
     def test_business_org_generates_result(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "ford",
             _node_type="organization",
@@ -40,7 +39,7 @@ class TestLayer0Processing:
         assert results[0].direct_effects.get("auto_metabolism") is True
 
     def test_non_business_orgs_skipped(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "fbi",
             _node_type="organization",
@@ -55,13 +54,13 @@ class TestLayer0Processing:
         assert len(results) == 0
 
     def test_no_orgs_returns_empty(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("territory_1", _node_type="territory")
         results = process_layer0(graph, _make_services())
         assert results == []
 
     def test_multiple_business_orgs(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         for i in range(3):
             graph.add_node(
                 f"biz_{i}",
@@ -73,7 +72,7 @@ class TestLayer0Processing:
         assert len(results) == 3
 
     def test_target_is_first_territory(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "corp",
             _node_type="organization",
@@ -84,7 +83,7 @@ class TestLayer0Processing:
         assert results[0].action.target_id == "main_hq"
 
     def test_no_territory_uses_org_id(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "corp",
             _node_type="organization",

@@ -18,6 +18,7 @@ import networkx as nx
 import pytest
 
 from babylon.engine.event_bus import Event, EventBus
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.event_template import EventTemplateSystem
 from babylon.models.entities.event_template import (
@@ -81,7 +82,7 @@ def _make_template(
 
 
 def _make_graph(*nodes: tuple[str, dict[str, Any]]) -> nx.DiGraph[str]:
-    g: nx.DiGraph[str] = nx.DiGraph()
+    g = BabylonGraph()
     for node_id, data in nodes:
         g.add_node(node_id, **data)
     return g

@@ -6,9 +6,9 @@ This tests the internal helper function that calculates the solidarity
 multiplier from incoming SOLIDARITY edges in the graph.
 """
 
-import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.survival import _calculate_solidarity_multiplier
 from babylon.models.enums import EdgeType
 
@@ -29,7 +29,7 @@ class TestCalculateSolidarityMultiplier:
 
         A worker without solidarity infrastructure has no bonus.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("C_w")  # Isolated node
 
         result = _calculate_solidarity_multiplier(graph, "C_w")
@@ -41,7 +41,7 @@ class TestCalculateSolidarityMultiplier:
 
         Only SOLIDARITY edges contribute to organization.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("P_c")  # Periphery comprador
         graph.add_node("C_w")  # Core worker
 
@@ -59,7 +59,7 @@ class TestCalculateSolidarityMultiplier:
 
     def test_single_solidarity_edge(self) -> None:
         """Single SOLIDARITY edge with strength=0.3 returns 1.3 multiplier."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("P_w")  # Periphery worker
         graph.add_node("C_w")  # Core worker
 
@@ -79,7 +79,7 @@ class TestCalculateSolidarityMultiplier:
 
         Two edges with strengths 0.2 + 0.3 = 0.5, multiplier = 1.5
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("P_w1")  # Periphery worker 1
         graph.add_node("P_w2")  # Periphery worker 2
         graph.add_node("C_w")  # Core worker
@@ -107,7 +107,7 @@ class TestCalculateSolidarityMultiplier:
 
         Missing attribute should not break the calculation.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("P_w")
         graph.add_node("C_w")
 
@@ -129,7 +129,7 @@ class TestCalculateSolidarityMultiplier:
 
         Graph edges may store edge_type as string or enum.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("P_w")
         graph.add_node("C_w")
 
@@ -151,7 +151,7 @@ class TestCalculateSolidarityMultiplier:
 
         A node may have multiple edge types pointing to it.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("P_w")  # Periphery worker
         graph.add_node("C_b")  # Core bourgeoisie
         graph.add_node("C_w")  # Core worker
@@ -182,7 +182,7 @@ class TestCalculateSolidarityMultiplier:
 
         Solidarity is received, not given, for the multiplier.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("C_w")  # Core worker
         graph.add_node("Other")  # Another node
 
@@ -204,7 +204,7 @@ class TestCalculateSolidarityMultiplier:
 
         This is the fascist scenario: edge exists but no infrastructure.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("P_w")
         graph.add_node("C_w")
 
@@ -224,7 +224,7 @@ class TestCalculateSolidarityMultiplier:
 
         Multiple strong solidarity connections compound.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("P_w1")
         graph.add_node("P_w2")
         graph.add_node("P_w3")
@@ -246,7 +246,7 @@ class TestCalculateSolidarityMultiplier:
 
     def test_none_edge_type_ignored(self) -> None:
         """Edge with edge_type=None is ignored (not a SOLIDARITY edge)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("A")
         graph.add_node("B")
 

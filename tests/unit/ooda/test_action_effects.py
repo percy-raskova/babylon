@@ -13,6 +13,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines, OrganizationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import (
     ActionType,
     ConsciousnessTendency,
@@ -37,7 +38,7 @@ def _make_graph_with_org_and_community(
     member_ids: list[str] | None = None,
 ) -> nx.DiGraph[str]:
     """Build a minimal graph with one org and one community node."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(org_id, **org_attrs)
     graph.add_node(community_id, **community_attrs)
 

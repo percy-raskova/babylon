@@ -17,6 +17,7 @@ to develop consciousness from their material exploitation.
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.models.entity_registry import (
@@ -43,7 +44,7 @@ class TestConsciousnessSystemWealthTracking:
         3. Pass wealth_change to the ideological routing formula
         """
         # Arrange: Graph with a periphery worker
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             PERIPHERY_WORKER_ID,
             wealth=1.0,
@@ -79,7 +80,7 @@ class TestConsciousnessSystemWealthTracking:
         - Expected: agitation increases due to material loss
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             PERIPHERY_WORKER_ID,
             wealth=1.0,
@@ -120,7 +121,7 @@ class TestConsciousnessSystemWealthTracking:
         (fascist path) rather than class_consciousness.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             PERIPHERY_WORKER_ID,
             wealth=1.0,
@@ -161,7 +162,7 @@ class TestConsciousnessSystemWealthTracking:
         routes to class_consciousness (revolutionary path).
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # PERIPHERY_WORKER_ID: Periphery worker (target of solidarity)
         graph.add_node(
@@ -224,7 +225,7 @@ class TestConsciousnessSystemWealthTracking:
         and no new agitation is generated (existing agitation decays).
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             PERIPHERY_WORKER_ID,
             wealth=1.0,
@@ -265,7 +266,7 @@ class TestConsciousnessSystemPersistentContext:
     def test_handles_tick_context_format(self) -> None:
         """System should handle TickContext with persistent_data attribute."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             PERIPHERY_WORKER_ID,
             wealth=1.0,
@@ -296,7 +297,7 @@ class TestConsciousnessSystemPersistentContext:
     def test_handles_dict_context_format(self) -> None:
         """System should handle plain dict context."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             PERIPHERY_WORKER_ID,
             wealth=1.0,
@@ -335,7 +336,7 @@ class TestWageOppositionCrisisGate:
 
     @staticmethod
     def _graph_with_worker() -> "nx.DiGraph[str]":
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             PERIPHERY_WORKER_ID,
             wealth=1.0,

@@ -16,6 +16,7 @@ from collections.abc import Generator
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, EventType, SocialRole
@@ -154,7 +155,7 @@ class TestSuperwageCrisis:
         C_b has capital (wealth > 0) but no income (pool = 0).
         The WAGES edge exists, so wages SHOULD be paid, but can't.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_depleted_circuit(graph)
 
         captured_events: list = []
@@ -174,7 +175,7 @@ class TestSuperwageCrisis:
 
     def test_no_crisis_when_wages_paid_normally(self, services: ServiceContainer) -> None:
         """No crisis when super-wages are paid from healthy pool."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_healthy_circuit(graph)
 
         captured_events: list = []
@@ -192,7 +193,7 @@ class TestSuperwageCrisis:
 
     def test_crisis_includes_narrative_hint(self, services: ServiceContainer) -> None:
         """SUPERWAGE_CRISIS payload includes narrative hint for AI observer."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_depleted_circuit(graph)
 
         captured_events: list = []

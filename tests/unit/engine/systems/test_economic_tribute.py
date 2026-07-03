@@ -9,6 +9,7 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -24,7 +25,7 @@ def _make_tribute_graph(
     target_role: SocialRole = SocialRole.CORE_BOURGEOISIE,
 ) -> nx.DiGraph[str]:
     """Build a minimal graph with one TRIBUTE edge."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "comprador",
         wealth=source_wealth,
@@ -135,7 +136,7 @@ class TestTributePhaseMutationKillers:
 
     def test_target_default_wealth(self) -> None:
         """Target with no wealth key → defaults to 0.0, receives tribute."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "comprador",
             wealth=100.0,
@@ -162,7 +163,7 @@ class TestTributePhaseMutationKillers:
 
     def test_multiple_tribute_edges(self) -> None:
         """3 TRIBUTE edges all transfer correctly."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("core_bourg", wealth=0.0, role=SocialRole.CORE_BOURGEOISIE, active=True)
         for i in range(3):
             node_id = f"comprador_{i}"

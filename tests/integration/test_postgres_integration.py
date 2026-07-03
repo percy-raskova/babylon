@@ -13,6 +13,7 @@ import uuid
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.persistence.postgres_runtime import PostgresRuntime
 
 # Mark all tests in this module as requiring the pg_pool fixture,
@@ -39,7 +40,7 @@ def session_id(runtime: PostgresRuntime) -> uuid.UUID:
 
 def build_large_graph(num_nodes: int = 1000) -> nx.DiGraph[str]:
     """Helper to build a large graph for throughput testing."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     for i in range(num_nodes):
         graph.add_node(
             f"c_{i}",

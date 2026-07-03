@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import networkx as nx
 import numpy as np
 import pytest
 import scipy.sparse as sp
@@ -20,6 +19,7 @@ from babylon.economics.boundary_flow_register import (
     NodeKind,
 )
 from babylon.economics.lodes_commute_matrix import LODESYearMatrix
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.cross_border_commute import CrossBorderCommuteClassifier
 from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
 
@@ -75,7 +75,7 @@ def test_classifier_reclassifies_canadian_block_to_canada_dest() -> None:
         od_loader=_StubLoader(matrix),  # type: ignore[arg-type]
         classifier=classifier,
     )
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node("hex_origin", _node_type="hex", v=1000.0)
     register = BoundaryFlowRegister()
 
@@ -102,7 +102,7 @@ def test_no_classifier_keeps_loader_provided_dest_id() -> None:
     """Back-compat: without a classifier, dest_id flows through unchanged from the matrix."""
     matrix = _matrix_with_two_external_dests()
     step = Vol2CirculationStep(od_loader=_StubLoader(matrix))  # type: ignore[arg-type]
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node("hex_origin", _node_type="hex", v=1000.0)
     register = BoundaryFlowRegister()
 
@@ -129,7 +129,7 @@ def test_paired_trade_edge_uses_classified_dest_id() -> None:
         od_loader=_StubLoader(matrix),  # type: ignore[arg-type]
         classifier=classifier,
     )
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node("hex_origin", _node_type="hex", v=1000.0)
     register = BoundaryFlowRegister()
 

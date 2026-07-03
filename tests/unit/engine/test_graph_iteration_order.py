@@ -29,6 +29,8 @@ pytestmark = [pytest.mark.unit, pytest.mark.topology]
 
 
 def _nx_reference() -> nx.DiGraph[str]:
+    # Deliberately NetworkX: this file's whole point is the differential
+    # oracle — BabylonGraph iteration order vs real nx.DiGraph.
     return nx.DiGraph()
 
 

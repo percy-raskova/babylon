@@ -8,10 +8,10 @@ Validates:
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.institution.queries import community_embeddedness
 
 from .conftest import make_institution
@@ -19,7 +19,7 @@ from .conftest import make_institution
 
 def _build_graph_with_communities() -> NetworkXAdapter:
     """Build a test graph with community and territory nodes."""
-    g: nx.DiGraph[str] = nx.DiGraph()
+    g = BabylonGraph()
 
     # Territory nodes
     g.add_node("T001", _node_type="territory")
@@ -124,7 +124,7 @@ class TestCommunityEmbeddedness:
 
     def test_no_communities_in_graph(self) -> None:
         """Graph with no community nodes should return empty dict."""
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         g.add_node("T001", _node_type="territory")
         graph = NetworkXAdapter.wrap(g)
         inst = make_institution(territory_ids=["T001"], jurisdiction=None)

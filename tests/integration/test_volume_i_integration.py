@@ -13,6 +13,7 @@ import networkx as nx
 from babylon.economics.working_day.classifier import DefaultWorkingDayClassifier
 from babylon.economics.working_day.types import WorkingDayState
 from babylon.engine.event_bus import Event
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
@@ -21,7 +22,7 @@ from babylon.models.enums import EventType, ExploitationMode
 
 def _make_detroit_graph() -> nx.DiGraph[str]:
     """Build a test graph modeling Wayne/Oakland/Macomb counties."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
 
     # Wayne County — high unemployment, high dispossession
     graph.add_node(

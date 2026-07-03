@@ -28,6 +28,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from babylon.dialectics.core.cylinder import AdjointCylinder
+from babylon.engine.graph import BabylonUGraph
 
 pytestmark = [pytest.mark.property, pytest.mark.topology]
 
@@ -35,7 +36,7 @@ NodeSet = frozenset[int]
 
 
 def _edgeless(nodes: NodeSet) -> nx.Graph:
-    g = nx.Graph()
+    g = BabylonUGraph()
     g.add_nodes_from(nodes)
     return g
 

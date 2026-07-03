@@ -364,6 +364,10 @@ class _GraphCore:
         """Return the edge count."""
         return len(self._edge_payload)
 
+    def has_node(self, node_id: str) -> bool:
+        """Return True if ``node_id`` is in the graph (nx parity)."""
+        return node_id in self._ids
+
     def __contains__(self, node_id: object) -> bool:
         return node_id in self._ids
 
@@ -372,6 +376,18 @@ class _GraphCore:
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._ids)
+
+    def __getitem__(self, node_id: str) -> dict[str, EdgePayload]:
+        """nx adjacency subscript: ``G[u][v]`` reaches the live edge payload.
+
+        The returned mapping is built per call (nx returns a live AtlasView),
+        but its values are the live payload dicts, so read-modify through
+        ``G[u][v]`` behaves exactly as it did on nx.DiGraph.
+
+        Raises:
+            KeyError: If ``node_id`` is not in the graph.
+        """
+        return {target: self._edge_payload_of(node_id, target) for target in self._adj[node_id]}
 
     def index_of(self, node_id: str) -> int:
         """Return the rustworkx index for a node id (algorithm seam)."""

@@ -14,7 +14,6 @@ node/edge attributes are missing:
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import (
@@ -23,6 +22,7 @@ from babylon.config.defines import (
     SurvivalDefines,
     TensionDefines,
 )
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
@@ -40,7 +40,7 @@ class TestMissingWealthDefaultsToZero:
         Imperial rent extraction: rent = alpha * wealth * (1 - consciousness)
         With wealth=0, rent=0 regardless of other parameters.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Worker WITHOUT wealth attribute
         graph.add_node("worker", ideology={"class_consciousness": 0.2})
@@ -76,7 +76,7 @@ class TestMissingWealthDefaultsToZero:
 
         P(S|A) with wealth=0 and subsistence=0.3 should be low.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Node WITHOUT wealth attribute
         graph.add_node(
@@ -101,7 +101,7 @@ class TestMissingWealthDefaultsToZero:
 
     def test_contradiction_missing_wealth_defaults_zero(self) -> None:
         """Nodes without wealth attribute use 0.0 in wealth gap calculation."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Source WITHOUT wealth
         graph.add_node("worker")
@@ -131,7 +131,7 @@ class TestMissingSubsistenceUsesDefinesDefault:
         With default_subsistence=0.3, a node with wealth=0.3 should have
         P(S|A) ~ 0.5 (at the threshold).
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Node WITHOUT subsistence_threshold
         graph.add_node(
@@ -163,7 +163,7 @@ class TestMissingSubsistenceUsesDefinesDefault:
 
         The P(S|A) calculation in subsidy phase should use the default.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -226,7 +226,7 @@ class TestMissingTensionDefaultsToZero:
         (e.g. the first engine tick) it defaults to 0.0 regardless of any edge
         ``tension`` values.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_node("c")
@@ -245,7 +245,7 @@ class TestMissingTensionDefaultsToZero:
 
     def test_contradiction_missing_tension_starts_at_zero(self) -> None:
         """Edge without tension attribute starts accumulation from 0.0."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("worker", wealth=0.0)
         graph.add_node("owner", wealth=10.0)
@@ -275,7 +275,7 @@ class TestMissingOrganizationUsesDefault:
 
         P(S|R) = organization / repression
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Node WITHOUT organization
         graph.add_node(
@@ -313,7 +313,7 @@ class TestMissingRepressionUsesDefault:
 
         P(S|R) = organization / repression
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Node WITHOUT repression_faced
         graph.add_node(
@@ -346,7 +346,7 @@ class TestMissingRepressionUsesDefault:
 
         P(S|R) calculation in subsidy phase should use the default.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("core_bourgeoisie", wealth=100.0)
         graph.add_node(
@@ -406,7 +406,7 @@ class TestMissingEdgeFlowDefaults:
 
         Uses tick=0 to get TRPF multiplier of 1.0 for deterministic testing.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node("worker", wealth=1.0, ideology={"class_consciousness": 0.0})
         graph.add_node("owner", wealth=0.0)

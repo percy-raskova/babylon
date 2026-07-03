@@ -33,7 +33,7 @@ def _make_mock_persistence() -> MagicMock:
 
 def _make_minimal_graph() -> nx.DiGraph[str]:
     """Create a minimal graph for hydration tests."""
-    G: nx.DiGraph[str] = nx.DiGraph()
+    G = BabylonGraph()
     G.graph["tick"] = 0
     G.graph["economy"] = {"imperial_rent": 0.0}
     G.graph["state_finances"] = {}
@@ -152,7 +152,7 @@ class TestEngineBridgeHydrate:
 
     def test_hydrate_bootstraps_when_graph_unseeded(self) -> None:
         mock_persistence = _make_mock_persistence()
-        empty_graph: nx.DiGraph[str] = nx.DiGraph()
+        empty_graph = BabylonGraph()
         seeded_graph = _build_initial_state_for_scenario("default").to_graph()
         mock_persistence.hydrate_graph.side_effect = [empty_graph, seeded_graph]
 

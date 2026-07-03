@@ -18,6 +18,7 @@ import networkx as nx
 import pytest
 
 from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.production import ProductionSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -90,7 +91,7 @@ class TestProductionSystem:
         production = (base_labor_power / weeks_per_year) * (biocapacity / max_biocapacity)
         production = (1.0 / 52) * (100 / 100) = 0.0192
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -111,7 +112,7 @@ class TestProductionSystem:
 
         production = (1.0 / 52) * (50 / 100) = 0.0096
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=50.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -129,7 +130,7 @@ class TestProductionSystem:
 
         production = 1.0 * (0 / 100) = 0.0
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=5.0)
         _create_territory_node(graph, "T001", biocapacity=0.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -142,7 +143,7 @@ class TestProductionSystem:
 
     def test_worker_without_territory_gains_nothing(self, services: ServiceContainer) -> None:
         """Worker with no TENANCY edge gains nothing (no territory to work)."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=5.0)
         # No territory, no tenancy edge
 
@@ -154,7 +155,7 @@ class TestProductionSystem:
 
     def test_inactive_worker_does_not_produce(self, services: ServiceContainer) -> None:
         """Dead workers (active=False) do not produce."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, active=False)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -167,7 +168,7 @@ class TestProductionSystem:
 
     def test_bourgeoisie_does_not_produce(self, services: ServiceContainer) -> None:
         """Bourgeoisie extracts but does not produce value."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(
             graph, "PERIPHERY_WORKER_ID", role=SocialRole.CORE_BOURGEOISIE, wealth=100.0
         )
@@ -182,7 +183,7 @@ class TestProductionSystem:
 
     def test_comprador_does_not_produce(self, services: ServiceContainer) -> None:
         """Comprador bourgeoisie extracts but does not produce."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(
             graph, "PERIPHERY_WORKER_ID", role=SocialRole.COMPRADOR_BOURGEOISIE, wealth=50.0
         )
@@ -197,7 +198,7 @@ class TestProductionSystem:
 
     def test_labor_aristocracy_produces(self, services: ServiceContainer) -> None:
         """Labor aristocracy is a worker class and produces value."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(
             graph, "PERIPHERY_WORKER_ID", role=SocialRole.LABOR_ARISTOCRACY, wealth=0.0
         )
@@ -214,7 +215,7 @@ class TestProductionSystem:
 
     def test_periphery_proletariat_produces(self, services: ServiceContainer) -> None:
         """Periphery proletariat produces value."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(
             graph, "PERIPHERY_WORKER_ID", role=SocialRole.PERIPHERY_PROLETARIAT, wealth=0.0
         )
@@ -231,7 +232,7 @@ class TestProductionSystem:
 
     def test_production_accumulates_with_existing_wealth(self, services: ServiceContainer) -> None:
         """Production adds to existing wealth, not replaces it."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=10.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -260,7 +261,7 @@ class TestProductionPopulationScaling:
         A block of 100 workers produces 100× what a single worker produces.
         production = (base_labor_power * population) * bio_ratio
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, population=100)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -279,7 +280,7 @@ class TestProductionPopulationScaling:
 
         This ensures backward compatibility for existing scenarios.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, population=1)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -297,7 +298,7 @@ class TestProductionPopulationScaling:
 
         Zero workers means zero production, regardless of territory health.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=5.0, population=0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -342,7 +343,7 @@ class TestTensorAwareProduction:
         services = ServiceContainer.create(tensor_registry=mock_registry)
         weeks_per_year = services.defines.timescale.weeks_per_year
 
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         graph.graph["base_year"] = 2022
         _create_worker_node(graph, "W1", wealth=0.0, population=1)
         _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
@@ -365,7 +366,7 @@ class TestTensorAwareProduction:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
 
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         graph.graph["base_year"] = 2022
         _create_worker_node(graph, "W1", wealth=0.0)
         _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
@@ -385,7 +386,7 @@ class TestTensorAwareProduction:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
 
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "W1", wealth=0.0)
         _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "W1", "T1")
@@ -414,7 +415,7 @@ class TestTensorAwareProduction:
         services = ServiceContainer.create(tensor_registry=mock_registry)
         weeks_per_year = services.defines.timescale.weeks_per_year
 
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         graph.graph["base_year"] = 2022
 
         _create_worker_node(graph, "W1", wealth=0.0)

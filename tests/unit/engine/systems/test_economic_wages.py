@@ -13,6 +13,7 @@ import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines
 from babylon.engine.event_bus import Event
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, EventType, SocialRole
@@ -28,7 +29,7 @@ def _make_wages_graph(
     la_production: float = 0.0,
 ) -> nx.DiGraph[str]:
     """Build a minimal graph with one WAGES edge."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "bourgeoisie",
         wealth=bourgeoisie_wealth,
@@ -155,7 +156,7 @@ class TestWagesPhaseMutationKillers:
 
     def test_pool_depletion_across_edges(self) -> None:
         """Pool=1.0, 3 workers each want 1.0 bonus → pool depletes to 0."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "bourgeoisie",
             wealth=10000.0,

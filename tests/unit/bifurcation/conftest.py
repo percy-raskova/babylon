@@ -11,6 +11,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import BifurcationDefines
+from babylon.engine.graph import BabylonUGraph
 from babylon.models.entities.community import (
     CommunityState,
 )
@@ -123,7 +124,7 @@ def very_high_ci_states() -> dict[CommunityType, CommunityState]:
 @pytest.fixture
 def empty_graph() -> nx.Graph:
     """Create an empty undirected graph (no nodes, no edges)."""
-    return nx.Graph()
+    return BabylonUGraph()
 
 
 @pytest.fixture
@@ -133,7 +134,7 @@ def star_graph() -> nx.Graph:
     Topology: hub connects to each spoke; spokes are not connected
     to each other. Hub is an articulation point.
     """
-    G: nx.Graph = nx.Graph()
+    G: nx.Graph = BabylonUGraph()
     G.add_node("hub")
     for i in range(5):
         spoke = f"spoke_{i}"
@@ -149,7 +150,7 @@ def complete_k5() -> nx.Graph:
     Every node connects to every other node. No articulation points.
     Highly resilient topology.
     """
-    G: nx.Graph = nx.Graph()
+    G: nx.Graph = BabylonUGraph()
     nodes = [f"n{i}" for i in range(5)]
     for node in nodes:
         G.add_node(node)
@@ -166,7 +167,7 @@ def ring_graph() -> nx.Graph:
     Topology: n0-n1-n2-n3-n4-n0. One cycle, no articulation points.
     beta_0=1, beta_1=1.
     """
-    G: nx.Graph = nx.Graph()
+    G: nx.Graph = BabylonUGraph()
     nodes = [f"n{i}" for i in range(5)]
     for node in nodes:
         G.add_node(node)
@@ -181,7 +182,7 @@ def three_disconnected() -> nx.Graph:
 
     beta_0=3, beta_1=0.
     """
-    G: nx.Graph = nx.Graph()
+    G: nx.Graph = BabylonUGraph()
     G.add_node("a")
     G.add_node("b")
     G.add_node("c")
@@ -195,7 +196,7 @@ def bridge_graph() -> nx.Graph:
     Topology: (a-b-c triangle) -- bridge edge (c-d) -- (d-e-f triangle).
     The bridge edge {c, d} is a minimum cut of size 1.
     """
-    G: nx.Graph = nx.Graph()
+    G: nx.Graph = BabylonUGraph()
     # Left clique
     G.add_node("a")
     G.add_node("b")

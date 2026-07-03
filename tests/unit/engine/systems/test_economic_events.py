@@ -15,9 +15,9 @@ PPP Model Tests (Sprint PPP):
 - Low superwage_multiplier -> Lower effective wealth -> Lower P(S|A)
 """
 
-import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
 from babylon.engine.systems.economic import ImperialRentSystem
@@ -39,7 +39,7 @@ class TestImperialRentSystemEvents:
         """SURPLUS_EXTRACTION event emitted when rent > 0.01."""
         # Arrange - need enough wealth for weekly extraction to exceed negligible threshold
         # With weekly rate = 0.8/52 = 0.0154, need wealth >= 0.01/0.0154 = 0.65
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=1.0, ideology=0.0)
         graph.add_node("owner", wealth=0.5)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -66,7 +66,7 @@ class TestImperialRentSystemEvents:
     def test_no_event_on_zero_rent(self) -> None:
         """No event when rent is negligible (< 0.01)."""
         # Arrange: Worker with 0 wealth = 0 rent
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=0.0, ideology=0.0)
         graph.add_node("owner", wealth=0.5)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -102,7 +102,7 @@ class TestPPPWagesModel:
     def test_high_superwage_multiplier_increases_effective_wealth(self) -> None:
         """High superwage_multiplier -> Higher PPP -> Higher effective wealth."""
         # Arrange: Graph with WAGES edge
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "bourgeoisie",
             wealth=1.0,
@@ -154,7 +154,7 @@ class TestPPPWagesModel:
     def test_low_superwage_multiplier_minimal_ppp_bonus(self) -> None:
         """Low superwage_multiplier -> Lower PPP -> Minimal effective wealth bonus."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "bourgeoisie",
             wealth=1.0,
@@ -206,7 +206,7 @@ class TestPPPWagesModel:
     def test_ppp_multiplier_formula(self) -> None:
         """Test PPP multiplier formula: 1 + (extraction * sw_mult * impact)."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("bourgeoisie", wealth=1.0, role=SocialRole.CORE_BOURGEOISIE)
         graph.add_node("worker", wealth=0.0, role=SocialRole.LABOR_ARISTOCRACY)
         graph.add_edge("bourgeoisie", "worker", edge_type=EdgeType.WAGES)
@@ -247,7 +247,7 @@ class TestPPPWagesModel:
     @pytest.mark.unit
     def test_unearned_increment_recorded(self) -> None:
         """Test that unearned increment (PPP bonus) is recorded on worker node."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("bourgeoisie", wealth=1.0, role=SocialRole.CORE_BOURGEOISIE)
         graph.add_node("worker", wealth=0.2, role=SocialRole.LABOR_ARISTOCRACY)
         graph.add_edge("bourgeoisie", "worker", edge_type=EdgeType.WAGES)

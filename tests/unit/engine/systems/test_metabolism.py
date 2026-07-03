@@ -28,9 +28,9 @@ Formula Behavior:
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.metabolism import MetabolismSystem  # Will fail - doesn't exist
 from babylon.models.enums import EventType
@@ -57,7 +57,7 @@ class TestMetabolismSystemBasic:
         - Expected: biocapacity becomes 60.0 (50 + 10)
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -90,7 +90,7 @@ class TestMetabolismSystemBasic:
         - Expected: biocapacity becomes 40.0 (100 - 60)
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -123,7 +123,7 @@ class TestMetabolismSystemBasic:
         - For a more extreme case, use extraction_intensity=1.0 with regen=0.0
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -154,7 +154,7 @@ class TestMetabolismSystemBasic:
         - Expected: clamped at max_biocapacity = 100
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -193,7 +193,7 @@ class TestMetabolismSystemEvents:
         Note: Biocapacity is updated BEFORE overshoot check (regeneration happens first).
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Territory with low biocapacity
         graph.add_node(
@@ -243,7 +243,7 @@ class TestMetabolismSystemEvents:
         - Expected: No events in event_bus history
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Territory with high biocapacity
         graph.add_node(
@@ -281,7 +281,7 @@ class TestMetabolismSystemEvents:
         The threshold is > 1.0, not >= 1.0. Exact balance is sustainable.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node(
             "T001",
@@ -328,7 +328,7 @@ class TestMetabolismSystemAggregation:
         - Overshoot ratio = 80/100 = 0.8 (sustainable)
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node(
             "T001",
@@ -380,7 +380,7 @@ class TestMetabolismSystemAggregation:
         Note: Biocapacity is updated BEFORE overshoot check (regeneration happens first).
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node(
             "T001",
@@ -435,7 +435,7 @@ class TestMetabolismSystemEdgeCases:
         Expected: No crash, possibly no events or appropriate handling.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # Only a social class node, no territories
         graph.add_node(
             "PERIPHERY_WORKER_ID",
@@ -460,7 +460,7 @@ class TestMetabolismSystemEdgeCases:
         Expected: No crash, consumption = 0, no overshoot.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -492,7 +492,7 @@ class TestMetabolismSystemEdgeCases:
         - new_biocapacity = 0 + 2 = 2
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -520,7 +520,7 @@ class TestMetabolismSystemEdgeCases:
         Edge case: Graph has nodes without _node_type or with different type.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Real territory
         graph.add_node(
@@ -575,7 +575,7 @@ class TestMetabolismSystemEdgeCases:
         Edge case: Graph has nodes with different _node_type for consumption calc.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node(
             "T001",
@@ -626,7 +626,7 @@ class TestMetabolismPopulationScaling:
         total_consumption = (s_bio + s_class) * population
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Territory with low biocapacity (will trigger overshoot with population=100)
         graph.add_node(
@@ -671,7 +671,7 @@ class TestMetabolismPopulationScaling:
         This ensures backward compatibility for existing scenarios.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         graph.add_node(
             "T001",
@@ -709,7 +709,7 @@ class TestMetabolismPopulationScaling:
         Dead blocks don't eat - they're dead.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Small territory
         graph.add_node(

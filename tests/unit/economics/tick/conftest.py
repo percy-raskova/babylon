@@ -23,6 +23,7 @@ from babylon.economics.tick.types import (
     SimulationTickState,
     SmoothedCoefficients,
 )
+from babylon.engine.graph import BabylonGraph
 
 # Wayne County MI
 WAYNE_FIPS: str = "26163"
@@ -411,7 +412,7 @@ def build_territory_graph(
     if fips_codes is None:
         fips_codes = [WAYNE_FIPS]
 
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     for fips in fips_codes:
         graph.add_node(fips, _node_type="territory")
     return graph

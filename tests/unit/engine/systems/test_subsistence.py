@@ -14,6 +14,7 @@ from collections.abc import Generator
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.entity_registry import (
@@ -66,7 +67,7 @@ class TestLinearSubsistenceBurn:
         - After 1 tick: 0.2 - 0.005 = 0.195 (LINEAR)
         - NOT: 0.2 * 0.995 = 0.199 (exponential)
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         initial_wealth = 0.2
         _create_entity_node(
             graph,
@@ -89,7 +90,7 @@ class TestLinearSubsistenceBurn:
 
     def test_worker_burns_at_base_multiplier(self, services: ServiceContainer) -> None:
         """Periphery worker (mult=1.5) burns 1.5x base subsistence per tick."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         initial_wealth = 0.2
         worker_multiplier = 1.5
         _create_entity_node(
@@ -113,7 +114,7 @@ class TestLinearSubsistenceBurn:
 
     def test_bourgeoisie_burns_faster_than_worker(self, services: ServiceContainer) -> None:
         """Core bourgeoisie (mult=20) burns much faster than worker (mult=1.5)."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         initial_wealth = 0.2
 
         # Worker with 1.5x multiplier
@@ -154,7 +155,7 @@ class TestLinearSubsistenceBurn:
         - Burn per tick: 0.005 * 10 = 0.05
         - TTD: 0.2 / 0.05 = 4 ticks
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         initial_wealth = 0.2
         comprador_multiplier = 10.0
         _create_entity_node(
@@ -183,7 +184,7 @@ class TestLinearSubsistenceBurn:
 
     def test_inactive_entities_skip_burn(self, services: ServiceContainer) -> None:
         """Dead entities (active=False) should not have wealth deducted."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         initial_wealth = 0.2
         _create_entity_node(
             graph,
@@ -202,7 +203,7 @@ class TestLinearSubsistenceBurn:
 
     def test_zero_wealth_entities_skip_burn(self, services: ServiceContainer) -> None:
         """Entities with zero wealth should not go negative."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             PERIPHERY_WORKER_ID,

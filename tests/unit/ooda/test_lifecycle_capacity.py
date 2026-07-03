@@ -12,6 +12,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines, OrganizationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType, OrgType
 from babylon.ooda.lifecycle_capacity import (
     compute_lifecycle_modifier,
@@ -24,7 +25,7 @@ def _build_lifecycle_graph(
     members: list[dict[str, Any]] | None = None,
 ) -> nx.DiGraph[str]:
     """Build a graph with an org and lifecycle-phased members."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         org_id,
         _node_type="organization",

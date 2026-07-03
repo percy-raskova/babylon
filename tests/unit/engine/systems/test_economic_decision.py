@@ -19,10 +19,10 @@ Decision Matrix:
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EventType
@@ -37,7 +37,7 @@ class TestPoolRatioCalculation:
 
         With initial_pool=100 and current_pool=70, pool_ratio=0.7
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("node1")
 
         # Defines with initial_rent_pool = 100
@@ -77,7 +77,7 @@ class TestPoolRatioCalculation:
 
         Division by zero is avoided.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("node1")
 
         economy_defines = EconomyDefines(
@@ -120,7 +120,7 @@ class TestAggregateTensionCalculation:
 
     def test_aggregate_tension_reads_capital_labor_gap(self) -> None:
         """Returns the capital_labor gap from the opposition snapshot."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.graph["opposition_states"] = {"capital_labor": {"gap": 0.4}}
 
@@ -134,7 +134,7 @@ class TestAggregateTensionCalculation:
 
     def test_aggregate_tension_empty_graph(self) -> None:
         """No snapshot returns 0.0 tension (edge tensions are irrelevant now)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         system = ImperialRentSystem()
 
@@ -146,7 +146,7 @@ class TestAggregateTensionCalculation:
 
     def test_aggregate_tension_snapshot_without_capital_labor_defaults_zero(self) -> None:
         """A snapshot lacking the capital_labor key defaults to 0.0."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.6)  # edge tension no longer feeds it
@@ -162,7 +162,7 @@ class TestAggregateTensionCalculation:
 
     def test_aggregate_tension_high_gap(self) -> None:
         """A high capital_labor gap is returned verbatim."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.graph["opposition_states"] = {"capital_labor": {"gap": 0.7}}
 
@@ -184,7 +184,7 @@ class TestDecisionClamping:
 
         BRIBERY adds +5%, but can't exceed max_wage.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("node1")
 
         economy_defines = EconomyDefines(
@@ -221,7 +221,7 @@ class TestDecisionClamping:
 
         AUSTERITY subtracts -5%, but can't go below min_wage.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("node1")
 
         economy_defines = EconomyDefines(
@@ -259,7 +259,7 @@ class TestDecisionClamping:
 
         IRON_FIST or CRISIS increase repression, but capped at 1.0.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         # High capital_labor gap for IRON_FIST (C1.5 handoff via opposition_states)
@@ -300,7 +300,7 @@ class TestDecisionClamping:
         This is an edge case - no decision subtracts repression in current impl,
         but the clamping logic should handle it.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("node1")
 
         economy_defines = EconomyDefines(
@@ -337,7 +337,7 @@ class TestDecisionLogic:
 
     def test_bribery_decision_high_pool_low_tension(self) -> None:
         """BRIBERY: pool_ratio >= high AND tension < 0.3 -> wages +5%."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.1)  # Low tension
@@ -371,7 +371,7 @@ class TestDecisionLogic:
 
     def test_austerity_decision_low_pool_low_tension(self) -> None:
         """AUSTERITY: pool_ratio < low AND tension <= 0.5 -> wages -5%."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.3)  # Low-medium tension
@@ -405,7 +405,7 @@ class TestDecisionLogic:
 
     def test_iron_fist_decision_low_pool_high_tension(self) -> None:
         """IRON_FIST: pool_ratio < low AND tension > 0.5 -> repression +10%."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.7)  # High tension
@@ -441,7 +441,7 @@ class TestDecisionLogic:
 
     def test_crisis_decision_critical_pool(self) -> None:
         """CRISIS: pool_ratio < critical -> wages to min, repression +20%."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.5)
@@ -477,7 +477,7 @@ class TestDecisionLogic:
 
     def test_no_change_decision_neutral_zone(self) -> None:
         """NO_CHANGE: mid-range pool -> maintain status quo."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.5)
@@ -516,7 +516,7 @@ class TestCrisisEventEmission:
 
     def test_crisis_emits_event(self) -> None:
         """ECONOMIC_CRISIS event emitted when decision is CRISIS."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.5)
@@ -560,7 +560,7 @@ class TestCrisisEventEmission:
 
     def test_non_crisis_decision_no_event(self) -> None:
         """Non-crisis decisions do not emit ECONOMIC_CRISIS event."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.1)
@@ -599,7 +599,7 @@ class TestDecisionEdgeCases:
 
     def test_exactly_at_high_threshold_triggers_bribery(self) -> None:
         """Pool ratio exactly at high threshold triggers BRIBERY (if tension low)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("node1")
 
         economy_defines = EconomyDefines(
@@ -633,7 +633,7 @@ class TestDecisionEdgeCases:
 
         AUSTERITY requires pool_ratio < low, not <=.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("node1")
 
         economy_defines = EconomyDefines(
@@ -668,7 +668,7 @@ class TestDecisionEdgeCases:
 
         IRON_FIST requires tension > 0.5, not >=.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.5)  # Exactly at boundary

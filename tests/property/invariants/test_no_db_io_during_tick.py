@@ -20,6 +20,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 
 from babylon.engine.context import TickContext
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
 from babylon.models.world_state import WorldState
@@ -85,7 +86,7 @@ class TestNoDbIoDuringTick:
                 services_arg.database.execute("SELECT 1")
 
         engine = SimulationEngine(systems=[BadSystem()])
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         with no_db_io_during_tick(services), pytest.raises(DBIONotPermittedError) as exc_info:
             engine.run_tick(graph, services, ctx)
@@ -102,7 +103,6 @@ class TestNoDbIoDuringTick:
         """AS3: the patched scope is exactly the run_tick call —
         hydration BEFORE entering the scope and persistence AFTER
         exiting work uninterrupted. Negative test, no Hypothesis."""
-        import networkx as nx
 
         from babylon.persistence import RuntimeDatabase
 
@@ -114,7 +114,7 @@ class TestNoDbIoDuringTick:
         # the no_db_io_during_tick scope)
         runtime_db = RuntimeDatabase(in_memory=True)
         # Persist a baseline tick to demonstrate the DB is reachable
-        runtime_db.persist_tick(tick=-1, graph=nx.DiGraph())
+        runtime_db.persist_tick(tick=-1, graph=BabylonGraph())
 
         # Run the tick under the no-DB-I/O scope (clean — no intra-tick I/O)
         state = WorldState(tick=0)

@@ -6,10 +6,10 @@ from the initiative scoring contract.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import JurisdictionLevel
 from babylon.ooda.initiative import (
     compute_community_embeddedness,
@@ -148,12 +148,12 @@ class TestCommunityEmbeddedness:
     """Community embeddedness computation."""
 
     def test_no_territories_returns_zero(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("org_1", _node_type="organization")
         assert compute_community_embeddedness("org_1", graph) == 0.0
 
     def test_returns_bounded_value(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "org_1",
             _node_type="organization",

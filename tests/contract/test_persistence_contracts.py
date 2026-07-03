@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.persistence.protocols import (
     RuntimePersistence,
     TraceCollector,
@@ -37,7 +37,7 @@ class TestRuntimePersistenceCompliance:
         """RuntimeDatabase.persist_tick accepts optional session_id kwarg."""
         from babylon.persistence.runtime_db import RuntimeDatabase
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("test", type="Test")
         session_id = UUID("12345678-1234-5678-1234-567812345678")
 

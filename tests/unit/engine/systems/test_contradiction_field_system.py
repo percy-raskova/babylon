@@ -11,6 +11,7 @@ import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.models.enums import EdgeType
@@ -27,7 +28,7 @@ class TestContradictionFieldSystemBasic:
 
     def test_writes_contradiction_fields_to_node(self) -> None:
         """System writes contradiction_fields dict to social_class nodes."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -55,7 +56,7 @@ class TestContradictionFieldSystemBasic:
 
     def test_field_values_in_bounds(self) -> None:
         """All field values are in [0.0, 10.0] after normalization (EC-007)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -79,7 +80,7 @@ class TestContradictionFieldSystemBasic:
 
     def test_skips_non_social_class_nodes(self) -> None:
         """System only processes social_class nodes, not territory nodes."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("T001", _node_type="territory", heat=0.5)
         graph.add_node(
             "C001",
@@ -108,7 +109,7 @@ class TestContradictionFieldHistory:
 
     def test_stores_history_in_persistent_data(self) -> None:
         """System stores field values in persistent_data contradiction_history."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -136,7 +137,7 @@ class TestContradictionFieldHistory:
 
     def test_history_rolling_window_max_3(self) -> None:
         """History window never exceeds 3 entries per node per field."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -169,7 +170,7 @@ class TestContradictionFieldHistory:
 
     def test_injects_previous_wealth_for_immiseration(self) -> None:
         """System injects _previous_wealth so immiseration can compute decline."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -201,7 +202,7 @@ class TestContradictionFieldHistory:
 
     def test_exploitation_destitute_worker(self) -> None:
         """Destitute worker (wealth=0) has high exploitation field."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -225,7 +226,7 @@ class TestContradictionFieldHistory:
 
     def test_wealthy_node_low_exploitation(self) -> None:
         """Wealthy node (wealth > subsistence) has low exploitation."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -259,7 +260,7 @@ class TestContradictionFieldNoRegistry:
         The two edges let a mean-vs-max mutation be caught: mean(0.2, 0.8) = 0.5
         is distinct from max(0.2, 0.8) = 0.8.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("C001", _node_type="social_class", wealth=10.0, population=1000)
         graph.add_node("C002", _node_type="social_class", wealth=30.0, population=1000)
         graph.add_edge("C001", "C002", edge_type=EdgeType.EXPLOITATION, tension=0.2)
@@ -303,7 +304,7 @@ class TestContradictionFieldNoRegistry:
 
     def test_no_edges_no_snapshot_writes_zero_fields(self) -> None:
         """Absent edges/snapshot: fields still written (not skipped), all zero."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("C001", _node_type="social_class", wealth=10.0, population=1000)
         services = ServiceContainer.create()
         context: dict[str, object] = {"tick": 1, "persistent_data": {}}

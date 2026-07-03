@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.graph import BabylonGraph
+
 pytestmark = [pytest.mark.cross_scale, pytest.mark.integration]
 
 pytest.importorskip("psycopg")
@@ -23,8 +25,6 @@ pytest.importorskip("psycopg_pool")
 def test_conservation_alarm_event_published_to_bus():
     """ALARM-severity audit row → exactly one conservation_alarm Event on the bus."""
     from uuid import uuid4
-
-    import networkx as nx
 
     from babylon.engine.event_bus import Event, EventBus
     from babylon.engine.simulation_engine import SimulationEngine
@@ -54,7 +54,7 @@ def test_conservation_alarm_event_published_to_bus():
 
     # Build a minimal engine with a single hex; we don't need any real Systems.
     engine = SimulationEngine(systems=[], auditor=auditor)
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "872d34a89ffffff",
         _node_type="hex",
@@ -87,8 +87,6 @@ def test_no_alarm_event_when_severity_ok():
     """OK-severity rows do NOT publish to the bus."""
     from uuid import uuid4
 
-    import networkx as nx
-
     from babylon.engine.event_bus import Event, EventBus
     from babylon.engine.simulation_engine import SimulationEngine
     from babylon.persistence.conservation_audit import ConservationAuditor, _InvariantResult
@@ -116,7 +114,7 @@ def test_no_alarm_event_when_severity_ok():
     auditor.register_invariant("hex_to_county_sum_c", ok_evaluator)
 
     engine = SimulationEngine(systems=[], auditor=auditor)
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node("872d34a89ffffff", _node_type="hex")
 
     class _Services:

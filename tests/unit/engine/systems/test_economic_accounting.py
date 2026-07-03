@@ -15,6 +15,7 @@ from typing import Any
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -28,7 +29,7 @@ def _wages_graph(
     *,
     worker_active: bool = True,
 ) -> nx.DiGraph[str]:
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "bourgeoisie", wealth=bourgeoisie_wealth, role=SocialRole.CORE_BOURGEOISIE, active=True
     )

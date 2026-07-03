@@ -6,10 +6,10 @@ cohesion_loss_on_removal() for vulnerability analysis.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import OrganizationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType
 from babylon.organizations.topology import cohesion_loss_on_removal, identify_key_figures
 
@@ -20,7 +20,7 @@ class TestIdentifyKeyFiguresStar:
     @pytest.mark.math
     def test_star_center_is_key_figure(self) -> None:
         """Hub of star is the sole articulation point."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-hub", "kf-a", "kf-b", "kf-c"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")
@@ -36,7 +36,7 @@ class TestIdentifyKeyFiguresStar:
     @pytest.mark.math
     def test_star_center_is_singleton(self) -> None:
         """Hub of star has is_singleton=True (no structural equivalent)."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-hub", "kf-a", "kf-b", "kf-c"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")
@@ -54,7 +54,7 @@ class TestIdentifyKeyFiguresStar:
 
         Uses 7-node star (1 hub + 6 leaves) so importance = (6-1)/(7-1) = 0.833.
         """
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         leaves = [f"kf-{i}" for i in range(6)]
         nodes = ["kf-hub", *leaves]
         for n in nodes:
@@ -73,7 +73,7 @@ class TestIdentifyKeyFiguresCell:
     @pytest.mark.math
     def test_cell_bridge_is_key_figure(self) -> None:
         """Bridge/cutout connecting two cells is the key figure."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         cell1 = ["kf-a", "kf-b", "kf-c"]
         cell2 = ["kf-d", "kf-e", "kf-f"]
         bridge = "kf-bridge"
@@ -103,7 +103,7 @@ class TestIdentifyKeyFiguresMesh:
     @pytest.mark.math
     def test_mesh_no_key_figures(self) -> None:
         """Complete graph has no articulation points → no key figures."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-a", "kf-b", "kf-c", "kf-d"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")

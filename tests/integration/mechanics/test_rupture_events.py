@@ -26,6 +26,7 @@ from babylon.engine.factories import (
     create_labor_aristocracy,
     create_proletariat,
 )
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation import Simulation
 from babylon.engine.systems.contradiction import ContradictionSystem
@@ -109,7 +110,7 @@ class TestRuptureGateSystem:
     """
 
     def _graph(self, owner_wealth: float) -> nx.DiGraph[str]:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=1.0)
         graph.add_node("owner", wealth=owner_wealth)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -153,7 +154,7 @@ class TestRuptureIsPerPrincipal:
     def test_multi_edge_scenario_reports_principal_opposition(self) -> None:
         services = ServiceContainer.create()
         system = ContradictionSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("w1", wealth=1.0)
         graph.add_node("w2", wealth=1.0)
         graph.add_node("owner", wealth=50.0)

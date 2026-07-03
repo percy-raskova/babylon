@@ -24,6 +24,7 @@ from babylon.economics.tick.types import (
     CrisisPhase,
     CrisisState,
 )
+from babylon.engine.graph import BabylonGraph
 
 
 def _make_dist(
@@ -83,7 +84,7 @@ def _make_graph_with_solidarity(
         total_possible: Total possible cross-class edges (for density calc).
         mean_agitation: Average agitation across nodes.
     """
-    g: nx.DiGraph = nx.DiGraph()
+    g: nx.DiGraph = BabylonGraph()
 
     # Add territory node
     g.add_node(fips, _node_type="territory")
@@ -350,7 +351,7 @@ class TestBifurcationEdgeCases:
     def test_single_class_present(self) -> None:
         """Fewer than 2 class categories -> solidarity_density=0."""
         calc = BifurcationRiskCalculator()
-        g: nx.DiGraph = nx.DiGraph()
+        g: nx.DiGraph = BabylonGraph()
         g.add_node("26163", _node_type="territory")
         # Only one social class node
         g.add_node(

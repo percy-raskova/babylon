@@ -17,6 +17,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines, TerritoryDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType, TerritoryType
@@ -38,7 +39,7 @@ class TestTerritorySystemBasic:
     def test_ignores_non_territory_nodes(self) -> None:
         """System should only process nodes with _node_type='territory'."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # Social class node (should be ignored)
         graph.add_node(
             "PERIPHERY_WORKER_ID",
@@ -74,7 +75,7 @@ class TestTerritoryHeatDynamics:
         Default gain = 0.15
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -105,7 +106,7 @@ class TestTerritoryHeatDynamics:
         Default decay rate = 0.1, so heat * 0.9
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -132,7 +133,7 @@ class TestTerritoryHeatDynamics:
     def test_heat_capped_at_one(self) -> None:
         """Heat cannot exceed 1.0."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -159,7 +160,7 @@ class TestTerritoryHeatDynamics:
     def test_heat_cannot_go_negative(self) -> None:
         """Heat cannot go below 0.0."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -199,7 +200,7 @@ class TestTerritoryEvictionPipeline:
         Default threshold = 0.8
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -226,7 +227,7 @@ class TestTerritoryEvictionPipeline:
     def test_no_eviction_below_threshold(self) -> None:
         """No eviction if heat < eviction_heat_threshold."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -257,7 +258,7 @@ class TestTerritoryEvictionPipeline:
         Default multiplier = 1.5
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -288,7 +289,7 @@ class TestTerritoryEvictionPipeline:
         Default rate = 0.1, so population * 0.9
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -329,7 +330,7 @@ class TestTerritoryHeatSpillover:
         Default rate = 0.05
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # Source territory with high heat
         graph.add_node(
             "T001",
@@ -379,7 +380,7 @@ class TestTerritoryHeatSpillover:
     def test_no_spillover_from_non_adjacent(self) -> None:
         """Heat does not spill to non-adjacent territories."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -419,7 +420,7 @@ class TestTerritoryHeatSpillover:
     def test_spillover_capped_at_one(self) -> None:
         """Heat from spillover cannot exceed 1.0."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -469,7 +470,7 @@ class TestTerritorySystemConfig:
     def test_custom_heat_gain(self) -> None:
         """System uses GameDefines territory.high_profile_heat_gain."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -497,7 +498,7 @@ class TestTerritorySystemConfig:
     def test_custom_eviction_threshold(self) -> None:
         """System uses GameDefines territory.eviction_heat_threshold."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -525,7 +526,7 @@ class TestTerritorySystemConfig:
     def test_custom_rent_spike_multiplier(self) -> None:
         """System uses GameDefines territory.rent_spike_multiplier."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -582,7 +583,7 @@ class TestFindSinkNode:
         from babylon.models.enums import DisplacementPriorityMode
 
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # Source territory (under eviction)
         graph.add_node(
             "T001",
@@ -649,7 +650,7 @@ class TestFindSinkNode:
         from babylon.models.enums import DisplacementPriorityMode
 
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -699,7 +700,7 @@ class TestFindSinkNode:
         from babylon.models.enums import DisplacementPriorityMode
 
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -737,7 +738,7 @@ class TestFindSinkNode:
         from babylon.models.enums import DisplacementPriorityMode
 
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -790,7 +791,7 @@ class TestEvictionPopulationTransfer:
         Source loses: source_pop - displaced
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -838,7 +839,7 @@ class TestEvictionPopulationTransfer:
         infrastructure is present.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -903,7 +904,7 @@ class TestNecropolitics:
         This models the elimination function of carceral geography.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -937,7 +938,7 @@ class TestNecropolitics:
         This models the atomization effect of mass incarceration.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # Penal colony territory
         graph.add_node(
             "T001",
@@ -999,7 +1000,7 @@ class TestDisplacementPriorityModes:
 
     def _create_graph_with_all_sink_types(self) -> "nx.DiGraph[str]":
         """Create a test graph with source connected to all sink types."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # Source territory (under eviction)
         graph.add_node(
             "T001",
@@ -1168,7 +1169,7 @@ class TestDisplacementPriorityModes:
         from babylon.models.enums import DisplacementPriorityMode
 
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
@@ -1215,7 +1216,7 @@ class TestDisplacementPriorityModes:
         from babylon.models.enums import DisplacementPriorityMode
 
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",

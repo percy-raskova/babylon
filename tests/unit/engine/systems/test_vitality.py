@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.vitality import VitalitySystem
 from babylon.models.enums import EventType, SocialRole
@@ -78,7 +79,7 @@ class TestVitalitySystem:
         consumption_needs = s_bio + s_class = 0.01 + 0.0 = 0.01
         wealth (0.0) < consumption_needs (0.01) → DEATH
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -106,7 +107,7 @@ class TestVitalitySystem:
 
         wealth (0.1) >= consumption_needs (0.01) → SURVIVE
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -134,7 +135,7 @@ class TestVitalitySystem:
         - Survival requires: wealth - burn_cost >= consumption_needs
         - With floating-point margin: wealth >= 0.016 for s_bio=0.01
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Rich entity (survives: 10.0 - 0.005 = 9.995 >= 0.01)
         _create_entity_node(graph, "PERIPHERY_WORKER_ID", wealth=10.0, s_bio=0.01)
@@ -161,7 +162,7 @@ class TestVitalitySystem:
 
     def test_already_dead_entities_skipped(self, services: ServiceContainer) -> None:
         """Entities with active=False should not trigger additional death events."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -183,7 +184,7 @@ class TestVitalitySystem:
 
     def test_non_entity_nodes_skipped(self, services: ServiceContainer) -> None:
         """Territory nodes and other non-entity nodes should be skipped."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Add territory (not an entity)
         graph.add_node(
@@ -211,7 +212,7 @@ class TestVitalitySystem:
         consumption_needs = s_bio + s_class = 0.01 + 0.09 = 0.10
         wealth (0.05) < consumption_needs (0.10) → DEATH
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -251,7 +252,7 @@ class TestVitalitySubsistenceBurn:
         cost = 0.005 * 1.5 = 0.0075
         wealth: 1.0 -> 0.9925
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -275,7 +276,7 @@ class TestVitalitySubsistenceBurn:
 
         Periphery worker (1.5x) vs Core Bourgeoisie (20.0x) at same wealth.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Periphery worker (1.5x multiplier)
         _create_entity_node(
@@ -315,7 +316,7 @@ class TestVitalitySubsistenceBurn:
 
         This tests the critical ordering: burn BEFORE death check.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -337,7 +338,7 @@ class TestVitalitySubsistenceBurn:
 
     def test_burn_skips_inactive_entities(self, services: ServiceContainer) -> None:
         """active=False entities should not have wealth burned."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -357,7 +358,7 @@ class TestVitalitySubsistenceBurn:
 
         This allows tests to isolate wage/extraction mechanics from subsistence.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -381,7 +382,7 @@ class TestVitalitySubsistenceBurn:
 
         If wealth=0.001 and cost=0.1, final wealth=0.0 (not -0.099).
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -420,7 +421,7 @@ class TestGrindingAttrition:
         threshold = 1.0 + 0.0 = 1.0
         10.0 >= 1.0 → no deaths
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -454,7 +455,7 @@ class TestGrindingAttrition:
         attrition = 0.8 × 1.3 = 1.04 → clamped to 1.0
         deaths = 1000 × 1.0 = 1000 (full attrition)
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -482,7 +483,7 @@ class TestGrindingAttrition:
 
         Single-agent scenario: sufficient wealth → survives (population=1).
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -505,7 +506,7 @@ class TestGrindingAttrition:
 
         An entity death (ENTITY_DEATH) should be emitted when fully extinct.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -535,7 +536,7 @@ class TestGrindingAttrition:
 
         This tests the equilibrium dynamics of Malthusian correction.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -573,7 +574,7 @@ class TestGrindingAttrition:
         Phase 3: coverage=1.0/0.01=100, threshold=1.99, coverage >> threshold → no deaths.
         We need a scenario where coverage < threshold to trigger attrition.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -612,7 +613,7 @@ class TestVitalityMutationKillers:
 
     def test_population_exactly_zero_skipped(self, services: ServiceContainer) -> None:
         """population=0 → continue (no processing, no events)."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(graph, "entity", wealth=100.0, population=0, s_bio=0.01)
         events: list[Event] = []
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
@@ -627,7 +628,7 @@ class TestVitalityMutationKillers:
 
     def test_population_negative_skipped(self, services: ServiceContainer) -> None:
         """population=-1 → continue (no processing)."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(graph, "entity", wealth=100.0, population=-1, s_bio=0.01)
         events: list[Event] = []
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
@@ -640,7 +641,7 @@ class TestVitalityMutationKillers:
 
     def test_drain_cost_formula_exact(self, services: ServiceContainer) -> None:
         """cost = (base_subsistence * population) * multiplier, exact value."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(graph, "entity", wealth=10.0, population=100, s_bio=0.0)
         graph.nodes["entity"]["subsistence_multiplier"] = 1.5
 
@@ -654,7 +655,7 @@ class TestVitalityMutationKillers:
 
     def test_drain_clamps_wealth_at_zero(self, services: ServiceContainer) -> None:
         """wealth=0.001, cost >> wealth → wealth clamped to 0.0 (not negative)."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(graph, "entity", wealth=0.001, population=10000, s_bio=0.0)
         graph.nodes["entity"]["subsistence_multiplier"] = 100.0
 
@@ -665,7 +666,7 @@ class TestVitalityMutationKillers:
 
     def test_reaper_extinction_condition(self, services: ServiceContainer) -> None:
         """population=0 after attrition → active=False, cause='extinction'."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         # Set up entity that will lose all population through attrition
         _create_entity_node(
             graph,
@@ -688,7 +689,7 @@ class TestVitalityMutationKillers:
 
     def test_reaper_starvation_condition(self, services: ServiceContainer) -> None:
         """population=1, wealth < consumption_needs → starvation death."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "entity",
@@ -714,7 +715,7 @@ class TestVitalityMutationKillers:
         """population=1, wealth < death_threshold → zombie trap death."""
         death_threshold = services.defines.economy.death_threshold  # 0.001
 
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "entity",
@@ -740,7 +741,7 @@ class TestVitalityMutationKillers:
         """population=1, wealth > death_threshold → survives."""
         death_threshold = services.defines.economy.death_threshold
 
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "entity",
@@ -763,7 +764,7 @@ class TestVitalityMutationKillers:
 
     def test_full_phase_sequence(self, services: ServiceContainer) -> None:
         """drain reduces wealth → attrition kills some → reaper checks."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         # Entity with moderate wealth and population
         _create_entity_node(
             graph,
@@ -796,7 +797,7 @@ class TestVitalityMutationKillers:
         custom = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
         custom_services = ServiceContainer.create(defines=custom)
 
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(graph, "entity", wealth=1.0, population=100, s_bio=0.0)
         graph.nodes["entity"]["subsistence_multiplier"] = 100.0
 
@@ -810,7 +811,7 @@ class TestVitalityMutationKillers:
 
     def test_attrition_zero_deaths_population_unchanged(self, services: ServiceContainer) -> None:
         """Wealthy entity with low inequality → 0 deaths, population unchanged."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "entity",

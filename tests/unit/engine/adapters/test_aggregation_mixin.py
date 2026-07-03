@@ -21,6 +21,8 @@ except ImportError:
 
 import networkx as nx
 
+from babylon.engine.graph import BabylonGraph
+
 
 class TestAggregationMixinExists:
     """RED: Verify the mixin exists and can be imported."""
@@ -33,7 +35,7 @@ class TestAggregationMixinExists:
 @pytest.fixture
 def graph_with_data() -> nx.DiGraph[str]:
     """Create a test graph with nodes and edges."""
-    g: nx.DiGraph[str] = nx.DiGraph()
+    g = BabylonGraph()
     # Add nodes with types and wealth
     g.add_node(PERIPHERY_WORKER_ID, _node_type="social_class", wealth=100.0, consciousness=0.3)
     g.add_node(COMPRADOR_ID, _node_type="social_class", wealth=50.0, consciousness=0.5)

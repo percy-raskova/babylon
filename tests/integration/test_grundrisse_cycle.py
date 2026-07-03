@@ -36,6 +36,7 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.models.enums import EdgeType, EventType
@@ -58,7 +59,7 @@ def _build_circuit_graph() -> nx.DiGraph[str]:
     (0.05) and tenancy (0.25) start subordinate and static so capital_labor
     is the unambiguous principal until a test deliberately perturbs another.
     """
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node("worker", wealth=10.0)
     graph.add_node("owner", wealth=30.0)
     graph.add_node("employer", wealth=21.0)

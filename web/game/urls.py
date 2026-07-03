@@ -172,17 +172,4 @@ urlpatterns: list[URLPattern] = [
         api.tick_results,
         name="tick-results",
     ),
-    # ------------------------------------------------------------------ #
-    # V2 Dialectic Engine endpoints
-    # ------------------------------------------------------------------ #
-    path(
-        "games/<str:game_id>/v2/world/",
-        api.dialectic_world_state,
-        name="v2-world-state",
-    ),
-    path(
-        "games/<str:game_id>/v2/dialectics/<str:dialectic_id>/",
-        api.dialectic_detail,
-        name="v2-dialectic-detail",
-    ),
 ]

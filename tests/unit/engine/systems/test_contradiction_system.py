@@ -23,6 +23,7 @@ import networkx as nx
 import pytest
 
 from babylon.dialectics.core.coupling import StanceIntervention
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import (
     OPPOSITION_INTERVENTIONS_ATTR,
@@ -41,7 +42,7 @@ class TestFreshEdgeTension:
     """Per-edge tension is the current wealth-asymmetry gap, not accumulated."""
 
     def test_exploitation_tension_equals_wealth_asymmetry_gap(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=10.0)
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION, tension=0.0)
@@ -52,7 +53,7 @@ class TestFreshEdgeTension:
         assert graph["worker"]["owner"]["tension"] == pytest.approx(0.5)
 
     def test_tension_is_not_accumulated_across_ticks(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=10.0)
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION, tension=0.0)
@@ -69,7 +70,7 @@ class TestFreshEdgeTension:
         assert second == pytest.approx(0.5)
 
     def test_tenancy_rent_free_guard_gives_zero_tension(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("tenant", wealth=10.0)
         graph.add_node("land", node_type="territory", rent_level=0.0)
         graph.add_edge("tenant", "land", edge_type=EdgeType.TENANCY, tension=0.0)
@@ -83,7 +84,7 @@ class TestRegistryStash:
     """The registry snapshot lands on the graph attribute ``opposition_states``."""
 
     def test_opposition_states_written_to_graph_attr(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=10.0)
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -98,7 +99,7 @@ class TestRegistryStash:
         assert states["capital_labor"]["is_principal"] is True
 
     def test_rate_carried_across_ticks_via_graph_attr(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=10.0)
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -120,7 +121,7 @@ class TestContradictionFrames:
     """``contradiction_frames`` is derived from the registry states."""
 
     def test_frame_principal_maps_gap_rate_pole(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=10.0)
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -139,7 +140,7 @@ class TestRuptureGate:
     """RUPTURE = condition AND level: gap > threshold AND rate > 0."""
 
     def _extreme_graph(self, owner_wealth: float) -> nx.DiGraph[str]:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=1.0)
         graph.add_node("owner", wealth=owner_wealth)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -184,7 +185,7 @@ class TestRuptureGate:
         # Kills the mutant that deletes `gap > threshold` from _maybe_rupture.
         services = ServiceContainer.create()
         system = ContradictionSystem()
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=10.0)
         graph.add_node("owner", wealth=12.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -202,7 +203,7 @@ class TestStanceInterventions:
 
     def _labor_dominant_graph(self) -> nx.DiGraph[str]:
         # Worker richer than owner -> capital_labor balance < 0 -> leading_pole "a".
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=30.0)
         graph.add_node("owner", wealth=10.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
@@ -253,24 +254,24 @@ class TestWageValuePairsExtraction:
         return ContradictionSystem()._build_graph_inputs(NetworkXAdapter.wrap(graph))
 
     def test_pairs_extracted_from_nodes_carrying_both_attrs(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("c1", w_paid=6.0, v_produced=5.0)
         graph.add_node("c2", w_paid=3.0, v_produced=4.0)
         pairs = self._inputs(graph).wage_value_pairs
         assert set(pairs) == {(6.0, 5.0), (3.0, 4.0)}
 
     def test_node_missing_v_produced_is_skipped(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("c1", w_paid=6.0)  # no v_produced
         assert self._inputs(graph).wage_value_pairs == ()
 
     def test_inactive_node_skipped(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("c1", w_paid=6.0, v_produced=5.0, active=False)
         assert self._inputs(graph).wage_value_pairs == ()
 
     def test_no_pairs_when_no_accounting_attrs(self) -> None:
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("worker", wealth=10.0)
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)

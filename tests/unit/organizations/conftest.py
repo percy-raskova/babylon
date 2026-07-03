@@ -9,6 +9,7 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
@@ -120,7 +121,7 @@ def org_graph(
     sample_key_figure: KeyFigure,
 ) -> nx.DiGraph:
     """Graph with all 4 Detroit org subtypes, a key figure, and edges."""
-    G: nx.DiGraph[str] = nx.DiGraph()
+    G = BabylonGraph()
 
     # Add territory nodes
     for tid in ["t-detroit-downtown", "t-detroit-midtown", "t-detroit-dearborn"]:

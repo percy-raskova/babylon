@@ -24,6 +24,7 @@ import pytest
 
 from babylon.bifurcation.legitimation import compute_legitimation_amplifier
 from babylon.config.defines import BifurcationDefines
+from babylon.engine.graph import BabylonGraph
 
 
 @pytest.mark.unit
@@ -35,7 +36,7 @@ class TestLegitimationAmplifierBasic:
 
         amplifier = 1.0 + (1.0 - 0.8) * (2.0 - 1.0) = 1.0 + 0.2 = 1.2
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -52,7 +53,7 @@ class TestLegitimationAmplifierBasic:
 
         amplifier = 1.0 + (1.0 - 0.2) * (2.0 - 1.0) = 1.0 + 0.8 = 1.8
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -71,7 +72,7 @@ class TestLegitimationAmplifierBasic:
 
         amplifier = 1.0 + (1.0 - 0.0) * (2.0 - 1.0) = 1.0 + 1.0 = 2.0
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -91,7 +92,7 @@ class TestLegitimationAmplifierBasic:
 
         amplifier = 1.0 + (1.0 - 1.0) * (2.0 - 1.0) = 1.0 + 0.0 = 1.0
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -116,7 +117,7 @@ class TestLegitimationAmplifierPopulationWeighted:
         weighted_mean = (80 + 60) / (100 + 300) = 140 / 400 = 0.35
         amplifier = 1.0 + (1.0 - 0.35) * (2.0 - 1.0) = 1.0 + 0.65 = 1.65
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -149,7 +150,7 @@ class TestLegitimationAmplifierPopulationWeighted:
         weighted_mean = (500*0.6 + 500*0.4) / (500+500) = 500 / 1000 = 0.5
         amplifier = 1.0 + (1.0 - 0.5) * 1.0 = 1.5
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -174,7 +175,7 @@ class TestLegitimationAmplifierEdgeCases:
 
     def test_no_territories_returns_unity(self, bifurcation_defines: BifurcationDefines) -> None:
         """Empty graph returns amplifier = 1.0 (graceful degradation)."""
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
 
         result = compute_legitimation_amplifier(G, bifurcation_defines)
 
@@ -184,7 +185,7 @@ class TestLegitimationAmplifierEdgeCases:
         self, bifurcation_defines: BifurcationDefines
     ) -> None:
         """Graph with only social_class nodes (no territories) returns 1.0."""
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node("C001", _node_type="social_class", wealth=50.0)
         G.add_node("C002", _node_type="social_class", wealth=20.0)
 
@@ -199,7 +200,7 @@ class TestLegitimationAmplifierEdgeCases:
 
         amplifier = 1.0 + (1.0 - 0.5) * (2.0 - 1.0) = 1.5
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node("T001", _node_type="territory", population=1000)
 
         result = compute_legitimation_amplifier(G, bifurcation_defines)
@@ -212,7 +213,7 @@ class TestLegitimationAmplifierEdgeCases:
         Single territory with default pop=1 and legitimation=0.6:
         amplifier = 1.0 + (1.0 - 0.6) * (2.0 - 1.0) = 1.4
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node("T001", _node_type="territory", legitimation_index=0.6)
 
         result = compute_legitimation_amplifier(G, bifurcation_defines)
@@ -221,7 +222,7 @@ class TestLegitimationAmplifierEdgeCases:
 
     def test_amplifier_always_at_least_one(self, bifurcation_defines: BifurcationDefines) -> None:
         """Amplifier is always >= 1.0, even at maximum legitimation."""
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -244,7 +245,7 @@ class TestLegitimationAmplifierCustomScale:
         amplifier = 1.0 + (1.0 - 0.0) * (5.0 - 1.0) = 1.0 + 4.0 = 5.0
         """
         defines = BifurcationDefines(legitimation_amplifier_scale=5.0)
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -262,7 +263,7 @@ class TestLegitimationAmplifierCustomScale:
         amplifier = 1.0 + (1.0 - 0.5) * (3.0 - 1.0) = 1.0 + 1.0 = 2.0
         """
         defines = BifurcationDefines(legitimation_amplifier_scale=3.0)
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",
@@ -280,7 +281,7 @@ class TestLegitimationAmplifierCustomScale:
         amplifier = 1.0 + (1.0 - 0.2) * (1.0 - 1.0) = 1.0 + 0.0 = 1.0
         """
         defines = BifurcationDefines(legitimation_amplifier_scale=1.0)
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph = BabylonGraph()
         G.add_node(
             "T001",
             _node_type="territory",

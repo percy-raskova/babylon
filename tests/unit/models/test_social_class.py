@@ -18,6 +18,8 @@ Tests updated to work with the multi-dimensional consciousness model.
 import pytest
 from pydantic import ValidationError
 
+from babylon.engine.graph import BabylonGraph
+
 # These imports should fail until the model is implemented
 from babylon.models import IdeologicalProfile, SocialClass
 from babylon.models.entity_registry import (
@@ -467,7 +469,6 @@ class TestSocialClassNetworkX:
 
     def test_can_be_used_as_node_data(self) -> None:
         """SocialClass data can be stored as NetworkX node attributes."""
-        import networkx as nx
 
         worker = SocialClass(
             id=PERIPHERY_WORKER_ID,
@@ -476,7 +477,7 @@ class TestSocialClassNetworkX:
             wealth=50.0,
         )
 
-        G = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node(worker.id, **worker.model_dump())
 
         assert G.has_node(PERIPHERY_WORKER_ID)
@@ -486,9 +487,8 @@ class TestSocialClassNetworkX:
 
     def test_can_restore_from_node_data(self) -> None:
         """SocialClass can be restored from NetworkX node attributes."""
-        import networkx as nx
 
-        G = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node(
             PERIPHERY_WORKER_ID,
             id=PERIPHERY_WORKER_ID,
@@ -514,7 +514,6 @@ class TestSocialClassNetworkX:
 
     def test_two_nodes_can_coexist(self) -> None:
         """Phase 1 blueprint: two nodes can exist in the same graph."""
-        import networkx as nx
 
         worker = SocialClass(
             id=PERIPHERY_WORKER_ID,
@@ -527,7 +526,7 @@ class TestSocialClassNetworkX:
             role=SocialRole.CORE_BOURGEOISIE,
         )
 
-        G = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node(worker.id, **worker.model_dump())
         G.add_node(owner.id, **owner.model_dump())
 

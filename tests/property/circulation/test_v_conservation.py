@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import networkx as nx
 import numpy as np
 import pytest
 import scipy.sparse as sp
@@ -22,6 +21,7 @@ from babylon.economics.boundary_flow_register import (
     NodeKind,
 )
 from babylon.economics.lodes_commute_matrix import LODESYearMatrix
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
 
 pytestmark = [pytest.mark.math, pytest.mark.topology]
@@ -87,7 +87,7 @@ def test_fr_010_conservation_holds_for_random_v_vectors(
     verifies conservation holds in every trial.
     """
     v_a, v_b, v_c = v_vec
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node("hex_A", _node_type="hex", v=v_a)
     graph.add_node("hex_B", _node_type="hex", v=v_b)
     graph.add_node("hex_C", _node_type="hex", v=v_c)

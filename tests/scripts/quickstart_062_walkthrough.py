@@ -27,6 +27,8 @@ import warnings
 from pathlib import Path
 from uuid import uuid4
 
+from babylon.engine.graph import BabylonGraph
+
 DETROIT_TRI_COUNTY = ["26163", "26125", "26099"]
 SQLITE_PATH = Path("data/sqlite/marxist-data-3NF.sqlite").resolve()
 
@@ -106,9 +108,8 @@ def main() -> int:
 
         # ─── Section 2: Advance one tick ────────────────────────────
         # Set up a minimal hex graph + auditor + engine.
-        import networkx as nx
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "872d34a89ffffff",
             _node_type="hex",

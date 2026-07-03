@@ -10,7 +10,6 @@ via synthetic profit rate sequence, plus cross-system integration tests.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
@@ -21,6 +20,7 @@ from babylon.economics.dynamics.crisis import PhasedCrisisAmplifier
 from babylon.economics.dynamics.types import ClassDistribution, TransitionRates
 from babylon.economics.tick.crisis_detector import MultiPeriodCrisisDetector
 from babylon.economics.tick.types import CrisisPhase, CrisisState
+from babylon.engine.graph import BabylonGraph
 
 
 @pytest.mark.unit
@@ -264,7 +264,7 @@ class TestCrossSystemIntegration:
         assert deep_rates.stabilization < base_rates.stabilization
 
         # --- Test bifurcation risk during crisis ---
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         g.add_node("26163", _node_type="territory")
         for role in ["labor_aristocracy", "proletariat", "lumpenproletariat"]:
             g.add_node(
@@ -449,7 +449,7 @@ class TestSC008Performance:
         bifurcation_calc = BifurcationRiskCalculator()
 
         # Build a simple graph with solidarity edges
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         for i in range(n_counties):
             fips = f"{26000 + i:05d}"
             g.add_node(fips, _node_type="territory")

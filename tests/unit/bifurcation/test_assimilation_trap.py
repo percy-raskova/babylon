@@ -15,6 +15,7 @@ import xgi  # type: ignore[import-untyped]
 
 from babylon.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.config.defines import BifurcationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import CommunityState
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import (
@@ -59,7 +60,7 @@ def _build_solidarity_scenario(
     Returns:
         Tuple of (graph, hypergraph, community_states, agent_memberships).
     """
-    graph: nx.DiGraph = nx.DiGraph()
+    graph: nx.DiGraph = BabylonGraph()
 
     # Add agents
     for agent_id in ("A1", "A2", "A3", "A4"):
@@ -151,7 +152,7 @@ class TestCrisisFragileMarker:
 
     def test_mixed_r_edge_is_crisis_fragile(self) -> None:
         """If either endpoint has r < 0.3, edge is crisis-fragile (weakest link)."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         for agent_id in ("A1", "A2"):
             graph.add_node(agent_id, _node_type="social_class", wealth=30.0)
         graph.add_edge("A1", "A2", edge_type=EdgeType.SOLIDARITY, solidarity_strength=0.8)
@@ -262,7 +263,7 @@ class TestBifurcationResultAssimilationRatio:
         from babylon.bifurcation.analysis import bifurcation_tendency
         from babylon.models.entities.consciousness import TernaryConsciousness
 
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         for agent_id in ("A1", "A2"):
             graph.add_node(agent_id, _node_type="social_class", wealth=30.0)
         graph.add_edge("A1", "A2", edge_type=EdgeType.SOLIDARITY, solidarity_strength=0.8)

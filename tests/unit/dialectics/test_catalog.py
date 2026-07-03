@@ -8,10 +8,10 @@ relies on when it fills :class:`GraphInputs` each tick.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.dialectics.instances.catalog import GraphInputs, build_default_registry
+from babylon.engine.graph import BabylonUGraph
 
 pytestmark = [pytest.mark.unit, pytest.mark.math]
 
@@ -93,21 +93,21 @@ class TestTenancy:
 
 class TestAtomization:
     def test_fully_atomized_solidarity_graph(self) -> None:
-        g: nx.Graph[str] = nx.Graph()
+        g = BabylonUGraph()
         g.add_nodes_from(["C001", "C002", "C003"])  # no SOLIDARITY edges
         states = _states(GraphInputs(solidarity_subgraph=g))
         assert states["atomization"].gap == pytest.approx(1.0)
         assert states["atomization"].balance == pytest.approx(-1.0)  # atomized pole
 
     def test_fully_unified_solidarity_graph(self) -> None:
-        g: nx.Graph[str] = nx.Graph()
+        g = BabylonUGraph()
         g.add_edges_from([("C001", "C002"), ("C002", "C003"), ("C001", "C003")])
         states = _states(GraphInputs(solidarity_subgraph=g))
         assert states["atomization"].gap == pytest.approx(0.0)
         assert states["atomization"].balance == pytest.approx(1.0)  # unified pole
 
     def test_empty_subgraph_is_zero(self) -> None:
-        states = _states(GraphInputs(solidarity_subgraph=nx.Graph()))
+        states = _states(GraphInputs(solidarity_subgraph=BabylonUGraph()))
         assert states["atomization"].gap == 0.0
         assert states["atomization"].balance == 0.0
 

@@ -20,10 +20,10 @@ The weekly tick model provides:
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -58,7 +58,7 @@ class TestWeeklyConversion:
         annual wage rate is applied.
         """
         # Arrange: Graph with wages edge
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "bourgeoisie",
             wealth=1.0,
@@ -110,7 +110,7 @@ class TestWeeklyConversion:
         (additive) for wages, resulting in the annual rate over 52 ticks.
         """
         # Arrange: Graph with wages edge
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "bourgeoisie",
             wealth=100.0,  # Large enough for 52 payments
@@ -166,7 +166,7 @@ class TestWeeklyConversion:
         Per-tick extraction should be: annual_rate / 52.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "worker",
             wealth=1.0,

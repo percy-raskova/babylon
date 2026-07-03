@@ -13,10 +13,10 @@ Test Intent:
 - Fascist Bifurcation: no transmission when solidarity_strength=0
 """
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines, SolidarityDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.models.enums import EdgeType, EventType
@@ -43,7 +43,7 @@ class TestSolidaritySystemBasic:
         New C_w consciousness = 0.1 + 0.64 = 0.74
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # P_w: Periphery worker in revolutionary struggle (consciousness 0.9)
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
@@ -76,7 +76,7 @@ class TestSolidaritySystemBasic:
     def test_no_transmission_below_activation_threshold(self) -> None:
         """No transmission if source consciousness below activation threshold."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # P_w: consciousness = 0.2 (below 0.3 threshold)
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.2, "national_identity": 0.8, "agitation": 0.0}
@@ -122,7 +122,7 @@ class TestSolidaritySystemFascistBifurcation:
         Result: Core workers remain passive consumers -> Fascist turn.
         """
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 0.9 (revolutionary)
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
@@ -156,7 +156,7 @@ class TestSolidaritySystemFascistBifurcation:
 
         for sigma in [0.2, 0.5, 0.8]:
             # Arrange
-            graph: nx.DiGraph[str] = nx.DiGraph()
+            graph = BabylonGraph()
             # consciousness 0.9
             graph.add_node(
                 "P_w",
@@ -196,7 +196,7 @@ class TestSolidaritySystemEvents:
     def test_consciousness_transmission_emits_event(self) -> None:
         """CONSCIOUSNESS_TRANSMISSION event emitted when delta > 0.01."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 0.9
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
@@ -237,7 +237,7 @@ class TestSolidaritySystemEvents:
         """MASS_AWAKENING event when target crosses mass awakening threshold."""
         # Arrange: Start C_w just below mass_awakening_threshold (0.6)
         # consciousness 0.5 (below 0.6 threshold)
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 0.9
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
@@ -276,7 +276,7 @@ class TestSolidaritySystemEvents:
     def test_no_event_on_negligible_transmission(self) -> None:
         """No event when delta is negligible (< 0.01)."""
         # Arrange: Almost equal consciousness
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 0.9
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
@@ -315,7 +315,7 @@ class TestSolidaritySystemEdgeCases:
     def test_only_solidarity_edges_processed(self) -> None:
         """Only SOLIDARITY edge type triggers transmission."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 0.9
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
@@ -346,7 +346,7 @@ class TestSolidaritySystemEdgeCases:
     def test_multiple_solidarity_edges(self) -> None:
         """Multiple solidarity edges accumulate transmissions."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 0.9
         graph.add_node(
             "P_w1",
@@ -397,7 +397,7 @@ class TestSolidaritySystemEdgeCases:
     def test_consciousness_clamped_to_bounds(self) -> None:
         """Consciousness stays in [0, 1] range after transmission."""
         # Arrange: Extreme case that would exceed bounds
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 1.0
         graph.add_node(
             "P_w", ideology={"class_consciousness": 1.0, "national_identity": 0.0, "agitation": 0.0}
@@ -431,7 +431,7 @@ class TestSolidaritySystemEdgeCases:
     def test_missing_ideology_defaults_to_zero(self) -> None:
         """Nodes without ideology attribute default to 0 consciousness (neutral)."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 0.9
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
@@ -469,7 +469,7 @@ class TestSolidaritySystemConfig:
     def test_custom_activation_threshold(self) -> None:
         """System uses config's solidarity_activation_threshold."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness = 0.35 (above default 0.3, below custom 0.4)
         graph.add_node(
             "P_w",
@@ -503,7 +503,7 @@ class TestSolidaritySystemConfig:
     def test_custom_mass_awakening_threshold(self) -> None:
         """System uses defines' mass_awakening_threshold for events."""
         # Arrange
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # consciousness 0.9
         graph.add_node(
             "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}

@@ -11,6 +11,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ooda import OODASystem
 from babylon.models.enums import (
@@ -49,7 +50,7 @@ def _build_detroit_graph() -> nx.DiGraph[str]:
     Members (persons with lifecycle phases, linked via MEMBERSHIP):
         - p1..p6: adults and elders connected to orgs
     """
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
 
     # --- Community node ---
     graph.add_node(
@@ -321,7 +322,7 @@ class TestOODASystemExecution:
 
     def test_system_does_not_crash_on_empty_graph(self) -> None:
         """OODASystem handles empty graph gracefully."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         services = ServiceContainer.create()
         system = OODASystem()
 

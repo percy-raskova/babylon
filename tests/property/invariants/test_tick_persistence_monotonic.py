@@ -28,6 +28,7 @@ import networkx as nx
 import pytest
 from hypothesis import HealthCheck, given, settings
 
+from babylon.engine.graph import BabylonGraph
 from babylon.persistence import MonotonicityViolationError, RuntimeDatabase
 from tests.property.strategies.multi_tick_sequence import (
     different_payload_pair_strategy,
@@ -48,7 +49,7 @@ def _payload_to_graph(payload: dict) -> nx.DiGraph[str]:
     persist_tick / hydrate_graph distinct round-trippable content per
     tick without depending on full WorldState semantics.
     """
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node("payload_node", type="Test", **payload)
     return graph
 

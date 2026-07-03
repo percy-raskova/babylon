@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from babylon.bifurcation.analysis import bifurcation_tendency
 from babylon.config.defines import BifurcationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import (
     CommunityState,
 )
@@ -78,7 +79,7 @@ def _build_analysis_scenario(
     Returns:
         Tuple of (graph, hypergraph, agent_memberships).
     """
-    graph: nx.DiGraph = nx.DiGraph()
+    graph: nx.DiGraph = BabylonGraph()
 
     # Add agent nodes
     for agent_id in agent_communities:
@@ -381,7 +382,7 @@ class TestDegenerateCases:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Empty graph → indeterminate with zero metrics."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         H: xgi.Hypergraph = xgi.Hypergraph()
         states: dict[CommunityType, CommunityState] = {}
         memberships: dict[str, set[CommunityType]] = {}
@@ -438,7 +439,7 @@ class TestDegenerateCases:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Single agent, no edges → indeterminate."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         graph.add_node("lone_wolf", _node_type="social_class", wealth=50.0)
         H: xgi.Hypergraph = xgi.Hypergraph()
         states: dict[CommunityType, CommunityState] = {}

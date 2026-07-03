@@ -13,6 +13,7 @@ import pytest
 
 from babylon.bifurcation.ceiling import compute_solidarity_ceiling
 from babylon.config.defines import BifurcationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import CommunityType, EdgeType
 
 from .factories import (
@@ -179,7 +180,7 @@ class TestSolidarityCeilingExploitation:
     @pytest.mark.unit
     def test_separate_exploiters_no_bonus(self, bifurcation_defines: BifurcationDefines) -> None:
         """Different exploitation sources should NOT give bonus."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         graph.add_node("worker_a", _node_type="social_class", wealth=50.0)
         graph.add_node("worker_b", _node_type="social_class", wealth=40.0)
         graph.add_node("exploiter_1", _node_type="social_class", wealth=500.0)

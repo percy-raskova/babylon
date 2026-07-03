@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.field_derivative import (
     _collect_neighbor_fields,
     _compute_node_derivatives,
@@ -39,7 +40,7 @@ def _make_triangle_graph(
     Returns:
         NetworkX DiGraph.
     """
-    g = nx.DiGraph()
+    g = BabylonGraph()
     for node_id, val in field_values.items():
         g.add_node(
             node_id,

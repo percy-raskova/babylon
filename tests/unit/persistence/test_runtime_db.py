@@ -17,6 +17,7 @@ import sqlite3
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.persistence import RuntimeDatabase
 
 
@@ -110,7 +111,7 @@ class TestGraphPersistence:
     def test_persist_empty_graph(self) -> None:
         """Persisting empty graph should not fail."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             db.persist_tick(tick=0, graph=graph)
 
             # Verify no crash and empty result
@@ -121,7 +122,7 @@ class TestGraphPersistence:
     def test_persist_and_hydrate_nodes(self) -> None:
         """Nodes should round-trip with all attributes preserved."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             graph.add_node(
                 "proletariat_detroit",
                 type="SocialClass",
@@ -157,7 +158,7 @@ class TestGraphPersistence:
     def test_persist_and_hydrate_edges(self) -> None:
         """Edges should round-trip with all attributes preserved."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             graph.add_node("proletariat", type="SocialClass")
             graph.add_node("bourgeoisie", type="SocialClass")
             graph.add_edge(
@@ -185,12 +186,12 @@ class TestGraphPersistence:
         """
         with RuntimeDatabase(in_memory=True) as db:
             # Tick 0: proletariat has wealth=50
-            graph0: nx.DiGraph = nx.DiGraph()
+            graph0: nx.DiGraph = BabylonGraph()
             graph0.add_node("proletariat", type="SocialClass", wealth=50.0)
             db.persist_tick(tick=0, graph=graph0)
 
             # Tick 1: proletariat has wealth=40 (extracted)
-            graph1: nx.DiGraph = nx.DiGraph()
+            graph1: nx.DiGraph = BabylonGraph()
             graph1.add_node("proletariat", type="SocialClass", wealth=40.0)
             db.persist_tick(tick=1, graph=graph1)
 
@@ -206,7 +207,7 @@ class TestGraphPersistence:
         """hydrate_graph(tick=None) should load the latest tick."""
         with RuntimeDatabase(in_memory=True) as db:
             for tick in range(5):
-                graph: nx.DiGraph = nx.DiGraph()
+                graph: nx.DiGraph = BabylonGraph()
                 graph.add_node("test", type="Test", tick_value=tick)
                 db.persist_tick(tick=tick, graph=graph)
 
@@ -225,12 +226,12 @@ class TestGraphPersistence:
         ``test_persist_different_payload_raises`` below).
         """
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             graph.add_node("node1", type="Test", value=1)
             db.persist_tick(tick=0, graph=graph)
 
             # Re-persist with IDENTICAL payload — must succeed silently
-            graph_identical: nx.DiGraph = nx.DiGraph()
+            graph_identical: nx.DiGraph = BabylonGraph()
             graph_identical.add_node("node1", type="Test", value=1)
             db.persist_tick(tick=0, graph=graph_identical)  # no exception
 
@@ -256,12 +257,12 @@ class TestGraphPersistence:
         from babylon.persistence import MonotonicityViolationError
 
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             graph.add_node("node1", type="Test", value=1)
             db.persist_tick(tick=0, graph=graph)
 
             # Re-persist with DIFFERENT payload — must raise
-            graph_different: nx.DiGraph = nx.DiGraph()
+            graph_different: nx.DiGraph = BabylonGraph()
             graph_different.add_node("node1", type="Test", value=2)
 
             with pytest.raises(MonotonicityViolationError) as exc_info:
@@ -283,7 +284,7 @@ class TestEventPersistence:
     def test_persist_events(self) -> None:
         """Events should be persisted with tick."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             events = [
                 {"type": "UPRISING", "entity_id": "proletariat", "intensity": 0.8},
                 {"type": "REPRESSION", "entity_id": "state", "force": 0.5},
@@ -298,7 +299,7 @@ class TestEventPersistence:
     def test_events_are_per_tick_not_cumulative(self) -> None:
         """Events should be isolated per tick (common gotcha)."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
 
             # Tick 0: one event
             db.persist_tick(tick=0, graph=graph, events=[{"type": "EVENT_A"}])
@@ -318,7 +319,7 @@ class TestEventPersistence:
     def test_get_all_events(self) -> None:
         """get_events(tick=None) should return all events ordered."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             db.persist_tick(tick=0, graph=graph, events=[{"type": "A"}])
             db.persist_tick(tick=1, graph=graph, events=[{"type": "B"}, {"type": "C"}])
 
@@ -539,7 +540,7 @@ class TestEdgeCases:
     def test_persist_non_serializable_attribute_is_skipped(self) -> None:
         """Non-JSON-serializable attributes should be skipped, not crash."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             # Add a node with a non-serializable attribute
             graph.add_node(
                 "test",
@@ -560,7 +561,7 @@ class TestEdgeCases:
     def test_persist_multiple_edge_types_between_same_nodes(self) -> None:
         """Multiple edge types between same nodes should all be preserved."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             graph.add_node("A", type="Test")
             graph.add_node("B", type="Test")
 
@@ -585,7 +586,7 @@ class TestEdgeCases:
     def test_unicode_in_attributes(self) -> None:
         """Unicode strings in attributes should round-trip correctly."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             graph.add_node(
                 "test",
                 type="Test",
@@ -602,7 +603,7 @@ class TestEdgeCases:
     def test_nested_dict_in_attributes(self) -> None:
         """Nested dictionaries in attributes should round-trip."""
         with RuntimeDatabase(in_memory=True) as db:
-            graph: nx.DiGraph = nx.DiGraph()
+            graph: nx.DiGraph = BabylonGraph()
             graph.add_node(
                 "test",
                 type="Test",

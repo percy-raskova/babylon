@@ -29,6 +29,8 @@ from uuid import uuid4
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
+
 pytestmark = pytest.mark.integration
 
 
@@ -123,7 +125,7 @@ class TestFetchSessionRngSeedFromPool:
 def _empty_state_and_graph() -> tuple[Any, nx.DiGraph]:
     from babylon.models.world_state import WorldState
 
-    graph: nx.DiGraph = nx.DiGraph()
+    graph: nx.DiGraph = BabylonGraph()
     graph.graph["tick"] = 0
     state = WorldState.from_graph(graph, tick=0)
     return state, graph

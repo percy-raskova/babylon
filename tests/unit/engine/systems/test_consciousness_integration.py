@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType
 
 
@@ -34,11 +35,10 @@ class TestConsciousnessSystemMaterialBuffer:
         """Build a minimal graph + services for ConsciousnessSystem testing."""
 
         # Build a real GraphProtocol via the adapter
-        import networkx as nx
 
         from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
-        G = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node(
             "worker_1",
             node_type="social_class",

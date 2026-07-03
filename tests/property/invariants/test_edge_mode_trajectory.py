@@ -22,6 +22,7 @@ import networkx as nx
 import pytest
 from hypothesis import HealthCheck, given, settings
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.simulation_engine import SimulationEngine
 from babylon.engine.systems.edge_transition import (
     _VALID_TRANSITIONS,
@@ -43,7 +44,7 @@ from tests.property.strategies.worldstate import worldstate_strategy
 
 def _build_two_node_graph(starting_mode: EdgeMode) -> nx.DiGraph[str]:
     """Build a 2-node graph with one edge carrying the starting edge_mode."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "src",
         _node_type="social_class",

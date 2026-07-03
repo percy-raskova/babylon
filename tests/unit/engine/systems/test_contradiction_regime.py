@@ -11,6 +11,7 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.models.enums import EdgeType, EventType
@@ -25,7 +26,7 @@ def _two_county_graph() -> nx.DiGraph[str]:
     no SOLIDARITY subgraph the atomization gap is 0, so capital_labor (gap 0.5)
     is the unambiguous principal — the opposition the regime probes.
     """
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     for i, county in enumerate(("26001", "26002"), start=1):
         graph.add_node(f"w{i}", wealth=10.0, county_fips=county)
         graph.add_node(f"o{i}", wealth=30.0, county_fips=county)

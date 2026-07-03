@@ -6,8 +6,6 @@ Task: T008
 
 from __future__ import annotations
 
-import networkx as nx
-
 from babylon.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
 from babylon.economics.financial_crisis.types import FinancialCrisisAssessment
 from babylon.economics.rent.types import HousingValueDecomposition, RentExtraction
@@ -24,6 +22,7 @@ from babylon.economics.tick.types import (
     SimulationTickState,
     SmoothedCoefficients,
 )
+from babylon.engine.graph import BabylonGraph
 from tests.unit.economics.tick.conftest import WAYNE_FIPS, build_territory_graph
 
 
@@ -82,7 +81,7 @@ class TestWriteTickStateToGraph:
         sample_tick_state: SimulationTickState,
     ) -> None:
         """Verify non-territory nodes are not modified."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(WAYNE_FIPS, _node_type="territory")
         graph.add_node("social_class_1", _node_type="social_class")
         write_tick_state_to_graph(graph, sample_tick_state)
@@ -95,7 +94,7 @@ class TestWriteTickStateToGraph:
         sample_tick_state: SimulationTickState,
     ) -> None:
         """Verify no error when FIPS not in graph."""
-        graph: nx.DiGraph[str] = nx.DiGraph()  # empty graph
+        graph = BabylonGraph()  # empty graph
         # Should not raise
         write_tick_state_to_graph(graph, sample_tick_state)
         assert TICK_DYNAMICS_KEY in graph.graph

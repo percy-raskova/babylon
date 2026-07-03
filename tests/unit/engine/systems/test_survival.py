@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.models.enums import SocialRole
@@ -95,7 +96,7 @@ class TestPopulationNormalization:
         At wealth >> threshold, P approaches 1.0
         At wealth << threshold, P approaches 0.0
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Single worker with $1000 - should have high P(S|A)
         _create_entity_node(
@@ -136,7 +137,7 @@ class TestPopulationNormalization:
         With population=1, wealth_per_capita == wealth (aggregate).
         This ensures backward compatibility with existing single-entity scenarios.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Wealthy single entity
         _create_entity_node(
@@ -173,7 +174,7 @@ class TestPopulationNormalization:
 
         Inactive entities should retain their previous P(S|A) value (or None).
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Dead entity - should be skipped
         _create_entity_node(
@@ -199,7 +200,7 @@ class TestPopulationNormalization:
         Edge case: A technically "active" entity with no population should
         return P(S|A)=0 (no one to survive) rather than crash.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Active entity with zero population (edge case)
         _create_entity_node(
@@ -225,7 +226,7 @@ class TestPopulationNormalization:
         Block B: wealth=1000, pop=1000 → per_capita=1.0
         Both should have the same P(S|A).
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         _create_entity_node(
             graph,

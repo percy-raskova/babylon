@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.persistence.postgres_runtime import PostgresRuntime
 
 # ── Fixtures ──────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ def _build_graph(
     edges: list[tuple[str, str, dict[str, Any]]] | None = None,
 ) -> nx.DiGraph[str]:
     """Build a test graph."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     if nodes:
         for node_id, attrs in nodes.items():
             graph.add_node(node_id, **attrs)

@@ -6,8 +6,7 @@ are accessed through typed wrapper services, not raw data structures.
 
 from __future__ import annotations
 
-import networkx as nx
-
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.graph_wrappers import CommunityHypergraph, DyadicGraph
 from babylon.models.enums import EdgeType
 
@@ -17,13 +16,13 @@ class TestDyadicGraph:
 
     def test_wrap_creates_dyadic_graph(self) -> None:
         """Can wrap a raw NetworkX graph."""
-        g = nx.DiGraph()
+        g = BabylonGraph()
         dg = DyadicGraph(g)
         assert dg.raw is g
 
     def test_add_and_query_edge(self) -> None:
         """Can add and query typed edges."""
-        g = nx.DiGraph()
+        g = BabylonGraph()
         g.add_node("C001", _node_type="social_class")
         g.add_node("C002", _node_type="social_class")
         dg = DyadicGraph(g)
@@ -35,7 +34,7 @@ class TestDyadicGraph:
 
     def test_edge_type_filtering(self) -> None:
         """edges_of_type only returns edges of the specified type."""
-        g = nx.DiGraph()
+        g = BabylonGraph()
         g.add_node("C001", _node_type="social_class")
         g.add_node("C002", _node_type="social_class")
         dg = DyadicGraph(g)
@@ -47,7 +46,7 @@ class TestDyadicGraph:
 
     def test_node_count(self) -> None:
         """Reports correct node count."""
-        g = nx.DiGraph()
+        g = BabylonGraph()
         g.add_node("C001", _node_type="social_class")
         g.add_node("T001", _node_type="territory")
         dg = DyadicGraph(g)

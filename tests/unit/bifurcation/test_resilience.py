@@ -16,6 +16,8 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonUGraph
+
 # =============================================================================
 # TEST: BETTI NUMBERS
 # =============================================================================
@@ -91,7 +93,7 @@ class TestComputeBettiNumbers:
         """Single node: beta_0=1, beta_1=0."""
         from babylon.bifurcation.resilience import compute_betti_numbers
 
-        G: nx.Graph = nx.Graph()
+        G: nx.Graph = BabylonUGraph()
         G.add_node("solo")
 
         beta_0, beta_1 = compute_betti_numbers(G)
@@ -319,7 +321,7 @@ class TestFindCriticalCutsets:
         """Single node: no edges to cut."""
         from babylon.bifurcation.resilience import find_critical_cutsets
 
-        G: nx.Graph = nx.Graph()
+        G: nx.Graph = BabylonUGraph()
         G.add_node("solo")
 
         result = find_critical_cutsets(G, max_cutset_size=3)
@@ -463,7 +465,7 @@ class TestComputePurgeResilience:
         """
         from babylon.bifurcation.resilience import compute_purge_resilience
 
-        G: nx.Graph = nx.Graph()
+        G: nx.Graph = BabylonUGraph()
         G.add_node("solo")
 
         result = compute_purge_resilience(G, removal_rate=0.5)

@@ -23,6 +23,7 @@ from babylon.engine.event_evaluator import (
     get_matching_nodes_for_resolution,
     get_nested_value,
 )
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.event_template import (
     EdgeCondition,
     EventTemplate,
@@ -44,7 +45,7 @@ from babylon.models.enums import EdgeType, SocialRole
 @pytest.fixture
 def simple_graph() -> nx.DiGraph:
     """Create a simple test graph with two social class nodes."""
-    g: nx.DiGraph = nx.DiGraph()
+    g: nx.DiGraph = BabylonGraph()
 
     g.add_node(
         PERIPHERY_WORKER_ID,
@@ -77,7 +78,7 @@ def simple_graph() -> nx.DiGraph:
 @pytest.fixture
 def solidarity_graph() -> nx.DiGraph:
     """Create a graph with solidarity edges."""
-    g: nx.DiGraph = nx.DiGraph()
+    g: nx.DiGraph = BabylonGraph()
 
     g.add_node(
         PERIPHERY_WORKER_ID,

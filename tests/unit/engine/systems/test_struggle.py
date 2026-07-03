@@ -16,6 +16,7 @@ from collections.abc import Generator
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.models.enums import EdgeType, EventType, SocialRole
@@ -113,7 +114,7 @@ class TestPeripheralRevolt:
         This models anti-colonial revolution cutting off imperial extraction.
         The periphery says: "We'd rather fight than accept these conditions."
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_imperial_circuit(graph)
 
         # Verify edges exist before revolt
@@ -140,7 +141,7 @@ class TestPeripheralRevolt:
 
         When conditions are survivable through compliance, revolt doesn't occur.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_imperial_circuit(graph)
 
         # Override P_w to be acquiescent (high P(S|A), low P(S|R))
@@ -160,7 +161,7 @@ class TestPeripheralRevolt:
 
     def test_revolt_emits_peripheral_revolt_event(self, services: ServiceContainer) -> None:
         """PERIPHERAL_REVOLT event emitted with edges_severed count."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_imperial_circuit(graph)
 
         captured_events: list = []
@@ -186,7 +187,7 @@ class TestPeripheralRevolt:
         P_w as SOURCE means "P_w is being exploited by target".
         Revolt severs these edges (P_w stops being exploited).
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_imperial_circuit(graph)
 
         # Add a non-exploitation edge that should NOT be severed
@@ -210,7 +211,7 @@ class TestPeripheralRevolt:
 
     def test_inactive_entity_does_not_revolt(self, services: ServiceContainer) -> None:
         """Dead/inactive entities cannot revolt."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_imperial_circuit(graph)
 
         # Mark P_w as inactive (dead)
@@ -229,7 +230,7 @@ class TestPeripheralRevolt:
 
     def test_revolt_occurs_at_threshold_equality(self, services: ServiceContainer) -> None:
         """Revolt does NOT occur when P(S|R) == P(S|A) (need strict >)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_imperial_circuit(graph)
 
         # Equal probabilities - not enough for revolt
@@ -264,7 +265,7 @@ def _create_minimal_struggle_graph(
     Creates a single target node with configurable attributes, and optionally
     SOLIDARITY edges for testing solidarity infrastructure gain.
     """
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
 
     graph.add_node(
         "target",

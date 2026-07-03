@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.state_finance import StateFinance
@@ -93,10 +94,9 @@ class TestBackwardCompatibility:
         This ensures backward compatibility with graphs created before
         events were stored in graph metadata.
         """
-        import networkx as nx
 
         # Create a bare graph with no events metadata
-        graph = nx.DiGraph()
+        graph = BabylonGraph()
 
         restored = WorldState.from_graph(graph, tick=0)
 

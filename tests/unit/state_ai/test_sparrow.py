@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import networkx as nx
 
+from babylon.engine.graph import BabylonGraph
 from babylon.ooda.attention.sparrow import analyze_network
 
 
@@ -41,7 +42,7 @@ class TestSparrowAnalysisCentrality:
 
     def test_empty_graph_produces_empty_analysis(self) -> None:
         """Empty graph produces analysis with no rankings."""
-        g: nx.DiGraph = nx.DiGraph()
+        g: nx.DiGraph = BabylonGraph()
         analysis = analyze_network("t1", 1, g)
         assert analysis.centrality_rankings == {}
         assert analysis.equivalence_classes == []
@@ -49,7 +50,7 @@ class TestSparrowAnalysisCentrality:
 
     def test_single_node_graph(self) -> None:
         """Single node produces analysis with degree centrality entry."""
-        g: nx.DiGraph = nx.DiGraph()
+        g: nx.DiGraph = BabylonGraph()
         g.add_node("sole_node")
         analysis = analyze_network("t1", 1, g)
         assert "degree" in analysis.centrality_rankings

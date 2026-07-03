@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import (
     CommunityMembership,
     CommunityState,
@@ -224,9 +225,8 @@ class TestCommunitySystemStep:
 
     def _make_graph_with_solidarity_edge(self) -> Any:
         """Create a minimal graph with a SOLIDARITY edge between two agents."""
-        import networkx as nx
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "A1",
             _node_type="social_class",

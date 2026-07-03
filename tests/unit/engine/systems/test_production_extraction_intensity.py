@@ -33,6 +33,7 @@ from collections.abc import Generator
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.production import ProductionSystem
@@ -120,7 +121,7 @@ class TestProductionSetsExtractionIntensity:
             production = 1.0/52 * 1.0 (full biocapacity ratio)
             intensity = (1.0/52) / 100.0 = 0.000192
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -144,7 +145,7 @@ class TestProductionSetsExtractionIntensity:
         Two workers on the same territory should produce combined
         extraction_intensity equal to sum of individual productions.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_worker_node(graph, "COMPRADOR_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
@@ -176,7 +177,7 @@ class TestProductionSetsExtractionIntensity:
             total_production = 6 * 0.0192 ≈ 0.1154
             intensity = min(1.0, 0.1154 / 0.01) = min(1.0, 11.54) = 1.0
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # 6 workers with tiny max_biocapacity to exceed cap without 6000 nodes
         for i in range(6):
@@ -200,7 +201,7 @@ class TestProductionSetsExtractionIntensity:
         If no workers produce on a territory in a given tick,
         extraction_intensity should be 0.0 (or reset to 0.0).
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         # Territory with pre-existing intensity (from previous tick)
         _create_territory_node(
             graph, "T001", biocapacity=100.0, max_biocapacity=100.0, extraction_intensity=0.5
@@ -221,7 +222,7 @@ class TestProductionSetsExtractionIntensity:
         Dead workers (active=False) should not produce or contribute
         to extraction_intensity.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, active=False)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -238,7 +239,7 @@ class TestProductionSetsExtractionIntensity:
         Production = base_labor_power * (biocapacity / max_biocapacity)
         At 50% biocapacity, production is halved, so intensity is halved.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=50.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
@@ -260,7 +261,7 @@ class TestProductionSetsExtractionIntensity:
         self, services: ServiceContainer
     ) -> None:
         """Workers on separate territories affect only their territory."""
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_worker_node(graph, "COMPRADOR_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
@@ -311,7 +312,7 @@ class TestExtractionIntensityCausesDepletion:
             extraction = 0.0192 * 100 * 1.2 = 2.304
             delta = 2.0 - 2.304 = -0.304
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Create 100 workers for intensity > breakeven
         for i in range(100):
@@ -349,13 +350,13 @@ class TestExtractionIntensityCausesDepletion:
         This verifies the negative feedback: as biocapacity depletes,
         production decreases, which eventually slows depletion.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=50.0, max_biocapacity=100.0)
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         # Full biocapacity production
-        full_graph: nx.DiGraph = nx.DiGraph()
+        full_graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(full_graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(full_graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_tenancy_edge(full_graph, "PERIPHERY_WORKER_ID", "T001")

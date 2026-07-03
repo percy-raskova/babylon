@@ -12,6 +12,7 @@ import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
 from babylon.models.enums import (
@@ -24,7 +25,7 @@ from babylon.models.enums import (
 
 def _make_graph_with_edge_mode() -> nx.DiGraph[str]:
     """Create a graph with two nodes and an edge that has an edge_mode."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "C001",
         _node_type="social_class",
@@ -93,7 +94,7 @@ class TestEdgeTransitionSystemBasic:
 
     def test_edges_without_mode_are_skipped(self) -> None:
         """Edges that don't have edge_mode are not processed."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("C001", _node_type="social_class", wealth=5.0)
         graph.add_node("C002", _node_type="social_class", wealth=30.0)
         graph.add_edge("C001", "C002", edge_type=EdgeType.EXPLOITATION)
@@ -143,7 +144,7 @@ class TestEdgeTransitionStateMachine:
 
     def test_prohibited_transition_not_taken(self) -> None:
         """Prohibited transitions (e.g., EXTRACTIVE -> SOLIDARISTIC) never occur."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -198,7 +199,7 @@ class TestContradictionCharacterFlag:
 
     def test_default_character_is_non_antagonistic(self) -> None:
         """Edges without character flag get NON_ANTAGONISTIC default."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -235,7 +236,7 @@ class TestAspectReversal:
 
     def test_aspect_reversal_event_emitted(self) -> None:
         """ASPECT_REVERSAL event emitted when dominant party switches."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -281,7 +282,7 @@ class TestCoOptiveMechanics:
 
     def test_co_optive_suppresses_df_dt(self) -> None:
         """CO-OPTIVE edges suppress df/dt at co-opted node for declared fields."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -325,7 +326,7 @@ class TestCoOptiveMechanics:
 
     def test_co_optive_breakdown_emits_event(self) -> None:
         """CO-OPTIVE breakdown emits CO_OPTIVE_BREAKDOWN event."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -398,7 +399,7 @@ class TestRegimePredicateMetric:
         from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
         from babylon.engine.systems.edge_transition._legacy import _regime_code
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.graph["dialectical_regime"] = {"regime": "sublation", "principal": "capital_labor"}
         assert _regime_code(NetworkXAdapter.wrap(graph)) == 2.0
 
@@ -406,5 +407,5 @@ class TestRegimePredicateMetric:
         from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
         from babylon.engine.systems.edge_transition._legacy import _regime_code
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         assert _regime_code(NetworkXAdapter.wrap(graph)) is None

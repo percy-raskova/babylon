@@ -13,9 +13,9 @@ from __future__ import annotations
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
-import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import System
 from babylon.models.graph import GraphNode
@@ -53,14 +53,14 @@ class TestWrapGraph:
     """_wrap_graph: raw nx.DiGraph → GraphProtocol; idempotent on already-wrapped."""
 
     def test_wraps_raw_networkx(self) -> None:
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         wrapped = SystemBase._wrap_graph(g)
         from babylon.engine.graph_protocol import GraphProtocol
 
         assert isinstance(wrapped, GraphProtocol)
 
     def test_wrap_is_idempotent(self) -> None:
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         wrapped_once = SystemBase._wrap_graph(g)
         wrapped_twice = SystemBase._wrap_graph(wrapped_once)
         assert wrapped_once is wrapped_twice

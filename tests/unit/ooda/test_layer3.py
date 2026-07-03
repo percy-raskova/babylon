@@ -12,6 +12,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import ActionType, EdgeType, EventType
 from babylon.ooda.layer3 import process_layer3
 from babylon.ooda.types import Action, ActionResult
@@ -48,7 +49,7 @@ def _make_community_graph(
     contestation: float = 0.2,
 ) -> nx.DiGraph[str]:
     """Create a graph with a community node."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         community_id,
         _node_type="community",

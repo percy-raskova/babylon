@@ -22,6 +22,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 
 from babylon.engine.context import TickContext
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import (
     _DEFAULT_SYSTEMS,
@@ -111,7 +112,6 @@ class TestConsequenceAfterActions:
         the Consequence-System timestamp — exactly the AS1 violation
         pattern). Negative test, no Hypothesis.
         """
-        import networkx as nx
 
         from babylon.models.enums import OrgType
 
@@ -122,7 +122,7 @@ class TestConsequenceAfterActions:
         # Build a 2-org graph directly (mirrors tests/unit/ooda/test_ooda_system.py
         # pattern — organization nodes are added to the graph with attributes,
         # not constructed via the Organization Pydantic model).
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         for i in range(2):
             graph.add_node(
                 f"org_{i}",

@@ -7,6 +7,7 @@ import math
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.territory_diagnostics import (
     HexCountyRollup,
     aggregate_counties_by_state,
@@ -38,11 +39,11 @@ def _add_hex(
 @pytest.mark.cross_scale
 class TestAggregateHexesByCounty:
     def test_empty_graph_returns_empty(self) -> None:
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         assert aggregate_hexes_by_county(g) == {}
 
     def test_single_hex_one_county(self) -> None:
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         _add_hex(g, "872d34a89ffffff", "26163", c=10.0, v=5.0, s=3.0, k=100.0)
         rollups = aggregate_hexes_by_county(g)
         assert "26163" in rollups
@@ -51,7 +52,7 @@ class TestAggregateHexesByCounty:
         assert r.hex_count == 1
 
     def test_two_hexes_one_county_summed(self) -> None:
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         _add_hex(g, "872d34a89ffffff", "26163", c=10.0, v=5.0)
         _add_hex(g, "872d34b0bffffff", "26163", c=20.0, v=15.0)
         r = aggregate_hexes_by_county(g)["26163"]
@@ -60,7 +61,7 @@ class TestAggregateHexesByCounty:
         assert r.hex_count == 2
 
     def test_two_counties_isolated(self) -> None:
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         _add_hex(g, "872d34a89ffffff", "26163", c=10.0)
         _add_hex(g, "872d34b0bffffff", "26125", c=20.0)
         rollups = aggregate_hexes_by_county(g)
@@ -70,7 +71,7 @@ class TestAggregateHexesByCounty:
         assert rollups["26125"].hex_count == 1
 
     def test_skips_non_hex_nodes(self) -> None:
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         _add_hex(g, "872d34a89ffffff", "26163", c=10.0)
         g.add_node("canada", _node_type="external")
         g.add_node("26163", _node_type="county")
@@ -80,7 +81,7 @@ class TestAggregateHexesByCounty:
         assert rollups["26163"].hex_count == 1
 
     def test_hex_without_county_fips_skipped(self) -> None:
-        g: nx.DiGraph[str] = nx.DiGraph()
+        g = BabylonGraph()
         g.add_node("orphan", _node_type="hex", c=1.0, v=1.0, s=1.0, k=1.0)
         assert aggregate_hexes_by_county(g) == {}
 

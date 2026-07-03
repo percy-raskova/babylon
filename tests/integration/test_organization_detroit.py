@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.config.defines import OrganizationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
@@ -255,7 +256,7 @@ class TestScenario5ClassComposition:
     @pytest.mark.integration
     def test_class_distribution(self) -> None:
         """RWP membership: 500 industrial, 300 service, 50 petty-bourgeois."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org_rwp", _node_type="organization")
         G.add_node("sc-ind", _node_type="social_class", role="proletariat_industrial")
         G.add_node("sc-svc", _node_type="social_class", role="proletariat_service")
@@ -284,7 +285,7 @@ class TestScenario6LifecycleComposition:
     @pytest.mark.integration
     def test_lifecycle_distribution(self) -> None:
         """Church: 200 youth, 600 adult, 200 elder."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("org_first_baptist", _node_type="organization")
         G.add_node("sc-youth", _node_type="social_class", lifecycle_phase="youth")
         G.add_node("sc-adult", _node_type="social_class", lifecycle_phase="adult")
@@ -332,7 +333,7 @@ class TestScenario8KeyFigures:
     @pytest.fixture
     def star_graph(self) -> nx.DiGraph[str]:
         """Church COMMAND graph: pastor as hub, 3 deacons as leaves."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf_pastor", "kf_deacon_1", "kf_deacon_2", "kf_deacon_3"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure", name=n, role="key_figure")

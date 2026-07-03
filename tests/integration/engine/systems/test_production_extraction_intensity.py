@@ -14,6 +14,7 @@ from collections.abc import Generator
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.production import ProductionSystem
@@ -90,7 +91,7 @@ class TestHumpShapeDecay:
         With sufficient workers, biocapacity should steadily decline
         over 100 ticks, demonstrating the metabolic rift dynamics.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
 
         # Create enough workers for intensity > breakeven
         # Need ~87 workers for breakeven (0.0167 * 100 / 0.0192 ~ 87)
@@ -129,7 +130,7 @@ class TestHumpShapeDecay:
         The first 50 ticks should accumulate more wealth than
         the second 50 ticks due to biocapacity depletion.
         """
-        graph: nx.DiGraph = nx.DiGraph()
+        graph: nx.DiGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
 
         # Use high extraction to accelerate depletion for test

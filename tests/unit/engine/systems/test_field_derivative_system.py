@@ -12,6 +12,7 @@ import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
@@ -20,7 +21,7 @@ from babylon.models.enums import EdgeType, EventType
 
 def _make_two_node_graph() -> nx.DiGraph[str]:
     """Create a minimal graph with two connected social_class nodes."""
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "C001",
         _node_type="social_class",
@@ -136,7 +137,7 @@ class TestFieldDerivativeLaplacian:
 
     def test_isolated_node_laplacian_zero(self) -> None:
         """EC-002: Isolated node (degree 0) gets Laplacian = 0.0."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "C001",
             _node_type="social_class",
@@ -279,7 +280,7 @@ class TestFieldDerivativeSystemBasic:
         a non-zero df/dt that FieldDerivativeSystem computes without any
         field_registry.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("C001", _node_type="social_class", wealth=10.0, population=1000)
         graph.add_node("C002", _node_type="social_class", wealth=30.0, population=1000)
         graph.add_edge("C001", "C002", edge_type=EdgeType.EXPLOITATION, tension=0.2)
@@ -298,7 +299,7 @@ class TestFieldDerivativeSystemBasic:
 
     def test_skips_nodes_without_fields(self) -> None:
         """System skips nodes that don't have contradiction_fields."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node("T001", _node_type="territory", heat=0.5)
 
         registry = DefaultFieldRegistry.with_defaults()

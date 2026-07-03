@@ -15,6 +15,8 @@ The tests verify:
 import pytest
 from pydantic import ValidationError
 
+from babylon.engine.graph import BabylonGraph
+
 # These imports should fail until the model is implemented
 from babylon.models import Relationship
 from babylon.models.entity_registry import (
@@ -343,7 +345,6 @@ class TestRelationshipNetworkX:
 
     def test_can_add_to_graph(self) -> None:
         """Relationship can become a NetworkX edge."""
-        import networkx as nx
 
         edge = Relationship(
             source_id=PERIPHERY_WORKER_ID,
@@ -352,7 +353,7 @@ class TestRelationshipNetworkX:
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
         )
 
-        G = nx.DiGraph()
+        G = BabylonGraph()
         G.add_edge(
             edge.source_id,
             edge.target_id,
@@ -367,9 +368,8 @@ class TestRelationshipNetworkX:
 
     def test_can_restore_from_edge_data(self) -> None:
         """Relationship can be restored from NetworkX edge attributes."""
-        import networkx as nx
 
-        G = nx.DiGraph()
+        G = BabylonGraph()
         G.add_edge(
             PERIPHERY_WORKER_ID,
             COMPRADOR_ID,
@@ -380,10 +380,14 @@ class TestRelationshipNetworkX:
         )
 
         u, v, edge_data = list(G.edges(data=True))[0]
+        # BabylonGraph.add_edge normalization injects the protocol key
+        # (_edge_type) and weight alongside the authored attrs; production
+        # from_graph picks fields explicitly, so strip them before splatting.
+        model_fields = {k: v for k, v in edge_data.items() if k not in ("_edge_type", "weight")}
         restored = Relationship(
             source_id=u,
             target_id=v,
-            **edge_data,
+            **model_fields,
         )
 
         assert restored.source_id == PERIPHERY_WORKER_ID
@@ -393,7 +397,6 @@ class TestRelationshipNetworkX:
 
     def test_phase1_complete_graph(self) -> None:
         """Phase 1 blueprint: two nodes + one edge complete graph."""
-        import networkx as nx
 
         from babylon.models import SocialClass
         from babylon.models.enums import SocialRole
@@ -421,7 +424,7 @@ class TestRelationshipNetworkX:
         )
 
         # Build the graph
-        G = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node(worker.id, **worker.model_dump())
         G.add_node(owner.id, **owner.model_dump())
         G.add_edge(
@@ -442,7 +445,6 @@ class TestRelationshipNetworkX:
 
     def test_bidirectional_relationships(self) -> None:
         """Can have edges in both directions between nodes."""
-        import networkx as nx
 
         exploitation = Relationship(
             source_id=PERIPHERY_WORKER_ID,
@@ -457,7 +459,7 @@ class TestRelationshipNetworkX:
             tension=TC.Probability.VERY_HIGH,
         )
 
-        G = nx.DiGraph()
+        G = BabylonGraph()
         G.add_edge(
             exploitation.source_id,
             exploitation.target_id,

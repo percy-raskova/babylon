@@ -15,6 +15,7 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import BifurcationDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import (
     CommunityState,
 )
@@ -167,7 +168,7 @@ def _build_solidarity_graph(
     Returns:
         DiGraph with configured nodes and edges.
     """
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     for node_id, attrs in agents.items():
         G.add_node(node_id, _node_type="social_class", **attrs)
     for src, tgt, strength in edges:

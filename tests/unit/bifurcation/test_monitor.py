@@ -15,6 +15,7 @@ from babylon.bifurcation.types import BifurcationSnapshot
 from babylon.config.defines import BifurcationDefines
 from babylon.engine.bifurcation_monitor import BifurcationMonitor
 from babylon.engine.community_state_store import InMemoryCommunityStateStore
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import CommunityState
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import (
@@ -59,7 +60,7 @@ def _build_monitor_graph(
 
     from .factories import assign_communities_to_graph
 
-    graph: nx.DiGraph = nx.DiGraph()  # type: ignore[type-arg]
+    graph: nx.DiGraph = BabylonGraph()  # type: ignore[type-arg]
     for agent_id in agent_communities:
         graph.add_node(agent_id, _node_type="social_class", wealth=50.0)
     for src, tgt, edge_type, strength in edges:
@@ -314,7 +315,7 @@ class TestBifurcationMonitorEvents:
 
         import networkx as nx
 
-        empty_graph: nx.DiGraph = nx.DiGraph()  # type: ignore[type-arg]
+        empty_graph: nx.DiGraph = BabylonGraph()  # type: ignore[type-arg]
         empty_H: xgi.Hypergraph = xgi.Hypergraph()
         empty_memberships: dict[str, set[CommunityType]] = {}
 

@@ -15,6 +15,7 @@ import uuid
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.persistence import MonotonicityViolationError
 from babylon.persistence.postgres_runtime import PostgresRuntime
 
@@ -40,7 +41,7 @@ def session_id(runtime: PostgresRuntime) -> uuid.UUID:
 
 def _payload_to_graph(marker: str, value: int) -> nx.DiGraph[str]:
     """One-node graph with a distinguishing payload."""
-    g: nx.DiGraph[str] = nx.DiGraph()
+    g = BabylonGraph()
     g.add_node("payload_node", type="Test", marker=marker, value=value)
     return g
 

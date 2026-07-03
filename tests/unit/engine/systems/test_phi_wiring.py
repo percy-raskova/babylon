@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import networkx as nx
 import pytest
 
 from babylon.economics.boundary_flow_register import (
@@ -21,6 +20,7 @@ from babylon.economics.boundary_flow_register import (
     NodeKind,
 )
 from babylon.engine.context import TickContext
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.economic import ImperialRentSystem
 
 pytestmark = [pytest.mark.unit]
@@ -197,7 +197,7 @@ def test_step_calls_invoke_phi_distribution_seam(monkeypatch) -> None:  # type: 
     ):
         monkeypatch.setattr(ImperialRentSystem, phase, _noop)
 
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     ctx = TickContext(tick=5)
 
     class _DummyServices:

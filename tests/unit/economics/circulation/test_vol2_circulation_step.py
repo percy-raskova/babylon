@@ -22,6 +22,7 @@ from babylon.economics.boundary_flow_register import (
     NodeKind,
 )
 from babylon.economics.lodes_commute_matrix import LODESYearMatrix
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.vol2_circulation import (
     Vol2CirculationStep,
 )
@@ -94,7 +95,7 @@ def _build_2hex_matrix(
 
 
 def _build_2hex_graph(v_a: float, v_b: float) -> nx.DiGraph[str]:
-    g: nx.DiGraph[str] = nx.DiGraph()
+    g = BabylonGraph()
     g.add_node("hex_A", _node_type="hex", v=v_a)
     g.add_node("hex_B", _node_type="hex", v=v_b)
     return g

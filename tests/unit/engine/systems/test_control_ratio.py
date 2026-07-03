@@ -22,6 +22,7 @@ import networkx as nx
 import pytest
 
 from babylon.engine.event_bus import Event
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.control_ratio import ControlRatioSystem
 from babylon.models.enums import EventType, SocialRole
@@ -153,7 +154,7 @@ class TestControlRatioSystem:
 
     def test_no_crisis_when_within_capacity(self, services: ServiceContainer) -> None:
         """No CONTROL_RATIO_CRISIS when enforcers can control prisoners."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_stable_carceral_state(graph)
 
         captured_events: list[Event] = []
@@ -169,7 +170,7 @@ class TestControlRatioSystem:
 
     def test_crisis_when_exceeds_capacity(self, services: ServiceContainer) -> None:
         """CONTROL_RATIO_CRISIS emitted when prisoners > enforcers × capacity."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         captured_events: list[Event] = []
@@ -190,7 +191,7 @@ class TestControlRatioSystem:
 
     def test_crisis_includes_ratio_calculation(self, services: ServiceContainer) -> None:
         """Crisis event includes the actual ratio for narrative layer."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         captured_events: list[Event] = []
@@ -209,7 +210,7 @@ class TestControlRatioSystem:
 
     def test_inactive_entities_not_counted(self, services: ServiceContainer) -> None:
         """Inactive (dead) entities don't count toward population."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         # Mark the lumpen as inactive
@@ -232,7 +233,7 @@ class TestControlRatioSystem:
 
     def test_no_enforcers_triggers_immediate_crisis(self, services: ServiceContainer) -> None:
         """If no enforcers exist, any prisoners trigger crisis."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Only prisoners, no enforcers
         graph.add_node(
@@ -261,7 +262,7 @@ class TestControlRatioSystem:
 
     def test_no_prisoners_no_crisis(self, services: ServiceContainer) -> None:
         """No crisis if there are no prisoners to control."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Only enforcers, no prisoners
         graph.add_node(
@@ -286,7 +287,7 @@ class TestControlRatioSystem:
 
     def test_crisis_includes_narrative_hint(self, services: ServiceContainer) -> None:
         """CONTROL_RATIO_CRISIS includes narrative for AI observer."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         captured_events: list[Event] = []
@@ -312,7 +313,7 @@ class TestTerminalDecision:
         When average prisoner organization exceeds threshold (default 0.5),
         prisoners and guards unite in revolution.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # High-org enforcers
         graph.add_node(
@@ -356,7 +357,7 @@ class TestTerminalDecision:
         When average organization is below threshold, the system turns
         genocidal to eliminate surplus population.
         """
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Enforcers
         graph.add_node(
@@ -396,7 +397,7 @@ class TestTerminalDecision:
 
     def test_terminal_decision_includes_narrative_hint(self, services: ServiceContainer) -> None:
         """TERMINAL_DECISION includes narrative hint for AI observer."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         captured_events: list[Event] = []
@@ -413,7 +414,7 @@ class TestTerminalDecision:
 
     def test_no_terminal_decision_when_no_crisis(self, services: ServiceContainer) -> None:
         """TERMINAL_DECISION only emitted during control ratio crisis."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_stable_carceral_state(graph)  # Within capacity
 
         captured_events: list[Event] = []
@@ -431,7 +432,7 @@ class TestTerminalDecision:
         self, services: ServiceContainer
     ) -> None:
         """Organization average includes both Int_P and Lumpen."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Enforcers
         graph.add_node(
@@ -490,7 +491,7 @@ class TestControlRatioMutationKillers:
 
     def test_exactly_at_capacity_no_crisis(self, services: ServiceContainer) -> None:
         """prisoners == enforcers * capacity → no crisis (tests <= boundary)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # 100 enforcers * 4 capacity = 400 max; prisoners exactly 400
         graph.add_node(
             "Enforcer",
@@ -518,7 +519,7 @@ class TestControlRatioMutationKillers:
 
     def test_one_over_capacity_triggers_crisis(self, services: ServiceContainer) -> None:
         """prisoners == enforcers * capacity + 1 → crisis (tests <= vs <)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         # 100 enforcers * 4 = 400 max; prisoners = 401
         graph.add_node(
             "Enforcer",
@@ -547,7 +548,7 @@ class TestControlRatioMutationKillers:
 
     def test_delay_gate_blocks_early(self, services: ServiceContainer) -> None:
         """tick < decomp_tick + delay → return early (no processing)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         captured: list[Event] = []
@@ -567,7 +568,7 @@ class TestControlRatioMutationKillers:
 
     def test_delay_gate_opens_exactly(self, services: ServiceContainer) -> None:
         """tick == decomp_tick + delay → processes (tests < vs <=)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         captured: list[Event] = []
@@ -586,7 +587,7 @@ class TestControlRatioMutationKillers:
 
     def test_terminal_delay_blocks(self, services: ServiceContainer) -> None:
         """tick == crisis_tick → terminal delay blocks (needs crisis_tick + delay)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         terminal_events: list[Event] = []
@@ -610,7 +611,7 @@ class TestControlRatioMutationKillers:
 
     def test_terminal_delay_fires(self, services: ServiceContainer) -> None:
         """tick == crisis_tick + terminal_delay → fires terminal decision."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         terminal_events: list[Event] = []
@@ -634,7 +635,7 @@ class TestControlRatioMutationKillers:
 
     def test_crisis_emitted_once_on_repeated_steps(self, services: ServiceContainer) -> None:
         """Step twice at same unstable state → only 1 crisis event total."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         captured: list[Event] = []
@@ -652,7 +653,7 @@ class TestControlRatioMutationKillers:
 
     def test_terminal_emitted_flag_causes_early_return(self, services: ServiceContainer) -> None:
         """_terminal_decision_emitted=True → immediate return, no processing."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         _create_unstable_carceral_state(graph)
 
         crisis_events: list[Event] = []
@@ -678,7 +679,7 @@ class TestControlRatioMutationKillers:
 
     def test_avg_organization_exact_calculation(self, services: ServiceContainer) -> None:
         """Weighted avg org = sum(pop*org) / total_pop, verify exact value."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "Enforcer",
             role=SocialRole.CARCERAL_ENFORCER,
@@ -719,7 +720,7 @@ class TestControlRatioMutationKillers:
 
     def test_revolution_at_exact_threshold(self, services: ServiceContainer) -> None:
         """avg_org == revolution_threshold (0.5) → revolution (>= boundary)."""
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
         graph.add_node(
             "Enforcer",
             role=SocialRole.CARCERAL_ENFORCER,

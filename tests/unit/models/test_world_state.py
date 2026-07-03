@@ -8,10 +8,10 @@ Sprint 4: WorldState with NetworkX integration for Phase 2 game loop.
 Sprint 3.5.3: Territory integration for Layer 0.
 """
 
-import networkx as nx
 import pytest
 from pydantic import ValidationError
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
 from babylon.models.entities.territory import Territory
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
@@ -771,7 +771,7 @@ class TestWorldStateEconomyIntegration:
     def test_from_graph_default_economy_when_missing(self) -> None:
         """from_graph() uses default economy when metadata missing (backward compat)."""
 
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         # No economy in G.graph - simulates old graph without economy support
         restored = WorldState.from_graph(G, tick=0)
 
@@ -1128,7 +1128,7 @@ class TestStateFinancesIntegration:
         """
 
         # Create graph without state_finances in metadata (old format)
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         # No state_finances in G.graph
 
         restored = WorldState.from_graph(G, tick=0)

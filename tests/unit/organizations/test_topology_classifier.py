@@ -6,9 +6,9 @@ from COMMAND edge subgraphs.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType, TopologyType
 from babylon.organizations.topology import classify_topology
 
@@ -19,7 +19,7 @@ class TestClassifyTopologyStar:
     @pytest.mark.math
     def test_star_three_leaves(self) -> None:
         """Hub connected to 3 leaves = STAR."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-hub", "kf-a", "kf-b", "kf-c"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")
@@ -36,7 +36,7 @@ class TestClassifyTopologyStar:
     @pytest.mark.math
     def test_star_five_leaves(self) -> None:
         """Hub connected to 5 leaves = STAR."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         hub = "kf-hub"
         leaves = [f"kf-{i}" for i in range(5)]
         all_nodes = [hub, *leaves]
@@ -55,7 +55,7 @@ class TestClassifyTopologyHierarchy:
     @pytest.mark.math
     def test_hierarchy_chain(self) -> None:
         """Linear chain: A->B->C->D = HIERARCHY (tree with N-1 edges)."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-a", "kf-b", "kf-c", "kf-d"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")
@@ -70,7 +70,7 @@ class TestClassifyTopologyHierarchy:
     @pytest.mark.math
     def test_hierarchy_tree(self) -> None:
         """Branching tree: root->left, root->right, left->ll, left->lr."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-root", "kf-left", "kf-right", "kf-ll", "kf-lr"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")
@@ -91,7 +91,7 @@ class TestClassifyTopologyMesh:
     @pytest.mark.math
     def test_mesh_complete_graph(self) -> None:
         """Complete graph (all pairs connected) = MESH."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-a", "kf-b", "kf-c", "kf-d"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")
@@ -108,7 +108,7 @@ class TestClassifyTopologyMesh:
     @pytest.mark.math
     def test_mesh_high_density(self) -> None:
         """Dense graph (>0.6 density) = MESH."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-a", "kf-b", "kf-c", "kf-d", "kf-e"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")
@@ -136,7 +136,7 @@ class TestClassifyTopologyCell:
     @pytest.mark.math
     def test_cell_two_groups_one_bridge(self) -> None:
         """Two cliques connected by one bridge node = CELL."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         # Cell 1: a-b-c fully connected
         cell1 = ["kf-a", "kf-b", "kf-c"]
         # Cell 2: d-e-f fully connected
@@ -173,7 +173,7 @@ class TestClassifyTopologyEdgeCases:
     @pytest.mark.math
     def test_empty_org_no_members(self) -> None:
         """No member nodes → None topology."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         result = classify_topology("org-001", [], G)
         assert result.topology_type is None
         assert result.component_count == 0
@@ -181,7 +181,7 @@ class TestClassifyTopologyEdgeCases:
     @pytest.mark.math
     def test_single_node(self) -> None:
         """Single node → None topology."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("kf-a", _node_type="key_figure")
         result = classify_topology("org-001", ["kf-a"], G)
         assert result.topology_type is None
@@ -189,7 +189,7 @@ class TestClassifyTopologyEdgeCases:
     @pytest.mark.math
     def test_no_command_edges(self) -> None:
         """Multiple nodes but no COMMAND edges → None topology."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("kf-a", _node_type="key_figure")
         G.add_node("kf-b", _node_type="key_figure")
         G.add_edge("kf-a", "kf-b", edge_type=EdgeType.MEMBERSHIP)
@@ -200,7 +200,7 @@ class TestClassifyTopologyEdgeCases:
     @pytest.mark.math
     def test_two_nodes_one_edge(self) -> None:
         """Two nodes, one COMMAND edge = HIERARCHY (minimal tree)."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         G.add_node("kf-a", _node_type="key_figure")
         G.add_node("kf-b", _node_type="key_figure")
         G.add_edge("kf-a", "kf-b", edge_type=EdgeType.COMMAND)
@@ -211,7 +211,7 @@ class TestClassifyTopologyEdgeCases:
     @pytest.mark.math
     def test_ignores_non_command_edges(self) -> None:
         """Only COMMAND edges are considered for topology."""
-        G: nx.DiGraph[str] = nx.DiGraph()
+        G = BabylonGraph()
         nodes = ["kf-a", "kf-b", "kf-c"]
         for n in nodes:
             G.add_node(n, _node_type="key_figure")

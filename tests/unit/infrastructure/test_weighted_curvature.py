@@ -11,6 +11,7 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonUGraph
 from babylon.formulas.curvature import (
     _graph_distance,
     _probability_measure,
@@ -20,7 +21,7 @@ from babylon.formulas.curvature import (
 
 def _make_weighted_graph() -> nx.Graph:  # type: ignore[type-arg]
     """Create a small weighted graph for curvature tests."""
-    g = nx.Graph()
+    g = BabylonUGraph()
     g.add_node("A")
     g.add_node("B")
     g.add_node("C")
@@ -41,7 +42,7 @@ class TestWeightedProbabilityMeasure:
 
     def test_unweighted_uniform(self) -> None:
         """Without weight_attr, neighbors get uniform probability."""
-        g = nx.Graph()
+        g = BabylonUGraph()
         g.add_edge("A", "B")
         g.add_edge("A", "C")
 
@@ -71,7 +72,7 @@ class TestWeightedProbabilityMeasure:
 
     def test_isolated_node(self) -> None:
         """Isolated node gets all mass on self, weighted or not."""
-        g = nx.Graph()
+        g = BabylonUGraph()
         g.add_node("X")
 
         measure = _probability_measure(g, "X", alpha=0.5)
@@ -109,7 +110,7 @@ class TestWeightedOllivierRicci:
 
     def test_backward_compat(self) -> None:
         """Without weight_attr, curvature computation is unchanged."""
-        g = nx.Graph()
+        g = BabylonUGraph()
         g.add_edge("A", "B")
         g.add_edge("A", "C")
         g.add_edge("B", "C")
@@ -134,12 +135,12 @@ class TestWeightedOllivierRicci:
 
     def test_different_weights_different_curvature(self) -> None:
         """Different weight distributions produce different curvatures."""
-        g1 = nx.Graph()
+        g1 = BabylonUGraph()
         g1.add_edge("A", "B", w=1.0)
         g1.add_edge("A", "C", w=1.0)
         g1.add_edge("B", "C", w=1.0)
 
-        g2 = nx.Graph()
+        g2 = BabylonUGraph()
         g2.add_edge("A", "B", w=10.0)
         g2.add_edge("A", "C", w=1.0)
         g2.add_edge("B", "C", w=1.0)

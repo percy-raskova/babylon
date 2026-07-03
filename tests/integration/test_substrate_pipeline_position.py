@@ -12,8 +12,9 @@ import logging
 from pathlib import Path
 from uuid import uuid4
 
-import networkx as nx
 import pytest
+
+from babylon.engine.graph import BabylonGraph
 
 pytestmark = [pytest.mark.cross_scale, pytest.mark.integration]
 
@@ -48,7 +49,7 @@ def test_substrate_runs_in_default_pipeline_with_live_pool(runtime, caplog):  # 
     from babylon.engine.simulation_engine import SimulationEngine
     from babylon.engine.systems.substrate import SubstrateSystem
 
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "872d34a89ffffff",
         _node_type="hex",
@@ -102,7 +103,7 @@ def test_engine_with_auditor_persists_audit_row_to_live_pool(runtime, pg_pool): 
     auditor.register_invariant("hex_to_county_sum_c", ok_evaluator)
     engine = SimulationEngine(systems=[SubstrateSystem()], auditor=auditor)
 
-    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph = BabylonGraph()
     graph.add_node(
         "872d34a89ffffff",
         _node_type="hex",

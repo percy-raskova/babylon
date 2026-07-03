@@ -19,6 +19,7 @@ from typing import Any
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import SimulationEngine
 from babylon.engine.systems.protocol import ContextType, System
@@ -115,7 +116,7 @@ class TestLogContextInRunTick:
         SC-003: Logs within run_tick() have tick + correlation_id.
         """
         engine = SimulationEngine([LoggingSystem(test_logger)])
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Run tick with tick=5
         context: dict[str, Any] = {"tick": 5}
@@ -135,7 +136,7 @@ class TestLogContextInRunTick:
         SC-003: Each log within run_tick() must have a correlation_id UUID.
         """
         engine = SimulationEngine([LoggingSystem(test_logger)])
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         context: dict[str, Any] = {"tick": 1}
         engine.run_tick(graph, services, context)
@@ -158,7 +159,7 @@ class TestLogContextInRunTick:
         SC-003: Running multiple ticks should produce different correlation_ids.
         """
         engine = SimulationEngine([LoggingSystem(test_logger)])
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Run two ticks
         context1: dict[str, Any] = {"tick": 1}
@@ -191,7 +192,7 @@ class TestLogContextInRunTick:
         tick and correlation_id, even from nested function calls.
         """
         engine = SimulationEngine([NestedLoggingSystem(test_logger)])
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         context: dict[str, Any] = {"tick": 10}
         engine.run_tick(graph, services, context)

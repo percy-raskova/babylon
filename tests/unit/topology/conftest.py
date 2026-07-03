@@ -9,19 +9,20 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType
 
 
 @pytest.fixture
 def empty_digraph() -> nx.DiGraph:
     """Create an empty directed graph."""
-    return nx.DiGraph()
+    return BabylonGraph()
 
 
 @pytest.fixture
 def single_node_graph() -> nx.DiGraph:
     """Create a graph with one social_class node, no edges."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     G.add_node(
         "C001",
         _node_type="social_class",
@@ -33,7 +34,7 @@ def single_node_graph() -> nx.DiGraph:
 @pytest.fixture
 def two_isolated_nodes() -> nx.DiGraph:
     """Create a graph with two isolated social_class nodes."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     G.add_node("C001", _node_type="social_class")
     G.add_node("C002", _node_type="social_class")
     return G
@@ -42,7 +43,7 @@ def two_isolated_nodes() -> nx.DiGraph:
 @pytest.fixture
 def connected_pair() -> nx.DiGraph:
     """Create a graph with two nodes connected by SOLIDARITY edge."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     G.add_node("C001", _node_type="social_class")
     G.add_node("C002", _node_type="social_class")
     G.add_edge("C001", "C002", edge_type=EdgeType.SOLIDARITY, solidarity_strength=0.8)
@@ -52,7 +53,7 @@ def connected_pair() -> nx.DiGraph:
 @pytest.fixture
 def mixed_edges_graph() -> nx.DiGraph:
     """Create a graph with both SOLIDARITY and non-SOLIDARITY edges."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     G.add_node("C001", _node_type="social_class")
     G.add_node("C002", _node_type="social_class")
     G.add_node("C003", _node_type="social_class")
@@ -66,7 +67,7 @@ def mixed_edges_graph() -> nx.DiGraph:
 @pytest.fixture
 def territory_mixed_graph() -> nx.DiGraph:
     """Create a graph with both social_class and territory nodes."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     G.add_node("C001", _node_type="social_class")
     G.add_node("C002", _node_type="social_class")
     G.add_node("T001", _node_type="territory")
@@ -78,7 +79,7 @@ def territory_mixed_graph() -> nx.DiGraph:
 @pytest.fixture
 def weak_strong_edges() -> nx.DiGraph:
     """Create a graph with edges of varying solidarity_strength."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     G.add_node("C001", _node_type="social_class")
     G.add_node("C002", _node_type="social_class")
     G.add_node("C003", _node_type="social_class")
@@ -95,7 +96,7 @@ def weak_strong_edges() -> nx.DiGraph:
 @pytest.fixture
 def star_topology() -> nx.DiGraph:
     """Create a star topology (fragile - hub is single point of failure)."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     # Central hub
     G.add_node("C_HUB", _node_type="social_class")
     # Spokes
@@ -109,7 +110,7 @@ def star_topology() -> nx.DiGraph:
 @pytest.fixture
 def mesh_topology() -> nx.DiGraph:
     """Create a mesh topology (resilient - no single point of failure)."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     nodes = ["C001", "C002", "C003", "C004", "C005"]
     for node_id in nodes:
         G.add_node(node_id, _node_type="social_class")
@@ -131,7 +132,7 @@ def mesh_topology() -> nx.DiGraph:
 @pytest.fixture
 def multi_component_graph() -> nx.DiGraph:
     """Create a graph with multiple disconnected components."""
-    G: nx.DiGraph = nx.DiGraph()
+    G: nx.DiGraph = BabylonGraph()
     # Component 1: 3 nodes
     G.add_node("C001", _node_type="social_class")
     G.add_node("C002", _node_type="social_class")

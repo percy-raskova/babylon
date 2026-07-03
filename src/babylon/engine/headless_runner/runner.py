@@ -62,6 +62,7 @@ from babylon.engine.headless_runner.scopes import (
     UnknownScopeError,
     resolve_scope,
 )
+from babylon.engine.headless_runner.storage_probe import query_storage_footprint
 from babylon.engine.headless_runner.trace_emitter import TRACE_COLUMNS, TraceEmitter
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
@@ -1016,6 +1017,12 @@ def _emit_artifacts(
             "sqlite_sha256": _sqlite_sha256(config.sqlite_reference_path),
         },
         bridge_db_reads=bridge_db_reads,
+        # Spec-087 FR-009: best-effort storage footprint (None => key omitted).
+        storage=query_storage_footprint(
+            pool=pool,
+            session_id=session_id,
+            ticks_persisted=ticks_completed,
+        ),
     )
     (artifact_dir / "manifest.json").write_text(json.dumps(manifest_payload, indent=2))
     return artifact_dir

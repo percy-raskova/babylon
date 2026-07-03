@@ -85,6 +85,16 @@ One canonical 520-tick michigan-canada run writes **~7 GB** into
   magnitude smaller, but replay needs snapshot+delta reconstruction).
   Nationwide scale is ~65× the hex count; this stops being optional
   well before that.
+- **RESOLVED 2026-07-03 (storage program, spec-087+)**: both — plus more.
+  Owner-ratified program: S4 compose/tuned-PG16 + S5 storage observability
+  (spec-087, landed), then partitioning + LOCAL-only Parquet archival +
+  schema normalization (sprint 2), then delta persistence with checkpoint
+  frames + `tick_commit` hash chain (sprints 3-4). Archives local-only per
+  owner ruling; trackability = verifiable + replayable (III.7). Measured
+  basis: 0 of 1,045 hex rows change any column across consecutive ticks
+  (5-tick window, 2026-07-03). See `specs/087-storage-foundations/spec.md`.
+  The `docker run postgres:15` container mentioned above is HISTORICAL —
+  it's now compose-managed postgis 16 + pgvector on the data drive.
 
 ## Observability
 

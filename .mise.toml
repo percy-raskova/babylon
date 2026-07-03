@@ -424,6 +424,14 @@ SELECT 'max_tension t' || tick || ': ' || round(max(tension)::numeric, 4)
 FROM dynamic_relationship_state
 WHERE tick IN (SELECT DISTINCT tick FROM dynamic_relationship_state ORDER BY tick DESC LIMIT 3)
 GROUP BY tick ORDER BY tick;" 2>/dev/null || true
+PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
+SELECT 'avg ' || pg_size_pretty((pg_database_size('babylon_test') / NULLIF(max(tick)+1, 0))::bigint) || '/tick'
+FROM dynamic_hex_state;" 2>/dev/null || true
+PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
+SELECT '  ' || relname || ': ' || pg_size_pretty(pg_total_relation_size(relid)) || ', ' || n_live_tup || ' rows'
+FROM pg_stat_user_tables
+WHERE relname LIKE 'dynamic_%' OR relname IN ('boundary_flow_register','conservation_audit_log','contradiction_field')
+ORDER BY pg_total_relation_size(relid) DESC LIMIT 6;" 2>/dev/null || true
 '''
 
 [tasks."sim:watch"]
@@ -557,6 +565,16 @@ ARTIFACT_DIR=$(poetry run python -m babylon.engine.headless_runner \\
 poetry run python tools/regression_test.py compare-bundle \\
   --bundle "$ARTIFACT_DIR" \\
   --baseline tests/baselines/detroit-tri-county-5t.json
+"""
+
+[tasks."qa:storage-budget"]
+description = "Storage regression gate: 5-tick strict run, rows/tick per table vs committed baseline (spec-087 FR-013)"
+run = """
+ARTIFACT_DIR=$(poetry run python -m babylon.engine.headless_runner \\
+  --scope detroit-tri-county --ticks 5 --strict)
+poetry run python tools/storage_budget.py check \\
+  --bundle "$ARTIFACT_DIR" \\
+  --baseline tests/baselines/storage-budget-5t.json
 """
 
 [tasks."qa:hexagon-isolation"]

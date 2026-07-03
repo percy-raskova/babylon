@@ -228,6 +228,7 @@ def build_manifest(
     data_versions: dict[str, Any],
     engine_systems_invoked: list[str] | None = None,
     bridge_db_reads: dict[str, int] | None = None,
+    storage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Construct the manifest payload as a plain dict.
 
@@ -250,6 +251,10 @@ def build_manifest(
             provided, emitted as a top-level ``bridge_db_reads`` key with
             ``{population_db_reads, employment_db_reads, total_db_reads}``.
             Omit when running a non-bridged path.
+        storage: Spec-087 FR-009 storage-footprint block (see
+            :func:`babylon.engine.headless_runner.storage_probe.build_storage_block`).
+            Best-effort — ``None`` (collection failed / non-Postgres path)
+            omits the key entirely.
 
     Returns:
         Dict ready to be JSON-encoded as manifest.json.
@@ -311,6 +316,8 @@ def build_manifest(
     }
     if bridge_db_reads is not None:
         payload["bridge_db_reads"] = dict(bridge_db_reads)
+    if storage is not None:
+        payload["storage"] = dict(storage)
     return payload
 
 

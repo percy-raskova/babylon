@@ -111,7 +111,8 @@ When making commits:
 
 ```bash
 # Setup
-poetry install
+mise run setup                                    # One-shot fresh-clone bootstrap: toolchain + deps + hooks + tuned Postgres 16 (compose) + schema
+poetry install                                    # (piecemeal alternative)
 poetry run pre-commit install
 
 # Task Runner (namespace-driven - see ADR035)
@@ -172,6 +173,7 @@ mise run qa:audit                                 # Simulation health check
 mise run qa:verify                                # Formula correctness verification
 mise run qa:schemas                               # JSON schema validation
 mise run qa:security                              # Dependency security audit
+mise run qa:storage-budget                        # Storage regression gate: rows/tick per table vs baseline (spec-087)
 
 # Demo (demo:* namespace)
 mise run demo:slice                               # Full pipeline demo (Engine->RAG->LLM)

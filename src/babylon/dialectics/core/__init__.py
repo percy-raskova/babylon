@@ -4,6 +4,7 @@ Pure mathematics — no engine imports. Laws are enforced by Hypothesis
 property tests in ``tests/property/dialectics/``.
 """
 
+from babylon.dialectics.core.composition import product, sum_
 from babylon.dialectics.core.cylinder import AdjointCylinder
 from babylon.dialectics.core.galois import GaloisConnection
 from babylon.dialectics.core.level import Level, LevelLattice, LevelOperators
@@ -28,4 +29,6 @@ __all__ = [
     "OppositionRegistry",
     "OppositionSpec",
     "OppositionState",
+    "product",
+    "sum_",
 ]

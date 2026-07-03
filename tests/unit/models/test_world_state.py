@@ -11,13 +11,13 @@ Sprint 3.5.3: Territory integration for Layer 0.
 import networkx as nx
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
 from babylon.models.entities.territory import Territory
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import OperationalProfile, SectorType
 from babylon.models.world_state import WorldState
+from tests.constants import TestConstants
 
 # Aliases for readability
 TC = TestConstants

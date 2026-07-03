@@ -13,7 +13,6 @@ from collections.abc import Generator
 
 import networkx as nx
 import pytest
-from tests.constants import TestConstants
 
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
@@ -22,6 +21,7 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import SocialRole
+from tests.constants import TestConstants
 
 TC = TestConstants
 

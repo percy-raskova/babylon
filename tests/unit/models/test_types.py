@@ -12,7 +12,6 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel, ValidationError, create_model
-from tests.constants import TestConstants
 
 from babylon.models.types import (
     Coefficient,
@@ -22,6 +21,7 @@ from babylon.models.types import (
     Probability,
     Ratio,
 )
+from tests.constants import TestConstants
 
 # Aliases for readability
 TC = TestConstants

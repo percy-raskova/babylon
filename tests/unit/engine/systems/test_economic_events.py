@@ -17,8 +17,6 @@ PPP Model Tests (Sprint PPP):
 
 import networkx as nx
 import pytest
-from tests.assertions import Assert
-from tests.factories.domain import DomainFactory
 
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
@@ -29,6 +27,8 @@ from babylon.models.enums import EdgeType, EventType, SocialRole
 
 # RED Phase imports - these don't exist yet and will cause import errors
 from babylon.models.events import ExtractionEvent
+from tests.assertions import Assert
+from tests.factories.domain import DomainFactory
 
 
 class TestImperialRentSystemEvents:

@@ -14,7 +14,6 @@ Theoretical Basis: Marx, Capital Vol. 3, Chapters 13-15
 """
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.formulas import (
     calculate_organic_composition,
@@ -22,6 +21,7 @@ from babylon.formulas import (
     calculate_rent_pool_decay,
     calculate_trpf_multiplier,
 )
+from tests.constants import TestConstants
 
 # Aliases for readability
 TC = TestConstants.TRPF

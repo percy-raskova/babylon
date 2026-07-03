@@ -10,12 +10,12 @@ Key Formulas:
 """
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.formulas import (
     calculate_biocapacity_delta,
     calculate_overshoot_ratio,
 )
+from tests.constants import TestConstants
 
 # Alias for readability
 TC = TestConstants.MetabolicRift

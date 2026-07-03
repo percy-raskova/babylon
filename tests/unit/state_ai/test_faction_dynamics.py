@@ -20,8 +20,6 @@ See Also:
 from __future__ import annotations
 
 import pytest
-from tests.constants import TestConstants
-from tests.unit.state_ai.conftest import make_faction_balance, make_state_action
 
 from babylon.config.defines import GameDefines, StateApparatusAIDefines
 from babylon.formulas.state_ai import (
@@ -40,6 +38,8 @@ from babylon.ooda.state_ai.faction_dynamics import (
     compute_stability,
     renormalize_faction_balance,
 )
+from tests.constants import TestConstants
+from tests.unit.state_ai.conftest import make_faction_balance, make_state_action
 
 TC = TestConstants
 

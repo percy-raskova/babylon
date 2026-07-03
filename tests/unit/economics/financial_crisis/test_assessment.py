@@ -11,10 +11,10 @@ Uses threshold constants from credit/types.py:
 from __future__ import annotations
 
 import pytest
-from tests.unit.economics.financial_crisis.conftest import CrisisScenario
 
 from babylon.economics.financial_crisis.assessment import DefaultFinancialCrisisAssessor
 from babylon.economics.financial_crisis.types import FinancialCrisisAssessment
+from tests.unit.economics.financial_crisis.conftest import CrisisScenario
 
 # =============================================================================
 # DefaultFinancialCrisisAssessor

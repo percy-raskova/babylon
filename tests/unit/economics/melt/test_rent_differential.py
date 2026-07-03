@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import ClassSystemDefaults
 
 from babylon.economics.tensor import NoDataSentinel
 from babylon.models.enums import CommunityType
+from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()
 

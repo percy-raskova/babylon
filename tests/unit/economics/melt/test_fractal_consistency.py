@@ -12,9 +12,9 @@ Tests cover:
 from __future__ import annotations
 
 import pytest
-from tests.constants import ClassSystemDefaults
 
 from babylon.economics.melt.types import ClassPosition, PrecarityStatus
+from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()
 

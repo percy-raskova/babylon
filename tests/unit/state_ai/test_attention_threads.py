@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
-from tests.unit.state_ai.conftest import make_attention_thread, make_sparrow_analysis
 
 from babylon.models.enums import SurveillanceMethod, ThreadPhase
+from tests.constants import TestConstants
+from tests.unit.state_ai.conftest import make_attention_thread, make_sparrow_analysis
 
 TC = TestConstants
 

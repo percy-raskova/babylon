@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.config.defines import OrganizationDefines
 from babylon.models.entities.organization import IntelMethodology, KeyFigure
+from tests.constants import TestConstants
 
 TC = TestConstants
 

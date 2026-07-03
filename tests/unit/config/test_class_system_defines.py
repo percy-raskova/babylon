@@ -10,9 +10,9 @@ Tests cover:
 from __future__ import annotations
 
 import pytest
-from tests.constants import ClassSystemDefaults
 
 from babylon.config.defines import ClassSystemDefines, GameDefines
+from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()
 

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.metrics import (
     EdgeMetrics,
@@ -27,6 +26,7 @@ from babylon.models.metrics import (
     SweepSummary,
     TickMetrics,
 )
+from tests.constants import TestConstants
 
 TC = TestConstants
 

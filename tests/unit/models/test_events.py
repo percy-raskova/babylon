@@ -13,7 +13,6 @@ from datetime import datetime
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.entity_registry import (
     COMPRADOR_ID,
@@ -43,6 +42,7 @@ from babylon.models.events import (
     TransmissionEvent,
     UprisingEvent,
 )
+from tests.constants import TestConstants
 
 TC = TestConstants
 

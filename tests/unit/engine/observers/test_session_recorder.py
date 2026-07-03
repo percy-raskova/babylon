@@ -10,11 +10,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock, PropertyMock
 from uuid import UUID
 
-from tests.factories import DomainFactory
-
 from babylon.engine.observers.session_recorder import SessionRecorder
 from babylon.models.config import SimulationConfig
 from babylon.persistence.protocols import RuntimePersistence, TraceCollector, TraceLevel
+from tests.factories import DomainFactory
 
 _TEST_SESSION_ID = UUID("12345678-1234-5678-1234-567812345678")
 

@@ -15,7 +15,6 @@ Key Formulas:
 """
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.formulas import (
     apply_loss_aversion,
@@ -23,6 +22,7 @@ from babylon.formulas import (
     calculate_crossover_threshold,
     calculate_revolution_probability,
 )
+from tests.constants import TestConstants
 
 # Alias for readability
 TC = TestConstants.Behavioral

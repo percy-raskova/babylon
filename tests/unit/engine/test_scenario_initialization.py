@@ -10,7 +10,6 @@ Scenarios must initialize with:
 from __future__ import annotations
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.engine.scenarios import (
     create_imperial_circuit_scenario,
@@ -21,6 +20,7 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import EdgeType
+from tests.constants import TestConstants
 
 TC = TestConstants
 

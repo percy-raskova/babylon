@@ -16,10 +16,10 @@ All tests verify:
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.components.base import Component
 from babylon.models.components.organization import OrganizationComponent
+from tests.constants import TestConstants
 
 TC = TestConstants
 

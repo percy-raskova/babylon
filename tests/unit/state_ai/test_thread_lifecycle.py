@@ -7,7 +7,6 @@ and pool saturation handling.
 from __future__ import annotations
 
 import pytest
-from tests.unit.state_ai.conftest import make_attention_thread
 
 from babylon.config.defines import GameDefines, StateApparatusAIDefines
 from babylon.models.enums import SurveillanceMethod, ThreadPhase
@@ -16,6 +15,7 @@ from babylon.ooda.attention.thread_manager import (
     allocate_threads,
     update_thread_tick,
 )
+from tests.unit.state_ai.conftest import make_attention_thread
 
 
 def _defines() -> StateApparatusAIDefines:

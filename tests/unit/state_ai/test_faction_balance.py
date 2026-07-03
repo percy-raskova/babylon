@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.entities.state_apparatus_ai import FactionBalance
 from babylon.models.enums import StateFaction
+from tests.constants import TestConstants
 
 TC = TestConstants
 

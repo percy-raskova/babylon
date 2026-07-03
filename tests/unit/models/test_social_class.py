@@ -17,7 +17,6 @@ Tests updated to work with the multi-dimensional consciousness model.
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 # These imports should fail until the model is implemented
 from babylon.models import IdeologicalProfile, SocialClass
@@ -27,6 +26,7 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import SocialRole
+from tests.constants import TestConstants
 
 # Aliases for readability
 TC = TestConstants

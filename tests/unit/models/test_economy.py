@@ -9,9 +9,9 @@ forces scarcity and agency into the simulation.
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.entities.economy import GlobalEconomy
+from tests.constants import TestConstants
 
 TC = TestConstants
 

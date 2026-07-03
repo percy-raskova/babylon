@@ -20,10 +20,10 @@ Key insight: Revolutionary organizations face a fundamental tension:
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 # This import will fail until model exists - that's the RED phase!
 from babylon.models.entities.revolutionary_finance import RevolutionaryFinance
+from tests.constants import TestConstants
 
 TC = TestConstants
 

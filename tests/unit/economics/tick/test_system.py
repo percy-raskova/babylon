@@ -14,19 +14,6 @@ from typing import Any
 
 import networkx as nx
 import pytest
-from tests.unit.economics.tick.conftest import (
-    WAYNE_FIPS,
-    CapturingTransitionEngine,
-    MockBasketVisibilityCalculator,
-    MockCapitalStockCalculator,
-    MockClassTransitionEngine,
-    MockGammaIIICalculator,
-    MockMELTCalculator,
-    MockTensor,
-    MockTensorRegistry,
-    MockThroughputCalculator,
-    build_territory_graph,
-)
 
 from babylon.economics.dynamics.types import ClassDistribution
 from babylon.economics.tick.system import (
@@ -45,6 +32,19 @@ from babylon.economics.tick.types import (
 )
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
+from tests.unit.economics.tick.conftest import (
+    WAYNE_FIPS,
+    CapturingTransitionEngine,
+    MockBasketVisibilityCalculator,
+    MockCapitalStockCalculator,
+    MockClassTransitionEngine,
+    MockGammaIIICalculator,
+    MockMELTCalculator,
+    MockTensor,
+    MockTensorRegistry,
+    MockThroughputCalculator,
+    build_territory_graph,
+)
 
 # Secondary FIPS for multi-county tests
 OAKLAND_FIPS: str = "26125"

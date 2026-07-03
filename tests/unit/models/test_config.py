@@ -11,9 +11,9 @@ Refactored with pytest.parametrize for Phase 4 of Unit Test Health Improvement P
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.config import SimulationConfig
+from tests.constants import TestConstants
 
 # Aliases for readability
 TC = TestConstants

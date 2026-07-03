@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.unit.ooda.conftest import make_action, make_ooda_profile
 
 from babylon.models.enums import ActionType, DecisionMode
 from babylon.ooda.types import (
@@ -19,6 +18,7 @@ from babylon.ooda.types import (
     OODAProfile,
     TurnResolution,
 )
+from tests.unit.ooda.conftest import make_action, make_ooda_profile
 
 
 class TestOODAProfile:

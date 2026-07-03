@@ -9,11 +9,11 @@ Uses MockPriceIndexSource from conftest.py with default data for 2010/2020/2022.
 from __future__ import annotations
 
 import pytest
-from tests.unit.economics.monetary.conftest import MockPriceIndexSource
 
 from babylon.economics.monetary.converter import DefaultValueBasisConverter
 from babylon.economics.monetary.types import MonetaryAdjustment
 from babylon.economics.tensor import NoDataSentinel
+from tests.unit.economics.monetary.conftest import MockPriceIndexSource
 
 # =============================================================================
 # compute_monetary_adjustment

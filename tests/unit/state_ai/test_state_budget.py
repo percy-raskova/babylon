@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.unit.state_ai.conftest import make_legal_framework, make_state_budget
 
 from babylon.models.entities.state_apparatus_ai import (
     VALID_LAW_TYPES,
     StateBudget,
 )
 from babylon.models.enums import StateActionType
+from tests.unit.state_ai.conftest import make_legal_framework, make_state_budget
 
 
 class TestStateBudgetConstruction:

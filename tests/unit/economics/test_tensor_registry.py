@@ -6,11 +6,11 @@ Tests for TensorRegistry that provides cached access to tensor primitives.
 from __future__ import annotations
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.economics.snlt import SNLTConfig
 from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
 from babylon.economics.tensor_registry import CountyHydrator, GeoLevel, TensorRegistry
+from tests.constants import TestConstants
 
 TC = TestConstants
 

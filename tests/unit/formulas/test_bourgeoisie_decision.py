@@ -19,6 +19,7 @@ TDD Red Phase: These tests define the contract for calculate_bourgeoisie_decisio
 from enum import StrEnum
 
 import pytest
+
 from tests.constants import TestConstants
 
 # Import will fail initially (Red Phase)

@@ -12,9 +12,9 @@ If this test fails, it means:
 from __future__ import annotations
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.config.defines import GameDefines
+from tests.constants import TestConstants
 
 TC = TestConstants
 

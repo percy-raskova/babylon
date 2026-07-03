@@ -620,6 +620,20 @@ poetry run python tools/ingest_tiger_geometry.py --h3-state ${usage_h3_state}
 description = "AST audit for direct .r/.l/.f mutations bypassing spec-043 routing formula."
 run = "poetry run python tools/audit_simplex_bypasses.py"
 
+[tasks."clean:testdb"]
+description = "Recycle the bloated babylon_test DB (test ticks accumulate ~GBs; drop, recreate, re-bootstrap)"
+run = """
+echo "── babylon_test size before:"
+docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
+docker exec babylon-pg-isolated psql -U test -d postgres -c "DROP DATABASE IF EXISTS babylon_test;"
+docker exec babylon-pg-isolated psql -U test -d postgres -c "CREATE DATABASE babylon_test OWNER test;"
+mise run db:bootstrap
+mise run web:migrate
+echo "── babylon_test recycled:"
+docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
+df -h /var | tail -1
+"""
+
 [tasks."db:bootstrap"]
 description = "Apply babylon canonical schema to the running test container (idempotent)"
 run = """
@@ -772,7 +786,9 @@ echo "Cleaned!"
 
 [tasks."clean:docker"]
 description = "Flush leaked test Postgres containers + anonymous volumes + build cache (frees /var)"
+# {% raw %} guards Docker's {{.Names}} format strings from mise's Tera templating
 run = """
+{% raw %}
 echo "── leaked ephemeral postgis test containers (testcontainers pattern):"
 LEAKED=$(docker ps -a --filter ancestor=postgis/postgis:16-3.4-alpine --format '{{.Names}}' | grep -v '^babylon-' || true)
 if [ -n "$LEAKED" ]; then
@@ -787,6 +803,7 @@ docker builder prune -f
 echo "── /var after flush:"
 df -h /var | tail -1
 docker system df
+{% endraw %}
 """
 
 # =============================================================================

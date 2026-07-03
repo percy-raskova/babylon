@@ -370,3 +370,71 @@ class TestFourNodeRecursion:
         }
         assert sharpened["core_capital_labor"].gap > base["core_capital_labor"].gap
         assert sharpened["imperial_nested"].gap > base_outer
+
+
+class TestGovernance:
+    """Sublation lineage: a successor GOVERNS its predecessor's motion."""
+
+    def _governed(self) -> OppositionRegistry[Inputs]:
+        return OppositionRegistry(
+            bindings=[_measure_for("capital_labor"), _measure_for("party")],
+            governance={"capital_labor": "party"},
+        )
+
+    def test_default_state_has_empty_lineage(self) -> None:
+        (state,) = _registry("solo").step(Inputs({"solo": (0.5, 0.0)}), tick=0)
+        assert state.governed_by == ""
+        assert state.successor_key == ""
+
+    def test_governed_state_carries_its_successor(self) -> None:
+        states = _by_key(
+            self._governed().step(
+                Inputs({"capital_labor": (0.9, 0.0), "party": (0.1, 0.0)}), tick=0
+            )
+        )
+        assert states["capital_labor"].governed_by == "party"
+        assert states["capital_labor"].successor_key == "party"
+        # The successor itself is ungoverned.
+        assert states["party"].governed_by == ""
+        assert states["party"].successor_key == ""
+
+    def test_governed_opposition_is_never_principal_even_with_top_score(self) -> None:
+        # capital_labor carries the largest gap/score, yet the successor leads.
+        states = _by_key(
+            self._governed().step(
+                Inputs({"capital_labor": (0.9, 0.0), "party": (0.1, 0.0)}), tick=0
+            )
+        )
+        assert not states["capital_labor"].is_principal
+        assert states["party"].is_principal
+
+    def test_unregistered_predecessor_rejected(self) -> None:
+        with pytest.raises(KeyError, match="ghost"):
+            OppositionRegistry(bindings=[_measure_for("party")], governance={"ghost": "party"})
+
+    def test_unregistered_successor_rejected(self) -> None:
+        with pytest.raises(KeyError, match="ghost"):
+            OppositionRegistry(bindings=[_measure_for("cl")], governance={"cl": "ghost"})
+
+    def test_governance_cycle_rejected(self) -> None:
+        with pytest.raises(ValueError, match="cycle"):
+            OppositionRegistry(
+                bindings=[_measure_for("a"), _measure_for("b")],
+                governance={"a": "b", "b": "a"},
+            )
+
+    def test_governance_chain_within_bound_is_accepted(self) -> None:
+        # a->b->c->d is depth 4 (== MAX_NESTING_DEPTH).
+        reg = OppositionRegistry(
+            bindings=[_measure_for(k) for k in ("a", "b", "c", "d")],
+            governance={"a": "b", "b": "c", "c": "d"},
+        )
+        assert set(reg.keys) == {"a", "b", "c", "d"}
+
+    def test_governance_chain_beyond_bound_is_rejected(self) -> None:
+        # a->b->c->d->e is depth 5 (> MAX_NESTING_DEPTH=4).
+        with pytest.raises(ValueError, match="depth"):
+            OppositionRegistry(
+                bindings=[_measure_for(k) for k in ("a", "b", "c", "d", "e")],
+                governance={"a": "b", "b": "c", "c": "d", "d": "e"},
+            )

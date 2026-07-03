@@ -24,6 +24,7 @@ from babylon.dialectics.core.opposition import (
     OppositionState,
     PoleBinding,
 )
+from babylon.dialectics.core.regime import Regime, classify_regime
 
 __all__ = [
     "AdjointCylinder",
@@ -41,8 +42,10 @@ __all__ = [
     "OppositionSpec",
     "OppositionState",
     "PoleBinding",
+    "Regime",
     "StanceIntervention",
     "apply_interventions",
+    "classify_regime",
     "product",
     "sum_",
 ]

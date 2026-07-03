@@ -39,7 +39,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.dialectics.core.coupling import StanceIntervention, apply_interventions
 from babylon.dialectics.core.opposition import OppositionState
+from babylon.dialectics.core.regime import classify_regime
 from babylon.dialectics.instances.catalog import GraphInputs
+from babylon.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
 from babylon.engine.event_bus import Event
 from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
@@ -57,6 +59,13 @@ if TYPE_CHECKING:
 
 #: Graph attribute holding ``{key: OppositionState.model_dump()}`` for the tick.
 OPPOSITION_STATES_ATTR = "opposition_states"
+
+#: Graph attribute holding this tick's fixed-point regime (Phase E2):
+#: ``{"regime": <reproduction|crisis|sublation>, "principal": key, "rate": float}``.
+DIALECTICAL_REGIME_ATTR = "dialectical_regime"
+
+#: County-chain level index of the capital_labor field the regime probes.
+_COUNTY_LEVEL_INDEX = 1
 
 #: Graph attribute holding a list of ``StanceIntervention`` dumps to apply this
 #: tick. Written by verb/OODA systems (spec-071), read + CLEARED here
@@ -156,6 +165,7 @@ class ContradictionSystem(SystemBase):
 
         self._write_frames(graph, services, registry, states)
         self._maybe_rupture(services, states, tick)
+        self._classify_regime(graph, services, registry, states, tick)
         graph.set_graph_attr(
             OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in states}
         )
@@ -302,3 +312,80 @@ class ContradictionSystem(SystemBase):
                     },
                 )
             )
+
+    # ------------------------------------------------------------------
+    # 3. Fixed-point regime classification (Phase E2, §9.4)
+    # ------------------------------------------------------------------
+
+    def _classify_regime(
+        self,
+        graph: GraphProtocol,
+        services: ServiceContainer,
+        registry: OppositionRegistry[GraphInputs],
+        states: tuple[OppositionState, ...],
+        tick: int,
+    ) -> None:
+        """Classify the tick's regime and publish LEVEL_TRANSITION on sublation.
+
+        Rupture (fired by :meth:`_maybe_rupture`) is the crisis regime's boiling
+        point; this classifies the same principal trajectory as reproduction,
+        crisis, or sublation over the capital_labor spatial field, stashes it on
+        the ``dialectical_regime`` graph attribute, and — only on the sublation
+        branch — publishes :data:`EventType.LEVEL_TRANSITION` (the production
+        Aufhebung signal; the TopologyMonitor has no runner call site).
+        """
+        principal = next((state for state in states if state.is_principal), None)
+        if principal is None:
+            return
+
+        field = self._capital_labor_field(graph)
+        counties = sorted(field)
+        lattice = spatial_lattice_for_counties(counties) if counties else None
+        level_index = level_index_for(registry.spec_for(principal.key).level_name)
+        if level_index is None or level_index < _COUNTY_LEVEL_INDEX:
+            level_index = _COUNTY_LEVEL_INDEX  # the capital_labor field's own level
+        rate_epsilon = float(services.defines.tension.regime_rate_epsilon)
+
+        regime = classify_regime(states, lattice, field, level_index, rate_epsilon=rate_epsilon)
+        graph.set_graph_attr(
+            DIALECTICAL_REGIME_ATTR,
+            {"regime": regime, "principal": principal.key, "rate": principal.rate},
+        )
+
+        if regime == "sublation" and lattice is not None:
+            target = lattice.aufhebung_of(level_index, [field])
+            if target is not None:
+                services.event_bus.publish(
+                    Event(
+                        type=EventType.LEVEL_TRANSITION,
+                        tick=tick,
+                        payload={
+                            "opposition": principal.key,
+                            "from_level": registry.spec_for(principal.key).level_name,
+                            "to_level": target.name,
+                            "gap": principal.gap,
+                            "rate": principal.rate,
+                        },
+                    )
+                )
+
+    @staticmethod
+    def _capital_labor_field(graph: GraphProtocol) -> dict[str, float]:
+        """Per-county mean EXPLOITATION-edge ``tension`` (the capital_labor field).
+
+        Keyed by the labor (source) node's ``county_fips``; the same per-county
+        extraction the C1.6 bridged test reads. Edges whose source lacks a
+        county or whose tension is unset are skipped. Empty when no county data
+        (single-county in-memory tests) — the caller then classifies rate-only.
+        """
+        by_county: dict[str, list[float]] = {}
+        for edge in graph.query_edges(edge_type=EdgeType.EXPLOITATION):
+            src = graph.get_node(edge.source_id)
+            if src is None:
+                continue
+            county = src.attributes.get("county_fips")
+            tension = edge.attributes.get("tension")
+            if county is None or not isinstance(tension, (int, float)):
+                continue
+            by_county.setdefault(str(county), []).append(float(tension))
+        return {county: sum(values) / len(values) for county, values in by_county.items()}

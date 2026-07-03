@@ -15,10 +15,13 @@ branch (verified against a 30-tick single-county bridged probe,
 
 - ``capital_labor`` — mean wealth-asymmetry over EXPLOITATION edges
   (labor = pole A / source, capital = pole B / target). Antagonistic.
-- ``wage`` — mean wealth-asymmetry over WAGES edges, re-oriented to the
-  SAME (labor = A, capital = B) convention as ``capital_labor`` so the
-  balance sign is uniform (positive = capital dominant). Its rate is the
-  crisis signal ``ConsciousnessSystem`` reads.
+- ``wage`` — the true wage⇄value counit defect Φ (Phase D5): mean
+  wealth-asymmetry over the per-class ``(w_paid, v_produced)`` pairs,
+  ordered ``(value-produced = A, price-of-labor-power = B)`` so a positive
+  balance means the wage exceeds the value produced — the imperial bribe
+  (Fundamental Theorem ``W_c > V_c``). Empty pairs → ``(0, 0)``; there is NO
+  fallback to endpoint wealth (the old proxy is removed — empty means no
+  data). Its rate is the crisis signal ``ConsciousnessSystem`` reads.
 - ``tenancy`` — tenant wealth (A) vs the territory's ``rent_level`` (B)
   over TENANCY edges, with a degenerate guard: a territory charging no
   rent (``rent_level`` ~ 0) has NO tenancy contradiction, so the pair
@@ -26,17 +29,22 @@ branch (verified against a 30-tick single-county bridged probe,
 - ``atomization`` — gap = :func:`atomization_index` of the SOLIDARITY
   subgraph (1 = fully atomized), balance = ``2*cylinder_balance - 1`` so
   −1 is the atomized pole and +1 the unified pole.
-- ``imperial`` — core↔periphery. The bridged world seeds no periphery
-  entities, so this binds a NULL measure (gap 0, balance 0); Phase D
-  rebinds it to the value-form defect Φ (the wage⇄value counit defect).
+- ``imperial`` — core↔periphery. Rebound in Phase D5 to the SAME wage⇄value
+  counit defect as ``wage``, read at the frame level: gap = mean asymmetry
+  ``|w−v|/(w+v)`` (the bounded computable proxy for ``|Φ_class|``), balance =
+  mean signed ``(w−v)/(w+v)`` (positive = wages exceed value = imperial-rent
+  inflow = core pole dominant). It shares ``wage``'s inputs but carries the
+  core/periphery poles and the frame level; that shared-input coupling is
+  encoded as ``wage feeds imperial`` in the default coupling graph.
 
-Design note (pole naming): the design contract names the ``wage`` poles
-"price-of-labor-power" ⇄ "value-produced" — the true wage⇄value adjunction
-defect (Fundamental Theorem: W_c > V_c). No per-edge "value produced"
-scalar is persisted yet, so the honest available proxy is the WAGES-edge
-endpoint wealth-asymmetry; Phase D replaces it. We therefore label the
-poles for what is actually measured (labor ⇄ capital) and record the
-aspirational reading in the spec's ``unity`` string.
+Design note (shared defect, different poles): ``wage`` and ``imperial`` read
+the identical ``(w_paid, v_produced)`` defect but bind different poles —
+``wage`` names the per-class relation (value-produced ⇄ price-of-labor-power),
+``imperial`` names the frame (core ⇄ periphery). The measure is
+:func:`babylon.dialectics.instances.value_form.phi_class` in spirit; the
+catalog uses the bounded asymmetry form from ``formulas.contradiction`` so the
+gap stays in ``[0, 1]`` (the raw ``(w−v)/v`` is unbounded). See
+:mod:`babylon.dialectics.instances.value_form` for the full adjunction.
 """
 
 from __future__ import annotations
@@ -82,9 +90,6 @@ class GraphInputs:
     Attributes:
         exploitation_pairs: ``(labor_wealth, capital_wealth)`` per
             EXPLOITATION edge (source=labor, target=capital).
-        wages_pairs: ``(labor_wealth, capital_wealth)`` per WAGES edge,
-            re-oriented from the edge's employer→worker direction so labor
-            is always pole A.
         wage_value_pairs: ``(w_paid, v_produced)`` per paid worker class node
             (Phase D4) — the wage⇄value counit-defect pair the value-form
             ``wage`` and ``imperial`` measures read. ``w_paid`` is total wages
@@ -96,7 +101,6 @@ class GraphInputs:
     """
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
-    wages_pairs: tuple[WealthPair, ...] = ()
     wage_value_pairs: tuple[tuple[float, float], ...] = ()
     tenancy_pairs: tuple[WealthPair, ...] = ()
     solidarity_subgraph: nx.Graph[str] | None = field(default=None)
@@ -121,9 +125,22 @@ def _capital_labor_measure(inputs: GraphInputs) -> GapReading:
     return _mean_asymmetry(inputs.exploitation_pairs)
 
 
+def _wage_value_reading(inputs: GraphInputs) -> GapReading:
+    """Mean wage⇄value counit defect over the ``(w_paid, v_produced)`` pairs.
+
+    Reorders each stored ``(w_paid, v_produced)`` to ``(value-produced = A,
+    price-of-labor-power = B)`` and takes the bounded asymmetry: gap
+    ``|w−v|/(w+v)``, balance ``(w−v)/(w+v)``, so a positive balance means the
+    wage exceeds the value produced — the imperial bribe. Empty pairs →
+    ``(0, 0)`` (no data, no dual path). Both ``wage`` (per-class relation) and
+    ``imperial`` (core↔periphery frame) read this same defect.
+    """
+    return _mean_asymmetry([(value, wage) for wage, value in inputs.wage_value_pairs])
+
+
 def _wage_measure(inputs: GraphInputs) -> GapReading:
-    """wage relation over WAGES edges (labor=A, capital=B)."""
-    return _mean_asymmetry(inputs.wages_pairs)
+    """wage: value-produced (A) ⇄ price-of-labor-power (B) — the Φ counit defect."""
+    return _wage_value_reading(inputs)
 
 
 def _tenancy_measure(inputs: GraphInputs) -> GapReading:
@@ -150,15 +167,17 @@ def _atomization_measure(inputs: GraphInputs) -> GapReading:
     return GapReading(gap=gap, balance=max(-1.0, min(1.0, balance)))
 
 
-def _imperial_measure(inputs: GraphInputs) -> GapReading:  # noqa: ARG001 - Protocol arity
-    """core⇄periphery — NULL until Phase D binds it to the value-form defect Φ.
+def _imperial_measure(inputs: GraphInputs) -> GapReading:
+    """core⇄periphery — the SAME wage⇄value Φ defect, read at the frame level.
 
-    The bridged world seeds no periphery entities, so there is nothing to
-    measure cheaply here. Returns ``gap 0, balance 0`` rather than inventing
-    an economics; Phase D (``instances/value_form.py``) rebinds this to the
-    per-class signed counit defect ``(W_c - V_c)/V_c``.
+    Rebound in Phase D5 (was NULL). Reads the same ``(w_paid, v_produced)``
+    pairs as ``wage`` via :func:`_wage_value_reading`: a positive balance means
+    wages exceed value produced — imperial-rent inflow, core pole dominant.
+    Differs from ``wage`` only in poles (core/periphery) and level (the frame),
+    not in arithmetic — see the module docstring and
+    :mod:`babylon.dialectics.instances.value_form`.
     """
-    return GapReading(gap=0.0, balance=0.0)
+    return _wage_value_reading(inputs)
 
 
 def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[GraphInputs]:
@@ -187,10 +206,11 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
         BoundOpposition(
             spec=OppositionSpec(
                 key="wage",
-                pole_a="labor (value produced)",
-                pole_b="capital (price of labor-power advanced)",
-                unity="the wage bargain: capital advances the price of labor-power, "
-                "labor yields the value it produces (Phase D: Φ = W_c − V_c defect)",
+                pole_a="value-produced",
+                pole_b="price-of-labor-power",
+                unity="the wage⇄value adjunction: the price of labor-power (the wage) "
+                "commands the value produced; their gap is Φ (Fundamental Theorem W_c > V_c) "
+                "— see dialectics.instances.value_form",
             ),
             measure=_wage_measure,
         ),
@@ -217,7 +237,9 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 key="imperial",
                 pole_a="core",
                 pole_b="periphery",
-                unity="core accumulation presupposes peripheral value transfer (Φ)",
+                unity="core accumulation presupposes peripheral value transfer; the wage⇄value "
+                "counit defect Φ made observable at the frame level "
+                "— see dialectics.instances.value_form",
                 antagonistic=True,
             ),
             measure=_imperial_measure,
@@ -241,6 +263,9 @@ _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
     Coupling(source="capital_labor", target="imperial", kind="antagonizes"),
     # capital_labor's development presupposes the wage relation it reads
     Coupling(source="wage", target="capital_labor", kind="feeds"),
+    # wage and imperial read the SAME (w_paid, v_produced) defect (D5): the
+    # per-class wage relation feeds the frame-level imperial-rent reading.
+    Coupling(source="wage", target="imperial", kind="feeds"),
 )
 
 

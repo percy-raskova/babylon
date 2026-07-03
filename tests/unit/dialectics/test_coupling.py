@@ -137,15 +137,17 @@ class TestDefaultCouplingGraph:
         graph = build_default_coupling_graph(build_default_registry())
         triples = {_triple(c) for c in graph.couplings}
         assert ("wage", "capital_labor", "feeds") in triples
+        assert ("wage", "imperial", "feeds") in triples  # Phase D5: shared defect
         assert ("capital_labor", "imperial", "antagonizes") in triples
         assert ("imperial", "capital_labor", "antagonizes") in triples  # symmetric
 
     def test_only_the_bound_edges_survive(self) -> None:
         graph = build_default_coupling_graph(build_default_registry())
-        # Exactly: wage->capital_labor feeds + the symmetric capital_labor<->imperial.
+        # wage->{capital_labor, imperial} feeds + the symmetric capital_labor<->imperial.
         non_contains = {_triple(c) for c in graph.couplings if c.kind != "contains"}
         assert non_contains == {
             ("wage", "capital_labor", "feeds"),
+            ("wage", "imperial", "feeds"),
             ("capital_labor", "imperial", "antagonizes"),
             ("imperial", "capital_labor", "antagonizes"),
         }

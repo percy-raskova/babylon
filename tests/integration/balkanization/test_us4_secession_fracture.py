@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.models.enums import EventType
 
@@ -43,7 +43,7 @@ def _events_of(bus: _RecordingEventBus, ev: Any) -> list[_CapturedEvent]:
     return [e for e in bus.events if e.type is ev]
 
 
-def _build_parent_with_n_claims(adapter: NetworkXAdapter, n: int) -> str:
+def _build_parent_with_n_claims(adapter: BabylonGraph, n: int) -> str:
     adapter.add_node(
         "SOV_USA_FED",
         "sovereign",
@@ -81,7 +81,7 @@ def test_secession_creates_new_sovereign_via_bulk_partition(services: Any) -> No
     produces a new breakaway Sovereign holding the contiguous Territory
     subregion via the O(K) bulk-partition operation."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _build_parent_with_n_claims(adapter, 100)
     seceding = {f"HEX_{i:05d}" for i in range(30)}
     context: dict[str, Any] = {
@@ -115,7 +115,7 @@ def test_secession_creates_new_sovereign_via_bulk_partition(services: Any) -> No
 def test_civil_war_declared_event_emitted_with_contested_count(
     services: Any,
 ) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _build_parent_with_n_claims(adapter, 50)
     seceding = {f"HEX_{i:05d}" for i in range(20)}
     context: dict[str, Any] = {
@@ -148,7 +148,7 @@ def test_orphaned_sovereign_pruned_when_all_territories_secede(
     parent's territories, the parent becomes orphaned and is deleted in
     the same tick."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _build_parent_with_n_claims(adapter, 5)
     seceding = {f"HEX_{i:05d}" for i in range(5)}  # All of them.
     context: dict[str, Any] = {
@@ -176,7 +176,7 @@ def test_sov_exterior_null_never_orphan_pruned(services: Any) -> None:
     """SOV_EXTERIOR_NULL is the documented fallback Sovereign and must
     survive orphan-cleanup passes."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node(
         "SOV_EXTERIOR_NULL",
         "sovereign",
@@ -202,7 +202,7 @@ def test_collapse_with_winning_factions_creates_successor_sovereigns(
     share as a new Sovereign at control_level = 0.8 + legal_status =
     DE_FACTO."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node(
         "SOV_OLD",
         "sovereign",

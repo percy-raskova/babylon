@@ -36,8 +36,6 @@ class TestConsciousnessSystemMaterialBuffer:
 
         # Build a real GraphProtocol via the adapter
 
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
         G = BabylonGraph()
         G.add_node(
             "worker_1",
@@ -80,7 +78,7 @@ class TestConsciousnessSystemMaterialBuffer:
             value_flow=initial_wage + wage_change,
         )
 
-        graph = NetworkXAdapter.wrap(G)
+        graph = G
 
         # Build services
         defines = GameDefines()

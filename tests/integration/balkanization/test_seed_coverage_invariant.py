@@ -12,7 +12,7 @@ start of tick 1.
 
 Since the proxy-data INFLUENCES seeding pipeline (T111-T113) is a
 follow-up not yet committed in this branch, this test exercises the
-invariant against an in-memory NetworkXAdapter seeded with the
+invariant against an in-memory BabylonGraph seeded with the
 canonical SOV_EXTERIOR_NULL Sovereign that catches the "un-influenced"
 edge case per FR-040b.
 """
@@ -25,18 +25,18 @@ from babylon.data.game.balkanization import (
     load_seed_factions,
     load_seed_sovereigns_raw,
 )
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
 
 
 def _seed_state_with_exterior_null_fallback(
     territory_ids: list[str],
-) -> NetworkXAdapter:
-    """Build a NetworkXAdapter where SOV_EXTERIOR_NULL claims every
+) -> BabylonGraph:
+    """Build a BabylonGraph where SOV_EXTERIOR_NULL claims every
     in-scope Territory. Models the documented FR-040b behavior."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     for faction in load_seed_factions():
         adapter.add_node(
             faction.id,
@@ -74,7 +74,7 @@ def _seed_state_with_exterior_null_fallback(
     return adapter
 
 
-def _is_covered(adapter: NetworkXAdapter, territory_id: str) -> bool:
+def _is_covered(adapter: BabylonGraph, territory_id: str) -> bool:
     influences = adapter.query_faction_influence_by_territory(territory_id)
     if any(row[1] > 0.0 for row in influences):
         return True
@@ -119,7 +119,7 @@ def test_coverage_fails_loud_when_invariant_broken() -> None:
     """Sanity: if SOV_EXTERIOR_NULL is missing AND no INFLUENCES are
     seeded, the invariant correctly reports the violation."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("HEX_ORPHAN", "territory")
     # No CLAIMS, no INFLUENCES — should be uncovered.
     assert not _is_covered(adapter, "HEX_ORPHAN")

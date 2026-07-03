@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.observers.balkanization_projections import (
     SovereignProjection,
     TerritoryProjection,
@@ -18,7 +18,7 @@ from babylon.models.enums import ExtractionPolicy
 pytestmark = pytest.mark.unit
 
 
-def _seed_state(adapter: NetworkXAdapter) -> None:
+def _seed_state(adapter: BabylonGraph) -> None:
     adapter.add_node(
         "SOV_USA_FED",
         "sovereign",
@@ -47,7 +47,7 @@ def _seed_state(adapter: NetworkXAdapter) -> None:
 
 
 def test_observe_sovereign_returns_frozen_projection() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_state(adapter)
 
     projection = observe_sovereign(adapter, "SOV_USA_FED")
@@ -63,7 +63,7 @@ def test_observe_sovereign_returns_frozen_projection() -> None:
 
 
 def test_observe_sovereign_frozen_cannot_mutate() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_state(adapter)
     projection = observe_sovereign(adapter, "SOV_USA_FED")
     assert projection is not None
@@ -72,12 +72,12 @@ def test_observe_sovereign_frozen_cannot_mutate() -> None:
 
 
 def test_observe_sovereign_returns_none_for_unknown_id() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     assert observe_sovereign(adapter, "SOV_GHOST") is None
 
 
 def test_observe_sovereign_respects_horizon_override() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_state(adapter)
     # 5-tick horizon under INTENSIFY: 0.7 - 5×0.02 = 0.6.
     projection = observe_sovereign(adapter, "SOV_USA_FED", horizon_ticks=5)
@@ -86,7 +86,7 @@ def test_observe_sovereign_respects_horizon_override() -> None:
 
 
 def test_observe_sovereign_projection_clamps_to_unit_interval() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node(
         "SOV_TINY",
         "sovereign",
@@ -111,7 +111,7 @@ def test_observe_sovereign_projection_clamps_to_unit_interval() -> None:
 
 
 def test_observe_territory_returns_frozen_projection() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_state(adapter)
     projection = observe_territory(adapter, "HEX_001")
     assert isinstance(projection, TerritoryProjection)
@@ -124,7 +124,7 @@ def test_observe_territory_returns_frozen_projection() -> None:
 
 
 def test_observe_territory_flags_dual_power() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_state(adapter)
     adapter.add_node(
         "SOV_BREAK",
@@ -149,7 +149,7 @@ def test_observe_territory_flags_dual_power() -> None:
 
 
 def test_observe_territory_returns_none_for_unknown_id() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     assert observe_territory(adapter, "HEX_NULL") is None
 
 
@@ -157,7 +157,7 @@ def test_projections_are_deterministic() -> None:
     """Calling either projection twice on identical state yields
     byte-identical results."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_state(adapter)
     p1 = observe_sovereign(adapter, "SOV_USA_FED")
     p2 = observe_sovereign(adapter, "SOV_USA_FED")

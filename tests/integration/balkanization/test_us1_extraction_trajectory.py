@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.sovereignty import SovereigntySystem
 from babylon.models.enums import ExtractionPolicy
@@ -52,8 +52,8 @@ def _build_world(
     extraction_policy: str,
     n_territories: int = 1,
     starting_habitability: float = 0.8,
-) -> NetworkXAdapter:
-    adapter = NetworkXAdapter()
+) -> BabylonGraph:
+    adapter = BabylonGraph()
     adapter.add_node(
         "SOV_USA_FED",
         "sovereign",
@@ -85,7 +85,7 @@ def _build_world(
 
 
 def _tick_pipeline(
-    adapter: NetworkXAdapter,
+    adapter: BabylonGraph,
     services: Any,
     persistent: dict[str, Any],
     tick: int,
@@ -98,7 +98,7 @@ def _tick_pipeline(
     MetabolismSystem().step(adapter, services, context)
 
 
-def _habitability(adapter: NetworkXAdapter, territory_id: str) -> float:
+def _habitability(adapter: BabylonGraph, territory_id: str) -> float:
     node = adapter.get_node(territory_id)
     assert node is not None
     return float(node.attributes["habitability"])

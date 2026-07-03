@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.models.enums import EventType
 
@@ -44,7 +44,7 @@ def _events_of(bus: _RecordingEventBus, ev: Any) -> list[_CapturedEvent]:
 def test_legitimacy_zero_triggers_sovereign_collapse(services: Any) -> None:
     """FR-023: legitimacy <= 0.0 fires SOVEREIGN_COLLAPSE."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("SOV_USA_FED", "sovereign", legitimacy=0.0)
     adapter.add_node("HEX_001", "territory")
     adapter.add_edge(
@@ -69,7 +69,7 @@ def test_territory_transition_per_claimed_territory(services: Any) -> None:
     """FR-024 / FR-025: each claimed Territory emits a TERRITORY_TRANSITION
     with reason=collapse_partition when its Sovereign collapses."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("SOV_USA_FED", "sovereign", legitimacy=0.0)
     for i in range(3):
         territory_id = f"HEX_{i:03d}"
@@ -95,7 +95,7 @@ def test_territory_transition_per_claimed_territory(services: Any) -> None:
 def test_collapse_removes_claims_edges(services: Any) -> None:
     """FR-024 step 5: CLAIMS edges removed after the collapse event."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("SOV_USA_FED", "sovereign", legitimacy=0.0)
     adapter.add_node("HEX_001", "territory")
     adapter.add_edge(
@@ -117,7 +117,7 @@ def test_external_trigger_via_persistent_data(services: Any) -> None:
     """External triggers (ECOLOGICAL_OVERSHOOT, NUCLEAR_EXCHANGE) flow
     in via ``persistent_data["balkanization.collapse_triggers"]``."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("SOV_DOOMED", "sovereign", legitimacy=0.9)  # Still legit.
     adapter.add_node("HEX_001", "territory")
     adapter.add_edge(
@@ -144,7 +144,7 @@ def test_external_trigger_via_persistent_data(services: Any) -> None:
 
 
 def test_healthy_sovereign_does_not_collapse(services: Any) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("SOV_USA_FED", "sovereign", legitimacy=1.0)
     context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
 
@@ -157,7 +157,7 @@ def test_healthy_sovereign_does_not_collapse(services: Any) -> None:
 def test_triggers_cleared_after_processing(services: Any) -> None:
     """Triggers are single-shot to avoid double-collapse on next tick."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("SOV_DOOMED", "sovereign", legitimacy=0.9)
     triggers = {"SOV_DOOMED": "ecological_overshoot"}
     context: dict[str, Any] = {

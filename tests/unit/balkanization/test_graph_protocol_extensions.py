@@ -17,15 +17,15 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.graph_protocol import GraphProtocol
 
 pytestmark = pytest.mark.topology
 
 
 @pytest.fixture
-def adapter_with_influences() -> NetworkXAdapter:
-    adapter = NetworkXAdapter()
+def adapter_with_influences() -> BabylonGraph:
+    adapter = BabylonGraph()
     adapter.add_node("HEX_001", "territory")
     adapter.add_node("FAC_A", "balkanization_faction")
     adapter.add_node("FAC_B", "balkanization_faction")
@@ -55,8 +55,8 @@ def adapter_with_influences() -> NetworkXAdapter:
 
 
 @pytest.fixture
-def adapter_with_claims() -> NetworkXAdapter:
-    adapter = NetworkXAdapter()
+def adapter_with_claims() -> BabylonGraph:
+    adapter = BabylonGraph()
     adapter.add_node("SOV_USA", "sovereign")
     adapter.add_node("SOV_DETROIT", "sovereign")
     adapter.add_node("HEX_001", "territory")
@@ -94,10 +94,10 @@ def adapter_with_claims() -> NetworkXAdapter:
 
 
 @pytest.fixture
-def adjacency_grid() -> NetworkXAdapter:
+def adjacency_grid() -> BabylonGraph:
     """3-hex strip: HEX_A — HEX_B — HEX_C plus isolated HEX_D."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     for hex_id in ("HEX_A", "HEX_B", "HEX_C", "HEX_D"):
         adapter.add_node(hex_id, "territory")
     adapter.add_edge("HEX_A", "HEX_B", "adjacency")
@@ -108,12 +108,12 @@ def adjacency_grid() -> NetworkXAdapter:
 
 
 def test_adapter_satisfies_protocol() -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     assert isinstance(adapter, GraphProtocol)
 
 
 def test_query_faction_influence_returns_three_tuples_sorted_desc(
-    adapter_with_influences: NetworkXAdapter,
+    adapter_with_influences: BabylonGraph,
 ) -> None:
     rows = adapter_with_influences.query_faction_influence_by_territory("HEX_001")
     assert rows == [
@@ -124,13 +124,13 @@ def test_query_faction_influence_returns_three_tuples_sorted_desc(
 
 
 def test_query_faction_influence_empty_for_unknown_territory(
-    adapter_with_influences: NetworkXAdapter,
+    adapter_with_influences: BabylonGraph,
 ) -> None:
     assert adapter_with_influences.query_faction_influence_by_territory("NOPE") == []
 
 
 def test_query_sovereign_claims_sorted_desc_by_control(
-    adapter_with_claims: NetworkXAdapter,
+    adapter_with_claims: BabylonGraph,
 ) -> None:
     rows = adapter_with_claims.query_sovereign_claims("SOV_USA")
     assert rows == [
@@ -141,7 +141,7 @@ def test_query_sovereign_claims_sorted_desc_by_control(
 
 
 def test_query_territory_claims_returns_all_claimants_sorted(
-    adapter_with_claims: NetworkXAdapter,
+    adapter_with_claims: BabylonGraph,
 ) -> None:
     rows = adapter_with_claims.query_territory_claims("HEX_002")
     assert rows == [
@@ -151,7 +151,7 @@ def test_query_territory_claims_returns_all_claimants_sorted(
 
 
 def test_query_adjacent_territories_bidirectional_sorted(
-    adjacency_grid: NetworkXAdapter,
+    adjacency_grid: BabylonGraph,
 ) -> None:
     assert adjacency_grid.query_adjacent_territories("HEX_B") == ["HEX_A", "HEX_C"]
     assert adjacency_grid.query_adjacent_territories("HEX_A") == ["HEX_B"]
@@ -159,7 +159,7 @@ def test_query_adjacent_territories_bidirectional_sorted(
 
 
 def test_bulk_partition_claims_rewires_only_specified_territories(
-    adapter_with_claims: NetworkXAdapter,
+    adapter_with_claims: BabylonGraph,
 ) -> None:
     adapter_with_claims.add_node("SOV_NEW", "sovereign")
     moved = adapter_with_claims.bulk_partition_claims(
@@ -179,7 +179,7 @@ def test_bulk_partition_claims_rewires_only_specified_territories(
 
 
 def test_bulk_partition_claims_ignores_non_claim_territories(
-    adapter_with_claims: NetworkXAdapter,
+    adapter_with_claims: BabylonGraph,
 ) -> None:
     adapter_with_claims.add_node("SOV_NEW", "sovereign")
     adapter_with_claims.add_node("HEX_999", "territory")  # not claimed
@@ -192,7 +192,7 @@ def test_bulk_partition_claims_ignores_non_claim_territories(
 
 
 def test_contiguous_component_walks_predicate_satisfying_neighbors(
-    adjacency_grid: NetworkXAdapter,
+    adjacency_grid: BabylonGraph,
 ) -> None:
     component = adjacency_grid.query_contiguous_component_under_predicate(
         territory_seed="HEX_A",
@@ -202,7 +202,7 @@ def test_contiguous_component_walks_predicate_satisfying_neighbors(
 
 
 def test_contiguous_component_respects_predicate_failure(
-    adjacency_grid: NetworkXAdapter,
+    adjacency_grid: BabylonGraph,
 ) -> None:
     component = adjacency_grid.query_contiguous_component_under_predicate(
         territory_seed="HEX_A",
@@ -213,7 +213,7 @@ def test_contiguous_component_respects_predicate_failure(
 
 
 def test_contiguous_component_empty_when_seed_fails_predicate(
-    adjacency_grid: NetworkXAdapter,
+    adjacency_grid: BabylonGraph,
 ) -> None:
     component = adjacency_grid.query_contiguous_component_under_predicate(
         territory_seed="HEX_A",

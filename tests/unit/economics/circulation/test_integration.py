@@ -168,11 +168,10 @@ class TestGraphBridgeSerialization:
             SimulationTickState,
             SmoothedCoefficients,
         )
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
         g = BabylonGraph()
         g.add_node("26163", node_type="territory")
-        graph = NetworkXAdapter.wrap(g)
+        graph = g
 
         national = NationalTickParameters(
             year=2022,
@@ -224,11 +223,10 @@ class TestGraphBridgeSerialization:
             SimulationTickState,
             SmoothedCoefficients,
         )
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
         g = BabylonGraph()
         g.add_node("26163", node_type="territory")
-        graph = NetworkXAdapter.wrap(g)
+        graph = g
 
         # Create county with custom circulation state
         custom_circuit = CircuitState(

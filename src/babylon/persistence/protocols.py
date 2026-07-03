@@ -13,10 +13,13 @@ Constitution II.6 compliance: all persistence methods are called
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import UUID
 
 import networkx as nx
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
 
 
 class TraceLevel(IntEnum):
@@ -122,7 +125,7 @@ class RuntimePersistence(Protocol):
     def persist_tick(
         self,
         tick: int,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
         events: list[dict[str, Any]] | None = None,
         *,
         session_id: UUID | None = None,
@@ -168,7 +171,7 @@ class RuntimePersistence(Protocol):
         tick: int | None = None,
         *,
         session_id: UUID | None = None,
-    ) -> nx.DiGraph[str]:
+    ) -> BabylonGraph | nx.DiGraph[str]:
         """Load a complete state snapshot from storage.
 
         If tick is None, loads the latest available tick.

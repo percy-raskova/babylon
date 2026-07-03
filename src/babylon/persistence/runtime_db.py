@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 
     import networkx as nx
 
+    from babylon.engine.graph import BabylonGraph
+
 
 # Paths relative to repository root
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
@@ -115,7 +117,7 @@ class RuntimeDatabase:
     def persist_tick(
         self,
         tick: int,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
         events: list[dict[str, Any]] | None = None,
         *,
         session_id: UUID | None = None,  # noqa: ARG002 - Required by RuntimePersistence protocol
@@ -209,7 +211,7 @@ class RuntimeDatabase:
 
     def _canonical_payload(
         self,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
         events: list[dict[str, Any]] | None,
     ) -> dict[str, Any]:
         """Return a canonical-serialized representation of (graph, events).
@@ -300,7 +302,7 @@ class RuntimeDatabase:
         tick: int | None = None,
         *,
         session_id: UUID | None = None,  # noqa: ARG002 - Required by RuntimePersistence protocol
-    ) -> nx.DiGraph[str]:
+    ) -> BabylonGraph:
         """Load graph state from SQLite (ADR032).
 
         Args:
@@ -308,11 +310,11 @@ class RuntimeDatabase:
             session_id: Session scope (ignored for SQLite, required for Postgres).
 
         Returns:
-            NetworkX DiGraph with state at the specified tick.
+            BabylonGraph with state at the specified tick (Amendment L).
         """
-        import networkx as nx
+        from babylon.engine.graph import BabylonGraph
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph = BabylonGraph()
 
         # Determine which tick to load
         if tick is None:

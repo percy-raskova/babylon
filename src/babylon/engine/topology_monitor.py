@@ -465,11 +465,9 @@ class TopologyMonitor:
             state: Current WorldState to analyze
             is_start: Whether this is the initial snapshot
         """
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-        # Convert to graph and wrap for protocol access
-        raw_graph = state.to_graph()
-        graph: GraphProtocol = NetworkXAdapter.wrap(raw_graph)
+        # Amendment L: to_graph() returns BabylonGraph, which IS the
+        # protocol — no wrap needed.
+        graph: GraphProtocol = state.to_graph()
 
         # Count social_class nodes
         total_nodes = sum(1 for _ in graph.query_nodes(node_type="social_class"))

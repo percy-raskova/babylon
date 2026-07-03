@@ -20,10 +20,13 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import networkx as nx
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
 from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -113,7 +116,7 @@ class PostgresRuntime:
     def persist_tick(
         self,
         tick: int,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
         events: list[dict[str, Any]] | None = None,
         *,
         session_id: UUID | None = None,
@@ -167,7 +170,7 @@ class PostgresRuntime:
 
     @staticmethod
     def _canonical_payload(
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
         events: list[dict[str, Any]] | None,
     ) -> dict[str, Any]:
         """Return a canonical-serialized representation of (graph, events).
@@ -267,7 +270,7 @@ class PostgresRuntime:
         tick: int | None = None,
         *,
         session_id: UUID | None = None,
-    ) -> nx.DiGraph[str]:
+    ) -> BabylonGraph:
         """Load a complete state snapshot from storage.
 
         Args:
@@ -275,13 +278,15 @@ class PostgresRuntime:
             session_id: Required session scope.
 
         Returns:
-            Fully populated NetworkX DiGraph.
+            Fully populated BabylonGraph (Amendment L).
         """
         if session_id is None:
             msg = "session_id is required for PostgresRuntime.hydrate_graph"
             raise ValueError(msg)
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
+        from babylon.engine.graph import BabylonGraph
+
+        graph = BabylonGraph()
 
         with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
             # Determine tick
@@ -2067,7 +2072,7 @@ class PostgresRuntime:
         conn: Connection[Any],
         session_id: UUID,
         tick: int,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
     ) -> None:
         """Persist all graph nodes for a tick."""
         rows = []
@@ -2114,7 +2119,7 @@ class PostgresRuntime:
         conn: Connection[Any],
         session_id: UUID,
         tick: int,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
     ) -> None:
         """Persist all graph edges for a tick."""
         rows = []

@@ -92,6 +92,8 @@ from babylon.utils.log import log_context_scope
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.engine.graph import BabylonGraph
+
 logger = logging.getLogger(__name__)
 
 
@@ -168,7 +170,7 @@ class SimulationEngine:
 
     def run_tick(
         self,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -223,7 +225,7 @@ class SimulationEngine:
 
     def _run_audit(
         self,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph | nx.DiGraph[str],
         services: ServiceContainer,
         context: ContextType,
         tick: int,
@@ -603,7 +605,7 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
 
 
 def _restore_graph_context(
-    G: nx.DiGraph[str],
+    G: BabylonGraph | nx.DiGraph[str],
     persistent_context: dict[str, Any] | None,
 ) -> None:
     """Restore graph-level state from persistent_context before systems run.
@@ -621,7 +623,7 @@ def _restore_graph_context(
 
 
 def _save_graph_context(
-    G: nx.DiGraph[str],
+    G: BabylonGraph | nx.DiGraph[str],
     persistent_context: dict[str, Any] | None,
     tick: int,
 ) -> None:

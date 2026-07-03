@@ -26,12 +26,29 @@ agreements (speckit lifecycle, TDD, full-vision no-MVP).
 ### Wave 3 — Player Action Verbs (3D Conflict + 3C Information)
 
 - **spec-075 Kinetic Warfare (ATTACK verb)** — critical path. Depends on 071.
+- **NEW: Commodity-flow routing ("slime mold", 07 §2 M1)** — per-tick
+  min_cost_flow over (hex × SCTG) O-D pairs with conductivity EMA;
+  unrouted demand → realization crisis. Percy-requested spec; it is what
+  makes 075's edge-severing economically real. Build WITH or immediately
+  after 075.
+- **NEW: Prose→stance-vector verb input (07 §2 M2)** — out-of-tick LLM
+  parser → frozen StanceSchema with coherence-refusal; presets fallback.
+  The input model for ALL Wave-3 verb specs; stance = signed intervention
+  on an opposition's balance (couples to the dialectics refactor).
+- **Verb sub-modes + verb-page UX (07 §2 M3, §3 X4)** — ~20+ interventions
+  under the 9 verbs; feedforward projections, unavailable-with-reasons,
+  real-number tradeoffs, consciousness-cascade readouts, 3×3 verb grid.
 - **spec-076 Fog of War & Intel Layer** — the Intel page (4-variant inspector,
   incl. Communities) is already live against snapshots (2026-07-02); this
   spec adds the epistemic layer (what the player is ALLOWED to see).
 - **spec-077 Gramscian Hegemony System** — player narrative warfare. Pairs
   naturally with the crisis-gated consciousness machinery (§4 of
   `02-engine-truths.md`): 077 is how the PLAYER moves visibility/agitation.
+  - Its DISPLAY SURFACE is the **Gramscian Wire triptych** (07 §3 X2):
+    Corporate Feed / Liberated Signal / Intel Stream, euphemism
+    dictionaries, hegemony-driven visibility, diegetic downtime — already
+    designed (2026-05-17 artboards). Narrator voice+stack per 07 §3 X1
+    (Mao "Oppose Stereotyped Party Writing", tool-calling tone enum).
 - **spec-078 Repression Logic Full** (ROE tiers, COINTELPRO, Malinovsky,
   snitch budget) — StruggleSystem/state-AI deepening; keep the
   income-circuit hegemony test green when touching StruggleSystem.
@@ -44,6 +61,11 @@ agreements (speckit lifecycle, TDD, full-vision no-MVP).
   (colonial_stance filtering), 071 (NATIONALISM tag). Build only after all
   three are merged.
 - **spec-081 Warlord Trajectory Branching** — end of the critical path.
+  - Ship WITH it: the **chronicle end-screen + Journal objectives**
+    (07 §2 M4) — the UX that reconciles "no victory state" with the
+    5-outcome enum (outcomes are characters of collapse, not wins).
+- **Liberated-zone mechanic** (07 §2 M11) — org→institution transformation
+  with a bidirectional spatial boundary the state can dissolve.
 
 ### Wave 5 — Cleanup & Loop Closure
 
@@ -51,11 +73,29 @@ agreements (speckit lifecycle, TDD, full-vision no-MVP).
   touches the value tensor; coordinate with 098's data slices (ATUS).
 - **spec-083 Political Economy of Liquidity** (Fiscal + Fundraising +
   Precarity) — closes the money loop for orgs.
+- **NEW: Resource-substrate ledger** (07 §2 M5) — physical units (MWh,
+  tons, GPU-hours) feeding `c` via MELT; grounds biocapacity with
+  EIA/USGS; physical shocks = discrete crisis resets.
 
 ### Waves 6–7
 
 Content/polish waves — read the audit TL;DR + Part 3 tail when Wave 5
-closes. Do not plan them in detail yet (demand-driven docs).
+closes. The chat-corpus review (07 §§2-3) pre-seeds them; plan details
+stay demand-driven:
+
+- **Wave 6 (experience + distribution)**: in-game wiki via composable
+  tooltips + term-registry linter (X3 — the onboarding strategy, pairs
+  with 085); chronicle/Journal if not shipped with 081; visual identity +
+  palette resolution (X5 + Owner Decision 1); accessibility requirements
+  (X8 — colorblind-safe ramps, non-color magnitude channel, keyboard
+  nav); audio direction (X7); modding + console (M6); Steam distribution
+  (M7, subject to Owner Decision 2); **production deployment track**
+  (M8 — Hetzner+Cloudflare, 12-page spec-kit PDF exists); map viz specs
+  (X6 — value-flow arrows lens, BubbleSets hulls, unit iconography,
+  sovereignty-overlay rendering); Synopticon surface (X9, with 078/079).
+- **Wave 7 (horizon)**: international circulation layer (M9 — needs
+  constitutional amendment); scale-out/columnar substrate + federation
+  (M10).
 
 ## "Game works locally" — remaining non-catalog items
 

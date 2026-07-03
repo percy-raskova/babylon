@@ -15,6 +15,17 @@ Two legs, both required:
 1. **Local play**: the Django+React web app playable end-to-end against the
    real engine (not stubs), on Percy's machine.
 
+**Completeness check (2026-07-03)**: Percy's full claude.ai chat corpus was
+mined and reconciled against this kit — `07-chat-corpus-alignment.md` is the
+master record. It adds endorsed-but-uncatalogued mechanics (commodity-flow
+routing, prose→stance verbs, chronicle/Journal, resource substrate, modding,
+deployment track, international layer), the experience layer (Wire, wiki
+tooltips, narrator voice, visual identity, audio, accessibility), five OWNER
+DECISIONS still open (palette, delivery, narrator infra, victory-UX,
+scale-out), and chat-sourced requirements folded into the dialectics
+contract (`06` §9). "The game works locally" remains the near goal; 07
+defines what "a complete game" adds beyond it.
+
 ## Roadmap authority (ratified 2026-07-02)
 
 - The **living roadmap** = the audit report + `ai-docs/state.yaml`.

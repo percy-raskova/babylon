@@ -260,3 +260,111 @@ poetry run pytest tests/property/ -q        # Phase C onward
   guessing — especially around StruggleSystem (it severs EXPLOITATION
   edges; the hegemony test must stay green) and the crisis-gating of
   consciousness (flat during a growing bribe is CORRECT).
+
+## 9. Chat-corpus requirements (added 2026-07-03 — see `07-chat-corpus-alignment.md`)
+
+A full mine of Percy's claude.ai history surfaced endorsed design this
+contract must absorb. The Lawverian foundation itself is owner-ordered
+(2026-07-02 directive) — but the corpus adds constraints and content.
+
+### 9.1 The earn-its-keep discipline (governs every phase)
+
+Percy's own 2026-04-26 "Category theory meme" chat mocks duality-chasing;
+the standing rule: **a categorical construct ships only if it yields a
+law, a prediction, or a computation we run** — never as vocabulary. The
+three CT structures that chat DID endorse become explicit targets:
+
+- **H3 aggregation as a sheaf**: gluing = conservation; functoriality
+  `A_{6->5} . A_{7->6} = A_{7->5}`; extensive quantities sum, intensive
+  weighted-mean; aggregate primitives, recompute derived. NO cohomology.
+  (Phase D `instances/scale.py` — name the sheaf condition in the tests.)
+- **Edge modes as a presented category**: objects {EXTRACTIVE,
+  TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC, CO-OPTIVE}, hom-sets =
+  legal transitions only (EXTRACTIVE->SOLIDARISTIC must transit
+  TRANSACTIONAL). (Phase E EdgeTransition rework.)
+- **Material/ideological as a fibration**: "class-for-itself is the
+  failure of the canonical lift to exist." (Exploratory; earns its keep
+  only if it produces the lift-existence check as code — else drop.)
+
+### 9.2 Amendments to Phase C2 (composition + structure)
+
+Beyond retiring the dormant package, C2 MUST re-express what the dormant
+design carried and Percy ratified:
+
+- **Composition algebra**: product (D1 ⊗ D2), sum (D1 ⊕ D2), and NESTING
+  (a pole may itself be an opposition — the fractal four-node recursion,
+  her original architecture). Registry gains composite bindings whose
+  gap/balance derive from components; laws: composition respects gap
+  bounds; nesting depth bounded (static loop bound).
+- **Typed coupling graph**: oppositions relate via typed morphisms —
+  feeds / constrains / transforms / contains / antagonizes — replacing
+  "coupled only through shared inputs". Player verbs act as MORPHISM
+  MUTATIONS (stance = signed intervention on a target opposition's
+  balance); events = pull-based hooks over opposition states.
+- **Sublation lineage**: `parent_id -> successor_id` first-class on
+  opposition states (the dormant `Dialectic.parent_id` semantics);
+  sublation-containment: successor GOVERNS predecessor's motion (the
+  Class->Party handoff pattern), not mere replacement.
+- **Observation-relativity** (deferred OK, record now): `observe()` is
+  frame-dependent — Commodity through Transformation yields
+  price-of-production; through Imperial yields unequal-exchange-distorted
+  realization. Design the measure signature so frames can be added.
+- **VIII.9 n-ary protection**: `OppositionSpec(pole_a, pole_b)` is
+  dyadic; internal nations are NOT one pole. Rule: a pole may reference a
+  COMMUNITY (XGI hyperedge id) — the dyadic reduction of an n-ary
+  formation is FORBIDDEN as a pole; and opposition-to-APPARATUS
+  (institutional exclusion, no oppressor community) is a distinct
+  spec flavor from contradiction-pairs. Encode as validation + docs.
+
+### 9.3 Amendments to Phase D (economy)
+
+- **Φ tri-decomposition is mandatory**: Φ = three separately-measured
+  defects — unequal exchange (Emmanuel/Amin), externalized reproduction
+  (Meillassoux), domestic shadow labor (Fortunati) — the scalar is their
+  SUM, never the primitive. "A single scalar weight cannot carry Φ's
+  three components" (2026-04-12). Three adjunction instances, one report.
+- **Conservation identity as THE law test**:
+  `ΣL_performed = ΣV_visible + ΣΦ_shadow`, each Φ component independently
+  traceable.
+- **γ's three mechanisms are non-interchangeable**: γ_basket = τa/τb
+  (international), γ_III = L_paid/(L_paid+L_unpaid) (reproductive
+  visibility), π = τ_through/τ_national (throughput, NOT a visibility
+  mechanism). Keep them distinct in the value-form instance.
+- **Class-position sorting**: Φ_hour = W − τ_eff (τ_eff = τ·γ_basket);
+  Φ_hour ≥ 0 → labor aristocracy; Φ_hour < 0 ∧ W ≥ V_repro → proletariat;
+  W < V_repro → subproletariat; Φ_hour conserved across the divide
+  ("Oakland's labor-aristocrat hour IS Wayne's super-exploited hour").
+
+### 9.4 Amendments to Phase E (+ handoff to spec-071)
+
+- **Fixed-point tick ontology** (Percy: "the unification"): a tick is one
+  iteration of a self-consistency search — convergence = reproduction,
+  non-convergence = crisis, bifurcation-at-higher-order = sublation.
+  Phase E's Aufhebung wiring must implement rupture as the THIRD REGIME
+  of the same operator, not a separate mechanism. The Grundrisse 4-cycle
+  (Production→Circulation→Distribution→Consumption reading previous-tick
+  state) is the canonical cyclical instance; port its 10-tick
+  no-violation test as a FIXED-POINT test, not a flat registry test.
+- **Rupture gate = condition AND level** (Mao's bomb): threshold-crossing
+  needs a state predicate in addition to accumulator level — never fire
+  on magnitude alone. (C1 already gates on "exceeds threshold AND
+  rising"; keep the predicate extensible.)
+- **Fractal check**: the level lattice must reproduce the 4-node
+  recursion — {Core,Periphery}×{Bourgeoisie,Proletariat} reappearing at
+  each zoom, lumpen appearing only on zoom-in. If Aufhebung-between-
+  levels can't express this, say so explicitly rather than fake it.
+- **RLF simplex constraints (071 consumes these)**: r+l+f=1, liberal
+  tie-break default; `ideological_contestation = H(r,l,f)/log 3` is a
+  DIAGNOSTIC ONLY (entropy is permutation-symmetric — it cannot carry the
+  Jackson asymmetry); the asymmetry lives in the directed flow field:
+  **f→r forbidden or ε-gated** (proletarianization ∧ adjacent-r ∧
+  solidarity edge) — this breaks detailed balance (Kolmogorov) so NO
+  potential function / free-energy formulation exists (rejected
+  explicitly); r→f carries a CAPACITY transfer.
+  - Also endorsed: `assimilation_ratio = f/(l+f)`.
+  - Rejected: (c,v,s) ↦ (r,l,f) direct maps (vulgar economism), and
+    the F = E − T·S MaxEnt framing.
+- **Weight convention**: balance ∈ [−1,1] with 0 = equilibrium is the
+  ratified convention (running code beat the spec's [0,1]) — already
+  honored; principal-aspect flip semantics: ω(A)+ω(Ā)=1, flip at 0.5,
+  with inertia.

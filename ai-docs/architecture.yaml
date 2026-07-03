@@ -46,16 +46,17 @@ core_architecture:
       approach: "Interface-First"
       principle: |
         The architecture defines a GraphProtocol interface, NOT a specific graph library.
-        NetworkX is an implementation detail - the current MVP adapter.
-        Future implementations (DuckDB + DuckPGQ) can be swapped without changing
-        any System code, as long as they implement the GraphProtocol interface.
+        The substrate is an implementation detail: BabylonGraph (rustworkx core,
+        Amendment L / ADR052) is both the GraphProtocol implementation and the
+        nx-compat authoring API. Backends can be swapped without changing any
+        System code, as long as they implement the GraphProtocol interface.
       implementations:
         current:
-          adapter: "InMemoryAdapter"
-          backing: "NetworkX DiGraph (in-memory)"
-          epoch: "Epoch 1 (direct access) and Epoch 2 (via interface)"
-          location: "src/babylon/engine/adapters/inmemory_adapter.py"
-          note: "Epoch 1 uses NetworkX directly; Epoch 2 wraps it behind GraphProtocol"
+          adapter: "BabylonGraph (the graph IS the protocol implementation)"
+          backing: "rustworkx PyDiGraph core + insertion-ordered payload/adjacency mirrors"
+          epoch: "Amendment L (2026-07-03) — replaced NetworkXAdapter (deleted)"
+          location: "src/babylon/engine/graph.py"
+          note: "Insertion-ordered mirrors reproduce NetworkX's iteration contract (III.7 determinism, byte-identical baselines)"
         future:
           adapter: "ColumnarAdapter"
           backing: "DuckDB + DuckPGQ (persistent, OLAP-optimized)"
@@ -647,7 +648,7 @@ directory_map:
     models/:
       purpose: "Pydantic models for the simulation"
       key_files:
-        - "world_state.py: Immutable state snapshot with NetworkX integration"
+        - "world_state.py: Immutable state snapshot with BabylonGraph integration"
         - "config.py: SimulationConfig (frozen, 11 parameters)"
         - "types.py: Constrained types (Probability, Currency, Ideology, etc.)"
         - "enums.py: StrEnum definitions (SocialRole, EdgeType, etc.)"
@@ -748,7 +749,7 @@ data_flows:
   overview: |
     The Embedded Trinity uses a "Hydration Pattern" for data flow.
     The Engine does NOT query SQL during simulation - it loads SQL into
-    NetworkX (RAM), mutates it, and dumps it back. This ensures:
+    BabylonGraph (RAM), mutates it, and dumps it back. This ensures:
     1. Deterministic simulation (no I/O latency or race conditions)
     2. Fast tick execution (pure RAM operations)
     3. Clean separation between storage and computation
@@ -760,7 +761,7 @@ data_flows:
     name: "Wake"
     when: "Game startup, load save, new game"
     input: "SQLite tables (social_classes, territories, relationships)"
-    output: "WorldState (Pydantic) → NetworkX DiGraph"
+    output: "WorldState (Pydantic) → BabylonGraph"
 
     process:
       service: "PersistenceService.load_state()"
@@ -768,7 +769,7 @@ data_flows:
         - "1. Query SQLite tables (SELECT * FROM social_classes, territories, relationships)"
         - "2. Validate rows against Pydantic models (SocialClass, Territory, Relationship)"
         - "3. Construct WorldState from validated entities"
-        - "4. Convert WorldState.to_graph() → NetworkX DiGraph"
+        - "4. Convert WorldState.to_graph() → BabylonGraph"
         - "5. Initialize ChromaDB connection for Archive layer"
 
     sql_operations:
@@ -784,7 +785,7 @@ data_flows:
 
     output_structure:
       worldstate: "Immutable Pydantic model with all entities"
-      graph: "NetworkX DiGraph with nodes and edges"
+      graph: "BabylonGraph with nodes and edges"
 
   # ---------------------------------------------------------------------------
   # PHASE 2: SIMULATION (Work)
@@ -792,7 +793,7 @@ data_flows:
   simulation:
     name: "Work"
     when: "Each tick of the game loop"
-    environment: "Pure RAM (NetworkX DiGraph)"
+    environment: "Pure RAM (BabylonGraph — rustworkx core)"
     constraint: "NO DATABASE I/O DURING TICK"
 
     process:
@@ -800,7 +801,7 @@ data_flows:
       location: "src/babylon/engine/simulation_engine.py"
       steps:
         - "1. WorldState already in RAM (from hydration or previous tick)"
-        - "2. Convert to NetworkX DiGraph if not already"
+        - "2. Require a BabylonGraph (raw nx no longer supported)"
         - "3. Create ServiceContainer with config (no DB reference)"
         - "4. Run Systems in historical materialist order"
         - "5. Convert graph back to new WorldState"
@@ -922,7 +923,7 @@ data_flows:
     └─────────────────────────────────────────────────────────────────────────┘
 
     ┌──────────────┐     HYDRATE      ┌──────────────┐     SIMULATE     ┌──────────────┐
-    │   SQLite     │ ───────────────► │  WorldState  │ ───────────────► │  NetworkX    │
+    │   SQLite     │ ───────────────► │  WorldState  │ ───────────────► │ BabylonGraph │
     │   (Cold)     │  load_state()    │  (Pydantic)  │   to_graph()     │   (Hot)      │
     │              │                  │              │                  │              │
     │ social_      │                  │ classes: []  │                  │  Nodes:      │
@@ -940,7 +941,7 @@ data_flows:
            │                                                                   │
            │                                                                   ▼
     ┌──────────────┐     DEHYDRATE    ┌──────────────┐     EXTRACT      ┌──────────────┐
-    │   SQLite     │ ◄─────────────── │  WorldState  │ ◄─────────────── │  NetworkX    │
+    │   SQLite     │ ◄─────────────── │  WorldState  │ ◄─────────────── │ BabylonGraph │
     │   (Cold)     │  save_state()    │  (Pydantic)  │   from_graph()   │   (Hot)      │
     │              │                  │              │                  │              │
     │ INSERT OR    │                  │ New state    │                  │  Mutated     │
@@ -983,7 +984,7 @@ interfaces:
     example: "Faction model → factions.json → factions.schema.json"
 
   ledger_to_topology:
-    pattern: "JSON data → NetworkX nodes/edges"
+    pattern: "JSON data → BabylonGraph nodes/edges"
     example: "faction.dialectical_relationships → graph edges"
 
   topology_to_archive:

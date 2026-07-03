@@ -203,7 +203,7 @@ Three-layer local system (no external servers):
    - Rigid material state: 17 JSON entity collections
    - Validated against JSON Schema Draft 2020-12
 
-2. **The Topology** (NetworkX) - `src/babylon/models/world_state.py`
+2. **The Topology** (rustworkx via BabylonGraph) - `src/babylon/engine/graph.py` + `src/babylon/models/world_state.py`
    - Fluid relational state via `to_graph()`/`from_graph()`
    - Two node types: `SocialClass` (entities) and `Territory` (spatial)
    - Edges: EXPLOITATION, SOLIDARITY, WAGES, TRIBUTE, TENANCY, ADJACENCY, etc.

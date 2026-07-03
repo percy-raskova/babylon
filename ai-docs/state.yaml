@@ -826,7 +826,7 @@ implemented:
 
       world_state:
         status: "complete"
-        details: "Immutable state with NetworkX graph conversion, state_finances integration"
+        details: "Immutable state with BabylonGraph conversion (rustworkx, Amendment L), state_finances integration"
         location: "src/babylon/models/world_state.py"
         tests: "tests/unit/models/test_world_state.py (41 tests)"
         state_finances_integration:

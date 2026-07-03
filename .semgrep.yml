@@ -139,18 +139,37 @@ rules:
         - "**/formulas/constants.py"
 
   # =========================================================================
-  # LAYER BOUNDARY: No raw NetworkX calls in systems/formulas/economics
+  # LAYER BOUNDARY: No raw rustworkx calls in systems/formulas/economics
   # =========================================================================
 
-  - id: babylon.layer-boundary.no-raw-networkx
+  - id: babylon.layer-boundary.no-raw-rustworkx
     message: >-
-      No raw NetworkX function calls in systems/formulas/economics.
-      Use GraphProtocol adapter methods instead of nx.some_function().
+      No raw rustworkx function calls in systems/formulas/economics.
+      Use GraphProtocol methods, BabylonGraph's compat surface, or the
+      babylon.engine.graph_algorithms seam instead of rx.some_function().
     severity: ERROR
     languages: [python]
-    pattern: nx.$METHOD(...)
+    pattern: rx.$METHOD(...)
     paths:
       include:
         - "**/engine/systems/"
         - "**/formulas/"
         - "**/economics/"
+
+  # =========================================================================
+  # SUBSTRATE: NetworkX is no longer the graph substrate (Amendment L)
+  # =========================================================================
+
+  - id: babylon.layer-boundary.no-networkx-import
+    message: >-
+      NetworkX was replaced by rustworkx-backed BabylonGraph (constitution
+      Amendment L, ADR052). networkx remains importable transitively via
+      xgi/torch — do not import it in production code. Construct
+      babylon.engine.graph.BabylonGraph / BabylonUGraph instead.
+    severity: ERROR
+    languages: [python]
+    pattern-regex: "^(from|import) networkx"
+    paths:
+      include:
+        - "src/"
+        - "web/"

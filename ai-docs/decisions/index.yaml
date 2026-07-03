@@ -234,3 +234,8 @@ decisions:
     status: accepted
     date: '2026-07-03'
     file: ADR051_lawverian_dialectics_refactor.yaml
+  ADR052_rustworkx_graph_substrate:
+    title: 'rustworkx graph substrate: BabylonGraph with insertion-ordered mirrors (Amendment L)'
+    status: accepted
+    date: '2026-07-03'
+    file: ADR052_rustworkx_graph_substrate.yaml

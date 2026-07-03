@@ -24,7 +24,9 @@ export function EndgameOverlay({ endgame, onDismiss, onBack }: EndgameOverlayPro
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
       <div className="mx-4 max-w-lg rounded-xl border border-wet-concrete bg-dark-metal p-8 text-center shadow-2xl">
         <h2
-          className={`mb-2 text-3xl font-bold uppercase tracking-wider ${label?.color ?? "text-gold"}`}
+          className={`mb-2 text-3xl font-bold uppercase tracking-wider ${
+            label?.color ?? "text-gold"
+          }`}
         >
           {label?.title ?? endgame.outcome}
         </h2>

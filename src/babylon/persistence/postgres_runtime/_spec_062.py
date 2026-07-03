@@ -139,6 +139,19 @@ ON CONFLICT (session_id, tick, source_node_id, target_node_id, edge_type)
 DO NOTHING
 """
 
+# Spec-089 S1a: per-tick commit marker + queryable III.7 hash chain.
+# Written inside the envelope transaction so "marker present" ≡ "tick
+# fully committed" even when delta emission writes zero hex rows.
+_TICK_COMMIT_INSERT = """
+INSERT INTO tick_commit (
+    session_id, tick, determinism_hash, hex_rows_written, is_checkpoint
+) VALUES (
+    %(session_id)s, %(tick)s, %(determinism_hash)s,
+    %(hex_rows_written)s, %(is_checkpoint)s
+)
+ON CONFLICT (session_id, tick) DO NOTHING
+"""
+
 
 def _hex_row_dict(row: Any) -> dict[str, Any]:
     """Serialize a DynamicHexState row to psycopg param dict.
@@ -254,7 +267,12 @@ def _relationship_row_dict(row: Any) -> dict[str, Any]:
     }
 
 
-def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvelope) -> None:
+def persist_tick_atomic(
+    self: PostgresRuntime,
+    envelope: PerTickTransactionEnvelope,
+    *,
+    write_commit_marker: bool = True,
+) -> None:
     """Persist every row in the envelope inside one Postgres transaction.
 
     Spec 062 FR-008a. If any INSERT raises (CHECK violation, constraint
@@ -267,6 +285,15 @@ def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvel
     audit_log, plus the spec-065 trio: consciousness_state, demographics_state,
     employment_state) execute in a fixed order so that any constraint
     violation in a later table still rolls back the earlier inserts.
+
+    Args:
+        envelope: The tick's atomic row set.
+        write_commit_marker: Spec-089 FR-001/FR-003 — append the
+            ``tick_commit`` marker (commit flag + III.7 hash chain) in the
+            same transaction. The hex hydrator passes ``False`` for its
+            tick-0 envelope (placeholder hash); the bridge's re-delivery
+            writes the real marker. Skipped gracefully on pre-0029
+            databases.
     """
     with self._pool.connection() as conn, conn.transaction():
         if envelope.hex_state_rows:
@@ -311,15 +338,45 @@ def persist_tick_atomic(self: PostgresRuntime, envelope: PerTickTransactionEnvel
                 _RELATIONSHIP_INSERT,
                 [_relationship_row_dict(r) for r in envelope.relationship_state_rows],
             )
+        # Spec-089 S1a: the commit marker rides the same transaction.
+        if write_commit_marker:
+            has_table = conn.execute("SELECT to_regclass('tick_commit')").fetchone()
+            if has_table is not None and has_table[0] is not None:
+                from babylon.persistence.delta import is_checkpoint_tick
+
+                conn.execute(
+                    _TICK_COMMIT_INSERT,
+                    {
+                        "session_id": str(envelope.session_id),
+                        "tick": envelope.tick,
+                        "determinism_hash": envelope.determinism_hash,
+                        "hex_rows_written": len(envelope.hex_state_rows),
+                        "is_checkpoint": is_checkpoint_tick(envelope.tick),
+                    },
+                )
 
 
 def get_last_committed_tick(self: PostgresRuntime, session_id: UUID) -> int | None:
     """Return the largest tick for which an envelope was committed.
 
+    Spec-089 FR-002: reads the ``tick_commit`` marker (with delta emission
+    a committed tick may write zero hex rows, so ``MAX(hex.tick)`` is no
+    longer sufficient). Falls back to ``dynamic_hex_state`` for pre-0029
+    databases and hydrated-but-never-ticked sessions.
+
     Returns ``None`` if no envelope has been committed for ``session_id``.
     Used by crash-recovery code to resume from the correct tick.
     """
     with self._pool.connection() as conn:
+        has_table = conn.execute("SELECT to_regclass('tick_commit')").fetchone()
+        if has_table is not None and has_table[0] is not None:
+            cur = conn.execute(
+                "SELECT MAX(tick) FROM tick_commit WHERE session_id = %s",
+                (str(session_id),),
+            )
+            result = cur.fetchone()
+            if result is not None and result[0] is not None:
+                return int(result[0])
         cur = conn.execute(
             "SELECT MAX(tick) FROM dynamic_hex_state WHERE session_id = %s",
             (str(session_id),),

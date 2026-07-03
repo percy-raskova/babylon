@@ -120,7 +120,10 @@ def _export_table(conn: Any, table: str, session_id: UUID, out_path: Path, schem
     total = 0
     writer: Any = None
     try:
-        with conn.cursor(name=f"archive_{table}") as cur:
+        # Server-side (named) cursors require an explicit transaction —
+        # pooled connections may arrive in autocommit mode (e.g. after
+        # the runner's _apply_migrations pass).
+        with conn.transaction(), conn.cursor(name=f"archive_{table}") as cur:
             cur.itersize = _EXPORT_BATCH_ROWS
             cur.execute(
                 f"SELECT {', '.join(columns)} FROM {table} WHERE session_id = %s",  # noqa: S608
@@ -355,6 +358,8 @@ def query_archived_session(
     import duckdb  # type: ignore[import-untyped, import-not-found, unused-ignore]
 
     path = Path(parquet_path)
+    if not path.exists():
+        raise FileNotFoundError(f"archive path does not exist: {path}")
     files = sorted(path.glob("*.parquet")) if path.is_dir() else [path]
     if not files:
         raise FileNotFoundError(f"no Parquet files found under {path}")

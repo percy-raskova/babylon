@@ -1,7 +1,9 @@
-"""Unit tests for archival pipeline stubs (Feature 037).
+"""Unit tests for the local archival lifecycle surface (spec-088 S2b).
 
-Phase 8 (T043): Verify stub functions raise NotImplementedError
-with appropriate context messages.
+Replaces the spec-037 Phase-8 stub-assertion tests: the pipeline is now
+implemented local-only (Parquet + DuckDB; no cloud code paths). Pure /
+no-database behaviors only — the Postgres roundtrip lives in
+``tests/integration/test_archival_integration.py``.
 """
 
 from __future__ import annotations
@@ -12,70 +14,48 @@ from uuid import uuid4
 import pytest
 
 from babylon.persistence.archival import (
-    export_session_to_parquet,
+    EXPORT_TABLES,
+    ArchiveVerificationError,
     purge_session,
     query_archived_session,
     upload_to_r2,
 )
+from babylon.persistence.partitioning import PARTITIONED_TABLES
 
 
-class TestExportSessionToParquet:
-    """Tests for export_session_to_parquet stub."""
+class TestExportRegistry:
+    def test_export_covers_every_partitioned_family(self) -> None:
+        """A table family that partitions must also archive."""
+        assert set(PARTITIONED_TABLES) <= set(EXPORT_TABLES)
 
-    def test_raises_not_implemented(self) -> None:
-        """export_session_to_parquet raises NotImplementedError."""
-        with pytest.raises(NotImplementedError, match="Phase 8"):
-            export_session_to_parquet(
-                pool=None,
+    def test_export_includes_session_keyed_extras(self) -> None:
+        assert "contradiction_field" in EXPORT_TABLES
+        assert "simulation_event" in EXPORT_TABLES
+
+
+class TestPurgeSafety:
+    def test_purge_refuses_without_manifest(self, tmp_path: Path) -> None:
+        """No verified manifest ⇒ nothing is deleted (FR-011)."""
+        with pytest.raises(ArchiveVerificationError, match="manifest not found"):
+            purge_session(
+                pool=None,  # never reached: manifest check precedes any DB touch
                 session_id=uuid4(),
-                output_dir="/tmp/exports",
+                manifest_path=tmp_path / "missing_manifest.json",
             )
-
-    def test_error_includes_session_id(self) -> None:
-        """NotImplementedError message includes session_id."""
-        sid = uuid4()
-        with pytest.raises(NotImplementedError, match=str(sid)):
-            export_session_to_parquet(pool=None, session_id=sid, output_dir="/tmp")
-
-
-class TestUploadToR2:
-    """Tests for upload_to_r2 stub."""
-
-    def test_raises_not_implemented(self) -> None:
-        """upload_to_r2 raises NotImplementedError."""
-        with pytest.raises(NotImplementedError, match="Phase 8"):
-            upload_to_r2(parquet_paths=["/tmp/a.parquet"], bucket="test-bucket")
-
-    def test_error_includes_bucket(self) -> None:
-        """NotImplementedError message includes bucket name."""
-        with pytest.raises(NotImplementedError, match="my-bucket"):
-            upload_to_r2(parquet_paths=[], bucket="my-bucket", prefix="sessions/")
-
-
-class TestPurgeSession:
-    """Tests for purge_session stub."""
-
-    def test_raises_not_implemented(self) -> None:
-        """purge_session raises NotImplementedError."""
-        with pytest.raises(NotImplementedError, match="Phase 8"):
-            purge_session(pool=None, session_id=uuid4())
 
 
 class TestQueryArchivedSession:
-    """Tests for query_archived_session stub."""
+    def test_missing_archive_raises_file_not_found(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            query_archived_session(tmp_path / "nope", "SELECT 1")
 
-    def test_raises_not_implemented_with_string_path(self) -> None:
-        """query_archived_session raises NotImplementedError with str path."""
-        with pytest.raises(NotImplementedError, match="Phase 8"):
-            query_archived_session(
-                parquet_path="/data/session.parquet",
-                query="SELECT * FROM node_state",
-            )
+    def test_empty_archive_dir_raises_file_not_found(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            query_archived_session(tmp_path, "SELECT 1")
 
-    def test_raises_not_implemented_with_path_object(self) -> None:
-        """query_archived_session raises NotImplementedError with Path object."""
-        with pytest.raises(NotImplementedError, match="Phase 8"):
-            query_archived_session(
-                parquet_path=Path("/data/session.parquet"),
-                query="SELECT * FROM node_state",
-            )
+
+class TestUploadToR2Retired:
+    def test_raises_local_only_ruling(self) -> None:
+        """Owner ruling 2026-07-03: archives are local only, period."""
+        with pytest.raises(NotImplementedError, match="local-only"):
+            upload_to_r2(["/tmp/data.parquet"], bucket="babylon-exports")

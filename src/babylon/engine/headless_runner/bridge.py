@@ -66,6 +66,7 @@ from babylon.persistence.county_state import (
     DynamicDemographicsState,
     DynamicEmploymentState,
 )
+from babylon.persistence.delta import select_hex_rows_for_emission
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.external_node import ExternalNode, ExternalNodeKind
 from babylon.persistence.hex_state import DynamicHexState
@@ -156,6 +157,9 @@ class WorldStateBridge:
         self._start_year: int = 2010  # set by hydrate_initial
         self._sqlite_path: Path = _DEFAULT_SQLITE_PATH  # set by hydrate_initial
         self._hex_template: tuple[DynamicHexState, ...] = ()
+        # Spec-089 S1b: per-hex value tuples as of the last envelope
+        # emission — the delta-selection memory (reset at hydrate).
+        self._last_emitted_hex: dict[str, tuple[float, ...]] = {}
         self._external_template: tuple[ExternalNode, ...] = ()
         self._hydrated = False
         self._event_capture: EventCapture | None = None
@@ -370,6 +374,7 @@ class WorldStateBridge:
         self._start_year = start_year
         self._sqlite_path = sqlite_path_resolved
         self._hex_template = tuple(hex_rows)
+        self._last_emitted_hex = {}
         self._external_template = tuple(external_rows)
         self._ref_cache = ref_cache
         # Spec-065 T055: BoundaryFlowRegister is now owned by runner.run()
@@ -456,10 +461,19 @@ class WorldStateBridge:
             if employment_row is not None:
                 employment_rows.append(employment_row)
 
-        # Re-emit cached templates with the current tick. The engine
-        # doesn't yet mutate hex-resolution state, so values are
-        # unchanged from tick 0; only `tick` differs.
-        hex_rows = [row.model_copy(update={"tick": tick}) for row in self._hex_template]
+        # Build the full candidate frame from the cached templates (the
+        # engine doesn't yet mutate hex-resolution state, so values are
+        # unchanged from tick 0; only `tick` differs). The FULL frame
+        # feeds the conservation auditor below — invariants are
+        # frame-level — while the envelope receives only the delta
+        # (spec-089 FR-004/FR-005: changed value-tuples, plus the whole
+        # frame on yearly checkpoint ticks).
+        hex_frame = [row.model_copy(update={"tick": tick}) for row in self._hex_template]
+        hex_rows = select_hex_rows_for_emission(
+            tick=tick,
+            candidate_rows=hex_frame,
+            last_emitted=self._last_emitted_hex,
+        )
         external_rows = [row.model_copy(update={"tick": tick}) for row in self._external_template]
 
         # Spec-065 T056: flush BoundaryFlowRegister for this tick.
@@ -486,7 +500,7 @@ class WorldStateBridge:
             audit_rows_typed, _alarms = self._auditor.audit_end_of_tick(
                 session_id=self._session_id,
                 tick=tick,
-                hex_rows=hex_rows,
+                hex_rows=hex_frame,
             )
             audit_rows = list(audit_rows_typed)
 

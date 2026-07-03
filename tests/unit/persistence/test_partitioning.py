@@ -17,7 +17,8 @@ _SESSION = UUID("01234567-89ab-cdef-0123-456789abcdef")
 
 
 class TestPartitionedTablesRegistry:
-    def test_all_eight_per_tick_families_registered(self) -> None:
+    def test_all_per_tick_families_registered(self) -> None:
+        """8 spec-088 conversions + tick_commit (born partitioned, spec-089)."""
         assert set(PARTITIONED_TABLES) == {
             "dynamic_hex_state",
             "dynamic_external_node_state",
@@ -27,6 +28,7 @@ class TestPartitionedTablesRegistry:
             "dynamic_demographics_state",
             "dynamic_employment_state",
             "dynamic_relationship_state",
+            "tick_commit",
         }
 
 

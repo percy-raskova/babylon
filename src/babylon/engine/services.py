@@ -72,6 +72,12 @@ class ServiceContainer:
     # Field topology services (Feature 002 - optional, default None)
     field_registry: Any = field(default=None)
 
+    # Lawverian opposition registry (Phase C). Unlike ``field_registry`` (the
+    # dormant Feature-002 plumbing, still None in production), this is wired by
+    # ``create`` by default so ContradictionSystem always has a populated
+    # OppositionRegistry to step each tick.
+    opposition_registry: Any = field(default=None)
+
     # Capital Volume I data sources (Feature 021 - optional, default None)
     reserve_army_data_source: Any = field(default=None)
     dispossession_data_source: Any = field(default=None)
@@ -147,6 +153,7 @@ class ServiceContainer:
         dispossession_data_source: Any = None,
         productivity_data_source: Any = None,
         field_registry: Any = None,
+        opposition_registry: Any = None,
         melt_calculator: Any = None,
         basket_calculator: Any = None,
         gamma_calculator: Any = None,
@@ -204,12 +211,24 @@ class ServiceContainer:
 
             metrics = MetricsCollector()
 
+        resolved_defines = defines if defines is not None else GameDefines()
+
+        # Wire the Lawverian OppositionRegistry by default (Phase C). Lazy
+        # import: the catalog depends only on formulas + dialectics (never on
+        # babylon.engine), so it cannot cycle back into this module.
+        if opposition_registry is None:
+            from babylon.dialectics.instances.catalog import build_default_registry
+
+            opposition_registry = build_default_registry(
+                rate_weight=resolved_defines.tension.principal_rate_weight
+            )
+
         return cls(
             config=config if config is not None else SimulationConfig(),
             database=DatabaseConnection(url="sqlite:///:memory:"),
             event_bus=EventBus(),
             formulas=FormulaRegistry.default(),
-            defines=defines if defines is not None else GameDefines(),
+            defines=resolved_defines,
             metrics=metrics,
             hex_grid=hex_grid,
             persistence=persistence,
@@ -218,6 +237,7 @@ class ServiceContainer:
             dispossession_data_source=dispossession_data_source,
             productivity_data_source=productivity_data_source,
             field_registry=field_registry,
+            opposition_registry=opposition_registry,
             melt_calculator=melt_calculator,
             basket_calculator=basket_calculator,
             gamma_calculator=gamma_calculator,

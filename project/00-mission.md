@@ -40,6 +40,10 @@ defines what "a complete game" adds beyond it.
 
 1. ~~spec-086 QCEW loader + imputation~~ **DONE 2026-07-02** (data correctness
    underpins v/exploitation/imperial-rent everywhere).
+1. ~~Lawverian dialectics refactor~~ **DONE 2026-07-03** (ADR051, Amendment K;
+   master record `06-lawverian-dialectics.md`) and ~~graph-substrate
+   migration~~ **DONE 2026-07-03** (ADR052, Amendment L,
+   `08-graph-substrate.md`) — the two foundations 071 consumes.
 1. **spec-071 Reactionary Subject** — next catalog spec (see `03-next-spec-071.md`).
 1. **spec-098 reference-DB build pipeline** — interleaved with catalog work
    (see `04-data-program-098.md`).
@@ -68,7 +72,9 @@ defines what "a complete game" adds beyond it.
 - **Ripgrep (`rg`) over grep.** `pipx` for non-project Python tools;
   `poetry run` / `mise run` for project tasks.
 - **Speckit lifecycle for specs**: `specify → plan → tasks → implement`, with
-  Constitution gates (v2.6.1: III.1 no-magic-numbers, III.7 frozen models,
+  Constitution gates (v2.7.0 — Amendments K dialectics + L rustworkx
+  substrate; II.12 authoring-API and the III.7 determinism-hash contract now
+  bind engine work too. Original list: III.1 no-magic-numbers, III.7 frozen models,
   III.8 data-grounding, II.11, I.20, IV) checked in plan.md.
 - **Docs**: demand-driven, verifiable claims only, never document unbuilt
   features (a "Future Enhancements" doc is the only place for plans).

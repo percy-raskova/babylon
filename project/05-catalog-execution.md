@@ -144,7 +144,13 @@ mise run check                     # lint + format + typecheck + unit
 poetry run pytest tests/integration/test_bridge_income_circuit.py -q
 mise run qa:e2e-regression         # 5-tick gate incl. population liveness
 # and before merging anything that changes canonical dynamics:
-poetry run python -m babylon.engine.headless_runner --scope michigan-canada \
-  --ticks 520 --write-baseline tests/baselines/michigan-e2e.json   # ~1 h, background
+mise run sim:e2e-bg                # daemonized 520-tick canonical (~1-2 h); watch: mise run sim:status
 # then verify: terminal_state.counties_with_population == counties_alive == 83
 ```
+
+> **STORAGE CAUTION (2026-07-03)**: every canonical 520-tick run writes
+> **~7 GB** into `babylon_test` and NOTHING prunes finished runs (spec-037
+> archival is still stubs — `08-graph-substrate.md`). Repeated invocation of
+> this loop is exactly what once bloated the DB to 71 GB and exhausted /var.
+> Run `mise run clean:testdb` between canonical runs (and `clean:docker` if
+> test runs were killed mid-flight).

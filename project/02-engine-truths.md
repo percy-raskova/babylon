@@ -5,6 +5,14 @@ touching the engine, the bridge, or any canonical baseline. Every claim here
 was verified empirically in-session; commits referenced are on
 `fix/web-local-play-wireup`.
 
+> **Substrate update (2026-07-03, Amendment L)**: the graph substrate is now
+> **BabylonGraph** (rustworkx core) — `world.to_graph()` returns it, and every
+> recipe below (`graph.nodes[id][attr]`, `nodes(data=True)`, edge dict access)
+> works because BabylonGraph deliberately preserves the NetworkX authoring
+> surface. Raw `networkx` is BANNED in src/+web/ (semgrep) and raises
+> TypeError at the system boundary. Substrate gotchas live in
+> `08-graph-substrate.md` — read it alongside this file.
+
 ## 1. The bridged canonical world — what it actually is
 
 `WorldStateBridge.hydrate_initial` (`src/babylon/engine/headless_runner/bridge.py`)
@@ -142,11 +150,12 @@ fixture; skip-gated on Postgres + the live SQLite).
   before any spec that induces SUPERWAGE_CRISIS (071's crisis tests, 074,
   081). Fix shape: seed an inactive carceral-enforcer entity per county, or
   teach the system to create one.
-- **Dormant dialectics layer**: `src/babylon/engine/dialectics/` is a full
-  parallel framework (24 Dialectic classes mapping Capital I–III, sublation
-  rules, World.tick(), invariants) — NOT referenced by `simulation_engine`
-  or the headless runner. It is a separate abstraction tier, currently
-  unwired. Do not assume it runs; do not wire it casually (that's a spec).
+- **Dialectics layer (UPDATED 2026-07-03)**: the dormant
+  `src/babylon/engine/dialectics/` package described in earlier versions of
+  this bullet was **DELETED** in C1.7 of the Lawverian refactor (its 224
+  tests are accounted for in `c17-test-migration-ledger.md`). The LIVE
+  dialectics layer is `src/babylon/dialectics/` (OppositionRegistry +
+  instances + lattices, ADR051) — see `06-lawverian-dialectics.md`.
 - **Intended full arc length**: theory.yaml pins the TRPF multiplier floor
   at 10% after ~1,800 ticks (~35 years) — the 520-tick canonical is only the
   opening decade BY DESIGN. Long-arc behaviors (decomposition, superwage

@@ -217,24 +217,31 @@ class TestMissingSubsistenceUsesDefinesDefault:
 class TestMissingTensionDefaultsToZero:
     """Test that missing tension attribute defaults to 0.0."""
 
-    def test_aggregate_tension_missing_attribute_defaults_zero(self) -> None:
-        """Edges without tension attribute default to 0.0 in aggregate calculation."""
+    def test_aggregate_tension_without_snapshot_defaults_zero(self) -> None:
+        """No opposition_states snapshot -> aggregate tension is 0.0 (C1.5).
+
+        Post-Lawverian, ``_calculate_aggregate_tension`` reads the capital_labor
+        opposition gap from the ``opposition_states`` graph attribute (stashed by
+        ContradictionSystem), NOT the mean of edge tensions. Absent the snapshot
+        (e.g. the first engine tick) it defaults to 0.0 regardless of any edge
+        ``tension`` values.
+        """
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node("a")
         graph.add_node("b")
         graph.add_node("c")
 
-        # One edge WITH tension, one WITHOUT
+        # Edge tensions are now irrelevant to the aggregate.
         graph.add_edge("a", "b", tension=0.6)
-        graph.add_edge("b", "c")  # No tension attribute
+        graph.add_edge("b", "c")
 
         system = ImperialRentSystem()
 
         # Act
         result = system._calculate_aggregate_tension(graph)
 
-        # Assert: mean([0.6, 0.0]) = 0.3
-        assert result == pytest.approx(0.3, rel=1e-6)
+        # Assert: no snapshot -> 0.0
+        assert result == pytest.approx(0.0, rel=1e-6)
 
     def test_contradiction_missing_tension_starts_at_zero(self) -> None:
         """Edge without tension attribute starts accumulation from 0.0."""

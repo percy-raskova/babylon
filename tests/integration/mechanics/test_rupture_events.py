@@ -1,290 +1,169 @@
-"""Integration tests for RUPTURE events - Revolutionary Moments.
+"""Integration tests for RUPTURE events under Lawverian gap semantics (C1.6).
 
-This module tests the ContradictionSystem's RUPTURE event emission:
-- RUPTURE occurs when accumulated tension reaches 1.0 on an edge
-- Tension accumulates based on wealth gap: delta = wealth_gap * accumulation_rate
-- RUPTURE represents qualitative shift in class struggle
+The rewrite retires the old "tension accumulates to 1.0 -> RUPTURE" mechanism.
+A RUPTURE now fires only when the **principal** opposition's gap EXCEEDS the
+``rupture_gap_threshold`` **AND is rising** (rate > 0) — Mao's "condition AND
+level" (project/06 §9.4), never on a saturating ceiling. Consequences these
+tests pin:
 
-Key insight: Revolution emerges from accumulated contradictions, not random chance.
-When the tension between exploiter and exploited reaches critical mass, the
-relationship ruptures - a qualitative leap from quantity to quality.
-
-Test Scenarios:
-1. RUPTURE triggers when tension reaches 1.0 (edge-level event)
-2. High wealth gap + high accumulation rate speeds RUPTURE
-3. Low wealth gap may never trigger RUPTURE within test timeframe
+- a *static* extreme wealth gap no longer ruptures (no rising edge);
+- a *falling* principal gap (e.g. a bribed labor aristocracy catching up) does
+  not rupture even while the gap is above threshold;
+- an atomized class (no SOLIDARITY) is dominated by the ``atomization``
+  opposition (gap 1.0), so the capital_labor contradiction cannot rupture until
+  atomization is overcome — a genuine dialectical result;
+- a *rising* principal gap above threshold DOES fire RUPTURE.
 """
 
-import random
+from __future__ import annotations
 
+import networkx as nx
 import pytest
 
-from babylon.config.defines import GameDefines, TensionDefines
-from babylon.engine.factories import create_bourgeoisie, create_proletariat
-from babylon.engine.simulation import Simulation
-from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
-from babylon.models.entity_registry import (
-    COMPRADOR_ID,
-    CORE_BOURGEOISIE_ID,
-    PERIPHERY_WORKER_ID,
+from babylon.config.defines import GameDefines
+from babylon.engine.factories import (
+    create_bourgeoisie,
+    create_labor_aristocracy,
+    create_proletariat,
 )
+from babylon.engine.services import ServiceContainer
+from babylon.engine.simulation import Simulation
+from babylon.engine.systems.contradiction import ContradictionSystem
+from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
+from babylon.models.enums import EventType
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
 
 
-class TestRuptureEvents:
-    """Tests for RUPTURE event emission."""
+def _rupture_events(services: ServiceContainer) -> list[object]:
+    return [e for e in services.event_bus.get_history() if e.type == EventType.RUPTURE]
 
-    def test_rupture_triggers_at_tension_threshold(self) -> None:
-        """Test that RUPTURE event fires when tension reaches 1.0.
 
-        ContradictionSystem triggers RUPTURE when edge tension goes from <1.0 to >=1.0.
-        High wealth gap + high accumulation rate should trigger within reasonable ticks.
+class TestRuptureGateFacade:
+    """The rupture gate observed end-to-end through the Simulation facade."""
+
+    def test_static_extreme_gap_does_not_rupture(self) -> None:
+        """A static extreme wealth gap no longer ruptures (old trigger retired).
+
+        With no SOLIDARITY edge the two classes are fully atomized, so the
+        principal contradiction is ``atomization`` (gap 1.0, static). The
+        capital_labor gap sits at ~0.98 but never rises, and no RUPTURE fires —
+        the class must first overcome atomization.
         """
-        random.seed(42)
-
-        # Create extreme wealth gap for fast tension accumulation
-        worker = create_proletariat(
-            id=PERIPHERY_WORKER_ID,
-            name="Oppressed Worker",
-            wealth=10.0,  # Very low wealth
-        )
-
-        owner = create_bourgeoisie(
-            id=COMPRADOR_ID,
-            name="Oppressor",
-            wealth=1000.0,  # Very high wealth
-        )
-
-        # EXPLOITATION edge - tension will accumulate here
-        # Wealth gap = 990, tension_delta per tick = 990 * accumulation_rate
-        exploitation = Relationship(
-            source_id=COMPRADOR_ID,
-            target_id=PERIPHERY_WORKER_ID,
-            edge_type=EdgeType.EXPLOITATION,
-            tension=0.0,  # Start at zero
-        )
-
-        state = WorldState(
-            tick=0,
-            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
-            relationships=[exploitation],
-        )
-
-        # Use high accumulation rate for faster RUPTURE
-        # With gap=990, rate=0.1, delta=99 per tick -> instant rupture
-        # But wealth changes during simulation, so use more reasonable rate
-        defines = GameDefines(
-            tension=TensionDefines(
-                accumulation_rate=0.1,  # 10% of wealth gap per tick
-            )
-        )
-        config = SimulationConfig()
-
-        # Run simulation
-        sim = Simulation(state, config, defines=defines)
-        final_state = sim.run(30)
-
-        # Check for RUPTURE event
-        rupture_events = [log for log in final_state.event_log if "RUPTURE" in log]
-
-        # With high wealth gap and 10% rate, RUPTURE should trigger
-        assert len(rupture_events) >= 1, (
-            f"RUPTURE should trigger with extreme wealth gap. Events: {final_state.event_log[-10:]}"
-        )
-
-    def test_no_rupture_with_low_accumulation_rate(self) -> None:
-        """Test that very low accumulation rate prevents RUPTURE within test timeframe.
-
-        Even with a wealth gap, a sufficiently low accumulation rate should prevent
-        RUPTURE from triggering within a reasonable number of ticks.
-        """
-        random.seed(42)
-
-        # Some wealth gap exists, but very low accumulation rate
-        worker = create_proletariat(
-            id=PERIPHERY_WORKER_ID,
-            name="Worker",
-            wealth=50.0,
-        )
-
-        owner = create_bourgeoisie(
-            id=COMPRADOR_ID,
-            name="Owner",
-            wealth=200.0,  # Modest gap
-        )
-
-        exploitation = Relationship(
-            source_id=COMPRADOR_ID,
-            target_id=PERIPHERY_WORKER_ID,
-            edge_type=EdgeType.EXPLOITATION,
-            tension=0.0,  # Start at zero
-        )
-
-        state = WorldState(
-            tick=0,
-            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
-            relationships=[exploitation],
-        )
-
-        # Very low accumulation rate - with gap of ~150, rate=0.001
-        # delta = 150 * 0.001 = 0.15 per tick, need ~7 ticks to reach 1.0
-        # But this is still quite fast. Use even lower rate.
-        defines = GameDefines(
-            tension=TensionDefines(
-                accumulation_rate=0.0001,  # 0.01% of wealth gap per tick
-            )
-        )
-        config = SimulationConfig()
-
-        sim = Simulation(state, config, defines=defines)
-        final_state = sim.run(30)
-
-        # With 0.0001 rate and ~150 gap, delta = 0.015 per tick
-        # After 30 ticks: max tension ~ 0.45 (below 1.0 threshold)
-        rupture_events = [log for log in final_state.event_log if "RUPTURE" in log]
-
-        assert len(rupture_events) == 0, (
-            f"No RUPTURE expected with very low accumulation rate. "
-            f"Got {len(rupture_events)} events: {rupture_events}"
-        )
-
-    def test_tension_accumulation_rate_affects_rupture_timing(self) -> None:
-        """Test that higher accumulation rate leads to faster RUPTURE.
-
-        Compare two simulations:
-        1. High accumulation rate -> fast RUPTURE
-        2. Low accumulation rate -> slower (or no) RUPTURE
-        """
-        random.seed(42)
-
-        def create_scenario() -> WorldState:
-            worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Worker", wealth=50.0)
-            owner = create_bourgeoisie(id=COMPRADOR_ID, name="Owner", wealth=500.0)
-
-            exploitation = Relationship(
-                source_id=COMPRADOR_ID,
-                target_id=PERIPHERY_WORKER_ID,
-                edge_type=EdgeType.EXPLOITATION,
-                tension=0.5,  # Start halfway to rupture
-            )
-
-            return WorldState(
-                tick=0,
-                entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
-                relationships=[exploitation],
-            )
-
-        config = SimulationConfig()
-
-        # High rate simulation
-        random.seed(42)
-        high_rate_defines = GameDefines(tension=TensionDefines(accumulation_rate=0.2))
-        sim_high = Simulation(create_scenario(), config, defines=high_rate_defines)
-        final_high = sim_high.run(20)
-        rupture_high = [log for log in final_high.event_log if "RUPTURE" in log]
-
-        # Low rate simulation
-        random.seed(42)
-        low_rate_defines = GameDefines(tension=TensionDefines(accumulation_rate=0.01))
-        sim_low = Simulation(create_scenario(), config, defines=low_rate_defines)
-        final_low = sim_low.run(20)
-        rupture_low = [log for log in final_low.event_log if "RUPTURE" in log]
-
-        # High rate should produce at least as many (likely more) ruptures
-        assert len(rupture_high) >= len(rupture_low), (
-            f"Higher accumulation rate should lead to more ruptures. "
-            f"High rate: {len(rupture_high)}, Low rate: {len(rupture_low)}"
-        )
-
-    def test_rupture_is_per_edge_event(self) -> None:
-        """Test that RUPTURE is emitted per edge when tension threshold is crossed.
-
-        Multiple edges can rupture independently based on their tension levels.
-        """
-        random.seed(42)
-
-        # Create three workers with different wealth (different tension deltas)
-        worker1 = create_proletariat(id=PERIPHERY_WORKER_ID, name="Poorest Worker", wealth=10.0)
-        worker2 = create_proletariat(id=COMPRADOR_ID, name="Poor Worker", wealth=50.0)
-        owner = create_bourgeoisie(id=CORE_BOURGEOISIE_ID, name="Owner", wealth=1000.0)
-
-        # Two exploitation edges with different starting tension
-        exploitation1 = Relationship(
-            source_id=CORE_BOURGEOISIE_ID,
-            target_id=PERIPHERY_WORKER_ID,
-            edge_type=EdgeType.EXPLOITATION,
-            tension=0.9,  # Very close to rupture
-        )
-
-        exploitation2 = Relationship(
-            source_id=CORE_BOURGEOISIE_ID,
-            target_id=COMPRADOR_ID,
-            edge_type=EdgeType.EXPLOITATION,
-            tension=0.1,  # Far from rupture
-        )
-
-        state = WorldState(
-            tick=0,
-            entities={
-                PERIPHERY_WORKER_ID: worker1,
-                COMPRADOR_ID: worker2,
-                CORE_BOURGEOISIE_ID: owner,
-            },
-            relationships=[exploitation1, exploitation2],
-        )
-
-        defines = GameDefines(tension=TensionDefines(accumulation_rate=0.1))
-        config = SimulationConfig()
-
-        sim = Simulation(state, config, defines=defines)
-        final_state = sim.run(15)
-
-        # Check for RUPTURE events
-        rupture_events = [log for log in final_state.event_log if "RUPTURE" in log]
-
-        # The edge starting at 0.9 tension should rupture first
-        # (and maybe the other one too if enough ticks pass)
-        assert len(rupture_events) >= 1, (
-            f"At least one edge should rupture (starting at 0.9 tension). "
-            f"Events: {final_state.event_log[-10:]}"
-        )
-
-    def test_rupture_only_fires_once_per_edge(self) -> None:
-        """Test that RUPTURE is only emitted once when crossing threshold.
-
-        The condition is: new_tension >= 1.0 AND current_tension < 1.0
-        Once ruptured, the edge stays at 1.0 and shouldn't re-fire.
-        """
-        random.seed(42)
-
         worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Worker", wealth=10.0)
         owner = create_bourgeoisie(id=COMPRADOR_ID, name="Owner", wealth=1000.0)
+        edge = Relationship(
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.0,
+        )
+        state = WorldState(
+            tick=0,
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
+            relationships=[edge],
+        )
+        final = Simulation(state, SimulationConfig(), defines=GameDefines()).run(30)
 
+        assert [log for log in final.event_log if "RUPTURE" in log] == []
+
+    def test_falling_principal_gap_does_not_rupture(self) -> None:
+        """A high-but-FALLING principal gap (the imperial bribe) does not rupture.
+
+        A labor aristocrat joined by SOLIDARITY to its employer makes
+        capital_labor the principal opposition (atomization defused), but the
+        bribe lifts the aristocrat's wealth toward the employer so the gap FALLS
+        (rate < 0). Above threshold yet not rising -> no rupture.
+        """
+        la = create_labor_aristocracy(id=PERIPHERY_WORKER_ID, name="Aristocrat", wealth=2.0)
+        boss = create_bourgeoisie(id=COMPRADOR_ID, name="Employer", wealth=80.0)
         exploitation = Relationship(
             source_id=COMPRADOR_ID,
             target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
-            tension=0.95,  # Very close to rupture
+            tension=0.0,
         )
-
+        solidarity = Relationship(
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.9,
+        )
         state = WorldState(
             tick=0,
-            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
-            relationships=[exploitation],
+            entities={PERIPHERY_WORKER_ID: la, COMPRADOR_ID: boss},
+            relationships=[exploitation, solidarity],
         )
+        final = Simulation(state, SimulationConfig(), defines=GameDefines()).run(10)
 
-        defines = GameDefines(tension=TensionDefines(accumulation_rate=0.2))
-        config = SimulationConfig()
+        assert [log for log in final.event_log if "RUPTURE" in log] == []
 
-        # Run many ticks
-        sim = Simulation(state, config, defines=defines)
-        final_state = sim.run(50)
 
-        # Count RUPTURE events for this specific edge
-        rupture_events = [log for log in final_state.event_log if "RUPTURE" in log]
+class TestRuptureGateSystem:
+    """The rupture gate driven directly through ContradictionSystem across ticks.
 
-        # Should only see one RUPTURE per edge
-        assert len(rupture_events) == 1, (
-            f"RUPTURE should only fire once per edge. Got {len(rupture_events)} events"
-        )
+    Uses a raw graph whose nodes carry no ``social_class`` type, so the
+    ``atomization`` measure sees an empty solidarity subgraph (gap 0) and
+    capital_labor is the principal — isolating the condition-AND-level gate.
+    """
+
+    def _graph(self, owner_wealth: float) -> nx.DiGraph[str]:
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("worker", wealth=1.0)
+        graph.add_node("owner", wealth=owner_wealth)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        return graph
+
+    def test_rising_principal_gap_above_threshold_ruptures(self) -> None:
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+        graph = self._graph(50.0)  # gap ~0.96 (rate 0 on the first tick)
+
+        system.step(graph, services, {"tick": 1})
+        assert _rupture_events(services) == []  # high but not yet rising
+
+        graph.nodes["owner"]["wealth"] = 400.0  # gap ~0.995, rising -> rate > 0
+        system.step(graph, services, {"tick": 2})
+
+        ruptures = _rupture_events(services)
+        assert len(ruptures) == 1
+        assert ruptures[0].payload["opposition"] == "capital_labor"
+        assert ruptures[0].payload["gap"] > 0.9
+        assert ruptures[0].payload["rate"] > 0.0
+
+    def test_falling_gap_after_threshold_does_not_re_rupture(self) -> None:
+        """Once the gap starts falling, no further RUPTURE fires (no ceiling latch)."""
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+        graph = self._graph(400.0)  # gap ~0.995
+
+        system.step(graph, services, {"tick": 1})
+        graph.nodes["owner"]["wealth"] = 100.0  # gap falls -> rate < 0
+        system.step(graph, services, {"tick": 2})
+        graph.nodes["owner"]["wealth"] = 60.0  # still falling
+        system.step(graph, services, {"tick": 3})
+
+        assert _rupture_events(services) == []
+
+
+class TestRuptureIsPerPrincipal:
+    """RUPTURE is a frame-level event on the principal opposition, not per edge."""
+
+    def test_multi_edge_scenario_reports_principal_opposition(self) -> None:
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("w1", wealth=1.0)
+        graph.add_node("w2", wealth=1.0)
+        graph.add_node("owner", wealth=50.0)
+        graph.add_edge("w1", "owner", edge_type=EdgeType.EXPLOITATION)
+        graph.add_edge("w2", "owner", edge_type=EdgeType.EXPLOITATION)
+
+        system.step(graph, services, {"tick": 1})
+        graph.nodes["owner"]["wealth"] = 500.0  # widen both -> mean gap rises
+        system.step(graph, services, {"tick": 2})
+
+        ruptures = _rupture_events(services)
+        assert len(ruptures) == 1  # one frame-level rupture, not one-per-edge
+        assert ruptures[0].payload["opposition"] == "capital_labor"

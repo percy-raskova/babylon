@@ -664,11 +664,13 @@ class TestStepTensionRate:
         """Default tension rate should be 0.05."""
         assert config.tension_accumulation_rate == 0.05
 
-    def test_higher_rate_faster_tension(
+    def test_tension_decoupled_from_accumulation_rate(
         self,
         two_node_state: WorldState,
     ) -> None:
-        """Higher tension rate means faster accumulation."""
+        """C1.3: per-edge tension is the FRESH wealth-asymmetry gap, not an
+        add-only accumulator, so it no longer depends on
+        ``tension.accumulation_rate`` — two rates yield identical tension."""
         config = SimulationConfig()
         low_rate_defines = GameDefines(tension=TensionDefines(accumulation_rate=0.01))
         high_rate_defines = GameDefines(tension=TensionDefines(accumulation_rate=0.1))
@@ -681,18 +683,24 @@ class TestStepTensionRate:
             state_low = step(state_low, config, defines=low_rate_defines)
             state_high = step(state_high, config, defines=high_rate_defines)
 
-        # Higher rate should accumulate more tension
-        assert state_high.relationships[0].tension > state_low.relationships[0].tension
+        # Decoupled: the rate no longer moves the fresh-gap tension.
+        assert state_high.relationships[0].tension == pytest.approx(
+            state_low.relationships[0].tension
+        )
 
-    def test_zero_rate_no_tension_accumulation(
+    def test_zero_rate_does_not_freeze_tension(
         self,
         two_node_state: WorldState,
     ) -> None:
-        """Zero tension rate means no accumulation (frozen)."""
+        """C1.3: tension is recomputed each tick as the live wealth-asymmetry
+        gap, so ``accumulation_rate == 0`` does NOT freeze it at its initial
+        value — it tracks the (non-zero) gap between the two poles."""
         config = SimulationConfig()
         defines = GameDefines(tension=TensionDefines(accumulation_rate=0.0))
-        initial_tension = two_node_state.relationships[0].tension
+        initial_tension = two_node_state.relationships[0].tension  # seeded at 0.0
 
         state = step(two_node_state, config, defines=defines)
 
-        assert state.relationships[0].tension == initial_tension
+        new_tension = state.relationships[0].tension
+        assert new_tension != initial_tension  # moved off the frozen initial
+        assert 0.0 < new_tension <= 1.0  # a real, bounded wealth-asymmetry gap

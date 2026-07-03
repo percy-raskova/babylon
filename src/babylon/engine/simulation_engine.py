@@ -532,10 +532,15 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
 
     # Contradiction Events
     if event_type == EventType.RUPTURE:
+        # Lawverian (Phase C1): frame-level payload {opposition, gap, rate};
+        # ``edge`` retained (default "") for older per-edge callers.
         return RuptureEvent(
             tick=tick,
             timestamp=timestamp,
             edge=payload.get("edge", ""),
+            opposition=payload.get("opposition", ""),
+            gap=payload.get("gap", 0.0),
+            rate=payload.get("rate", 0.0),
         )
 
     # Topology Events (Sprint 3.3)

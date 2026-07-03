@@ -251,6 +251,22 @@ class WorldState(BaseModel):
         description="Map of scope ID to active ContradictionFrame (Feature: Fractal Contradictions)",
     )
 
+    opposition_states: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Optional Lawverian OppositionRegistry snapshot seed "
+            "({key: OppositionState.model_dump()}, Phase C1). A WRITE-ONLY seed: "
+            "``to_graph`` copies it to the ``opposition_states`` graph attribute "
+            "so a scenario can inject a contradiction snapshot the pre-position-18 "
+            "consumers read on the first tick. ``from_graph`` does NOT reconstruct "
+            "it — the authoritative cross-tick carrier is the persisted graph "
+            "itself (bridged runner). The in-memory Simulation facade rebuilds the "
+            "graph from WorldState each tick and therefore recomputes the snapshot "
+            "fresh (no cross-tick memory), which keeps the facade deterministic; "
+            "facade cross-tick dynamics await a StruggleSystem determinism fix."
+        ),
+    )
+
     # Organization Base Model (Feature 031)
     organizations: dict[str, OrganizationType] = Field(
         default_factory=dict,
@@ -319,6 +335,12 @@ class WorldState(BaseModel):
         G.graph["contradiction_frames"] = {
             scope: frame.model_dump() for scope, frame in self.contradiction_frames.items()
         }
+
+        # Seed the Lawverian opposition-registry snapshot (Phase C1) onto the
+        # graph so a scenario's injected snapshot reaches the pre-position-18
+        # consumers. Write-only: from_graph does NOT read it back (see the field
+        # docstring) — the persisted graph is the cross-tick carrier.
+        G.graph["opposition_states"] = dict(self.opposition_states)
 
         # Store events in graph metadata for lossless round-trip (Sprint 1.X D2)
         G.graph["events"] = [e.model_dump() for e in self.events]

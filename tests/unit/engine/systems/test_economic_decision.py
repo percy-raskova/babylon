@@ -111,32 +111,29 @@ class TestPoolRatioCalculation:
 
 @pytest.mark.unit
 class TestAggregateTensionCalculation:
-    """Test aggregate tension averaging across edges."""
+    """Test the capital_labor opposition-gap handoff (C1.5).
 
-    def test_aggregate_tension_averaging(self) -> None:
-        """Aggregate tension is the mean of all edge tensions.
+    ``_calculate_aggregate_tension`` no longer averages edge tensions; it reads
+    the capital_labor opposition gap from the ``opposition_states`` graph
+    attribute that ContradictionSystem (position 18) stashes each tick.
+    """
 
-        With tensions [0.2, 0.4, 0.6], average = 0.4
-        """
+    def test_aggregate_tension_reads_capital_labor_gap(self) -> None:
+        """Returns the capital_labor gap from the opposition snapshot."""
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node("a")
-        graph.add_node("b")
-        graph.add_node("c")
-        graph.add_node("d")
-        graph.add_edge("a", "b", tension=0.2)
-        graph.add_edge("b", "c", tension=0.4)
-        graph.add_edge("c", "d", tension=0.6)
+        graph.graph["opposition_states"] = {"capital_labor": {"gap": 0.4}}
 
         system = ImperialRentSystem()
 
         # Act
         result = system._calculate_aggregate_tension(graph)
 
-        # Assert: mean([0.2, 0.4, 0.6]) = 0.4
+        # Assert
         assert result == pytest.approx(0.4, rel=1e-6)
 
     def test_aggregate_tension_empty_graph(self) -> None:
-        """Empty graph returns 0.0 tension."""
+        """No snapshot returns 0.0 tension (edge tensions are irrelevant now)."""
         graph: nx.DiGraph[str] = nx.DiGraph()
 
         system = ImperialRentSystem()
@@ -147,29 +144,27 @@ class TestAggregateTensionCalculation:
         # Assert
         assert result == pytest.approx(0.0, rel=1e-6)
 
-    def test_aggregate_tension_edges_without_tension_attribute(self) -> None:
-        """Edges without tension attribute default to 0.0."""
+    def test_aggregate_tension_snapshot_without_capital_labor_defaults_zero(self) -> None:
+        """A snapshot lacking the capital_labor key defaults to 0.0."""
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node("a")
         graph.add_node("b")
-        graph.add_node("c")
-        graph.add_edge("a", "b")  # No tension
-        graph.add_edge("b", "c", tension=0.6)
+        graph.add_edge("a", "b", tension=0.6)  # edge tension no longer feeds it
+        graph.graph["opposition_states"] = {"wage": {"gap": 0.9}}
 
         system = ImperialRentSystem()
 
         # Act
         result = system._calculate_aggregate_tension(graph)
 
-        # Assert: mean([0.0, 0.6]) = 0.3
-        assert result == pytest.approx(0.3, rel=1e-6)
+        # Assert
+        assert result == pytest.approx(0.0, rel=1e-6)
 
-    def test_aggregate_tension_single_edge(self) -> None:
-        """Single edge returns its tension value."""
+    def test_aggregate_tension_high_gap(self) -> None:
+        """A high capital_labor gap is returned verbatim."""
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node("a")
-        graph.add_node("b")
-        graph.add_edge("a", "b", tension=0.7)
+        graph.graph["opposition_states"] = {"capital_labor": {"gap": 0.7}}
 
         system = ImperialRentSystem()
 
@@ -267,8 +262,9 @@ class TestDecisionClamping:
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node("a")
         graph.add_node("b")
-        # High tension for IRON_FIST
+        # High capital_labor gap for IRON_FIST (C1.5 handoff via opposition_states)
         graph.add_edge("a", "b", tension=0.8)
+        graph.graph["opposition_states"] = {"capital_labor": {"gap": 0.8}}
 
         economy_defines = EconomyDefines(
             initial_rent_pool=100.0,
@@ -413,6 +409,8 @@ class TestDecisionLogic:
         graph.add_node("a")
         graph.add_node("b")
         graph.add_edge("a", "b", tension=0.7)  # High tension
+        # C1.5: the bourgeois decision reads the capital_labor gap, not edges.
+        graph.graph["opposition_states"] = {"capital_labor": {"gap": 0.7}}
 
         economy_defines = EconomyDefines(
             initial_rent_pool=100.0,

@@ -88,6 +88,7 @@ class QueryMixin:
         for source, target, data in self._graph.edges(data=True):
             data_copy = dict(data)
             e_type = data_copy.pop("_edge_type", "unknown")
+            data_copy.pop("edge_type", None)
             weight = data_copy.pop("weight", 1.0)
 
             # Type filter

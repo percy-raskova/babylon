@@ -20,10 +20,12 @@ Internal structure:
 * ``_adj`` / ``_pred`` — per-source insertion-ordered adjacency mirrors;
   ``edges(data=True)`` iterates them in NetworkX's exact order.
 
-Normalization: node types live under ``_node_type`` and edge types under
-``_edge_type`` — ONLY. Public ``node_type`` / ``edge_type`` keys passed by
-authoring callers are folded into the canonical key at insert (this
-replaces ``NetworkXAdapter.wrap()``'s per-tick normalization sweep).
+Normalization: node types live under ``_node_type`` only (no raw reader
+of the public key exists outside the graph layer). Edge payloads carry
+BOTH ``edge_type`` (public — read raw across ooda/bifurcation/persistence
+and ``WorldState.from_graph``) and ``_edge_type`` (internal protocol key),
+synced at insert — replacing ``NetworkXAdapter.wrap()``'s per-tick
+mirroring sweep. Protocol materialization (``GraphEdge``) strips both.
 
 Discovered rustworkx 0.17 semantics this design compensates for (pinned
 in ``tests/unit/engine/test_rustworkx_spike.py``): ``add_edge`` REPLACES
@@ -104,15 +106,24 @@ class _GraphCore:
     def _normalize_edge_payload(
         edge_type: str | None, weight: float | None, attributes: dict[str, Any]
     ) -> EdgePayload:
-        """Fold type/weight markers into canonical ``_edge_type``/``weight``."""
+        """Sync the DUAL edge-type keys and fold in the weight marker.
+
+        Edge payloads carry BOTH ``edge_type`` (public — read raw by ~25
+        call sites across ooda/bifurcation/persistence/from_graph) and
+        ``_edge_type`` (internal — the protocol lookup key). This mirrors
+        today's production reality, where ``to_graph()`` writes the public
+        key and ``wrap()`` mirrors it internally each tick.
+        """
         payload = dict(attributes)
-        public = payload.pop("edge_type", None)
         if edge_type is not None:
             payload["_edge_type"] = edge_type
+            payload["edge_type"] = edge_type
             payload["weight"] = 1.0 if weight is None else weight
             return payload
-        if "_edge_type" not in payload and public is not None:
-            payload["_edge_type"] = public
+        if "_edge_type" not in payload and "edge_type" in payload:
+            payload["_edge_type"] = payload["edge_type"]
+        elif "edge_type" not in payload and "_edge_type" in payload:
+            payload["edge_type"] = payload["_edge_type"]
         if weight is not None:
             payload["weight"] = weight
         return payload
@@ -613,6 +624,7 @@ class BabylonGraph(_GraphCore, AggregationMixin, QueryMixin):
         if data.get("_edge_type") != edge_type:
             return None
         data.pop("_edge_type", None)
+        data.pop("edge_type", None)
         weight = data.pop("weight", 1.0)
         return GraphEdge(
             source_id=source,

@@ -134,6 +134,31 @@ class TensionDefines(BaseModel):
         description="Maximum intensity indicating rupture/resolution.",
     )
 
+    # Lawverian dialectics (Phase C): OppositionRegistry knobs. Kept here on
+    # TensionDefines (rather than a new category) because they govern the same
+    # contradiction machinery this model already configures.
+    rupture_gap_threshold: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Principal-opposition gap above which — AND while rising — a RUPTURE "
+            "fires. 0.9 keeps the pacified bridged decade (empirical capital_labor "
+            "gap band ~[0.03, 0.67]) rupture-free (hegemony holds per project/02 "
+            "§3); genuine extreme asymmetry (gap > 0.9) still ruptures. The "
+            "rising-gate replaces the old fire-on-hitting-1.0 ceiling."
+        ),
+    )
+    principal_rate_weight: float = Field(
+        default=10.0,
+        ge=0.0,
+        description=(
+            "Weight of |rate| in the principal-contradiction score "
+            "gap*(1 + rate_weight*|rate|) (Mao: the fast-developing contradiction "
+            "leads). Passed to OppositionRegistry; default matches its own."
+        ),
+    )
+
 
 class StruggleDefines(BaseModel):
     """Struggle dynamics coefficients (Agency Layer - "George Floyd" Dynamic).

@@ -1,24 +1,75 @@
-"""Contradiction systems for the Babylon simulation - The Rupture."""
+"""Contradiction system — Lawverian opposition registry (Phase C1.3).
+
+Position 18 in the pipeline. This is the rewrite that retires the saturating,
+add-only edge-``tension`` accumulator (the "Formula" + "Consumption" inertness
+bugs of ``project/06-lawverian-dialectics.md`` §2). Each tick the system:
+
+1. writes per-edge ``tension`` as the *fresh* wealth-asymmetry gap of that edge
+   (EXPLOITATION / WAGES / TENANCY) — scale-free, recomputed from current
+   wealth, never accumulated;
+2. steps the :class:`~babylon.dialectics.core.opposition.OppositionRegistry`
+   (wired by :meth:`ServiceContainer.create`) over a :class:`GraphInputs`
+   snapshot built from the live graph, deriving each opposition's gap, rate,
+   and the Maoist principal contradiction;
+3. derives ``contradiction_frames`` from the registry states (intensity ← gap,
+   aspect_balance ← rate, principal_aspect ← leading_pole; frame
+   principal/secondary = registry principal + runner-up);
+4. fires RUPTURE on the principal opposition's gap exceeding the defines
+   threshold **AND rising** (rate > 0) — Mao's "condition AND level", never on
+   hitting a ceiling.
+
+Cross-tick + handoff channel.
+    The registry snapshot is stashed on the **graph attribute**
+    ``opposition_states`` (not ``context.persistent_data``). The bridged
+    headless runner recreates a fresh ``TickContext`` every tick
+    (``engine/headless_runner/runner.py`` ``_advance_tick``), so
+    ``persistent_data`` is not a cross-tick channel there; the graph, by
+    contrast, persists in-place across ticks in both the bridged runner and
+    the in-memory ``Simulation`` facade. The graph attribute is therefore the
+    reliable place to (a) recover the previous tick's gaps for rate/inertia,
+    (b) hand the capital_labor gap to the pre-position-18 consumers
+    (ImperialRent @9, Struggle @16, Consciousness @17 read *last* tick's
+    snapshot), and (c) let the bridge's ``persist_tick`` read the snapshot.
+    This is the same channel ``contradiction_frames`` already uses.
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
+from babylon.dialectics.core.opposition import OppositionState
+from babylon.dialectics.instances.catalog import GraphInputs
 from babylon.engine.event_bus import Event
-from babylon.models.enums import EventType
+from babylon.engine.systems.base import SystemBase
+from babylon.engine.systems.protocol import ContextType
+from babylon.engine.topology_monitor import extract_solidarity_subgraph
+from babylon.formulas.contradiction import calculate_wealth_asymmetry_gap
+from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
+from babylon.models.enums import ContradictionType, EdgeMode, EdgeType, EventType
 
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.dialectics.core.opposition import OppositionRegistry, OppositionSpec
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+#: Graph attribute holding ``{key: OppositionState.model_dump()}`` for the tick.
+OPPOSITION_STATES_ATTR = "opposition_states"
+
+#: Below this rent_level a TENANCY edge carries no contradiction (rent-free).
+_RENT_EPSILON = 1e-9
+
+#: Edge types that receive a fresh per-edge wealth-asymmetry ``tension``.
+_TENSION_EDGE_TYPES: tuple[EdgeType, ...] = (
+    EdgeType.EXPLOITATION,
+    EdgeType.WAGES,
+    EdgeType.TENANCY,
+)
 
 
 class ContradictionSystem(SystemBase):
-    """Phase 4: Accumulation of Tension and Ruptures."""
+    """Phase 18: fresh-gap tension + opposition-registry contradiction frames."""
 
     name: ClassVar[str] = "Contradiction Tension"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
@@ -30,7 +81,7 @@ class ContradictionSystem(SystemBase):
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
-        """Update tension on edges based on wealth gaps."""
+        """Write fresh per-edge tension, then step the opposition registry."""
         from babylon.engine.graph_protocol import GraphProtocol
 
         if not isinstance(graph, GraphProtocol):
@@ -38,274 +89,185 @@ class ContradictionSystem(SystemBase):
 
             graph = NetworkXAdapter.wrap(graph)
 
-        self._update_edge_tensions(graph, services, context)
-        self._evaluate_contradiction_frames(graph, services, context)
-
-    def _calculate_macro_aspect_metrics(
-        self,
-        graph: GraphProtocol,
-        aspect: str | object,
-    ) -> tuple[float, float]:
-        """Return (total_mass, avg_centrality) for a given aspect.
-
-        Args:
-            graph: The simulation state graph.
-            aspect: The string or enum representing the structural aspect.
-
-        Returns:
-            Tuple of (total_economic_mass, average_centrality).
-        """
-        total_mass = 0.0
-        total_centrality = 0.0
-        count = 0
-        aspect_val = getattr(aspect, "value", str(aspect))
-
-        for node in graph.query_nodes():
-            attrs = node.attributes
-            if not attrs.get("active", True):
-                continue
-
-            role = attrs.get("role", "")
-            role_val = getattr(role, "value", str(role))
-
-            memberships = attrs.get("community_memberships", [])
-            comm_types = []
-            for m in memberships:
-                c_type = (
-                    getattr(m, "community_type", m.get("community_type", ""))
-                    if isinstance(m, dict)
-                    else getattr(m, "community_type", "")
-                )
-                comm_types.append(getattr(c_type, "value", str(c_type)))
-
-            is_match = (
-                role_val == aspect_val
-                or aspect_val in comm_types
-                or attrs.get("naics_2digit") == aspect_val
-            )
-
-            if is_match:
-                # Mass = wealth OR (total_wages for industries)
-                mass = float(attrs.get("wealth", attrs.get("total_wages", 0.0)))
-                centrality = float(attrs.get("centrality", 0.5))
-                total_mass += mass
-                total_centrality += centrality
-                count += 1
-
-        if count == 0:
-            return (0.0, 0.5)
-        return (total_mass, total_centrality / count)
-
-    def _update_edge_tensions(
-        self,
-        graph: GraphProtocol,
-        services: ServiceContainer,
-        context: ContextType,
-    ) -> None:
-        """Update individual edge tensions based on modes."""
         tick: int = context.get("tick", 0)
-        tension_accumulation_rate = services.defines.tension.accumulation_rate
+        self._write_edge_tensions(graph)
+        self._step_registry(graph, services, tick)
 
-        for edge in graph.query_edges():
-            src_node = graph.get_node(edge.source_id)
-            tgt_node = graph.get_node(edge.target_id)
+    # ------------------------------------------------------------------
+    # 1. Fresh per-edge tension (replaces the add-only accumulator)
+    # ------------------------------------------------------------------
 
-            if src_node and not src_node.attributes.get("active", True):
-                continue
-            if tgt_node and not tgt_node.attributes.get("active", True):
-                continue
-
-            source_wealth = src_node.attributes.get("wealth", 0.0) if src_node else 0.0
-            target_wealth = tgt_node.attributes.get("wealth", 0.0) if tgt_node else 0.0
-
-            wealth_gap = abs(target_wealth - source_wealth)
-
-            src_centrality = float(src_node.attributes.get("centrality", 0.5)) if src_node else 0.5
-            tgt_centrality = float(tgt_node.attributes.get("centrality", 0.5)) if tgt_node else 0.5
-
-            from babylon.formulas.contradiction import calculate_contradiction_intensity
-
-            tension_delta = calculate_contradiction_intensity(
-                divergence=wealth_gap,
-                centrality_a=src_centrality,
-                centrality_b=tgt_centrality,
-                sensitivity=tension_accumulation_rate,
-            )
-
-            current_tension = float(edge.attributes.get("tension", 0.0))
-            edge_mode = edge.attributes.get("edge_mode")
-            mode_value = getattr(edge_mode, "value", edge_mode)
-
-            if mode_value == "extractive":
-                new_tension = min(1.0, current_tension + tension_delta)
-            elif mode_value == "co_optive":
-                concession_flow = float(edge.attributes.get("value_flow", 0.0))
-                concession_threshold = (
-                    float(src_node.attributes.get("consumption_needs", 1.0)) if src_node else 1.0
-                )
-
-                if concession_flow >= concession_threshold:
-                    new_tension = max(0.0, current_tension - (tension_accumulation_rate * 0.1))
-                else:
-                    new_tension = min(1.0, current_tension + (tension_delta * 1.5))
-                    if new_tension >= 0.8 and current_tension < 0.8:
-                        services.event_bus.publish(
-                            Event(
-                                type=EventType.CO_OPTIVE_BREAKDOWN,
-                                tick=tick,
-                                payload={"edge": f"{edge.source_id}->{edge.target_id}"},
-                            )
-                        )
-            else:
-                new_tension = min(1.0, current_tension + tension_delta)
-
-            graph.update_edge(edge.source_id, edge.target_id, edge.edge_type, tension=new_tension)
-
-            if new_tension >= 1.0 and current_tension < 1.0:
-                services.event_bus.publish(
-                    Event(
-                        type=EventType.RUPTURE,
-                        tick=tick,
-                        payload={"edge": f"{edge.source_id}->{edge.target_id}"},
+    def _write_edge_tensions(self, graph: GraphProtocol) -> None:
+        """Set ``tension`` on each EXPLOITATION/WAGES/TENANCY edge to its gap."""
+        for edge_type in _TENSION_EDGE_TYPES:
+            for edge in graph.query_edges(edge_type=edge_type):
+                src = graph.get_node(edge.source_id)
+                tgt = graph.get_node(edge.target_id)
+                if src is None or tgt is None:
+                    continue
+                if not src.attributes.get("active", True):
+                    continue
+                if not tgt.attributes.get("active", True):
+                    continue
+                src_wealth = float(src.attributes.get("wealth", 0.0))
+                if edge_type is EdgeType.TENANCY:
+                    rent = float(tgt.attributes.get("rent_level", 0.0))
+                    tension = (
+                        0.0
+                        if rent <= _RENT_EPSILON
+                        else calculate_wealth_asymmetry_gap(src_wealth, rent)
                     )
-                )
+                else:
+                    tgt_wealth = float(tgt.attributes.get("wealth", 0.0))
+                    tension = calculate_wealth_asymmetry_gap(src_wealth, tgt_wealth)
+                graph.update_edge(edge.source_id, edge.target_id, edge.edge_type, tension=tension)
 
-    def _evaluate_contradiction_frames(
+    # ------------------------------------------------------------------
+    # 2. Opposition registry step + frames + rupture
+    # ------------------------------------------------------------------
+
+    def _step_registry(
         self,
         graph: GraphProtocol,
         services: ServiceContainer,
-        context: ContextType,
+        tick: int,
     ) -> None:
-        """Evaluate dialectical progression in contradiction frames."""
-        tick: int = context.get("tick", 0)
-        tension_accumulation_rate = services.defines.tension.accumulation_rate
+        """Step the registry, derive frames, fire rupture, stash the snapshot."""
+        registry: OppositionRegistry[GraphInputs] | None = services.opposition_registry
+        if registry is None:  # No registry wired (custom container): nothing to do.
+            return
 
-        if hasattr(graph, "get_graph_attr"):
-            frames_data = graph.get_graph_attr("contradiction_frames", {})
-        else:
-            frames_data = getattr(graph, "graph", {}).get("contradiction_frames", {})
+        previous = self._read_previous(graph)
+        inputs = self._build_graph_inputs(graph)
+        states = registry.step(inputs, tick, previous)
+        if not states:
+            return
 
-        if not frames_data:
-            from babylon.engine.factories import create_contradiction_frame
-
-            global_frame = create_contradiction_frame("global")
-            frames_data = {"global": global_frame.model_dump()}
-            if hasattr(graph, "set_graph_attr"):
-                graph.set_graph_attr("contradiction_frames", frames_data)
-            else:
-                getattr(graph, "graph", {})["contradiction_frames"] = frames_data
-
-        from babylon.formulas.contradiction import calculate_contradiction_intensity
-        from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
-
-        aspect_flip_threshold = getattr(services.defines.tension, "aspect_flip_threshold", 1.0)
-        antagonistic_threshold = getattr(
-            services.defines.tension, "antagonistic_intensity_threshold", 0.8
+        self._write_frames(graph, services, registry, states)
+        self._maybe_rupture(services, states, tick)
+        graph.set_graph_attr(
+            OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in states}
         )
 
-        for scope, frame_dict in frames_data.items():
-            frame = ContradictionFrame(**frame_dict)
+    @staticmethod
+    def _read_previous(graph: GraphProtocol) -> dict[str, OppositionState]:
+        """Reconstruct last tick's states from the ``opposition_states`` attr."""
+        raw: dict[str, Any] = graph.get_graph_attr(OPPOSITION_STATES_ATTR, {}) or {}
+        return {key: OppositionState(**value) for key, value in raw.items()}
 
-            # Spec 056 / III.7: Contradiction + ContradictionFrame are frozen.
-            # We accumulate field updates and produce new instances via
-            # model_copy() rather than mutating in place.
-            updated_slots: dict[str, Contradiction] = {}
-            for slot, contradiction in (
-                ("principal", frame.principal),
-                ("secondary", frame.secondary),
-            ):
-                mass_a, cent_a = self._calculate_macro_aspect_metrics(graph, contradiction.aspect_a)
-                mass_b, cent_b = self._calculate_macro_aspect_metrics(graph, contradiction.aspect_b)
+    def _build_graph_inputs(self, graph: GraphProtocol) -> GraphInputs:
+        """Pre-extract the per-tick views the catalog measures read."""
+        exploitation: list[tuple[float, float]] = []
+        for edge in graph.query_edges(edge_type=EdgeType.EXPLOITATION):
+            pair = self._edge_wealths(graph, edge.source_id, edge.target_id)
+            if pair is not None:  # (labor=source=A, capital=target=B)
+                exploitation.append(pair)
 
-                total_mass = mass_a + mass_b
-                if total_mass > 0:
-                    divergence = abs(mass_a - mass_b) / total_mass
-                    balance_shift = (mass_b - mass_a) / total_mass
-                else:
-                    divergence = 0.0
-                    balance_shift = 0.0
+        wages: list[tuple[float, float]] = []
+        for edge in graph.query_edges(edge_type=EdgeType.WAGES):
+            pair = self._edge_wealths(graph, edge.source_id, edge.target_id)
+            if pair is not None:  # employer=source -> re-orient so labor=A
+                wages.append((pair[1], pair[0]))
 
-                intensity_delta = calculate_contradiction_intensity(
-                    divergence=divergence,
-                    centrality_a=cent_a,
-                    centrality_b=cent_b,
-                    sensitivity=tension_accumulation_rate * 0.05,
+        tenancy: list[tuple[float, float]] = []
+        for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
+            src = graph.get_node(edge.source_id)
+            tgt = graph.get_node(edge.target_id)
+            if src is None or tgt is None:
+                continue
+            tenancy.append(
+                (
+                    float(src.attributes.get("wealth", 0.0)),
+                    float(tgt.attributes.get("rent_level", 0.0)),
                 )
-
-                new_intensity = min(
-                    1.0,
-                    max(0.0, float(contradiction.intensity + intensity_delta)),
-                )
-                new_balance = min(
-                    1.0,
-                    max(
-                        -1.0,
-                        float(
-                            contradiction.aspect_balance
-                            + balance_shift * 0.01 * tension_accumulation_rate
-                        ),
-                    ),
-                )
-
-                # Antagonistic transition (one-way: False → True)
-                new_is_antagonistic = contradiction.is_antagonistic
-                if not contradiction.is_antagonistic and new_intensity >= antagonistic_threshold:
-                    new_is_antagonistic = True
-                    services.event_bus.publish(
-                        Event(
-                            type=EventType.EDGE_MODE_TRANSITION,
-                            tick=tick,
-                            payload={
-                                "scope": scope,
-                                "contradiction": contradiction.id,
-                                "mode": "antagonistic",
-                            },
-                        )
-                    )
-
-                # Aspect-flip on balance threshold
-                new_aspect_a = contradiction.aspect_a
-                new_aspect_b = contradiction.aspect_b
-                new_balance_after_flip = new_balance
-                if abs(new_balance) >= aspect_flip_threshold:
-                    new_aspect_a, new_aspect_b = (
-                        contradiction.aspect_b,
-                        contradiction.aspect_a,
-                    )
-                    new_balance_after_flip = 0.0
-                    services.event_bus.publish(
-                        Event(
-                            type=EventType.ASPECT_REVERSAL,
-                            tick=tick,
-                            payload={"scope": scope, "contradiction": contradiction.id},
-                        )
-                    )
-
-                updated_slots[slot] = contradiction.model_copy(
-                    update={
-                        "intensity": new_intensity,
-                        "aspect_balance": new_balance_after_flip,
-                        "is_antagonistic": new_is_antagonistic,
-                        "aspect_a": new_aspect_a,
-                        "aspect_b": new_aspect_b,
-                    }
-                )
-
-            new_principal = updated_slots["principal"]
-            new_secondary = updated_slots["secondary"]
-
-            # Principal/secondary swap when secondary's intensity exceeds principal's
-            if new_secondary.intensity > new_principal.intensity:
-                new_principal, new_secondary = new_secondary, new_principal
-                services.event_bus.publish(
-                    Event(
-                        type=EventType.PRINCIPAL_CONTRADICTION_SHIFT,
-                        tick=tick,
-                        payload={"scope": scope, "new_principal": new_principal.id},
-                    )
-                )
-
-            new_frame = frame.model_copy(
-                update={"principal": new_principal, "secondary": new_secondary}
             )
-            frames_data[scope] = new_frame.model_dump()
+
+        return GraphInputs(
+            exploitation_pairs=tuple(exploitation),
+            wages_pairs=tuple(wages),
+            tenancy_pairs=tuple(tenancy),
+            solidarity_subgraph=extract_solidarity_subgraph(graph),
+        )
+
+    @staticmethod
+    def _edge_wealths(
+        graph: GraphProtocol, source_id: str, target_id: str
+    ) -> tuple[float, float] | None:
+        """(source_wealth, target_wealth), skipping inactive endpoints."""
+        src = graph.get_node(source_id)
+        tgt = graph.get_node(target_id)
+        if src is None or tgt is None:
+            return None
+        if not src.attributes.get("active", True) or not tgt.attributes.get("active", True):
+            return None
+        return (
+            float(src.attributes.get("wealth", 0.0)),
+            float(tgt.attributes.get("wealth", 0.0)),
+        )
+
+    def _write_frames(
+        self,
+        graph: GraphProtocol,
+        services: ServiceContainer,
+        registry: OppositionRegistry[GraphInputs],
+        states: tuple[OppositionState, ...],
+    ) -> None:
+        """Derive the single ``global`` frame from principal + runner-up."""
+        rate_weight = float(services.defines.tension.principal_rate_weight)
+        principal_state = next((s for s in states if s.is_principal), states[0])
+        ranked = sorted(
+            (s for s in states if s.key != principal_state.key),
+            key=lambda s: (-self._score(s, rate_weight), s.key),
+        )
+        secondary_state = ranked[0] if ranked else principal_state
+        frame = ContradictionFrame(
+            principal=self._contradiction(principal_state, registry.spec_for(principal_state.key)),
+            secondary=self._contradiction(secondary_state, registry.spec_for(secondary_state.key)),
+        )
+        graph.set_graph_attr("contradiction_frames", {"global": frame.model_dump()})
+
+    @staticmethod
+    def _score(state: OppositionState, rate_weight: float) -> float:
+        """Registry's principal score: gap * (1 + rate_weight * |rate|)."""
+        return state.gap * (1.0 + rate_weight * abs(state.rate))
+
+    @staticmethod
+    def _contradiction(state: OppositionState, spec: OppositionSpec) -> Contradiction:
+        """Map an :class:`OppositionState` onto the existing Contradiction model."""
+        ctype = ContradictionType.IMPERIAL if spec.key == "imperial" else ContradictionType.CLASS
+        return Contradiction(
+            id=spec.key,
+            type=ctype,
+            aspect_a=spec.pole_a,
+            aspect_b=spec.pole_b,
+            principal_aspect=state.leading_pole,
+            identity=0.5,
+            intensity=state.gap,
+            aspect_balance=state.rate,
+            form_of_struggle=EdgeMode.EXTRACTIVE,
+            is_antagonistic=spec.antagonistic,
+        )
+
+    def _maybe_rupture(
+        self,
+        services: ServiceContainer,
+        states: tuple[OppositionState, ...],
+        tick: int,
+    ) -> None:
+        """Fire RUPTURE iff the principal gap exceeds threshold AND is rising."""
+        threshold = float(services.defines.tension.rupture_gap_threshold)
+        principal = next((s for s in states if s.is_principal), None)
+        if principal is None:
+            return
+        if principal.gap > threshold and principal.rate > 0.0:
+            services.event_bus.publish(
+                Event(
+                    type=EventType.RUPTURE,
+                    tick=tick,
+                    payload={
+                        "opposition": principal.key,
+                        "gap": principal.gap,
+                        "rate": principal.rate,
+                    },
+                )
+            )

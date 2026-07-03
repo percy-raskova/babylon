@@ -97,6 +97,14 @@ class OppositionSpec(BaseModel):
         default=False,
         description="Laclau: cannot close within its current level",
     )
+    component_keys: tuple[str, ...] = Field(
+        default=(),
+        description="Composition provenance: keys of the combined components (empty = atomic)",
+    )
+    composition: Literal["", "product", "sum"] = Field(
+        default="",
+        description="Combinator that produced this spec ('' = atomic, not composed)",
+    )
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

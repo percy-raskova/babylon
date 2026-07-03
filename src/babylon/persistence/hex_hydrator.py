@@ -246,14 +246,16 @@ def hydrate_hex_state(
     # first so a hydrated session always resolves through it.
     _persist_hex_spatial_map(runtime, hex_rows)
 
-    # 5. Persist atomically at tick 0.
+    # 5. Persist atomically at tick 0. No commit marker (spec-089 FR-003):
+    # the placeholder hash below is not part of the III.7 chain — the
+    # bridge's tick-0 re-delivery writes the real tick_commit row.
     envelope = PerTickTransactionEnvelope(
         session_id=session_id,
         tick=0,
         hex_state_rows=hex_rows,
         determinism_hash="0" * 64,
     )
-    runtime.persist_tick_atomic(envelope)  # type: ignore[attr-defined]
+    runtime.persist_tick_atomic(envelope, write_commit_marker=False)  # type: ignore[attr-defined]
     logger.info(
         "hydrate_hex_state: persisted %d hex rows across %d counties for session %s",
         len(hex_rows),

@@ -9,7 +9,7 @@
 -- start): tables already partitioned are skipped entirely. On the one
 -- converting pass, existing rows are preserved by copying them into the
 -- DEFAULT partition. Views bind to table OIDs, so the converting pass
--- drops the 5 dependent views; 0028_views_current.sql (the canonical view
+-- drops the 5 dependent views; 0030_views_current.sql (the canonical view
 -- file, always executed later in the same pass) recreates them.
 --
 -- Per-session partitions are created at initialize_session by
@@ -57,7 +57,7 @@ BEGIN
     END IF;
 
     -- Views bind to OIDs; they would chase the RENAME below and then block
-    -- DROP of the backup table. 0028 recreates them later this pass.
+    -- DROP of the backup table. 0030 recreates them later this pass.
     DROP VIEW IF EXISTS view_runtime_trace_emission;
     DROP VIEW IF EXISTS v_global_phi_balance;
     DROP VIEW IF EXISTS v_national_value_aggregate;

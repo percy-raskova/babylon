@@ -28,7 +28,9 @@ from psycopg import sql
 
 _LOG = logging.getLogger(__name__)
 
-#: The 8 per-tick table families converted by migration 0026 (FR-001).
+#: The per-tick table families partitioned by session. The first 8 were
+#: converted by migration 0026 (spec-088 FR-001); tick_commit is born
+#: partitioned in migration 0029 (spec-089 FR-001).
 PARTITIONED_TABLES: tuple[str, ...] = (
     "dynamic_hex_state",
     "dynamic_external_node_state",
@@ -38,6 +40,7 @@ PARTITIONED_TABLES: tuple[str, ...] = (
     "dynamic_demographics_state",
     "dynamic_employment_state",
     "dynamic_relationship_state",
+    "tick_commit",
 )
 
 

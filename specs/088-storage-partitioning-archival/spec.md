@@ -25,7 +25,7 @@ Finished runs accumulate forever in `babylon_test` (~7 GB per canonical Michigan
 - **FR-003**: Because views bind to table OIDs, the converting pass drops
   the 5 dependent views (`v_county/state/national_value_aggregate`,
   `v_global_phi_balance`, `view_runtime_trace_emission`); a new
-  always-run migration `0028_views_current.sql` is the canonical view
+  always-run migration `0030_views_current.sql` is the canonical view
   file recreating all 5 at the end of every pass (0027 is reserved for
   S3's `hex_map`). Later specs edit 0028, never 0015/0019/0023.
 - **FR-004**: Each table gets a DEFAULT partition so writers that skip

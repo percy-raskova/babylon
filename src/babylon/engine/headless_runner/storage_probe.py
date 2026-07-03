@@ -38,6 +38,7 @@ PER_TICK_TABLES: tuple[str, ...] = (
     "dynamic_external_node_state",
     "dynamic_relationship_state",
     "contradiction_field",
+    "tick_commit",
 )
 
 

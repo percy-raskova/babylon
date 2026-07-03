@@ -82,7 +82,7 @@ class TestPartitionConversion:
                 assert row is not None and row[0] is not None, f"{table}_default missing"
 
     def test_dependent_views_survive_the_pass(self, migrated_pool: Any) -> None:
-        """0026 drops the 5 views on conversion; 0028 must restore them."""
+        """0026 drops the 5 views on conversion; 0030 must restore them."""
         with migrated_pool.connection() as conn:
             for view in (
                 "v_county_value_aggregate",

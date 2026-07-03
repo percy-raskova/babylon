@@ -88,7 +88,9 @@ fi
 # re-stage hook fixes for EXACTLY the staged set (not the whole tree);
 # the commit itself re-runs hooks and must pass.
 poetry run pre-commit run || true
-git diff --cached --name-only -z | xargs -0 -r git add --
+for f in $(git diff --cached --name-only); do
+  if [ -e "$f" ]; then git add -- "$f"; fi
+done
 git commit -m "$usage_message"
 git log --oneline -1
 git status --short | grep -v "^??" || true

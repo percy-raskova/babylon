@@ -1,31 +1,38 @@
 # 01 — State of the World
 
-**As of**: 2026-07-03 ~00:30 EDT. Update this file whenever a unit completes.
+**As of**: 2026-07-03 ~15:20 EDT. Update this file whenever a unit completes.
 
-## PROGRAM PIVOT (2026-07-02 evening, owner directive)
+## Current branch + the two foundations (both COMPLETE 2026-07-03)
 
-Percy re-prioritized: the **Lawverian dialectics refactor** is now the most
-important foundation of the active goal — it precedes spec-071. Contract:
-`06-lawverian-dialectics.md`. Owner decisions: direct refactor (NO speckit),
-re-ground in place, executable + law-tested category theory, Fable designs
-and reviews / implementation delegated. Branch:
-`refactor/lawverian-dialectics` (off `fix/web-local-play-wireup`).
+Branch: **`refactor/networkx-to-rustworkx`** (continues
+`refactor/lawverian-dialectics`, which was cut off `fix/web-local-play-wireup`).
+Two foundation programs landed back-to-back today; spec-071 is next and
+consumes both:
 
-- Phase A DONE (`091f6f74`): `src/babylon/dialectics/` core
-  (GaloisConnection, AdjointCylinder, LevelLattice/Aufhebung,
-  OppositionRegistry), 43 law tests, mypy --strict clean.
-- Phases B–E: per `06-lawverian-dialectics.md` §4–§7 (delegated sessions).
-- After Phase E: resume the catalog at spec-071, which then CONSUMES the
-  categorical machinery (fascist pull as gap/monad computation).
+1. **Lawverian dialectics refactor — COMPLETE (Phases A–E, ADR051)**.
+   Record: `06-lawverian-dialectics.md` (consolidated master). The
+   contradiction layer is executable: OppositionRegistry of measured
+   adjunction defects, connectivity/scale/value-form instances, level
+   lattices + Aufhebung, fixed-point regimes; Systems 19–21 LIVE;
+   EventType 71 (`LEVEL_TRANSITION`); constitution Amendment K;
+   canonical re-baseline accepted (contradiction_field rows flow,
+   max_tension non-saturating).
+1. **Graph substrate: NetworkX → rustworkx — COMPLETE (Amendment L,
+   ADR052)**. Record: `08-graph-substrate.md`. `BabylonGraph` /
+   `BabylonUGraph` (`src/babylon/engine/graph.py`) are BOTH the
+   GraphProtocol implementation AND the nx-compat authoring API;
+   NetworkXAdapter deleted; zero `networkx` imports in `src/`+`web/`
+   (semgrep-banned); determinism baselines byte-identical; raw-layer
+   algorithms 2–5x.
 
 ## Catalog scoreboard
 
-- **DONE**: spec-070 Balkanization (shipped pre-session), spec-086 QCEW
-  loader + imputation (this session; not an audit-catalog spec but the
-  ratified data prerequisite), spec-097 finalized as decision record.
-- **IN PROGRESS**: Lawverian dialectics refactor (see pivot above).
-- **NOT STARTED**: 25 catalog specs (071–083 per audit Part 3, plus Waves 6–7
-  content). Next after the refactor: **spec-071** (see `03-next-spec-071.md`).
+- **DONE**: spec-070 Balkanization (pre-session), spec-086 QCEW loader +
+  imputation, spec-097 (decision record), Lawverian dialectics refactor
+  (ADR051), graph-substrate migration (ADR052).
+- **NOT STARTED**: 25 catalog specs (071–083 per audit Part 3, plus Waves
+  6–7 content). **Next: spec-071** (see `03-next-spec-071.md`) — now
+  unblocked on both foundations.
 
 ## What shipped 2026-07-02 (one session), by commit
 
@@ -81,8 +88,11 @@ re-baselines after the contradiction semantics change.
 
 ## In-flight / awaiting Percy (BD)
 
-- **Merge to dev**: `fix/web-local-play-wireup` (contains everything above).
-  Suggest splitting engine vs web at PR time if clean revert lines wanted.
+- **Merge to dev**: the branch chain `fix/web-local-play-wireup` →
+  `refactor/lawverian-dialectics` → `refactor/networkx-to-rustworkx`
+  (contains everything above plus ADR051+ADR052 programs). Suggest
+  splitting engine vs web vs substrate at PR time if clean revert lines
+  wanted.
 - **dev → main release**: explicitly DEFERRED by owner (main ~200 commits behind).
 - `--drop-backup` operator step (above).
 
@@ -93,9 +103,17 @@ re-baselines after the contradiction semantics change.
 - **Reference DB (SQLite)**: `data/sqlite/marxist-data-3NF.sqlite` — the
   `data/sqlite` DIRECTORY is a symlink to `/media/user/data/babylon-data/sqlite/`
   (the trove is canonical; one DB file, one inode). The symlink is NOT in git.
-- **Runtime DB (Postgres)**: local test instance,
+- **Runtime DB (Postgres)**: Docker container `babylon-pg-isolated`
+  (postgres:15, host port 5433),
   DSN `host=localhost port=5433 dbname=babylon_test user=test password=test`.
   Env var consumed by the runner: `BABYLON_PG_DSN`.
+  **Storage reality (measured 2026-07-03)**: one canonical 520-tick
+  michigan-canada run writes **~7 GB** into `babylon_test`
+  (48,827 H3 hexes × full per-tick state); nothing prunes finished runs
+  (spec-037 archival is still `NotImplementedError` stubs). Pressure
+  valves: `mise run clean:testdb` (drop/recreate/re-bootstrap) and
+  `mise run clean:docker` (leaked test containers + volumes). Killed
+  test runs leak ephemeral postgis containers — clean:docker flushes.
 - **babylon-data repo** (loader home): `/home/user/projects/game/babylon-data`;
   imported via committed symlink `src/babylon_data` → that repo's
   `src/babylon_data`, with `PYTHONPATH=src`. QCEW loader modules:
@@ -104,9 +122,10 @@ re-baselines after the contradiction semantics change.
   `downloader.py`, `loader_3nf.py` recovered earlier).
 - **Staged QCEW source data**: `/media/user/data/babylon-data/qcew/`
   (BLS annual singlefiles 2010–2024, 8.3 GB, complete).
-- **Canonical sim**: `poetry run python -m babylon.engine.headless_runner --scope michigan-canada --ticks 520` (add
-  `--write-baseline tests/baselines/michigan-e2e.json` to re-baseline)
-  (~45–75 min; run in background). 5-tick gate baseline:
+- **Canonical sim**: `mise run sim:e2e-bg` (daemonized, pidfile+log under
+  `.sim-pids/`; ~45–120 min); watch via `mise run sim:status` / `sim:watch`.
+  Direct command + baseline flag: see the standing loop in
+  `05-catalog-execution.md`. 5-tick gate baseline:
   `tests/baselines/detroit-tri-county-5t.json` via `mise run qa:e2e-regression`.
 - **Test reports**: every `mise run test:*` writes
   `reports/test-results/<task>/{junit.xml,report.json,report.html}`.
@@ -122,15 +141,17 @@ re-baselines after the contradiction semantics change.
   at the Phase E review boundary — the test now drives the defect pair directly
   (same arithmetic, new channel) and asserts the overtake on the wage/imperial
   defect family (their gaps are pinned equal until Phase D's periphery data).
-- **Lawverian dialectics refactor (project/06) COMPLETE** — Phases A-E on branch
-  `refactor/lawverian-dialectics`; see ADR051 and `project/06` §7. The contradiction
-  layer is now executable (opposition registry + level lattices + fixed-point regimes);
-  Systems 19-21 are live; EventType gained LEVEL_TRANSITION.
 - `WorldState.from_graph()` drops `institution_relations` + non-core
   Relationship attrs on round-trip.
 - EndgameDetector docstring claims REVOLUTIONARY_VICTORY-first priority; code
   checks it last (FR-033).
 - Django `accounts` app has no `migrations/` dir.
-- ~68 modified test files sit in the working tree from a pre-session state —
-  NOT this program's work; leave them alone.
+- `tests/integration/economics/` has ~34 data-availability failures
+  (NoDataSentinel — LODES rows absent from the reference DB build;
+  spec-086/097/098 remediation territory). Untouched by the 2026-07-03
+  programs; not migration breakage.
+- `mise run test:doctest` is broken (models→formulas circular import under
+  `--doctest-modules`); pre-existing, fails identically before Amendment L.
+- Django `game` app has model changes with no migration written
+  (`makemigrations` pending, owner's call).
 - May-era 520-tick trace.csv files are git-LFS pointers locally.

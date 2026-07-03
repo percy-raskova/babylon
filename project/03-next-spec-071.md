@@ -22,9 +22,30 @@ Dependency: spec-070 Balkanization (DONE — Faction model is live).
    2026-07-02 branch; if not yet merged, branch off `fix/web-local-play-wireup`
    and rebase later — ask Percy first).
 1. Speckit lifecycle: `specify → plan → tasks → implement`, Constitution
-   v2.6.1 gates in plan.md. NO MVP-scoping — implement the full catalog entry.
+   **v2.7.0** gates in plan.md (now incl. II.12 authoring-API and the III.7
+   determinism-hash contract; Amendments K+L are the two new foundations).
+   NO MVP-scoping — implement the full catalog entry.
 1. TDD throughout; commit per task-group; update `ai-docs/state.yaml` + ADR
    at the end; then update `project/01-state-of-the-world.md`.
+
+## Inherited obligations (added 2026-07-03 — both foundations landed)
+
+071 now CONSUMES the shipped dialectics machinery (ADR051) instead of
+building alongside it:
+
+- **The OODA hook is ready**: `StanceIntervention` +
+  `opposition_interventions` graph attr (designed FOR 071 — see
+  `06-lawverian-dialectics.md` Part II §5). Fascist pull should be computed
+  as a gap/monad quantity against the opposition registry, not a parallel
+  ad-hoc counter.
+- **RLF simplex constraints are DEFERRED TO 071** (ADR051 / 06 §9.4 /
+  06 Part IV §E7): r+l+f=1 enforcement, the `f→r` ε-gate breaking detailed
+  balance, entropy-as-diagnostic-only, `assimilation_ratio`.
+- **DecompositionSystem carceral-enforcer gap** (02 §5b) fires exactly in
+  071's crisis tests — fix it as part of 071 (seed an inactive
+  carceral-enforcer entity per county, or teach the system to create one).
+- Level lattices + `classify_regime` + `LEVEL_TRANSITION` exist — 071's
+  reactionary dynamics should read the regime, not recompute it.
 
 ## What to build (from the catalog, with 2026-07-02 annotations)
 
@@ -33,7 +54,10 @@ Dependency: spec-070 Balkanization (DONE — Faction model is live).
    `volatility` (L_u default 0.8), `fascist_alignment` (0→1 drift counter).
    - Annotation: remember the graph round-trip gotcha — new fields must
      survive `to_graph()`/`from_graph()` (see root CLAUDE.md "Graph Round-Trip
-     Can Lose Mutations"). Add round-trip tests.
+     Can Lose Mutations"; the graph is a **BabylonGraph** since Amendment L —
+     `08-graph-substrate.md`). Follow the Phase-D5 transient-attribute
+     precedent (`aa2cfab0`: `w_paid`/`v_produced` handling in `from_graph`)
+     when deciding persisted-vs-transient. Add round-trip tests.
 1. **`chauvinism: Intensity`** on organization member records (LA recruits).
 1. **New system `FascistFactionSystem`** at ~position 17.5.
    - ⚠ Position conflict to resolve in `/plan`: spec-070 already landed
@@ -57,7 +81,8 @@ Dependency: spec-070 Balkanization (DONE — Faction model is live).
      `test_hegemony_holds_exploitation_edge_persists`).
 1. **Fascist action verbs** in `ActionType` + OODA resolution: `POGROM`,
    `LOCKOUT`, `VIGILANTISM`, `RED_BROWN_COUP` (auto-triggered).
-1. **New events** (extend the EventType enum, currently 70 values, in
+1. **New events** (extend the EventType enum, currently **71** values —
+   Phase E added `LEVEL_TRANSITION` — in
    `src/babylon/models/enums/events.py`): `FASCIST_DRIFT`,
    `FASCIST_RECRUITMENT`, `ORGANIZATIONAL_FRACTURE`, `RED_BROWN_COUP`,
    `POGROM`, `LOCKOUT`, `VIGILANTISM`, `SPONTANEOUS_RIOT`.

@@ -1,0 +1,81 @@
+ADR053_storage_scaling_program:
+  status: "accepted"
+  date: "2026-07-03"
+  title: "Storage scaling program: partitioning + local archival + delta persistence (specs 087-089)"
+  context: |
+    One canonical 520-tick michigan-canada run wrote ~7 GB into babylon_test
+    (48,827 res-7 hexes x full 15-column row x every tick); ten accumulated
+    runs (71 GB) exhausted /var and caused psycopg DiskFull failures.
+    National res-7 (~3.17M hexes, ~65x Michigan) projected to ~450 GB/run —
+    infeasible. Measured root cause: the bridge re-emitted the tick-0 hex
+    template every tick; zero of 1,045 hex rows changed any value between
+    consecutive ticks (hex economics are static-per-year by design,
+    project/02). ADR031 had explicitly deferred diff-based storage "until
+    needed"; spec-037's archival pipeline was NotImplementedError stubs.
+  decision: |
+    Owner-ratified program (2026-07-03), landed as specs 087-089 on branch
+    feature/087-storage-foundations:
+
+    - spec-087 (S4+S5): compose-managed pinned postgis:16-3.4 + pgvector
+      image, tuned postgresql.conf, data dir on the 3.6TB drive via
+      BABYLON_PG_DATA, synchronous_commit=off for the test ROLE only,
+      `mise run setup` one-shot bootstrap; manifest gains a best-effort
+      `storage` block; qa:storage-budget gate (rows/tick per table vs
+      committed baseline).
+    - spec-088 (S2+S3): the 8 per-tick table families became
+      PARTITION BY LIST (session_id) (0026; DEFAULT partitions catch
+      hookless writers; per-session partitions created at
+      initialize_session). hex_spatial_map (0027) is the single stored
+      copy of the immutable hex->county/state/region mapping; per-tick
+      rows write NULL spatial keys; index diet leaves only the PK.
+      archival.py implemented LOCAL-ONLY (Parquet+zstd -> verify ->
+      DROP PARTITION purge -> DuckDB reads); upload_to_r2 retired per
+      the local-only ruling; tools/archive_sessions.py + sim:archive.
+    - spec-089 (S1): delta persistence — the envelope receives only hex
+      rows whose value tuple changed, plus a full checkpoint frame every
+      52 ticks; tick_commit table (born partitioned) is the per-tick
+      commit marker + queryable III.7 hash chain + dense spine;
+      get_last_committed_tick reads it; all hex-sourced views rewritten
+      as-of fill-forward in 0030_views_current.sql; v_hex_state_asof is
+      the declared hex-history read interface.
+  rationale:
+    trackability_ruling: >
+      Owner: trackability = verifiable + replayable (Constitution III.7 —
+      hash chain + deterministic replay), NOT hot-SQL-forever. The full
+      frame still feeds the conservation auditor and the hash every tick;
+      only *storage* is deduplicated, and any tick reconstructs exactly
+      (property-tested).
+    archive_ruling: "Archives are local only, period (/media/user/data/babylon-archives); R2 leg dropped; rclone is ops."
+    m10_respected: "One Postgres; no columnar substrate, no federation, no TimescaleDB; native partitioning + local Parquet only."
+    migration_rerun_architecture: >
+      _apply_migrations re-executes every 00*.sql at every runner start, so
+      conversions must be idempotent (0026 skips when partitioned) and view
+      DDL must live in an always-run canonical file (0030) because views
+      bind to table OIDs across RENAMEs. Historical migration files are
+      never edited; destructive column drops are avoided (fips columns went
+      NULLable instead of dropped — identical byte effect).
+  measurements:
+    five_tick_gate: "hex rows 5,225 -> 1,045 (tick-0 checkpoint only); trace.csv BYTE-IDENTICAL (sha256 933d4bb5... exact match pre/post)"
+    archived_session_size: "~48 KB Parquet per 5-tick tri-county session; 12 accumulated sessions archived + purged live"
+    national_dress_rehearsal: "3.17M-hex checkpoint frame = 629 MiB @ 208 B/row incl. index, written in 54s; 520-tick national projection 6.8 GiB (measured ~0%/tick delta rate) to 22.7 GiB (pessimistic 5%/tick) vs ~450 GB pre-program"
+    byte_identity_argument: >
+      County sums are order-independent today because hydrated hex values
+      are uniform within a county; when engine mutations make them
+      heterogeneous, ULP-level drift goes through the Amendment-L
+      written-proof + baseline-regeneration path (ADR052 precedent).
+  consequences:
+    positive:
+      - "Canonical Michigan run drops from ~7 GB to O(100 MB); national res-7 fits a workstation with headroom"
+      - "Finished sessions purge instantly (DROP PARTITION, zero dead tuples) after verified local Parquet export"
+      - "III.7 hash chain is now a first-class queryable table (tick_commit) — trackability improved, not traded"
+      - "qa:storage-budget locks the win in (a delta revert fails at +400% rows/tick)"
+      - "Fresh-clone reproducibility: mise run setup -> healthy tuned PG16 -> green gates"
+    negative:
+      - "Hex-level history reads MUST go through v_hex_state_asof (raw dynamic_hex_state is sparse) — a new gotcha"
+      - "get_last_committed_tick semantics depend on tick_commit for post-0029 sessions"
+      - "Archived Parquet stores deltas+checkpoints; DuckDB consumers needing dense frames re-apply the fill-forward window SQL"
+      - "h3 TEXT->BIGINT deferred (recorded deviation): ~7% row size vs high churn under the migration-rerun architecture"
+    follow_ups:
+      - "boundary_flow_register: currently 0 rows in canonical runs; when the engine emits flows, assess volume (flows are real per-tick information — partition+archive covers them; delta does not apply)"
+      - "Owner decision outstanding: adopt rustworkx-era baselines vs NetworkX-era (unchanged by this program — outputs byte-identical)"
+      - "web/Django layer schema (spec-037) untouched except the shared container upgrade"

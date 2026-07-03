@@ -85,16 +85,26 @@ One canonical 520-tick michigan-canada run writes **~7 GB** into
   magnitude smaller, but replay needs snapshot+delta reconstruction).
   Nationwide scale is ~65× the hex count; this stops being optional
   well before that.
-- **RESOLVED 2026-07-03 (storage program, spec-087+)**: both — plus more.
-  Owner-ratified program: S4 compose/tuned-PG16 + S5 storage observability
-  (spec-087, landed), then partitioning + LOCAL-only Parquet archival +
-  schema normalization (sprint 2), then delta persistence with checkpoint
-  frames + `tick_commit` hash chain (sprints 3-4). Archives local-only per
-  owner ruling; trackability = verifiable + replayable (III.7). Measured
-  basis: 0 of 1,045 hex rows change any column across consecutive ticks
-  (5-tick window, 2026-07-03). See `specs/087-storage-foundations/spec.md`.
-  The `docker run postgres:15` container mentioned above is HISTORICAL —
-  it's now compose-managed postgis 16 + pgvector on the data drive.
+- **RESOLVED 2026-07-03 (storage program, specs 087-089 — LANDED)**: both
+  — plus more. Owner-ratified and implemented same-day on
+  `feature/087-storage-foundations` (ADR053):
+  - spec-087: compose-managed postgis:16-3.4+pgvector on the data drive,
+    tuned conf, `mise run setup`, manifest `storage` block,
+    `qa:storage-budget` gate. (The `docker run postgres:15` above is
+    HISTORICAL.)
+  - spec-088: LIST(session_id) partitioning (instant purge),
+    hex_spatial_map normalization (NULL spatial keys per tick), archival
+    implemented LOCAL-ONLY: Parquet+zstd → verify → DROP PARTITION →
+    DuckDB (`mise run sim:archive`). spec-037 Phase 8 done; R2 retired.
+  - spec-089: delta persistence (changed rows only + yearly checkpoint
+    frames) + `tick_commit` (commit marker + queryable III.7 hash chain)
+    - as-of fill-forward views (`v_hex_state_asof`). trace.csv
+      byte-identical (sha256-verified); hex writes 5,225→1,045 per 5-tick
+      gate run.
+  - National dress rehearsal: 3.17M-hex checkpoint frame = 629 MiB @ 54s;
+    520-tick national projection **6.8–22.7 GiB** (vs ~450 GB before).
+  - Gotcha: raw `dynamic_hex_state` is now sparse — read history via
+    `v_hex_state_asof`; last committed tick lives in `tick_commit`.
 
 ## Observability
 

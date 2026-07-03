@@ -129,7 +129,10 @@ mise run db:sql -- "SELECT ..."                   # One-shot SQL vs babylon_test
 mise run sim:status                               # Canonical-run status: tick/520, DB size, liveness, dialectics signals
 mise run sim:e2e-bg                               # Daemonize the 520-tick e2e (pidfile + log; watch via sim:status)
 mise run sim:probe -- --county 26163 --ticks 3    # Single-county Postgres tick probe (tools/tick_probe.py)
-mise run clean:testdb                             # Recycle bloated babylon_test (~7 GB per canonical run!)
+mise run sim:archive -- list                      # Sessions holding rows (spec-088 archival lifecycle)
+mise run sim:archive -- archive --all             # Export sessions to local Parquet + purge Postgres
+mise run sim:archived                             # Show the local archive root (BABYLON_ARCHIVE_ROOT)
+mise run clean:testdb                             # Recycle babylon_test (mostly obsolete post-spec-089: runs are ~100 MB and archive+purge cleanly)
 mise run clean:docker                             # Flush leaked test containers + anonymous volumes
 
 # CI & Quality (fast gate)
@@ -723,6 +726,15 @@ phase = snapshot.phase  # AttributeError: 'TopologySnapshot' has no attribute 'p
 ```
 
 Pydantic models use dynamic attributes that bypass static analysis. **Runtime tests are essential.**
+
+### dynamic_hex_state is SPARSE (spec-089 delta persistence)
+
+A hex row is written only when its value tuple changes, plus a full
+checkpoint frame every 52 ticks. NEVER read per-tick hex state with
+`WHERE tick = N` on the raw table — use `v_hex_state_asof` (full-resolution
+reconstruction at every committed tick) or the as-of-filled aggregate/trace
+views. `MAX(tick) FROM dynamic_hex_state` is NOT the last committed tick —
+that's `tick_commit` (also the queryable III.7 hash chain).
 
 ### Immutability via model_copy()
 

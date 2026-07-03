@@ -31,8 +31,6 @@ from babylon.formulas.balkanization import calculate_metabolic_impact
 from babylon.models.enums import EventType, ExtractionPolicy
 
 if TYPE_CHECKING:  # pragma: no cover
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
     from babylon.engine.systems.protocol import ContextType
@@ -68,7 +66,7 @@ class SovereigntySystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:

@@ -19,8 +19,6 @@ import math
 import random
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
 import xgi  # type: ignore[import-untyped, unused-ignore]
@@ -114,7 +112,7 @@ def _agent_mean_marginalized_ci(
 def consciousness_weighted_solidarity(
     source_id: str,
     target_id: str,
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
     defines: BifurcationDefines,

@@ -48,8 +48,6 @@ from babylon.economics.boundary_flow_register import (
 from babylon.engine.systems.base import SystemBase
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.economics.lodes_commute_matrix import (
         LODESCommuteMatrixLoader,
     )
@@ -122,7 +120,7 @@ class Vol2CirculationStep:
     def step(  # noqa: C901, PLR0915 — FR-009/010/011/030a/conservation are inherently coupled; splitting would harm clarity
         self,
         *,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         register: BoundaryFlowRegister,
         session_id: UUID,
         tick: int,

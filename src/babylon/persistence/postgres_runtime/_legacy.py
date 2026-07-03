@@ -23,8 +23,6 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-import networkx as nx
-
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
 from psycopg import Connection
@@ -116,7 +114,7 @@ class PostgresRuntime:
     def persist_tick(
         self,
         tick: int,
-        graph: BabylonGraph | nx.DiGraph[str],
+        graph: BabylonGraph,
         events: list[dict[str, Any]] | None = None,
         *,
         session_id: UUID | None = None,
@@ -170,7 +168,7 @@ class PostgresRuntime:
 
     @staticmethod
     def _canonical_payload(
-        graph: BabylonGraph | nx.DiGraph[str],
+        graph: BabylonGraph,
         events: list[dict[str, Any]] | None,
     ) -> dict[str, Any]:
         """Return a canonical-serialized representation of (graph, events).
@@ -2072,7 +2070,7 @@ class PostgresRuntime:
         conn: Connection[Any],
         session_id: UUID,
         tick: int,
-        graph: BabylonGraph | nx.DiGraph[str],
+        graph: BabylonGraph,
     ) -> None:
         """Persist all graph nodes for a tick."""
         rows = []
@@ -2119,7 +2117,7 @@ class PostgresRuntime:
         conn: Connection[Any],
         session_id: UUID,
         tick: int,
-        graph: BabylonGraph | nx.DiGraph[str],
+        graph: BabylonGraph,
     ) -> None:
         """Persist all graph edges for a tick."""
         rows = []

@@ -20,8 +20,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import networkx as nx
-import xgi  # type: ignore[import-untyped]
+import xgi  # type: ignore[import-untyped, unused-ignore]
 
 from babylon.bifurcation.analysis import bifurcation_tendency
 from babylon.bifurcation.types import BifurcationSnapshot
@@ -32,6 +31,7 @@ from babylon.models.events import BifurcationTendencyEvent, SimulationEvent
 
 if TYPE_CHECKING:
     from babylon.engine.community_state_store import CommunityStateStore
+    from babylon.engine.graph import BabylonGraph
 
 
 class BifurcationMonitor:
@@ -69,7 +69,7 @@ class BifurcationMonitor:
 
     def record_bifurcation(
         self,
-        graph: nx.DiGraph,  # type: ignore[type-arg]
+        graph: BabylonGraph,
         H: xgi.Hypergraph,
         agent_memberships: dict[str, set[CommunityType]],
         contradictions: list[Contradiction],

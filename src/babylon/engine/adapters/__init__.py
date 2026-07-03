@@ -1,21 +1,23 @@
-"""Graph adapters for the Babylon simulation engine.
+"""Graph adapter machinery for the Babylon simulation engine.
 
-Slice 1.7: The Graph Bridge
+Slice 1.7 introduced this package as "The Graph Bridge" with
+NetworkXAdapter as the GraphProtocol reference implementation. Amendment L
+(constitution v2.7.0) replaced that adapter with the rustworkx-backed
+:class:`babylon.engine.graph.BabylonGraph`, which implements the protocol
+directly; the adapter was deleted once nothing constructed it.
 
-This package contains adapters that implement GraphProtocol for different
-graph backends:
+What remains here is the shared machinery BabylonGraph composes:
 
-    NetworkXAdapter: Reference implementation using NetworkX (Epoch 1-2)
-    ColumnarAdapter: DuckDB + DuckPGQ implementation (Epoch 3, planned)
+    QueryMixin / AggregationMixin: protocol query/aggregate implementations
+    SubgraphView, SubgraphFilterBuilder: filtered read-only graph views
+    CompatGraph: the structural Protocol those mixins are typed against
 
 All Systems interact with the graph through GraphProtocol, never directly
-with the backend. This enables backend swapping without changing System code.
+with the backend.
 """
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 from babylon.engine.adapters.subgraph_view import SubgraphView
 
 __all__ = [
-    "NetworkXAdapter",
     "SubgraphView",
 ]

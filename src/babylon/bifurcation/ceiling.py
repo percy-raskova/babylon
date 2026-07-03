@@ -16,11 +16,14 @@ See Also:
 
 from __future__ import annotations
 
-import networkx as nx
+from typing import TYPE_CHECKING
 
 from babylon.bifurcation.types import SolidarityCeiling
 from babylon.config.defines import BifurcationDefines
 from babylon.models.enums import CommunityType, EdgeType
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
 
 # Bonus per shared marginalized community membership
 _COMMUNITY_BONUS_PER_SHARED: float = 0.05
@@ -32,7 +35,7 @@ _WEALTH_EPSILON: float = 0.001
 def compute_solidarity_ceiling(
     node_a_id: str,
     node_b_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph,
     agent_memberships: dict[str, set[CommunityType]],
     defines: BifurcationDefines,
 ) -> SolidarityCeiling:
@@ -118,7 +121,7 @@ def _interpolate_base_ceiling(
 def _compute_exploitation_bonus(
     node_a_id: str,
     node_b_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph,
     defines: BifurcationDefines,
 ) -> float:
     """Check if both nodes share an exploitation source.
@@ -146,7 +149,7 @@ def _compute_exploitation_bonus(
 
 def _get_exploitation_predecessors(
     node_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph,
 ) -> set[str]:
     """Get set of nodes that have EXPLOITATION edges pointing to this node.
 
@@ -196,7 +199,7 @@ def _compute_community_bonus(
 def _check_geographic_proximity(
     node_a_id: str,
     node_b_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph,
 ) -> bool:
     """Check if agents share ADJACENCY-linked territories.
 
@@ -235,7 +238,7 @@ def _check_geographic_proximity(
 
 def _get_tenancy_targets(
     node_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph,
 ) -> set[str]:
     """Get territory nodes this agent has TENANCY edges to.
 

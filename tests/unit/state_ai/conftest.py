@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.attention_thread import AttentionThread, SparrowAnalysis
 from babylon.models.entities.state_apparatus_ai import (
     FactionBalance,
@@ -190,3 +191,49 @@ def make_state_apparatus_node(
     }
     node.update(attrs)
     return node
+
+
+def make_directed_star(leaves: int, prefix: str = "node_") -> BabylonGraph:
+    """Directed star: hub ``{prefix}0`` with both arcs to each leaf.
+
+    Replaces ``nx.star_graph(n).to_directed()`` + relabel (Amendment L).
+    """
+    graph = BabylonGraph()
+    graph.add_nodes_from(f"{prefix}{i}" for i in range(leaves + 1))
+    for i in range(1, leaves + 1):
+        graph.add_edge(f"{prefix}0", f"{prefix}{i}")
+        graph.add_edge(f"{prefix}{i}", f"{prefix}0")
+    return graph
+
+
+def make_directed_cycle(n: int, prefix: str = "node_") -> BabylonGraph:
+    """Directed cycle with both arcs per ring edge (nx to_directed parity)."""
+    graph = BabylonGraph()
+    graph.add_nodes_from(f"{prefix}{i}" for i in range(n))
+    for i in range(n):
+        u, v = f"{prefix}{i}", f"{prefix}{(i + 1) % n}"
+        graph.add_edge(u, v)
+        graph.add_edge(v, u)
+    return graph
+
+
+def make_directed_complete(n: int, prefix: str = "node_") -> BabylonGraph:
+    """Directed complete graph: both arcs between every node pair."""
+    graph = BabylonGraph()
+    graph.add_nodes_from(f"{prefix}{i}" for i in range(n))
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                graph.add_edge(f"{prefix}{i}", f"{prefix}{j}")
+    return graph
+
+
+def make_directed_path(n: int, prefix: str = "node_") -> BabylonGraph:
+    """Directed path with both arcs per chain edge (nx to_directed parity)."""
+    graph = BabylonGraph()
+    graph.add_nodes_from(f"{prefix}{i}" for i in range(n))
+    for i in range(n - 1):
+        u, v = f"{prefix}{i}", f"{prefix}{i + 1}"
+        graph.add_edge(u, v)
+        graph.add_edge(v, u)
+    return graph

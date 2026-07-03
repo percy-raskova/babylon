@@ -28,8 +28,6 @@ from babylon.models.enums import (
 )
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -80,7 +78,7 @@ class TerritorySystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -95,12 +93,6 @@ class TerritorySystem(SystemBase):
         Sprint 3.7.1: Context can contain 'displacement_mode' to override
         the default EXTRACTION mode for sink node routing.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         self._process_heat_dynamics(graph, services)
         self._process_eviction_pipeline(graph, services, context)
@@ -143,7 +135,7 @@ class TerritorySystem(SystemBase):
     def _find_sink_node(
         self,
         source_node_id: str,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         mode: DisplacementPriorityMode,
     ) -> str | None:
         """Find a sink node connected to the source via ADJACENCY edge.
@@ -165,12 +157,7 @@ class TerritorySystem(SystemBase):
         Returns:
             The node ID of the highest-priority adjacent sink, or None
         """
-        from babylon.engine.graph_protocol import GraphProtocol
 
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
         # Get priority order for the given mode
         priority_order = self._PRIORITY_BY_MODE.get(
             mode, self._PRIORITY_BY_MODE[DisplacementPriorityMode.EXTRACTION]

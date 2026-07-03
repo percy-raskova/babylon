@@ -20,21 +20,19 @@ Algorithm:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.optimize import linprog  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph import BabylonUGraph
 
 
 def compute_ollivier_ricci(
-    graph: BabylonUGraph | nx.Graph[Any],
-    u: int | str,
-    v: int | str,
+    graph: BabylonUGraph,
+    u: str,
+    v: str,
     alpha: float = 0.5,
     weight_attr: str | None = None,
 ) -> float:
@@ -95,11 +93,11 @@ def compute_ollivier_ricci(
 
 
 def _probability_measure(
-    graph: BabylonUGraph | nx.Graph[Any],
-    node: int | str,
+    graph: BabylonUGraph,
+    node: str,
     alpha: float,
     weight_attr: str | None = None,
-) -> dict[int | str, float]:
+) -> dict[str, float]:
     """Construct probability measure centered at node.
 
     With probability alpha, stay at the node.
@@ -116,8 +114,8 @@ def _probability_measure(
     Returns:
         Dict mapping node -> probability.
     """
-    neighbors = list(graph.neighbors(node))  # type: ignore[arg-type]  # int nodes only on the legacy nx arm
-    measure: dict[int | str, float] = {}
+    neighbors = list(graph.neighbors(node))
+    measure: dict[str, float] = {}
 
     if not neighbors:
         # Isolated node: all mass on self
@@ -128,9 +126,9 @@ def _probability_measure(
 
     if weight_attr is not None:
         # Weighted: distribute (1-alpha) proportional to edge weights
-        neighbor_weights: list[tuple[int | str, float]] = []
+        neighbor_weights: list[tuple[str, float]] = []
         for neighbor in neighbors:
-            edge_data = graph.get_edge_data(node, neighbor)  # type: ignore[arg-type]  # int nodes only on the legacy nx arm
+            edge_data = graph.get_edge_data(node, neighbor)
             w = float(edge_data.get(weight_attr, 1.0)) if edge_data else 1.0
             neighbor_weights.append((neighbor, w))
 
@@ -154,15 +152,15 @@ def _probability_measure(
 
 
 def _graph_distance(
-    graph: BabylonUGraph | nx.Graph[Any],
-    u: int | str,
-    v: int | str,
+    graph: BabylonUGraph,
+    u: str,
+    v: str,
     weight_attr: str | None = None,
 ) -> float:
     """Compute shortest path distance between u and v.
 
     Args:
-        graph: NetworkX graph.
+        graph: Undirected analytics graph.
         u: Source node.
         v: Target node.
         weight_attr: Optional edge attribute name for weighted distance.

@@ -38,8 +38,6 @@ from babylon.engine.event_bus import Event
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -260,7 +258,7 @@ class StruggleSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -269,12 +267,6 @@ class StruggleSystem(SystemBase):
         Processes PERIPHERY_PROLETARIAT and LUMPENPROLETARIAT nodes,
         checking for spark events and uprising conditions.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # Get defines
         spark_scale = services.defines.struggle.spark_probability_scale

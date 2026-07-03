@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
 
@@ -41,7 +39,7 @@ TICK_DYNAMICS_KEY: str = "tick_dynamics"
 
 
 def write_tick_state_to_graph(  # pragma: no mutate — data serialization
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
     state: SimulationTickState,
 ) -> None:
     """Write SimulationTickState to the shared NetworkX graph.
@@ -54,12 +52,6 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
         graph: Mutable NetworkX graph or GraphProtocol (modified in-place).
         state: Simulation tick state to write.
     """
-    from babylon.engine.graph_protocol import GraphProtocol
-
-    if not isinstance(graph, GraphProtocol):
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-        graph = NetworkXAdapter.wrap(graph)
 
     # Write national-level metadata (includes county_states for persistence
     # through the WorldState round-trip when territory nodes don't exist)
@@ -192,7 +184,7 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
 
 
 def read_tick_state_from_graph(  # pragma: no mutate — data serialization
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
 ) -> SimulationTickState | None:
     """Read SimulationTickState from the shared NetworkX graph.
 
@@ -206,12 +198,6 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
         Reconstructed SimulationTickState, or None if no tick dynamics
         data is present in the graph.
     """
-    from babylon.engine.graph_protocol import GraphProtocol
-
-    if not isinstance(graph, GraphProtocol):
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-        graph = NetworkXAdapter.wrap(graph)
 
     tick_data: dict[str, Any] | None = graph.get_graph_attr(TICK_DYNAMICS_KEY)  # pragma: no mutate
     if tick_data is None:  # pragma: no mutate

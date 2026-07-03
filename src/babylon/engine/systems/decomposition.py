@@ -19,8 +19,6 @@ from babylon.models.entity_registry import CORE_BOURGEOISIE_ID
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -84,7 +82,7 @@ class DecompositionSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -94,12 +92,7 @@ class DecompositionSystem(SystemBase):
         and delays CLASS_DECOMPOSITION by the configured number of ticks.
         This ensures phase staggering (temporal separation between phases).
         """
-        from babylon.engine.graph_protocol import GraphProtocol
 
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
         tick = context.get("tick", 0)
         # Handle both TickContext (with persistent_data) and raw dict
         if hasattr(context, "persistent_data"):

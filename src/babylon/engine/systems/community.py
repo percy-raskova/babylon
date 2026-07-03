@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-import networkx as nx
-import xgi  # type: ignore[import-untyped]
+import xgi  # type: ignore[import-untyped, unused-ignore]
 
 from babylon.engine.systems.base import SystemBase
 from babylon.models.entities.community import (
@@ -29,6 +28,9 @@ from babylon.models.entities.community import (
 from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS, OrgContribution
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, ConsciousnessTendency, HyperedgeCategory, SocialRole
+
+if TYPE_CHECKING:
+    from babylon.engine.graph_protocol import GraphProtocol
 
 # Map SocialRole → ClassPosition name for solidarity matrix lookup (Feature 038)
 _ROLE_TO_CLASS_POSITION: dict[str, str] = {
@@ -62,7 +64,7 @@ def build_community_hypergraph(
     Returns:
         XGI Hypergraph with agents as nodes and communities as hyperedges.
     """
-    H = xgi.Hypergraph()
+    H = xgi.Hypergraph()  # type: ignore[no-untyped-call, unused-ignore]
 
     # Collect members per community
     community_members: dict[CommunityType, list[str]] = defaultdict(list)
@@ -70,7 +72,7 @@ def build_community_hypergraph(
         community_members[membership.community_type].append(membership.agent_id)
         # Ensure agent node exists
         if membership.agent_id not in H.nodes:
-            H.add_node(membership.agent_id)
+            H.add_node(membership.agent_id)  # type: ignore[no-untyped-call, unused-ignore]
 
     # Communities become hyperedges with state attributes
     for comm_type, members in community_members.items():
@@ -81,7 +83,7 @@ def build_community_hypergraph(
             CommunityState(community_type=comm_type),
         )
         # Use idx= (not id=) per XGI 0.10 API
-        H.add_edge(
+        H.add_edge(  # type: ignore[no-untyped-call, unused-ignore]
             members,
             idx=comm_type.value,
             heat=float(state.heat),
@@ -185,7 +187,7 @@ def community_overlap_matrix(
         Tuple of (overlap_matrix as dense ndarray, node_index mapping
         agent_id → matrix row/column index).
     """
-    I_matrix, rowdict, _coldict = xgi.incidence_matrix(
+    I_matrix, rowdict, _coldict = xgi.incidence_matrix(  # type: ignore[no-untyped-call, unused-ignore]
         H,
         sparse=False,
         index=True,
@@ -312,19 +314,11 @@ class CommunitySystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | Any,
+        graph: GraphProtocol | Any,
         services: Any,
         _context: Any,
     ) -> None:
         """Execute community system for one tick."""
-        # Auto-wrap guard
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
-
         community_states = _get_community_states_from_services(services)
         if not community_states:
             return

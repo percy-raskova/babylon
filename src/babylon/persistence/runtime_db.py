@@ -36,8 +36,6 @@ from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    import networkx as nx
-
     from babylon.engine.graph import BabylonGraph
 
 
@@ -117,7 +115,7 @@ class RuntimeDatabase:
     def persist_tick(
         self,
         tick: int,
-        graph: BabylonGraph | nx.DiGraph[str],
+        graph: BabylonGraph,
         events: list[dict[str, Any]] | None = None,
         *,
         session_id: UUID | None = None,  # noqa: ARG002 - Required by RuntimePersistence protocol
@@ -211,7 +209,7 @@ class RuntimeDatabase:
 
     def _canonical_payload(
         self,
-        graph: BabylonGraph | nx.DiGraph[str],
+        graph: BabylonGraph,
         events: list[dict[str, Any]] | None,
     ) -> dict[str, Any]:
         """Return a canonical-serialized representation of (graph, events).

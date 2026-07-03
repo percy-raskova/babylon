@@ -31,8 +31,6 @@ from typing import TYPE_CHECKING
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph import BabylonGraph
 
 
@@ -42,7 +40,7 @@ __all__ = ["_compute_membership_overlap"]
 def _compute_membership_overlap(
     org_id: str,
     community_id: str,
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
 ) -> float:
     """Compute membership overlap between an org and a target community.
 

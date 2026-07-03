@@ -20,8 +20,6 @@ from babylon.organizations.consciousness import tendency_modifier
 from babylon.organizations.types import ConsciousnessDelta
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph import BabylonGraph
 
 
@@ -29,7 +27,7 @@ def compute_consciousness_delta(
     org_attrs: dict[str, Any],
     target_community_id: str,
     action_type: ActionType,
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
     defines: OODADefines,
     org_defines: OrganizationDefines,
 ) -> ConsciousnessDelta | None:
@@ -101,7 +99,7 @@ def compute_consciousness_delta(
 def resolve_action(
     action: Action,
     org_attrs: dict[str, Any],
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
     defines: OODADefines,
     org_defines: OrganizationDefines,
 ) -> ActionResult:
@@ -169,7 +167,7 @@ def _resolve_agitate(
 def _resolve_repressive(
     action: Action,
     org_attrs: dict[str, Any],
-    graph: BabylonGraph | nx.DiGraph[str],  # noqa: ARG001 — reserved for future location-dependent backfire
+    graph: BabylonGraph,  # noqa: ARG001 — reserved for future location-dependent backfire
     defines: OODADefines,
     org_defines: OrganizationDefines,
 ) -> ActionResult:
@@ -207,7 +205,7 @@ def _resolve_repressive(
 def _resolve_assimilate(
     action: Action,
     org_attrs: dict[str, Any],
-    graph: BabylonGraph | nx.DiGraph[str],  # noqa: ARG001 — reserved for future location-dependent assimilation
+    graph: BabylonGraph,  # noqa: ARG001 — reserved for future location-dependent assimilation
     defines: OODADefines,
     org_defines: OrganizationDefines,
 ) -> ActionResult:

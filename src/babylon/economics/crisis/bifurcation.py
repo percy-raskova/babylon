@@ -25,8 +25,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import networkx as nx
-
 from babylon.economics.tick.types import (
     BifurcationRiskMetric,
     CrisisPhase,
@@ -72,7 +70,7 @@ class BifurcationRiskCalculator:
 
     def compute(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         fips: str,
         crisis_state: CrisisState,
         previous_distribution: ClassDistribution,
@@ -90,12 +88,6 @@ class BifurcationRiskCalculator:
         Returns:
             BifurcationRiskMetric with score, components.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # FR-011: Non-crisis returns neutral
         if crisis_state.phase == CrisisPhase.NORMAL:
@@ -133,7 +125,7 @@ class BifurcationRiskCalculator:
 
     def _compute_solidarity_density(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         fips: str,
     ) -> float:
         """Compute cross-class solidarity density (FR-012).
@@ -148,12 +140,6 @@ class BifurcationRiskCalculator:
         Returns:
             Solidarity density [0, 1].
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # Find social class nodes in this county
         county_nodes: list[tuple[str, str]] = []  # (node_id, role)
@@ -195,7 +181,7 @@ class BifurcationRiskCalculator:
 
     def _compute_legitimation(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         fips: str,
         lifecycle_legitimation: float | None = None,
     ) -> float:
@@ -217,12 +203,6 @@ class BifurcationRiskCalculator:
         Returns:
             Legitimation index [0, 1].
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         agitations: list[float] = []
         for node in graph.query_nodes():

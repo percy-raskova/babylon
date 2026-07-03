@@ -29,8 +29,6 @@ from babylon.ooda.npc_stub import select_npc_actions
 from babylon.ooda.types import ActionResult, InitiativeScore, OODAProfile, TurnResolution
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph import BabylonGraph
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
@@ -52,7 +50,7 @@ class OODASystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -244,7 +242,7 @@ class OODASystem(SystemBase):
         return results
 
 
-def _collect_org_nodes(graph: BabylonGraph | nx.DiGraph[str]) -> list[tuple[str, dict[str, Any]]]:
+def _collect_org_nodes(graph: BabylonGraph) -> list[tuple[str, dict[str, Any]]]:
     """Collect all organization nodes from the graph.
 
     Args:

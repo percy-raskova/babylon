@@ -17,8 +17,6 @@ from typing import TYPE_CHECKING, ClassVar
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -27,7 +25,7 @@ from babylon.engine.systems.protocol import ContextType
 
 
 def _calculate_solidarity_multiplier(
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
     node_id: str,
 ) -> float:
     """Calculate organization multiplier from incoming SOLIDARITY edges.
@@ -42,18 +40,12 @@ def _calculate_solidarity_multiplier(
     - High solidarity: effective_org = 0.1 * 1.8 = 0.18
 
     Args:
-        graph: The simulation graph (protocol or raw nx.DiGraph)
+        graph: The simulation graph (GraphProtocol)
         node_id: ID of the node to calculate solidarity multiplier for
 
     Returns:
         Multiplier value >= 1.0 (1.0 + sum of incoming solidarity_strength)
     """
-    from babylon.engine.graph_protocol import GraphProtocol
-
-    if not isinstance(graph, GraphProtocol):
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-        graph = NetworkXAdapter.wrap(graph)
 
     solidarity_sum = 0.0
 
@@ -86,7 +78,7 @@ class SurvivalSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         _context: ContextType,
     ) -> None:
@@ -100,12 +92,6 @@ class SurvivalSystem(SystemBase):
 
         Where solidarity_multiplier = 1.0 + sum(solidarity_strength for incoming SOLIDARITY edges)
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # Get formulas from registry
         calculate_acquiescence_probability = services.formulas.get("acquiescence_probability")

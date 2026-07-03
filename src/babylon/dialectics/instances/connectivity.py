@@ -19,8 +19,9 @@ quadruple :math:`\\Pi_0 \\dashv \\Delta \\dashv \\Gamma \\dashv \\nabla`
   rather than forgetting edges outright, so it lives outside
   :class:`~babylon.dialectics.core.cylinder.AdjointCylinder` (which only
   carries the :math:`\\Delta \\dashv \\Gamma \\dashv \\nabla` half of the
-  quadruple) as its own function, computed via ``nx.connected_components``
-  per the design contract (``project/06-lawverian-dialectics.md`` §4).
+  quadruple) as its own function, computed rustworkx-native — originally
+  NetworkX connected_components per the design contract
+  (``project/06-lawverian-dialectics.md`` §4, pre-Amendment L).
 
 :func:`atomization_index` reports the fraction of the graph's possible
 splits that are realized, :math:`(|\\Pi_0(x)| - 1)/(|\\Gamma(x)| - 1)`:
@@ -51,7 +52,6 @@ from __future__ import annotations
 from itertools import combinations
 from typing import TYPE_CHECKING
 
-import networkx as nx
 import rustworkx as rx
 
 from babylon.dialectics.core.cylinder import AdjointCylinder
@@ -119,13 +119,12 @@ def connectivity_cylinder() -> AdjointCylinder[NodeSet, BabylonUGraph]:
     )
 
 
-def pieces(graph: BabylonUGraph | nx.Graph[str]) -> tuple[NodeSet, ...]:
+def pieces(graph: BabylonUGraph) -> tuple[NodeSet, ...]:
     """:math:`\\Pi_0(x)` — connected components, deterministically ordered.
 
-    Computed rustworkx-native on :class:`BabylonUGraph` (Amendment L);
-    legacy ``nx.Graph`` fixtures take the NetworkX arm until the Phase-6
-    fixture sweep retires them. The min-element ordering contract makes
-    the result independent of either library's traversal order.
+    Computed rustworkx-native on :class:`BabylonUGraph` (Amendment L).
+    The min-element ordering contract makes the result independent of
+    the library's traversal order.
 
     Args:
         graph: An undirected graph, typically a solidarity subgraph from
@@ -144,21 +143,14 @@ def pieces(graph: BabylonUGraph | nx.Graph[str]) -> tuple[NodeSet, ...]:
         >>> pieces(g) == (frozenset({"a"}), frozenset({"b", "c"}))
         True
     """
-    # Function-local import: dialectics must not import engine at module
-    # level (models-init ordering; engine.graph pulls babylon.models.graph).
-    from babylon.engine.graph import BabylonUGraph
-
-    if isinstance(graph, BabylonUGraph):
-        components = (
-            frozenset(graph.id_of(index) for index in component)
-            for component in rx.connected_components(graph.core)
-        )
-    else:
-        components = (frozenset(component) for component in nx.connected_components(graph))
+    components = (
+        frozenset(graph.id_of(index) for index in component)
+        for component in rx.connected_components(graph.core)
+    )
     return tuple(sorted(components, key=lambda piece: min(piece)))
 
 
-def atomization_index(graph: BabylonUGraph | nx.Graph[str]) -> float:
+def atomization_index(graph: BabylonUGraph) -> float:
     """Fraction of possible splits realized: :math:`(|\\Pi_0|-1)/(|\\Gamma|-1)`.
 
     1.0 means every node is its own component (full atomization, the

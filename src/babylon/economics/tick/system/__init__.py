@@ -27,8 +27,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, ClassVar
 
-import networkx as nx
-
 from babylon.economics.circulation.circuit import initialize_circuit_state
 from babylon.economics.circulation.crisis import assess_circulation_crisis
 from babylon.economics.circulation.defaults import FALLBACK_PROFILE
@@ -110,7 +108,7 @@ class TickDynamicsSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -121,13 +119,6 @@ class TickDynamicsSystem(SystemBase):
             services: ServiceContainer with calculator services.
             context: TickContext or dict with tick number.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
-
         # Extract tick number
         tick: int
         if hasattr(context, "tick"):
@@ -278,9 +269,7 @@ class TickDynamicsSystem(SystemBase):
         r6_states = aggregate_r7_to_r6(hex_grid)
         write_hex_state_to_graph(graph, r6_states)
 
-    def _determine_year(
-        self, tick: int, graph: nx.DiGraph[str] | GraphProtocol | None = None
-    ) -> int:
+    def _determine_year(self, tick: int, graph: GraphProtocol | None = None) -> int:
         """Determine simulation year from tick number and graph metadata.
 
         Args:
@@ -293,16 +282,10 @@ class TickDynamicsSystem(SystemBase):
         """
         base_year = 2010
         if graph is not None:
-            from babylon.engine.graph_protocol import GraphProtocol
-
-            if not isinstance(graph, GraphProtocol):
-                from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-                graph = NetworkXAdapter.wrap(graph)
             base_year = graph.get_graph_attr("base_year", 2010)
         return base_year + tick // WEEKS_PER_YEAR
 
-    def _get_territory_fips(self, graph: nx.DiGraph[str] | GraphProtocol) -> list[str]:
+    def _get_territory_fips(self, graph: GraphProtocol) -> list[str]:
         """Extract FIPS codes from territory nodes in graph.
 
         Args:
@@ -311,13 +294,6 @@ class TickDynamicsSystem(SystemBase):
         Returns:
             List of FIPS codes for territory nodes.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
-
         fips_list: list[str] = []
         for node in graph.query_nodes():
             if node.node_type == "territory":
@@ -326,7 +302,7 @@ class TickDynamicsSystem(SystemBase):
 
     def _bootstrap_county_states(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         year: int,
     ) -> dict[str, CountyEconomicState]:
         """Bootstrap county states from graph territory nodes.
@@ -338,13 +314,6 @@ class TickDynamicsSystem(SystemBase):
         Returns:
             Dict of FIPS -> CountyEconomicState with defaults.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
-
         states: dict[str, CountyEconomicState] = {}
         for node in graph.query_nodes():
             if node.node_type != "territory":
@@ -1398,7 +1367,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         county_states: dict[str, CountyEconomicState],
         prev_county_states: dict[str, CountyEconomicState] | None,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         tick: int,
     ) -> dict[str, CountyEconomicState]:

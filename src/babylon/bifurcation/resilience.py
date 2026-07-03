@@ -9,8 +9,9 @@ an undirected solidarity subgraph:
 4. **Critical cutsets**: Minimum edge cuts bounded by configurable size
 5. **Purge resilience**: Targeted removal of high-degree nodes
 
-All functions operate on ``nx.Graph`` (undirected), which is the output
-of :func:`babylon.engine.topology_monitor.extract_solidarity_subgraph`.
+All functions operate on :class:`~babylon.engine.graph.BabylonUGraph`
+(undirected), which is the output of
+:func:`babylon.engine.topology_monitor.extract_solidarity_subgraph`.
 
 See Also:
     :mod:`babylon.engine.topology_monitor`: Solidarity subgraph extraction
@@ -30,12 +31,10 @@ from babylon.engine.graph_algorithms import (
 )
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph import BabylonUGraph
 
 
-def compute_betti_numbers(subgraph: BabylonUGraph | nx.Graph[str]) -> tuple[int, int]:
+def compute_betti_numbers(subgraph: BabylonUGraph) -> tuple[int, int]:
     """Compute Betti numbers for an undirected graph.
 
     Args:
@@ -47,8 +46,9 @@ def compute_betti_numbers(subgraph: BabylonUGraph | nx.Graph[str]) -> tuple[int,
         - beta_1: Cycle rank = |E| - |V| + beta_0
 
     Example:
-        >>> import networkx as nx
-        >>> G = nx.cycle_graph(4)
+        >>> from babylon.engine.graph import BabylonUGraph
+        >>> G = BabylonUGraph()
+        >>> G.add_edges_from([("0", "1"), ("1", "2"), ("2", "3"), ("3", "0")])
         >>> compute_betti_numbers(G)
         (1, 1)
     """
@@ -64,7 +64,7 @@ def compute_betti_numbers(subgraph: BabylonUGraph | nx.Graph[str]) -> tuple[int,
     return (beta_0, beta_1)
 
 
-def compute_equivalence_classes(subgraph: BabylonUGraph | nx.Graph[str]) -> dict[int, int]:
+def compute_equivalence_classes(subgraph: BabylonUGraph) -> dict[int, int]:
     """Group nodes by structural equivalence (identical neighbor sets).
 
     Two nodes are structurally equivalent if they have the exact same
@@ -79,10 +79,11 @@ def compute_equivalence_classes(subgraph: BabylonUGraph | nx.Graph[str]) -> dict
         means one equivalence class containing 5 nodes.
 
     Example:
-        >>> import networkx as nx
-        >>> G = nx.complete_graph(3)
-        >>> compute_equivalence_classes(G)
-        {3: 1}
+        >>> from babylon.engine.graph import BabylonUGraph
+        >>> G = BabylonUGraph()
+        >>> G.add_edges_from([("hub", "a"), ("hub", "b")])
+        >>> compute_equivalence_classes(G)  # pendants {a, b} share a class
+        {1: 1, 2: 1}
     """
     if subgraph.number_of_nodes() == 0:
         return {}
@@ -102,11 +103,11 @@ def compute_equivalence_classes(subgraph: BabylonUGraph | nx.Graph[str]) -> dict
     return dict(size_counts)
 
 
-def find_critical_singletons(subgraph: BabylonUGraph | nx.Graph[str]) -> list[str]:
+def find_critical_singletons(subgraph: BabylonUGraph) -> list[str]:
     """Find articulation points whose removal disconnects the graph.
 
-    Wraps :func:`networkx.articulation_points` and returns a sorted
-    list for deterministic output.
+    Wraps :func:`babylon.engine.graph_algorithms.articulation_point_set`
+    and returns a sorted list for deterministic output.
 
     Args:
         subgraph: Undirected solidarity subgraph to analyze.
@@ -115,8 +116,9 @@ def find_critical_singletons(subgraph: BabylonUGraph | nx.Graph[str]) -> list[st
         Sorted list of node IDs that are articulation points.
 
     Example:
-        >>> import networkx as nx
-        >>> G = nx.path_graph(3)
+        >>> from babylon.engine.graph import BabylonUGraph
+        >>> G = BabylonUGraph()
+        >>> G.add_edges_from([("0", "1"), ("1", "2")])
         >>> find_critical_singletons(G)
         ['1']
     """
@@ -128,13 +130,14 @@ def find_critical_singletons(subgraph: BabylonUGraph | nx.Graph[str]) -> list[st
 
 
 def find_critical_cutsets(
-    subgraph: BabylonUGraph | nx.Graph[str],
+    subgraph: BabylonUGraph,
     max_cutset_size: int = 3,
 ) -> list[frozenset[str]]:
     """Find minimum edge cuts per connected component, bounded by size.
 
     For each connected component with >= 2 nodes, computes the minimum
-    edge cut via :func:`networkx.minimum_edge_cut`. If the cut size
+    edge cut via :func:`babylon.engine.graph_algorithms.min_edge_cut_edges`.
+    If the cut size
     is <= ``max_cutset_size``, the unique node IDs from the cut edges
     are collected into a frozenset and included in the result.
 
@@ -148,8 +151,9 @@ def find_critical_cutsets(
         involved in the minimum edge cut of a component.
 
     Example:
-        >>> import networkx as nx
-        >>> G = nx.path_graph(3)
+        >>> from babylon.engine.graph import BabylonUGraph
+        >>> G = BabylonUGraph()
+        >>> G.add_edges_from([("0", "1"), ("1", "2")])
         >>> cutsets = find_critical_cutsets(G, max_cutset_size=3)
         >>> len(cutsets) >= 1
         True
@@ -178,7 +182,7 @@ def find_critical_cutsets(
 
 
 def compute_purge_resilience(
-    subgraph: BabylonUGraph | nx.Graph[str],
+    subgraph: BabylonUGraph,
     removal_rate: float,
     seed: int | None = None,
 ) -> float:
@@ -199,8 +203,10 @@ def compute_purge_resilience(
         Returns 1.0 for empty graphs (vacuously resilient).
 
     Example:
-        >>> import networkx as nx
-        >>> G = nx.complete_graph(5)
+        >>> from babylon.engine.graph import BabylonUGraph
+        >>> nodes = ["0", "1", "2", "3", "4"]
+        >>> G = BabylonUGraph()
+        >>> G.add_edges_from([(a, b) for i, a in enumerate(nodes) for b in nodes[i + 1 :]])
         >>> compute_purge_resilience(G, removal_rate=0.2, seed=42)
         0.8
     """

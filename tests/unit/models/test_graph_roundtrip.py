@@ -452,3 +452,24 @@ class TestSpec065CountyFipsRoundTrip:
         # Both entities round-trip; county_fips stays None on both sides.
         assert restored.entities[PERIPHERY_WORKER_ID].county_fips is None
         assert restored.entities[COMPRADOR_ID].county_fips is None
+
+
+class TestWageAccountingAttrsAreTransient:
+    """Phase D4: w_paid/v_produced node attrs must not break from_graph."""
+
+    def test_from_graph_drops_wage_accounting_attrs(self) -> None:
+        # The wages phase writes w_paid/v_produced onto paid class nodes; they
+        # are NOT SocialClass fields, so from_graph must drop them rather than
+        # raise extra_forbidden (the regression the persistence path caught).
+        from babylon.engine.factories import create_proletariat
+
+        state = WorldState(tick=0, entities={"C001": create_proletariat(id="C001")})
+        graph = state.to_graph()
+        graph.nodes["C001"]["w_paid"] = 6.0
+        graph.nodes["C001"]["v_produced"] = 5.0
+
+        restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        entity = restored.entities["C001"]
+        assert not hasattr(entity, "w_paid")
+        assert not hasattr(entity, "v_produced")

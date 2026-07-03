@@ -55,6 +55,13 @@ if TYPE_CHECKING:
 SOCIAL_CLASS_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "consumption_needs",
+        # Phase D4 per-tick wage⇄value accounting attrs (w_paid, v_produced):
+        # transient graph-only bookkeeping the ImperialRentSystem wages phase
+        # rewrites every tick and ContradictionSystem reads same-tick — NOT
+        # SocialClass model fields, so they are dropped on reconstruction
+        # (extra="forbid" would otherwise reject them).
+        "w_paid",
+        "v_produced",
     }
 )
 

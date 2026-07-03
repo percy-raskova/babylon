@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Components · Bottom Panel — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  body{display:block}
+  .shell{background:var(--void);border:1px solid var(--rebar);border-radius:6px;overflow:hidden}
+  .tabbar{display:flex;align-items:center;gap:4px;padding:8px 12px;background:var(--concrete);border-bottom:1px solid var(--rebar)}
+  .toggle-btn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--rebar);border-radius:3px;color:var(--fog);cursor:pointer;font-size:10px;margin-right:6px}
+  .toggle-btn:hover{border-color:var(--spire);color:var(--spire)}
+  .tab{padding:5px 12px;border-radius:3px;font-family:var(--mono);font-size:10px;font-weight:500;cursor:pointer;position:relative;letter-spacing:.14em;text-transform:uppercase}
+  .tab-active{background:rgba(77,217,230,.08);color:var(--spire);border-bottom:1px solid var(--spire)}
+  .tab-inactive{color:var(--ash)}
+  .tab-inactive:hover{color:var(--fog)}
+  .notif-dot{position:absolute;top:-3px;right:-5px;width:14px;height:14px;border-radius:9999px;background:var(--laser);font-family:var(--mono);font-size:8px;font-weight:700;color:var(--void);display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px rgba(255,51,68,.4)}
+  .content{padding:14px;background:var(--void)}
+  .ts-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .ts-row:last-child{margin-bottom:0}
+  .ts-label{font-family:var(--mono);font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--ash);min-width:100px}
+  .ts-bar-wrap{flex:1;height:3px;background:var(--rebar);border-radius:9999px;overflow:hidden}
+  .ts-bar{height:100%;border-radius:9999px}
+  .ts-val{font-family:var(--mono);font-size:11px;font-weight:600;min-width:48px;text-align:right}
+</style></head>
+<body>
+  <div class="header">
+    <div><div class="header-title">COMPONENTS · <em>BOTTOM PANEL</em></div>
+    <div style="font-size:11px;color:var(--fog);margin-top:4px">Time series · events · notifications</div></div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="shell">
+    <div class="tabbar">
+      <button class="toggle-btn">▼</button>
+      <div class="tab tab-active">Time Series</div>
+      <div class="tab tab-inactive">Events</div>
+      <div class="tab tab-inactive" style="position:relative">Notifications<div class="notif-dot">3</div></div>
+    </div>
+    <div class="content">
+      <div class="ts-row">
+        <span class="ts-label">Imperial Rent</span>
+        <div class="ts-bar-wrap"><div class="ts-bar" style="width:34%;background:var(--rent)"></div></div>
+        <span class="ts-val" style="color:var(--rent)">0.342</span>
+      </div>
+      <div class="ts-row">
+        <span class="ts-label">Consciousness</span>
+        <div class="ts-bar-wrap"><div class="ts-bar" style="width:22%;background:var(--cadre)"></div></div>
+        <span class="ts-val" style="color:var(--cadre)">0.218</span>
+      </div>
+      <div class="ts-row">
+        <span class="ts-label">Solidarity</span>
+        <div class="ts-bar-wrap"><div class="ts-bar" style="width:56%;background:var(--solidarity)"></div></div>
+        <span class="ts-val" style="color:var(--solidarity)">0.561</span>
+      </div>
+      <div class="ts-row">
+        <span class="ts-label">Heat</span>
+        <div class="ts-bar-wrap"><div class="ts-bar" style="width:71%;background:var(--heat)"></div></div>
+        <span class="ts-val" style="color:var(--heat)">0.714</span>
+      </div>
+    </div>
+  </div>
+</body></html>

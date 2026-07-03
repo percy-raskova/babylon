@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cold Collapse — Babylon Palette v2</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* SUBSTRATE */
+    --void:        #06070b;
+    --tar:         #0d1016;
+    --concrete:    #11141c;
+    --rebar:       #1a1f2a;
+    --wet-steel:   #28303d;
+    --rust:        #3a3530;
+
+    /* EMISSIONS */
+    --bone:        #d8dce0;
+    --fog:         #8a93a0;
+    --ash:         #5e6470;
+    --shroud:      #3d4250;
+
+    /* ACCENTS */
+    --spire:       #4dd9e6;
+    --spire-dim:   #2a8a93;
+    --laser:       #ff3344;
+    --thermal:     #b8321f;
+    --rupture:     #d4a02c;
+    --cadre:       #6b8fb5;
+    --solidarity:  #5fbf7a;
+    --rent:        #8b4d9e;
+    --heat:        #d97a2c;
+    --population:  #7a6db8;
+  }
+
+  body {
+    background: var(--void);
+    color: var(--bone);
+    font-family: 'Space Grotesk', sans-serif;
+    padding: 20px 22px 40px;
+    font-size: 13px;
+    line-height: 1.4;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(77,217,230,0.04), transparent 70%),
+      radial-gradient(ellipse 60% 80% at 100% 100%, rgba(255,51,68,0.03), transparent 70%);
+  }
+
+  /* ─────────── Headers ─────────── */
+  .header {
+    border-bottom: 1px solid var(--rebar);
+    padding-bottom: 14px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .header-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--bone);
+  }
+  .header-title em {
+    color: var(--spire);
+    font-style: normal;
+    text-shadow: 0 0 12px rgba(77,217,230,0.4);
+  }
+  .header-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ash);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--ash);
+    margin-bottom: 10px;
+    margin-top: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--rebar), transparent);
+  }
+  .section-label:first-of-type { margin-top: 0; }
+  .section-label .tag {
+    font-size: 9px;
+    color: var(--spire);
+    border: 1px solid var(--spire-dim);
+    border-radius: 2px;
+    padding: 1px 6px;
+    letter-spacing: 0.18em;
+  }
+
+  /* ─────────── Swatch grid ─────────── */
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .swatch { flex: 1; min-width: 96px; border-radius: 4px; overflow: hidden; }
+  .swatch-color {
+    height: 64px;
+    position: relative;
+    border-radius: 4px 4px 0 0;
+  }
+  .swatch-color.bordered {
+    border: 1px solid var(--rebar);
+    border-bottom: none;
+  }
+  .swatch-info {
+    background: var(--concrete);
+    padding: 7px 9px 8px;
+    border: 1px solid var(--rebar);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+  }
+  .swatch-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--fog);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .swatch-hex {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--bone);
+    font-weight: 600;
+    display: block;
+  }
+  .swatch-job {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 10px;
+    color: var(--ash);
+    margin-top: 4px;
+    display: block;
+    line-height: 1.3;
+  }
+  .swatch-color.dot::after {
+    content: "";
+    position: absolute;
+    top: 8px; right: 8px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.4);
+  }
+
+  /* ─────────── Compare blocks ─────────── */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .compare-card {
+    background: var(--concrete);
+    border: 1px solid var(--rebar);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .compare-head {
+    padding: 8px 10px 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ash);
+    display: flex;
+    justify-content: space-between;
+  }
+  .compare-stack { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rebar); }
+  .compare-half {
+    padding: 14px 10px;
+    background: var(--tar);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 110px;
+  }
+  .compare-half .lab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ash);
+  }
+  .compare-chip {
+    width: 100%;
+    height: 22px;
+    border-radius: 2px;
+  }
+  .compare-hex {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--fog);
+  }
+  .compare-note {
+    font-size: 10px;
+    color: var(--bone);
+    line-height: 1.35;
+  }
+
+  /* ─────────── Context vignettes ─────────── */
+  .vignette-row {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 1.4fr;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .vignette {
+    background: var(--tar);
+    border: 1px solid var(--rebar);
+    border-radius: 6px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .vignette::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.012), rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    pointer-events: none;
+  }
+  .vignette-tag {
+    position: absolute;
+    top: 8px; right: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--shroud);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  /* Brand mark vignette */
+  .brand-stack { display: flex; flex-direction: column; gap: 10px; height: 100%; justify-content: center; }
+  .brand-mark {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.32em;
+    color: var(--bone);
+  }
+  .brand-mark .y {
+    color: var(--spire);
+    text-shadow: 0 0 16px rgba(77,217,230,0.6), 0 0 32px rgba(77,217,230,0.25);
+  }
+  .brand-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--fog);
+  }
+  .brand-rule {
+    height: 1px;
+    background: linear-gradient(90deg, var(--spire-dim), transparent);
+    width: 70%;
+  }
+  .brand-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--ash);
+    letter-spacing: 0.18em;
+    display: flex;
+    gap: 10px;
+  }
+  .brand-meta .laser { color: var(--laser); }
+
+  /* Resource panel vignette */
+  .panel-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+  .panel-row + .panel-row { border-top: 1px solid var(--rebar); }
+  .panel-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--fog);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .panel-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .panel-bar {
+    height: 3px;
+    background: var(--rebar);
+    border-radius: 2px;
+    margin-top: 4px;
+    overflow: hidden;
+  }
+  .panel-bar > i { display: block; height: 100%; border-radius: 2px; }
+
+  /* Tick / button vignette */
+  .tick-stack { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+  .tick-display {
+    background: var(--concrete);
+    border: 1px solid var(--rebar);
+    border-radius: 4px;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tick-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--ash);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .tick-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--spire);
+    text-shadow: 0 0 12px rgba(77,217,230,0.4);
+    letter-spacing: 0.06em;
+  }
+  .btn-row { display: flex; gap: 6px; }
+  .btn {
+    flex: 1;
+    text-align: center;
+    padding: 8px 10px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: default;
+  }
+  .btn-primary {
+    background: var(--spire);
+    color: var(--void);
+    box-shadow: 0 0 16px rgba(77,217,230,0.3);
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--fog);
+    border: 1px solid var(--wet-steel);
+  }
+  .btn-danger {
+    background: transparent;
+    color: var(--laser);
+    border: 1px solid rgba(255,51,68,0.4);
+  }
+  .badge-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
+  .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 9999px;
+    border: 1px solid;
+  }
+  .badge.spire    { color: var(--spire);      border-color: rgba(77,217,230,0.4);   background: rgba(77,217,230,0.08); }
+  .badge.laser    { color: var(--laser);      border-color: rgba(255,51,68,0.4);    background: rgba(255,51,68,0.08); }
+  .badge.rupture  { color: var(--rupture);    border-color: rgba(212,160,44,0.4);   background: rgba(212,160,44,0.08); }
+  .badge.solid    { color: var(--solidarity); border-color: rgba(95,191,122,0.4);   background: rgba(95,191,122,0.08); }
+  .badge.muted    { color: var(--fog);        border-color: var(--wet-steel);       background: transparent; }
+
+  /* Data ramps */
+  .ramp-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .ramp {
+    background: var(--concrete);
+    border: 1px solid var(--rebar);
+    border-radius: 4px;
+    padding: 10px 12px;
+  }
+  .ramp-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .ramp-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--bone);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .ramp-job {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 10px;
+    color: var(--ash);
+  }
+  .ramp-bar {
+    display: flex;
+    height: 18px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .ramp-bar > div { flex: 1; }
+  .ramp-scale {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
+    color: var(--ash);
+    letter-spacing: 0.1em;
+  }
+
+  /* Footer note */
+  .footer-note {
+    margin-top: 28px;
+    padding: 12px 14px;
+    background: var(--concrete);
+    border-left: 2px solid var(--spire);
+    border-radius: 0 4px 4px 0;
+    font-size: 11px;
+    color: var(--fog);
+    line-height: 1.55;
+  }
+  .footer-note strong { color: var(--bone); font-weight: 600; }
+  .footer-note code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--spire);
+    background: rgba(77,217,230,0.06);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <div class="header-title">COLD <em>COLLAPSE</em></div>
+      <div style="font-size:11px;color:var(--fog);margin-top:4px;letter-spacing:.06em;">
+        Babylon palette v2 — anchored to the cover-art chromatics. Cyan primary, semantic accents, cooler substrate.
+      </div>
+    </div>
+    <div class="header-sub">CONST · VIII &nbsp;&nbsp; v2.0 · DRAFT</div>
+  </div>
+
+  <!-- ─────────── SUBSTRATE ─────────── -->
+  <div class="section-label">Substrate <span class="tag">CONCRETE</span></div>
+  <div class="row">
+    <div class="swatch">
+      <div class="swatch-color bordered" style="background:#06070b;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">VOID</span>
+        <span class="swatch-hex">#06070b</span>
+        <span class="swatch-job">Page background. The dark you stare into.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color bordered" style="background:#0d1016;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">TAR</span>
+        <span class="swatch-hex">#0d1016</span>
+        <span class="swatch-job">Login gradient end, deep panels.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#11141c;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">CONCRETE</span>
+        <span class="swatch-hex">#11141c</span>
+        <span class="swatch-job">Card / panel fill. Was <s>dark-metal</s>.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#1a1f2a;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">REBAR</span>
+        <span class="swatch-hex">#1a1f2a</span>
+        <span class="swatch-job">Dividers, subtle borders.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#28303d;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">WET&nbsp;STEEL</span>
+        <span class="swatch-hex">#28303d</span>
+        <span class="swatch-job">Default border, input outline.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#3a3530;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">RUST</span>
+        <span class="swatch-hex">#3a3530</span>
+        <span class="swatch-job">Decay accent, disabled warm-grey.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── EMISSIONS ─────────── -->
+  <div class="section-label">Emissions <span class="tag">TEXT</span></div>
+  <div class="row">
+    <div class="swatch">
+      <div class="swatch-color" style="background:#d8dce0;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">BONE</span>
+        <span class="swatch-hex">#d8dce0</span>
+        <span class="swatch-job">Primary text. Never pure white.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#8a93a0;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">FOG</span>
+        <span class="swatch-hex">#8a93a0</span>
+        <span class="swatch-job">Secondary text, gauge labels.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#5e6470;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">ASH</span>
+        <span class="swatch-hex">#5e6470</span>
+        <span class="swatch-job">Placeholders, inactive labels.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#3d4250;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">SHROUD</span>
+        <span class="swatch-hex">#3d4250</span>
+        <span class="swatch-job">Lowest readable text. Disabled.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── ACCENTS ─────────── -->
+  <div class="section-label">Semantic Accents <span class="tag">EACH ONE A VERB</span></div>
+
+  <div class="row" style="margin-bottom:6px;">
+    <div class="swatch">
+      <div class="swatch-color dot" style="background:#4dd9e6;box-shadow:inset 0 0 24px rgba(255,255,255,0.15);"></div>
+      <div class="swatch-info">
+        <span class="swatch-name" style="color:var(--spire);">SPIRE · PRIMARY</span>
+        <span class="swatch-hex">#4dd9e6</span>
+        <span class="swatch-job">"System online." Active state, focus, the player's agency. <strong style="color:var(--spire);">Replaces gold.</strong></span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#2a8a93;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">SPIRE · DIM</span>
+        <span class="swatch-hex">#2a8a93</span>
+        <span class="swatch-job">Hover fills, active-but-recessed.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color dot" style="background:#ff3344;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name" style="color:var(--laser);">LASER</span>
+        <span class="swatch-hex">#ff3344</span>
+        <span class="swatch-job">Threat. Hostile action. Lasers from the cover.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#b8321f;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">THERMAL</span>
+        <span class="swatch-hex">#b8321f</span>
+        <span class="swatch-job">Critical system stress. Resolve under fire.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color dot" style="background:#d4a02c;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name" style="color:var(--rupture);">RUPTURE</span>
+        <span class="swatch-hex">#d4a02c</span>
+        <span class="swatch-job">Revolutionary breakthrough. <strong>Used rarely.</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="swatch">
+      <div class="swatch-color" style="background:#6b8fb5;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">CADRE</span>
+        <span class="swatch-hex">#6b8fb5</span>
+        <span class="swatch-job">Labor aristocracy, info text.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#5fbf7a;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">SOLIDARITY</span>
+        <span class="swatch-hex">#5fbf7a</span>
+        <span class="swatch-job">Sympathizer growth, mass-line success.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#8b4d9e;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">RENT</span>
+        <span class="swatch-hex">#8b4d9e</span>
+        <span class="swatch-job">Imperial rent. Extraction hurts.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#d97a2c;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">HEAT</span>
+        <span class="swatch-hex">#d97a2c</span>
+        <span class="swatch-job">Surveillance pressure. Bridges amber & laser.</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#7a6db8;"></div>
+      <div class="swatch-info">
+        <span class="swatch-name">POPULATION</span>
+        <span class="swatch-hex">#7a6db8</span>
+        <span class="swatch-job">Demographic scale. Distinct from rent.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── COMPARE ─────────── -->
+  <div class="section-label">Old → New <span class="tag">THE THREE BIG MOVES</span></div>
+  <div class="compare-grid">
+
+    <div class="compare-card">
+      <div class="compare-head"><span>PRIMARY</span><span>1 / 3</span></div>
+      <div class="compare-stack">
+        <div class="compare-half">
+          <span class="lab">Was</span>
+          <div class="compare-chip" style="background:#c8a860;"></div>
+          <span class="compare-hex">#c8a860 GOLD</span>
+          <span class="compare-note" style="color:var(--ash);">Whiskey-bar amber. Reads luxury, not collapse.</span>
+        </div>
+        <div class="compare-half">
+          <span class="lab" style="color:var(--spire);">Now</span>
+          <div class="compare-chip" style="background:#4dd9e6;box-shadow:0 0 16px rgba(77,217,230,0.4);"></div>
+          <span class="compare-hex">#4dd9e6 SPIRE</span>
+          <span class="compare-note">Spire glow. Sickly institutional cyan, pulled from cover.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="compare-card">
+      <div class="compare-head"><span>THREAT</span><span>2 / 3</span></div>
+      <div class="compare-stack">
+        <div class="compare-half">
+          <span class="lab">Was</span>
+          <div style="display:flex;gap:2px;">
+            <div class="compare-chip" style="background:#e04040;flex:1;"></div>
+            <div class="compare-chip" style="background:#8b0a1a;flex:1;"></div>
+            <div class="compare-chip" style="background:#dc143c;flex:1;"></div>
+          </div>
+          <span class="compare-hex">3 reds, overlapping jobs</span>
+          <span class="compare-note" style="color:var(--ash);">crimson / deep-crimson / blood-crimson — noise.</span>
+        </div>
+        <div class="compare-half">
+          <span class="lab" style="color:var(--laser);">Now</span>
+          <div style="display:flex;gap:2px;">
+            <div class="compare-chip" style="background:#ff3344;flex:1;"></div>
+            <div class="compare-chip" style="background:#b8321f;flex:1;"></div>
+          </div>
+          <span class="compare-hex">LASER + THERMAL</span>
+          <span class="compare-note">Two reds, two jobs. Hostile vs. critical.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="compare-card">
+      <div class="compare-head"><span>SUBSTRATE</span><span>3 / 3</span></div>
+      <div class="compare-stack">
+        <div class="compare-half">
+          <span class="lab">Was</span>
+          <div class="compare-chip" style="background:#141420;"></div>
+          <span class="compare-hex">#141420 (warm)</span>
+          <span class="compare-note" style="color:var(--ash);">Slightly purple. Reads "velvet drape."</span>
+        </div>
+        <div class="compare-half">
+          <span class="lab" style="color:var(--spire);">Now</span>
+          <div class="compare-chip" style="background:#11141c;"></div>
+          <span class="compare-hex">#11141c (cool)</span>
+          <span class="compare-note">Blue-grey. Concrete in fluorescent light.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="compare-card">
+      <div class="compare-head"><span>RUPTURE</span><span>BONUS</span></div>
+      <div class="compare-stack">
+        <div class="compare-half">
+          <span class="lab">Was</span>
+          <div class="compare-chip" style="background:#c8a860;"></div>
+          <span class="compare-hex">Used everywhere</span>
+          <span class="compare-note" style="color:var(--ash);">Gold for buttons, headers, data, CTAs. Loses meaning.</span>
+        </div>
+        <div class="compare-half">
+          <span class="lab" style="color:var(--rupture);">Now</span>
+          <div class="compare-chip" style="background:#d4a02c;"></div>
+          <span class="compare-hex">#d4a02c · scarce</span>
+          <span class="compare-note">Reserved for revolutionary moments. <strong>Earned.</strong></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─────────── CONTEXT VIGNETTES ─────────── -->
+  <div class="section-label">In Context <span class="tag">FEEL IT</span></div>
+  <div class="vignette-row">
+
+    <!-- Brand mark -->
+    <div class="vignette">
+      <span class="vignette-tag">BRAND · WORDMARK</span>
+      <div class="brand-stack">
+        <div class="brand-mark">BAB<span class="y">Y</span>LON</div>
+        <div class="brand-rule"></div>
+        <div class="brand-tag">THE FALL OF AMERICA</div>
+        <div class="brand-meta">
+          <span>TICK 0042</span>
+          <span class="laser">● LIVE</span>
+          <span>CONST VIII</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resource panel -->
+    <div class="vignette">
+      <span class="vignette-tag">PANEL · RESOURCES</span>
+      <div style="margin-top:14px;">
+        <div class="panel-row">
+          <span class="panel-label">Imperial Rent</span>
+          <span class="panel-val" style="color:var(--rent);">0.342</span>
+        </div>
+        <div class="panel-bar"><i style="width:34%;background:var(--rent);"></i></div>
+
+        <div class="panel-row" style="margin-top:8px;">
+          <span class="panel-label">Solidarity</span>
+          <span class="panel-val" style="color:var(--solidarity);">0.561</span>
+        </div>
+        <div class="panel-bar"><i style="width:56%;background:var(--solidarity);"></i></div>
+
+        <div class="panel-row" style="margin-top:8px;">
+          <span class="panel-label">Heat</span>
+          <span class="panel-val" style="color:var(--heat);">71%</span>
+        </div>
+        <div class="panel-bar"><i style="width:71%;background:linear-gradient(90deg,var(--heat),var(--laser));"></i></div>
+
+        <div class="panel-row" style="margin-top:8px;">
+          <span class="panel-label">Cadre Labor</span>
+          <span class="panel-val" style="color:var(--cadre);">0.218</span>
+        </div>
+        <div class="panel-bar"><i style="width:22%;background:var(--cadre);"></i></div>
+      </div>
+    </div>
+
+    <!-- Tick + buttons + badges -->
+    <div class="vignette">
+      <span class="vignette-tag">CONTROLS · STATE</span>
+      <div class="tick-stack">
+        <div class="tick-display">
+          <span class="tick-label">TICK</span>
+          <span class="tick-num">0042</span>
+        </div>
+        <div class="btn-row">
+          <div class="btn btn-primary">Resolve Tick</div>
+          <div class="btn btn-ghost">← Games</div>
+        </div>
+        <div class="btn-row">
+          <div class="btn btn-danger">Abort</div>
+          <div class="btn btn-ghost" style="color:var(--rupture);border-color:rgba(212,160,44,0.4);">Rupture</div>
+        </div>
+        <div class="badge-row">
+          <span class="badge spire">● ACTIVE</span>
+          <span class="badge laser">▲ HOSTILE</span>
+          <span class="badge solid">✓ STABLE</span>
+          <span class="badge rupture">★ BREAK</span>
+          <span class="badge muted">— IDLE</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─────────── DATA RAMPS ─────────── -->
+  <div class="section-label">Data Ramps <span class="tag">LUMINANCE-MONOTONIC</span></div>
+  <div class="ramp-grid">
+
+    <div class="ramp">
+      <div class="ramp-head">
+        <span class="ramp-name">HEAT</span>
+        <span class="ramp-job">Surveillance pressure</span>
+      </div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016;"></div>
+        <div style="background:#3a3530;"></div>
+        <div style="background:#7a4720;"></div>
+        <div style="background:#b8581f;"></div>
+        <div style="background:#d97a2c;"></div>
+        <div style="background:#ff3344;"></div>
+      </div>
+      <div class="ramp-scale"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+    </div>
+
+    <div class="ramp">
+      <div class="ramp-head">
+        <span class="ramp-name">CONSCIOUSNESS</span>
+        <span class="ramp-job">Awakening; ends in glow</span>
+      </div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016;"></div>
+        <div style="background:#1f2c3d;"></div>
+        <div style="background:#345670;"></div>
+        <div style="background:#4a86a0;"></div>
+        <div style="background:#6bbcc8;"></div>
+        <div style="background:#4dd9e6;"></div>
+      </div>
+      <div class="ramp-scale"><span>dormant</span><span>stirring</span><span>awake</span></div>
+    </div>
+
+    <div class="ramp">
+      <div class="ramp-head">
+        <span class="ramp-name">RENT</span>
+        <span class="ramp-job">Extraction → violence</span>
+      </div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016;"></div>
+        <div style="background:#2e2236;"></div>
+        <div style="background:#56356b;"></div>
+        <div style="background:#8b4d9e;"></div>
+        <div style="background:#a83a78;"></div>
+        <div style="background:#b8321f;"></div>
+      </div>
+      <div class="ramp-scale"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+    </div>
+
+    <div class="ramp">
+      <div class="ramp-head">
+        <span class="ramp-name">BIOCAPACITY</span>
+        <span class="ramp-job">Diverging — depleted ↔ healthy</span>
+      </div>
+      <div class="ramp-bar">
+        <div style="background:#b8321f;"></div>
+        <div style="background:#7a3525;"></div>
+        <div style="background:#3d4250;"></div>
+        <div style="background:#3a6b48;"></div>
+        <div style="background:#5fbf7a;"></div>
+      </div>
+      <div class="ramp-scale"><span>collapse</span><span>neutral</span><span>regenerate</span></div>
+    </div>
+
+    <div class="ramp">
+      <div class="ramp-head">
+        <span class="ramp-name">WEALTH</span>
+        <span class="ramp-job">Ends at scarcity-gold</span>
+      </div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016;"></div>
+        <div style="background:#2a251f;"></div>
+        <div style="background:#4d3f28;"></div>
+        <div style="background:#8a6a2a;"></div>
+        <div style="background:#d4a02c;"></div>
+      </div>
+      <div class="ramp-scale"><span>destitute</span><span>—</span><span>hoarded</span></div>
+    </div>
+
+    <div class="ramp">
+      <div class="ramp-head">
+        <span class="ramp-name">POPULATION</span>
+        <span class="ramp-job">Single hue, lightness only</span>
+      </div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016;"></div>
+        <div style="background:#23223a;"></div>
+        <div style="background:#3d3868;"></div>
+        <div style="background:#5a4f95;"></div>
+        <div style="background:#7a6db8;"></div>
+        <div style="background:#a89dd0;"></div>
+      </div>
+      <div class="ramp-scale"><span>sparse</span><span>—</span><span>dense</span></div>
+    </div>
+
+  </div>
+
+  <div class="footer-note">
+    <strong>The discipline:</strong> every accent is a verb. <code>spire</code> = your agency. <code>laser</code> = empire's violence. <code>rupture</code> = the break. <code>rent</code> = what's taken. The player learns this language in one session, and from then on color carries mechanical meaning, not decoration. — Constitution VIII, draft.
+  </div>
+
+</body>
+</html>
+</content>
+<parameter name="asset">colors-cold-collapse

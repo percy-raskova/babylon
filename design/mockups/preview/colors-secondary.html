@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Colors · Semantic Accents — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  .verb-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .verb{
+    background:var(--concrete);border:1px solid var(--rebar);border-radius:6px;
+    padding:14px 16px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;
+  }
+  .verb-chip{width:42px;height:42px;border-radius:4px;flex-shrink:0;position:relative}
+  .verb-chip.glow{box-shadow:0 0 14px currentColor}
+  .verb-name{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;display:block;margin-bottom:3px}
+  .verb-job{font-size:11px;color:var(--fog);line-height:1.4}
+  .verb-hex{font-family:var(--mono);font-size:10px;color:var(--ash);text-align:right}
+  .badge-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+  .badge{font-family:var(--mono);font-size:8.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;padding:3px 7px;border-radius:9999px;border:1px solid}
+  .badge.spire{color:var(--spire);border-color:rgba(77,217,230,.4);background:rgba(77,217,230,.08)}
+  .badge.laser{color:var(--laser);border-color:rgba(255,51,68,.4);background:rgba(255,51,68,.08)}
+  .badge.thermal{color:var(--thermal);border-color:rgba(184,50,31,.5);background:rgba(184,50,31,.1)}
+  .badge.rupture{color:var(--rupture);border-color:rgba(212,160,44,.4);background:rgba(212,160,44,.08)}
+  .badge.solid{color:var(--solidarity);border-color:rgba(95,191,122,.4);background:rgba(95,191,122,.08)}
+  .badge.cadre{color:var(--cadre);border-color:rgba(107,143,181,.4);background:rgba(107,143,181,.08)}
+  .badge.rent{color:var(--rent);border-color:rgba(139,77,158,.4);background:rgba(139,77,158,.08)}
+  .badge.heat{color:var(--heat);border-color:rgba(217,122,44,.4);background:rgba(217,122,44,.08)}
+  .badge.population{color:var(--population);border-color:rgba(122,109,184,.4);background:rgba(122,109,184,.08)}
+  .badge.muted{color:var(--fog);border-color:var(--wet-steel)}
+  .footer-note{
+    margin-top:24px;padding:12px 14px;background:var(--concrete);
+    border-left:2px solid var(--spire);border-radius:0 4px 4px 0;
+    font-size:11px;color:var(--fog);line-height:1.55;
+  }
+  .footer-note strong{color:var(--bone);font-weight:600}
+  .footer-note code{font-family:var(--mono);font-size:10px;color:var(--spire);background:rgba(77,217,230,.06);padding:1px 5px;border-radius:2px}
+</style></head>
+<body>
+  <div class="header">
+    <div>
+      <div class="header-title">SEMANTIC · <em>EACH ONE A VERB</em></div>
+      <div style="font-size:11px;color:var(--fog);margin-top:4px">Color encodes mechanical meaning. The player learns this language in one session.</div>
+    </div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="section-label">Verbs <span class="tag">9 ACCENTS · 9 JOBS</span></div>
+  <div class="verb-grid">
+    <div class="verb"><div class="verb-chip glow" style="background:var(--spire);color:var(--spire)"></div><div><span class="verb-name" style="color:var(--spire)">SPIRE</span><span class="verb-job">"System online." Active state, focus, the player's agency.</span></div><div class="verb-hex">#4dd9e6</div></div>
+    <div class="verb"><div class="verb-chip glow" style="background:var(--laser);color:var(--laser)"></div><div><span class="verb-name" style="color:var(--laser)">LASER</span><span class="verb-job">Threat. Empire's violence pointed at the player.</span></div><div class="verb-hex">#ff3344</div></div>
+    <div class="verb"><div class="verb-chip" style="background:var(--thermal)"></div><div><span class="verb-name" style="color:var(--thermal)">THERMAL</span><span class="verb-job">Critical system stress. Resolve under fire.</span></div><div class="verb-hex">#b8321f</div></div>
+    <div class="verb"><div class="verb-chip glow" style="background:var(--rupture);color:var(--rupture)"></div><div><span class="verb-name" style="color:var(--rupture)">RUPTURE</span><span class="verb-job">Revolutionary breakthrough. <strong>Used rarely.</strong></span></div><div class="verb-hex">#d4a02c</div></div>
+    <div class="verb"><div class="verb-chip" style="background:var(--cadre)"></div><div><span class="verb-name" style="color:var(--cadre)">CADRE</span><span class="verb-job">Labor aristocracy, info text.</span></div><div class="verb-hex">#6b8fb5</div></div>
+    <div class="verb"><div class="verb-chip" style="background:var(--solidarity)"></div><div><span class="verb-name" style="color:var(--solidarity)">SOLIDARITY</span><span class="verb-job">Sympathizer growth, mass-line success.</span></div><div class="verb-hex">#5fbf7a</div></div>
+    <div class="verb"><div class="verb-chip" style="background:var(--rent)"></div><div><span class="verb-name" style="color:var(--rent)">RENT</span><span class="verb-job">Imperial extraction. Bruise purple — extraction hurts.</span></div><div class="verb-hex">#8b4d9e</div></div>
+    <div class="verb"><div class="verb-chip" style="background:var(--heat)"></div><div><span class="verb-name" style="color:var(--heat)">HEAT</span><span class="verb-job">Surveillance pressure. Bridges amber and laser.</span></div><div class="verb-hex">#d97a2c</div></div>
+    <div class="verb"><div class="verb-chip" style="background:var(--population)"></div><div><span class="verb-name" style="color:var(--population)">POPULATION</span><span class="verb-job">Demographic scale. Distinct from rent.</span></div><div class="verb-hex">#7a6db8</div></div>
+  </div>
+
+  <div class="section-label">Status Badges <span class="tag">UI VOCABULARY</span></div>
+  <div class="badge-row">
+    <span class="badge spire">● ACTIVE</span>
+    <span class="badge laser">▲ HOSTILE</span>
+    <span class="badge thermal">✕ CRITICAL</span>
+    <span class="badge rupture">★ RUPTURE</span>
+    <span class="badge solid">✓ STABLE</span>
+    <span class="badge cadre">◇ CADRE</span>
+    <span class="badge rent">◆ RENT</span>
+    <span class="badge heat">▴ HEAT</span>
+    <span class="badge population">◉ POP</span>
+    <span class="badge muted">— IDLE</span>
+  </div>
+
+  <div class="footer-note">
+    <strong>The discipline:</strong> every accent is a verb. <code>spire</code> = your agency. <code>laser</code> = empire's violence. <code>rupture</code> = the break. <code>rent</code> = what's taken. The player learns this language once and color carries mechanical meaning forever after.
+  </div>
+</body></html>

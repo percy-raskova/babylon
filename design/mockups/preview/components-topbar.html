@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Components · Topbar — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  body{display:block;padding:0;background:var(--rebar)}
+  .topbar{display:flex;align-items:center;justify-content:space-between;background:var(--void);border-bottom:1px solid var(--rebar);padding:10px 18px;gap:14px}
+  .left,.center,.right{display:flex;align-items:center;gap:12px}
+  .btn-back{background:transparent;border:1px solid var(--wet-steel);border-radius:4px;padding:6px 12px;font-family:var(--mono);font-size:10px;color:var(--fog);cursor:pointer;letter-spacing:.12em;text-transform:uppercase;transition:all .15s}
+  .btn-back:hover{border-color:var(--spire);color:var(--bone)}
+  .game-id{font-family:var(--mono);font-size:11px;color:var(--ash)}
+  .tick-wrap{display:flex;align-items:baseline;gap:8px;padding:0 12px;border-left:1px solid var(--rebar);border-right:1px solid var(--rebar)}
+  .tick-label{font-family:var(--mono);font-size:9px;letter-spacing:.25em;text-transform:uppercase;color:var(--fog)}
+  .tick-val{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--spire);text-shadow:0 0 12px rgba(77,217,230,.4)}
+  .indicators{display:flex;gap:6px}
+  .chip{background:var(--concrete);border:1px solid var(--rebar);border-radius:4px;padding:4px 10px;font-size:10px;display:flex;gap:6px;align-items:center}
+  .chip-lbl{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--ash)}
+  .chip-val{font-family:var(--mono);font-size:11px;font-weight:600}
+  .notif{background:var(--laser);color:var(--void);border-radius:9999px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px;font-weight:700;padding:0 5px;box-shadow:0 0 10px rgba(255,51,68,.4)}
+  .btn-resolve{background:var(--spire);color:var(--void);border:none;border-radius:4px;padding:7px 16px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;box-shadow:0 0 16px rgba(77,217,230,.25)}
+  .btn-resolve:hover{filter:brightness(1.1);box-shadow:0 0 24px rgba(77,217,230,.4)}
+  .username{font-size:12px;color:var(--fog);font-family:var(--mono)}
+  .btn-logout{background:transparent;border:1px solid var(--wet-steel);border-radius:4px;padding:6px 12px;font-family:var(--mono);font-size:10px;color:var(--fog);cursor:pointer;letter-spacing:.12em;text-transform:uppercase}
+  .preview-pad{padding:16px}
+</style></head>
+<body>
+  <div class="preview-pad" style="background:var(--void)">
+    <div class="header">
+      <div><div class="header-title">COMPONENTS · <em>TOPBAR</em></div>
+      <div style="font-size:11px;color:var(--fog);margin-top:4px">Game shell header — tick · indicators · resolve action</div></div>
+      <div class="header-sub">CONST · VIII</div>
+    </div>
+  </div>
+
+  <div class="topbar">
+    <div class="left">
+      <button class="btn-back">← Games</button>
+      <span class="game-id">wayne-co...001</span>
+    </div>
+    <div class="center">
+      <div class="tick-wrap">
+        <span class="tick-label">Tick</span>
+        <span class="tick-val">0042</span>
+      </div>
+      <div class="indicators">
+        <div class="chip"><span class="chip-lbl">HEAT</span><span class="chip-val" style="color:var(--heat)">71%</span></div>
+        <div class="chip"><span class="chip-lbl">RENT</span><span class="chip-val" style="color:var(--rent)">0.34</span></div>
+        <div class="chip"><span class="chip-lbl">CON</span><span class="chip-val" style="color:var(--cadre)">0.22</span></div>
+        <div class="chip"><span class="chip-lbl">SOL</span><span class="chip-val" style="color:var(--solidarity)">0.56</span></div>
+      </div>
+      <div class="notif">3</div>
+    </div>
+    <div class="right">
+      <button class="btn-resolve">Resolve Tick</button>
+      <span class="username">percy_organizer</span>
+      <button class="btn-logout">Logout</button>
+    </div>
+  </div>
+</body></html>

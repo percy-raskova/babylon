@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Components · Buttons — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .btn{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;padding:9px 18px;border-radius:4px;border:1px solid transparent;cursor:pointer;transition:all .15s}
+  .btn-primary{background:var(--spire);color:var(--void);box-shadow:0 0 16px rgba(77,217,230,.25)}
+  .btn-primary:hover{filter:brightness(1.1);box-shadow:0 0 24px rgba(77,217,230,.4)}
+  .btn-primary:disabled{opacity:.45;box-shadow:none;cursor:not-allowed}
+  .btn-secondary{background:transparent;color:var(--fog);border-color:var(--wet-steel)}
+  .btn-secondary:hover{border-color:var(--spire);color:var(--bone)}
+  .btn-ghost{background:transparent;color:var(--ash);border:none;padding:9px 12px}
+  .btn-ghost:hover{background:var(--rebar);color:var(--bone)}
+  .btn-danger{background:transparent;color:var(--laser);border-color:rgba(255,51,68,.4)}
+  .btn-danger:hover{background:rgba(255,51,68,.1);border-color:var(--laser)}
+  .btn-rupture{background:transparent;color:var(--rupture);border-color:rgba(212,160,44,.5)}
+  .btn-rupture:hover{background:rgba(212,160,44,.08);box-shadow:0 0 16px rgba(212,160,44,.2)}
+  .btn-resolve{background:var(--spire);color:var(--void);font-size:11px;padding:8px 18px}
+  .btn-sm{padding:5px 12px;font-size:10px}
+</style></head>
+<body>
+  <div class="header">
+    <div><div class="header-title">COMPONENTS · <em>BUTTONS</em></div>
+    <div style="font-size:11px;color:var(--fog);margin-top:4px">Spire primary · ghost · laser danger · rupture for breakthrough actions</div></div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="section-label">Primary <span class="tag">SPIRE</span></div>
+  <div class="row">
+    <button class="btn btn-primary">Log In</button>
+    <button class="btn btn-primary">+ New Game</button>
+    <button class="btn btn-primary btn-sm">Submit Action</button>
+    <button class="btn btn-primary" disabled>Creating...</button>
+  </div>
+
+  <div class="section-label">Secondary / Ghost</div>
+  <div class="row">
+    <button class="btn btn-secondary">← Games</button>
+    <button class="btn btn-secondary">Logout</button>
+    <button class="btn btn-secondary btn-sm">← Back to Briefing</button>
+    <button class="btn btn-ghost">Reset Defaults</button>
+    <button class="btn btn-ghost" style="color:var(--spire)">Done</button>
+  </div>
+
+  <div class="section-label">Contextual <span class="tag">SEMANTIC</span></div>
+  <div class="row">
+    <button class="btn btn-resolve">Resolve Tick</button>
+    <button class="btn btn-resolve" disabled style="opacity:.5">Resolving...</button>
+    <button class="btn btn-danger">Abort</button>
+    <button class="btn btn-rupture">★ Rupture</button>
+  </div>
+</body></html>

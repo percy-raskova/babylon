@@ -1,0 +1,607 @@
+/* synopticon.css — Algorithmic State Apparatus styling
+   Inherits all Cold Collapse tokens; adds Palantir-satire / military C2 chrome.
+   The Wire was journalism. The Synopticon is the operator's terminal at a black site.
+   No paper textures. No handwriting. Only grids, classification, and machine glyphs. */
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+/* convenience aliases — match wire/ui_kits names */
+:root {
+  --void:        var(--babylon-void);
+  --tar:         var(--babylon-tar);
+  --concrete:    var(--babylon-concrete);
+  --rebar:       var(--babylon-rebar);
+  --wet-steel:   var(--babylon-wet-steel);
+  --rust:        var(--babylon-rust);
+  --bone:        var(--babylon-bone);
+  --fog:         var(--babylon-fog);
+  --ash:         var(--babylon-ash);
+  --shroud:      var(--babylon-shroud);
+  --spire:       var(--babylon-spire);
+  --spire-dim:   var(--babylon-spire-dim);
+  --laser:       var(--babylon-laser);
+  --thermal:     var(--babylon-thermal);
+  --rupture:     var(--babylon-rupture);
+  --cadre:       var(--babylon-cadre);
+  --solidarity:  var(--babylon-solidarity);
+  --rent:        var(--babylon-rent);
+  --heat:        var(--babylon-heat);
+  --population:  var(--babylon-population);
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--void);
+  color: var(--bone);
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+* { box-sizing: border-box; }
+button, input, select { font-family: inherit; }
+
+/* ===================== Classification banners ===================== */
+.syn-cls-bar {
+  flex-shrink: 0;
+  background: var(--laser);
+  color: var(--void);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+}
+.syn-cls-bar.bottom {
+  background: var(--laser);
+}
+.syn-cls-bar::before, .syn-cls-bar::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 14px;
+  background: repeating-linear-gradient(
+    -45deg, var(--void) 0, var(--void) 2px,
+    transparent 2px, transparent 5px
+  );
+}
+.syn-cls-bar::before { left: 0; }
+.syn-cls-bar::after  { right: 0; }
+
+/* small inline cls strip (e.g. above modules) */
+.syn-cls-small {
+  background: var(--laser);
+  color: var(--void);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  font-size: 9px;
+  padding: 2px 8px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* ===================== Labels / kicker ===================== */
+.label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ash);
+}
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+.mono { font-family: var(--font-mono); }
+.num  { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ===================== Buttons ===================== */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--wet-steel);
+  border-radius: 3px;
+  padding: 5px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fog);
+  cursor: pointer;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition: all 120ms;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-ghost:hover { border-color: var(--laser); color: var(--laser); }
+.btn-ghost.active { border-color: var(--laser); color: var(--laser); background: rgba(255,51,68,0.06); }
+
+.btn-strike {
+  background: rgba(255, 51, 68, 0.10);
+  border: 1px solid var(--laser);
+  border-radius: 3px;
+  padding: 6px 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--laser);
+  cursor: pointer;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 700;
+  transition: all 120ms;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-strike:hover {
+  background: var(--laser);
+  color: var(--void);
+  box-shadow: 0 0 12px rgba(255,51,68,0.5);
+}
+.btn-strike:disabled {
+  border-color: var(--rebar);
+  color: var(--shroud);
+  background: transparent;
+  cursor: not-allowed;
+}
+.btn-strike:disabled:hover { background: transparent; color: var(--shroud); box-shadow: none; }
+
+/* ===================== Scrollbars ===================== */
+::-webkit-scrollbar       { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--void); }
+::-webkit-scrollbar-thumb { background: var(--wet-steel); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fog); }
+
+/* ===================== Panels ===================== */
+.syn-panel {
+  background: var(--concrete);
+  border: 1px solid var(--rebar);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.syn-panel-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rebar);
+  background: rgba(255,255,255,0.012);
+}
+.syn-panel-head .ttl {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--bone);
+  font-weight: 700;
+}
+.syn-panel-head .sub {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--ash);
+}
+.syn-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ===================== Stats / data values ===================== */
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-v {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--bone);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.stat-l {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ash);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.stat-delta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+/* ===================== Status badges ===================== */
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 700;
+  border: 1px solid currentColor;
+  background: rgba(0,0,0,0.4);
+}
+.badge-status .dot {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background: currentColor;
+}
+.s-UNKNOWN     { color: var(--ash); border-color: var(--rebar); }
+.s-SUSPECT     { color: var(--heat); border-color: rgba(217,122,44,0.55); }
+.s-TARGET      { color: var(--laser); border-color: rgba(255,51,68,0.55); background: rgba(255,51,68,0.06); box-shadow: 0 0 8px rgba(255,51,68,0.15) inset; }
+.s-ELIMINATED  { color: var(--shroud); border-color: var(--rebar); text-decoration: line-through; }
+.s-QUEUED      { color: var(--laser); border-color: rgba(255,51,68,0.55); }
+.s-CDE_HOLD    { color: var(--rupture); border-color: rgba(212,160,44,0.55); }
+.s-MONITOR     { color: var(--cadre); border-color: rgba(107,143,181,0.55); }
+.s-GHOST       { color: var(--shroud); border-color: var(--rebar); border-style: dashed; }
+.s-BLOWBACK    { color: var(--rupture); border-color: rgba(212,160,44,0.7); background: rgba(212,160,44,0.08); }
+
+/* ===================== Risk score bars ===================== */
+.risk-stack {
+  display: flex;
+  height: 12px;
+  background: var(--rebar);
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid var(--rebar);
+}
+.risk-seg {
+  height: 100%;
+  position: relative;
+}
+.risk-seg.centrality  { background: var(--cadre); }
+.risk-seg.association { background: var(--rent); }
+.risk-seg.velocity    { background: var(--heat); }
+.risk-seg.geo         { background: var(--laser); }
+
+/* threshold tick marks on a 0-1 bar */
+.risk-thresholds {
+  position: relative; height: 14px; margin-top: 2px;
+}
+.risk-thresholds .t-mark {
+  position: absolute; top: 0; bottom: 0;
+  border-left: 1px dashed var(--wet-steel);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--ash);
+  padding-left: 2px;
+  letter-spacing: 0.16em;
+}
+
+/* ===================== Histogram bars ===================== */
+.hist-bar { background: var(--cadre); }
+.hist-bar.monitor   { background: var(--heat); }
+.hist-bar.suppress  { background: var(--laser); }
+.hist-bar.eliminate { background: var(--laser); box-shadow: 0 0 8px rgba(255,51,68,0.5); }
+
+/* ===================== Sparrow heatmap (network) ===================== */
+.spw-svg {
+  width: 100%; height: 100%;
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 50%, rgba(13,16,22,0.0) 0%, rgba(6,7,11,0.85) 100%),
+    var(--void);
+}
+/* concentric "panopticon" rings under the network */
+.spw-rings circle {
+  fill: none;
+  stroke: var(--rebar);
+  stroke-dasharray: 1 3;
+  stroke-width: 0.5;
+}
+.spw-edge {
+  stroke: var(--wet-steel);
+  stroke-width: 0.8;
+  fill: none;
+  transition: stroke 120ms, stroke-width 120ms;
+}
+.spw-edge.high { stroke: rgba(255, 51, 68, 0.25); stroke-width: 1; }
+.spw-edge.ghost { stroke-dasharray: 2 4; stroke: var(--rebar); }
+.spw-node-halo {
+  fill: rgba(255, 51, 68, 0.06);
+  stroke: rgba(255, 51, 68, 0.35);
+  stroke-width: 0.6;
+}
+.spw-node {
+  cursor: pointer;
+  transition: filter 120ms;
+}
+.spw-node:hover { filter: brightness(1.4) drop-shadow(0 0 6px currentColor); }
+.spw-node-label {
+  fill: var(--fog);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+.spw-node-label.t { fill: var(--laser); font-weight: 700; }
+.spw-node-label.elim { fill: var(--shroud); text-decoration: line-through; }
+.spw-node-label.ghost { fill: var(--shroud); font-style: italic; }
+.spw-crosshair {
+  stroke: var(--laser);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 3;
+  fill: none;
+  opacity: 0.5;
+}
+.spw-grid-line {
+  stroke: var(--rebar);
+  stroke-width: 0.4;
+  opacity: 0.6;
+}
+@keyframes pulse-target {
+  0%   { r: 14; opacity: 0.35; }
+  100% { r: 22; opacity: 0; }
+}
+.spw-pulse {
+  fill: none;
+  stroke: var(--laser);
+  stroke-width: 1.5;
+  animation: pulse-target 1.8s ease-out infinite;
+}
+
+/* ===================== Gospel queue rows ===================== */
+.q-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 100px 92px 82px 110px 130px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--rebar);
+  background: transparent;
+  transition: background 120ms;
+  cursor: pointer;
+}
+.q-row:hover { background: rgba(255,51,68,0.04); }
+.q-row.selected { background: rgba(255,51,68,0.07); box-shadow: inset 2px 0 0 var(--laser); }
+.q-row.held { opacity: 0.55; }
+.q-row.held:hover { background: rgba(217,122,44,0.04); }
+
+.q-rank {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--laser);
+  letter-spacing: 0.06em;
+}
+
+/* CDE pip indicator */
+.cde-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.cde-pip i {
+  width: 5px; height: 10px;
+  background: var(--rebar);
+  display: inline-block;
+}
+.cde-pip i.on { background: var(--heat); }
+.cde-pip i.over { background: var(--laser); box-shadow: 0 0 4px rgba(255,51,68,0.5); }
+
+/* ===================== Dossier card ===================== */
+.dossier-card {
+  background: linear-gradient(180deg, var(--concrete) 0%, var(--tar) 100%);
+  border: 1px solid var(--rebar);
+  border-radius: 3px;
+  display: flex; flex-direction: column;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.dossier-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--laser);
+}
+.dossier-id {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0.10em;
+  color: var(--bone);
+}
+.dossier-alias {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--laser);
+  text-transform: uppercase;
+}
+
+/* portrait placeholder — never a face. A code grid. */
+.id-block {
+  width: 86px; height: 96px;
+  background:
+    repeating-linear-gradient(90deg, var(--void) 0, var(--void) 1px, transparent 1px, transparent 6px),
+    repeating-linear-gradient(0deg,  var(--void) 0, var(--void) 1px, transparent 1px, transparent 6px),
+    var(--rebar);
+  border: 1px solid var(--wet-steel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--laser);
+  text-shadow: 0 0 12px rgba(255,51,68,0.5);
+  position: relative;
+}
+.id-block::after {
+  content: "NO IMAGE";
+  position: absolute; bottom: 2px; left: 0; right: 0;
+  text-align: center;
+  font-size: 7px; letter-spacing: 0.28em;
+  color: var(--ash);
+  font-weight: 400;
+}
+
+/* ===================== POL Pattern-of-Life log ===================== */
+.pol-row {
+  display: grid;
+  grid-template-columns: 56px 64px 110px 1fr;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px dotted var(--rebar);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  align-items: baseline;
+}
+.pol-row .tt { color: var(--ash); letter-spacing: 0.12em; }
+.pol-row .ss { font-size: 9px; letter-spacing: 0.18em; }
+.pol-row .ss.low  { color: var(--cadre); }
+.pol-row .ss.med  { color: var(--heat); }
+.pol-row .ss.high { color: var(--laser); font-weight: 700; }
+.pol-row .tg { color: var(--bone); font-weight: 600; letter-spacing: 0.08em; }
+.pol-row .nt { color: var(--fog); }
+
+/* ===================== Dossier list ===================== */
+.dl-row {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--rebar);
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr 60px;
+  gap: 8px;
+  align-items: center;
+  transition: background 120ms;
+}
+.dl-row:hover { background: rgba(255,51,68,0.04); }
+.dl-row.active { background: rgba(255,51,68,0.07); box-shadow: inset 2px 0 0 var(--laser); }
+
+/* ===================== Doctrine spec page ===================== */
+.doc-page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 28px 36px 60px;
+}
+.doc-head {
+  border-bottom: 2px solid var(--laser);
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+}
+.doc-h1 {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  letter-spacing: 0.24em;
+  color: var(--bone);
+  font-weight: 700;
+}
+.doc-h2 {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.32em;
+  color: var(--laser);
+  font-weight: 700;
+  margin-top: 28px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+.doc-h3 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--heat);
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-top: 14px;
+  margin-bottom: 6px;
+}
+.doc-body {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--bone);
+  margin-bottom: 8px;
+}
+.doc-note {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ash);
+  border-left: 2px solid var(--laser);
+  padding: 8px 12px;
+  background: rgba(255,51,68,0.03);
+  margin: 10px 0;
+}
+.doc-formula {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--spire);
+  background: var(--tar);
+  border: 1px solid var(--rebar);
+  border-radius: 2px;
+  padding: 6px 10px;
+  letter-spacing: 0.04em;
+}
+.doc-stamp {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.32em;
+  color: var(--laser);
+  border: 1.5px solid var(--laser);
+  padding: 3px 8px;
+  transform: rotate(-2deg);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ===================== Animations ===================== */
+@keyframes blink-laser {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.blink-laser { animation: blink-laser 1.2s ease-in-out infinite; }
+
+@keyframes scan-line {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(100%); }
+}
+.scan-line {
+  position: absolute; left: 0; right: 0; height: 1px;
+  background: rgba(255,51,68,0.4);
+  box-shadow: 0 0 8px rgba(255,51,68,0.6);
+  animation: scan-line 6s linear infinite;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes flick-red {
+  0%, 100% { background: transparent; }
+  10%      { background: rgba(255,51,68,0.15); }
+  20%      { background: transparent; }
+  30%      { background: rgba(255,51,68,0.18); }
+  60%      { background: rgba(255,51,68,0.05); }
+}
+.flick-red { animation: flick-red 2.4s ease-out forwards; }
+
+/* CRT scanlines for the heatmap surface */
+.crt-overlay::after {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0,0,0,0.18) 0,
+    rgba(0,0,0,0.18) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  z-index: 5;
+}
+
+/* ===================== Tweaks panel host ===================== */
+/* the imported tweaks-panel.jsx renders itself; nothing needed here */

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Spacing & Radii — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .col-section{background:var(--concrete);border:1px solid var(--rebar);border-radius:6px;padding:14px}
+  .token-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:6px 0;border-bottom:1px solid var(--rebar)}
+  .token-row:last-child{border-bottom:none}
+  .token-block{background:var(--spire);border-radius:2px;flex-shrink:0;box-shadow:0 0 6px rgba(77,217,230,.2)}
+  .token-name{font-family:var(--mono);font-size:10px;color:var(--fog);min-width:110px;letter-spacing:.05em}
+  .token-val{font-family:var(--mono);font-size:10px;color:var(--spire);margin-left:auto}
+  .radius-block{width:48px;height:28px;background:var(--spire);opacity:.85;flex-shrink:0}
+</style></head>
+<body>
+  <div class="header">
+    <div><div class="header-title">SPACING · <em>RADII · BORDERS</em></div>
+    <div style="font-size:11px;color:var(--fog);margin-top:4px">4px base unit · 1px borders · sharper radii</div></div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="grid">
+    <div class="col-section">
+      <div class="section-label" style="padding-top:0">Spacing Scale</div>
+      <div class="token-row"><div class="token-block" style="width:4px;height:14px"></div><span class="token-name">--space-1</span><span class="token-val">4px</span></div>
+      <div class="token-row"><div class="token-block" style="width:8px;height:14px"></div><span class="token-name">--space-2</span><span class="token-val">8px</span></div>
+      <div class="token-row"><div class="token-block" style="width:12px;height:14px"></div><span class="token-name">--space-3</span><span class="token-val">12px</span></div>
+      <div class="token-row"><div class="token-block" style="width:16px;height:14px"></div><span class="token-name">--space-4</span><span class="token-val">16px</span></div>
+      <div class="token-row"><div class="token-block" style="width:24px;height:14px"></div><span class="token-name">--space-6</span><span class="token-val">24px</span></div>
+      <div class="token-row"><div class="token-block" style="width:32px;height:14px"></div><span class="token-name">--space-8</span><span class="token-val">32px</span></div>
+      <div class="token-row"><div class="token-block" style="width:48px;height:14px"></div><span class="token-name">--space-12</span><span class="token-val">48px</span></div>
+    </div>
+
+    <div class="col-section">
+      <div class="section-label" style="padding-top:0">Border Radius</div>
+      <div class="token-row"><div class="radius-block" style="border-radius:2px"></div><span class="token-name">--radius-sm</span><span class="token-val">2px · pixel sharp</span></div>
+      <div class="token-row"><div class="radius-block" style="border-radius:4px"></div><span class="token-name">--radius-md</span><span class="token-val">4px · buttons</span></div>
+      <div class="token-row"><div class="radius-block" style="border-radius:6px"></div><span class="token-name">--radius-lg</span><span class="token-val">6px · cards</span></div>
+      <div class="token-row"><div class="radius-block" style="border-radius:8px"></div><span class="token-name">--radius-xl</span><span class="token-val">8px · login</span></div>
+      <div class="token-row"><div class="radius-block" style="border-radius:9999px"></div><span class="token-name">--radius-full</span><span class="token-val">9999px · pills</span></div>
+
+      <div class="section-label" style="margin-top:18px">Border Width</div>
+      <div style="background:var(--void);border:1px solid var(--wet-steel);border-radius:4px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center">
+        <span class="token-name">--border-width</span><span class="token-val">1px — all panels</span>
+      </div>
+    </div>
+  </div>
+</body></html>

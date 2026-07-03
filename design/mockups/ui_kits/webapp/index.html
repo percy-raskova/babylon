@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Babylon — Web App UI Kit (Cold Collapse)</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --font-sans: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --font-pixel: 'VT323', monospace;
+
+    /* Substrate */
+    --void: #06070b;
+    --tar: #0d1016;
+    --concrete: #11141c;
+    --rebar: #1a1f2a;
+    --wet-steel: #28303d;
+    --rust: #3a3530;
+
+    /* Emissions */
+    --bone: #d8dce0;
+    --fog: #8a93a0;
+    --ash: #5e6470;
+    --shroud: #3d4250;
+
+    /* Semantic accents */
+    --spire: #4dd9e6;
+    --spire-dim: #2a8a93;
+    --laser: #ff3344;
+    --thermal: #b8321f;
+    --rupture: #d4a02c;
+    --cadre: #6b8fb5;
+    --solidarity: #5fbf7a;
+    --rent: #8b4d9e;
+    --heat: #d97a2c;
+    --population: #7a6db8;
+  }
+  html, body { height: 100%; background: var(--void); font-family: var(--font-sans); color: var(--bone); }
+  #root { min-height: 100%; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--void); }
+  ::-webkit-scrollbar-thumb { background: var(--wet-steel); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ash); }
+  input, select, button { font-family: var(--font-sans); }
+  select option { background: var(--concrete); color: var(--bone); }
+
+  /* Dev nav — surfaces all screens at once for kit review */
+  .__devnav { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 6px 8px; background: rgba(17,20,28,0.92); border: 1px solid var(--rebar); border-radius: 6px; z-index: 9999; backdrop-filter: blur(6px); }
+  .__devnav button { background: transparent; border: 1px solid transparent; color: var(--ash); font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
+  .__devnav button:hover { color: var(--bone); border-color: var(--wet-steel); }
+  .__devnav button.on { color: var(--spire); border-color: var(--spire); background: rgba(77,217,230,.06); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="mock-data.jsx"></script>
+<script type="text/babel" src="Login.jsx"></script>
+<script type="text/babel" src="GameList.jsx"></script>
+<script type="text/babel" src="Briefing.jsx"></script>
+<script type="text/babel" src="GameShell.jsx"></script>
+<script type="text/babel" src="ActionPage.jsx"></script>
+<script type="text/babel" src="TerritoryDetail.jsx"></script>
+<script type="text/babel" src="OrgDetail.jsx"></script>
+<script type="text/babel" src="Topology.jsx"></script>
+<script type="text/babel" src="TickResolution.jsx"></script>
+<script type="text/babel" src="EventLog.jsx"></script>
+<script type="text/babel" src="DialecticSpread.jsx"></script>
+<script type="text/babel" src="EndState.jsx"></script>
+
+<script type="text/babel">
+const SCREENS = {
+  LOGIN: "login",
+  GAME_LIST: "game_list",
+  BRIEFING: "briefing",
+  GAME_SHELL: "game_shell",
+  ACTION_PAGE: "action_page",
+  TERRITORY: "territory",
+  ORG: "org",
+  TOPOLOGY: "topology",
+  TICK_RESOLUTION: "tick_resolution",
+  EVENT_LOG: "event_log",
+  DIALECTIC: "dialectic",
+  END_RUPTURE: "end_rupture",
+  END_DEFEAT: "end_defeat",
+};
+
+const NAV = [
+  ["LOGIN","login"],["LIST","game_list"],["BRIEFING","briefing"],
+  ["COCKPIT","game_shell"],["ACTION","action_page"],
+  ["TERRITORY","territory"],["ORG","org"],["TOPOLOGY","topology"],
+  ["TICK","tick_resolution"],["LOG","event_log"],
+  ["DIALECTIC","dialectic"],["RUPTURE","end_rupture"],["DEFEAT","end_defeat"],
+];
+
+function App() {
+  const [screen, setScreen] = React.useState(SCREENS.LOGIN);
+  const [auth, setAuth] = React.useState({ username: "demo_operator" });
+  const [gameId, setGameId] = React.useState("g_wayne_county");
+  const [actionVerb, setActionVerb] = React.useState("educate");
+
+  const goto = (s) => setScreen(s);
+  const reset = () => { setAuth(null); setGameId(null); setScreen(SCREENS.LOGIN); };
+
+  let body;
+  switch (screen) {
+    case SCREENS.LOGIN:
+      body = <LoginPage onLogin={u => { setAuth(u); goto(SCREENS.GAME_LIST); }} />; break;
+    case SCREENS.GAME_LIST:
+      body = <GameList auth={auth} onSelectGame={id => { setGameId(id); goto(SCREENS.BRIEFING); }} onLogout={reset} />; break;
+    case SCREENS.BRIEFING:
+      body = <Briefing onBack={() => goto(SCREENS.GAME_LIST)} onCommit={() => goto(SCREENS.GAME_SHELL)} />; break;
+    case SCREENS.GAME_SHELL:
+      body = <GameShell auth={auth} gameId={gameId}
+        onBack={() => goto(SCREENS.GAME_LIST)}
+        onLogout={reset}
+        onAction={v => { setActionVerb(v); goto(SCREENS.ACTION_PAGE); }}
+        onOpenTerritory={() => goto(SCREENS.TERRITORY)}
+        onOpenOrg={() => goto(SCREENS.ORG)}
+        onOpenTopology={() => goto(SCREENS.TOPOLOGY)}
+        onOpenLog={() => goto(SCREENS.EVENT_LOG)}
+        onOpenDialectic={() => goto(SCREENS.DIALECTIC)}
+        onTickResolve={() => goto(SCREENS.TICK_RESOLUTION)}
+      />; break;
+    case SCREENS.ACTION_PAGE:
+      body = <ActionPage auth={auth} gameId={gameId} verb={actionVerb} onBack={() => goto(SCREENS.GAME_SHELL)} onLogout={reset} />; break;
+    case SCREENS.TERRITORY:
+      body = <TerritoryDetail onBack={() => goto(SCREENS.GAME_SHELL)} />; break;
+    case SCREENS.ORG:
+      body = <OrgDetail onBack={() => goto(SCREENS.GAME_SHELL)} />; break;
+    case SCREENS.TOPOLOGY:
+      body = <Topology onBack={() => goto(SCREENS.GAME_SHELL)} />; break;
+    case SCREENS.TICK_RESOLUTION:
+      body = <TickResolution onBack={() => goto(SCREENS.GAME_SHELL)} onComplete={() => goto(SCREENS.GAME_SHELL)} />; break;
+    case SCREENS.EVENT_LOG:
+      body = <EventLog onBack={() => goto(SCREENS.GAME_SHELL)} />; break;
+    case SCREENS.DIALECTIC:
+      body = <DialecticSpread onBack={() => goto(SCREENS.GAME_SHELL)} />; break;
+    case SCREENS.END_RUPTURE:
+      body = <EndState outcome="rupture" onRestart={() => goto(SCREENS.GAME_LIST)} />; break;
+    case SCREENS.END_DEFEAT:
+      body = <EndState outcome="defeat" onRestart={() => goto(SCREENS.GAME_LIST)} />; break;
+    default:
+      body = <LoginPage onLogin={u => { setAuth(u); goto(SCREENS.GAME_LIST); }} />;
+  }
+
+  return (
+    <React.Fragment>
+      {body}
+      <div className="__devnav">
+        <span style={{ fontFamily:"var(--font-mono)", fontSize:9, letterSpacing:".22em", color:"var(--shroud)", padding:"4px 6px 4px 2px" }}>SCREEN ▸</span>
+        {NAV.map(([label, key]) => (
+          <button key={key} className={screen === key ? "on" : ""} onClick={() => goto(key)}>{label}</button>
+        ))}
+      </div>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

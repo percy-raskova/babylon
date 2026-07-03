@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Brand · Cover Art — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  body{display:block}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .img-card{border-radius:6px;overflow:hidden;border:1px solid var(--rebar);position:relative;background:var(--concrete)}
+  .img-card img{width:100%;display:block;object-fit:cover;height:160px;filter:saturate(.95) contrast(1.05)}
+  .img-caption{padding:10px 12px;border-top:1px solid var(--rebar)}
+  .img-name{font-family:var(--mono);font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--spire);display:block}
+  .img-desc{font-size:11px;color:var(--fog);margin-top:4px;line-height:1.4}
+  .wordmark{background:var(--concrete);border:1px solid var(--rebar);border-radius:6px;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:188px;position:relative;overflow:hidden}
+  .wordmark::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(77,217,230,.06),transparent 60%);pointer-events:none}
+  .wm-title{font-family:var(--sans);font-size:38px;font-weight:700;color:var(--bone);letter-spacing:.32em;text-transform:uppercase;position:relative}
+  .wm-title em{font-style:normal;color:var(--spire);text-shadow:0 0 16px rgba(77,217,230,.5)}
+  .wm-sub{font-family:var(--mono);font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--fog);position:relative}
+  .wm-tag{font-family:var(--mono);font-size:9px;color:var(--shroud);font-style:italic;margin-top:6px;letter-spacing:.08em;position:relative}
+  .crosshair{position:absolute;width:14px;height:14px;border:1px solid var(--laser);opacity:.5}
+  .crosshair.tl{top:8px;left:8px;border-right:none;border-bottom:none}
+  .crosshair.tr{top:8px;right:8px;border-left:none;border-bottom:none}
+  .crosshair.bl{bottom:8px;left:8px;border-right:none;border-top:none}
+  .crosshair.br{bottom:8px;right:8px;border-left:none;border-top:none}
+</style></head>
+<body>
+  <div class="header">
+    <div><div class="header-title">BRAND · <em>WORDMARK & COVER</em></div>
+    <div style="font-size:11px;color:var(--fog);margin-top:4px">Spire-glow Y · cool-blue cover · daguerreotype Babylon</div></div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="grid">
+    <div class="wordmark">
+      <span class="crosshair tl"></span><span class="crosshair tr"></span>
+      <span class="crosshair bl"></span><span class="crosshair br"></span>
+      <div class="wm-title">BAB<em>Y</em>LON</div>
+      <div class="wm-sub">The Fall of America</div>
+      <div class="wm-tag">Graph + Math = History</div>
+    </div>
+
+    <div class="img-card">
+      <img src="../assets/cover-art.jpg" alt="Babylon cover art — armed troops in dystopian ruined city">
+      <div class="img-caption">
+        <span class="img-name">Cover Art · Cold Steel</span>
+        <span class="img-desc">Imperial troops, cyan spire glow, red laser sights — the visual DNA of the palette.</span>
+      </div>
+    </div>
+
+    <div class="img-card">
+      <img src="../assets/babylon-falling.png" alt="Falling Tower of Babel — daguerreotype style">
+      <div class="img-caption">
+        <span class="img-name">Babylon Falling · Daguerreotype</span>
+        <span class="img-desc">Tower of Babel collapse — print/cover use only, monochrome.</span>
+      </div>
+    </div>
+  </div>
+</body></html>

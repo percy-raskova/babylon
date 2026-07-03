@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Colors · Primary — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  .pair{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
+  .vignette{
+    background:var(--tar);border:1px solid var(--rebar);border-radius:6px;
+    padding:14px 16px;position:relative;overflow:hidden;min-height:140px;
+  }
+  .vignette::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.012),rgba(255,255,255,.012) 1px,transparent 1px,transparent 3px);
+  }
+  .vignette-tag{
+    position:absolute;top:8px;right:10px;font-family:var(--mono);font-size:8px;
+    color:var(--shroud);letter-spacing:.18em;text-transform:uppercase;
+  }
+  .brand{font-family:var(--sans);font-size:28px;font-weight:700;letter-spacing:.32em;color:var(--bone);margin-top:14px}
+  .brand .y{color:var(--spire);text-shadow:0 0 16px rgba(77,217,230,.6),0 0 32px rgba(77,217,230,.25)}
+  .brand-sub{font-family:var(--mono);font-size:9px;letter-spacing:.28em;text-transform:uppercase;color:var(--fog);margin-top:8px}
+  .brand-rule{height:1px;background:linear-gradient(90deg,var(--spire-dim),transparent);width:70%;margin-top:10px}
+  .meta{font-family:var(--mono);font-size:9px;color:var(--ash);letter-spacing:.18em;display:flex;gap:10px;margin-top:10px}
+  .meta .laser{color:var(--laser)}
+  .tick-display{
+    background:var(--concrete);border:1px solid var(--rebar);border-radius:4px;
+    padding:10px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:14px;
+  }
+  .tick-label{font-family:var(--mono);font-size:9px;color:var(--ash);letter-spacing:.22em;text-transform:uppercase}
+  .tick-num{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--spire);text-shadow:0 0 12px rgba(77,217,230,.4);letter-spacing:.06em}
+  .btn-row{display:flex;gap:6px;margin-top:10px}
+  .btn{flex:1;text-align:center;padding:8px 10px;border-radius:3px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
+  .btn-primary{background:var(--spire);color:var(--void);box-shadow:0 0 16px rgba(77,217,230,.3)}
+  .btn-ghost{background:transparent;color:var(--fog);border:1px solid var(--wet-steel)}
+  .btn-danger{background:transparent;color:var(--laser);border:1px solid rgba(255,51,68,.4)}
+  .panel-row{display:flex;justify-content:space-between;padding:6px 0}
+  .panel-row + .panel-row{border-top:1px solid var(--rebar)}
+  .pl{font-family:var(--mono);font-size:9px;color:var(--fog);letter-spacing:.16em;text-transform:uppercase}
+  .pv{font-family:var(--mono);font-size:13px;font-weight:600}
+  .bar{height:3px;background:var(--rebar);border-radius:2px;margin-top:4px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:2px}
+</style></head>
+<body>
+  <div class="header">
+    <div>
+      <div class="header-title">PRIMARY · <em>SUBSTRATE & EMISSIONS</em></div>
+      <div style="font-size:11px;color:var(--fog);margin-top:4px">Concrete, smoke, steel — and the cyan glow through it.</div>
+    </div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="section-label">Substrate <span class="tag">CONCRETE</span></div>
+  <div class="row">
+    <div class="swatch"><div class="swatch-color" style="background:var(--void);border:1px solid var(--rebar)"></div><div class="swatch-info"><span class="swatch-name">VOID</span><span class="swatch-hex">#06070b</span><span class="swatch-job">Page background.</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--tar);border:1px solid var(--rebar)"></div><div class="swatch-info"><span class="swatch-name">TAR</span><span class="swatch-hex">#0d1016</span><span class="swatch-job">Login gradient end.</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--concrete)"></div><div class="swatch-info"><span class="swatch-name">CONCRETE</span><span class="swatch-hex">#11141c</span><span class="swatch-job">Card / panel fill.</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--rebar)"></div><div class="swatch-info"><span class="swatch-name">REBAR</span><span class="swatch-hex">#1a1f2a</span><span class="swatch-job">Subtle borders.</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--wet-steel)"></div><div class="swatch-info"><span class="swatch-name">WET STEEL</span><span class="swatch-hex">#28303d</span><span class="swatch-job">Default border.</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--rust)"></div><div class="swatch-info"><span class="swatch-name">RUST</span><span class="swatch-hex">#3a3530</span><span class="swatch-job">Decay accent.</span></div></div>
+  </div>
+
+  <div class="section-label">Emissions <span class="tag">TEXT</span></div>
+  <div class="row">
+    <div class="swatch"><div class="swatch-color" style="background:var(--bone)"></div><div class="swatch-info"><span class="swatch-name">BONE</span><span class="swatch-hex">#d8dce0</span><span class="swatch-job">Primary text.</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--fog)"></div><div class="swatch-info"><span class="swatch-name">FOG</span><span class="swatch-hex">#8a93a0</span><span class="swatch-job">Secondary text.</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--ash)"></div><div class="swatch-info"><span class="swatch-name">ASH</span><span class="swatch-hex">#5e6470</span><span class="swatch-job">Placeholders.</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--shroud)"></div><div class="swatch-info"><span class="swatch-name">SHROUD</span><span class="swatch-hex">#3d4250</span><span class="swatch-job">Disabled text.</span></div></div>
+  </div>
+
+  <div class="section-label">Primary Accent <span class="tag">SPIRE / CYAN</span></div>
+  <div class="row">
+    <div class="swatch"><div class="swatch-color" style="background:var(--spire);box-shadow:inset 0 0 24px rgba(255,255,255,.15)"></div><div class="swatch-info"><span class="swatch-name" style="color:var(--spire)">SPIRE · PRIMARY</span><span class="swatch-hex">#4dd9e6</span><span class="swatch-job">Active state, focus, your agency. <strong style="color:var(--spire)">Replaces gold.</strong></span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--spire-dim)"></div><div class="swatch-info"><span class="swatch-name">SPIRE · DIM</span><span class="swatch-hex">#2a8a93</span><span class="swatch-job">Hover fills, recessed states.</span></div></div>
+    <div class="swatch" style="flex:2"><div class="swatch-color" style="background:linear-gradient(90deg,var(--tar),var(--spire-dim) 60%,var(--spire))"></div><div class="swatch-info"><span class="swatch-name">SPIRE GRADIENT</span><span class="swatch-hex">tar → spire-dim → spire</span><span class="swatch-job">Glow ramps, focus rings.</span></div></div>
+  </div>
+
+  <div class="section-label">In Context <span class="tag">FEEL IT</span></div>
+  <div class="pair">
+    <div class="vignette">
+      <span class="vignette-tag">BRAND · WORDMARK</span>
+      <div class="brand">BAB<span class="y">Y</span>LON</div>
+      <div class="brand-rule"></div>
+      <div class="brand-sub">THE FALL OF AMERICA</div>
+      <div class="meta"><span>TICK 0042</span><span class="laser">● LIVE</span><span>CONST VIII</span></div>
+    </div>
+    <div class="vignette">
+      <span class="vignette-tag">PANEL · RESOURCES</span>
+      <div style="margin-top:14px">
+        <div class="panel-row"><span class="pl">Imperial Rent</span><span class="pv" style="color:var(--rent)">0.342</span></div>
+        <div class="bar"><i style="width:34%;background:var(--rent)"></i></div>
+        <div class="panel-row"><span class="pl">Solidarity</span><span class="pv" style="color:var(--solidarity)">0.561</span></div>
+        <div class="bar"><i style="width:56%;background:var(--solidarity)"></i></div>
+        <div class="panel-row"><span class="pl">Heat</span><span class="pv" style="color:var(--heat)">71%</span></div>
+        <div class="bar"><i style="width:71%;background:linear-gradient(90deg,var(--heat),var(--laser))"></i></div>
+      </div>
+    </div>
+    <div class="vignette">
+      <span class="vignette-tag">CONTROLS</span>
+      <div class="tick-display"><span class="tick-label">TICK</span><span class="tick-num">0042</span></div>
+      <div class="btn-row"><div class="btn btn-primary">Resolve Tick</div><div class="btn btn-ghost">← Games</div></div>
+      <div class="btn-row"><div class="btn btn-danger">Abort</div><div class="btn btn-ghost" style="color:var(--rupture);border-color:rgba(212,160,44,.4)">Rupture</div></div>
+    </div>
+  </div>
+</body></html>

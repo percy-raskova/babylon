@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Colors · Data Ramps — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  .ramp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .ramp{background:var(--concrete);border:1px solid var(--rebar);border-radius:4px;padding:12px 14px}
+  .ramp-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .ramp-name{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--bone);letter-spacing:.18em;text-transform:uppercase}
+  .ramp-job{font-size:10px;color:var(--ash)}
+  .ramp-bar{display:flex;height:22px;border-radius:2px;overflow:hidden}
+  .ramp-bar > div{flex:1}
+  .ramp-scale{display:flex;justify-content:space-between;margin-top:5px;font-family:var(--mono);font-size:8.5px;color:var(--ash);letter-spacing:.1em}
+  .principle{
+    background:var(--tar);border:1px solid var(--rebar);border-left:2px solid var(--spire);
+    border-radius:0 4px 4px 0;padding:12px 14px;font-size:11px;color:var(--fog);line-height:1.55;margin-bottom:14px;
+  }
+  .principle strong{color:var(--bone)}
+  .principle code{font-family:var(--mono);font-size:10px;color:var(--spire);background:rgba(77,217,230,.06);padding:1px 5px;border-radius:2px}
+</style></head>
+<body>
+  <div class="header">
+    <div>
+      <div class="header-title">DATA · <em>LUMINANCE-MONOTONIC RAMPS</em></div>
+      <div style="font-size:11px;color:var(--fog);margin-top:4px">Magnitude by lightness. Hue carries semantic flavor only. No rainbows.</div>
+    </div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="principle">
+    <strong>Tufte discipline:</strong> a single hue family per ramp; lightness alone encodes magnitude. The eye reads ordinal jumps that match the underlying linear data. No more <code>dark-purple → crimson → gold</code> rainbow scales.
+  </div>
+
+  <div class="section-label">Map Layers <span class="tag">6 RAMPS</span></div>
+  <div class="ramp-grid">
+    <div class="ramp">
+      <div class="ramp-head"><span class="ramp-name">HEAT</span><span class="ramp-job">Surveillance pressure</span></div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016"></div><div style="background:#3a3530"></div>
+        <div style="background:#7a4720"></div><div style="background:#b8581f"></div>
+        <div style="background:#d97a2c"></div><div style="background:#ff3344"></div>
+      </div>
+      <div class="ramp-scale"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+    </div>
+    <div class="ramp">
+      <div class="ramp-head"><span class="ramp-name">CONSCIOUSNESS</span><span class="ramp-job">Awakening — ends in glow</span></div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016"></div><div style="background:#1f2c3d"></div>
+        <div style="background:#345670"></div><div style="background:#4a86a0"></div>
+        <div style="background:#6bbcc8"></div><div style="background:#4dd9e6"></div>
+      </div>
+      <div class="ramp-scale"><span>dormant</span><span>stirring</span><span>awake</span></div>
+    </div>
+    <div class="ramp">
+      <div class="ramp-head"><span class="ramp-name">RENT</span><span class="ramp-job">Extraction → violence</span></div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016"></div><div style="background:#2e2236"></div>
+        <div style="background:#56356b"></div><div style="background:#8b4d9e"></div>
+        <div style="background:#a83a78"></div><div style="background:#b8321f"></div>
+      </div>
+      <div class="ramp-scale"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+    </div>
+    <div class="ramp">
+      <div class="ramp-head"><span class="ramp-name">BIOCAPACITY</span><span class="ramp-job">Diverging — depleted ↔ healthy</span></div>
+      <div class="ramp-bar">
+        <div style="background:#b8321f"></div><div style="background:#7a3525"></div>
+        <div style="background:#3d4250"></div><div style="background:#3a6b48"></div>
+        <div style="background:#5fbf7a"></div>
+      </div>
+      <div class="ramp-scale"><span>collapse</span><span>neutral</span><span>regenerate</span></div>
+    </div>
+    <div class="ramp">
+      <div class="ramp-head"><span class="ramp-name">WEALTH</span><span class="ramp-job">Ends at scarcity-gold</span></div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016"></div><div style="background:#2a251f"></div>
+        <div style="background:#4d3f28"></div><div style="background:#8a6a2a"></div>
+        <div style="background:#d4a02c"></div>
+      </div>
+      <div class="ramp-scale"><span>destitute</span><span>—</span><span>hoarded</span></div>
+    </div>
+    <div class="ramp">
+      <div class="ramp-head"><span class="ramp-name">POPULATION</span><span class="ramp-job">Single hue, lightness only</span></div>
+      <div class="ramp-bar">
+        <div style="background:#0d1016"></div><div style="background:#23223a"></div>
+        <div style="background:#3d3868"></div><div style="background:#5a4f95"></div>
+        <div style="background:#7a6db8"></div><div style="background:#a89dd0"></div>
+      </div>
+      <div class="ramp-scale"><span>sparse</span><span>—</span><span>dense</span></div>
+    </div>
+  </div>
+</body></html>

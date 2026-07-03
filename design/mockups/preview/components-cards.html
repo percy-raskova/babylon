@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Components · Cards — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  body{display:block}
+  .grid{display:grid;grid-template-columns:1.2fr .9fr 1fr;gap:10px;align-items:stretch}
+  .card{background:var(--concrete);border:1px solid var(--rebar);border-radius:6px;padding:14px;transition:border-color .2s}
+  .card:hover{border-color:var(--spire)}
+  .row-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .game-title{font-size:14px;font-weight:600;color:var(--bone)}
+  .status{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.18em}
+  .status.active{color:var(--solidarity)}
+  .game-sub{display:flex;justify-content:space-between;font-size:11px;color:var(--fog);font-family:var(--mono)}
+  .divider{border:none;border-top:1px solid var(--rebar);margin:10px 0}
+  .label{font-family:var(--mono);font-size:9px;letter-spacing:.25em;text-transform:uppercase;color:var(--ash)}
+  .data-val{font-family:var(--mono);font-size:13px;font-weight:600}
+  .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:9999px;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;border:1px solid}
+  .b-cadre{color:var(--cadre);background:rgba(107,143,181,.1);border-color:rgba(107,143,181,.4)}
+  .b-solid{color:var(--solidarity);background:rgba(95,191,122,.1);border-color:rgba(95,191,122,.4)}
+  .b-rupture{color:var(--rupture);background:rgba(212,160,44,.1);border-color:rgba(212,160,44,.4)}
+  .row-data{display:flex;justify-content:space-between;align-items:center;padding:4px 0}
+</style></head>
+<body>
+  <div class="header">
+    <div><div class="header-title">COMPONENTS · <em>CARDS</em></div>
+    <div style="font-size:11px;color:var(--fog);margin-top:4px">Game · Metric · Dialectic — semantic colors per row</div></div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="row-top"><span class="game-title">wayne_county</span><span class="status active">● ACTIVE</span></div>
+      <div class="game-sub"><span>Tick 14</span><span>wayne-co...</span></div>
+      <hr class="divider">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="badge b-cadre">Proletarian</span>
+        <span class="badge b-solid">P(S|R) Rising</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label" style="margin-bottom:8px">Contradiction Field</div>
+      <div class="row-data"><span style="font-size:11px;color:var(--fog)">Imperial Rent</span><span class="data-val" style="color:var(--rent)">0.342</span></div>
+      <div class="row-data"><span style="font-size:11px;color:var(--fog)">Consciousness</span><span class="data-val" style="color:var(--cadre)">0.218</span></div>
+      <div class="row-data"><span style="font-size:11px;color:var(--fog)">Solidarity</span><span class="data-val" style="color:var(--solidarity)">0.561</span></div>
+      <div class="row-data"><span style="font-size:11px;color:var(--fog)">Heat</span><span class="data-val" style="color:var(--heat)">0.714</span></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span class="badge b-rupture">COMMODITY</span>
+        <span class="label">Pole A</span>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span class="label">Weight</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--rupture)">74%</span>
+        </div>
+        <div style="height:5px;background:var(--void);border-radius:9999px;overflow:hidden">
+          <div style="height:100%;width:74%;background:var(--rupture);box-shadow:0 0 8px rgba(212,160,44,.4)"></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--rebar);padding-top:8px;display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span class="label">exchange_rate</span><span style="font-family:var(--mono);color:var(--spire);font-weight:600">2.140</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span class="label">surplus_value</span><span style="font-family:var(--mono);color:var(--spire);font-weight:600">0.891</span></div>
+      </div>
+      <div style="margin-top:8px;display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--shroud)">
+        <span>t=42</span><span>a3f9b2d1</span>
+      </div>
+    </div>
+  </div>
+</body></html>

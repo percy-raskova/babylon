@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Components · Badges — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:9999px;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;border:1px solid}
+  .b-spire{color:var(--spire);background:rgba(77,217,230,.08);border-color:rgba(77,217,230,.4)}
+  .b-laser{color:var(--laser);background:rgba(255,51,68,.08);border-color:rgba(255,51,68,.4)}
+  .b-thermal{color:var(--thermal);background:rgba(184,50,31,.1);border-color:rgba(184,50,31,.5)}
+  .b-rupture{color:var(--rupture);background:rgba(212,160,44,.08);border-color:rgba(212,160,44,.4)}
+  .b-solid{color:var(--solidarity);background:rgba(95,191,122,.08);border-color:rgba(95,191,122,.4)}
+  .b-cadre{color:var(--cadre);background:rgba(107,143,181,.08);border-color:rgba(107,143,181,.4)}
+  .b-rent{color:var(--rent);background:rgba(139,77,158,.08);border-color:rgba(139,77,158,.4)}
+  .b-heat{color:var(--heat);background:rgba(217,122,44,.08);border-color:rgba(217,122,44,.4)}
+  .b-pop{color:var(--population);background:rgba(122,109,184,.08);border-color:rgba(122,109,184,.4)}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--concrete);border:1px solid var(--rebar);border-radius:4px;padding:5px 11px}
+  .chip-label{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--fog)}
+  .chip-val{font-family:var(--mono);font-size:12px;font-weight:600}
+  .notif{display:inline-flex;align-items:center;justify-content:center;background:var(--laser);color:var(--void);border-radius:9999px;min-width:20px;height:20px;padding:0 6px;font-family:var(--mono);font-size:10px;font-weight:700;box-shadow:0 0 10px rgba(255,51,68,.4)}
+  .lens{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:5px 12px;border-radius:3px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .lens.active{background:rgba(77,217,230,.1);color:var(--spire);border-bottom:1px solid var(--spire)}
+  .lens.inactive{color:var(--ash)}
+  .lens.inactive:hover{color:var(--fog)}
+</style></head>
+<body>
+  <div class="header">
+    <div><div class="header-title">COMPONENTS · <em>BADGES & CHIPS</em></div>
+    <div style="font-size:11px;color:var(--fog);margin-top:4px">Status badges · indicator chips · lens tabs</div></div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="section-label">Status Badges <span class="tag">SEMANTIC VERBS</span></div>
+  <div class="row">
+    <span class="badge b-spire">● ACTIVE</span>
+    <span class="badge b-laser">▲ HOSTILE</span>
+    <span class="badge b-thermal">✕ CRITICAL</span>
+    <span class="badge b-heat">▴ WARNING</span>
+    <span class="badge b-rupture">★ RUPTURE</span>
+    <span class="badge b-solid">✓ STABLE</span>
+    <span class="badge b-cadre">◇ CADRE</span>
+    <span class="badge b-rent">◆ RENT</span>
+    <span class="badge b-pop">◉ POP</span>
+    <div class="notif">3</div>
+    <div class="notif">99+</div>
+  </div>
+
+  <div class="section-label">Indicator Chips</div>
+  <div class="row">
+    <div class="chip"><span class="chip-label">HEAT</span><span class="chip-val" style="color:var(--heat)">71%</span></div>
+    <div class="chip"><span class="chip-label">CL</span><span class="chip-val" style="color:var(--cadre)">8.4</span></div>
+    <div class="chip"><span class="chip-label">REP</span><span class="chip-val" style="color:var(--solidarity)">63%</span></div>
+    <div class="chip"><span class="chip-label">RENT</span><span class="chip-val" style="color:var(--rent)">0.342</span></div>
+    <div class="chip"><span class="chip-label">TICK</span><span class="chip-val" style="color:var(--spire);font-size:14px">0042</span></div>
+  </div>
+
+  <div class="section-label">Lens Tabs</div>
+  <div class="row" style="border-bottom:1px solid var(--rebar);padding-bottom:0;margin-bottom:0">
+    <div class="lens active"><span style="color:var(--spire)">■</span> Economic</div>
+    <div class="lens inactive"><span>■</span> Political</div>
+    <div class="lens inactive"><span>■</span> Social</div>
+    <div class="lens inactive"><span>■</span> Strategic</div>
+  </div>
+</body></html>

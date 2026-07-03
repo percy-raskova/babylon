@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Type · Scale — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  .scale-row{
+    display:grid;grid-template-columns:120px 1fr 60px 90px;
+    align-items:baseline;gap:16px;padding:10px 0;border-bottom:1px solid var(--rebar);
+  }
+  .scale-row:last-child{border-bottom:none}
+  .scale-label{font-family:var(--mono);font-size:9px;color:var(--ash);letter-spacing:.22em;text-transform:uppercase}
+  .scale-size{font-family:var(--mono);font-size:9px;color:var(--shroud);text-align:right}
+  .scale-token{font-family:var(--mono);font-size:9px;color:var(--spire-dim);letter-spacing:.1em}
+</style></head>
+<body>
+  <div class="header">
+    <div>
+      <div class="header-title">TYPE · <em>SCALE</em></div>
+      <div style="font-size:11px;color:var(--fog);margin-top:4px">Space Grotesk for chrome · JetBrains Mono for data · Major Mono for display moments</div>
+    </div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="scale-row">
+    <span class="scale-label">H1 / Brand</span>
+    <span style="font-family:var(--sans);font-size:32px;font-weight:700;color:var(--bone);letter-spacing:.25em;text-transform:uppercase">BAB<span style="color:var(--spire);text-shadow:0 0 12px rgba(77,217,230,.5)">Y</span>LON</span>
+    <span class="scale-size">32px</span>
+    <span class="scale-token">--text-3xl</span>
+  </div>
+  <div class="scale-row">
+    <span class="scale-label">H2</span>
+    <span style="font-family:var(--sans);font-size:24px;font-weight:600;color:var(--bone)">Your Games</span>
+    <span class="scale-size">24px</span>
+    <span class="scale-token">--text-2xl</span>
+  </div>
+  <div class="scale-row">
+    <span class="scale-label">H3 / Section</span>
+    <span style="font-family:var(--sans);font-size:18px;font-weight:600;color:var(--spire);letter-spacing:.08em;text-transform:uppercase">TOPOLOGY</span>
+    <span class="scale-size">18px</span>
+    <span class="scale-token">--text-xl</span>
+  </div>
+  <div class="scale-row">
+    <span class="scale-label">Body</span>
+    <span style="font-family:var(--sans);font-size:13px;color:var(--bone)">Organize in Wayne County, Michigan.</span>
+    <span class="scale-size">13px</span>
+    <span class="scale-token">--text-base</span>
+  </div>
+  <div class="scale-row">
+    <span class="scale-label">Small</span>
+    <span style="font-family:var(--sans);font-size:11px;color:var(--fog)">Tick 42 · wayne-county-001</span>
+    <span class="scale-size">11px</span>
+    <span class="scale-token">--text-sm</span>
+  </div>
+  <div class="scale-row">
+    <span class="scale-label">Label</span>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--fog);letter-spacing:.3em;text-transform:uppercase">CADRE LABOR</span>
+    <span class="scale-size">10px</span>
+    <span class="scale-token">--text-xs</span>
+  </div>
+  <div class="scale-row">
+    <span class="scale-label">Mono / Tick</span>
+    <span style="font-family:var(--mono);font-size:24px;font-weight:700;color:var(--spire);text-shadow:0 0 12px rgba(77,217,230,.4)">0042</span>
+    <span class="scale-size">24px</span>
+    <span class="scale-token">tick counter</span>
+  </div>
+  <div class="scale-row">
+    <span class="scale-label">Mono / ID</span>
+    <span style="font-family:var(--mono);font-size:11px;color:var(--ash)">wayne-county-001</span>
+    <span class="scale-size">11px</span>
+    <span class="scale-token">--data-size</span>
+  </div>
+  <div class="scale-row">
+    <span class="scale-label">Display / Pixel</span>
+    <span style="font-family:var(--pixel);font-size:32px;color:var(--spire);text-shadow:0 0 8px rgba(77,217,230,.5)">TICK 0042</span>
+    <span class="scale-size">32px</span>
+    <span class="scale-token">--font-pixel</span>
+  </div>
+</body></html>

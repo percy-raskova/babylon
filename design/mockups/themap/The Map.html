@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Babylon — The Map · spec-070 Balkanization</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --font-sans: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    /* Substrate */
+    --void: #06070b;
+    --tar: #0d1016;
+    --concrete: #11141c;
+    --rebar: #1a1f2a;
+    --wet-steel: #28303d;
+    --rust: #3a3530;
+
+    /* Emissions */
+    --bone: #d8dce0;
+    --fog: #8a93a0;
+    --ash: #5e6470;
+    --shroud: #3d4250;
+
+    /* Semantic */
+    --spire: #4dd9e6;
+    --laser: #ff3344;
+    --thermal: #b8321f;
+    --rupture: #d4a02c;
+    --cadre: #6b8fb5;
+    --solidarity: #5fbf7a;
+    --heat: #d97a2c;
+    --population: #7a6db8;
+  }
+  html, body { height: 100%; background: #06070b; font-family: var(--font-sans); color: var(--bone); overflow: hidden; }
+  #root { min-height: 100%; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--void); }
+  ::-webkit-scrollbar-thumb { background: var(--wet-steel); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ash); }
+
+  /* Override design-canvas's warm-gray bg with the bunker palette */
+  body.themap { background: #06070b; }
+</style>
+</head>
+<body class="themap">
+<div id="root"></div>
+
+<script type="text/babel" src="map-data.jsx"></script>
+<script type="text/babel" src="map-canvas.jsx"></script>
+<script type="text/babel" src="map-shell.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "stancePalette": "blood-blue-phosphor",
+  "influenceMode": "concentric-rings",
+  "showBoundaries": true,
+  "showRings": true,
+  "showContested": true,
+  "showStateLines": true,
+  "showCities": true,
+  "scanlines": true
+}/*EDITMODE-END*/;
+
+function App() {
+  const t = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <>
+      <DesignCanvas style={{ background: "#06070b" }}>
+        <DCSection id="cockpit" title="The Map · spec-070 Balkanization"
+          subtitle="Continental US, post-collapse · 4 lens treatments · click hexes, switch lenses, pan inside any artboard · focus an artboard to view fullscreen">
+
+          <DCArtboard id="v1" label="A · Stance Lens · default Cockpit" width={1440} height={880}>
+            <MapShell variant="stance" initialLens="stance"
+              showStateLines={t.t.showStateLines}
+              showRings={t.t.showRings}
+              showBoundaries={t.t.showBoundaries}
+              showContested={t.t.showContested}/>
+          </DCArtboard>
+
+          <DCArtboard id="v2" label="B · Heat Lens · state attention" width={1440} height={880}>
+            <MapShell variant="heat" initialLens="heat"
+              showStateLines={t.t.showStateLines}
+              showRings={false}
+              showBoundaries={false}
+              showContested={t.t.showContested}/>
+          </DCArtboard>
+
+          <DCArtboard id="v3" label="C · Faction Filter · Decolonial Front" width={1440} height={880}>
+            <MapShell variant="faction" initialLens="faction"
+              initialFactionFilter="FAC_DECOLONIAL"
+              showStateLines={t.t.showStateLines}
+              showRings={false}
+              showBoundaries={true}
+              showContested={false}/>
+          </DCArtboard>
+
+          <DCArtboard id="v4" label="D · Collapse Moment · live transition" width={1440} height={880}>
+            <MapShell variant="collapse" initialLens="collapse"
+              initialSelectedHex={HEXES.find(h => h.contested && h.region_id === "MTNS")}
+              showStateLines={t.t.showStateLines}
+              showRings={t.t.showRings}
+              showBoundaries={t.t.showBoundaries}
+              showContested={true}/>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Map Tweaks">
+        <TweakSection title="Encoding">
+          <TweakRadio label="Stance palette" value={t.t.stancePalette}
+            options={[
+              { value: "blood-blue-phosphor", label: "Blood · Blue · Phosphor" },
+              { value: "void-purple-gold", label: "Void · Purple · Gold" },
+              { value: "crimson-gold-green", label: "Crimson · Gold · Green" },
+            ]}
+            onChange={v => t.setTweak("stancePalette", v)}/>
+          <TweakRadio label="Influence rendering" value={t.t.influenceMode}
+            options={[
+              { value: "concentric-rings", label: "Concentric rings" },
+              { value: "dominant-only", label: "Dominant only" },
+              { value: "wedge", label: "Pie wedge" },
+            ]}
+            onChange={v => t.setTweak("influenceMode", v)}/>
+        </TweakSection>
+
+        <TweakSection title="Layers">
+          <TweakToggle label="Sovereign boundary lines" value={t.t.showBoundaries}
+            onChange={v => t.setTweak("showBoundaries", v)}/>
+          <TweakToggle label="Influence rings" value={t.t.showRings}
+            onChange={v => t.setTweak("showRings", v)}/>
+          <TweakToggle label="Contested flicker" value={t.t.showContested}
+            onChange={v => t.setTweak("showContested", v)}/>
+          <TweakToggle label="State outlines" value={t.t.showStateLines}
+            onChange={v => t.setTweak("showStateLines", v)}/>
+          <TweakToggle label="City labels" value={t.t.showCities}
+            onChange={v => t.setTweak("showCities", v)}/>
+          <TweakToggle label="CRT scanlines" value={t.t.scanlines}
+            onChange={v => t.setTweak("scanlines", v)}/>
+        </TweakSection>
+
+        <TweakSection title="Notes">
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fog)", lineHeight: 1.5, padding: "0 2px" }}>
+            <p style={{ marginBottom: 8 }}>The map reads <em>completely</em> differently with boundaries off vs on. Try toggling.</p>
+            <p style={{ color: "var(--ash)", fontStyle: "italic" }}>"You cannot build socialism on stolen land."</p>
+          </div>
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+/* Babylon Cold Collapse — preview shared tokens (Constitution VIII) */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Major+Mono+Display&family=VT323&display=swap');
+
+:root {
+  --void:#06070b; --tar:#0d1016; --concrete:#11141c; --rebar:#1a1f2a;
+  --wet-steel:#28303d; --rust:#3a3530;
+  --bone:#d8dce0; --fog:#8a93a0; --ash:#5e6470; --shroud:#3d4250;
+  --spire:#4dd9e6; --spire-dim:#2a8a93;
+  --laser:#ff3344; --thermal:#b8321f; --rupture:#d4a02c;
+  --cadre:#6b8fb5; --solidarity:#5fbf7a; --rent:#8b4d9e;
+  --heat:#d97a2c; --population:#7a6db8;
+
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Space Grotesk',system-ui,sans-serif;
+  --display:'Major Mono Display','Space Grotesk',sans-serif;
+  --pixel:'VT323',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--void);color:var(--bone);
+  font-family:var(--sans);padding:18px;font-size:13px;line-height:1.4;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(77,217,230,0.03), transparent 70%),
+    radial-gradient(ellipse 60% 80% at 100% 100%, rgba(255,51,68,0.02), transparent 70%);
+}
+.section-label{
+  font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.32em;
+  text-transform:uppercase;color:var(--ash);margin:20px 0 10px;
+  display:flex;align-items:center;gap:10px;
+}
+.section-label:first-of-type{margin-top:0}
+.section-label::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--rebar),transparent)}
+.section-label .tag{
+  font-size:9px;color:var(--spire);border:1px solid var(--spire-dim);
+  border-radius:2px;padding:1px 6px;letter-spacing:.18em;
+}
+
+/* swatch primitives */
+.row{display:flex;gap:6px;flex-wrap:wrap}
+.swatch{flex:1;min-width:96px;border-radius:4px;overflow:hidden}
+.swatch-color{height:56px;border-radius:4px 4px 0 0;position:relative}
+.swatch-info{
+  background:var(--concrete);padding:7px 9px 8px;
+  border:1px solid var(--rebar);border-top:none;border-radius:0 0 4px 4px;
+}
+.swatch-name{
+  font-family:var(--mono);font-size:9px;color:var(--fog);
+  letter-spacing:.16em;text-transform:uppercase;display:block;margin-bottom:2px;
+}
+.swatch-hex{font-family:var(--mono);font-size:11px;color:var(--bone);font-weight:600;display:block}
+.swatch-job{font-size:10px;color:var(--ash);margin-top:4px;display:block;line-height:1.3}
+
+.header{
+  border-bottom:1px solid var(--rebar);padding-bottom:12px;margin-bottom:18px;
+  display:flex;justify-content:space-between;align-items:flex-end;
+}
+.header-title{font-size:18px;font-weight:700;letter-spacing:.18em}
+.header-title em{color:var(--spire);font-style:normal;text-shadow:0 0 12px rgba(77,217,230,.4)}
+.header-sub{
+  font-family:var(--mono);font-size:10px;color:var(--ash);
+  letter-spacing:.1em;text-transform:uppercase;
+}

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Babylon — Community Hypergraphs · Article VIII.9</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --font-sans: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    /* Substrate */
+    --void: #06070b;
+    --tar: #0d1016;
+    --concrete: #11141c;
+    --rebar: #1a1f2a;
+    --wet-steel: #28303d;
+    --rust: #3a3530;
+
+    /* Emissions */
+    --bone: #d8dce0;
+    --fog: #8a93a0;
+    --ash: #5e6470;
+    --shroud: #3d4250;
+
+    /* Semantic */
+    --spire: #4dd9e6;
+    --laser: #ff3344;
+    --thermal: #b8321f;
+    --rupture: #d4a02c;
+    --cadre: #6b8fb5;
+    --solidarity: #5fbf7a;
+    --heat: #d97a2c;
+    --population: #7a6db8;
+  }
+  html, body { height: 100%; background: #06070b; font-family: var(--font-sans); color: var(--bone); overflow: hidden; }
+  #root { min-height: 100%; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--void); }
+  ::-webkit-scrollbar-thumb { background: var(--wet-steel); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ash); }
+  body.community { background: #06070b; }
+</style>
+</head>
+<body class="community">
+<div id="root"></div>
+
+<script type="text/babel" src="map-data.jsx"></script>
+<script type="text/babel" src="community-data.jsx"></script>
+<script type="text/babel" src="view-shared.jsx"></script>
+<script type="text/babel" src="view-upset.jsx"></script>
+<script type="text/babel" src="view-topology.jsx"></script>
+<script type="text/babel" src="view-matrix.jsx"></script>
+<script type="text/babel" src="view-choropleth.jsx"></script>
+<script type="text/babel" src="view-inspector.jsx"></script>
+<script type="text/babel" src="view-educate.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "showCRT": true,
+  "showAnnotations": true,
+  "intersectionCount": 16,
+  "highlightSalient": true
+}/*EDITMODE-END*/;
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <>
+      <DesignCanvas style={{ background: "#06070b" }}>
+        <DCSection id="hypergraph"
+          title="Community Hypergraphs · Article VIII.9"
+          subtitle={
+            "Six renderings: UpSet for intersections, BubbleSets for topology, " +
+            "heatmap for magnitudes, choropleth + badges + verb-picker for product surfaces."
+          }>
+
+          <DCArtboard id="upset" label="A · UpSet · /analysis · intersection cardinalities"
+            width={1440} height={880}>
+            <UpsetView/>
+          </DCArtboard>
+
+          <DCArtboard id="topology" label="B · Topological Hypergraph · BubbleSets hulls · set-structure made visible"
+            width={1440} height={880}>
+            <TopologyView/>
+          </DCArtboard>
+
+          <DCArtboard id="matrix" label="C · Co-occurrence Heatmap · pairwise overlap magnitudes"
+            width={1440} height={880}>
+            <MatrixView/>
+          </DCArtboard>
+
+          <DCArtboard id="choropleth" label="D · Choropleth · /games/:id Map · dominant composition (no hulls)"
+            width={1440} height={880}>
+            <ChoroplethView/>
+          </DCArtboard>
+
+          <DCArtboard id="inspector" label="E · Inspector · /intel/territory/:id · composition badges"
+            width={1440} height={880}>
+            <InspectorView/>
+          </DCArtboard>
+
+          <DCArtboard id="educate" label="F · Verb Page · /actions/educate · hyperedge target"
+            width={1440} height={880}>
+            <EducateView/>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Hypergraph Tweaks">
+        <TweakSection label="UpSet plot">
+          <TweakSlider label="Visible intersections" value={t.intersectionCount}
+            min={6} max={20} step={1}
+            onChange={v => setTweak("intersectionCount", v)}/>
+          <TweakToggle label="Mark salient intersections" value={t.highlightSalient}
+            onChange={v => setTweak("highlightSalient", v)}/>
+        </TweakSection>
+
+        <TweakSection label="Atmosphere">
+          <TweakToggle label="CRT scanlines" value={t.showCRT}
+            onChange={v => setTweak("showCRT", v)}/>
+          <TweakToggle label="Constitution banners" value={t.showAnnotations}
+            onChange={v => setTweak("showAnnotations", v)}/>
+        </TweakSection>
+
+        <TweakSection label="Article VIII.9">
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fog)",
+            lineHeight: 1.55, padding: "0 2px" }}>
+            <p style={{ marginBottom: 8 }}>
+              Three legitimate renderings, one per artboard:
+              <br/>· Choropleth · Badges · UpSet
+            </p>
+            <p style={{ marginBottom: 8, color: "var(--shroud)" }}>
+              Anti-patterns avoided:
+              <br/>· No pairwise edges org→members
+              <br/>· No spatial hulls over members
+            </p>
+            <p style={{ color: "var(--ash)", fontStyle: "italic" }}>
+              "Hypergraphs aren't spatial. They are membership."
+            </p>
+          </div>
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

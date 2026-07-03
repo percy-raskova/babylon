@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Components · Inputs — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  body{display:block}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .col{display:flex;flex-direction:column;gap:10px}
+  .label{font-family:var(--mono);font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--fog);margin-bottom:5px;display:block}
+  .input,.select{width:100%;background:var(--void);border:1px solid var(--wet-steel);border-radius:4px;padding:10px 14px;font-family:var(--sans);font-size:13px;color:var(--bone);outline:none;transition:border-color .15s}
+  .input:focus,.select:focus{border-color:var(--spire);box-shadow:0 0 0 3px rgba(77,217,230,.1)}
+  .input::placeholder{color:var(--ash)}
+  .input.error{border-color:var(--laser)}
+  .error-text{font-family:var(--mono);font-size:10px;color:var(--laser);letter-spacing:.1em;text-transform:uppercase}
+  .checkbox-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--fog)}
+  input[type=checkbox]{accent-color:var(--spire);width:13px;height:13px}
+</style></head>
+<body>
+  <div class="header">
+    <div><div class="header-title">COMPONENTS · <em>INPUTS</em></div>
+    <div style="font-size:11px;color:var(--fog);margin-top:4px">Spire focus rings · laser error states</div></div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="grid">
+    <div class="col">
+      <div class="section-label">Text Inputs</div>
+      <div><label class="label">Username</label><input class="input" type="text" value="percy_organizer"></div>
+      <div><label class="label">Password</label><input class="input" type="password" value="••••••••"></div>
+      <div><label class="label">Failed login</label><input class="input error" type="text" value="wrong"><span class="error-text" style="margin-top:6px;display:block">✕ Login failed — invalid credentials</span></div>
+    </div>
+    <div class="col">
+      <div class="section-label">Selects & Checks</div>
+      <div><label class="label">Scenario</label>
+        <select class="select"><option>Wayne County Organizer</option><option>United States — Nationwide</option></select></div>
+      <div><label class="label">Organization</label>
+        <select class="select"><option>Wayne County Labor Federation</option></select></div>
+      <div><label class="label">Indicators</label>
+        <label class="checkbox-row"><input type="checkbox" checked> <span style="color:var(--bone)">Imperial Rent Rate</span></label>
+        <label class="checkbox-row" style="margin-top:5px"><input type="checkbox" checked> <span style="color:var(--bone)">Solidarity Index</span></label>
+        <label class="checkbox-row" style="margin-top:5px"><input type="checkbox"> Consciousness Level</label>
+        <label class="checkbox-row" style="margin-top:5px"><input type="checkbox"> Heat Pressure</label>
+      </div>
+    </div>
+  </div>
+</body></html>

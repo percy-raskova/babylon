@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Components · Resource Panel — Cold Collapse</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+  body{display:block}
+  .panel{background:var(--concrete);border:1px solid var(--rebar);border-radius:6px;padding:14px}
+  .panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--rebar)}
+  .org-name{font-size:14px;font-weight:600;color:var(--bone)}
+  .org-type{font-family:var(--mono);font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--ash)}
+  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  .gauge{display:flex;flex-direction:column;gap:5px}
+  .gauge-top{display:flex;justify-content:space-between;align-items:baseline}
+  .gauge-label{font-family:var(--mono);font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--ash)}
+  .gauge-val{font-family:var(--mono);font-size:13px;font-weight:600}
+  .gauge-bar{height:4px;background:var(--void);border-radius:9999px;overflow:hidden}
+  .gauge-fill{height:100%;border-radius:9999px}
+  .stat{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px;background:var(--void);border-radius:4px;border:1px solid var(--rebar)}
+  .stat-val{font-family:var(--mono);font-size:18px;font-weight:700}
+</style></head>
+<body>
+  <div class="header">
+    <div><div class="header-title">COMPONENTS · <em>RESOURCE PANEL</em></div>
+    <div style="font-size:11px;color:var(--fog);margin-top:4px">Org gauges — semantic colors per resource verb</div></div>
+    <div class="header-sub">CONST · VIII</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="org-name">Wayne County Labor Federation</span>
+      <span class="org-type">civil_society_org</span>
+    </div>
+    <div class="grid">
+      <div class="gauge">
+        <div class="gauge-top"><span class="gauge-label">CL</span><span class="gauge-val" style="color:var(--cadre)">8.4</span></div>
+        <div class="gauge-bar"><div class="gauge-fill" style="width:70%;background:var(--cadre)"></div></div>
+      </div>
+      <div class="gauge">
+        <div class="gauge-top"><span class="gauge-label">SL</span><span class="gauge-val" style="color:var(--solidarity)">24.1</span></div>
+        <div class="gauge-bar"><div class="gauge-fill" style="width:55%;background:var(--solidarity)"></div></div>
+      </div>
+      <div class="stat"><span class="gauge-label">REP</span><span class="stat-val" style="color:var(--solidarity)">63%</span></div>
+      <div class="stat"><span class="gauge-label">$$$</span><span class="stat-val" style="color:var(--rupture)">$142</span></div>
+      <div class="stat"><span class="gauge-label">HEAT</span><span class="stat-val" style="color:var(--heat)">71%</span></div>
+    </div>
+  </div>
+</body></html>

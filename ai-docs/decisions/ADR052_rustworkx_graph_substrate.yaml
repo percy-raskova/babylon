@@ -87,6 +87,15 @@ adr_052_rustworkx_graph_substrate:
       test_graph_iteration_order.py: churn tests + a Hypothesis model test
       over arbitrary bounded add/remove interleavings, differential against
       a real nx.DiGraph oracle (deliberately retained in that file).
+    Post-cutover full-regeneration check (2026-07-03, the Phase-8
+    acceptance run): regenerating michigan-e2e.json on rustworkx vs the
+    NetworkX-era file shows ONLY run metadata (session_id, wallclocks)
+    plus <=1-ULP accumulation drift in three grand totals (total_v/s/k
+    differ in the 16th significant digit — relative ~3e-16 after 43M
+    hex-writes). The five scenario baselines byte-compare identically;
+    the event stream and per-field semantic gate are Delta=0.000%.
+    "Byte-identical" therefore holds for everything except last-ULP
+    float accumulation in whole-run aggregate sums.
     One pre-existing baseline staleness was found and fixed en route: the
     dialectics E2 define (tension.regime_rate_epsilon) had changed
     defines_hash after the baselines were last generated; they were

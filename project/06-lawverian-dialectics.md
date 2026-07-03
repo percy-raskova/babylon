@@ -172,6 +172,7 @@ balance=0, unique-key validation, purity (same inputs → same states).
    ratio via sigmoid or ratio-normalization — NOT raw dollars), explicit
    decay term, doctests. Old `calculate_contradiction_intensity` retired
    (update the 3 callers + formula registry if listed).
+
 1. Registry content: the 24-opposition catalog lifted from dormant
    `engine/dialectics/` (its `registry.py:118-149` lists them; its
    `crises.py:6-11` maps crisis producers; its motion laws name the
@@ -180,23 +181,46 @@ balance=0, unique-key validation, purity (same inputs → same states).
    atomization (Phase B cylinder), plus the frame-level
    imperial (core↔periphery) — full 24 as data allows; unbound specs may
    register with a null measure that reads 0 (documented).
+
 1. `ServiceContainer.create` wires the registry by default (replaces
    `field_registry=None`); ContradictionSystem computes registry.step per
    tick and writes states into `contradiction_frames` (existing
    `Contradiction` model, field mapping per §3); FieldDerivativeSystem's
    derivative machinery repoints at gap trajectories; EdgeTransitionSystem
    predicates read gaps (Aufhebung conditions arrive in Phase E).
+
 1. Bridge `persist_tick` calls `persist_contradiction_fields` with the
    per-tick registry snapshot → `contradiction_field` rows flow.
+
 1. Consumers (same phase, non-negotiable): bourgeois decision takes the
    EXPLOITATION opposition's gap instead of degenerate aggregate tension
    (`economic.py:762-790`); StruggleSystem's rupture check reads that gap;
    ConsciousnessSystem agitation reads gap rates (keep crisis-gating:
    only DETERIORATION generates agitation).
+
 1. Retire dormant `engine/dialectics/` (delete package + shim imports);
    migrate its ~224 tests' behavioral intents into the new instances'
    suites (the Grundrisse 10-tick cycle becomes a registry integration
    test); document in the ADR.
+
+   **Done (C1.7, 2026-07-03).** Deleted the dormant package (31 modules) and
+   its only non-test consumer — the `/v2` dialectic web surface
+   (`web/game/repositories.py`; the `/v2/world/` + `/v2/dialectics/<id>/`
+   routes in `web/game/api.py`; their `web/game/urls.py` registrations;
+   `web/frontend/src/types/dialectic.ts` + `components/DialecticCard.tsx`).
+   Postgres tables and migrations 0004/0005 kept — no migration written or
+   deleted; no web test exercised the routes. All 224 dormant tests are
+   catalogued in `project/c17-test-migration-ledger.md` — **17 covered / 20
+   migrated / 187 obsolete-by-design**. The 20 migrated intents became **22
+   new tests**: 15 in `tests/unit/economics/test_value.py` (the surviving
+   `economics.value` poles, otherwise uncovered) and 7 in
+   `tests/integration/test_grundrisse_cycle.py` (the Grundrisse arc:
+   multi-tick step, gap/rate evolution, principal selection, rupture gating).
+   The ADR is deferred to Phase E per §7 — this note plus the ledger stand in.
+   Now-orphaned dead code flagged for the owner (not deleted, out of scope):
+   `babylon.economics.value` and three unused v2 serializers in
+   `web/game/serializers.py`.
+
 1. Margins: update `tests/assertions.py` tolerances only where semantics
    changed; `tests/constants.py` tension bands → gap bands; regenerate the
    5 small baselines (`mise run qa:regression-generate`); fix exact-number

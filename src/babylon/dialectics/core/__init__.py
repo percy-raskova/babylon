@@ -15,6 +15,7 @@ from babylon.dialectics.core.opposition import (
     OppositionRegistry,
     OppositionSpec,
     OppositionState,
+    PoleBinding,
 )
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "OppositionRegistry",
     "OppositionSpec",
     "OppositionState",
+    "PoleBinding",
     "product",
     "sum_",
 ]

@@ -16,12 +16,19 @@ from dataclasses import dataclass
 import pytest
 from pydantic import ValidationError
 
+from babylon.dialectics.core.composition import sum_
 from babylon.dialectics.core.opposition import (
+    MAX_NESTING_DEPTH,
     BoundOpposition,
     GapReading,
     OppositionRegistry,
     OppositionSpec,
     OppositionState,
+    PoleBinding,
+)
+from babylon.formulas.contradiction import (
+    calculate_wealth_asymmetry_balance,
+    calculate_wealth_asymmetry_gap,
 )
 
 pytestmark = pytest.mark.math
@@ -155,3 +162,211 @@ class TestValidation:
     def test_spec_requires_key(self) -> None:
         with pytest.raises(ValidationError):
             OppositionSpec(key="", pole_a="a", pole_b="b")
+
+
+class TestPoleBinding:
+    """VIII.9 n-ary protection: a pole references at most one collective."""
+
+    def test_plain_label_binding_is_valid(self) -> None:
+        binding = PoleBinding(label="Wage labor")
+        assert binding.opposition_key == ""
+        assert binding.community_id == ""
+
+    def test_nesting_binding_is_valid(self) -> None:
+        assert PoleBinding(label="Core", opposition_key="capital_labor").opposition_key
+
+    def test_community_binding_is_valid(self) -> None:
+        assert PoleBinding(label="Wayne County", community_id="H:882a").community_id
+
+    def test_opposition_key_and_community_id_mutually_exclusive(self) -> None:
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            PoleBinding(label="both", opposition_key="capital_labor", community_id="H:882a")
+
+    def test_label_is_required(self) -> None:
+        with pytest.raises(ValidationError):
+            PoleBinding(label="")
+
+
+class TestApparatusFlavor:
+    """Opposition-to-apparatus has no oppressor community on the apparatus pole."""
+
+    def test_default_flavor_is_contradiction(self) -> None:
+        assert OppositionSpec(key="k", pole_a="a", pole_b="b").flavor == "contradiction"
+
+    def test_apparatus_pole_may_not_be_a_community(self) -> None:
+        with pytest.raises(ValidationError, match="apparatus"):
+            OppositionSpec(
+                key="carceral",
+                pole_a="prisoner",
+                pole_b="prison system",
+                flavor="apparatus",
+                binding_b=PoleBinding(label="prison system", community_id="H:jail"),
+            )
+
+    def test_apparatus_pole_as_plain_label_is_valid(self) -> None:
+        spec = OppositionSpec(
+            key="carceral",
+            pole_a="prisoner",
+            pole_b="prison system",
+            flavor="apparatus",
+            binding_b=PoleBinding(label="prison system"),
+        )
+        assert spec.flavor == "apparatus"
+
+    def test_contradiction_flavor_allows_community_on_either_pole(self) -> None:
+        spec = OppositionSpec(
+            key="national",
+            pole_a="settler",
+            pole_b="internal nation",
+            binding_b=PoleBinding(label="internal nation", community_id="H:nation"),
+        )
+        assert spec.binding_b is not None
+        assert spec.binding_b.community_id == "H:nation"
+
+
+def _nesting_spec(key: str, *, a_ref: str = "", b_ref: str = "") -> BoundOpposition[Inputs]:
+    """A binding whose poles may nest other oppositions (measure is inert here)."""
+    spec = OppositionSpec(
+        key=key,
+        pole_a=f"{key}-A",
+        pole_b=f"{key}-B",
+        binding_a=PoleBinding(label=f"{key}-A", opposition_key=a_ref) if a_ref else None,
+        binding_b=PoleBinding(label=f"{key}-B", opposition_key=b_ref) if b_ref else None,
+    )
+
+    def measure(_inputs: Inputs) -> GapReading:
+        return GapReading(gap=0.0, balance=0.0)
+
+    return BoundOpposition(spec=spec, measure=measure)
+
+
+class TestNestingValidation:
+    def test_plain_registry_has_no_nesting_constraints(self) -> None:
+        # Backward compatibility: bindings without pole references validate fine.
+        reg = _registry("a", "b", "c")
+        assert reg.keys == ("a", "b", "c")
+
+    def test_reference_to_unregistered_key_raises_keyerror(self) -> None:
+        with pytest.raises(KeyError, match="ghost"):
+            OppositionRegistry(bindings=[_nesting_spec("outer", a_ref="ghost")])
+
+    def test_direct_cycle_is_rejected_and_named(self) -> None:
+        with pytest.raises(ValueError, match=r"cycle.*(a.*b|b.*a)"):
+            OppositionRegistry(
+                bindings=[_nesting_spec("a", a_ref="b"), _nesting_spec("b", a_ref="a")]
+            )
+
+    def test_self_reference_is_a_cycle(self) -> None:
+        with pytest.raises(ValueError, match="cycle"):
+            OppositionRegistry(bindings=[_nesting_spec("loop", a_ref="loop")])
+
+    def test_depth_within_bound_is_accepted(self) -> None:
+        # Chain of exactly MAX_NESTING_DEPTH (4): d4 -> d3 -> d2 -> d1.
+        assert MAX_NESTING_DEPTH == 4
+        reg = OppositionRegistry(
+            bindings=[
+                _nesting_spec("d1"),
+                _nesting_spec("d2", a_ref="d1"),
+                _nesting_spec("d3", a_ref="d2"),
+                _nesting_spec("d4", a_ref="d3"),
+            ]
+        )
+        assert set(reg.keys) == {"d1", "d2", "d3", "d4"}
+
+    def test_depth_beyond_bound_is_rejected(self) -> None:
+        # Chain of 5 (depth 5) exceeds MAX_NESTING_DEPTH=4.
+        with pytest.raises(ValueError, match="depth"):
+            OppositionRegistry(
+                bindings=[
+                    _nesting_spec("d1"),
+                    _nesting_spec("d2", a_ref="d1"),
+                    _nesting_spec("d3", a_ref="d2"),
+                    _nesting_spec("d4", a_ref="d3"),
+                    _nesting_spec("d5", a_ref="d4"),
+                ]
+            )
+
+
+@dataclass(frozen=True)
+class ZoneInputs:
+    """Live inputs for the fractal four-node recursion fixture."""
+
+    core_pair: tuple[float, float]
+    periphery_pair: tuple[float, float]
+
+
+def _zone_measure(attr: str):  # type: ignore[no-untyped-def]
+    def measure(inputs: ZoneInputs) -> GapReading:
+        a, b = getattr(inputs, attr)
+        return GapReading(
+            gap=calculate_wealth_asymmetry_gap(a, b),
+            balance=calculate_wealth_asymmetry_balance(a, b),
+        )
+
+    return measure
+
+
+class TestFourNodeRecursion:
+    """{Core, Periphery} × {Bourgeoisie, Proletariat} — must COMPUTE, not just build."""
+
+    def _fixture(self) -> OppositionRegistry[ZoneInputs]:
+        core = BoundOpposition(
+            spec=OppositionSpec(
+                key="core_capital_labor",
+                pole_a="Core Proletariat",
+                pole_b="Core Bourgeoisie",
+                antagonistic=True,
+            ),
+            measure=_zone_measure("core_pair"),
+        )
+        periphery = BoundOpposition(
+            spec=OppositionSpec(
+                key="periphery_capital_labor",
+                pole_a="Periphery Proletariat",
+                pole_b="Periphery Bourgeoisie",
+                antagonistic=True,
+            ),
+            measure=_zone_measure("periphery_pair"),
+        )
+        outer_spec = OppositionSpec(
+            key="imperial_nested",
+            pole_a="Core",
+            pole_b="Periphery",
+            binding_a=PoleBinding(label="Core", opposition_key="core_capital_labor"),
+            binding_b=PoleBinding(label="Periphery", opposition_key="periphery_capital_labor"),
+            antagonistic=True,
+        )
+        outer = sum_(outer_spec, core, periphery)
+        return OppositionRegistry(bindings=[core, periphery, outer])
+
+    def test_fixture_constructs_with_valid_nesting(self) -> None:
+        reg = self._fixture()
+        assert set(reg.keys) == {
+            "core_capital_labor",
+            "periphery_capital_labor",
+            "imperial_nested",
+        }
+
+    def test_outer_carries_composition_provenance_and_bindings(self) -> None:
+        outer = self._fixture().spec_for("imperial_nested")
+        assert outer.composition == "sum"
+        assert outer.component_keys == ("core_capital_labor", "periphery_capital_labor")
+        assert outer.binding_a is not None
+        assert outer.binding_a.opposition_key == "core_capital_labor"
+
+    def test_outer_gap_responds_to_inner_pair_wealth(self) -> None:
+        reg = self._fixture()
+        base = {
+            s.key: s
+            for s in reg.step(
+                ZoneInputs(core_pair=(10.0, 10.0), periphery_pair=(5.0, 20.0)), tick=0
+            )
+        }
+        base_outer = base["imperial_nested"].gap
+        # Sharpen the CORE inner pair; the outer (⊕) gap must rise in response.
+        sharpened = {
+            s.key: s
+            for s in reg.step(ZoneInputs(core_pair=(1.0, 50.0), periphery_pair=(5.0, 20.0)), tick=1)
+        }
+        assert sharpened["core_capital_labor"].gap > base["core_capital_labor"].gap
+        assert sharpened["imperial_nested"].gap > base_outer

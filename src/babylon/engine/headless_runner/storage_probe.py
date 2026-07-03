@@ -109,7 +109,13 @@ def query_storage_footprint(
                     continue
                 # Table names come from the fixed PER_TICK_TABLES tuple
                 # above, never from input — safe to interpolate.
-                cur.execute(f"SELECT pg_total_relation_size('{table}')")
+                # pg_partition_tree covers partitioned parents (whose own
+                # relation size is 0 — data lives in the partitions) and
+                # degenerates to the single relation for plain tables.
+                cur.execute(
+                    "SELECT COALESCE(SUM(pg_total_relation_size(relid)), 0) "
+                    f"FROM pg_partition_tree('{table}')"
+                )
                 total_bytes = int(cur.fetchone()[0])
                 cur.execute(
                     f"SELECT count(*) FROM {table} WHERE session_id = %s",  # noqa: S608

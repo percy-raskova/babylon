@@ -31,6 +31,8 @@ from babylon.ooda.types import ActionResult, InitiativeScore, OODAProfile, TurnR
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.engine.graph import BabylonGraph
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 
@@ -50,7 +52,7 @@ class OODASystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -63,6 +65,10 @@ class OODASystem(SystemBase):
         """
         defines = services.defines.ooda
         tick = context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0)
+
+        # Amendment L transition: subsystem helpers (layer0/layer3/effects)
+        # still speak the nx-compat payload surface; narrow once here.
+        graph = self._compat_graph(graph)
 
         # --- Phase 1: Layer 0 (automatic metabolism) ---
         layer0_results = process_layer0(graph, services)
@@ -238,7 +244,7 @@ class OODASystem(SystemBase):
         return results
 
 
-def _collect_org_nodes(graph: nx.DiGraph[str]) -> list[tuple[str, dict[str, Any]]]:
+def _collect_org_nodes(graph: BabylonGraph | nx.DiGraph[str]) -> list[tuple[str, dict[str, Any]]]:
     """Collect all organization nodes from the graph.
 
     Args:

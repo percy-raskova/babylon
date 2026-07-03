@@ -16,11 +16,12 @@ from babylon.ooda.types import Action, ActionResult
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.engine.graph import BabylonGraph
     from babylon.engine.services import ServiceContainer
 
 
 def process_layer0(
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph | nx.DiGraph[str],
     services: ServiceContainer,  # noqa: ARG001 — reserved for future event_bus usage
 ) -> list[ActionResult]:
     """Record automatic metabolism for Business organizations.

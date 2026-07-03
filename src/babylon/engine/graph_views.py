@@ -14,7 +14,7 @@ See Also:
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 if TYPE_CHECKING:
     from babylon.engine.graph import _GraphCore
@@ -59,9 +59,21 @@ class NodesView:
     def __len__(self) -> int:
         return len(self._host._ids)
 
+    @overload
+    def get(self, node_id: str) -> dict[str, Any] | None: ...
+
+    @overload
+    def get(self, node_id: str, default: dict[str, Any]) -> dict[str, Any]: ...
+
     def get(self, node_id: str, default: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """Return the live payload dict for ``node_id``, or ``default``."""
         return self._host._node_payload.get(node_id, default)
+
+    @overload
+    def __call__(self, data: Literal[False] = ...) -> list[str]: ...
+
+    @overload
+    def __call__(self, data: Literal[True]) -> list[tuple[str, dict[str, Any]]]: ...
 
     def __call__(self, data: bool = False) -> list[str] | list[tuple[str, dict[str, Any]]]:
         """nx-style call form: ``nodes()`` ids or ``nodes(data=True)`` pairs."""
@@ -111,6 +123,12 @@ class EdgesView:
 
     def __len__(self) -> int:
         return self._host.number_of_edges()
+
+    @overload
+    def __call__(self, data: Literal[False] = ...) -> list[tuple[str, str]]: ...
+
+    @overload
+    def __call__(self, data: Literal[True]) -> list[tuple[str, str, dict[str, Any]]]: ...
 
     def __call__(
         self, data: bool = False

@@ -19,18 +19,23 @@ See Also:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
-import networkx as nx
+from babylon.engine.systems.base import SystemBase
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
     from babylon.engine.systems.protocol import ContextType
 
 logger = logging.getLogger(__name__)
 
+_STOCK_KEYS = ("raw_material_stock", "energy_stock", "biocapacity_stock")
 
-class SubstrateSystem:
+
+class SubstrateSystem(SystemBase):
     """Pipeline slot 2.5: substrate stock update before Production.
 
     The system reads each hex's pre-tick substrate stocks
@@ -43,13 +48,11 @@ class SubstrateSystem:
     All depletion/regeneration is in-place per hex.
     """
 
-    @property
-    def name(self) -> str:
-        return "substrate"
+    name: ClassVar[str] = "substrate"
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -63,23 +66,18 @@ class SubstrateSystem:
         _ = services  # Reserved for future depletion/regeneration coefficients.
         _ = context  # Tick/year metadata available via ``context["tick"]``.
 
+        protocol = self._wrap_graph(graph)
+
         # Visit every hex node. We do NOT touch external nodes.
         hex_count = 0
-        for _node_id, attrs in graph.nodes(data=True):
-            if attrs.get("_node_type") != "hex":
-                continue
+        for node in list(protocol.query_nodes(node_type="hex")):
             hex_count += 1
-            # Read-and-write the three stocks. Concrete dynamics
-            # (depletion rate × consumption, regeneration rate × biocapacity)
-            # land with the downstream physical-substrate spec.
-            for key in (
-                "raw_material_stock",
-                "energy_stock",
-                "biocapacity_stock",
-            ):
-                # Default to 0.0 if a hex was hydrated without a stock
-                # attribute. Avoids KeyError on partial hydration paths.
-                attrs.setdefault(key, 0.0)
+            # Seed missing stocks with 0.0 (setdefault semantics). Concrete
+            # dynamics (depletion rate × consumption, regeneration rate ×
+            # biocapacity) land with the downstream physical-substrate spec.
+            missing = {key: 0.0 for key in _STOCK_KEYS if key not in node.attributes}
+            if missing:
+                protocol.update_node(node.id, **missing)
 
         logger.debug("SubstrateSystem touched %d hex nodes", hex_count)
 

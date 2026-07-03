@@ -29,10 +29,18 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from babylon.dialectics.core.opposition import OppositionState
+
 if TYPE_CHECKING:
     from babylon.dialectics.core.opposition import OppositionRegistry
 
-__all__ = ["Coupling", "CouplingGraph", "CouplingKind"]
+__all__ = [
+    "Coupling",
+    "CouplingGraph",
+    "CouplingKind",
+    "StanceIntervention",
+    "apply_interventions",
+]
 
 CouplingKind = Literal["feeds", "constrains", "transforms", "contains", "antagonizes"]
 """The five ratified ways one opposition can relate to another."""
@@ -131,3 +139,87 @@ class CouplingGraph:
     def downstream_of(self, key: str) -> tuple[Coupling, ...]:
         """Edges pointing OUT of ``key`` (its targets are downstream of it)."""
         return tuple(coupling for coupling in self._couplings if coupling.source == key)
+
+
+class StanceIntervention(BaseModel):
+    """A player verb's signed shove on one opposition's balance.
+
+    Stance is not a fact the engine reads off the graph; it is an ACTION — a
+    signed intervention on a target opposition's balance, audited by ``source``
+    (the verb or organization id that issued it). Interventions can flip the
+    leading pole: that is their point.
+
+    Example:
+        >>> StanceIntervention(target_key="capital_labor", delta_balance=-0.3,
+        ...                     source="verb:strike").delta_balance
+        -0.3
+    """
+
+    target_key: str = Field(..., min_length=1, description="Opposition whose balance is shoved")
+    delta_balance: float = Field(..., description="Signed change applied to the target's balance")
+    source: str = Field(..., min_length=1, description="Verb / organization id, for audit")
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+def _lead_after(balance: float, previous_pole: Literal["a", "b"]) -> Literal["a", "b"]:
+    """Sign of the (clamped) balance selects the pole; zero holds the previous."""
+    if balance < 0.0:
+        return "a"
+    if balance > 0.0:
+        return "b"
+    return previous_pole
+
+
+def apply_interventions(
+    states: Sequence[OppositionState],
+    interventions: Iterable[StanceIntervention],
+) -> tuple[OppositionState, ...]:
+    """Apply stance interventions to a tick's states, returning new states.
+
+    Deltas are summed per target and added to the target's balance, clamped to
+    ``[-1, 1]``; the leading pole is recomputed under the zero-holds-previous
+    inertia rule. Only balance and leading pole change — gap, rate, and
+    ``is_principal`` are untouched (interventions never re-rank the principal
+    contradiction; that is the registry's job).
+
+    Args:
+        states: This tick's opposition states (post ``registry.step``).
+        interventions: The shoves to apply; each targets one state by key.
+
+    Returns:
+        New states in the same order, with intervened balances clamped.
+
+    Raises:
+        ValueError: If any intervention targets a key not present in ``states``
+            (the logic layer fails loud rather than silently dropping a verb).
+    """
+    ordered = tuple(states)
+    known = {state.key for state in ordered}
+    deltas: dict[str, float] = {}
+    for intervention in interventions:
+        if intervention.target_key not in known:
+            raise ValueError(
+                f"stance intervention targets unknown opposition {intervention.target_key!r}"
+            )
+        deltas[intervention.target_key] = (
+            deltas.get(intervention.target_key, 0.0) + intervention.delta_balance
+        )
+    if not deltas:
+        return ordered
+    result: list[OppositionState] = []
+    for state in ordered:
+        delta = deltas.get(state.key)
+        if delta is None:
+            result.append(state)
+            continue
+        new_balance = max(-1.0, min(1.0, state.balance + delta))
+        result.append(
+            state.model_copy(
+                update={
+                    "balance": new_balance,
+                    "leading_pole": _lead_after(new_balance, state.leading_pole),
+                }
+            )
+        )
+    return tuple(result)

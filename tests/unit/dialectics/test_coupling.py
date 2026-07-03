@@ -18,12 +18,18 @@ from dataclasses import dataclass
 import pytest
 from pydantic import ValidationError
 
-from babylon.dialectics.core.coupling import Coupling, CouplingGraph
+from babylon.dialectics.core.coupling import (
+    Coupling,
+    CouplingGraph,
+    StanceIntervention,
+    apply_interventions,
+)
 from babylon.dialectics.core.opposition import (
     BoundOpposition,
     GapReading,
     OppositionRegistry,
     OppositionSpec,
+    OppositionState,
     PoleBinding,
 )
 from babylon.dialectics.instances.catalog import (
@@ -155,3 +161,96 @@ class TestDefaultCouplingGraph:
         joined = " ".join(r.getMessage() for r in skipped)
         for endpoint in ("realization", "disproportionality", "debt_spiral", "financial"):
             assert endpoint in joined
+
+
+def _state(
+    key: str,
+    balance: float,
+    leading_pole: str,
+    *,
+    gap: float = 0.5,
+    rate: float = 0.0,
+    is_principal: bool = False,
+) -> OppositionState:
+    return OppositionState(
+        key=key,
+        tick=0,
+        gap=gap,
+        balance=balance,
+        rate=rate,
+        leading_pole=leading_pole,  # type: ignore[arg-type]
+        is_principal=is_principal,
+    )
+
+
+class TestApplyInterventions:
+    """Player verbs as morphism mutations: a signed shove on a target's balance."""
+
+    def test_empty_stream_is_identity(self) -> None:
+        states = (_state("a", 0.2, "b"),)
+        assert apply_interventions(states, []) == states
+
+    def test_delta_shifts_balance(self) -> None:
+        states = (_state("cl", -0.2, "a"),)
+        result = apply_interventions(
+            states, [StanceIntervention(target_key="cl", delta_balance=0.5, source="verb:organize")]
+        )
+        assert result[0].balance == pytest.approx(0.3)
+
+    def test_intervention_flips_leading_pole(self) -> None:
+        # Labor dominant (balance < 0, pole a); a strong +delta flips to capital (b).
+        states = (_state("cl", -0.2, "a"),)
+        result = apply_interventions(
+            states, [StanceIntervention(target_key="cl", delta_balance=0.5, source="s")]
+        )
+        assert result[0].leading_pole == "b"
+
+    def test_balance_is_clamped_to_unit_interval(self) -> None:
+        states = (_state("cl", 0.8, "b"),)
+        result = apply_interventions(
+            states, [StanceIntervention(target_key="cl", delta_balance=5.0, source="s")]
+        )
+        assert result[0].balance == 1.0  # clamped, not 5.8
+
+    def test_deltas_accumulate_per_target(self) -> None:
+        states = (_state("cl", 0.0, "a"),)
+        result = apply_interventions(
+            states,
+            [
+                StanceIntervention(target_key="cl", delta_balance=0.3, source="s1"),
+                StanceIntervention(target_key="cl", delta_balance=0.2, source="s2"),
+            ],
+        )
+        assert result[0].balance == pytest.approx(0.5)
+
+    def test_unknown_target_raises(self) -> None:
+        states = (_state("cl", 0.0, "a"),)
+        with pytest.raises(ValueError, match="ghost"):
+            apply_interventions(
+                states, [StanceIntervention(target_key="ghost", delta_balance=0.1, source="s")]
+            )
+
+    def test_gap_rate_and_principal_are_untouched(self) -> None:
+        states = (_state("cl", 0.0, "a", gap=0.5, rate=0.1, is_principal=True),)
+        result = apply_interventions(
+            states, [StanceIntervention(target_key="cl", delta_balance=0.4, source="s")]
+        )
+        assert result[0].gap == pytest.approx(0.5)
+        assert result[0].rate == pytest.approx(0.1)
+        assert result[0].is_principal is True  # interventions never re-rank the principal
+
+    def test_zero_net_balance_holds_previous_pole(self) -> None:
+        # Inertia: balance driven back to 0 holds the current leading pole.
+        states = (_state("cl", 0.3, "b"),)
+        result = apply_interventions(
+            states, [StanceIntervention(target_key="cl", delta_balance=-0.3, source="s")]
+        )
+        assert result[0].balance == pytest.approx(0.0)
+        assert result[0].leading_pole == "b"
+
+    def test_untargeted_states_pass_through_unchanged(self) -> None:
+        states = (_state("a", 0.1, "b"), _state("b", -0.4, "a"))
+        result = apply_interventions(
+            states, [StanceIntervention(target_key="a", delta_balance=0.2, source="s")]
+        )
+        assert result[1] == states[1]  # "b" untouched

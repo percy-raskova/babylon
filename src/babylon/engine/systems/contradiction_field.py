@@ -1,14 +1,19 @@
-"""ContradictionFieldSystem — System #14 in materialist causality order.
+"""ContradictionFieldSystem — System #19 in materialist causality order.
 
 Dialectical Field Topology (Feature 002): Computes named contradiction
-fields at every social-class node per tick from existing economic
-calculator outputs (wealth, subsistence, unearned_increment, population).
+fields at every social-class node per tick. When a ``field_registry`` is
+wired (tests), fields come from its registered calculators; in production —
+where no registry is wired (the §5.3 dormant plumbing) — the fields are
+sourced from the Lawverian opposition layer instead (E0 repoint): the
+``"exploitation"`` field is the mean fresh edge ``tension`` written by
+ContradictionSystem @18, and ``"atomization"`` is the global atomization
+opposition gap.
 
 Reference: FR-001 (extensible field computation)
 Reference: FR-002 (tick-keyed history persistence)
 Reference: FR-011 (reads from economic outputs, no duplication)
 Reference: R-003 (storage architecture)
-Reference: R-006 (system ordering — position 14)
+Reference: R-006 (system ordering — position 19)
 """
 
 from __future__ import annotations
@@ -24,22 +29,35 @@ if TYPE_CHECKING:
 
 from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
+from babylon.models.enums import EdgeType
 
 logger = logging.getLogger(__name__)
 
 # Maximum history window size (per spec FR-006)
 _MAX_HISTORY_WINDOW = 3
 
+#: Edge types whose fresh ``tension`` feeds the local ``exploitation`` field
+#: when no ``field_registry`` is wired (E0 opposition-source path).
+_FIELD_EDGE_TYPES: tuple[EdgeType, ...] = (
+    EdgeType.EXPLOITATION,
+    EdgeType.WAGES,
+    EdgeType.TENANCY,
+)
+
+#: Field names populated by the opposition-source path, in deterministic order.
+_OPPOSITION_FIELD_NAMES: tuple[str, ...] = ("exploitation", "atomization")
+
 
 class ContradictionFieldSystem(SystemBase):
     """Compute contradiction fields for all social-class nodes.
 
-    Execution Order: 14 (after all 13 existing economic/consciousness systems)
+    Execution Order: 19 (after the material-base and action systems)
 
     For each social-class node, computes normalized contradiction field values
-    using the registered field computation callables from the FieldRegistry.
-    Stores field values on nodes and maintains a rolling history window
-    in persistent_data for temporal derivative computation by System #15.
+    — from the ``field_registry`` calculators when one is wired, else from the
+    opposition layer (E0). Stores field values on nodes and maintains a rolling
+    history window in persistent_data for temporal derivative computation by
+    System #20.
     """
 
     name = "contradiction_field"
@@ -67,9 +85,11 @@ class ContradictionFieldSystem(SystemBase):
 
             graph = NetworkXAdapter.wrap(graph)
 
-        # Skip if no field registry configured
+        # No field registry in production: source fields from the opposition
+        # layer instead of early-returning (E0 — the §5.3 dormant-stack repoint).
         registry = services.field_registry
         if registry is None:
+            self._step_from_oppositions(graph, services, context)
             return
 
         field_names = registry.get_field_names()
@@ -133,6 +153,97 @@ class ContradictionFieldSystem(SystemBase):
             # Store current values for next tick's derivative computation
             previous_wealth[node_id] = float(attrs.get("wealth", 0.0))
             previous_population[node_id] = float(attrs.get("population", 1))
+
+    def _step_from_oppositions(
+        self,
+        graph: GraphProtocol,
+        services: ServiceContainer,
+        context: ContextType,
+    ) -> None:
+        """Source contradiction_fields from the opposition layer (E0 repoint).
+
+        Production wires no ``field_registry``, so the Feature-002 field stack
+        was dormant. The Lawverian rewire makes the opposition layer its source:
+        for each social_class node the ``"exploitation"`` field is the mean fresh
+        ``tension`` over its incident EXPLOITATION/WAGES/TENANCY edges (the
+        per-edge gaps ContradictionSystem @18 wrote this tick), and the
+        ``"atomization"`` field is the global atomization opposition gap (uniform
+        per node this phase). The 3-tick rolling history machinery is identical
+        to the registry path so System #20 reads the same shape.
+
+        Args:
+            graph: Mutable GraphProtocol.
+            services: ServiceContainer (for field bounds).
+            context: TickContext or dict with persistent_data.
+        """
+        persistent_data = _get_persistent_data(context)
+        history: dict[str, dict[str, list[float]]] = persistent_data.setdefault(
+            "contradiction_history", {}
+        )
+        field_min = services.defines.contradiction_field.field_min
+        field_max = services.defines.contradiction_field.field_max
+        atomization = self._atomization_gap(graph)
+
+        for node in graph.query_nodes(node_type="social_class"):
+            node_id = node.id
+            raw = {
+                "exploitation": self._incident_tension_mean(graph, node_id),
+                "atomization": atomization,
+            }
+            contradiction_fields = {
+                name: max(field_min, min(field_max, value)) for name, value in raw.items()
+            }
+            graph.update_node(node_id, contradiction_fields=contradiction_fields)
+
+            node_history = history.setdefault(node_id, {})
+            for field_name in _OPPOSITION_FIELD_NAMES:
+                field_history = node_history.setdefault(field_name, [])
+                field_history.append(contradiction_fields[field_name])
+                while len(field_history) > _MAX_HISTORY_WINDOW:
+                    field_history.pop(0)
+
+    @staticmethod
+    def _incident_tension_mean(graph: GraphProtocol, node_id: str) -> float:
+        """Mean fresh ``tension`` over a node's incident EXPLOITATION/WAGES/TENANCY edges.
+
+        The MEAN, not the max: a node's local exploitation field is the average
+        asymmetry it participates in, so two moderate relations do not read as
+        one extreme one. Empty (no incident tension edges) -> 0.0.
+
+        Args:
+            graph: Mutable GraphProtocol.
+            node_id: The social_class node to aggregate incident tensions for.
+
+        Returns:
+            Mean incident edge ``tension`` (0.0 when the node has none).
+        """
+        tensions: list[float] = []
+        for edge_type in _FIELD_EDGE_TYPES:
+            for edge in graph.query_edges(edge_type=edge_type):
+                if node_id not in (edge.source_id, edge.target_id):
+                    continue
+                raw = edge.attributes.get("tension")
+                if isinstance(raw, (int, float)):
+                    tensions.append(float(raw))
+        if not tensions:
+            return 0.0
+        return sum(tensions) / len(tensions)
+
+    @staticmethod
+    def _atomization_gap(graph: GraphProtocol) -> float:
+        """Global atomization opposition gap from the @18 snapshot (0.0 if absent).
+
+        Args:
+            graph: Mutable GraphProtocol carrying the ``opposition_states`` attr.
+
+        Returns:
+            The atomization opposition's ``gap`` this tick, or 0.0 when the
+            snapshot or key is absent.
+        """
+        states = graph.get_graph_attr("opposition_states", {}) or {}
+        atomization = states.get("atomization", {})
+        raw = atomization.get("gap", 0.0)
+        return float(raw) if isinstance(raw, (int, float)) else 0.0
 
 
 def _get_persistent_data(context: ContextType) -> dict[str, Any]:

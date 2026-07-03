@@ -256,15 +256,45 @@ class TestFieldDerivativeSystemBasic:
         system = FieldDerivativeSystem()
         assert system.name == "field_derivative"
 
-    def test_no_registry_skips(self) -> None:
-        """System is a no-op when field_registry is None."""
-        graph = _make_two_node_graph()
-        services = ServiceContainer.create()
+    def test_no_fields_no_derivatives(self) -> None:
+        """E0: no field_registry AND no contradiction_fields on nodes -> no-op.
+
+        Without a registry the field names are discovered from the node attrs
+        (E0); when no node carries ``contradiction_fields`` the discovery is
+        empty and the system returns without writing derivatives.
+        """
+        graph = _make_two_node_graph()  # nodes carry no contradiction_fields
+        services = ServiceContainer.create()  # no field_registry
         context: dict[str, object] = {"tick": 1, "persistent_data": {}}
 
         FieldDerivativeSystem().step(graph, services, context)
 
         assert "field_derivatives" not in graph.nodes["C001"]
+
+    def test_derivatives_computed_without_registry_when_fields_present(self) -> None:
+        """E0: with fields sourced from the opposition layer, derivatives fire.
+
+        ContradictionFieldSystem (no registry) populates ``exploitation`` from
+        the incident edge tension; changing the tension between two ticks yields
+        a non-zero df/dt that FieldDerivativeSystem computes without any
+        field_registry.
+        """
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("C001", _node_type="social_class", wealth=10.0, population=1000)
+        graph.add_node("C002", _node_type="social_class", wealth=30.0, population=1000)
+        graph.add_edge("C001", "C002", edge_type=EdgeType.EXPLOITATION, tension=0.2)
+        services = ServiceContainer.create()  # no field_registry
+        persistent: dict[str, object] = {}
+
+        ctx1: dict[str, object] = {"tick": 1, "persistent_data": persistent}
+        ContradictionFieldSystem().step(graph, services, ctx1)
+        graph.edges["C001", "C002"]["tension"] = 0.6  # exploitation 0.2 -> 0.6
+        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent}
+        ContradictionFieldSystem().step(graph, services, ctx2)
+        FieldDerivativeSystem().step(graph, services, ctx2)
+
+        derivs = graph.nodes["C001"]["field_derivatives"]
+        assert derivs["exploitation"]["df_dt"] == pytest.approx(0.4)  # 0.6 - 0.2
 
     def test_skips_nodes_without_fields(self) -> None:
         """System skips nodes that don't have contradiction_fields."""
@@ -301,7 +331,7 @@ class TestPrincipalContradiction:
         FieldDerivativeSystem().step(graph, services, ctx2)
 
         # Check graph attr
-        pc = graph.graph.get("principal_contradiction")
+        pc = graph.graph.get("principal_field")
         assert pc is not None
         assert "field_name" in pc
         assert "max_abs_df_dt" in pc
@@ -324,7 +354,7 @@ class TestPrincipalContradiction:
         ContradictionFieldSystem().step(graph, services, ctx2)
         FieldDerivativeSystem().step(graph, services, ctx2)
 
-        pc = graph.graph.get("principal_contradiction")
+        pc = graph.graph.get("principal_field")
         assert pc is not None
         # The field with the biggest change should be identified
         assert isinstance(pc["field_name"], str)
@@ -339,7 +369,7 @@ class TestPrincipalContradiction:
 
         FieldDerivativeSystem().step(graph, services, context)
 
-        pc = graph.graph.get("principal_contradiction")
+        pc = graph.graph.get("principal_field")
         # Should either be None or have field_name as None
         if pc is not None:
             assert pc.get("field_name") is None or pc.get("max_abs_df_dt") == 0.0

@@ -144,7 +144,7 @@ class TestFieldTopologyMultiTick:
         field_sys.step(graph, services, ctx2)
         deriv_sys.step(graph, services, ctx2)
 
-        pc = graph.graph.get("principal_contradiction")
+        pc = graph.graph.get("principal_field")
         assert pc is not None
         assert pc["field_name"] is not None
 

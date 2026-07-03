@@ -17,10 +17,17 @@ See Also:
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import networkx as nx
+from babylon.engine.systems.base import SystemBase
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
 
 
 @dataclass(frozen=True)
@@ -37,7 +44,7 @@ class HexCountyRollup:
 
 
 def aggregate_hexes_by_county(
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
 ) -> dict[str, HexCountyRollup]:
     """Compute per-county totals from in-memory hex nodes.
 
@@ -45,12 +52,13 @@ def aggregate_hexes_by_county(
     are counted. Other node types (external, county, state) are skipped.
 
     Args:
-        graph: NetworkX graph with hex nodes carrying c/v/s/k.
+        graph: World graph with hex nodes carrying c/v/s/k.
 
     Returns:
         ``{county_fips: HexCountyRollup}`` map. Empty when no hex nodes
         carry county_fips attributes (e.g., a fresh empty graph).
     """
+    protocol = SystemBase._wrap_graph(graph)
     totals: dict[str, dict[str, float]] = defaultdict(
         lambda: {
             "c": 0.0,
@@ -61,9 +69,8 @@ def aggregate_hexes_by_county(
             "count": 0.0,
         }
     )
-    for _node_id, attrs in graph.nodes(data=True):
-        if attrs.get("_node_type") != "hex":
-            continue
+    for node in protocol.query_nodes(node_type="hex"):
+        attrs = node.attributes
         county_fips = attrs.get("county_fips")
         if not county_fips:
             continue

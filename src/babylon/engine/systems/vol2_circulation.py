@@ -45,6 +45,7 @@ from babylon.economics.boundary_flow_register import (
     BoundaryFlowRegister,
     NodeKind,
 )
+from babylon.engine.systems.base import SystemBase
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -52,6 +53,7 @@ if TYPE_CHECKING:
     from babylon.economics.lodes_commute_matrix import (
         LODESCommuteMatrixLoader,
     )
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.systems.cross_border_commute import (
         CrossBorderCommuteClassifier,
     )
@@ -120,7 +122,7 @@ class Vol2CirculationStep:
     def step(  # noqa: C901, PLR0915 — FR-009/010/011/030a/conservation are inherently coupled; splitting would harm clarity
         self,
         *,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         register: BoundaryFlowRegister,
         session_id: UUID,
         tick: int,
@@ -153,16 +155,15 @@ class Vol2CirculationStep:
         import time
 
         t0 = time.perf_counter()
+        protocol = SystemBase._wrap_graph(graph)
         year_matrix = self._od_loader.load_year(simulated_year)
         od_year_used = year_matrix.year
 
         # ── 1. Snapshot pre-state v vector for in-area hexes ────────────────
         # We treat any hex node carrying _node_type == "hex" as in-area.
         hex_v: dict[str, float] = {}
-        for node_id, attrs in graph.nodes(data=True):
-            if attrs.get("_node_type") != "hex":
-                continue
-            hex_v[node_id] = float(attrs.get("v", 0.0))
+        for node in protocol.query_nodes(node_type="hex"):
+            hex_v[node.id] = float(node.attributes.get("v", 0.0))
 
         pre_total_v = float(sum(hex_v.values()))
 
@@ -282,7 +283,7 @@ class Vol2CirculationStep:
 
         # ── 7. Write v_post back to the graph (in-place mutation) ───────────
         for hex_id, v_post_val in hex_v_post.items():
-            graph.nodes[hex_id]["v"] = v_post_val
+            protocol.update_node(hex_id, v=v_post_val)
 
         wall_time_ms = (time.perf_counter() - t0) * 1000.0
         return CirculationStepResult(

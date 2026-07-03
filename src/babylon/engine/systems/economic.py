@@ -181,20 +181,10 @@ class ImperialRentSystem(SystemBase):
             return
 
         tick = context.get("tick", 0)
-        # The graph passed in may be a GraphProtocol wrapper; Vol2CirculationStep
-        # walks raw graph.nodes(data=True), which both nx.DiGraph and the
-        # NetworkXAdapter inner graph support. Unwrap if needed.
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        target_graph: Any
-        if isinstance(graph, GraphProtocol):
-            # NetworkXAdapter wraps an inner nx.DiGraph at ._graph; use it for
-            # direct attribute mutation per Vol2CirculationStep's contract.
-            target_graph = getattr(graph, "_graph", graph)
-        else:
-            target_graph = graph
+        # Vol2CirculationStep speaks GraphProtocol (Amendment L port) —
+        # pass the graph straight through; it wraps raw nx itself.
         vol2_step.step(
-            graph=target_graph,
+            graph=graph,
             register=register,
             session_id=session_id,
             tick=int(tick),

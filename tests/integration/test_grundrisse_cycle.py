@@ -257,3 +257,72 @@ class TestRuptureGating:
         # CONDITION (rising) is not met -> no NEW rupture.
         system.step(graph, services, {"tick": 4})
         assert len(_ruptures(services)) == 1
+
+
+# ---------------------------------------------------------------------------
+# E6 — Grundrisse fixed-point reading (§9.4 port)
+# ---------------------------------------------------------------------------
+
+
+def _regime(graph: nx.DiGraph[str]) -> str:
+    """The fixed-point regime ContradictionSystem stashed this tick."""
+    return graph.graph["dialectical_regime"]["regime"]  # type: ignore[no-any-return]
+
+
+# Simple reproduction: the four moments net to ZERO change per cycle, so the
+# capital_labor gap is a fixed point of the COMPOSITE map T⁴ (it returns every
+# four ticks) while still swinging WITHIN the cycle.
+_SIMPLE_REPRODUCTION: tuple[tuple[float, float], ...] = (
+    (0.0, 10.0),  # 1 Production   — surplus accrues to capital (gap widens)
+    (0.0, 0.0),  # 2 Circulation  — realization only
+    (0.0, -10.0),  # 3 Distribution — returned to circulation (gap narrows back)
+    (0.0, 0.0),  # 4 Consumption  — no stock change
+)
+
+
+class TestFixedPointReading:
+    """§9.4: the tick is one Picard iteration; its convergence IS the regime."""
+
+    def test_orbit_is_a_t4_fixed_point(self) -> None:
+        """The simple-reproduction cycle repeats the gap every four ticks."""
+        graph = _build_circuit_graph()
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+
+        after_production: list[float] = []
+        for turn in range(3):
+            for moment, (dw, do) in enumerate(_SIMPLE_REPRODUCTION):
+                graph.nodes["worker"]["wealth"] += dw
+                graph.nodes["owner"]["wealth"] += do
+                system.step(graph, services, {"tick": turn * 4 + moment + 1})
+                if moment == 0:  # the Production moment
+                    after_production.append(_cap_labor(graph)["gap"])  # type: ignore[arg-type]
+
+        # T⁴ fixed point: the gap at the same moment repeats across turns.
+        assert after_production[0] == pytest.approx(after_production[1])
+        assert after_production[1] == pytest.approx(after_production[2])
+
+    def test_steady_state_reads_reproduction(self) -> None:
+        """A self-reproducing state (W = T(W), rate ~ 0) classifies as reproduction."""
+        graph = _build_circuit_graph()
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+
+        system.step(graph, services, {"tick": 1})  # establish the snapshot
+        system.step(graph, services, {"tick": 2})  # no wealth change -> rate ~ 0
+        assert _cap_labor(graph)["rate"] == pytest.approx(0.0)
+        assert _regime(graph) == "reproduction"
+
+    def test_wage_cut_perturbation_breaks_the_orbit_into_crisis(self) -> None:
+        """A wage-cut perturbation (owner seizes wealth) drives the gap up -> crisis."""
+        graph = _build_circuit_graph()
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+
+        system.step(graph, services, {"tick": 1})
+        assert _regime(graph) == "reproduction"
+
+        graph.nodes["owner"]["wealth"] = 90.0  # (10, 90) -> gap 0.8, rising
+        system.step(graph, services, {"tick": 2})
+        assert _cap_labor(graph)["rate"] > 0.0
+        assert _regime(graph) == "crisis"

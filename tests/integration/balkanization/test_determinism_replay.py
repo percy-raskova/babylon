@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines.balkanization import BalkanizationDefines
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
@@ -61,11 +61,11 @@ class _AllDefines:
     balkanization: BalkanizationDefines
 
 
-def _build_initial_graph(seed_id: str) -> NetworkXAdapter:
+def _build_initial_graph(seed_id: str) -> BabylonGraph:
     """Deterministic graph construction — every call with same ``seed_id``
     produces the same starting state."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     # 2 Sovereigns, 2 Factions, 4 Territories with overlapping CLAIMS +
     # INFLUENCES — enough to exercise winning-faction tiebreaking +
     # dual-power detection.

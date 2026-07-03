@@ -36,9 +36,7 @@ from babylon.engine.graph import BabylonGraph
 def _make_mock_graph_with_r6_territories(
     r6_ids: list[str],
 ) -> object:
-    """Create a NetworkXAdapter-wrapped graph with territory nodes at R6 IDs."""
-
-    from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+    """Create a BabylonGraph with territory nodes at R6 IDs."""
 
     G = BabylonGraph()
     for r6_id in r6_ids:
@@ -49,7 +47,7 @@ def _make_mock_graph_with_r6_territories(
             sector_type="INDUSTRIAL",
         )
 
-    return NetworkXAdapter.wrap(G)
+    return G
 
 
 # ============================================================================
@@ -243,8 +241,6 @@ class TestWriteHexStateToGraph:
     def test_hex_prefix_no_collision_with_tick(self, hydrated_hex_grid: HexGrid) -> None:
         """hex_ and tick_ attributes coexist on the same node."""
 
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
         r6_states = aggregate_r7_to_r6(hydrated_hex_grid)
         r6_ids = list(r6_states.keys())
 
@@ -258,7 +254,7 @@ class TestWriteHexStateToGraph:
                 tick_capital_stock=999.0,  # Existing tick_ attribute
                 tick_profit_rate=0.15,
             )
-        graph = NetworkXAdapter.wrap(G)
+        graph = G
 
         write_hex_state_to_graph(graph, r6_states)
 
@@ -382,10 +378,9 @@ class TestFeedbackStubs:
         from babylon.economics.substrate.hex_graph_bridge import (
             read_organizational_pressure,
         )
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
         G = BabylonGraph()
-        graph = NetworkXAdapter.wrap(G)
+        graph = G
 
         result = read_organizational_pressure(graph)
         assert isinstance(result, dict)

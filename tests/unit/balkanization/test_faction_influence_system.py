@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines.balkanization import BalkanizationDefines
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.models.enums import EventType
 
@@ -51,7 +51,7 @@ def _events_of(bus: _RecordingEventBus, ev_type: Any) -> list[_CapturedEvent]:
     return [e for e in bus.events if e.type is ev_type]
 
 
-def _seed_two_factions_one_territory(adapter: NetworkXAdapter) -> None:
+def _seed_two_factions_one_territory(adapter: BabylonGraph) -> None:
     adapter.add_node(
         "FAC_A",
         "balkanization_faction",
@@ -84,7 +84,7 @@ def _seed_two_factions_one_territory(adapter: NetworkXAdapter) -> None:
 def test_winning_faction_resolution_writes_persistent_snapshot(
     services: Any,
 ) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_two_factions_one_territory(adapter)
     context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
 
@@ -98,7 +98,7 @@ def test_territory_transition_emits_on_flip(services: Any) -> None:
     """FR-022: TERRITORY_TRANSITION fires when the winning Faction
     changes between ticks."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_two_factions_one_territory(adapter)
     persistent: dict[str, Any] = {}
     context: dict[str, Any] = {"tick": 0, "persistent_data": persistent}
@@ -120,7 +120,7 @@ def test_territory_transition_emits_on_flip(services: Any) -> None:
 
 
 def test_no_transition_when_winner_unchanged(services: Any) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_two_factions_one_territory(adapter)
     persistent: dict[str, Any] = {}
     context: dict[str, Any] = {"tick": 0, "persistent_data": persistent}
@@ -138,7 +138,7 @@ def test_faction_victory_fires_on_supermajority(services: Any) -> None:
     """FR-026: FACTION_VICTORY fires when a Faction holds ≥
     supermajority threshold (default 0.66) across territories."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node(
         "FAC_DOM",
         "balkanization_faction",
@@ -184,7 +184,7 @@ def test_red_settler_trap_event_emits_for_high_class_reduction_ignore(
     """FR-034: a Faction with class_reduction ≥ 0.6 and colonial_stance
     ∈ {UPHOLD, IGNORE} triggers RED_SETTLER_TRAP_DETECTED."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node(
         "FAC_TRAP",
         "balkanization_faction",
@@ -210,7 +210,7 @@ def test_red_settler_trap_event_emits_for_high_class_reduction_ignore(
 def test_winning_faction_for_unclaimed_territory_returns_no_entry(
     services: Any,
 ) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("HEX_ORPHAN", "territory")
     context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
 

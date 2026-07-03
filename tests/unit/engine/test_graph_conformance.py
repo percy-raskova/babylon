@@ -1,30 +1,24 @@
-"""Tests for babylon.engine.adapters.inmemory_adapter - NetworkX graph adapter.
+"""GraphProtocol conformance suite for BabylonGraph.
 
-TDD Red Phase: These tests define the contract for the NetworkXAdapter.
-The tests WILL FAIL initially because the implementations do not exist yet.
-This is the correct Red phase outcome.
-
-Slice 1.7: The Graph Bridge
-
-The NetworkXAdapter is the reference implementation of GraphProtocol using NetworkX.
-It wraps nx.DiGraph and provides the standard interface for all graph operations.
+Born as the NetworkXAdapter contract suite (Slice 1.7, "The Graph
+Bridge"); during the Amendment L substrate migration it ran parametrized
+over both backends, and since the adapter's deletion (Phase 7) it pins
+the sole implementation: the rustworkx-backed BabylonGraph.
 
 Key Behaviors:
 - Node types stored as '_node_type' attribute
-- Edge types stored as '_edge_type' attribute
-- Supports all 16 GraphProtocol methods
-- Thread-safe for read operations (NetworkX is NOT thread-safe for writes)
-
-This adapter is the MVP implementation for Epoch 1 and 2.
-DuckDB adapter will be added in Epoch 3 for 1000+ node graphs.
+- Edge types stored as '_edge_type' attribute (public 'edge_type' mirrored)
+- Supports all GraphProtocol methods (18 core + 6 spec-070)
+- `_graph` compat seam returns the graph itself
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.entity_registry import (
     COMPRADOR_ID,
     CORE_BOURGEOISIE_ID,
@@ -45,14 +39,9 @@ _protocol_module = pytest.importorskip(
     "babylon.engine.graph_protocol",
     reason="babylon.engine.graph_protocol not yet implemented (RED phase)",
 )
-_adapter_module = pytest.importorskip(
-    "babylon.engine.adapters.inmemory_adapter",
-    reason="babylon.engine.adapters.inmemory_adapter not yet implemented (RED phase)",
-)
 
 # Import types from the modules after successful import
 GraphProtocol = _protocol_module.GraphProtocol
-NetworkXAdapter = _adapter_module.NetworkXAdapter
 GraphNode = _graph_module.GraphNode
 GraphEdge = _graph_module.GraphEdge
 EdgeFilter = _graph_module.EdgeFilter
@@ -65,30 +54,15 @@ TraversalResult = _graph_module.TraversalResult
 # =============================================================================
 
 
-def _make_backend(backend: str) -> Any:
-    """Instantiate a graph backend by param name.
-
-    The conformance suite runs against BOTH implementations: the legacy
-    NetworkXAdapter and the rustworkx-backed BabylonGraph (Amendment L).
-    BabylonGraph is imported lazily so a missing implementation fails only
-    the babylon-parametrized cases (TDD red), not collection.
-    """
-    if backend == "networkx":
-        return NetworkXAdapter()
-    from babylon.engine.graph import BabylonGraph
-
+@pytest.fixture
+def adapter() -> BabylonGraph:
+    """Create a fresh graph for each test."""
     return BabylonGraph()
 
 
-@pytest.fixture(params=["networkx", "babylon"])
-def adapter(request: pytest.FixtureRequest) -> Any:
-    """Create a fresh graph backend for each test (both implementations)."""
-    return _make_backend(request.param)
-
-
-@pytest.fixture(params=["networkx", "babylon"])
-def populated_adapter(request: pytest.FixtureRequest) -> Any:
-    """Create a populated graph backend with sample nodes and edges.
+@pytest.fixture
+def populated_adapter() -> BabylonGraph:
+    """Create a populated graph with sample nodes and edges.
 
     Graph structure:
         C001 (proletariat) --SOLIDARITY--> C002 (proletariat)
@@ -96,7 +70,7 @@ def populated_adapter(request: pytest.FixtureRequest) -> Any:
         C003 --EXPLOITATION--> C004 (bourgeoisie)
         T001 (territory) --ADJACENCY--> T002 (territory)
     """
-    adapter = _make_backend(request.param)
+    adapter = BabylonGraph()
 
     # Add social class nodes
     adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0, consciousness=0.5)
@@ -129,30 +103,25 @@ def populated_adapter(request: pytest.FixtureRequest) -> Any:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterProtocolCompliance:
-    """Test that NetworkXAdapter implements GraphProtocol."""
+class TestBabylonGraphProtocolCompliance:
+    """Test that BabylonGraph implements GraphProtocol."""
 
-    def test_adapter_implements_graph_protocol(self, adapter: NetworkXAdapter) -> None:
-        """NetworkXAdapter must implement GraphProtocol.
+    def test_adapter_implements_graph_protocol(self, adapter: BabylonGraph) -> None:
+        """BabylonGraph must implement GraphProtocol.
 
         This is the fundamental contract - all adapters must satisfy the protocol.
         """
         assert isinstance(adapter, GraphProtocol)
 
-    def test_adapter_backing_store(self, adapter: NetworkXAdapter) -> None:
-        """NetworkXAdapter backs onto nx.DiGraph; BabylonGraph backs onto itself.
+    def test_adapter_backing_store(self, adapter: BabylonGraph) -> None:
+        """BabylonGraph backs onto itself.
 
         The ``_graph`` attribute is the compat seam: mixins and legacy callers
         reach the backing store through it. BabylonGraph returns itself — the
         rustworkx core lives behind its compat surface.
         """
-        import networkx as nx
-
         assert hasattr(adapter, "_graph")
-        if isinstance(adapter, NetworkXAdapter):
-            assert isinstance(adapter._graph, nx.DiGraph)
-        else:
-            assert adapter._graph is adapter
+        assert adapter._graph is adapter
 
 
 # =============================================================================
@@ -161,10 +130,10 @@ class TestNetworkXAdapterProtocolCompliance:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterAddNode:
-    """Test NetworkXAdapter.add_node method."""
+class TestBabylonGraphAddNode:
+    """Test BabylonGraph.add_node method."""
 
-    def test_add_node_creates_node(self, adapter: NetworkXAdapter) -> None:
+    def test_add_node_creates_node(self, adapter: BabylonGraph) -> None:
         """add_node creates a node in the graph."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
 
@@ -173,14 +142,14 @@ class TestNetworkXAdapterAddNode:
         assert node.id == PERIPHERY_WORKER_ID
         assert node.node_type == "social_class"
 
-    def test_add_node_stores_type(self, adapter: NetworkXAdapter) -> None:
+    def test_add_node_stores_type(self, adapter: BabylonGraph) -> None:
         """add_node stores node_type as internal attribute."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
 
         # Verify internal storage
         assert adapter._graph.nodes[PERIPHERY_WORKER_ID]["_node_type"] == "social_class"
 
-    def test_add_node_stores_attributes(self, adapter: NetworkXAdapter) -> None:
+    def test_add_node_stores_attributes(self, adapter: BabylonGraph) -> None:
         """add_node stores arbitrary attributes."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0, consciousness=0.5)
 
@@ -189,7 +158,7 @@ class TestNetworkXAdapterAddNode:
         assert node.attributes["wealth"] == 100.0
         assert node.attributes["consciousness"] == 0.5
 
-    def test_add_node_overwrites_existing(self, adapter: NetworkXAdapter) -> None:
+    def test_add_node_overwrites_existing(self, adapter: BabylonGraph) -> None:
         """add_node overwrites an existing node (NetworkX behavior)."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=200.0)
@@ -200,22 +169,22 @@ class TestNetworkXAdapterAddNode:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterGetNode:
-    """Test NetworkXAdapter.get_node method."""
+class TestBabylonGraphGetNode:
+    """Test BabylonGraph.get_node method."""
 
-    def test_get_node_returns_graphnode(self, adapter: NetworkXAdapter) -> None:
+    def test_get_node_returns_graphnode(self, adapter: BabylonGraph) -> None:
         """get_node returns GraphNode model."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
 
         node = adapter.get_node(PERIPHERY_WORKER_ID)
         assert isinstance(node, GraphNode)
 
-    def test_get_node_returns_none_for_missing(self, adapter: NetworkXAdapter) -> None:
+    def test_get_node_returns_none_for_missing(self, adapter: BabylonGraph) -> None:
         """get_node returns None if node does not exist."""
         node = adapter.get_node("MISSING")
         assert node is None
 
-    def test_get_node_excludes_internal_attributes(self, adapter: NetworkXAdapter) -> None:
+    def test_get_node_excludes_internal_attributes(self, adapter: BabylonGraph) -> None:
         """get_node excludes internal attributes like _node_type.
 
         Internal attributes (prefixed with _) should not appear in user-facing data.
@@ -228,10 +197,10 @@ class TestNetworkXAdapterGetNode:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterUpdateNode:
-    """Test NetworkXAdapter.update_node method."""
+class TestBabylonGraphUpdateNode:
+    """Test BabylonGraph.update_node method."""
 
-    def test_update_node_modifies_attributes(self, adapter: NetworkXAdapter) -> None:
+    def test_update_node_modifies_attributes(self, adapter: BabylonGraph) -> None:
         """update_node modifies existing node attributes."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
         adapter.update_node(PERIPHERY_WORKER_ID, wealth=200.0)
@@ -240,7 +209,7 @@ class TestNetworkXAdapterUpdateNode:
         assert node is not None
         assert node.attributes["wealth"] == 200.0
 
-    def test_update_node_adds_new_attributes(self, adapter: NetworkXAdapter) -> None:
+    def test_update_node_adds_new_attributes(self, adapter: BabylonGraph) -> None:
         """update_node can add new attributes."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
         adapter.update_node(PERIPHERY_WORKER_ID, consciousness=0.7)
@@ -250,24 +219,24 @@ class TestNetworkXAdapterUpdateNode:
         assert node.attributes["consciousness"] == 0.7
         assert node.attributes["wealth"] == 100.0  # Preserved
 
-    def test_update_node_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
+    def test_update_node_raises_keyerror_for_missing(self, adapter: BabylonGraph) -> None:
         """update_node raises KeyError if node does not exist."""
         with pytest.raises(KeyError):
             adapter.update_node("MISSING", wealth=100.0)
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterRemoveNode:
-    """Test NetworkXAdapter.remove_node method."""
+class TestBabylonGraphRemoveNode:
+    """Test BabylonGraph.remove_node method."""
 
-    def test_remove_node_deletes_node(self, adapter: NetworkXAdapter) -> None:
+    def test_remove_node_deletes_node(self, adapter: BabylonGraph) -> None:
         """remove_node deletes the node from graph."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.remove_node(PERIPHERY_WORKER_ID)
 
         assert adapter.get_node(PERIPHERY_WORKER_ID) is None
 
-    def test_remove_node_deletes_incident_edges(self, adapter: NetworkXAdapter) -> None:
+    def test_remove_node_deletes_incident_edges(self, adapter: BabylonGraph) -> None:
         """remove_node also removes all edges connected to the node."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -278,7 +247,7 @@ class TestNetworkXAdapterRemoveNode:
         # Edge should be gone
         assert adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY") is None
 
-    def test_remove_node_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
+    def test_remove_node_raises_keyerror_for_missing(self, adapter: BabylonGraph) -> None:
         """remove_node raises KeyError if node does not exist."""
         with pytest.raises(KeyError):
             adapter.remove_node("MISSING")
@@ -290,10 +259,10 @@ class TestNetworkXAdapterRemoveNode:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterAddEdge:
-    """Test NetworkXAdapter.add_edge method."""
+class TestBabylonGraphAddEdge:
+    """Test BabylonGraph.add_edge method."""
 
-    def test_add_edge_creates_edge(self, adapter: NetworkXAdapter) -> None:
+    def test_add_edge_creates_edge(self, adapter: BabylonGraph) -> None:
         """add_edge creates a directed edge in the graph."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -305,7 +274,7 @@ class TestNetworkXAdapterAddEdge:
         assert edge.target_id == COMPRADOR_ID
         assert edge.edge_type == "SOLIDARITY"
 
-    def test_add_edge_default_weight(self, adapter: NetworkXAdapter) -> None:
+    def test_add_edge_default_weight(self, adapter: BabylonGraph) -> None:
         """add_edge defaults weight to 1.0."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -315,7 +284,7 @@ class TestNetworkXAdapterAddEdge:
         assert edge is not None
         assert edge.weight == 1.0
 
-    def test_add_edge_custom_weight(self, adapter: NetworkXAdapter) -> None:
+    def test_add_edge_custom_weight(self, adapter: BabylonGraph) -> None:
         """add_edge accepts custom weight."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -325,7 +294,7 @@ class TestNetworkXAdapterAddEdge:
         assert edge is not None
         assert edge.weight == 0.75
 
-    def test_add_edge_stores_attributes(self, adapter: NetworkXAdapter) -> None:
+    def test_add_edge_stores_attributes(self, adapter: BabylonGraph) -> None:
         """add_edge stores arbitrary attributes."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -340,10 +309,10 @@ class TestNetworkXAdapterAddEdge:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterGetEdge:
-    """Test NetworkXAdapter.get_edge method."""
+class TestBabylonGraphGetEdge:
+    """Test BabylonGraph.get_edge method."""
 
-    def test_get_edge_returns_graphedge(self, adapter: NetworkXAdapter) -> None:
+    def test_get_edge_returns_graphedge(self, adapter: BabylonGraph) -> None:
         """get_edge returns GraphEdge model."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -352,7 +321,7 @@ class TestNetworkXAdapterGetEdge:
         edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert isinstance(edge, GraphEdge)
 
-    def test_get_edge_returns_none_for_missing_edge(self, adapter: NetworkXAdapter) -> None:
+    def test_get_edge_returns_none_for_missing_edge(self, adapter: BabylonGraph) -> None:
         """get_edge returns None if edge does not exist."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -360,7 +329,7 @@ class TestNetworkXAdapterGetEdge:
         edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert edge is None
 
-    def test_get_edge_returns_none_for_wrong_type(self, adapter: NetworkXAdapter) -> None:
+    def test_get_edge_returns_none_for_wrong_type(self, adapter: BabylonGraph) -> None:
         """get_edge returns None if edge exists but type doesn't match."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -369,7 +338,7 @@ class TestNetworkXAdapterGetEdge:
         edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "EXPLOITATION")
         assert edge is None
 
-    def test_get_edge_excludes_internal_attributes(self, adapter: NetworkXAdapter) -> None:
+    def test_get_edge_excludes_internal_attributes(self, adapter: BabylonGraph) -> None:
         """get_edge excludes internal attributes like _edge_type."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -381,10 +350,10 @@ class TestNetworkXAdapterGetEdge:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterUpdateEdge:
-    """Test NetworkXAdapter.update_edge method."""
+class TestBabylonGraphUpdateEdge:
+    """Test BabylonGraph.update_edge method."""
 
-    def test_update_edge_modifies_attributes(self, adapter: NetworkXAdapter) -> None:
+    def test_update_edge_modifies_attributes(self, adapter: BabylonGraph) -> None:
         """update_edge modifies existing edge attributes."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -396,7 +365,7 @@ class TestNetworkXAdapterUpdateEdge:
         assert edge is not None
         assert edge.attributes["tension"] == 0.8
 
-    def test_update_edge_modifies_weight(self, adapter: NetworkXAdapter) -> None:
+    def test_update_edge_modifies_weight(self, adapter: BabylonGraph) -> None:
         """update_edge can modify edge weight."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -408,7 +377,7 @@ class TestNetworkXAdapterUpdateEdge:
         assert edge is not None
         assert edge.weight == 0.9
 
-    def test_update_edge_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
+    def test_update_edge_raises_keyerror_for_missing(self, adapter: BabylonGraph) -> None:
         """update_edge raises KeyError if edge does not exist."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -418,10 +387,10 @@ class TestNetworkXAdapterUpdateEdge:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterRemoveEdge:
-    """Test NetworkXAdapter.remove_edge method."""
+class TestBabylonGraphRemoveEdge:
+    """Test BabylonGraph.remove_edge method."""
 
-    def test_remove_edge_deletes_edge(self, adapter: NetworkXAdapter) -> None:
+    def test_remove_edge_deletes_edge(self, adapter: BabylonGraph) -> None:
         """remove_edge deletes the edge from graph."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -431,7 +400,7 @@ class TestNetworkXAdapterRemoveEdge:
 
         assert adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY") is None
 
-    def test_remove_edge_preserves_nodes(self, adapter: NetworkXAdapter) -> None:
+    def test_remove_edge_preserves_nodes(self, adapter: BabylonGraph) -> None:
         """remove_edge does not delete connected nodes."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -442,7 +411,7 @@ class TestNetworkXAdapterRemoveEdge:
         assert adapter.get_node(PERIPHERY_WORKER_ID) is not None
         assert adapter.get_node(COMPRADOR_ID) is not None
 
-    def test_remove_edge_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
+    def test_remove_edge_raises_keyerror_for_missing(self, adapter: BabylonGraph) -> None:
         """remove_edge raises KeyError if edge does not exist."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -457,11 +426,11 @@ class TestNetworkXAdapterRemoveEdge:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterGetNeighborhood:
-    """Test NetworkXAdapter.get_neighborhood method."""
+class TestBabylonGraphGetNeighborhood:
+    """Test BabylonGraph.get_neighborhood method."""
 
     def test_get_neighborhood_returns_immediate_neighbors(
-        self, populated_adapter: NetworkXAdapter
+        self, populated_adapter: BabylonGraph
     ) -> None:
         """get_neighborhood with radius=1 returns immediate neighbors."""
         neighborhood = populated_adapter.get_neighborhood(PERIPHERY_WORKER_ID, radius=1)
@@ -473,7 +442,7 @@ class TestNetworkXAdapterGetNeighborhood:
         assert CORE_BOURGEOISIE_ID in node_ids
         assert LABOR_ARISTOCRACY_ID not in node_ids  # 2 hops away
 
-    def test_get_neighborhood_respects_radius(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_get_neighborhood_respects_radius(self, populated_adapter: BabylonGraph) -> None:
         """get_neighborhood respects radius parameter."""
         neighborhood = populated_adapter.get_neighborhood(PERIPHERY_WORKER_ID, radius=2)
 
@@ -481,9 +450,7 @@ class TestNetworkXAdapterGetNeighborhood:
         node_ids = {n.id for n in neighborhood.nodes()}
         assert LABOR_ARISTOCRACY_ID in node_ids
 
-    def test_get_neighborhood_filters_by_edge_type(
-        self, populated_adapter: NetworkXAdapter
-    ) -> None:
+    def test_get_neighborhood_filters_by_edge_type(self, populated_adapter: BabylonGraph) -> None:
         """get_neighborhood filters edges by type."""
         neighborhood = populated_adapter.get_neighborhood(
             PERIPHERY_WORKER_ID, radius=2, edge_types={"SOLIDARITY"}
@@ -496,7 +463,7 @@ class TestNetworkXAdapterGetNeighborhood:
         assert CORE_BOURGEOISIE_ID in node_ids
         assert LABOR_ARISTOCRACY_ID not in node_ids
 
-    def test_get_neighborhood_direction_out(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_get_neighborhood_direction_out(self, populated_adapter: BabylonGraph) -> None:
         """get_neighborhood with direction='out' follows outgoing edges only."""
         neighborhood = populated_adapter.get_neighborhood(
             PERIPHERY_WORKER_ID, radius=1, direction="out"
@@ -506,17 +473,17 @@ class TestNetworkXAdapterGetNeighborhood:
         assert COMPRADOR_ID in node_ids  # Outgoing from C001
         assert CORE_BOURGEOISIE_ID in node_ids  # Outgoing from C001
 
-    def test_get_neighborhood_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
+    def test_get_neighborhood_raises_keyerror_for_missing(self, adapter: BabylonGraph) -> None:
         """get_neighborhood raises KeyError if node does not exist."""
         with pytest.raises(KeyError):
             adapter.get_neighborhood("MISSING")
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterShortestPath:
-    """Test NetworkXAdapter.shortest_path method."""
+class TestBabylonGraphShortestPath:
+    """Test BabylonGraph.shortest_path method."""
 
-    def test_shortest_path_returns_path(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_shortest_path_returns_path(self, populated_adapter: BabylonGraph) -> None:
         """shortest_path returns list of node IDs."""
         path = populated_adapter.shortest_path(PERIPHERY_WORKER_ID, LABOR_ARISTOCRACY_ID)
 
@@ -524,7 +491,7 @@ class TestNetworkXAdapterShortestPath:
         assert path[0] == PERIPHERY_WORKER_ID
         assert path[-1] == LABOR_ARISTOCRACY_ID
 
-    def test_shortest_path_returns_none_for_no_path(self, adapter: NetworkXAdapter) -> None:
+    def test_shortest_path_returns_none_for_no_path(self, adapter: BabylonGraph) -> None:
         """shortest_path returns None when no path exists."""
         adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
         adapter.add_node(COMPRADOR_ID, "social_class")
@@ -533,7 +500,7 @@ class TestNetworkXAdapterShortestPath:
         path = adapter.shortest_path(PERIPHERY_WORKER_ID, COMPRADOR_ID)
         assert path is None
 
-    def test_shortest_path_filters_by_edge_type(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_shortest_path_filters_by_edge_type(self, populated_adapter: BabylonGraph) -> None:
         """shortest_path respects edge_types filter."""
         # Path via SOLIDARITY only should not reach C004
         path = populated_adapter.shortest_path(
@@ -543,10 +510,10 @@ class TestNetworkXAdapterShortestPath:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterExecuteTraversal:
-    """Test NetworkXAdapter.execute_traversal method."""
+class TestBabylonGraphExecuteTraversal:
+    """Test BabylonGraph.execute_traversal method."""
 
-    def test_execute_traversal_bfs(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_execute_traversal_bfs(self, populated_adapter: BabylonGraph) -> None:
         """execute_traversal with query_type='bfs' performs BFS."""
         query = TraversalQuery(
             query_type="bfs",
@@ -560,7 +527,7 @@ class TestNetworkXAdapterExecuteTraversal:
         assert PERIPHERY_WORKER_ID in result.nodes
         assert COMPRADOR_ID in result.nodes
 
-    def test_execute_traversal_connected_components(self, adapter: NetworkXAdapter) -> None:
+    def test_execute_traversal_connected_components(self, adapter: BabylonGraph) -> None:
         """execute_traversal with query_type='connected_components' finds components."""
         # Create two disconnected components
         adapter.add_node("A1", "social_class")
@@ -581,7 +548,7 @@ class TestNetworkXAdapterExecuteTraversal:
         assert len(result.components) == 2
         assert result.component_sizes == [2, 2]
 
-    def test_execute_traversal_percolation(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_execute_traversal_percolation(self, populated_adapter: BabylonGraph) -> None:
         """execute_traversal with query_type='percolation' computes percolation metrics."""
         query = TraversalQuery(
             query_type="percolation",
@@ -594,7 +561,7 @@ class TestNetworkXAdapterExecuteTraversal:
         # Should find solidarity component size
         assert len(result.component_sizes) > 0
 
-    def test_execute_traversal_raises_for_invalid_type(self, adapter: NetworkXAdapter) -> None:
+    def test_execute_traversal_raises_for_invalid_type(self, adapter: BabylonGraph) -> None:
         """Creating a TraversalQuery with invalid query_type raises ValueError.
 
         Note: Pydantic validation catches invalid query_types at model creation
@@ -611,10 +578,10 @@ class TestNetworkXAdapterExecuteTraversal:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterQueryNodes:
-    """Test NetworkXAdapter.query_nodes method."""
+class TestBabylonGraphQueryNodes:
+    """Test BabylonGraph.query_nodes method."""
 
-    def test_query_nodes_returns_iterator(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_query_nodes_returns_iterator(self, populated_adapter: BabylonGraph) -> None:
         """query_nodes returns an Iterator of GraphNode."""
         result = populated_adapter.query_nodes()
         assert hasattr(result, "__iter__")
@@ -622,14 +589,14 @@ class TestNetworkXAdapterQueryNodes:
         nodes = list(result)
         assert all(isinstance(n, GraphNode) for n in nodes)
 
-    def test_query_nodes_filters_by_type(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_query_nodes_filters_by_type(self, populated_adapter: BabylonGraph) -> None:
         """query_nodes filters by node_type."""
         nodes = list(populated_adapter.query_nodes(node_type="territory"))
 
         assert len(nodes) == 2
         assert all(n.node_type == "territory" for n in nodes)
 
-    def test_query_nodes_filters_by_attributes(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_query_nodes_filters_by_attributes(self, populated_adapter: BabylonGraph) -> None:
         """query_nodes filters by attribute equality."""
         nodes = list(
             populated_adapter.query_nodes(
@@ -641,7 +608,7 @@ class TestNetworkXAdapterQueryNodes:
         assert len(nodes) == 1
         assert nodes[0].id == PERIPHERY_WORKER_ID
 
-    def test_query_nodes_filters_by_predicate(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_query_nodes_filters_by_predicate(self, populated_adapter: BabylonGraph) -> None:
         """query_nodes filters by predicate function."""
         nodes = list(
             populated_adapter.query_nodes(
@@ -654,10 +621,10 @@ class TestNetworkXAdapterQueryNodes:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterQueryEdges:
-    """Test NetworkXAdapter.query_edges method."""
+class TestBabylonGraphQueryEdges:
+    """Test BabylonGraph.query_edges method."""
 
-    def test_query_edges_returns_iterator(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_query_edges_returns_iterator(self, populated_adapter: BabylonGraph) -> None:
         """query_edges returns an Iterator of GraphEdge."""
         result = populated_adapter.query_edges()
         assert hasattr(result, "__iter__")
@@ -665,14 +632,14 @@ class TestNetworkXAdapterQueryEdges:
         edges = list(result)
         assert all(isinstance(e, GraphEdge) for e in edges)
 
-    def test_query_edges_filters_by_type(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_query_edges_filters_by_type(self, populated_adapter: BabylonGraph) -> None:
         """query_edges filters by edge_type."""
         edges = list(populated_adapter.query_edges(edge_type="SOLIDARITY"))
 
         assert len(edges) == 2
         assert all(e.edge_type == "SOLIDARITY" for e in edges)
 
-    def test_query_edges_filters_by_weight_range(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_query_edges_filters_by_weight_range(self, populated_adapter: BabylonGraph) -> None:
         """query_edges filters by weight range."""
         edges = list(
             populated_adapter.query_edges(
@@ -685,57 +652,57 @@ class TestNetworkXAdapterQueryEdges:
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterCountNodes:
-    """Test NetworkXAdapter.count_nodes method."""
+class TestBabylonGraphCountNodes:
+    """Test BabylonGraph.count_nodes method."""
 
-    def test_count_nodes_returns_total(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_count_nodes_returns_total(self, populated_adapter: BabylonGraph) -> None:
         """count_nodes with no filter returns total node count."""
         count = populated_adapter.count_nodes()
         assert count == 6  # 4 social_class + 2 territory
 
-    def test_count_nodes_filters_by_type(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_count_nodes_filters_by_type(self, populated_adapter: BabylonGraph) -> None:
         """count_nodes filters by node_type."""
         count = populated_adapter.count_nodes(node_type="social_class")
         assert count == 4
 
-    def test_count_nodes_empty_graph(self, adapter: NetworkXAdapter) -> None:
+    def test_count_nodes_empty_graph(self, adapter: BabylonGraph) -> None:
         """count_nodes returns 0 for empty graph."""
         count = adapter.count_nodes()
         assert count == 0
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterCountEdges:
-    """Test NetworkXAdapter.count_edges method."""
+class TestBabylonGraphCountEdges:
+    """Test BabylonGraph.count_edges method."""
 
-    def test_count_edges_returns_total(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_count_edges_returns_total(self, populated_adapter: BabylonGraph) -> None:
         """count_edges with no filter returns total edge count."""
         count = populated_adapter.count_edges()
         assert count == 4
 
-    def test_count_edges_filters_by_type(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_count_edges_filters_by_type(self, populated_adapter: BabylonGraph) -> None:
         """count_edges filters by edge_type."""
         count = populated_adapter.count_edges(edge_type="SOLIDARITY")
         assert count == 2
 
-    def test_count_edges_empty_graph(self, adapter: NetworkXAdapter) -> None:
+    def test_count_edges_empty_graph(self, adapter: BabylonGraph) -> None:
         """count_edges returns 0 for empty graph."""
         count = adapter.count_edges()
         assert count == 0
 
 
 @pytest.mark.topology
-class TestNetworkXAdapterAggregate:
-    """Test NetworkXAdapter.aggregate method."""
+class TestBabylonGraphAggregate:
+    """Test BabylonGraph.aggregate method."""
 
-    def test_aggregate_count_nodes_by_type(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_aggregate_count_nodes_by_type(self, populated_adapter: BabylonGraph) -> None:
         """aggregate counts nodes grouped by type."""
         result = populated_adapter.aggregate("nodes", group_by="type")
 
         assert result["social_class"] == 4
         assert result["territory"] == 2
 
-    def test_aggregate_sum_wealth_by_type(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_aggregate_sum_wealth_by_type(self, populated_adapter: BabylonGraph) -> None:
         """aggregate sums attribute grouped by type."""
         result = populated_adapter.aggregate(
             "nodes",
@@ -747,7 +714,7 @@ class TestNetworkXAdapterAggregate:
         # C001=100 + C002=80 + C003=50 + C004=500 = 730
         assert result["social_class"] == 730.0
 
-    def test_aggregate_avg_wealth(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_aggregate_avg_wealth(self, populated_adapter: BabylonGraph) -> None:
         """aggregate computes average."""
         result = populated_adapter.aggregate(
             "nodes",
@@ -759,7 +726,7 @@ class TestNetworkXAdapterAggregate:
         # (100 + 80 + 50 + 500) / 4 = 182.5
         assert result["social_class"] == pytest.approx(182.5)
 
-    def test_aggregate_edges_by_type(self, populated_adapter: NetworkXAdapter) -> None:
+    def test_aggregate_edges_by_type(self, populated_adapter: BabylonGraph) -> None:
         """aggregate counts edges grouped by type."""
         result = populated_adapter.aggregate("edges", group_by="type")
 

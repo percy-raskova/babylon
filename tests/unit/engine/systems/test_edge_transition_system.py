@@ -396,16 +396,14 @@ class TestRegimePredicateMetric:
         assert _evaluate_condition(cond, {}, {}, regime_code=None) is False  # undefined
 
     def test_regime_code_reads_graph_attr(self) -> None:
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
         from babylon.engine.systems.edge_transition._legacy import _regime_code
 
         graph = BabylonGraph()
         graph.graph["dialectical_regime"] = {"regime": "sublation", "principal": "capital_labor"}
-        assert _regime_code(NetworkXAdapter.wrap(graph)) == 2.0
+        assert _regime_code(graph) == 2.0
 
     def test_regime_code_absent_is_none(self) -> None:
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
         from babylon.engine.systems.edge_transition._legacy import _regime_code
 
         graph = BabylonGraph()
-        assert _regime_code(NetworkXAdapter.wrap(graph)) is None
+        assert _regime_code(graph) is None

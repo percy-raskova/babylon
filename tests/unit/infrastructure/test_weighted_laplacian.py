@@ -22,9 +22,8 @@ from babylon.engine.systems.field_derivative import (
 
 def _make_graph_protocol(g: nx.DiGraph) -> MagicMock:  # type: ignore[type-arg]
     """Wrap a NetworkX DiGraph in a minimal GraphProtocol mock."""
-    from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
-    return NetworkXAdapter.wrap(g)
+    return g
 
 
 def _make_triangle_graph(

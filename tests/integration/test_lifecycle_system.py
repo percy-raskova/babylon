@@ -58,15 +58,13 @@ def _build_graph_with_territory(
 ) -> GraphProtocol:
     """Build a graph with a single territory node."""
 
-    from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
     G = BabylonGraph()
     attrs = territory.model_dump()
     attrs["_node_type"] = "territory"
     if extra_attrs:
         attrs.update(extra_attrs)
     G.add_node(territory.id, **attrs)
-    return NetworkXAdapter.wrap(G)
+    return G
 
 
 @pytest.mark.integration

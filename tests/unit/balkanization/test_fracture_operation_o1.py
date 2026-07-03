@@ -14,23 +14,23 @@ import time
 
 import pytest
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 
 pytestmark = pytest.mark.topology
 
 
-def _build_sovereign_with_claims(adapter: NetworkXAdapter, n: int) -> str:
+def _build_sovereign_with_claims(adapter: BabylonGraph, n: int) -> str:
     """Add SOV_PARENT plus ``n`` Territories all claimed at control_level=1.0.
 
     Returns the parent Sovereign ID.
     """
 
     sov_id = "SOV_PARENT"
-    if sov_id not in adapter.underlying_graph:
+    if sov_id not in adapter:
         adapter.add_node(sov_id, "sovereign")
     for i in range(n):
         territory_id = f"HEX_{i:05d}"
-        if territory_id not in adapter.underlying_graph:
+        if territory_id not in adapter:
             adapter.add_node(territory_id, "territory")
         adapter.add_edge(
             sov_id,
@@ -49,7 +49,7 @@ def _measure_bulk_partition_cost(n_total: int, k_moving: int) -> float:
     rewiring call, not setup.
     """
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     parent = _build_sovereign_with_claims(adapter, n_total)
     adapter.add_node("SOV_BREAKAWAY", "sovereign")
     moving = {f"HEX_{i:05d}" for i in range(k_moving)}
@@ -58,7 +58,7 @@ def _measure_bulk_partition_cost(n_total: int, k_moving: int) -> float:
         # Re-establish baseline parent claims for the moving set (since
         # earlier trials may have moved them).
         for territory_id in moving:
-            if not adapter.underlying_graph.has_edge(parent, territory_id):
+            if not adapter.has_edge(parent, territory_id):
                 adapter.add_edge(
                     parent,
                     territory_id,
@@ -66,8 +66,8 @@ def _measure_bulk_partition_cost(n_total: int, k_moving: int) -> float:
                     control_level=1.0,
                     legal_status="de_jure",
                 )
-            if adapter.underlying_graph.has_edge("SOV_BREAKAWAY", territory_id):
-                adapter.underlying_graph.remove_edge("SOV_BREAKAWAY", territory_id)
+            if adapter.has_edge("SOV_BREAKAWAY", territory_id):
+                adapter.remove_edge("SOV_BREAKAWAY", territory_id)
         start = time.perf_counter()
         moved = adapter.bulk_partition_claims(
             from_sovereign_id=parent,

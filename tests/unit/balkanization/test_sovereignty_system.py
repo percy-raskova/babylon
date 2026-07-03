@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.sovereignty import SovereigntySystem
 from babylon.models.enums import EventType
 
@@ -39,7 +39,7 @@ def services() -> Any:
     return container
 
 
-def _seed_single_sovereign(adapter: NetworkXAdapter) -> None:
+def _seed_single_sovereign(adapter: BabylonGraph) -> None:
     adapter.add_node(
         "SOV_USA_FED",
         "sovereign",
@@ -56,7 +56,7 @@ def _seed_single_sovereign(adapter: NetworkXAdapter) -> None:
 
 
 def test_sovereignty_writes_metabolic_impact_per_territory(services: Any) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_single_sovereign(adapter)
     context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
 
@@ -69,7 +69,7 @@ def test_sovereignty_writes_metabolic_impact_per_territory(services: Any) -> Non
 def test_sovereignty_writes_effective_controller_per_territory(
     services: Any,
 ) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_single_sovereign(adapter)
     context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
 
@@ -83,7 +83,7 @@ def test_sovereignty_dual_power_tiebreak_only_highest_wins(services: Any) -> Non
     """FR-020: when multiple CLAIMS target one Territory, only the
     highest-control_level Sovereign's metabolic_impact applies."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("SOV_A", "sovereign", extraction_policy="cease")
     adapter.add_node("SOV_B", "sovereign", extraction_policy="intensify")
     adapter.add_node("HEX_001", "territory", habitability=0.8)
@@ -104,7 +104,7 @@ def test_sovereignty_emits_dual_power_active_event(services: Any) -> None:
     """FR-035: emit DUAL_POWER_ACTIVE when ≥2 Sovereigns have
     control_level > 0.0 on the same Territory."""
 
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("SOV_A", "sovereign", extraction_policy="cease")
     adapter.add_node("SOV_B", "sovereign", extraction_policy="intensify")
     adapter.add_node("HEX_001", "territory", habitability=0.8)
@@ -125,7 +125,7 @@ def test_sovereignty_emits_dual_power_active_event(services: Any) -> None:
 
 
 def test_sovereignty_no_dual_power_for_single_claimant(services: Any) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     _seed_single_sovereign(adapter)
     context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
 
@@ -137,7 +137,7 @@ def test_sovereignty_no_dual_power_for_single_claimant(services: Any) -> None:
 
 
 def test_sovereignty_skips_territories_with_no_claims(services: Any) -> None:
-    adapter = NetworkXAdapter()
+    adapter = BabylonGraph()
     adapter.add_node("HEX_ORPHAN", "territory", habitability=0.8)
     context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
 

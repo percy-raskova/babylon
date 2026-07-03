@@ -249,9 +249,8 @@ class TestWageValuePairsExtraction:
 
     @staticmethod
     def _inputs(graph: nx.DiGraph[str]):  # type: ignore[no-untyped-def]
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 
-        return ContradictionSystem()._build_graph_inputs(NetworkXAdapter.wrap(graph))
+        return ContradictionSystem()._build_graph_inputs(graph)
 
     def test_pairs_extracted_from_nodes_carrying_both_attrs(self) -> None:
         graph = BabylonGraph()

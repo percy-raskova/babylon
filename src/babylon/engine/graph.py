@@ -340,6 +340,26 @@ class _GraphCore:
         """Return the node count."""
         return len(self._ids)
 
+    @overload
+    def degree(self, node_id: str) -> int: ...
+
+    @overload
+    def degree(self, node_id: None = ...) -> list[tuple[str, int]]: ...
+
+    def degree(self, node_id: str | None = None) -> int | list[tuple[str, int]]:
+        """nx-style degree: one node's degree, or (node, degree) pairs.
+
+        Directed hosts count in+out degree (nx.DiGraph parity); self-loop
+        double-counting on undirected hosts is not reproduced (no
+        analytics call site uses self-loops).
+        """
+        if node_id is not None:
+            degree = len(self._adj[node_id])
+            if self._DIRECTED:
+                degree += len(self._pred[node_id])
+            return degree
+        return [(node, self.degree(node)) for node in self._ids]
+
     def number_of_edges(self) -> int:
         """Return the edge count."""
         return len(self._edge_payload)

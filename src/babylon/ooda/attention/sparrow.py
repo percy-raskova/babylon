@@ -10,15 +10,21 @@ See Also:
 
 from __future__ import annotations
 
-import networkx as nx
+from typing import TYPE_CHECKING
 
+from babylon.engine import graph_algorithms as ga
 from babylon.models.entities.attention_thread import SparrowAnalysis
+
+if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph import BabylonGraph, BabylonUGraph
 
 
 def analyze_network(
     thread_id: str,
     tick: int,
-    g_observed: nx.DiGraph[str],
+    g_observed: BabylonGraph | nx.DiGraph[str],
     confidence: float = 0.8,
 ) -> SparrowAnalysis:
     """Run Sparrow structural analysis on an observed subgraph.
@@ -51,17 +57,17 @@ def analyze_network(
     centrality_rankings: dict[str, dict[str, float]] = {}
 
     # Degree centrality
-    degree = nx.degree_centrality(undirected)
+    degree = ga.degree_centrality(undirected)
     centrality_rankings["degree"] = degree
 
     # Betweenness centrality
     if undirected.number_of_nodes() > 1:
-        betweenness = nx.betweenness_centrality(undirected)
+        betweenness = ga.betweenness_centrality(undirected)
         centrality_rankings["betweenness"] = betweenness
 
     # Closeness centrality
-    if undirected.number_of_nodes() > 1 and nx.is_connected(undirected):
-        closeness = nx.closeness_centrality(undirected)
+    if undirected.number_of_nodes() > 1 and ga.is_connected(undirected):
+        closeness = ga.closeness_centrality(undirected)
         centrality_rankings["closeness"] = closeness
 
     # Equivalence classes via degree signature
@@ -84,7 +90,7 @@ def analyze_network(
     )
 
 
-def _compute_equivalence_classes(graph: nx.Graph[str]) -> list[frozenset[str]]:
+def _compute_equivalence_classes(graph: BabylonUGraph | nx.Graph[str]) -> list[frozenset[str]]:
     """Group nodes by structural equivalence (same degree signature).
 
     Two nodes are structurally equivalent if they have the same
@@ -111,7 +117,7 @@ def _compute_equivalence_classes(graph: nx.Graph[str]) -> list[frozenset[str]]:
 
 
 def _identify_singletons(
-    graph: nx.Graph[str],
+    graph: BabylonUGraph | nx.Graph[str],
     centrality_rankings: dict[str, dict[str, float]],
 ) -> frozenset[str]:
     """Identify nodes with uniquely high structural importance.
@@ -151,7 +157,7 @@ def _identify_singletons(
     return frozenset(singletons)
 
 
-def _compute_cutsets(graph: nx.Graph[str]) -> list[frozenset[str]]:
+def _compute_cutsets(graph: BabylonUGraph | nx.Graph[str]) -> list[frozenset[str]]:
     """Compute minimal vertex cutsets (articulation points).
 
     Each articulation point forms a singleton cutset -- removing it
@@ -166,10 +172,9 @@ def _compute_cutsets(graph: nx.Graph[str]) -> list[frozenset[str]]:
     if graph.number_of_nodes() < 2:
         return []
 
-    try:
-        art_points = list(nx.articulation_points(graph))
-    except nx.NetworkXError:
-        return []
+    # Inputs are always undirected projections (analyze_network builds
+    # them via to_undirected), so no directed-graph error arm is needed.
+    art_points = sorted(ga.articulation_point_set(graph))
 
     return [frozenset({p}) for p in art_points]
 

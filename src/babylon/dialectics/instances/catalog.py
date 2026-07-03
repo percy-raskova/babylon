@@ -49,11 +49,14 @@ gap stays in ``[0, 1]`` (the raw ``(w−v)/v`` is unbounded). See
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonUGraph
+
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-
-import networkx as nx
 
 from babylon.dialectics.core.coupling import Coupling, CouplingGraph
 from babylon.dialectics.core.opposition import (
@@ -103,7 +106,7 @@ class GraphInputs:
     exploitation_pairs: tuple[WealthPair, ...] = ()
     wage_value_pairs: tuple[tuple[float, float], ...] = ()
     tenancy_pairs: tuple[WealthPair, ...] = ()
-    solidarity_subgraph: nx.Graph[str] | None = field(default=None)
+    solidarity_subgraph: BabylonUGraph | None = field(default=None)
 
 
 def _mean_asymmetry(pairs: Sequence[WealthPair]) -> GapReading:

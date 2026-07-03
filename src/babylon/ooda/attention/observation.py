@@ -10,9 +10,12 @@ See Also:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import networkx as nx
+import networkx as nx  # noqa: F401 — transitional annotation arm (Amendment L)
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
 
 from babylon.models.entities.attention_thread import AttentionThread
 from babylon.models.enums import SurveillanceMethod
@@ -21,7 +24,7 @@ from babylon.models.enums import SurveillanceMethod
 def build_g_observed(
     thread: AttentionThread,
     full_graph: nx.DiGraph[str],
-) -> nx.DiGraph[str]:
+) -> BabylonGraph | nx.DiGraph[str]:
     """Build the observed subgraph from thread intelligence.
 
     Extracts nodes and edges that the thread has observed, applying
@@ -34,7 +37,9 @@ def build_g_observed(
     Returns:
         DiGraph containing only observed nodes/edges with potential distortions.
     """
-    observed: nx.DiGraph[str] = nx.DiGraph()
+    from babylon.engine.graph import BabylonGraph
+
+    observed = BabylonGraph()
 
     # Add observed nodes with their attributes
     max_nodes = 1000

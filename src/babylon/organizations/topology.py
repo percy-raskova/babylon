@@ -9,14 +9,21 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import networkx as nx
-
+from babylon.engine.graph import BabylonUGraph
+from babylon.engine.graph_algorithms import (
+    articulation_point_set,
+    component_count,
+    density,
+)
 from babylon.models.entities.organization import KeyFigure
 from babylon.models.enums import EdgeType, TopologyType, resolve_edge_type
 from babylon.organizations.types import TopologyClassification
 
 if TYPE_CHECKING:
+    import networkx as nx
+
     from babylon.config.defines import OrganizationDefines
+    from babylon.engine.graph import BabylonGraph
 
 # Density threshold for MESH classification
 _MESH_DENSITY_THRESHOLD = 0.6
@@ -24,8 +31,8 @@ _MESH_DENSITY_THRESHOLD = 0.6
 
 def _extract_command_subgraph(
     member_node_ids: list[str],
-    G: nx.DiGraph[str],
-) -> nx.Graph[str]:
+    G: BabylonGraph | nx.DiGraph[str],
+) -> BabylonUGraph:
     """Extract undirected projection of COMMAND edges among member nodes.
 
     Args:
@@ -36,7 +43,7 @@ def _extract_command_subgraph(
         Undirected graph of COMMAND edges among member nodes.
     """
     members = set(member_node_ids)
-    undirected: nx.Graph[str] = nx.Graph()
+    undirected = BabylonUGraph()
     undirected.add_nodes_from(member_node_ids)
 
     for src, tgt, data in G.edges(data=True):
@@ -51,7 +58,7 @@ def _extract_command_subgraph(
 def classify_topology(
     _org_id: str,
     member_node_ids: list[str],
-    G: nx.DiGraph[str],
+    G: BabylonGraph | nx.DiGraph[str],
 ) -> TopologyClassification:
     """Classify an organization's COMMAND subgraph topology.
 
@@ -78,15 +85,15 @@ def classify_topology(
         return TopologyClassification(
             topology_type=None,
             articulation_points=[],
-            component_count=nx.number_connected_components(subgraph),
+            component_count=component_count(subgraph),
             is_connected=False,
         )
 
     n = len(member_node_ids)
-    art_points = list(nx.articulation_points(subgraph))
-    components = nx.number_connected_components(subgraph)
+    art_points = sorted(articulation_point_set(subgraph))
+    components = component_count(subgraph)
     is_connected = components == 1
-    density = nx.density(subgraph)
+    subgraph_density = density(subgraph)
 
     def _result(topology_type: TopologyType | None) -> TopologyClassification:
         return TopologyClassification(
@@ -99,7 +106,7 @@ def classify_topology(
     # Classification rules (applied in priority order):
     # 1. MESH: high edge density (> threshold), requires 3+ nodes
     #    (2-node graphs trivially have density 1.0, not meaningfully MESH)
-    if n >= 3 and density > _MESH_DENSITY_THRESHOLD:
+    if n >= 3 and subgraph_density > _MESH_DENSITY_THRESHOLD:
         return _result(TopologyType.MESH)
 
     # 2. STAR: single hub with degree >= N-1 (connected to all others)
@@ -126,7 +133,7 @@ def classify_topology(
 def identify_key_figures(
     org_id: str,
     member_node_ids: list[str],
-    G: nx.DiGraph[str],
+    G: BabylonGraph | nx.DiGraph[str],
 ) -> list[KeyFigure]:
     """Identify structurally critical key figures via articulation point analysis.
 
@@ -145,16 +152,16 @@ def identify_key_figures(
     if subgraph.number_of_edges() == 0:
         return []
 
-    art_points = list(nx.articulation_points(subgraph))
+    art_points = sorted(articulation_point_set(subgraph))
     n = len(member_node_ids)
     key_figures: list[KeyFigure] = []
 
     for ap_id in art_points:
         # Compute structural importance: (components_after_removal - 1) / (n - 1)
         # Normalized to [0, 1] where 1.0 = maximum fragmentation
-        test_graph: nx.Graph[str] = subgraph.copy()
+        test_graph = subgraph.copy()
         test_graph.remove_node(ap_id)
-        components_after = nx.number_connected_components(test_graph)
+        components_after = component_count(test_graph)
         importance = min((components_after - 1) / (n - 1), 1.0) if n > 1 else 0.0
 
         # Check for structural equivalents (same degree, same neighbors)

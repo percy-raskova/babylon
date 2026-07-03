@@ -158,6 +158,18 @@ class TensionDefines(BaseModel):
             "leads). Passed to OppositionRegistry; default matches its own."
         ),
     )
+    regime_rate_epsilon: float = Field(
+        default=1e-4,
+        ge=0.0,
+        description=(
+            "Phase E fixed-point regime classifier (§9.4): the principal "
+            "opposition's |rate| at or below this counts as CONVERGED — the "
+            "self-consistency search settled and the social form REPRODUCES. "
+            "Above it the gap is developing: CRISIS (diverging within the level) "
+            "or SUBLATION (resolved at a higher level). 1e-4 keeps float jitter "
+            "from reading as a live contradiction."
+        ),
+    )
 
 
 class StruggleDefines(BaseModel):

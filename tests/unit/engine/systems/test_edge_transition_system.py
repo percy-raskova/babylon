@@ -370,3 +370,41 @@ class TestCoOptiveMechanics:
         events = services.event_bus.get_history()
         breakdown_events = [e for e in events if e.type == EventType.CO_OPTIVE_BREAKDOWN]
         assert len(breakdown_events) >= 1
+
+
+@pytest.mark.unit
+class TestRegimePredicateMetric:
+    """E2: the 'regime' predicate metric evaluates against the graph regime code.
+
+    Data only — no transition in the 17 uses it this phase; these prove the
+    predicate machinery can read the fixed-point regime.
+    """
+
+    def test_regime_condition_evaluates_by_ordinal(self) -> None:
+        from babylon.engine.systems.edge_transition._legacy import (
+            PredicateCondition,
+            _evaluate_condition,
+        )
+
+        cond = PredicateCondition(
+            field="", metric="regime", operator="gte", threshold=1.0, scope="source"
+        )
+        assert _evaluate_condition(cond, {}, {}, regime_code=1.0) is True  # crisis
+        assert _evaluate_condition(cond, {}, {}, regime_code=2.0) is True  # sublation
+        assert _evaluate_condition(cond, {}, {}, regime_code=0.0) is False  # reproduction
+        assert _evaluate_condition(cond, {}, {}, regime_code=None) is False  # undefined
+
+    def test_regime_code_reads_graph_attr(self) -> None:
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+        from babylon.engine.systems.edge_transition._legacy import _regime_code
+
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.graph["dialectical_regime"] = {"regime": "sublation", "principal": "capital_labor"}
+        assert _regime_code(NetworkXAdapter.wrap(graph)) == 2.0
+
+    def test_regime_code_absent_is_none(self) -> None:
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+        from babylon.engine.systems.edge_transition._legacy import _regime_code
+
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        assert _regime_code(NetworkXAdapter.wrap(graph)) is None

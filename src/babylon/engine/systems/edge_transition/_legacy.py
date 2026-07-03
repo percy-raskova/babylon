@@ -51,7 +51,7 @@ class PredicateCondition(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     field: str
-    metric: str = Field(description="value, df_dt, d2f_dt2, laplacian")
+    metric: str = Field(description="value, df_dt, d2f_dt2, laplacian, regime")
     operator: str = Field(description="gt, lt, gte, lte")
     threshold: float
     scope: str = Field(default="source", description="source or target")
@@ -468,10 +468,25 @@ _VALID_TRANSITIONS.add((EdgeMode.ANTAGONISTIC, EdgeMode.ANTAGONISTIC))
 # ─────────────────────────────────────────────────────────────────────
 
 
+#: Ordinal codes for the ``"regime"`` predicate metric (Phase E2). The
+#: fixed-point regime is graph-level; a predicate compares its ordinal so the
+#: existing gt/lt/gte/lte machinery works (data only — no transition uses it yet).
+_REGIME_CODES: dict[str, float] = {"reproduction": 0.0, "crisis": 1.0, "sublation": 2.0}
+
+
+def _regime_code(graph: GraphProtocol) -> float | None:
+    """Ordinal of this tick's ``dialectical_regime`` graph attr, or None if unset."""
+    raw = graph.get_graph_attr("dialectical_regime", None)
+    if not isinstance(raw, dict):
+        return None
+    return _REGIME_CODES.get(str(raw.get("regime", "")))
+
+
 def _evaluate_condition(
     condition: PredicateCondition,
     source_attrs: dict[str, Any],
     target_attrs: dict[str, Any],
+    regime_code: float | None = None,
 ) -> bool:
     """Evaluate a single predicate condition.
 
@@ -479,6 +494,9 @@ def _evaluate_condition(
         condition: The condition to evaluate.
         source_attrs: Source node attributes.
         target_attrs: Target node attributes.
+        regime_code: Ordinal of this tick's fixed-point regime (Phase E2), or
+            None when no regime was classified. Only the ``"regime"`` metric
+            reads it.
 
     Returns:
         True if the condition is satisfied.
@@ -496,6 +514,10 @@ def _evaluate_condition(
         if raw is None:
             return False  # EC-001: undefined derivative cannot satisfy predicate
         value = float(raw)
+    elif condition.metric == "regime":
+        if regime_code is None:
+            return False  # no regime classified this tick: undefined, cannot satisfy
+        value = regime_code
     else:
         return False
 
@@ -515,6 +537,7 @@ def _evaluate_predicate(
     predicate: CompoundPredicate,
     source_attrs: dict[str, Any],
     target_attrs: dict[str, Any],
+    regime_code: float | None = None,
 ) -> bool:
     """Evaluate a compound predicate (conjunction of conditions).
 
@@ -522,11 +545,15 @@ def _evaluate_predicate(
         predicate: The compound predicate.
         source_attrs: Source node attributes.
         target_attrs: Target node attributes.
+        regime_code: Ordinal of this tick's fixed-point regime (Phase E2).
 
     Returns:
         True if ALL conditions are satisfied.
     """
-    return all(_evaluate_condition(c, source_attrs, target_attrs) for c in predicate.conditions)
+    return all(
+        _evaluate_condition(c, source_attrs, target_attrs, regime_code)
+        for c in predicate.conditions
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -588,6 +615,7 @@ class EdgeTransitionSystem(SystemBase):
         _co_optive_suppression(graph, latent, services)
 
         # ─── Phase 2: Predicate evaluation + transitions ────────────
+        regime_code = _regime_code(graph)  # Phase E2: for any "regime" metric
         co_optive_breakdowns: list[tuple[str, str, str]] = []
 
         # Process all edges with edge_mode
@@ -625,7 +653,9 @@ class EdgeTransitionSystem(SystemBase):
             eligible = _TRANSITION_MAP.get(current_mode, [])
             fired: list[EdgeModeTransition] = []
             for transition in eligible:
-                if _evaluate_predicate(transition.predicate, source_attrs, target_attrs):
+                if _evaluate_predicate(
+                    transition.predicate, source_attrs, target_attrs, regime_code
+                ):
                     fired.append(transition)
 
             # Select highest-priority transition (EC-003)

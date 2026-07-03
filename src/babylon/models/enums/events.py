@@ -95,6 +95,9 @@ class EventType(StrEnum):
     # Dialectical Field Topology (Feature 002)
     EDGE_MODE_TRANSITION = "edge_mode_transition"  # Edge qualitative mode change
     PRINCIPAL_CONTRADICTION_SHIFT = "principal_contradiction_shift"  # Principal field changed
+    # Lawverian Aufhebung (Phase E): the principal contradiction is resolved at a
+    # higher level while diverging below — a sublation (quality from quantity).
+    LEVEL_TRANSITION = "level_transition"  # Opposition sublated to a higher level (E2)
     CO_OPTIVE_BREAKDOWN = "co_optive_breakdown"  # Co-optation failure with bifurcation
     LATENT_CONTRADICTION_RELEASE = "latent_contradiction_release"  # Suppressed df/dt spike
     ASPECT_REVERSAL = "aspect_reversal"  # Dominant party switches on directed edge

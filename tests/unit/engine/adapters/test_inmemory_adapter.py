@@ -21,7 +21,7 @@ DuckDB adapter will be added in Epoch 3 for 1000+ node graphs.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -65,15 +65,30 @@ TraversalResult = _graph_module.TraversalResult
 # =============================================================================
 
 
-@pytest.fixture
-def adapter() -> NetworkXAdapter:
-    """Create a fresh NetworkXAdapter for each test."""
-    return NetworkXAdapter()
+def _make_backend(backend: str) -> Any:
+    """Instantiate a graph backend by param name.
+
+    The conformance suite runs against BOTH implementations: the legacy
+    NetworkXAdapter and the rustworkx-backed BabylonGraph (Amendment L).
+    BabylonGraph is imported lazily so a missing implementation fails only
+    the babylon-parametrized cases (TDD red), not collection.
+    """
+    if backend == "networkx":
+        return NetworkXAdapter()
+    from babylon.engine.graph import BabylonGraph
+
+    return BabylonGraph()
 
 
-@pytest.fixture
-def populated_adapter() -> NetworkXAdapter:
-    """Create an adapter with sample nodes and edges.
+@pytest.fixture(params=["networkx", "babylon"])
+def adapter(request: pytest.FixtureRequest) -> Any:
+    """Create a fresh graph backend for each test (both implementations)."""
+    return _make_backend(request.param)
+
+
+@pytest.fixture(params=["networkx", "babylon"])
+def populated_adapter(request: pytest.FixtureRequest) -> Any:
+    """Create a populated graph backend with sample nodes and edges.
 
     Graph structure:
         C001 (proletariat) --SOLIDARITY--> C002 (proletariat)
@@ -81,7 +96,7 @@ def populated_adapter() -> NetworkXAdapter:
         C003 --EXPLOITATION--> C004 (bourgeoisie)
         T001 (territory) --ADJACENCY--> T002 (territory)
     """
-    adapter = NetworkXAdapter()
+    adapter = _make_backend(request.param)
 
     # Add social class nodes
     adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0, consciousness=0.5)
@@ -124,15 +139,20 @@ class TestNetworkXAdapterProtocolCompliance:
         """
         assert isinstance(adapter, GraphProtocol)
 
-    def test_adapter_uses_networkx_digraph(self, adapter: NetworkXAdapter) -> None:
-        """NetworkXAdapter uses nx.DiGraph internally.
+    def test_adapter_backing_store(self, adapter: NetworkXAdapter) -> None:
+        """NetworkXAdapter backs onto nx.DiGraph; BabylonGraph backs onto itself.
 
-        This verifies the implementation choice for Epoch 1.
+        The ``_graph`` attribute is the compat seam: mixins and legacy callers
+        reach the backing store through it. BabylonGraph returns itself — the
+        rustworkx core lives behind its compat surface.
         """
         import networkx as nx
 
         assert hasattr(adapter, "_graph")
-        assert isinstance(adapter._graph, nx.DiGraph)
+        if isinstance(adapter, NetworkXAdapter):
+            assert isinstance(adapter._graph, nx.DiGraph)
+        else:
+            assert adapter._graph is adapter
 
 
 # =============================================================================

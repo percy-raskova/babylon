@@ -12,9 +12,11 @@ Endorsement legend: **[E]** Percy proposed/ratified it; **[F]** floated by
 Claude, engaged but not ratified; **[V]** Percy's stated long-term vision,
 explicitly deferred.
 
-## 1. OWNER DECISIONS NEEDED (contradictions the corpus leaves open)
+## 1. OWNER DECISIONS — ALL RULED 2026-07-03
 
-Each has a recommendation; none is decided until Percy rules.
+Percy ruled on all five inline (her verbatim rulings kept below each
+item). Operational consequences are consolidated in the "Rulings
+applied" paragraph after the list.
 
 1. **Palette is contested four ways.** Constitution Article VII binds
    CRIMSON/SAFFRON/GREY/BLACK, no decorative glow; design-system V1 "Bunker
@@ -29,6 +31,9 @@ Each has a recommendation; none is decided until Percy rules.
    (2026-01-31, "yep!" to GOLD=solidarity semantics), JetBrains Mono (the
    one convergent font across V8+logo+Wire), logo palette scoped to the
    MARK not the UI; treat V8 cyan as unverified until she confirms.
+
+   **I trust the AI judgment on what looks best, impress me.** - percys ruling
+
 1. **Steam desktop binary vs. web app.** The endorsed Steam plan
    (2026-02-06) packaged a PyInstaller/PyQt6 desktop binary; the later web
    pivot (Django+React, Unity rejected 2026-05-18) is the current
@@ -37,6 +42,9 @@ Each has a recommendation; none is decided until Percy rules.
    RECOMMENDATION: web app remains the product; Steam ships a wrapped web
    build (or Electron-style shell) as a Wave-6 distribution spec; retire
    the PyQt6-binary plan explicitly (PyQt6 stays a dev tool).
+
+   **We are going to continue with the Web App as we hvae it.** - percys ruling
+
 1. **Workers-AI/LoRA narrator vs. server-side pgvector RAG.** 2026-03-01
    ratified a Cloudflare Workers AI narrator (GPT-OSS-20B, tool-calling);
    2026-05-12 has Claude arguing edge-RAG/LoRA is a constitution-violating
@@ -45,6 +53,9 @@ Each has a recommendation; none is decided until Percy rules.
    voice, one tool-call per tick, template fallback) runs on Workers AI
    per the endorsed 12-page Cloudflare spec; the Archive (semantic
    history/RAG) stays server-side pgvector per spec-037. No LoRA.
+
+   **We are using Workers-AI/LoRA narrator** - percys ruling
+
 1. **"No victory state" vs. the `REVOLUTIONARY_VICTORY` GameOutcome.**
    The principle (Tragedy of Inevitability, ~15 chats) coexists awkwardly
    with the 5-outcome enum. RECOMMENDATION: keep the 5 outcomes as
@@ -52,12 +63,40 @@ Each has a recommendation; none is decided until Percy rules.
    CK-style **chronicle end-screen** + Victoria-3-style **Journal**
    objectives (2026-04-12, 2026-03-01) as the UX that expresses the
    principle. Attach to spec-081/085.
+
+   **I accept recommendation** - percys ruling
+
 1. **Single-Postgres constitution vs. CONUS/federation ambition.** Percy:
    "I want it at scale for… the entire US." Not urgent (she declined
    FalkorDB: "not implementing"), but the eventual path is a
    constitutional amendment + the **columnar substrate refactor**
    (numpy/Arrow columns for hexes, Pydantic at boundaries only; Kuzu
    favored if a graph backend is ever needed). Park in Wave 7.
+
+   **Lets try to keep it all in postgres** - percys ruling
+
+**Rulings applied (2026-07-03)**:
+
+1. **Palette → AI discretion** ("impress me"). Design authority is
+   delegated; constraints that still bind: Constitution VII no-chartjunk,
+   JetBrains Mono, GOLD=solidarity semantics she ratified. The palette
+   becomes a design deliverable in the Wave-6 visual-identity spec, not a
+   blocker before it.
+1. **Delivery → web app as-is.** The PyQt6/PyInstaller desktop-binary
+   plan is retired (PyQt6 stays a dev tool). Steam (M7) becomes a
+   wrapped-web distribution question inside Wave 6.
+1. **Narrator → Workers-AI, LoRA in scope.** Percy chose the full
+   Workers-AI/LoRA side — this OVERRIDES the "No LoRA" recommendation;
+   LoRA fine-tuning of the narrator voice is in scope for the M8/X1
+   narrator spec. The Archive (semantic history/RAG) split was not ruled
+   against: pgvector stays server-side per spec-037 unless she says
+   otherwise.
+1. **Victory-UX → recommendation accepted.** 5 outcomes stay as terminal
+   characters-of-collapse; chronicle end-screen + Journal ship with
+   081/085 (M4).
+1. **Scale → single Postgres.** Federation/columnar substrate (M10) stays
+   parked in Wave 7; no constitutional amendment now. Scaling work happens
+   inside one Postgres.
 
 **Provenance note on the Lawverian foundation**: no historical chat
 endorses adjoint functors as the engine foundation (the idea arrived

@@ -86,16 +86,19 @@ stay demand-driven:
 - **Wave 6 (experience + distribution)**: in-game wiki via composable
   tooltips + term-registry linter (X3 — the onboarding strategy, pairs
   with 085); chronicle/Journal if not shipped with 081; visual identity +
-  palette resolution (X5 + Owner Decision 1); accessibility requirements
-  (X8 — colorblind-safe ramps, non-color magnitude channel, keyboard
-  nav); audio direction (X7); modding + console (M6); Steam distribution
-  (M7, subject to Owner Decision 2); **production deployment track**
-  (M8 — Hetzner+Cloudflare, 12-page spec-kit PDF exists); map viz specs
+  palette (X5 — RULED 2026-07-03: AI discretion, "impress me";
+  Constitution VII + JetBrains Mono + GOLD=solidarity still bind);
+  accessibility requirements (X8 — colorblind-safe ramps, non-color
+  magnitude channel, keyboard nav); audio direction (X7); modding +
+  console (M6); Steam distribution (M7 — RULED: web app stays the
+  product, Steam = wrapped-web build, PyQt6 binary retired); **production
+  deployment track** (M8 — Hetzner+Cloudflare, 12-page spec-kit PDF
+  exists; narrator RULED: Workers-AI with LoRA in scope); map viz specs
   (X6 — value-flow arrows lens, BubbleSets hulls, unit iconography,
   sovereignty-overlay rendering); Synopticon surface (X9, with 078/079).
 - **Wave 7 (horizon)**: international circulation layer (M9 — needs
-  constitutional amendment); scale-out/columnar substrate + federation
-  (M10).
+  constitutional amendment); scale-out (M10 — RULED 2026-07-03: keep it
+  all in one Postgres; federation/columnar substrate stays parked).
 
 ## "Game works locally" — remaining non-catalog items
 

@@ -21,9 +21,10 @@ master record. It adds endorsed-but-uncatalogued mechanics (commodity-flow
 routing, prose→stance verbs, chronicle/Journal, resource substrate, modding,
 deployment track, international layer), the experience layer (Wire, wiki
 tooltips, narrator voice, visual identity, audio, accessibility), five OWNER
-DECISIONS still open (palette, delivery, narrator infra, victory-UX,
-scale-out), and chat-sourced requirements folded into the dialectics
-contract (`06` §9). "The game works locally" remains the near goal; 07
+DECISIONS — **all five ruled by Percy 2026-07-03** (palette=AI discretion,
+delivery=web app, narrator=Workers-AI/LoRA, victory-UX=chronicle+Journal,
+scale=single Postgres; rulings verbatim in `07` §1) — and chat-sourced
+requirements folded into the dialectics contract (`06` §9). "The game works locally" remains the near goal; 07
 defines what "a complete game" adds beyond it.
 
 ## Roadmap authority (ratified 2026-07-02)

@@ -10,15 +10,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar, Union
 
-import networkx as nx
-
 from babylon.economics.dispossession.intensity import DispossessionIntensityCalculator
 from babylon.engine.event_bus import Event
 from babylon.engine.systems.base import SystemBase
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
+    import networkx as nx
+
     from babylon.engine.context import TickContext
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 ContextType = Union[dict[str, Any], "TickContext"]
@@ -43,7 +44,7 @@ class DispossessionEventSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -54,16 +55,14 @@ class DispossessionEventSystem(SystemBase):
             services: Service container with defines and event_bus.
             context: Tick context with current tick number.
         """
+        protocol = self._wrap_graph(graph)
         tick = context["tick"] if isinstance(context, dict) else context.tick
         defines = services.defines.dispossession
         calculator = DispossessionIntensityCalculator(defines)
 
-        for node_id in list(graph.nodes):
-            data = graph.nodes[node_id]
-
-            # Only process territory nodes
-            if data.get("_node_type") != "Territory":
-                continue
+        for node in list(protocol.query_nodes(node_type="Territory")):
+            node_id = node.id
+            data = node.attributes
 
             # Read dispossession rates from node
             foreclosure_rate = _get_float(data, "foreclosure_rate")
@@ -97,7 +96,7 @@ class DispossessionEventSystem(SystemBase):
             if transfer_amount > 0.0:
                 net_received, deadweight = calculator.compute_value_transfer(transfer_amount)
                 # Reduce territory wealth
-                graph.nodes[node_id]["wealth"] = territory_wealth - transfer_amount
+                protocol.update_node(node_id, wealth=territory_wealth - transfer_amount)
 
                 # Publish value transfer event
                 services.event_bus.publish(
@@ -114,7 +113,7 @@ class DispossessionEventSystem(SystemBase):
                 )
 
             # Store intensity on node
-            graph.nodes[node_id]["dispossession_intensity"] = intensity
+            protocol.update_node(node_id, dispossession_intensity=intensity)
 
             # Publish dispossession event
             services.event_bus.publish(

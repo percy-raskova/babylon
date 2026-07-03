@@ -9,15 +9,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar, Union
 
-import networkx as nx
-
 from babylon.economics.reserve_army.calculator import DefaultWagePressureCalculator
 from babylon.engine.event_bus import Event
 from babylon.engine.systems.base import SystemBase
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
+    import networkx as nx
+
     from babylon.engine.context import TickContext
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 ContextType = Union[dict[str, Any], "TickContext"]
@@ -41,7 +42,7 @@ class ReserveArmySystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -52,16 +53,13 @@ class ReserveArmySystem(SystemBase):
             services: Service container with defines and event_bus.
             context: Tick context with current tick number.
         """
+        protocol = self._wrap_graph(graph)
         tick = context["tick"] if isinstance(context, dict) else context.tick
         defines = services.defines.reserve_army
         calculator = DefaultWagePressureCalculator(defines)
 
-        for node_id in list(graph.nodes):
-            data = graph.nodes[node_id]
-
-            # Only process territory nodes
-            if data.get("_node_type") != "Territory":
-                continue
+        for node in list(protocol.query_nodes(node_type="Territory")):
+            data = node.attributes
 
             # Read reserve_ratio from node (set by data loader or prior system)
             reserve_ratio = data.get("reserve_ratio", 0.0)
@@ -77,27 +75,27 @@ class ReserveArmySystem(SystemBase):
             if wage_pressure <= 0.0:
                 continue
 
-            # Apply wage pressure to median_wage
+            # Store computed values on node for downstream systems; wage
+            # pressure reduces median_wage multiplicatively when present.
+            updates: dict[str, Any] = {
+                "wage_pressure": wage_pressure,
+                "reserve_ratio": reserve_ratio,
+            }
             current_wage = data.get("median_wage", 0.0)
             if isinstance(current_wage, (int, float)) and current_wage > 0.0:
-                # Wage pressure reduces median_wage multiplicatively
-                adjusted_wage = float(current_wage) * (1.0 - wage_pressure)
-                graph.nodes[node_id]["median_wage"] = adjusted_wage
+                updates["median_wage"] = float(current_wage) * (1.0 - wage_pressure)
+            protocol.update_node(node.id, **updates)
 
-            # Store computed values on node for downstream systems
-            graph.nodes[node_id]["wage_pressure"] = wage_pressure
-            graph.nodes[node_id]["reserve_ratio"] = reserve_ratio
-
-            # Publish event
+            # Publish event (median_wage mirrors the post-update node value)
             services.event_bus.publish(
                 Event(
                     type=EventType.RESERVE_ARMY_PRESSURE,
                     tick=tick,
                     payload={
-                        "territory": node_id,
+                        "territory": node.id,
                         "reserve_ratio": reserve_ratio,
                         "wage_pressure": wage_pressure,
-                        "median_wage": graph.nodes[node_id].get("median_wage", 0.0),
+                        "median_wage": updates.get("median_wage", data.get("median_wage", 0.0)),
                     },
                 )
             )

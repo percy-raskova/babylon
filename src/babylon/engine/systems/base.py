@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     import networkx as nx
 
     from babylon.engine.event_bus import Event
+    from babylon.engine.graph import BabylonGraph
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
     from babylon.engine.systems.protocol import ContextType
@@ -47,16 +48,16 @@ class SystemBase(ABC):
     @abstractmethod
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
         """Apply system logic to the world graph (in-place mutation).
 
         The signature matches :class:`babylon.engine.systems.protocol.System`
-        exactly. Subclasses MAY widen ``graph`` to accept ``GraphProtocol``
-        (e.g., ``nx.DiGraph[str] | GraphProtocol``) — input widening is
-        Liskov-compatible.
+        exactly. In production the engine passes a
+        :class:`~babylon.engine.graph.BabylonGraph` (which satisfies
+        ``GraphProtocol``); legacy fixtures may pass a raw ``nx.DiGraph``.
         """
 
     @staticmethod
@@ -64,7 +65,8 @@ class SystemBase(ABC):
         """Return ``graph`` as a :class:`GraphProtocol`.
 
         Wraps a raw NetworkX DiGraph via :class:`NetworkXAdapter` if the input
-        is not already a :class:`GraphProtocol`. Idempotent.
+        is not already a :class:`GraphProtocol`. Idempotent (BabylonGraph and
+        already-wrapped adapters pass through unchanged).
         """
         from babylon.engine.graph_protocol import GraphProtocol
 
@@ -73,6 +75,35 @@ class SystemBase(ABC):
 
             return NetworkXAdapter.wrap(graph)
         return graph
+
+    @staticmethod
+    def _compat_graph(
+        graph: nx.DiGraph[str] | GraphProtocol,
+    ) -> BabylonGraph | nx.DiGraph[str]:
+        """Narrow a ``step()`` graph argument to the nx-compat world surface.
+
+        Transitional helper (Amendment L) for systems whose subsystem helpers
+        still read/write raw payload dicts (``graph.nodes(data=True)``,
+        ``graph.edges[u, v][...]``) rather than protocol methods. Both
+        BabylonGraph and nx.DiGraph provide that surface; a wrapped
+        NetworkXAdapter is unwrapped to its backing graph.
+
+        Raises:
+            TypeError: If the backend exposes neither surface.
+        """
+        from babylon.engine.graph import BabylonGraph
+
+        if isinstance(graph, BabylonGraph):
+            return graph
+        import networkx as nx  # local: TYPE_CHECKING-only at module level
+
+        if isinstance(graph, nx.DiGraph):
+            return graph
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+        if isinstance(graph, NetworkXAdapter):
+            return graph.underlying_graph
+        raise TypeError(f"Unsupported graph backend: {type(graph).__name__}")
 
     @staticmethod
     def _read(

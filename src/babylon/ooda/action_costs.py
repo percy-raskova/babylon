@@ -21,6 +21,8 @@ from babylon.ooda.types import ActionCostModifier
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.engine.graph import BabylonGraph
+
 
 # Contradiction axes: (hegemonic, marginalized) pairs
 _CONTRADICTION_PAIRS: list[tuple[CommunityType, CommunityType]] = [
@@ -36,7 +38,7 @@ def compute_action_cost(
     action_type: ActionType,
     org_id: str,
     target_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph | nx.DiGraph[str],
     defines: OODADefines,
 ) -> ActionCostModifier:
     """Compute effective cost of an action with community modifiers.
@@ -85,7 +87,7 @@ def compute_action_cost(
 
 def _get_org_community_types(
     org_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph | nx.DiGraph[str],
 ) -> set[CommunityType]:
     """Get community types of an org's members.
 
@@ -116,7 +118,7 @@ def _get_org_community_types(
 
 def _get_target_community_type(
     target_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph | nx.DiGraph[str],
 ) -> CommunityType | None:
     """Get the community type of a target community node.
 

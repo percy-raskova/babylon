@@ -15,8 +15,10 @@ from babylon.organizations.types import CompositionResult
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.engine.graph import BabylonGraph
 
-def _membership_targets(org_id: str, G: nx.DiGraph[str]) -> list[tuple[str, float]]:
+
+def _membership_targets(org_id: str, G: BabylonGraph | nx.DiGraph[str]) -> list[tuple[str, float]]:
     """Extract (target_id, weight) for all MEMBERSHIP edges from org_id."""
     targets: list[tuple[str, float]] = []
     for _, target, data in G.out_edges(org_id, data=True):
@@ -28,7 +30,7 @@ def _membership_targets(org_id: str, G: nx.DiGraph[str]) -> list[tuple[str, floa
 
 def _composition_by_attribute(
     org_id: str,
-    G: nx.DiGraph[str],
+    G: BabylonGraph | nx.DiGraph[str],
     attribute: str,
     axis: str,
 ) -> CompositionResult:
@@ -57,7 +59,7 @@ def _composition_by_attribute(
     )
 
 
-def class_composition(org_id: str, G: nx.DiGraph[str]) -> CompositionResult:
+def class_composition(org_id: str, G: BabylonGraph | nx.DiGraph[str]) -> CompositionResult:
     """Analyze class makeup of an organization via MEMBERSHIP edges.
 
     Args:
@@ -70,7 +72,7 @@ def class_composition(org_id: str, G: nx.DiGraph[str]) -> CompositionResult:
     return _composition_by_attribute(org_id, G, "role", "class")
 
 
-def community_composition(org_id: str, G: nx.DiGraph[str]) -> CompositionResult:
+def community_composition(org_id: str, G: BabylonGraph | nx.DiGraph[str]) -> CompositionResult:
     """Analyze community makeup of an organization via MEMBERSHIP edges.
 
     Args:
@@ -83,7 +85,7 @@ def community_composition(org_id: str, G: nx.DiGraph[str]) -> CompositionResult:
     return _composition_by_attribute(org_id, G, "community", "community")
 
 
-def lifecycle_composition(org_id: str, G: nx.DiGraph[str]) -> CompositionResult:
+def lifecycle_composition(org_id: str, G: BabylonGraph | nx.DiGraph[str]) -> CompositionResult:
     """Analyze lifecycle phase makeup of an organization via MEMBERSHIP edges.
 
     Args:

@@ -8,6 +8,7 @@ import networkx as nx
 
 if TYPE_CHECKING:
     from babylon.engine.context import TickContext
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 # Type alias for context parameter - accepts both legacy dict and typed TickContext
@@ -25,7 +26,7 @@ class System(Protocol):
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:

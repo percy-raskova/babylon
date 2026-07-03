@@ -18,10 +18,12 @@ from babylon.organizations.composition import effective_capacity, lifecycle_comp
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.engine.graph import BabylonGraph
+
 
 def compute_lifecycle_modifier(
     org_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph | nx.DiGraph[str],
     org_defines: OrganizationDefines,
 ) -> float:
     """Compute lifecycle-weighted capacity modifier for an organization.
@@ -43,7 +45,7 @@ def compute_lifecycle_modifier(
 
 def elder_legitimacy_bonus(
     org_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph | nx.DiGraph[str],
     org_defines: OrganizationDefines,  # noqa: ARG001 — reserved for future elder capacity weighting
     ooda_defines: OODADefines,
 ) -> float:

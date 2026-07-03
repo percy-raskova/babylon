@@ -40,7 +40,7 @@ See Also:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast, overload
 
 import rustworkx as rx
 
@@ -550,6 +550,14 @@ class BabylonGraph(_GraphCore, AggregationMixin, QueryMixin):
         """nx.DiGraph parity: neighbors == successors."""
         return self.successors(node_id)
 
+    @overload
+    def out_edges(self, node_id: str, data: Literal[False] = ...) -> list[tuple[str, str]]: ...
+
+    @overload
+    def out_edges(
+        self, node_id: str, data: Literal[True]
+    ) -> list[tuple[str, str, EdgePayload]]: ...
+
     def out_edges(
         self, node_id: str, data: bool = False
     ) -> list[tuple[str, str]] | list[tuple[str, str, EdgePayload]]:
@@ -560,6 +568,12 @@ class BabylonGraph(_GraphCore, AggregationMixin, QueryMixin):
                 for target in self._adj[node_id]
             ]
         return [(node_id, target) for target in self._adj[node_id]]
+
+    @overload
+    def in_edges(self, node_id: str, data: Literal[False] = ...) -> list[tuple[str, str]]: ...
+
+    @overload
+    def in_edges(self, node_id: str, data: Literal[True]) -> list[tuple[str, str, EdgePayload]]: ...
 
     def in_edges(
         self, node_id: str, data: bool = False

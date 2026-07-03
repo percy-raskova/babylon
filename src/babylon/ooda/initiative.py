@@ -18,6 +18,8 @@ from babylon.ooda.types import InitiativeScore
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.engine.graph import BabylonGraph
+
 
 def compute_initiative_score(
     org_id: str,
@@ -81,7 +83,7 @@ def resolve_action_order(scores: list[InitiativeScore]) -> list[InitiativeScore]
 
 def compute_community_embeddedness(
     org_id: str,
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph | nx.DiGraph[str],
 ) -> float:
     """Compute how embedded an organization is in its operating communities.
 

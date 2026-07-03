@@ -11,6 +11,18 @@ Key Design Decision: solidarity_strength is a PERSISTENT ATTRIBUTE ON THE EDGE,
 NOT auto-calculated from source organization. This enables the Fascist Bifurcation
 scenario where periphery revolts but core workers remain passive due to lack of
 built solidarity infrastructure.
+
+Categorical reading (Phase B, ``project/06-lawverian-dialectics.md`` §4):
+every SOLIDARITY edge this system strengthens moves the solidarity graph
+toward the sheaf/unity pole :math:`\\bigcirc` of the connectivity
+cylinder — it shrinks
+:func:`atomization_index <babylon.dialectics.instances.connectivity.atomization_index>`
+and raises the cylinder's
+:meth:`balance <babylon.dialectics.core.cylinder.AdjointCylinder.balance>`.
+Repression and atomization pull the opposite direction, toward the
+skeleton/atomized pole :math:`\\Box` (the edgeless graph). See
+:mod:`babylon.dialectics.instances.connectivity` for the instance; this
+system does not call it directly (no behavior change in Phase B).
 """
 
 from __future__ import annotations

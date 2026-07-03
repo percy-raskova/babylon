@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING
 
 import networkx as nx
 
+from babylon.dialectics.instances.connectivity import pieces
 from babylon.models.enums import EdgeType
 from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
@@ -118,12 +119,18 @@ def calculate_component_metrics(
         - num_components: Number of disconnected subgraphs
         - max_component_size: Size of largest component (L_max)
         - percolation_ratio: L_max / N (clamped to [0, 1])
+
+    Note:
+        Component counting is grounded in the connectivity cylinder's
+        :math:`\\Pi_0` (:func:`babylon.dialectics.instances.connectivity.pieces`)
+        — same ``nx.connected_components`` computation, re-exposed as the
+        Phase-B instance (``project/06-lawverian-dialectics.md`` §4).
     """
     if total_social_classes == 0:
         return (0, 0, 0.0)
 
-    # Get connected components
-    components = list(nx.connected_components(solidarity_graph))
+    # Get connected components (Pi_0 of the connectivity cylinder instance)
+    components = pieces(solidarity_graph)
     num_components = len(components)
     max_component_size = 0 if num_components == 0 else max(len(c) for c in components)
 

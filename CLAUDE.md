@@ -117,6 +117,20 @@ poetry run pre-commit install
 # Task Runner (namespace-driven - see ADR035)
 mise tasks                                        # List all available tasks
 
+# Agent inner loop — PREFER THESE over hand-typed poetry/git/psql one-liners
+# (distilled from transcript mining, 2026-07-03; they exist so you don't
+#  re-type incantations or replay the pre-commit mutate-abort dance)
+mise run commit -- "type(scope): msg"             # Hook-safe commit: pre-runs hooks, re-stages fixes, verifies HEAD moved
+mise run test:q -- tests/unit/foo.py              # Quiet scoped pytest (kept cache => --lf works)
+mise run test:failed                              # Re-run only last failures from test:q's cache
+mise run check:quick                              # lint + format + typecheck (no test leg)
+mise run db:sql -- "SELECT ..."                   # One-shot SQL vs babylon_test (guarded by pg_isready)
+mise run sim:status                               # Canonical-run status: tick/520, DB size, liveness, dialectics signals
+mise run sim:e2e-bg                               # Daemonize the 520-tick e2e (pidfile + log; watch via sim:status)
+mise run sim:probe -- --county 26163 --ticks 3    # Single-county Postgres tick probe (tools/tick_probe.py)
+mise run clean:testdb                             # Recycle bloated babylon_test (~7 GB per canonical run!)
+mise run clean:docker                             # Flush leaked test containers + anonymous volumes
+
 # CI & Quality (fast gate)
 mise run check                                    # lint + format + typecheck + test:unit
 mise run ci                                       # Same as check

@@ -50,7 +50,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from babylon.economics.substrate.h3_utils import generate_h3_cells
@@ -240,7 +240,13 @@ def hydrate_hex_state(
     if not hex_rows:
         return 0
 
-    # 4. Persist atomically at tick 0.
+    # 4. Spec-088 S3 (FR-006): hex_spatial_map is the single stored copy
+    # of the immutable hex → (county, state, region) mapping; per-tick hex
+    # rows write NULL spatial keys (see _hex_row_dict). Populate the map
+    # first so a hydrated session always resolves through it.
+    _persist_hex_spatial_map(runtime, hex_rows)
+
+    # 5. Persist atomically at tick 0.
     envelope = PerTickTransactionEnvelope(
         session_id=session_id,
         tick=0,
@@ -260,6 +266,31 @@ def hydrate_hex_state(
 # ─────────────────────────────────────────────────────────────────────────────
 # Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+_HEX_SPATIAL_MAP_INSERT = """
+INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id)
+VALUES (%(h3_index)s, %(county_fips)s, %(state_fips)s, %(region_id)s)
+ON CONFLICT (h3_index) DO NOTHING
+"""
+
+
+def _persist_hex_spatial_map(runtime: Any, hex_rows: list[DynamicHexState]) -> None:
+    """Idempotently record each hex's immutable spatial mapping (spec-088 FR-006)."""
+    pool = runtime._pool  # noqa: SLF001
+    with pool.connection() as conn:
+        conn.cursor().executemany(
+            _HEX_SPATIAL_MAP_INSERT,
+            [
+                {
+                    "h3_index": row.h3_index,
+                    "county_fips": row.county_fips,
+                    "state_fips": row.state_fips,
+                    "region_id": row.region_id,
+                }
+                for row in hex_rows
+            ],
+        )
 
 
 class _CountyRow:

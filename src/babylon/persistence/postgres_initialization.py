@@ -458,6 +458,12 @@ def initialize_session(
 
     report = InitializationReport(session_id=session_id, sqlite_path=sqlite_path.resolve())
 
+    # Spec-088 FR-005: create this session's partitions before any
+    # dynamic-table write (external-node bootstrap writes tick 0 below).
+    from babylon.persistence.partitioning import ensure_session_partitions
+
+    ensure_session_partitions(pool=runtime._pool, session_id=session_id)  # noqa: SLF001
+
     copied = copy_reference_series(
         session_id=session_id,
         start_year=start_year,

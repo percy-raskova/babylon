@@ -68,22 +68,16 @@ BD may merge as one or split web/engine/data at PR time).
   the full imperial circuit runs (Φ grows 0.008→0.78/tick over 80 ticks,
   bourgeoisie accumulate, P(S|A)→0.995 while P(S|R)=0.167)
 
-## PENDING VERIFICATION (check before building on it)
+## Canonical verification: DONE (2026-07-03 ~00:35 EDT)
 
-A final 520-tick canonical WITH the labor-aristocracy circuit was launched
-~18:50 EDT 2026-07-02 (background task; ~50 min runtime). Before proceeding:
-
-1. Find the newest bundle: `ls -t reports/sim-runs/ | head -1`
-1. Verify liveness in its `summary.json`:
-   `terminal_state.counties_alive == terminal_state.counties_with_population == 83`
-1. Verify baseline was rewritten: `git status tests/baselines/michigan-e2e.json`
-1. Run the gate: `mise run qa:e2e-regression` → expect
-   `population liveness: 3/3` and `Δ=0.000%` lines, exit 0.
-1. Commit the regenerated baseline + bundle (artifacts via `--no-verify`),
-   message pattern: see `2c81f86a`.
-
-If the run FAILED or liveness < 83: read `02-engine-truths.md` §5 for the
-diagnostic playbook (per-system probes) before touching anything.
+The 520-tick labor-aristocracy canonical VERIFIED and committed. (First
+attempt died at t387 when session compaction killed the harness background
+task — relaunch as a `nohup`-detached process survived; lesson: long runs
+must be detached, not harness-managed.) Bundle `2026-07-02T23-37-23Z`:
+`counties_alive == counties_with_population == 83`; qa:e2e-regression green
+(liveness 3/3, total_v Δ=0.000%, zero conservation criticals). This baseline
+is the PRE-REFACTOR comparison point for the Lawverian program — Phase E
+re-baselines after the contradiction semantics change.
 
 ## In-flight / awaiting Percy (BD)
 

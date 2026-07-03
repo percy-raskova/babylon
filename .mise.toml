@@ -770,6 +770,25 @@ find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 echo "Cleaned!"
 """
 
+[tasks."clean:docker"]
+description = "Flush leaked test Postgres containers + anonymous volumes + build cache (frees /var)"
+run = """
+echo "── leaked ephemeral postgis test containers (testcontainers pattern):"
+LEAKED=$(docker ps -a --filter ancestor=postgis/postgis:16-3.4-alpine --format '{{.Names}}' | grep -v '^babylon-' || true)
+if [ -n "$LEAKED" ]; then
+  echo "$LEAKED" | xargs docker rm -f
+else
+  echo "(none)"
+fi
+echo "── anonymous dangling volumes (named volumes untouched):"
+docker volume prune -f
+echo "── docker build cache:"
+docker builder prune -f
+echo "── /var after flush:"
+df -h /var | tail -1
+docker system df
+"""
+
 # =============================================================================
 # MUSIC GENERATION (Namespaced)
 # =============================================================================

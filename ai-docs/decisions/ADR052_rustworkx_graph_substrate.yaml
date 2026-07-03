@@ -1,0 +1,132 @@
+# =============================================================================
+# ADR-052: Graph Substrate — NetworkX -> rustworkx (BabylonGraph)
+# =============================================================================
+#
+# Decision: Replace NetworkX with the rustworkx-backed BabylonGraph as the
+# sole graph substrate: one class that IS both the GraphProtocol
+# implementation and the nx-compat authoring API, with insertion-ordered
+# Python mirrors reproducing NetworkX's exact iteration contract so the
+# determinism hash survives the swap byte-identically.
+#
+# Status: ACCEPTED (2026-07-03)
+# Constitution: Amendment L (v2.7.0) — II.3/II.6/II.7/II.12/III.9/X.5
+# Related: ADR044 (bridged runner), ADR051 (dialectics refactor — the
+#          re-baselined canonical run this swap was gated against)
+
+adr_052_rustworkx_graph_substrate:
+  status: "accepted"
+  date: "2026-07-03"
+  title: "rustworkx graph substrate: BabylonGraph with insertion-ordered mirrors (Amendment L)"
+
+  context: |
+    The Topology pillar ran on NetworkX (pure Python). Every tick round-trips
+    WorldState.to_graph() -> 25 systems mutate -> from_graph(), plus graph
+    algorithms in the analytics layers (topology_monitor, bifurcation,
+    sparrow, curvature, dialectics Pi_0). rustworkx (Qiskit's Rust-core graph
+    library, 0.17.1) offers the same algorithm surface with a Rust core and
+    mypy-strict .pyi stubs. Owner ruling (Percy, 2026-07-03): 1-for-1 clean
+    substrate swap; Poetry stays; the 6 raw-nx systems port to GraphProtocol;
+    constitution amendments land first.
+
+    The binding constraint was constitution III.7: the determinism hash
+    depends on graph iteration order. NetworkX iterates nodes in insertion
+    order and edges source-insertion-then-adjacency; rustworkx REUSES integer
+    node indices after removal, so raw index order is NOT insertion order
+    under churn (collapse_transition removes+adds nodes mid-tick; struggle
+    removes edges).
+
+  decision: |
+    New module src/babylon/engine/graph.py: BabylonGraph (directed world
+    graph) + BabylonUGraph (undirected analytics sibling) over a shared
+    _GraphCore. BabylonGraph IS the GraphProtocol implementation AND the
+    authoring API (constitution II.12) — SystemBase._wrap_graph passes it
+    through and now rejects raw nx graphs with TypeError.
+
+    Internals (the determinism design):
+    - _core: rx.PyDiGraph(multigraph=False) — consulted ONLY for algorithms,
+      never iterated for ordering.
+    - _ids / _index_to_id: insertion-ordered str<->int bimap — rustworkx
+      index reuse is invisible; no surface ever iterates raw index order.
+    - _node_payload / _edge_payload: the SAME dict objects held as rustworkx
+      payloads (reference semantics — mutations visible to rx weight_fn
+      callbacks and through subgraph views).
+    - _adj / _pred: per-source insertion-ordered adjacency mirrors;
+      edges(data=True) reproduces NetworkX's exact iteration contract.
+    - Dual-signature add_node/add_edge (protocol positional / nx keyword);
+      add_edge on an existing (u,v) MERGES attributes (nx semantics — the
+      spike pinned that rustworkx alone REPLACES payloads).
+    - DUAL edge-type keys: payloads carry BOTH public `edge_type` (~25 raw
+      readers across ooda/bifurcation/persistence/from_graph) and internal
+      `_edge_type` (protocol lookup key), synced at insert.
+    - copy() deep-copies payload dicts (nx parity); subgraph() shares them
+      (nx-view parity); to_undirected() -> BabylonUGraph with copied dicts.
+    - Compat additions the test sweep exposed: has_node(), G[u][v] adjacency
+      subscription, insertion-ordered NodesView/EdgesView with overloaded
+      (data=) call forms.
+
+    Backend algorithm seam: src/babylon/engine/graph_algorithms.py — all
+    analytics algorithms (components, articulation points, centralities,
+    stoer_wagner min-cut with crossing-edge derivation, dijkstra with goal=
+    early-exit) run rustworkx-native; the transitional NetworkX fallback
+    arms were stripped in Phase 7 once the fixture sweep completed.
+
+    The NetworkXAdapter (759 lines) and its per-tick wrap()/key-normalization
+    sweep were deleted; QueryMixin/AggregationMixin/SubgraphView survive,
+    retyped against the structural CompatGraph protocol, composed by
+    BabylonGraph itself.
+
+  determinism_verification: |
+    Gate design: baselines generated on NetworkX must pass UNCHANGED on
+    rustworkx. Results at the Phase 3 cutover (commit 47c55150):
+    - qa:regression 5/5 PASS (imperial_circuit, two_node, starvation, glut,
+      fascist_bifurcation) — byte-identical
+    - qa:e2e-regression (michigan-e2e): all checks PASS, total_v delta 0.000%
+    - git diff tests/baselines/ EMPTY (design goal: baselines never shift —
+      held; no regeneration was needed)
+    - III.7 order contract pinned by tests/unit/engine/
+      test_graph_iteration_order.py: churn tests + a Hypothesis model test
+      over arbitrary bounded add/remove interleavings, differential against
+      a real nx.DiGraph oracle (deliberately retained in that file).
+    One pre-existing baseline staleness was found and fixed en route: the
+    dialectics E2 define (tension.regime_rate_epsilon) had changed
+    defines_hash after the baselines were last generated; they were
+    regenerated BEFORE the cutover so the swap gate measured only the swap.
+
+  benchmark: |
+    Raw-layer microbench (tools/benchmarks/graph_backend_bench.py,
+    michigan-shaped 2k nodes / 8k edges, median of 5; Phase 1 pre-swap
+    baseline / Phase 8 post-cutover re-run):
+      graph build            4.96x / 4.05x faster than nx
+      attr read/write        2.11x / 2.10x (raw-index access)
+      full nodes(data=True)  2.72x / 1.68x sweep
+      connected components   3.68x / 4.07x
+      dijkstra SSSP          4.43x / 5.00x
+    CRUD through the insertion-ordered mirrors is ~nx-parity BY DESIGN (the
+    mirrors are Python dicts; the win is in algorithms and bulk sweeps).
+    The per-tick engine hot path is CRUD + Pydantic round-trip dominated, so
+    end-to-end tick wall-clock is ~neutral now; the algorithm-layer wins
+    accrue to topology_monitor/bifurcation/sparrow/curvature call sites and
+    grow as those wire into per-tick production paths.
+
+  rejected_alternatives:
+    converting_wrap: "A converting NetworkXAdapter shim (nx->rx per tick) breaks fixture reference semantics and pays a per-tick conversion tax."
+    bare_rx_everywhere: "Ad-hoc index maps at every call site re-implements the ordering contract ~20 times over."
+    rx_networkx_converter: "rx.networkx_converter is one-way, allocates per tick, and guarantees no iteration order."
+
+  consequences:
+    positive:
+      - "Rust-core algorithms: 2.7-5x on the measured raw-layer operations"
+      - "One graph class is both protocol impl and authoring API — the wrap() sweep and its per-tick key normalization are gone"
+      - "Determinism hash provably unchanged (byte-identical gates)"
+      - "mypy-strict clean including rustworkx stubs (609 src files)"
+    negative:
+      - "Double bookkeeping (rx core + mirrors) — conformance suite + Hypothesis model test are the drift backstop"
+      - "networkx remains in the lock transitively (xgi, torch) — semgrep no-networkx-import rule makes the migration permanent instead"
+      - "Undirected analytics edge iteration is stored-order (not nx's adjacency order) — documented as determinism-safe because analytics graphs are never round-tripped"
+
+  cross_references:
+    constitution: ".specify/memory/constitution.md v2.7.0 Amendment L"
+    spike: "tests/unit/engine/test_rustworkx_spike.py (15 pinned 0.17.1 behaviors)"
+    conformance: "tests/unit/engine/test_graph_conformance.py (born as the NetworkXAdapter contract suite)"
+    order_contract: "tests/unit/engine/test_graph_iteration_order.py"
+    benchmark: "tools/benchmarks/graph_backend_bench.py"

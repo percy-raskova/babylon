@@ -102,7 +102,9 @@ export function VerbSelector({
       {VERB_GRID.map((col) => (
         <div
           key={col.category}
-          className={`border-b pb-1 text-center text-[9px] font-bold uppercase tracking-widest ${CATEGORY_COLORS[col.category]} ${CATEGORY_BORDER[col.category]}`}
+          className={`border-b pb-1 text-center text-[9px] font-bold uppercase tracking-widest ${
+            CATEGORY_COLORS[col.category]
+          } ${CATEGORY_BORDER[col.category]}`}
         >
           {col.label}
         </div>
@@ -179,7 +181,9 @@ function VerbCell({
       </span>
       {cost !== undefined && !isUnavailable && (
         <span
-          className={`mt-0.5 font-mono text-[9px] ${overBudget ? "text-phosphor-red" : "text-gold"}`}
+          className={`mt-0.5 font-mono text-[9px] ${
+            overBudget ? "text-phosphor-red" : "text-gold"
+          }`}
         >
           {cost} AP
         </span>

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import xgi  # type: ignore[import-untyped]
+import xgi  # type: ignore[import-untyped, unused-ignore]
 
 from babylon.bifurcation.consciousness import consciousness_sigmoid
 from babylon.bifurcation.types import BridgeInfo

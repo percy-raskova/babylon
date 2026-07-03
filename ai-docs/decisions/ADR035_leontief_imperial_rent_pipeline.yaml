@@ -156,13 +156,15 @@ implementation:
     - tests/integration/economics/tick/test_imperial_rent_calibration.py (2 tests)
 
 deferred_to_followup:
-  - Wayne County baseline integration test (SC-002 end-to-end)
+  - |
+    Wayne County baseline integration test (SC-002 end-to-end)
     requires: real DefaultPeripheryLaborCoefficientsSource +
-      DefaultFinalDemandSource + DefaultIndustryToCountyAllocator wired
-      against production reference DB
+    DefaultFinalDemandSource + DefaultIndustryToCountyAllocator wired
+    against production reference DB
   - SC-006 multi-tick savings/accumulation downstream test
     (T053b created; full assertion deferred to Wayne baseline)
-  - v1.5 industry resolution: wage_ratio_i = ERDI[year] · qcew_us_wage[i] /
+  - |
+    v1.5 industry resolution: wage_ratio_i = ERDI[year] · qcew_us_wage[i] /
     qcew_us_avg_wage (uses fact_qcew_annual aggregated to BEA Summary
     via bridge_naics_bea)
   - factory.py SourceRegistry.builtin_economics() registration of the 4

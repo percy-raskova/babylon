@@ -194,27 +194,37 @@ class TestPrincipalSelection:
     """Mao: the fast-developing contradiction leads, then cedes when it stalls."""
 
     def test_fast_developing_wage_overtakes_then_cedes(self) -> None:
+        # Phase D5 migrated the wage measure from WAGES-edge endpoint wealth
+        # to the true (w_paid, v_produced) defect pair on paid class nodes,
+        # and the imperial opposition reads the SAME pairs until real
+        # periphery data lands (their gaps are pinned equal by
+        # test_value_form_bridged). The overtake is therefore asserted on
+        # the wage/imperial defect family, not on "wage" alone — the tie
+        # between the twinned measures breaks lexicographically.
         graph = _build_circuit_graph()
         services = ServiceContainer.create()
         system = ContradictionSystem()
 
-        # Tick 1: baseline — capital_labor (0.5) is principal; wage gap ~0.05.
+        # Tick 1: baseline — capital_labor (0.5) is principal; the wage
+        # defect starts small: w_paid 21 vs v_produced 19 -> |21-19|/40 = 0.05.
+        graph.nodes["worker2"]["w_paid"] = 21.0
+        graph.nodes["worker2"]["v_produced"] = 19.0
         system.step(graph, services, {"tick": 1})
         assert _principal_key(graph) == "capital_labor"
 
-        # Tick 2: wage gap jumps 0.05 -> 0.45 (rate 0.40) while capital_labor
-        # holds at 0.5 (rate 0). Score wage = 0.45*(1+10*0.40) = 2.25 beats
-        # capital_labor 0.5 -> the fast-developing contradiction leads.
-        graph.nodes["employer"]["wealth"] = 29.0
-        graph.nodes["worker2"]["wealth"] = 11.0  # |29-11|/40 = 0.45
+        # Tick 2: the wage defect jumps 0.05 -> 0.45 (rate 0.40) while
+        # capital_labor holds at 0.5 (rate 0). Score = 0.45*(1+10*0.40) =
+        # 2.25 beats capital_labor 0.5 -> the fast-developing defect leads.
+        graph.nodes["worker2"]["w_paid"] = 29.0
+        graph.nodes["worker2"]["v_produced"] = 11.0  # |29-11|/40 = 0.45
         system.step(graph, services, {"tick": 2})
         wage = graph.graph["opposition_states"]["wage"]
         assert wage["gap"] == pytest.approx(0.45)
         assert wage["rate"] == pytest.approx(0.40)
-        assert _principal_key(graph) == "wage"
+        assert _principal_key(graph) in ("wage", "imperial")
 
-        # Tick 3: wage holds (rate -> 0), its static gap 0.45 < capital_labor
-        # 0.5 -> the principal role returns to capital_labor.
+        # Tick 3: the defect holds (rate -> 0), its static gap 0.45 < 0.5
+        # -> the principal role returns to capital_labor.
         system.step(graph, services, {"tick": 3})
         assert graph.graph["opposition_states"]["wage"]["rate"] == pytest.approx(0.0)
         assert _principal_key(graph) == "capital_labor"

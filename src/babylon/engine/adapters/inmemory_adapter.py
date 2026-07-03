@@ -18,7 +18,7 @@ DuckDB adapter will be added in Epoch 3 for 1000+ node graphs.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import networkx as nx
 
@@ -57,7 +57,7 @@ class NetworkXAdapter(AggregationMixin, QueryMixin):
 
     def __init__(self) -> None:
         """Initialize with empty DiGraph."""
-        self._graph: nx.DiGraph[str] = nx.DiGraph()
+        self._graph = nx.DiGraph()
 
     @classmethod
     def wrap(cls, graph: nx.DiGraph[str]) -> NetworkXAdapter:
@@ -105,7 +105,7 @@ class NetworkXAdapter(AggregationMixin, QueryMixin):
         Returns:
             The raw nx.DiGraph backing this adapter.
         """
-        return self._graph
+        return cast("nx.DiGraph[str]", self._graph)
 
     # ─────────────────────────────────────────────────────────────────────
     # NODE OPERATIONS (CRUD)
@@ -364,10 +364,11 @@ class NetworkXAdapter(AggregationMixin, QueryMixin):
         Returns:
             NetworkX DiGraph with filtered nodes and edges.
         """
-        return (
+        return cast(
+            "nx.DiGraph[str]",
             SubgraphFilterBuilder(self._graph)
             .from_query(query, include_all_nodes=include_all_nodes)
-            .build()
+            .build(),
         )
 
     def _execute_components_query(self, query: TraversalQuery) -> TraversalResult:

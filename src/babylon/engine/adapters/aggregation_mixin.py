@@ -14,14 +14,15 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    import networkx as nx
+    from babylon.engine.adapters.compat import CompatGraph
 
 
 class AggregationMixin:
     """Mixin providing aggregation operations for graph adapters.
 
     Requires the class using this mixin to have a `_graph` attribute
-    that is a NetworkX DiGraph.
+    satisfying :class:`~babylon.engine.adapters.compat.CompatGraph`
+    (nx.DiGraph and BabylonGraph both do, structurally).
 
     Example:
         >>> class MyAdapter(AggregationMixin):
@@ -30,7 +31,7 @@ class AggregationMixin:
         >>> # adapter.aggregate("nodes", group_by="type", agg_func="count")
     """
 
-    _graph: nx.DiGraph[str]
+    _graph: CompatGraph
 
     def aggregate(
         self,

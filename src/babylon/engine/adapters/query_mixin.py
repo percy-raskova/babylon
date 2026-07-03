@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import networkx as nx
+    from babylon.engine.adapters.compat import CompatGraph
 
 from babylon.models.graph import GraphEdge, GraphNode
 
@@ -19,7 +19,8 @@ class QueryMixin:
     """Mixin providing query operations for graph adapters.
 
     Requires the class using this mixin to have a `_graph` attribute
-    that is a NetworkX DiGraph.
+    satisfying :class:`~babylon.engine.adapters.compat.CompatGraph`
+    (nx.DiGraph and BabylonGraph both do, structurally).
 
     Example:
         >>> class MyAdapter(QueryMixin):
@@ -28,7 +29,7 @@ class QueryMixin:
         >>> # adapter.query_nodes(node_type="social_class")
     """
 
-    _graph: nx.DiGraph[str]
+    _graph: CompatGraph
 
     def query_nodes(
         self,

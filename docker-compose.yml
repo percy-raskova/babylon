@@ -1,0 +1,43 @@
+# Babylon isolated test/runtime Postgres (spec-087 FR-001..FR-006).
+#
+#   mise run db:up      # build + start + wait healthy
+#   mise run db:stop    # stop, keep data
+#   mise run db:down    # remove container, keep data volume
+#   mise run db:nuke    # remove container AND named data volume
+#
+# Data location (FR-006): defaults to the named volume `babylon-pg-data`
+# (portable). Set BABYLON_PG_DATA in `.env` to an absolute path to bind-mount
+# instead — e.g. on this workstation the DB lives on the 3.6 TB data drive:
+#
+#   BABYLON_PG_DATA=/media/user/data/babylon-pg
+#
+# (compose reads `.env` automatically; a bare name = named volume, a path =
+# bind mount).
+
+services:
+  babylon-pg:
+    build: docker/postgres
+    container_name: babylon-pg-isolated
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: babylon_test
+    shm_size: 1g
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    volumes:
+      - ${BABYLON_PG_DATA:-babylon-pg-data}:/var/lib/postgresql/data
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d babylon_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  # Used only when BABYLON_PG_DATA is unset (the portable default).
+  babylon-pg-data:

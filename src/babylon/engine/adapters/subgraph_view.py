@@ -63,6 +63,7 @@ class SubgraphView:
         for source, target, data in self._subgraph.edges(data=True):
             data_copy = dict(data)
             edge_type = data_copy.pop("_edge_type", "unknown")
+            data_copy.pop("edge_type", None)
             weight = data_copy.pop("weight", 1.0)
             yield GraphEdge(
                 source_id=source,

@@ -112,17 +112,26 @@ class TestEdgeMergeSemantics:
         assert payload["weight"] == 0.9
         assert graph.number_of_edges() == 1
 
-    def test_authoring_style_type_key_is_normalized(self) -> None:
-        """Public edge_type/node_type keys fold into the canonical keys."""
+    def test_authoring_style_type_keys_are_normalized(self) -> None:
+        """Node type folds to _node_type; edge types stay DUAL-keyed.
+
+        Edge payloads keep the public ``edge_type`` alongside ``_edge_type``
+        because ~25 raw call sites (ooda, bifurcation, persistence,
+        from_graph) read the public key — the wrap()-era production layout.
+        """
         graph = BabylonGraph()
         graph.add_node("T1", heat=0.2, node_type="territory")
         graph.add_edge("T1", "T2", tension=0.4, edge_type="ADJACENCY")
+        graph.add_edge("T2", "T1", "SOLIDARITY", weight=0.7)
 
         assert graph.nodes["T1"]["_node_type"] == "territory"
         assert "node_type" not in graph.nodes["T1"]
-        payload = graph.edges[("T1", "T2")]
-        assert payload["_edge_type"] == "ADJACENCY"
-        assert "edge_type" not in payload
+        authored = graph.edges[("T1", "T2")]
+        assert authored["_edge_type"] == "ADJACENCY"
+        assert authored["edge_type"] == "ADJACENCY"
+        protocol = graph.edges[("T2", "T1")]
+        assert protocol["_edge_type"] == protocol["edge_type"] == "SOLIDARITY"
+        assert protocol["weight"] == 0.7
 
 
 class TestPayloadReferenceSemantics:
@@ -218,7 +227,9 @@ class TestIterationOrderModel:
                     oracle.remove_node(op[1])
             elif op[0] == "add_edge":
                 graph.add_edge(op[1], op[2], "E", weight=1.0)
-                oracle.add_edge(op[1], op[2], _edge_type="E", weight=1.0)
+                # Oracle mirrors the production payload layout: public
+                # edge_type (to_graph) + internal _edge_type (wrap()).
+                oracle.add_edge(op[1], op[2], _edge_type="E", edge_type="E", weight=1.0)
             elif op[0] == "remove_edge":
                 if oracle.has_edge(op[1], op[2]):
                     graph.remove_edge(op[1], op[2])

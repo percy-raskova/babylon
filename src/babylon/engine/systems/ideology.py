@@ -111,6 +111,20 @@ class ConsciousnessSystem(SystemBase):
         else:
             persistent = context
 
+        # Lawverian wage-opposition deterioration (Phase C1.5). ContradictionSystem
+        # (position 18) stashes the OppositionRegistry snapshot on the graph attr
+        # ``opposition_states``; this system (position 17) reads LAST tick's wage
+        # gap rate. ``max(0, rate)`` fires only when the wage relation is SHARPENING
+        # (gap rising) — during a growing bribe the aristocrat is catching up so the
+        # wage gap FALLS (rate < 0) and the term is 0, keeping consciousness flat
+        # (crisis-gating). Absent snapshot (tick 1 / non-bridged tests) -> 0.
+        # (Caveat for C2: the gap is the SYMMETRIC |labor-capital| magnitude, so if
+        #  labor overtakes capital the gap rises again; a signed balance-rate is the
+        #  Phase-C2 refinement — recorded, not fixed here per "minimal wiring".)
+        opposition_states = graph.get_graph_attr("opposition_states", {}) or {}
+        wage_state = opposition_states.get("wage", {})
+        wage_deterioration = max(0.0, float(wage_state.get("rate", 0.0)))
+
         # Initialize or retrieve previous wages tracking from persistent storage
         if PREVIOUS_WAGES_KEY not in persistent:
             persistent[PREVIOUS_WAGES_KEY] = {}
@@ -182,7 +196,7 @@ class ConsciousnessSystem(SystemBase):
                 imperial_rent_delta=wealth_change,  # Wealth decline ~ rent decline
                 visibility_delta=0.0,  # g₃₃ changes handled in community system
             )
-            new_agitation = current_profile["agitation"] + agitation_increment
+            new_agitation = current_profile["agitation"] + agitation_increment + wage_deterioration
 
             # Route agitation through solidarity → class/nation split.
             # The ternary router (Spec 043) returns shifts in (revolutionary,

@@ -399,6 +399,7 @@ class WorldStateBridge:
         world: WorldState,
         tick: int,
         determinism_hash: str,
+        opposition_states: dict[str, Any] | None = None,
     ) -> None:
         """Derive subsystem rows + re-emit hex/external + persist atomically.
 
@@ -497,6 +498,7 @@ class WorldStateBridge:
             determinism_hash=determinism_hash,
         )
         self._runtime.persist_tick_atomic(envelope)
+        self._persist_opposition_fields(tick, opposition_states)
 
         logger.debug(
             "WorldStateBridge.persist_tick: session=%s tick=%d "
@@ -509,6 +511,54 @@ class WorldStateBridge:
             len(hex_rows),
             len(external_rows),
         )
+
+    def _persist_opposition_fields(
+        self,
+        tick: int,
+        opposition_states: dict[str, Any] | None,
+    ) -> None:
+        """Persist the OppositionRegistry snapshot to ``contradiction_field``.
+
+        Lawverian C1.4: one ``contradiction_field`` row per opposition, mapping
+        the frame-level registry snapshot onto the existing Feature-002 DDL:
+
+        - ``node_id`` = ``"global"`` (the gap is a frame-level aggregate over an
+          edge family, not a per-node field);
+        - ``field_name`` = the opposition key (``capital_labor`` etc., <= 32 chars);
+        - ``value`` = gap; ``dt`` = rate (the registry's ``rate`` IS d(gap)/dtick).
+
+        ``laplacian`` and ``d2t`` stay NULL — no spatial field or second temporal
+        derivative is tracked yet (Phase E). The registry's ``balance``,
+        ``leading_pole`` and ``is_principal`` have no column in this DDL and are
+        deferred to Phase E (a wider table), documented rather than dropped.
+
+        Guarded: ``persist_contradiction_fields`` lives on the Postgres-only
+        ``PostgresRuntimeExtensions`` protocol, so this no-ops on runtimes
+        (e.g. the in-memory ``RuntimeDatabase``) that lack it — the same
+        capability-check pattern the bridge uses for other Postgres-only calls.
+        """
+        if not opposition_states:
+            return
+        if not hasattr(self._runtime, "persist_contradiction_fields"):
+            return
+        assert self._session_id is not None
+        # contradiction_field enforces a game_session FK that the headless
+        # runner's uuid4 session never satisfies (its runtime-state tables carry
+        # no such FK). Ensure the parent row exists (idempotent) first.
+        if hasattr(self._runtime, "ensure_session"):
+            self._runtime.ensure_session(self._session_id)
+        fields = [
+            {
+                "node_id": "global",
+                "field_name": key,
+                "value": float(state.get("gap", 0.0)),
+                "laplacian": None,
+                "dt": float(state.get("rate", 0.0)),
+                "d2t": None,
+            }
+            for key, state in opposition_states.items()
+        ]
+        self._runtime.persist_contradiction_fields(tick, fields, [], session_id=self._session_id)
 
     # ------------------------------------------------------------------
     # Phase-2 stubs that remain (subscribe events / poll endgame)

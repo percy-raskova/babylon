@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import logging
 import uuid
+from pathlib import Path
 
 logging.disable(logging.WARNING)
 
@@ -30,7 +31,7 @@ def main() -> None:
         "--dsn",
         default="host=localhost port=5433 dbname=babylon_test user=test password=test",
     )
-    parser.add_argument("--sqlite", default="data/sqlite/marxist-data-3NF.sqlite")
+    parser.add_argument("--sqlite", type=Path, default=Path("data/sqlite/marxist-data-3NF.sqlite"))
     args = parser.parse_args()
 
     from psycopg_pool import ConnectionPool

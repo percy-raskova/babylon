@@ -111,19 +111,24 @@ class ConsciousnessSystem(SystemBase):
         else:
             persistent = context
 
-        # Lawverian wage-opposition deterioration (Phase C1.5). ContradictionSystem
-        # (position 18) stashes the OppositionRegistry snapshot on the graph attr
-        # ``opposition_states``; this system (position 17) reads LAST tick's wage
-        # gap rate. ``max(0, rate)`` fires only when the wage relation is SHARPENING
-        # (gap rising) — during a growing bribe the aristocrat is catching up so the
-        # wage gap FALLS (rate < 0) and the term is 0, keeping consciousness flat
-        # (crisis-gating). Absent snapshot (tick 1 / non-bridged tests) -> 0.
-        # (Caveat for C2: the gap is the SYMMETRIC |labor-capital| magnitude, so if
-        #  labor overtakes capital the gap rises again; a signed balance-rate is the
-        #  Phase-C2 refinement — recorded, not fixed here per "minimal wiring".)
+        # Lawverian wage-opposition deterioration (C1.5, signed in the Phase D
+        # review). ContradictionSystem (position 18) stashes the registry
+        # snapshot on the graph attr ``opposition_states``; this system
+        # (position 17) reads LAST tick's wage state. Under the Phase D
+        # measure the wage opposition is the true (W, V) defect and
+        # ``gap == |balance|`` with balance > 0 == wage above value (the
+        # bribe). Deterioration is therefore the relation SHARPENING
+        # (rate > 0) while labor is on the LOSING side (balance < 0 — wage
+        # sinking below value). A growing bribe (balance > 0, rate > 0) is
+        # pacification and contributes ZERO agitation — Cope's crisis-gating:
+        # flat during a growing bribe is CORRECT. Nominal wage cuts are the
+        # separate per-worker ``wage_change`` channel below. Absent snapshot
+        # (tick 1 / non-bridged tests) -> 0.
         opposition_states = graph.get_graph_attr("opposition_states", {}) or {}
         wage_state = opposition_states.get("wage", {})
-        wage_deterioration = max(0.0, float(wage_state.get("rate", 0.0)))
+        _wage_rate = float(wage_state.get("rate", 0.0))
+        _wage_balance = float(wage_state.get("balance", 0.0))
+        wage_deterioration = max(0.0, _wage_rate) if _wage_balance < 0.0 else 0.0
 
         # Initialize or retrieve previous wages tracking from persistent storage
         if PREVIOUS_WAGES_KEY not in persistent:

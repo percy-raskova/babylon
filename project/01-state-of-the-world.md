@@ -116,6 +116,16 @@ re-baselines after the contradiction semantics change.
 ## Known non-blockers (pre-existing, documented, do not "fix" in passing)
 
 - `tests/unit/economics/throughput/test_commuter_adjusted.py::…::test_frozen` fails (pre-existing).
+- `tests/integration/test_grundrisse_cycle.py::TestPrincipalSelection` briefly
+  broke between D5 and the Phase E review: the C1.7-era test fed the WAGES edge
+  but the Phase-D5 wage measure reads `(w_paid, v_produced)` node attrs. FIXED
+  at the Phase E review boundary — the test now drives the defect pair directly
+  (same arithmetic, new channel) and asserts the overtake on the wage/imperial
+  defect family (their gaps are pinned equal until Phase D's periphery data).
+- **Lawverian dialectics refactor (project/06) COMPLETE** — Phases A-E on branch
+  `refactor/lawverian-dialectics`; see ADR051 and `project/06` §7. The contradiction
+  layer is now executable (opposition registry + level lattices + fixed-point regimes);
+  Systems 19-21 are live; EventType gained LEVEL_TRANSITION.
 - `WorldState.from_graph()` drops `institution_relations` + non-core
   Relationship attrs on round-trip.
 - EndgameDetector docstring claims REVOLUTIONARY_VICTORY-first priority; code

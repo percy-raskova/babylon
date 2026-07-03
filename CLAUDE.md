@@ -250,10 +250,20 @@ Consequences (positions 14.5-21, incl. spec-070 x.5 systems):
   17.5 SovereigntySystem           - Sovereign legitimacy + secession dynamics (spec-070)
   18.  ContradictionSystem         - Systemic tension accounting
   19.  ContradictionFieldSystem    - Field computation (Feature 002)
-  20.  FieldDerivativeSystem       - Spatial/temporal derivatives + principal (Feature 002)
+  20.  FieldDerivativeSystem       - Spatial/temporal derivatives + principal_field (Feature 002)
   20.5 CollapseTransitionSystem    - Collapse partition + territory transition (spec-070)
   21.  EdgeTransitionSystem        - Compound predicates + edge mode transitions (Feature 002)
 ```
+
+Phase E note: positions 19-21 (the Feature-002 field stack) are now LIVE in
+production — they no longer early-return on `field_registry is None`. With no
+registry wired, System 19 sources its per-node fields from the opposition layer
+(exploitation = mean incident edge tension; atomization = the global gap),
+System 20 emits `principal_field` (renamed from `principal_contradiction` to
+avoid colliding with @18's Maoist principal), and System 21's predicates run.
+ContradictionSystem @18 also classifies the fixed-point regime each tick
+(`dialectical_regime` graph attr) and the EventType enum gained
+`LEVEL_TRANSITION` (the Aufhebung signal, published on the sublation branch).
 
 See `ai-docs/decisions/ADR044_engine_integration_into_bridged_runner.yaml`
 for the spec-066 wiring history; the 7-system list previously documented
@@ -262,7 +272,7 @@ here was the early MVP cut from spec-001 (now historical).
 **Key Components**:
 - `src/babylon/engine/simulation_engine.py` - Orchestrates Systems
 - `src/babylon/engine/services.py` - ServiceContainer (DI container)
-- `src/babylon/engine/event_bus.py` - Publish/subscribe event bus (plain-str event types; the EventType enum — 70 values — lives in `src/babylon/models/enums/events.py`)
+- `src/babylon/engine/event_bus.py` - Publish/subscribe event bus (plain-str event types; the EventType enum — 71 values — lives in `src/babylon/models/enums/events.py`)
 - `src/babylon/engine/formula_registry.py` - 12 hot-swappable formulas
 - `src/babylon/engine/simulation.py` - Stateful facade for multi-tick runs
 - `src/babylon/engine/factories.py` - `create_proletariat()`, `create_bourgeoisie()`

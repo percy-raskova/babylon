@@ -28,6 +28,7 @@ repos:
           - types-requests
           - types-tqdm
           - types-networkx
+          - rustworkx>=0.17
           - types-PyYAML
           - types-jsonschema
           - types-ratelimit

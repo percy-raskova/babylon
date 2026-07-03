@@ -381,13 +381,32 @@ class TestDynamicBalancePolicySwitch:
             tension=TC.DynamicBalance.HIGH_TENSION,
         )
 
-        # Set pool in austerity zone (below POOL_LOW_THRESHOLD)
+        # Set pool in austerity zone (below POOL_LOW_THRESHOLD). C1.5: the
+        # bourgeois decision reads the capital_labor opposition gap, not edge
+        # tension, so seed a high gap on opposition_states — to_graph re-seeds the
+        # graph attr that ImperialRentSystem (@9) reads before Contradiction (@18).
         austerity_economy = GlobalEconomy(
             imperial_rent_pool=TC.DynamicBalance.AUSTERITY_POOL,
             current_super_wage_rate=TC.DynamicBalance.LOW_WAGE_RATE,
             current_repression_level=TC.DynamicBalance.LOW_REPRESSION,
         )
-        state = state.model_copy(update={"economy": austerity_economy})
+        from babylon.dialectics.core.opposition import OppositionState
+
+        seed = OppositionState(
+            key="capital_labor",
+            tick=0,
+            gap=0.7,
+            balance=0.5,
+            rate=0.0,
+            leading_pole="b",
+            is_principal=True,
+        )
+        state = state.model_copy(
+            update={
+                "economy": austerity_economy,
+                "opposition_states": {"capital_labor": seed.model_dump()},
+            }
+        )
 
         new_state = step(state, config, defines=defines)
 

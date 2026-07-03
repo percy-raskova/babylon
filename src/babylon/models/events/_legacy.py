@@ -787,6 +787,29 @@ class RuptureEvent(ContradictionEvent):
         description="Event type (always RUPTURE)",
     )
 
+    # Lawverian rewrite (Phase C1): RUPTURE is a FRAME-level event on the
+    # principal opposition, not a per-edge one. ``edge`` is relaxed to optional
+    # (no single edge ruptures now) and the opposition identity + gap/rate that
+    # tripped the condition-AND-level gate are carried instead.
+    edge: str = Field(
+        default="",
+        description="Deprecated (Phase C1): rupture is frame-level; empty by default.",
+    )
+    opposition: str = Field(
+        default="",
+        description="Key of the principal opposition that ruptured (e.g. capital_labor).",
+    )
+    gap: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Principal opposition gap at rupture (> rupture_gap_threshold).",
+    )
+    rate: float = Field(
+        default=0.0,
+        description="Principal opposition gap rate at rupture (> 0: rising).",
+    )
+
 
 # =============================================================================
 # Topology Events (Sprint 3.3)

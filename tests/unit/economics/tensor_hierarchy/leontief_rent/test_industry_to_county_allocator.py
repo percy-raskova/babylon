@@ -19,7 +19,6 @@ from collections.abc import Iterator
 import numpy as np
 import pytest
 from sqlalchemy.orm import Session
-from tests.unit.economics.tensor_hierarchy.leontief_rent.conftest import FakeEventBus
 
 from babylon.config.defines import LeontiefRentDefines
 from babylon.economics.tensor import NoDataSentinel
@@ -37,6 +36,7 @@ from babylon.reference.schema import (
     DimTime,
     FactQcewAnnual,
 )
+from tests.unit.economics.tensor_hierarchy.leontief_rent.conftest import FakeEventBus
 
 # =============================================================================
 # Fixture: synthetic 2-county / 2-industry / multi-year QCEW

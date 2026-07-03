@@ -15,8 +15,6 @@ See Also:
 from __future__ import annotations
 
 import pytest
-from tests.constants import TestConstants
-from tests.unit.state_ai.conftest import make_faction_balance, make_state_action
 
 from babylon.config.defines import GameDefines, StateApparatusAIDefines
 from babylon.models.enums import StateActionType, StateFaction
@@ -30,6 +28,8 @@ from babylon.ooda.state_ai.escalation import (
     compute_heat_escalation_score,
     get_escalation_rank,
 )
+from tests.constants import TestConstants
+from tests.unit.state_ai.conftest import make_faction_balance, make_state_action
 
 TC = TestConstants
 

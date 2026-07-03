@@ -14,7 +14,6 @@ The tests verify:
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 # These imports should fail until the model is implemented
 from babylon.models import Relationship
@@ -24,6 +23,7 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import EdgeType
+from tests.constants import TestConstants
 
 # Aliases for readability
 TC = TestConstants

@@ -7,7 +7,6 @@ Task: T008
 from __future__ import annotations
 
 import networkx as nx
-from tests.unit.economics.tick.conftest import WAYNE_FIPS, build_territory_graph
 
 from babylon.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
 from babylon.economics.financial_crisis.types import FinancialCrisisAssessment
@@ -25,6 +24,7 @@ from babylon.economics.tick.types import (
     SimulationTickState,
     SmoothedCoefficients,
 )
+from tests.unit.economics.tick.conftest import WAYNE_FIPS, build_territory_graph
 
 
 class TestWriteTickStateToGraph:

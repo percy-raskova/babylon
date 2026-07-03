@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.entity_registry import (
     CARCERAL_ENFORCER_ID,
@@ -38,6 +37,7 @@ from babylon.models.entity_registry import (
     LABOR_ARISTOCRACY_ID,
     PERIPHERY_WORKER_ID,
 )
+from tests.constants import TestConstants
 
 if TYPE_CHECKING:
     pass

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.entities.organization import Organization
 from babylon.models.enums import (
@@ -17,6 +16,7 @@ from babylon.models.enums import (
     LegalStanding,
     OrgType,
 )
+from tests.constants import TestConstants
 
 TC = TestConstants
 

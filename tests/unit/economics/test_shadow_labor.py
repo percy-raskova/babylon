@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.economics.atus_compat import (
     ATUSActivityRecord,
@@ -47,6 +46,7 @@ from babylon.economics.shadow_labor import (
     ShadowLaborResult,
     ShadowLaborService,
 )
+from tests.constants import TestConstants
 
 TC = TestConstants
 

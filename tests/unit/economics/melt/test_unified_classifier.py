@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import ClassSystemDefaults
 
 from babylon.economics.melt.types import ClassPosition, PrecarityStatus
+from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()
 

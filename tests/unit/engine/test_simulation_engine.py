@@ -6,7 +6,6 @@ relocated to tests/integration/engine/test_simulation_engine.py.
 """
 
 import pytest
-from tests.factories import DomainFactory
 
 from babylon.engine.simulation_engine import step
 from babylon.models import (
@@ -19,6 +18,7 @@ from babylon.models.entity_registry import (
     COMPRADOR_ID,
     PERIPHERY_WORKER_ID,
 )
+from tests.factories import DomainFactory
 
 # =============================================================================
 # FIXTURES (using DomainFactory)

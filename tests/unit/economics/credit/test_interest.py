@@ -9,11 +9,11 @@ FR-003: Effective interest rate for industrial borrowers NEVER exceeds county pr
 from __future__ import annotations
 
 import pytest
-from tests.unit.economics.credit.conftest import MockInterestRateSource
 
 from babylon.economics.credit.interest import DefaultInterestCalculator
 from babylon.economics.credit.types import InterestRateState
 from babylon.economics.tensor import NoDataSentinel
+from tests.unit.economics.credit.conftest import MockInterestRateSource
 
 # =============================================================================
 # compute_interest_rate_state

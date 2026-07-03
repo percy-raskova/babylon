@@ -9,12 +9,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.constants_063 import DETROIT_TRI_COUNTY_HEXES_RES7
 
 from babylon.economics.lodes_commute_matrix import (
     LODESCommuteMatrixLoader,
     LODESYearMatrix,
 )
+from tests.constants_063 import DETROIT_TRI_COUNTY_HEXES_RES7
 
 _LODES_ROOT = Path("/media/user/data/babylon-data/lodes")
 _CROSSWALK = _LODES_ROOT / "us_xwalk.csv.gz"

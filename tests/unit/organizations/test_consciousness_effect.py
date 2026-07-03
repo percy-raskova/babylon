@@ -7,7 +7,6 @@ aggregate_consciousness_effects(). Includes Detroit worked example.
 from __future__ import annotations
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.config.defines import OrganizationDefines
 from babylon.models.entities.organization import (
@@ -29,6 +28,7 @@ from babylon.organizations.consciousness import (
     derive_credibility,
 )
 from babylon.organizations.types import AggregatedEffect, ConsciousnessDelta
+from tests.constants import TestConstants
 
 TC = TestConstants
 

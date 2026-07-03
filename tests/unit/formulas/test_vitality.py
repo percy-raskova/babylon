@@ -16,9 +16,9 @@ Theoretical Basis:
 """
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.formulas import calculate_mortality_rate
+from tests.constants import TestConstants
 
 # Alias for readability
 TC = TestConstants.Attrition

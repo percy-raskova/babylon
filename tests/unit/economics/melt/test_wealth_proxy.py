@@ -8,9 +8,9 @@ integration (equity_factor + trust_land_discount).
 from __future__ import annotations
 
 import pytest
-from tests.constants import ClassSystemDefaults
 
 from babylon.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
+from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()
 

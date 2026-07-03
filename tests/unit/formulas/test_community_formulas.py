@@ -9,7 +9,6 @@ Feature 038 adds class-pair matrix integration tests (T029).
 from __future__ import annotations
 
 import pytest
-from tests.constants import ClassSystemDefaults
 
 from babylon.formulas.community import (
     calculate_infrastructure_decay,
@@ -17,6 +16,7 @@ from babylon.formulas.community import (
     calculate_solidarity_potential,
     calculate_threat_score,
 )
+from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()
 

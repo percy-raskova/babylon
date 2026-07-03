@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+
 from tests._helpers.invariants.transformation_mode import (
     TransformationMode,
     probe_transformation_mode,

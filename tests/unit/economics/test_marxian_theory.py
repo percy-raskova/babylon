@@ -22,10 +22,10 @@ See Also:
 from __future__ import annotations
 
 import pytest
-from tests.constants import TestConstants
 
 from babylon.economics.department_mapper import DefaultRatios, Department, DepartmentMapper
 from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
+from tests.constants import TestConstants
 
 TC = TestConstants
 Marx = TC.MarxReproduction

@@ -7,7 +7,6 @@ Refactored with pytest.parametrize for Phase 4 of Unit Test Health Improvement P
 """
 
 import pytest
-from tests.factories import DomainFactory
 
 from babylon.models import EdgeType, SocialRole
 from babylon.models.entities.social_class import IdeologicalProfile
@@ -15,6 +14,7 @@ from babylon.models.entity_registry import (
     COMPRADOR_ID,
     PERIPHERY_WORKER_ID,
 )
+from tests.factories import DomainFactory
 
 
 class TestDomainFactoryWorker:

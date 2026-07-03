@@ -9,11 +9,6 @@ from __future__ import annotations
 import logging
 
 import pytest
-from tests.unit.economics.dynamics.conftest import (
-    MockCrisisAmplifier,
-    MockDispossessionDataSource,
-    MockSavingsRateSource,
-)
 
 from babylon.economics.dynamics.accumulation import DefaultAccumulationCalculator
 from babylon.economics.dynamics.crisis import DefaultCrisisAmplifier
@@ -28,6 +23,11 @@ from babylon.economics.dynamics.types import (
     EconomicConditions,
 )
 from babylon.economics.tensor import NoDataSentinel
+from tests.unit.economics.dynamics.conftest import (
+    MockCrisisAmplifier,
+    MockDispossessionDataSource,
+    MockSavingsRateSource,
+)
 
 
 def _make_engine(

@@ -21,7 +21,6 @@ from collections.abc import Iterator
 import numpy as np
 import pytest
 from sqlalchemy.orm import Session
-from tests.unit.economics.tensor_hierarchy.leontief_rent.conftest import FakeEventBus
 
 from babylon.economics.tensor import NoDataSentinel
 from babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients import (
@@ -31,6 +30,7 @@ from babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficien
 )
 from babylon.economics.tensor_hierarchy.types import PeripheryLaborCoefficients
 from babylon.reference.schema import DimTime, FactHickelERDIAnnual
+from tests.unit.economics.tensor_hierarchy.leontief_rent.conftest import FakeEventBus
 
 # =============================================================================
 # Fixtures

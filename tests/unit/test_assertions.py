@@ -14,8 +14,6 @@ Each test class covers a specific aspect of the assertion library:
 """
 
 import pytest
-from tests.assertions import Assert, AssertionFailed, EntityAssert, RelationshipAssert
-from tests.factories import DomainFactory
 
 from babylon.models import (
     EdgeType,
@@ -29,6 +27,8 @@ from babylon.models.entity_registry import (
     COMPRADOR_ID,
     PERIPHERY_WORKER_ID,
 )
+from tests.assertions import Assert, AssertionFailed, EntityAssert, RelationshipAssert
+from tests.factories import DomainFactory
 
 # =============================================================================
 # FIXTURES

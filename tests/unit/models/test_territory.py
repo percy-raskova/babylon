@@ -10,7 +10,6 @@ Refactored with pytest.parametrize for Phase 4 of Unit Test Health Improvement P
 
 import pytest
 from pydantic import ValidationError
-from tests.constants import TestConstants
 
 from babylon.models.entities.territory import Territory
 from babylon.models.entity_registry import (
@@ -18,6 +17,7 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import OperationalProfile, SectorType, TerritoryType
+from tests.constants import TestConstants
 
 # Aliases for readability
 TC = TestConstants

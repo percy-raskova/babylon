@@ -7,7 +7,6 @@ Task: T017
 from __future__ import annotations
 
 import pytest
-from tests.unit.economics.dynamics.conftest import MockDispossessionDataSource
 
 from babylon.economics.dynamics.dispossession import DefaultDispossessionCalculator
 from babylon.economics.dynamics.hardcoded_data import (
@@ -15,6 +14,7 @@ from babylon.economics.dynamics.hardcoded_data import (
 )
 from babylon.economics.dynamics.types import DispossessionRisk
 from babylon.economics.tensor import NoDataSentinel
+from tests.unit.economics.dynamics.conftest import MockDispossessionDataSource
 
 
 class TestDefaultDispossessionCalculator:

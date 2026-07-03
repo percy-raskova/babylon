@@ -139,6 +139,51 @@ class TestManifestPayload:
             assert "semantics" in entry
             assert "nullable" in entry
 
+    def test_storage_block_included_when_provided(self, tmp_path: Path) -> None:
+        """Spec-087 FR-009: optional ``storage`` block lands top-level."""
+        config = _make_config(tmp_path)
+        storage = {
+            "db_total_bytes": 13_631_488,
+            "ticks_persisted": 5,
+            "tables": [
+                {
+                    "table": "dynamic_hex_state",
+                    "total_bytes": 1_523_712,
+                    "session_rows": 5225,
+                    "session_rows_per_tick": 1045.0,
+                }
+            ],
+        }
+        manifest = build_manifest(
+            config=config,
+            session_id="00000000-0000-0000-0000-000000000000",
+            exit_reason=ExitReason.COMPLETED,
+            wallclock_start=datetime(2026, 7, 3, 16, 30, tzinfo=UTC),
+            wallclock_end=datetime(2026, 7, 3, 16, 38, tzinfo=UTC),
+            artifact_dir=tmp_path,
+            artifact_files=[_write_artifact(tmp_path, "trace.csv")],
+            defines_hash="d" * 64,
+            data_versions={},
+            storage=storage,
+        )
+        assert manifest["storage"] == storage
+
+    def test_storage_block_absent_when_not_provided(self, tmp_path: Path) -> None:
+        """Storage collection is best-effort; None must leave no key behind."""
+        config = _make_config(tmp_path)
+        manifest = build_manifest(
+            config=config,
+            session_id="00000000-0000-0000-0000-000000000000",
+            exit_reason=ExitReason.COMPLETED,
+            wallclock_start=datetime(2026, 7, 3, 16, 30, tzinfo=UTC),
+            wallclock_end=datetime(2026, 7, 3, 16, 38, tzinfo=UTC),
+            artifact_dir=tmp_path,
+            artifact_files=[_write_artifact(tmp_path, "trace.csv")],
+            defines_hash="d" * 64,
+            data_versions={},
+        )
+        assert "storage" not in manifest
+
     def test_file_entry_includes_sha256_and_size(self, tmp_path: Path) -> None:
         config = _make_config(tmp_path)
         trace = _write_artifact(tmp_path, "trace.csv", body="header\n0,2010.0\n")

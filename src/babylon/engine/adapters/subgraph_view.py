@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import networkx as nx
+    from babylon.engine.adapters.compat import CompatGraph
 
 from babylon.models.graph import GraphEdge, GraphNode
 
@@ -35,11 +35,11 @@ class SubgraphView:
         [GraphNode(...), GraphNode(...)]
     """
 
-    def __init__(self, subgraph: nx.Graph[str]) -> None:
-        """Initialize with a NetworkX subgraph.
+    def __init__(self, subgraph: CompatGraph) -> None:
+        """Initialize with a backing subgraph.
 
         Args:
-            subgraph: The NetworkX subgraph to wrap. Can be DiGraph or subgraph view.
+            subgraph: The subgraph to wrap (nx graph/view or BabylonGraph).
         """
         self._subgraph = subgraph
 

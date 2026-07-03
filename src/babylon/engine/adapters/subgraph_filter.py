@@ -8,11 +8,10 @@ Uses the Builder pattern to chain filter operations.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-import networkx as nx
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
+    from babylon.engine.adapters.compat import CompatGraph
     from babylon.models.graph import TraversalQuery
 
 
@@ -33,11 +32,11 @@ class SubgraphFilterBuilder:
         ... )
     """
 
-    def __init__(self, graph: nx.DiGraph[str]) -> None:
+    def __init__(self, graph: CompatGraph) -> None:
         """Initialize builder with source graph.
 
         Args:
-            graph: The NetworkX DiGraph to filter.
+            graph: The backing graph to filter (nx.DiGraph or BabylonGraph).
         """
         self._graph = graph
         self._nodes: set[str] | None = None
@@ -133,19 +132,20 @@ class SubgraphFilterBuilder:
 
         return self
 
-    def build(self) -> nx.DiGraph[str]:
+    def build(self) -> CompatGraph:
         """Build the filtered subgraph.
 
-        Applies all configured filters and returns a new DiGraph.
+        Applies all configured filters and returns a new graph of the same
+        backend as the source.
 
         Returns:
-            A new NetworkX DiGraph containing only filtered nodes and edges.
+            A new graph containing only filtered nodes and edges.
         """
         # Start with nodes to include
         nodes = self._filter_nodes()
 
         # Build subgraph with filtered nodes
-        subgraph = self._graph.subgraph(nodes).copy()
+        subgraph = cast("CompatGraph", self._graph.subgraph(nodes).copy())
 
         # Remove edges that don't match filter
         self._filter_edges(subgraph)
@@ -168,7 +168,7 @@ class SubgraphFilterBuilder:
 
         return nodes
 
-    def _filter_edges(self, subgraph: nx.DiGraph[str]) -> None:
+    def _filter_edges(self, subgraph: CompatGraph) -> None:
         """Remove edges that don't match filters (modifies subgraph in place)."""
         edges_to_remove: list[tuple[str, str]] = []
 

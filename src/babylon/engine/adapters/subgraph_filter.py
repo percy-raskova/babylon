@@ -36,7 +36,7 @@ class SubgraphFilterBuilder:
         """Initialize builder with source graph.
 
         Args:
-            graph: The backing graph to filter (nx.DiGraph or BabylonGraph).
+            graph: The backing graph to filter (BabylonGraph).
         """
         self._graph = graph
         self._nodes: set[str] | None = None

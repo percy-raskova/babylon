@@ -21,8 +21,6 @@ from babylon.formulas.consciousness_routing import (
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -91,17 +89,11 @@ class ConsciousnessSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
         """Apply consciousness drift to all entities with bifurcation routing."""
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # Handle both TickContext (with persistent_data) and raw dict
         # TickContext stores persistent data in .persistent_data attribute

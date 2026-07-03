@@ -1,7 +1,7 @@
 """Structural typing seam shared by graph backends.
 
-``CompatGraph`` is the read/write surface the adapter mixins, subgraph
-helpers, and the legacy ``NetworkXAdapter`` require of a backing graph.
+``CompatGraph`` is the read/write surface the adapter mixins and
+subgraph helpers require of a backing graph.
 It is satisfied structurally by BOTH ``networkx.DiGraph`` and
 :class:`babylon.engine.graph.BabylonGraph`, which is what lets
 ``QueryMixin`` / ``AggregationMixin`` / ``SubgraphFilterBuilder`` /

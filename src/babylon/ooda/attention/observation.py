@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx  # noqa: F401 — transitional annotation arm (Amendment L)
-
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
 
@@ -23,8 +21,8 @@ from babylon.models.enums import SurveillanceMethod
 
 def build_g_observed(
     thread: AttentionThread,
-    full_graph: nx.DiGraph[str],
-) -> BabylonGraph | nx.DiGraph[str]:
+    full_graph: BabylonGraph,
+) -> BabylonGraph:
     """Build the observed subgraph from thread intelligence.
 
     Extracts nodes and edges that the thread has observed, applying

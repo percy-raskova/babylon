@@ -15,8 +15,6 @@ from babylon.engine.systems.base import SystemBase
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.context import TickContext
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
@@ -42,7 +40,7 @@ class ReserveArmySystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:

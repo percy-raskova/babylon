@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, Union, runtime_checkable
 
-import networkx as nx
-
 if TYPE_CHECKING:
     from babylon.engine.context import TickContext
     from babylon.engine.graph_protocol import GraphProtocol
@@ -26,7 +24,7 @@ class System(Protocol):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:

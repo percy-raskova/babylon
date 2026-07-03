@@ -26,8 +26,6 @@ from babylon.formulas import (
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
 
 
@@ -52,7 +50,7 @@ class MetabolismSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -62,16 +60,10 @@ class MetabolismSystem(SystemBase):
         then checks if global consumption exceeds global biocapacity (overshoot).
 
         Args:
-            graph: Graph via GraphProtocol or raw nx.DiGraph (auto-wrapped).
+            graph: Graph via GraphProtocol.
             services: ServiceContainer with config, formulas, event_bus, database.
             context: Dict or TickContext with 'tick' (int) key.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # Get metabolism parameters from GameDefines
         entropy_factor = services.defines.metabolism.entropy_factor

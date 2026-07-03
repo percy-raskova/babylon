@@ -33,8 +33,6 @@ import logging
 import random
 from typing import TYPE_CHECKING
 
-import networkx as nx
-
 from babylon.dialectics.instances.connectivity import pieces
 from babylon.engine.graph import BabylonUGraph
 from babylon.models.enums import EdgeType
@@ -53,7 +51,7 @@ if TYPE_CHECKING:
 
 
 def extract_solidarity_subgraph(
-    G: nx.DiGraph[str] | GraphProtocol,
+    G: GraphProtocol,
     min_strength: float = 0.0,
 ) -> BabylonUGraph:
     """Extract undirected solidarity network from WorldState graph.
@@ -75,12 +73,6 @@ def extract_solidarity_subgraph(
         Territory nodes are excluded as they represent spatial substrate,
         not class positions in the solidarity network.
     """
-    from babylon.engine.graph_protocol import GraphProtocol
-
-    if not isinstance(G, GraphProtocol):
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-        G = NetworkXAdapter.wrap(G)
 
     # Undirected analytics graph for component analysis (Amendment L)
     solidarity_graph = BabylonUGraph()
@@ -124,7 +116,7 @@ def calculate_component_metrics(
     Note:
         Component counting is grounded in the connectivity cylinder's
         :math:`\\Pi_0` (:func:`babylon.dialectics.instances.connectivity.pieces`)
-        — same ``nx.connected_components`` computation, re-exposed as the
+        — the same connected-components computation, re-exposed as the
         Phase-B instance (``project/06-lawverian-dialectics.md`` §4).
     """
     if total_social_classes == 0:
@@ -144,7 +136,7 @@ def calculate_component_metrics(
 
 
 def calculate_liquidity(
-    G: nx.DiGraph[str] | GraphProtocol,
+    G: GraphProtocol,
     sympathizer_threshold: float | None = None,
     cadre_threshold: float | None = None,
 ) -> tuple[int, int]:
@@ -166,7 +158,6 @@ def calculate_liquidity(
         Tuple of (potential_liquidity, actual_liquidity)
     """
     from babylon.config.defines import GameDefines
-    from babylon.engine.graph_protocol import GraphProtocol
 
     if sympathizer_threshold is None or cadre_threshold is None:
         defaults = GameDefines()
@@ -174,11 +165,6 @@ def calculate_liquidity(
             sympathizer_threshold = defaults.topology.solidarity_sympathizer_threshold
         if cadre_threshold is None:
             cadre_threshold = defaults.topology.solidarity_cadre_threshold
-
-    if not isinstance(G, GraphProtocol):
-        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-        G = NetworkXAdapter.wrap(G)
 
     potential = 0
     actual = 0
@@ -194,7 +180,7 @@ def calculate_liquidity(
 
 
 def check_resilience(
-    G: nx.DiGraph[str] | GraphProtocol,
+    G: GraphProtocol,
     removal_rate: float | None = None,
     survival_threshold: float | None = None,
     seed: int | None = None,

@@ -39,8 +39,6 @@ from babylon.formulas import calculate_mortality_rate
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -83,7 +81,7 @@ class VitalitySystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -93,12 +91,6 @@ class VitalitySystem(SystemBase):
         Phase 2 - Grinding Attrition: Calculate coverage ratio threshold deaths.
         Phase 3 - The Reaper: Mark extinct entities as inactive.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         tick: int = context.get("tick", 0)
         base_subsistence = services.defines.economy.base_subsistence

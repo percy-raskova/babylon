@@ -16,7 +16,6 @@ Sprint 9: Integration proof with Simulation facade
 # Slice 1.7: Graph Abstraction Layer
 from typing import Any
 
-from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 from babylon.engine.database import DatabaseConnection
 from babylon.engine.event_bus import Event, EventBus
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
@@ -86,5 +85,4 @@ __all__ = [
     "TopologyMonitor",
     # Slice 1.7: Graph Abstraction Layer
     "GraphProtocol",
-    "NetworkXAdapter",
 ]

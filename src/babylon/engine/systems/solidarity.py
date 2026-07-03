@@ -33,8 +33,6 @@ from babylon.engine.event_bus import Event
 from babylon.models.enums import EdgeType, EventType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -116,7 +114,7 @@ class SolidaritySystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -129,12 +127,6 @@ class SolidaritySystem(SystemBase):
         4. Apply delta to target class_consciousness
         5. Emit events for narrative layer
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # Get formula from registry
         calculate_solidarity_transmission = services.formulas.get("solidarity_transmission")

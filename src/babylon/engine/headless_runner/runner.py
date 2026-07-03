@@ -635,7 +635,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         services.auditor = auditor
         engine = SimulationEngine(_DEFAULT_SYSTEMS, auditor=auditor)
 
-        # Spec-066 T035: snapshot the WorldState to a single nx.DiGraph that
+        # Spec-066 T035: snapshot the WorldState to a single BabylonGraph that
         # the engine mutates in-place across all ticks. The graph is the
         # source-of-truth between systems; world is reconstituted from it
         # after each engine.run_tick so persist_tick can read.

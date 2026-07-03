@@ -6,10 +6,14 @@ identification, and cutset detection on known graph structures.
 
 from __future__ import annotations
 
-import networkx as nx
-
 from babylon.engine.graph import BabylonGraph
 from babylon.ooda.attention.sparrow import analyze_network
+from tests.unit.state_ai.conftest import (
+    make_directed_complete,
+    make_directed_cycle,
+    make_directed_path,
+    make_directed_star,
+)
 
 
 class TestSparrowAnalysisCentrality:
@@ -17,10 +21,7 @@ class TestSparrowAnalysisCentrality:
 
     def test_star_hub_has_highest_degree_centrality(self) -> None:
         """In a star graph, the hub has degree centrality = 1.0."""
-        g = nx.star_graph(5).to_directed()
-        # Rename nodes to strings
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_star(5)
 
         analysis = analyze_network("t1", 1, g)
         degree = analysis.centrality_rankings.get("degree", {})
@@ -30,9 +31,7 @@ class TestSparrowAnalysisCentrality:
 
     def test_star_hub_has_highest_betweenness(self) -> None:
         """In a star graph, the hub has the highest betweenness centrality."""
-        g = nx.star_graph(5).to_directed()
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_star(5)
 
         analysis = analyze_network("t1", 1, g)
         betweenness = analysis.centrality_rankings.get("betweenness", {})
@@ -42,7 +41,7 @@ class TestSparrowAnalysisCentrality:
 
     def test_empty_graph_produces_empty_analysis(self) -> None:
         """Empty graph produces analysis with no rankings."""
-        g: nx.DiGraph = BabylonGraph()
+        g = BabylonGraph()
         analysis = analyze_network("t1", 1, g)
         assert analysis.centrality_rankings == {}
         assert analysis.equivalence_classes == []
@@ -50,7 +49,7 @@ class TestSparrowAnalysisCentrality:
 
     def test_single_node_graph(self) -> None:
         """Single node produces analysis with degree centrality entry."""
-        g: nx.DiGraph = BabylonGraph()
+        g = BabylonGraph()
         g.add_node("sole_node")
         analysis = analyze_network("t1", 1, g)
         assert "degree" in analysis.centrality_rankings
@@ -63,9 +62,7 @@ class TestSparrowEquivalenceClasses:
 
     def test_star_leaves_form_equivalence_class(self) -> None:
         """In a star graph, all leaves are structurally equivalent."""
-        g = nx.star_graph(4).to_directed()
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_star(4)
 
         analysis = analyze_network("t1", 1, g)
         # Find the equivalence class containing a leaf
@@ -81,9 +78,7 @@ class TestSparrowEquivalenceClasses:
 
     def test_cycle_all_equivalent(self) -> None:
         """In a cycle graph, all nodes are structurally equivalent."""
-        g = nx.cycle_graph(5).to_directed()
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_cycle(5)
 
         analysis = analyze_network("t1", 1, g)
         # All 5 nodes should be in one equivalence class
@@ -96,18 +91,14 @@ class TestSparrowSingletonIdentification:
 
     def test_star_hub_is_singleton(self) -> None:
         """In a star graph, the hub is identified as a singleton."""
-        g = nx.star_graph(5).to_directed()
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_star(5)
 
         analysis = analyze_network("t1", 1, g)
         assert "node_0" in analysis.identified_singletons
 
     def test_cycle_has_no_singletons(self) -> None:
         """In a cycle graph, no node is a singleton (all equivalent)."""
-        g = nx.cycle_graph(6).to_directed()
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_cycle(6)
 
         analysis = analyze_network("t1", 1, g)
         assert len(analysis.identified_singletons) == 0
@@ -118,9 +109,7 @@ class TestSparrowCutsets:
 
     def test_star_hub_is_cutset(self) -> None:
         """In a star graph, the hub is an articulation point (cutset)."""
-        g = nx.star_graph(4).to_directed()
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_star(4)
 
         analysis = analyze_network("t1", 1, g)
         hub_in_cutset = any("node_0" in cs for cs in analysis.known_cutsets)
@@ -128,18 +117,14 @@ class TestSparrowCutsets:
 
     def test_complete_graph_no_cutsets(self) -> None:
         """In a complete graph, there are no articulation points."""
-        g = nx.complete_graph(5).to_directed()
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_complete(5)
 
         analysis = analyze_network("t1", 1, g)
         assert analysis.known_cutsets == [], "Complete graph should have no cutsets"
 
     def test_path_graph_inner_nodes_are_cutsets(self) -> None:
         """In a path graph, inner nodes are articulation points."""
-        g = nx.path_graph(5).to_directed()
-        mapping = {i: f"node_{i}" for i in g.nodes()}
-        g = nx.relabel_nodes(g, mapping)
+        g = make_directed_path(5)
 
         analysis = analyze_network("t1", 1, g)
         # Nodes 1, 2, 3 are articulation points in path 0-1-2-3-4

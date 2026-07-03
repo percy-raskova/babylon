@@ -24,7 +24,7 @@ Normalization: node types live under ``_node_type`` only (no raw reader
 of the public key exists outside the graph layer). Edge payloads carry
 BOTH ``edge_type`` (public — read raw across ooda/bifurcation/persistence
 and ``WorldState.from_graph``) and ``_edge_type`` (internal protocol key),
-synced at insert — replacing ``NetworkXAdapter.wrap()``'s per-tick
+synced at insert — replacing the legacy adapter wrap()'s per-tick
 mirroring sweep. Protocol materialization (``GraphEdge``) strips both.
 
 Discovered rustworkx 0.17 semantics this design compensates for (pinned
@@ -33,9 +33,8 @@ payloads on existing pairs (we merge explicitly, nx semantics); node
 indices are REUSED after removal; ``subgraph``/``copy`` SHARE payload
 dicts (our ``copy()`` copies them, nx semantics).
 
-See Also:
-    :class:`babylon.engine.adapters.inmemory_adapter.NetworkXAdapter`:
-        The legacy reference implementation this class replaces.
+The legacy reference implementation this class replaced (NetworkXAdapter)
+was deleted in Phase 7 of the Amendment L migration.
 """
 
 from __future__ import annotations
@@ -349,7 +348,7 @@ class _GraphCore:
     def degree(self, node_id: str | None = None) -> int | list[tuple[str, int]]:
         """nx-style degree: one node's degree, or (node, degree) pairs.
 
-        Directed hosts count in+out degree (nx.DiGraph parity); self-loop
+        Directed hosts count in+out degree (NetworkX DiGraph parity); self-loop
         double-counting on undirected hosts is not reproduced (no
         analytics call site uses self-loops).
         """
@@ -382,7 +381,7 @@ class _GraphCore:
 
         The returned mapping is built per call (nx returns a live AtlasView),
         but its values are the live payload dicts, so read-modify through
-        ``G[u][v]`` behaves exactly as it did on nx.DiGraph.
+        ``G[u][v]`` behaves exactly as it did on the NetworkX substrate.
 
         Raises:
             KeyError: If ``node_id`` is not in the graph.
@@ -403,7 +402,7 @@ class _GraphCore:
         """Return an independent copy (payload dicts copied — nx semantics).
 
         rustworkx's own ``copy()`` shares payload objects; this one does
-        not, matching ``nx.DiGraph.copy()``'s attribute-dict copying.
+        not, matching NetworkX DiGraph.copy()'s attribute-dict copying.
         """
         clone = type(self)()
         for node_id in self._ids:
@@ -533,7 +532,7 @@ class BabylonUGraph(_GraphCore):
     """Undirected analytics sibling of :class:`BabylonGraph`.
 
     Used by the analytics layer (topology monitor, resilience, sparrow,
-    curvature) as the ``nx.Graph`` replacement. Algorithms reach the
+    curvature) as the NetworkX Graph replacement. Algorithms reach the
     rustworkx core through :attr:`core` / :meth:`index_of` / :meth:`id_of`.
     """
 
@@ -583,7 +582,7 @@ class BabylonGraph(_GraphCore, AggregationMixin, QueryMixin):
         return iter(self._pred[node_id])
 
     def neighbors(self, node_id: str) -> Iterator[str]:
-        """nx.DiGraph parity: neighbors == successors."""
+        """NetworkX DiGraph parity: neighbors == successors."""
         return self.successors(node_id)
 
     @overload

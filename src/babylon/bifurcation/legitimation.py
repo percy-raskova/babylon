@@ -19,9 +19,12 @@ See Also:
 
 from __future__ import annotations
 
-import networkx as nx
+from typing import TYPE_CHECKING
 
 from babylon.config.defines import BifurcationDefines
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
 
 _DEFAULT_LEGITIMATION: float = 0.5
 """Default legitimation_index when missing from territory node data."""
@@ -31,7 +34,7 @@ _DEFAULT_POPULATION: int = 1
 
 
 def compute_legitimation_amplifier(
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph,
     defines: BifurcationDefines,
 ) -> float:
     """Compute crisis amplifier from population-weighted mean legitimation.
@@ -53,9 +56,9 @@ def compute_legitimation_amplifier(
         Returns 1.0 if no territory nodes are found (graceful degradation).
 
     Example:
-        >>> import networkx as nx
         >>> from babylon.config.defines import BifurcationDefines
-        >>> G = nx.DiGraph()
+        >>> from babylon.engine.graph import BabylonGraph
+        >>> G = BabylonGraph()
         >>> G.add_node("T1", _node_type="territory", legitimation_index=0.5, population=100)
         >>> compute_legitimation_amplifier(G, BifurcationDefines())
         1.5

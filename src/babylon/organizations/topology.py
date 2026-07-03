@@ -20,8 +20,6 @@ from babylon.models.enums import EdgeType, TopologyType, resolve_edge_type
 from babylon.organizations.types import TopologyClassification
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.config.defines import OrganizationDefines
     from babylon.engine.graph import BabylonGraph
 
@@ -31,7 +29,7 @@ _MESH_DENSITY_THRESHOLD = 0.6
 
 def _extract_command_subgraph(
     member_node_ids: list[str],
-    G: BabylonGraph | nx.DiGraph[str],
+    G: BabylonGraph,
 ) -> BabylonUGraph:
     """Extract undirected projection of COMMAND edges among member nodes.
 
@@ -58,7 +56,7 @@ def _extract_command_subgraph(
 def classify_topology(
     _org_id: str,
     member_node_ids: list[str],
-    G: BabylonGraph | nx.DiGraph[str],
+    G: BabylonGraph,
 ) -> TopologyClassification:
     """Classify an organization's COMMAND subgraph topology.
 
@@ -133,7 +131,7 @@ def classify_topology(
 def identify_key_figures(
     org_id: str,
     member_node_ids: list[str],
-    G: BabylonGraph | nx.DiGraph[str],
+    G: BabylonGraph,
 ) -> list[KeyFigure]:
     """Identify structurally critical key figures via articulation point analysis.
 

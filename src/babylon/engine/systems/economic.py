@@ -13,8 +13,6 @@ from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -62,17 +60,12 @@ class ImperialRentSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
         """Execute 5-phase circuit. Economy state in graph.graph['economy']."""
-        from babylon.engine.graph_protocol import GraphProtocol
 
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
         # Load economy from graph metadata (or create default)
         economy = self._load_economy(graph, services)
         initial_pool = services.defines.economy.initial_rent_pool
@@ -158,7 +151,7 @@ class ImperialRentSystem(SystemBase):
 
     def _invoke_vol2_circulation_if_wired(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         context: ContextType,
     ) -> None:
         """Invoke the Vol II Circulation sub-stage when its inputs are present in context.
@@ -193,7 +186,7 @@ class ImperialRentSystem(SystemBase):
 
     def _process_subsistence_phase(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
     ) -> None:
         """DEPRECATED: Subsistence burn moved to VitalitySystem (ADR032).
@@ -205,12 +198,6 @@ class ImperialRentSystem(SystemBase):
             Subsistence burn now happens in VitalitySystem.step() before
             economic phases run.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         base_subsistence = services.defines.economy.base_subsistence
 
@@ -237,7 +224,7 @@ class ImperialRentSystem(SystemBase):
 
     def _process_extraction_phase(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
         tick_context: dict[str, Any] | None = None,
@@ -247,12 +234,6 @@ class ImperialRentSystem(SystemBase):
         Applies TRPF Surrogate: extraction efficiency declines over time,
         modeling Marx's Tendency of the Rate of Profit to Fall (Capital Vol. 3).
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # Epoch 0: Convert annual extraction rate to per-tick (weekly) rate
         annual_extraction_efficiency = services.defines.economy.extraction_efficiency
@@ -332,18 +313,12 @@ class ImperialRentSystem(SystemBase):
 
     def _process_tribute_phase(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,  # noqa: ARG002 - Used for config.comprador_cut
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],  # noqa: ARG002 - Used for pool tracking
     ) -> None:
         """Phase 2: Comprador tribute via TRIBUTE edges. FEEDS POOL."""
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         _ = context  # Unused but kept for API consistency
         comprador_cut = services.defines.economy.comprador_cut
@@ -393,7 +368,7 @@ class ImperialRentSystem(SystemBase):
 
     def _process_wages_phase(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],
@@ -406,12 +381,6 @@ class ImperialRentSystem(SystemBase):
 
         Only the super_wage_bonus depletes the pool, not the productivity portion.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         _ = context  # Unused but kept for API consistency
         # Use dynamic wage rate from economy, not static config
@@ -543,18 +512,12 @@ class ImperialRentSystem(SystemBase):
 
     def _process_subsidy_phase(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
         tick_context: dict[str, Any],
     ) -> None:
         """Phase 4: CLIENT_STATE subsidy (Iron Lung). DRAINS POOL. Emits IMPERIAL_SUBSIDY."""
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         subsidy_trigger_threshold = services.defines.economy.subsidy_trigger_threshold
         subsidy_conversion_rate = services.defines.economy.subsidy_conversion_rate
@@ -671,19 +634,14 @@ class ImperialRentSystem(SystemBase):
 
     def _process_decision_phase(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
         tick_context: dict[str, Any],
         initial_pool: float,
     ) -> None:
         """Phase 5: Bourgeoisie heuristics. Updates wage_rate/repression. Emits ECONOMIC_CRISIS."""
-        from babylon.engine.graph_protocol import GraphProtocol
 
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
         # Get decision formula
         calculate_decision = services.formulas.get("bourgeoisie_decision")
 
@@ -758,7 +716,7 @@ class ImperialRentSystem(SystemBase):
                 )
             )
 
-    def _calculate_aggregate_tension(self, graph: nx.DiGraph[str] | GraphProtocol) -> float:
+    def _calculate_aggregate_tension(self, graph: GraphProtocol) -> float:
         """Return the capital_labor opposition gap for the bourgeois decision.
 
         Lawverian handoff (Phase C1.5): ContradictionSystem (position 18)
@@ -781,12 +739,6 @@ class ImperialRentSystem(SystemBase):
             The capital_labor opposition gap in ``[0, 1]``; ``0.0`` if no
             snapshot exists yet.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         states = graph.get_graph_attr("opposition_states", {}) or {}
         capital_labor = states.get("capital_labor")

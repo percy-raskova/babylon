@@ -22,8 +22,6 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -67,7 +65,7 @@ class ContradictionFieldSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -78,12 +76,6 @@ class ContradictionFieldSystem(SystemBase):
             services: ServiceContainer with field_registry.
             context: TickContext or dict with tick and persistent_data.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # No field registry in production: source fields from the opposition
         # layer instead of early-returning (E0 — the §5.3 dormant-stack repoint).

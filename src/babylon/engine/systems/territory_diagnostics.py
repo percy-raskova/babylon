@@ -25,8 +25,6 @@ from babylon.engine.systems.base import SystemBase
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
 
 
@@ -44,7 +42,7 @@ class HexCountyRollup:
 
 
 def aggregate_hexes_by_county(
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
 ) -> dict[str, HexCountyRollup]:
     """Compute per-county totals from in-memory hex nodes.
 

@@ -1,10 +1,10 @@
 """Typed graph wrappers for Spec 040 Discipline 5.
 
-Enforces separation between dyadic edges (NetworkX DiGraph) and
+Enforces separation between dyadic edges (BabylonGraph) and
 hyperedges (XGI Hypergraph). Systems access graph topology through
 these typed wrappers, not raw data structures.
 
-DyadicGraph: Wraps nx.DiGraph for pairwise (source → target) edges.
+DyadicGraph: Wraps BabylonGraph for pairwise (source → target) edges.
 CommunityHypergraph: Wraps xgi.Hypergraph for n-ary community membership.
 """
 
@@ -13,32 +13,32 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any
 
-import networkx as nx
-import xgi  # type: ignore[import-untyped]
+import xgi  # type: ignore[import-untyped, unused-ignore]
 
+from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType
 
 
 class DyadicGraph:
-    """Typed wrapper for NetworkX DiGraph (pairwise edges).
+    """Typed wrapper for BabylonGraph (pairwise edges).
 
     Provides typed edge operations that enforce EdgeType on all
     edge queries and mutations.
 
     Attributes:
-        raw: The underlying NetworkX DiGraph.
+        raw: The underlying BabylonGraph.
     """
 
-    def __init__(self, graph: nx.DiGraph[str]) -> None:
-        """Wrap a NetworkX DiGraph.
+    def __init__(self, graph: BabylonGraph) -> None:
+        """Wrap a BabylonGraph.
 
         Args:
-            graph: The raw NetworkX directed graph.
+            graph: The directed world graph.
         """
         self._graph = graph
 
     @property
-    def raw(self) -> nx.DiGraph[str]:
+    def raw(self) -> BabylonGraph:
         """Access the underlying raw graph."""
         return self._graph
 
@@ -91,7 +91,7 @@ class CommunityHypergraph:
             hypergraph: Existing XGI Hypergraph, or None for empty.
         """
         self._hypergraph: xgi.Hypergraph = (
-            hypergraph if hypergraph is not None else xgi.Hypergraph()
+            hypergraph if hypergraph is not None else xgi.Hypergraph()  # type: ignore[no-untyped-call, unused-ignore]
         )
 
     @property
@@ -115,8 +115,8 @@ class CommunityHypergraph:
         # Ensure all member nodes exist
         for member in members:
             if member not in self._hypergraph.nodes:
-                self._hypergraph.add_node(member)
-        self._hypergraph.add_edge(members, idx=community_id, **attrs)
+                self._hypergraph.add_node(member)  # type: ignore[no-untyped-call, unused-ignore]
+        self._hypergraph.add_edge(members, idx=community_id, **attrs)  # type: ignore[no-untyped-call, unused-ignore]
 
     @property
     def community_ids(self) -> set[Any]:

@@ -24,7 +24,6 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-import networkx as nx
 import xgi  # type: ignore[import-untyped, unused-ignore]
 
 from babylon.bifurcation.axis import compute_axis_tendency, crosses_contradiction_axis
@@ -51,7 +50,7 @@ from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, EdgeType
 
 
-def _extract_raw_solidarity_subgraph(graph: BabylonGraph | nx.DiGraph[str]) -> BabylonUGraph:
+def _extract_raw_solidarity_subgraph(graph: BabylonGraph) -> BabylonUGraph:
     """Extract undirected solidarity subgraph (all SOLIDARITY edges).
 
     Args:
@@ -86,7 +85,7 @@ def _extract_raw_solidarity_subgraph(graph: BabylonGraph | nx.DiGraph[str]) -> B
 
 
 def _extract_filtered_solidarity_subgraph(
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
     defines: BifurcationDefines,
@@ -216,7 +215,7 @@ def _compute_mean_assimilation_ratio_marginalized(
 
 
 def _compute_edge_counts(
-    graph: nx.DiGraph,  # type: ignore[type-arg]
+    graph: BabylonGraph,
     agent_memberships: dict[str, set[CommunityType]],
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
@@ -283,7 +282,7 @@ def _compute_edge_counts(
     return cross_count, within_count, weighted_cross_total, crisis_fragile_count
 
 
-def _compute_legitimation_index(graph: nx.DiGraph) -> float:  # type: ignore[type-arg]
+def _compute_legitimation_index(graph: BabylonGraph) -> float:
     """Extract population-weighted mean legitimation index from territories.
 
     Args:
@@ -309,7 +308,7 @@ def _compute_legitimation_index(graph: nx.DiGraph) -> float:  # type: ignore[typ
 
 
 def _has_cross_axis_antagonism(
-    graph: nx.DiGraph,  # type: ignore[type-arg]
+    graph: BabylonGraph,
     contradictions: list[Contradiction],
     agent_memberships: dict[str, set[CommunityType]],
 ) -> bool:
@@ -404,7 +403,7 @@ def _classify_tendency(
 
 
 def bifurcation_tendency(
-    graph: nx.DiGraph,  # type: ignore[type-arg]
+    graph: BabylonGraph,
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
     contradictions: list[Contradiction],

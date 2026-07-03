@@ -21,8 +21,6 @@ from babylon.engine.event_bus import Event
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -102,7 +100,7 @@ class ControlRatioSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -113,12 +111,7 @@ class ControlRatioSystem(SystemBase):
         - Emits CONTROL_RATIO_CRISIS when prisoners exceed capacity
         - Waits terminal_decision_delay before emitting TERMINAL_DECISION
         """
-        from babylon.engine.graph_protocol import GraphProtocol
 
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
         tick = context.get("tick", 0)
         # Handle both TickContext (with persistent_data) and raw dict
         if hasattr(context, "persistent_data"):

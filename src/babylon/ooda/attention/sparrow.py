@@ -16,15 +16,13 @@ from babylon.engine import graph_algorithms as ga
 from babylon.models.entities.attention_thread import SparrowAnalysis
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph import BabylonGraph, BabylonUGraph
 
 
 def analyze_network(
     thread_id: str,
     tick: int,
-    g_observed: BabylonGraph | nx.DiGraph[str],
+    g_observed: BabylonGraph,
     confidence: float = 0.8,
 ) -> SparrowAnalysis:
     """Run Sparrow structural analysis on an observed subgraph.
@@ -90,7 +88,7 @@ def analyze_network(
     )
 
 
-def _compute_equivalence_classes(graph: BabylonUGraph | nx.Graph[str]) -> list[frozenset[str]]:
+def _compute_equivalence_classes(graph: BabylonUGraph) -> list[frozenset[str]]:
     """Group nodes by structural equivalence (same degree signature).
 
     Two nodes are structurally equivalent if they have the same
@@ -117,7 +115,7 @@ def _compute_equivalence_classes(graph: BabylonUGraph | nx.Graph[str]) -> list[f
 
 
 def _identify_singletons(
-    graph: BabylonUGraph | nx.Graph[str],
+    graph: BabylonUGraph,
     centrality_rankings: dict[str, dict[str, float]],
 ) -> frozenset[str]:
     """Identify nodes with uniquely high structural importance.
@@ -157,7 +155,7 @@ def _identify_singletons(
     return frozenset(singletons)
 
 
-def _compute_cutsets(graph: BabylonUGraph | nx.Graph[str]) -> list[frozenset[str]]:
+def _compute_cutsets(graph: BabylonUGraph) -> list[frozenset[str]]:
     """Compute minimal vertex cutsets (articulation points).
 
     Each articulation point forms a singleton cutset -- removing it

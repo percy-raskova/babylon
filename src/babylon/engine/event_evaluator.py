@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING, Any
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.models.entities.event_template import (
         EdgeCondition,
@@ -27,21 +25,21 @@ if TYPE_CHECKING:
     )
 
 
-def _ensure_protocol(graph: nx.DiGraph[str] | GraphProtocol) -> GraphProtocol:
-    """Wrap raw nx.DiGraph in GraphProtocol adapter if needed."""
+def _ensure_protocol(graph: GraphProtocol) -> GraphProtocol:
+    """Validate that the graph satisfies GraphProtocol (fail loud)."""
     from babylon.engine.graph_protocol import GraphProtocol
 
     if isinstance(graph, GraphProtocol):
         return graph
-
-    from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-    return NetworkXAdapter.wrap(graph)
+    raise TypeError(
+        "raw networkx graphs are no longer supported; construct "
+        f"babylon.engine.graph.BabylonGraph (got {type(graph).__name__})"
+    )
 
 
 def evaluate_template(
     template: EventTemplate,
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
     current_tick: int,
 ) -> Resolution | None:
     """Evaluate an EventTemplate against the current graph state.
@@ -77,7 +75,7 @@ def evaluate_template(
 
 def evaluate_preconditions(
     preconditions: PreconditionSet,
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
 ) -> bool:
     """Evaluate a PreconditionSet against the graph.
 
@@ -112,7 +110,7 @@ def evaluate_preconditions(
 
 def evaluate_node_condition(
     condition: NodeCondition,
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
 ) -> bool:
     """Evaluate a NodeCondition against matching nodes.
 
@@ -180,7 +178,7 @@ def _collect_edge_value(
 
 def evaluate_edge_condition(
     condition: EdgeCondition,
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
 ) -> bool:
     """Evaluate an EdgeCondition against edges.
 
@@ -232,7 +230,7 @@ def evaluate_edge_condition(
 
 def evaluate_graph_condition(
     condition: GraphCondition,
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
 ) -> bool:
     """Evaluate a GraphCondition against graph-level metrics.
 
@@ -287,7 +285,7 @@ def _calculate_gini(graph: GraphProtocol) -> float:
     return cumulative / (n * total) if total > 0 else 0.0
 
 
-def calculate_graph_metric(graph: nx.DiGraph[str] | GraphProtocol, metric: str) -> float:
+def calculate_graph_metric(graph: GraphProtocol, metric: str) -> float:
     """Calculate a graph-level aggregate metric.
 
     Args:
@@ -316,7 +314,7 @@ def calculate_graph_metric(graph: nx.DiGraph[str] | GraphProtocol, metric: str) 
 
 
 def filter_nodes(
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
     node_filter: NodeFilter | None,
 ) -> list[str]:
     """Filter nodes based on NodeFilter criteria.
@@ -443,7 +441,7 @@ def aggregate_and_compare(
 
 def get_matching_nodes_for_resolution(
     template: EventTemplate,
-    graph: nx.DiGraph[str] | GraphProtocol,
+    graph: GraphProtocol,
 ) -> list[str]:
     """Get nodes that match the template's node conditions.
 

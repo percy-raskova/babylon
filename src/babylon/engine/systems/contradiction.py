@@ -51,8 +51,6 @@ from babylon.models.entities.contradiction import Contradiction, ContradictionFr
 from babylon.models.enums import ContradictionType, EdgeMode, EdgeType, EventType
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.dialectics.core.opposition import OppositionRegistry, OppositionSpec
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
@@ -92,17 +90,11 @@ class ContradictionSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
         """Write fresh per-edge tension, then step the opposition registry."""
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         tick: int = context.get("tick", 0)
         self._write_edge_tensions(graph)

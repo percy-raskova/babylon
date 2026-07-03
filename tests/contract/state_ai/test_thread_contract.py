@@ -6,8 +6,6 @@ Tests behavioral contracts T-01 through T-06 from
 
 from __future__ import annotations
 
-import networkx as nx
-
 from babylon.config.defines import GameDefines, StateApparatusAIDefines
 from babylon.models.enums import ThreadPhase
 from babylon.ooda.attention.observation import compute_observation_ceiling
@@ -17,7 +15,7 @@ from babylon.ooda.attention.thread_manager import (
     allocate_threads,
     update_thread_tick,
 )
-from tests.unit.state_ai.conftest import make_attention_thread
+from tests.unit.state_ai.conftest import make_attention_thread, make_directed_star
 
 
 def _defines() -> StateApparatusAIDefines:
@@ -50,17 +48,12 @@ class TestCellTopologyResistance:
     """T-02: Cell topology provides at least 30% resistance vs star topology."""
 
     def test_cell_topology_lower_intel_than_star(self) -> None:
-        """Cell topology (cycle) resists surveillance more than star topology."""
-        # Star topology: hub sees everything
-        star = nx.star_graph(5).to_directed()
-        star_mapping = {i: f"s_{i}" for i in star.nodes()}
-        star = nx.relabel_nodes(star, star_mapping)
+        """Cell topology (cycle) resists surveillance more than star topology.
 
-        # Cell topology: cycle with compartmentalization
-        cell = nx.cycle_graph(6).to_directed()
-        cell_mapping = {i: f"c_{i}" for i in cell.nodes()}
-        cell = nx.relabel_nodes(cell, cell_mapping)
-
+        A star (hub sees everything) has low compartmentalization; a cell
+        cycle compartmentalizes. The contract is expressed directly through
+        the compartmentalization factors fed to the ceiling.
+        """
         # Star has lower compartmentalization
         star_ceiling = compute_observation_ceiling(1.0, compartmentalization_factor=0.1)
         cell_ceiling = compute_observation_ceiling(1.0, compartmentalization_factor=0.5)
@@ -93,9 +86,7 @@ class TestSparrowSingletonOnStar:
 
     def test_star_hub_identified_as_singleton(self) -> None:
         """Sparrow analysis on star graph identifies the hub node."""
-        star = nx.star_graph(6).to_directed()
-        mapping = {i: f"node_{i}" for i in star.nodes()}
-        star = nx.relabel_nodes(star, mapping)
+        star = make_directed_star(6)
 
         analysis = analyze_network("thread_1", tick=5, g_observed=star)
         assert "node_0" in analysis.identified_singletons, (

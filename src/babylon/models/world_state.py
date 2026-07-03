@@ -17,9 +17,8 @@ Sprint 3.5.3: Territory integration for Layer 0.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final
 
-import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from babylon.models.entities.contradiction import ContradictionFrame
@@ -314,7 +313,7 @@ class WorldState(BaseModel):
         """Convert state to a BabylonGraph for formula application.
 
         The rustworkx-backed :class:`~babylon.engine.graph.BabylonGraph`
-        (Amendment L) replaces the former ``nx.DiGraph``; its nx-compat
+        (Amendment L) replaces the former NetworkX DiGraph; its nx-compat
         authoring surface keeps this method's body and all downstream
         readers unchanged, and it satisfies ``GraphProtocol`` directly so
         systems no longer wrap per tick.
@@ -416,17 +415,16 @@ class WorldState(BaseModel):
     @classmethod
     def from_graph(
         cls,
-        G: BabylonGraph | nx.DiGraph[str],
+        G: BabylonGraph,
         tick: int,
         event_log: list[str] | None = None,
         events: list[SimulationEvent] | None = None,
     ) -> WorldState:
-        """Reconstruct WorldState from a graph (BabylonGraph or legacy nx).
+        """Reconstruct WorldState from a BabylonGraph.
 
         Args:
-            G: Graph with node/edge data (``BabylonGraph`` in production;
-               raw ``nx.DiGraph`` accepted during the Amendment L
-               transition for legacy fixtures)
+            G: Graph with node/edge data (``BabylonGraph`` — the sole
+               substrate since Amendment L closed the adapter seam)
             tick: The tick number for the new state
             event_log: Optional event log to preserve (backward compatibility)
             events: Optional structured events to include (Sprint 3.1)
@@ -506,12 +504,9 @@ class WorldState(BaseModel):
                 }
                 entities[node_id] = SocialClass(**entity_data)
 
-        # Reconstruct relationships from edges. The cast collapses the
-        # transitional BabylonGraph|nx union — both yield (u, v, data)
-        # triples for data=True (annotation collapses with Phase 7).
+        # Reconstruct relationships from edges.
         relationships: list[Relationship] = []
-        edge_triples = cast("list[tuple[str, str, dict[str, Any]]]", G.edges(data=True))
-        for source_id, target_id, data in edge_triples:
+        for source_id, target_id, data in G.edges(data=True):
             # Reconstruct edge_type from stored value
             edge_type = data.get("edge_type", EdgeType.EXPLOITATION)
             if isinstance(edge_type, str):

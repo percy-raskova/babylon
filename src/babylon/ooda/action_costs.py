@@ -19,8 +19,6 @@ from babylon.ooda._helpers import _compute_membership_overlap
 from babylon.ooda.types import ActionCostModifier
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph import BabylonGraph
 
 
@@ -38,7 +36,7 @@ def compute_action_cost(
     action_type: ActionType,
     org_id: str,
     target_id: str,
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
     defines: OODADefines,
 ) -> ActionCostModifier:
     """Compute effective cost of an action with community modifiers.
@@ -87,7 +85,7 @@ def compute_action_cost(
 
 def _get_org_community_types(
     org_id: str,
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
 ) -> set[CommunityType]:
     """Get community types of an org's members.
 
@@ -118,7 +116,7 @@ def _get_org_community_types(
 
 def _get_target_community_type(
     target_id: str,
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
 ) -> CommunityType | None:
     """Get the community type of a target community node.
 

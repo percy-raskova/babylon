@@ -26,8 +26,6 @@ from babylon.engine.systems.protocol import ContextType
 from babylon.models.enums import EventType, LegitimationClassification
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -56,7 +54,7 @@ class LifecycleSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -67,12 +65,6 @@ class LifecycleSystem(SystemBase):
             services: Service container with defines, event_bus.
             context: Tick context.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         defines = services.defines.lifecycle
         tick = context.tick if hasattr(context, "tick") else context.get("tick", 0)

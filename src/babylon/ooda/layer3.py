@@ -16,14 +16,12 @@ from babylon.models.enums import ActionType, EdgeType
 from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph import BabylonGraph
 
 
 def process_layer3(
     action_results: list[ActionResult],
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
     defines: OODADefines,
 ) -> dict[str, Any]:
     """Propagate action consequences to communities.
@@ -58,7 +56,7 @@ def process_layer3(
 
 def _propagate_heat(
     results: list[ActionResult],
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
     defines: OODADefines,
 ) -> int:
     """Increase community heat from REPRESS/SURVEIL actions.
@@ -104,7 +102,7 @@ def _propagate_heat(
 
 def _propagate_edge_transitions(
     results: list[ActionResult],
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
 ) -> int:
     """Transition edges from TRANSACTIONAL to SOLIDARISTIC on ORGANIZE.
 
@@ -141,7 +139,7 @@ def _propagate_edge_transitions(
 
 def _propagate_infrastructure(
     results: list[ActionResult],
-    graph: BabylonGraph | nx.DiGraph[str],
+    graph: BabylonGraph,
     defines: OODADefines,
 ) -> int:
     """Apply BUILD/ATTACK_INFRASTRUCTURE effects to communities.

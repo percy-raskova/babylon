@@ -33,8 +33,6 @@ from babylon.economics.tensor import NoDataSentinel
 from babylon.models.enums import EdgeType, SocialRole
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -88,7 +86,7 @@ class ProductionSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         _context: ContextType,
     ) -> None:
@@ -105,12 +103,6 @@ class ProductionSystem(SystemBase):
         NOTE: base_labor_power is an annual rate, converted to weekly here
         to match ImperialRentSystem's timescale conversion.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # Convert annual production to weekly (same as extraction_efficiency)
         annual_labor_power = services.defines.economy.base_labor_power

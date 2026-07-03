@@ -11,10 +11,9 @@ See Also:
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-import networkx as nx
-import xgi  # type: ignore[import-untyped]
+import xgi  # type: ignore[import-untyped, unused-ignore]
 
 from babylon.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.bifurcation.types import AxisTendency
@@ -22,6 +21,9 @@ from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import CommunityState
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, EdgeType
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
 
 # Antagonistic edge types: value extraction, state violence, market rivalry
 _ANTAGONISTIC_EDGE_TYPES: frozenset[EdgeType] = frozenset(
@@ -94,7 +96,7 @@ def crosses_contradiction_axis(
 def classify_edge_antagonism(
     source_id: str,
     target_id: str,
-    graph: nx.DiGraph,  # type: ignore[type-arg]
+    graph: BabylonGraph,
     contradiction: Contradiction,
     agent_memberships: dict[str, set[CommunityType]],
 ) -> Literal["lateral", "upward", "downward", "none"]:
@@ -146,7 +148,7 @@ def classify_edge_antagonism(
 
 
 def compute_axis_tendency(
-    graph: nx.DiGraph,  # type: ignore[type-arg]
+    graph: BabylonGraph,
     H: xgi.Hypergraph,
     contradiction: Contradiction,
     community_states: dict[CommunityType, CommunityState],

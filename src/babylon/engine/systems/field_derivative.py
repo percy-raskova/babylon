@@ -21,8 +21,6 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
-    import networkx as nx
-
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
@@ -50,7 +48,7 @@ class FieldDerivativeSystem(SystemBase):
 
     def step(
         self,
-        graph: nx.DiGraph[str] | GraphProtocol,
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -61,12 +59,6 @@ class FieldDerivativeSystem(SystemBase):
             services: ServiceContainer with field_registry.
             context: TickContext or dict with tick and persistent_data.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
-
-        if not isinstance(graph, GraphProtocol):
-            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-
-            graph = NetworkXAdapter.wrap(graph)
 
         # E0: no field_registry in production. The field stack is sourced from
         # the opposition layer (System #19), so derive the field names from the

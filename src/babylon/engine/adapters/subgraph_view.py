@@ -25,8 +25,8 @@ class SubgraphView:
         _subgraph: The underlying NetworkX subgraph.
 
     Example:
-        >>> from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
-        >>> adapter = NetworkXAdapter()
+        >>> from babylon.engine.graph import BabylonGraph
+        >>> adapter = BabylonGraph()
         >>> adapter.add_node("C001", "social_class", wealth=100.0)
         >>> adapter.add_node("C002", "social_class", wealth=50.0)
         >>> adapter.add_edge("C001", "C002", "SOLIDARITY")

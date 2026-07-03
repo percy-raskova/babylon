@@ -16,8 +16,6 @@ from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import UUID
 
-import networkx as nx
-
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
 
@@ -125,7 +123,7 @@ class RuntimePersistence(Protocol):
     def persist_tick(
         self,
         tick: int,
-        graph: BabylonGraph | nx.DiGraph[str],
+        graph: BabylonGraph,
         events: list[dict[str, Any]] | None = None,
         *,
         session_id: UUID | None = None,
@@ -171,7 +169,7 @@ class RuntimePersistence(Protocol):
         tick: int | None = None,
         *,
         session_id: UUID | None = None,
-    ) -> BabylonGraph | nx.DiGraph[str]:
+    ) -> BabylonGraph:
         """Load a complete state snapshot from storage.
 
         If tick is None, loads the latest available tick.

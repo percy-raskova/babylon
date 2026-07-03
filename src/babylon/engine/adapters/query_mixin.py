@@ -20,7 +20,7 @@ class QueryMixin:
 
     Requires the class using this mixin to have a `_graph` attribute
     satisfying :class:`~babylon.engine.adapters.compat.CompatGraph`
-    (nx.DiGraph and BabylonGraph both do, structurally).
+    (BabylonGraph does, structurally).
 
     Example:
         >>> class MyAdapter(QueryMixin):

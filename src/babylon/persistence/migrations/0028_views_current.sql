@@ -9,7 +9,11 @@
 -- remain valid for the fresh-DB passes that execute before 0026).
 -- 0027 is reserved for S3's hex_map normalization.
 --
--- Definitions are verbatim 0015 (aggregation views) + 0023 (trace view).
+-- Definitions originate from 0015 (aggregation views) + 0023 (trace view);
+-- spec-088 S3 (FR-008) rewired the spatial keys to hex_spatial_map (0027):
+-- new hex rows carry NULL county/state/region and the mapping lives once
+-- per hex in hex_spatial_map. COALESCE keeps legacy rows (inline keys,
+-- pre-S3 sessions and test-harness inserts) resolving identically.
 
 DROP VIEW IF EXISTS view_runtime_trace_emission;
 DROP VIEW IF EXISTS v_global_phi_balance;
@@ -17,35 +21,37 @@ DROP VIEW IF EXISTS v_national_value_aggregate;
 DROP VIEW IF EXISTS v_state_value_aggregate;
 DROP VIEW IF EXISTS v_county_value_aggregate;
 
--- ───────── v_county_value_aggregate (0015) ─────────
+-- ───────── v_county_value_aggregate (0015; S3 hex_spatial_map) ─────────
 CREATE VIEW v_county_value_aggregate AS
 SELECT
-    session_id,
-    tick,
-    county_fips,
-    SUM(c) AS c_sum,
-    SUM(v) AS v_sum,
-    SUM(s) AS s_sum,
-    SUM(k) AS k_sum,
-    SUM(biocapacity_stock) AS biocapacity_sum,
+    h.session_id,
+    h.tick,
+    COALESCE(m.county_fips, h.county_fips) AS county_fips,
+    SUM(h.c) AS c_sum,
+    SUM(h.v) AS v_sum,
+    SUM(h.s) AS s_sum,
+    SUM(h.k) AS k_sum,
+    SUM(h.biocapacity_stock) AS biocapacity_sum,
     COUNT(*) AS hex_count
-FROM dynamic_hex_state
-GROUP BY session_id, tick, county_fips;
+FROM dynamic_hex_state h
+LEFT JOIN hex_spatial_map m USING (h3_index)
+GROUP BY h.session_id, h.tick, COALESCE(m.county_fips, h.county_fips);
 
--- ───────── v_state_value_aggregate (0015) ─────────
+-- ───────── v_state_value_aggregate (0015; S3 hex_spatial_map) ─────────
 CREATE VIEW v_state_value_aggregate AS
 SELECT
-    session_id,
-    tick,
-    state_fips,
-    SUM(c) AS c_sum,
-    SUM(v) AS v_sum,
-    SUM(s) AS s_sum,
-    SUM(k) AS k_sum,
-    SUM(biocapacity_stock) AS biocapacity_sum,
+    h.session_id,
+    h.tick,
+    COALESCE(m.state_fips, h.state_fips) AS state_fips,
+    SUM(h.c) AS c_sum,
+    SUM(h.v) AS v_sum,
+    SUM(h.s) AS s_sum,
+    SUM(h.k) AS k_sum,
+    SUM(h.biocapacity_stock) AS biocapacity_sum,
     COUNT(*) AS hex_count
-FROM dynamic_hex_state
-GROUP BY session_id, tick, state_fips;
+FROM dynamic_hex_state h
+LEFT JOIN hex_spatial_map m USING (h3_index)
+GROUP BY h.session_id, h.tick, COALESCE(m.state_fips, h.state_fips);
 
 -- ───────── v_national_value_aggregate (0015) ─────────
 CREATE VIEW v_national_value_aggregate AS
@@ -87,12 +93,12 @@ SELECT
 FROM periphery_outflow p
 LEFT JOIN core_inflow c USING (session_id, tick);
 
--- ───────── view_runtime_trace_emission (0023) ─────────
+-- ───────── view_runtime_trace_emission (0023; S3 hex_spatial_map) ─────────
 CREATE VIEW view_runtime_trace_emission AS
 SELECT
     h.session_id,
     h.tick,
-    h.county_fips                              AS entity_id,
+    COALESCE(m.county_fips, h.county_fips)    AS entity_id,
     'county'::TEXT                             AS entity_kind,
     SUM(h.v)                                   AS v,
     SUM(h.c)                                   AS c,
@@ -119,19 +125,20 @@ SELECT
     dem.population,
     emp.employment_proxy
 FROM dynamic_hex_state h
+LEFT JOIN hex_spatial_map m USING (h3_index)
 LEFT JOIN dynamic_consciousness_state cs
        ON cs.session_id = h.session_id
       AND cs.tick = h.tick
-      AND cs.county_fips = h.county_fips
+      AND cs.county_fips = COALESCE(m.county_fips, h.county_fips)
 LEFT JOIN dynamic_demographics_state dem
        ON dem.session_id = h.session_id
       AND dem.tick = h.tick
-      AND dem.county_fips = h.county_fips
+      AND dem.county_fips = COALESCE(m.county_fips, h.county_fips)
 LEFT JOIN dynamic_employment_state emp
        ON emp.session_id = h.session_id
       AND emp.tick = h.tick
-      AND emp.county_fips = h.county_fips
-GROUP BY h.session_id, h.tick, h.county_fips,
+      AND emp.county_fips = COALESCE(m.county_fips, h.county_fips)
+GROUP BY h.session_id, h.tick, COALESCE(m.county_fips, h.county_fips),
          cs.p_acquiescence, cs.p_revolution,
          cs.ideology_r, cs.ideology_l, cs.ideology_f,
          dem.population, emp.employment_proxy;

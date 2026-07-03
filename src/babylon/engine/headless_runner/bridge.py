@@ -101,15 +101,21 @@ BASELINE_IDEOLOGY = IdeologicalProfile(class_consciousness=0.1, national_identit
 # SQL: read the tick-0 hex_state rows for a scope. We re-emit these
 # unchanged at each persist_tick during Phase 3 first cut (the engine
 # doesn't yet mutate hex-resolution state — see module docstring).
+# Spec-088 S3: hex rows write NULL spatial keys; the mapping lives in
+# hex_spatial_map (COALESCE keeps pre-S3 sessions readable).
 _FETCH_TICK_ZERO_HEX_SQL = """
 SELECT
-    session_id, tick, h3_index,
-    county_fips, state_fips, region_id,
-    c, v, s, k,
-    biocapacity_stock, energy_stock, raw_material_stock,
-    internet_access_pct, surveillance_coupling
-FROM dynamic_hex_state
-WHERE session_id = %s AND tick = 0 AND county_fips = ANY(%s)
+    h.session_id, h.tick, h.h3_index,
+    COALESCE(m.county_fips, h.county_fips) AS county_fips,
+    COALESCE(m.state_fips, h.state_fips) AS state_fips,
+    COALESCE(m.region_id, h.region_id) AS region_id,
+    h.c, h.v, h.s, h.k,
+    h.biocapacity_stock, h.energy_stock, h.raw_material_stock,
+    h.internet_access_pct, h.surveillance_coupling
+FROM dynamic_hex_state h
+LEFT JOIN hex_spatial_map m USING (h3_index)
+WHERE h.session_id = %s AND h.tick = 0
+  AND COALESCE(m.county_fips, h.county_fips) = ANY(%s)
 """
 
 

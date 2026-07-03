@@ -141,14 +141,21 @@ DO NOTHING
 
 
 def _hex_row_dict(row: Any) -> dict[str, Any]:
-    """Serialize a DynamicHexState row to psycopg param dict."""
+    """Serialize a DynamicHexState row to psycopg param dict.
+
+    Spec-088 S3 (FR-007): the immutable spatial keys write NULL — the
+    single stored copy lives in ``hex_spatial_map`` (populated at hex
+    hydration); views resolve via LEFT JOIN + COALESCE. The in-memory
+    model keeps the fields (bridge logic + determinism-hash input are
+    untouched).
+    """
     return {
         "session_id": str(row.session_id),
         "tick": row.tick,
         "h3_index": row.h3_index,
-        "county_fips": row.county_fips,
-        "state_fips": row.state_fips,
-        "region_id": row.region_id,
+        "county_fips": None,
+        "state_fips": None,
+        "region_id": None,
         "c": row.c,
         "v": row.v,
         "s": row.s,

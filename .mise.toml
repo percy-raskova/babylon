@@ -417,7 +417,9 @@ SELECT 'tick ' || max(tick) || '/520 (' || round(100.0*max(tick)/520, 1) || '%),
        pg_size_pretty(pg_database_size('babylon_test')) FROM dynamic_hex_state;" 2>/dev/null || true
 PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
 SELECT 'live counties: ' ||
-       (SELECT count(DISTINCT county_fips) FROM dynamic_hex_state WHERE tick=(SELECT max(tick) FROM dynamic_hex_state)) ||
+       (SELECT count(DISTINCT COALESCE(m.county_fips, h.county_fips))
+        FROM dynamic_hex_state h LEFT JOIN hex_spatial_map m USING (h3_index)
+        WHERE h.tick=(SELECT max(tick) FROM dynamic_hex_state)) ||
        ', contradiction_field rows: ' || (SELECT count(*) FROM contradiction_field);" 2>/dev/null || true
 PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
 SELECT 'max_tension t' || tick || ': ' || round(max(tension)::numeric, 4)

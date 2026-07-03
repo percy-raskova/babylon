@@ -137,6 +137,62 @@ class TestSessionPartitionLifecycle:
                     (str(stray),),
                 )
 
+    def test_hex_map_exists_and_views_resolve_spatial_keys(self, migrated_pool: Any) -> None:
+        """Spec-088 S3 (FR-006/FR-008): hex_spatial_map is the stored spatial mapping.
+
+        A new-style hex row (NULL fips) resolves its county through
+        hex_map; a legacy row (inline fips, no hex_map entry) still
+        resolves via COALESCE fallback.
+        """
+        session = uuid4()
+        ensure_session_partitions(pool=migrated_pool, session_id=session)
+        try:
+            with migrated_pool.connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id)
+                    VALUES ('872a91055ffffff', '26163', '26', 'midwest')
+                    ON CONFLICT (h3_index) DO NOTHING
+                    """
+                )
+                # New-style row: spatial keys NULL, mapping via hex_spatial_map.
+                conn.execute(
+                    """
+                    INSERT INTO dynamic_hex_state (
+                        session_id, tick, h3_index, county_fips, state_fips, region_id,
+                        c, v, s, k, biocapacity_stock, energy_stock, raw_material_stock,
+                        internet_access_pct, surveillance_coupling
+                    ) VALUES (%s, 0, '872a91055ffffff', NULL, NULL, NULL,
+                              1, 2, 3, 4, 1, 1, 1, 0.5, 0.5)
+                    """,
+                    (str(session),),
+                )
+                # Legacy-style row: inline fips, h3 unknown to hex_spatial_map.
+                conn.execute(
+                    """
+                    INSERT INTO dynamic_hex_state (
+                        session_id, tick, h3_index, county_fips, state_fips, region_id,
+                        c, v, s, k, biocapacity_stock, energy_stock, raw_material_stock,
+                        internet_access_pct, surveillance_coupling
+                    ) VALUES (%s, 0, '872a9105bffffff', '26125', '26', 'midwest',
+                              10, 20, 30, 40, 1, 1, 1, 0.5, 0.5)
+                    """,
+                    (str(session),),
+                )
+                rows = conn.execute(
+                    """
+                    SELECT county_fips, v_sum FROM v_county_value_aggregate
+                    WHERE session_id = %s AND tick = 0 ORDER BY county_fips
+                    """,
+                    (str(session),),
+                ).fetchall()
+            assert [(r[0], float(r[1])) for r in rows] == [
+                ("26125", 20.0),
+                ("26163", 2.0),
+            ]
+        finally:
+            drop_session_partitions(pool=migrated_pool, session_id=session)
+
     def test_drop_removes_partitions_and_their_rows_only(self, migrated_pool: Any) -> None:
         keep, drop = uuid4(), uuid4()
         ensure_session_partitions(pool=migrated_pool, session_id=keep)

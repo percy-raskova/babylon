@@ -299,10 +299,10 @@ class TestPersistTickDelegation:
         call_args = mock_persistence.persist_tick.call_args
         # tick keyword arg
         assert call_args.kwargs.get("tick") == state.tick
-        # graph keyword arg should be a NetworkX DiGraph
-        import networkx as nx
+        # graph keyword arg should be the BabylonGraph from to_graph (Amendment L)
+        from babylon.engine.graph import BabylonGraph
 
-        assert isinstance(call_args.kwargs.get("graph"), nx.DiGraph)
+        assert isinstance(call_args.kwargs.get("graph"), BabylonGraph)
 
     def test_serializes_events(self) -> None:
         """persist_tick should receive serialized events."""

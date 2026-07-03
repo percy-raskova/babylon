@@ -18,6 +18,7 @@ from uuid import UUID
 import networkx as nx
 
 from babylon.config.defines import GameDefines
+from babylon.engine.graph import BabylonGraph
 from babylon.engine.scenarios import (
     create_imperial_circuit_scenario,
     create_labor_aristocracy_scenario,
@@ -159,7 +160,7 @@ class EngineBridge:
 
     def hydrate_state(
         self, session_id: UUID, tick: int | None = None
-    ) -> tuple[WorldState, nx.DiGraph[str]]:
+    ) -> tuple[WorldState, BabylonGraph | nx.DiGraph[str]]:
         """Load a session's graph from persistence and reconstruct WorldState.
 
         Args:
@@ -1898,7 +1899,7 @@ class EngineBridge:
 # ---------------------------------------------------------------------- #
 
 
-def _graph_tick(graph: nx.DiGraph[str]) -> int:
+def _graph_tick(graph: BabylonGraph | nx.DiGraph[str]) -> int:
     """Extract the tick from graph-level metadata, defaulting to 0."""
     return int(graph.graph.get("tick", 0))
 
@@ -1934,7 +1935,7 @@ def _build_initial_state_for_scenario(scenario: str) -> WorldState:
     return state
 
 
-def _is_unseeded_graph(graph: nx.DiGraph[str]) -> bool:
+def _is_unseeded_graph(graph: BabylonGraph | nx.DiGraph[str]) -> bool:
     """Return True when a hydrated graph has no persisted simulation content."""
     return graph.number_of_nodes() == 0 and graph.number_of_edges() == 0
 

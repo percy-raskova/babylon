@@ -171,12 +171,16 @@ class TestWorldStateImmutability:
 
 @pytest.mark.topology
 class TestWorldStateToGraph:
-    """WorldState.to_graph() should convert state to NetworkX DiGraph."""
+    """WorldState.to_graph() should convert state to a BabylonGraph."""
 
-    def test_to_graph_returns_digraph(self, two_node_state: WorldState) -> None:
-        """to_graph() returns a NetworkX DiGraph."""
+    def test_to_graph_returns_babylon_graph(self, two_node_state: WorldState) -> None:
+        """to_graph() returns a BabylonGraph satisfying GraphProtocol (Amendment L)."""
+        from babylon.engine.graph import BabylonGraph
+        from babylon.engine.graph_protocol import GraphProtocol
+
         G = two_node_state.to_graph()
-        assert isinstance(G, nx.DiGraph)
+        assert isinstance(G, BabylonGraph)
+        assert isinstance(G, GraphProtocol)
 
     def test_to_graph_preserves_node_count(self, two_node_state: WorldState) -> None:
         """Graph has same number of nodes as entities."""
@@ -766,7 +770,6 @@ class TestWorldStateEconomyIntegration:
 
     def test_from_graph_default_economy_when_missing(self) -> None:
         """from_graph() uses default economy when metadata missing (backward compat)."""
-        import networkx as nx
 
         G: nx.DiGraph[str] = nx.DiGraph()
         # No economy in G.graph - simulates old graph without economy support
@@ -1123,7 +1126,6 @@ class TestStateFinancesIntegration:
         This ensures backward compatibility with graphs created before
         state_finances was added to WorldState.
         """
-        import networkx as nx
 
         # Create graph without state_finances in metadata (old format)
         G: nx.DiGraph[str] = nx.DiGraph()

@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import networkx as nx
 import pytest
 
+from babylon.engine.graph import BabylonGraph
 from game.engine_bridge import EngineBridge, _build_initial_state_for_scenario, _state_to_snapshot
 
 
@@ -101,7 +102,7 @@ class TestEngineBridgeCreateGame:
         assert persist_kwargs["tick"] == 0
         assert persist_kwargs["session_id"] == uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         persisted_graph = persist_kwargs["graph"]
-        assert isinstance(persisted_graph, nx.DiGraph)
+        assert isinstance(persisted_graph, BabylonGraph)
         assert len(persisted_graph.nodes) > 0
 
 
@@ -147,7 +148,7 @@ class TestEngineBridgeHydrate:
         state, graph = bridge.hydrate_state(sid)
 
         assert state.tick == 0
-        assert isinstance(graph, nx.DiGraph)
+        assert isinstance(graph, BabylonGraph)
 
     def test_hydrate_bootstraps_when_graph_unseeded(self) -> None:
         mock_persistence = _make_mock_persistence()

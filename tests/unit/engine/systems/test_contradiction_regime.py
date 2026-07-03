@@ -47,7 +47,7 @@ class TestRegimeClassification:
         services = ServiceContainer.create()
         ContradictionSystem().step(graph, services, {"tick": 1})
         assert _regime(graph) == "reproduction"
-        assert graph.graph["dialectical_regime"]["principal"] == "capital_labor"
+        assert graph.graph["dialectical_regime"]["opposition"] == "capital_labor"
 
     def test_symmetric_rising_gap_sublates_and_fires_level_transition(self) -> None:
         graph = _two_county_graph()

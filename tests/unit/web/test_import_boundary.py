@@ -27,7 +27,6 @@ ENGINE_IMPORT_PREFIXES = (
 # The files allowed to import engine code
 ALLOWED_FILES = {
     "game/engine_bridge.py",
-    "game/repositories.py",
     "game/migrations/0003_spec037_simulation_tables.py",
     # spec-061 FR-009: /health/detail/ is a staff-gated diagnostic that
     # REPORTS engine configuration (babylon.config.llm_config); it never

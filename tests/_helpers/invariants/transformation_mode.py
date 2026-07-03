@@ -1,6 +1,8 @@
 """Transformation-mode probe — spec 060 FR-021 single source of truth.
 
-Per ``src/babylon/engine/dialectics/transformation.py:54-55``:
+Weight semantics (from the retired ``babylon.engine.dialectics.transformation``
+module, removed in C1.7 — ``git show 14f15af2^:src/babylon/engine/dialectics/transformation.py``;
+Phase D re-owns the transformation problem in ``dialectics/instances/value_form.py``):
 
     weight < 0 → values dominate prices (low equalization)
     weight > 0 → prices of production fully equalized

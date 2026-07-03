@@ -317,3 +317,92 @@ class TestConsciousnessSystemPersistentContext:
 
         # Assert: Wealth should be tracked in context dict
         assert "previous_wealth" in context
+
+
+@pytest.mark.unit
+class TestWageOppositionCrisisGate:
+    """The wage-opposition channel fires only AGAINST labor (Phase D review).
+
+    Under the Phase D (W, V) defect measure, ``gap == |balance|`` and a
+    GROWING super-wage bribe has ``balance > 0`` with ``rate > 0`` — the
+    relation sharpens, but in labor's favor. The ratified crisis-gating
+    (Cope: agitation only from material DETERIORATION; "flat during a
+    growing bribe is CORRECT") therefore requires the deterioration term
+    to read the SIGNED position: fire on ``rate > 0`` only while
+    ``balance < 0`` (wage sinking below value). Nominal wage cuts stay
+    covered by the separate per-worker ``wage_change`` channel.
+    """
+
+    @staticmethod
+    def _graph_with_worker() -> "nx.DiGraph[str]":
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            PERIPHERY_WORKER_ID,
+            wealth=1.0,
+            ideology={
+                "class_consciousness": 0.5,
+                "national_identity": 0.5,
+                "agitation": 0.0,
+            },
+            _node_type="social_class",
+        )
+        return graph
+
+    @staticmethod
+    def _wage_state(*, gap: float, balance: float, rate: float) -> dict[str, object]:
+        return {
+            "key": "wage",
+            "tick": 1,
+            "gap": gap,
+            "balance": balance,
+            "rate": rate,
+            "leading_pole": "b" if balance > 0 else "a",
+            "is_principal": False,
+        }
+
+    def test_growing_bribe_generates_no_agitation(self) -> None:
+        """balance > 0 AND rate > 0 (the bribe widening) must stay silent."""
+        graph = self._graph_with_worker()
+        graph.graph["opposition_states"] = {
+            "wage": self._wage_state(gap=0.3, balance=0.3, rate=0.05)
+        }
+        services = ServiceContainer.create()
+        system = ConsciousnessSystem()
+        system.step(graph, services, {"tick": 1})
+
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        assert ideology["agitation"] == pytest.approx(0.0), (
+            "a growing bribe (wage pulling further ABOVE value) is pacification, "
+            "not crisis — it must not generate agitation"
+        )
+        assert ideology["class_consciousness"] == pytest.approx(0.5)
+        assert ideology["national_identity"] == pytest.approx(0.5)
+
+    def test_wage_sinking_below_value_agitates(self) -> None:
+        """balance < 0 AND rate > 0 (sharpening against labor) must fire."""
+        graph = self._graph_with_worker()
+        graph.graph["opposition_states"] = {
+            "wage": self._wage_state(gap=0.3, balance=-0.3, rate=0.05)
+        }
+        services = ServiceContainer.create()
+        system = ConsciousnessSystem()
+        system.step(graph, services, {"tick": 1})
+
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        assert ideology["agitation"] > 0.0, (
+            "the wage relation sharpening while labor is on the losing side "
+            "(wage below value, gap rising) is material deterioration"
+        )
+
+    def test_gap_closing_is_quiet_on_either_side(self) -> None:
+        """rate < 0 (the relation de-sharpening) is never deterioration."""
+        for balance in (-0.3, 0.3):
+            graph = self._graph_with_worker()
+            graph.graph["opposition_states"] = {
+                "wage": self._wage_state(gap=0.3, balance=balance, rate=-0.05)
+            }
+            services = ServiceContainer.create()
+            system = ConsciousnessSystem()
+            system.step(graph, services, {"tick": 1})
+            ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+            assert ideology["agitation"] == pytest.approx(0.0)

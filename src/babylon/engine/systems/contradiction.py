@@ -187,12 +187,6 @@ class ContradictionSystem(SystemBase):
             if pair is not None:  # (labor=source=A, capital=target=B)
                 exploitation.append(pair)
 
-        wages: list[tuple[float, float]] = []
-        for edge in graph.query_edges(edge_type=EdgeType.WAGES):
-            pair = self._edge_wealths(graph, edge.source_id, edge.target_id)
-            if pair is not None:  # employer=source -> re-orient so labor=A
-                wages.append((pair[1], pair[0]))
-
         tenancy: list[tuple[float, float]] = []
         for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
             src = graph.get_node(edge.source_id)
@@ -221,7 +215,6 @@ class ContradictionSystem(SystemBase):
 
         return GraphInputs(
             exploitation_pairs=tuple(exploitation),
-            wages_pairs=tuple(wages),
             wage_value_pairs=tuple(wage_value),
             tenancy_pairs=tuple(tenancy),
             solidarity_subgraph=extract_solidarity_subgraph(graph),

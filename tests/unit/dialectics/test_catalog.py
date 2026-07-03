@@ -57,10 +57,25 @@ class TestCapitalLabor:
 
 
 class TestWage:
-    def test_wage_uses_labor_capital_convention(self) -> None:
-        states = _states(GraphInputs(wages_pairs=((2.0, 18.0),)))
-        assert states["wage"].gap == pytest.approx(0.8)
-        assert states["wage"].balance == pytest.approx(0.8)  # capital dominant
+    def test_wage_is_the_value_wage_counit_defect(self) -> None:
+        # (w_paid=18, v_produced=2): the wage vastly exceeds value produced —
+        # a large positive Φ (the imperial bribe). Reordered to (value=A, wage=B).
+        states = _states(GraphInputs(wage_value_pairs=((18.0, 2.0),)))
+        assert states["wage"].gap == pytest.approx(0.8)  # |18-2|/(18+2)
+        assert states["wage"].balance == pytest.approx(0.8)  # wage exceeds value = bribe
+        assert states["wage"].leading_pole == "b"  # price-of-labor-power dominant
+
+    def test_wage_negative_when_value_exceeds_wage(self) -> None:
+        # (w_paid=2, v_produced=18): super-exploited — wage below value produced.
+        states = _states(GraphInputs(wage_value_pairs=((2.0, 18.0),)))
+        assert states["wage"].balance == pytest.approx(-0.8)
+        assert states["wage"].leading_pole == "a"  # value-produced dominant
+
+    def test_wage_empty_pairs_is_zero_no_endpoint_fallback(self) -> None:
+        # No (w, v) data → (0, 0); the old WAGES-endpoint proxy is removed.
+        states = _states(GraphInputs())
+        assert states["wage"].gap == 0.0
+        assert states["wage"].balance == 0.0
 
 
 class TestTenancy:
@@ -97,8 +112,21 @@ class TestAtomization:
         assert states["atomization"].balance == 0.0
 
 
-class TestImperialNullMeasure:
-    def test_imperial_is_null_until_phase_d(self) -> None:
+class TestImperial:
+    def test_imperial_reads_the_wage_value_defect(self) -> None:
+        # Rebound in D5: imperial reads the same (w_paid, v_produced) defect.
+        states = _states(GraphInputs(wage_value_pairs=((18.0, 2.0),)))
+        assert states["imperial"].gap == pytest.approx(0.8)
+        assert states["imperial"].balance == pytest.approx(0.8)  # imperial-rent inflow
+
+    def test_imperial_and_wage_share_the_same_defect(self) -> None:
+        # Same inputs, same arithmetic — different poles/level only.
+        inputs = GraphInputs(wage_value_pairs=((18.0, 2.0), (10.0, 8.0)))
+        states = _states(inputs)
+        assert states["imperial"].gap == pytest.approx(states["wage"].gap)
+        assert states["imperial"].balance == pytest.approx(states["wage"].balance)
+
+    def test_imperial_empty_is_zero(self) -> None:
         states = _states(GraphInputs())
         assert states["imperial"].gap == 0.0
         assert states["imperial"].balance == 0.0
@@ -110,6 +138,6 @@ class TestEmptyInputs:
         assert all(s.gap == 0.0 for s in states.values())
 
     def test_step_is_pure(self) -> None:
-        inputs = GraphInputs(exploitation_pairs=((1.0, 4.0),), wages_pairs=((2.0, 3.0),))
+        inputs = GraphInputs(exploitation_pairs=((1.0, 4.0),), wage_value_pairs=((3.0, 2.0),))
         reg = _reg()
         assert reg.step(inputs, tick=7) == reg.step(inputs, tick=7)

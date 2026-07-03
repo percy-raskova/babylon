@@ -36,6 +36,23 @@ AUDIO_OUTPUT_DIR = "assets/audio"
 description = "Install all dependencies"
 run = "poetry install --with dev"
 
+[tasks.setup]
+description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + tuned Postgres 16 + canonical schema (spec-087 FR-008)"
+run = """
+set -e
+mise install
+poetry install --with dev
+poetry run pre-commit install
+mise run db:up
+mise run db:bootstrap
+if [ ! -f data/sqlite/marxist-data-3NF.sqlite ]; then
+  echo "WARN: reference DB missing at data/sqlite/marxist-data-3NF.sqlite"
+  echo "      (headless runs need it; see project/04-data-program-098.md)"
+fi
+echo ""
+echo "Setup complete. Smoke-test with: mise run qa:e2e-regression"
+"""
+
 # =============================================================================
 # CODE QUALITY
 # =============================================================================
@@ -644,20 +661,24 @@ poetry run python -m babylon_data.qcew \\
 # =============================================================================
 
 [tasks."db:up"]
-description = "Spin up a new isolated Postgres container for testing on port 5433"
-run = "docker run --name babylon-pg-isolated -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test -e POSTGRES_DB=babylon_test -p 5433:5432 -d postgres:15"
+description = "Build (if needed) + start the isolated Postgres 16 container via docker compose, wait healthy (port 5433)"
+run = "docker compose up -d --wait babylon-pg"
 
 [tasks."db:start"]
-description = "Start the existing isolated Postgres container"
-run = "docker start babylon-pg-isolated"
+description = "Alias of db:up (compose up is idempotent)"
+run = "docker compose up -d --wait babylon-pg"
 
 [tasks."db:stop"]
 description = "Stop the isolated Postgres container (maintains data)"
-run = "docker stop babylon-pg-isolated"
+run = "docker compose stop babylon-pg"
 
 [tasks."db:down"]
-description = "Stop and permanently remove the isolated Postgres container (destroys data)"
-run = "docker stop babylon-pg-isolated && docker rm babylon-pg-isolated"
+description = "Remove the isolated Postgres container (data volume PRESERVED; see db:nuke)"
+run = "docker compose down"
+
+[tasks."db:nuke"]
+description = "Remove container AND named data volume (bind-mounted BABYLON_PG_DATA dirs are NOT deleted)"
+run = "docker compose down -v"
 
 [tasks."db:query"]
 description = "Run psql directly against the isolated test database"
@@ -749,19 +770,8 @@ print('Schema bootstrap complete.')
 [tasks."test:int-pg"]
 description = "One-shot Postgres-gated integration tests: container + schema + tests; leaves container running"
 run = """
-# Idempotent container setup
-docker start babylon-pg-isolated 2>/dev/null \\
-  || docker run --name babylon-pg-isolated \\
-       -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test -e POSTGRES_DB=babylon_test \\
-       -p 5433:5432 -d postgres:15
-
-# Wait for connection
-for i in $(seq 1 20); do
-  if PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -c "SELECT 1" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.5
-done
+# Idempotent container setup (spec-087: compose owns the container, waits healthy)
+mise run db:up
 
 # Apply canonical schema (idempotent; tolerates already-applied)
 mise run db:bootstrap

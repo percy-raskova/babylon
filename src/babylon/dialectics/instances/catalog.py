@@ -85,6 +85,10 @@ class GraphInputs:
         wages_pairs: ``(labor_wealth, capital_wealth)`` per WAGES edge,
             re-oriented from the edge's employer→worker direction so labor
             is always pole A.
+        wage_value_pairs: ``(w_paid, v_produced)`` per paid worker class node
+            (Phase D4) — the wage⇄value counit-defect pair the value-form
+            ``wage`` and ``imperial`` measures read. ``w_paid`` is total wages
+            transferred; ``v_produced`` is productivity captured.
         tenancy_pairs: ``(tenant_wealth, rent_level)`` per TENANCY edge.
         solidarity_subgraph: the undirected SOLIDARITY subgraph
             (from ``extract_solidarity_subgraph``) for the atomization
@@ -93,6 +97,7 @@ class GraphInputs:
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
     wages_pairs: tuple[WealthPair, ...] = ()
+    wage_value_pairs: tuple[tuple[float, float], ...] = ()
     tenancy_pairs: tuple[WealthPair, ...] = ()
     solidarity_subgraph: nx.Graph[str] | None = field(default=None)
 

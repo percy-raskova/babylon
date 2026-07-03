@@ -206,9 +206,23 @@ class ContradictionSystem(SystemBase):
                 )
             )
 
+        # Phase D4: one (w_paid, v_produced) pair per paid worker class node.
+        # Only the wages phase writes both attrs (on classes it actually paid),
+        # so presence-of-both selects exactly those nodes without a node-type
+        # filter; skip inactive nodes as the edge extractors do.
+        wage_value: list[tuple[float, float]] = []
+        for node in graph.query_nodes():
+            attrs = node.attributes
+            if not attrs.get("active", True):
+                continue
+            if "w_paid" not in attrs or "v_produced" not in attrs:
+                continue
+            wage_value.append((float(attrs["w_paid"]), float(attrs["v_produced"])))
+
         return GraphInputs(
             exploitation_pairs=tuple(exploitation),
             wages_pairs=tuple(wages),
+            wage_value_pairs=tuple(wage_value),
             tenancy_pairs=tuple(tenancy),
             solidarity_subgraph=extract_solidarity_subgraph(graph),
         )

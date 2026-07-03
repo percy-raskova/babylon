@@ -527,6 +527,15 @@ class ImperialRentSystem(SystemBase):
                 effective_wealth=new_nominal_wealth + total_wages * (ppp_multiplier - 1.0),
                 unearned_increment=total_wages * (ppp_multiplier - 1.0),
                 ppp_multiplier=ppp_multiplier,
+                # Phase D4 accounting exposure (bookkeeping only, computation
+                # unchanged): the wage⇄value counit-defect pair read by the
+                # value-form ``wage``/``imperial`` oppositions. ``w_paid`` is the
+                # total wages actually transferred (productivity + super-wage
+                # bonus, capped at employer wealth — mirrors this edge's
+                # ``value_flow``); ``v_produced`` is the productivity captured in
+                # ProductionSystem. Written only on classes actually paid.
+                w_paid=total_wages,
+                v_produced=productivity_value,
             )
 
             # Record value flow (nominal)

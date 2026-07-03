@@ -67,8 +67,12 @@ from babylon.formulas.consciousness_routing import (
     route_agitation_to_ternary,
 )
 
-# Re-export Contradiction formula (Feature 002)
-from babylon.formulas.contradiction import calculate_contradiction_intensity
+# Re-export Contradiction formulas (Feature 002 + Lawverian Phase C)
+from babylon.formulas.contradiction import (
+    calculate_contradiction_intensity,
+    calculate_wealth_asymmetry_balance,
+    calculate_wealth_asymmetry_gap,
+)
 
 # Re-export Curvature formulas (Feature 002 - Dialectical Field Topology)
 from babylon.formulas.curvature import compute_ollivier_ricci
@@ -188,6 +192,8 @@ __all__ = [
     # Curvature & Contradictions (Dialectical Field Topology)
     "compute_ollivier_ricci",
     "calculate_contradiction_intensity",
+    "calculate_wealth_asymmetry_balance",
+    "calculate_wealth_asymmetry_gap",
     # Consciousness Computation (Feature 034)
     "compute_ternary_consciousness",
     # Community Layer (Feature 022)

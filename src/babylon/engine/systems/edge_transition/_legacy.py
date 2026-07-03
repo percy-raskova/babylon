@@ -1,4 +1,4 @@
-"""EdgeTransitionSystem — System #16 in materialist causality order.
+"""EdgeTransitionSystem — System #21 in materialist causality order.
 
 Dialectical Field Topology (Feature 002): Evaluates compound predicates
 against field values, derivatives, and structural properties. Fires edge
@@ -8,7 +8,7 @@ flags and aspect reversal detection.
 Reference: FR-007 (compound predicates), FR-010 (transition topology)
 Reference: FR-018 (contradiction character flag), FR-019 (aspect reversal)
 Reference: R-002 (EdgeMode vs EdgeType), R-005 (predicate design)
-Reference: R-006 (system ordering — position 16)
+Reference: R-006 (system ordering — position 21)
 """
 
 from __future__ import annotations
@@ -537,7 +537,7 @@ def _evaluate_predicate(
 class EdgeTransitionSystem(SystemBase):
     """Evaluate compound predicates and fire edge mode transitions.
 
-    Execution Order: 16 (after FieldDerivativeSystem)
+    Execution Order: 21 (after FieldDerivativeSystem)
 
     For each edge with an edge_mode, evaluates eligible transitions
     from the current mode. If a predicate fires, transitions to the
@@ -568,10 +568,9 @@ class EdgeTransitionSystem(SystemBase):
 
             graph = NetworkXAdapter.wrap(graph)
 
-        registry = services.field_registry
-        if registry is None:
-            return
-
+        # E0: predicates read node/edge attrs (populated by Systems #19/#20),
+        # not the dormant field_registry — so no registry gate. The 17-transition
+        # table is unchanged; a run with no edge_mode-bearing edges is a no-op.
         tick: int = 0
         if hasattr(context, "tick"):
             tick = context.tick

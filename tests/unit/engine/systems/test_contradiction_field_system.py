@@ -13,6 +13,7 @@ import pytest
 from babylon.engine.field_registry import DefaultFieldRegistry
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
+from babylon.models.enums import EdgeType
 
 
 @pytest.mark.unit
@@ -249,22 +250,65 @@ class TestContradictionFieldHistory:
 
 @pytest.mark.unit
 class TestContradictionFieldNoRegistry:
-    """Behavior when no field registry is provided."""
+    """E0: with no field_registry, fields are sourced from the opposition layer."""
 
-    def test_no_registry_skips_computation(self) -> None:
-        """System is a no-op when services.field_registry is None."""
+    @staticmethod
+    def _opposition_graph() -> nx.DiGraph[str]:
+        """C001 with two incident tension edges (0.2, 0.8) + an atomization gap.
+
+        The two edges let a mean-vs-max mutation be caught: mean(0.2, 0.8) = 0.5
+        is distinct from max(0.2, 0.8) = 0.8.
+        """
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node(
-            "C001",
-            _node_type="social_class",
-            wealth=10.0,
-            population=1000,
-        )
+        graph.add_node("C001", _node_type="social_class", wealth=10.0, population=1000)
+        graph.add_node("C002", _node_type="social_class", wealth=30.0, population=1000)
+        graph.add_edge("C001", "C002", edge_type=EdgeType.EXPLOITATION, tension=0.2)
+        graph.add_edge("C002", "C001", edge_type=EdgeType.WAGES, tension=0.8)
+        graph.graph["opposition_states"] = {"atomization": {"gap": 0.3}}
+        return graph
 
-        services = ServiceContainer.create()  # No field_registry
+    def test_exploitation_field_is_mean_incident_tension_not_max(self) -> None:
+        """exploitation = MEAN of incident edge tensions (kills the max mutant)."""
+        graph = self._opposition_graph()
+        services = ServiceContainer.create()  # no field_registry
         context: dict[str, object] = {"tick": 1, "persistent_data": {}}
-        system = ContradictionFieldSystem()
 
-        system.step(graph, services, context)
+        ContradictionFieldSystem().step(graph, services, context)
 
-        assert "contradiction_fields" not in graph.nodes["C001"]
+        fields = graph.nodes["C001"]["contradiction_fields"]
+        assert fields["exploitation"] == pytest.approx(0.5)  # mean(0.2, 0.8), not 0.8
+
+    def test_atomization_field_is_global_opposition_gap(self) -> None:
+        """atomization = the global atomization opposition gap from @18's snapshot."""
+        graph = self._opposition_graph()
+        services = ServiceContainer.create()
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        ContradictionFieldSystem().step(graph, services, context)
+
+        assert graph.nodes["C001"]["contradiction_fields"]["atomization"] == pytest.approx(0.3)
+
+    def test_history_window_populated_without_registry(self) -> None:
+        """The 3-tick rolling history is written on the opposition-source path too."""
+        graph = self._opposition_graph()
+        services = ServiceContainer.create()
+        persistent: dict[str, object] = {}
+
+        for tick in (1, 2):
+            ctx: dict[str, object] = {"tick": tick, "persistent_data": persistent}
+            ContradictionFieldSystem().step(graph, services, ctx)
+
+        history = persistent["contradiction_history"]["C001"]
+        assert history["exploitation"] == [pytest.approx(0.5), pytest.approx(0.5)]
+
+    def test_no_edges_no_snapshot_writes_zero_fields(self) -> None:
+        """Absent edges/snapshot: fields still written (not skipped), all zero."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("C001", _node_type="social_class", wealth=10.0, population=1000)
+        services = ServiceContainer.create()
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        ContradictionFieldSystem().step(graph, services, context)
+
+        fields = graph.nodes["C001"]["contradiction_fields"]
+        assert fields == {"exploitation": 0.0, "atomization": 0.0}

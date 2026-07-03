@@ -73,17 +73,23 @@ class TestEdgeTransitionSystemBasic:
         system = EdgeTransitionSystem()
         assert system.name == "edge_transition"
 
-    def test_no_registry_skips(self) -> None:
-        """System is a no-op when field_registry is None."""
+    def test_no_registry_still_transitions_under_forced_predicate(self) -> None:
+        """E0: with no field_registry the system still fires transitions.
+
+        The dormant field_registry gate is gone (§5.3 repoint) — predicates read
+        node/edge attrs, which are present. The fixture edge carries exploitation
+        value 8.0 (> extraction_contested_threshold 5.0) and df_dt 2.0 (> 0), so
+        the extraction_contested predicate fires EXTRACTIVE -> ANTAGONISTIC even
+        though ``field_registry is None``.
+        """
         graph = _make_graph_with_edge_mode()
-        services = ServiceContainer.create()
+        services = ServiceContainer.create()  # no field_registry
         context: dict[str, object] = {"tick": 1, "persistent_data": {}}
 
         EdgeTransitionSystem().step(graph, services, context)
 
-        # Edge mode should remain unchanged
         edge_data = graph.edges["C001", "C002"]
-        assert edge_data["edge_mode"] == EdgeMode.EXTRACTIVE
+        assert edge_data["edge_mode"] == EdgeMode.ANTAGONISTIC
 
     def test_edges_without_mode_are_skipped(self) -> None:
         """Edges that don't have edge_mode are not processed."""

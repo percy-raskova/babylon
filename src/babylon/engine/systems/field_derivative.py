@@ -1,14 +1,18 @@
-"""FieldDerivativeSystem — System #15 in materialist causality order.
+"""FieldDerivativeSystem — System #20 in materialist causality order.
 
 Dialectical Field Topology (Feature 002): Computes spatial derivatives
 (gradient on edges, Laplacian on nodes), temporal derivatives (df/dt,
-d2f/dt2), principal contradiction identification, and continuity residuals.
+d2f/dt2), principal-field identification, and continuity residuals.
+
+Its ``principal_field`` graph attr is the field-stack's fastest-developing
+contradiction FIELD — deliberately distinct from ContradictionSystem @18's
+Maoist principal OPPOSITION, so the two never fight (E0 rename).
 
 Reference: FR-003 (gradient), FR-004 (Laplacian)
 Reference: FR-006 (temporal derivatives)
 Reference: FR-008 (principal contradiction)
 Reference: FR-009 (continuity residuals)
-Reference: R-006 (system ordering — position 15)
+Reference: R-006 (system ordering — position 20)
 """
 
 from __future__ import annotations
@@ -33,9 +37,9 @@ logger = logging.getLogger(__name__)
 class FieldDerivativeSystem(SystemBase):
     """Compute spatial and temporal derivatives for contradiction fields.
 
-    Execution Order: 15 (after ContradictionFieldSystem)
+    Execution Order: 20 (after ContradictionFieldSystem)
 
-    Reads contradiction_fields from nodes (written by System #14),
+    Reads contradiction_fields from nodes (written by System #19),
     computes gradients on edges, Laplacian at nodes, and temporal
     derivatives from the rolling history in persistent_data.
     """
@@ -64,11 +68,14 @@ class FieldDerivativeSystem(SystemBase):
 
             graph = NetworkXAdapter.wrap(graph)
 
+        # E0: no field_registry in production. The field stack is sourced from
+        # the opposition layer (System #19), so derive the field names from the
+        # node attrs it wrote this tick rather than early-returning.
         registry = services.field_registry
-        if registry is None:
-            return
-
-        field_names = registry.get_field_names()
+        if registry is not None:
+            field_names = registry.get_field_names()
+        else:
+            field_names = _discover_field_names(graph)
         if not field_names:
             return
 
@@ -93,6 +100,27 @@ class FieldDerivativeSystem(SystemBase):
 
         # ─── Phase 3: Principal contradiction identification ────────
         _identify_principal_contradiction(graph, field_names, persistent_data, services, tick)
+
+
+def _discover_field_names(graph: GraphProtocol) -> list[str]:
+    """Union of contradiction-field names present on social_class nodes, sorted.
+
+    Used when no ``field_registry`` is wired (production): the field stack is
+    sourced from the opposition layer (E0), so the field names are whatever
+    ContradictionFieldSystem @19 wrote onto the nodes this tick.
+
+    Args:
+        graph: Graph whose social_class nodes may carry ``contradiction_fields``.
+
+    Returns:
+        Sorted list of distinct field names (empty when no node carries fields).
+    """
+    names: set[str] = set()
+    for node in graph.query_nodes(node_type="social_class"):
+        fields = node.attributes.get("contradiction_fields", {})
+        if isinstance(fields, dict):
+            names.update(fields.keys())
+    return sorted(names)
 
 
 def _compute_edge_gradients(
@@ -325,9 +353,12 @@ def _identify_principal_contradiction(
     previous_principal: str | None = persistent_data.get("_previous_principal_field")
     changed = principal_field != previous_principal
 
-    # Write to graph-level attribute
+    # Write to graph-level attribute. Named ``principal_field`` (not
+    # ``principal_contradiction``) so it never collides with ContradictionSystem
+    # @18's Maoist principal OPPOSITION — this is the field-stack's principal
+    # FIELD (max |df/dt|), a distinct notion (E0 rename).
     graph.set_graph_attr(
-        "principal_contradiction",
+        "principal_field",
         {
             "field_name": principal_field,
             "max_abs_df_dt": max_df_dt,

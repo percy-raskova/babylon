@@ -62,6 +62,12 @@ SOCIAL_CLASS_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
         # (extra="forbid" would otherwise reject them).
         "w_paid",
         "v_produced",
+        # Phase E (E0): the Feature-002 field stack (Systems #19/#20) is now
+        # live in production (opposition-sourced, no field_registry). It writes
+        # these transient per-tick computed attrs onto social_class nodes; they
+        # are not SocialClass model fields, so they are dropped on reconstruction.
+        "contradiction_fields",
+        "field_derivatives",
     }
 )
 

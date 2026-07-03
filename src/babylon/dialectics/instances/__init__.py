@@ -13,9 +13,19 @@ from babylon.dialectics.instances.connectivity import (
     connectivity_cylinder,
     pieces,
 )
+from babylon.dialectics.instances.levels import (
+    LEVEL_INDEX,
+    level_index_for,
+    social_lattice_from_memberships,
+    spatial_lattice_for_counties,
+)
 
 __all__ = [
+    "LEVEL_INDEX",
     "atomization_index",
     "connectivity_cylinder",
+    "level_index_for",
     "pieces",
+    "social_lattice_from_memberships",
+    "spatial_lattice_for_counties",
 ]

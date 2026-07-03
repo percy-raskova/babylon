@@ -141,3 +141,18 @@ class TestEmptyInputs:
         inputs = GraphInputs(exploitation_pairs=((1.0, 4.0),), wage_value_pairs=((3.0, 2.0),))
         reg = _reg()
         assert reg.step(inputs, tick=7) == reg.step(inputs, tick=7)
+
+
+class TestLevelPlacement:
+    """E1: each opposition is placed on a level-lattice rung (level_name)."""
+
+    def test_level_names_match_the_catalog(self) -> None:
+        reg = _reg()
+        placement = {key: reg.spec_for(key).level_name for key in reg.keys}
+        assert placement == {
+            "capital_labor": "county",
+            "wage": "county",
+            "tenancy": "county",
+            "atomization": "class",
+            "imperial": "bloc",
+        }

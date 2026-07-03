@@ -444,6 +444,22 @@ run = "watch -n 30 mise run sim:status"
 description = "Single-county Postgres tick probe; use: mise run sim:probe -- --county 26163 --ticks 3"
 run = "poetry run python tools/tick_probe.py"
 
+[tasks."sim:archive"]
+description = "Archive sessions to local Parquet + purge Postgres (spec-088); use: mise run sim:archive -- list | archive --all | archive --session <uuid>"
+run = "poetry run python tools/archive_sessions.py"
+
+[tasks."sim:archived"]
+description = "Show the local archive root contents (one dir per archived session)"
+run = '''
+ROOT="${BABYLON_ARCHIVE_ROOT:-/media/user/data/babylon-archives}"
+if [ -d "$ROOT" ]; then
+  echo "archive root: $ROOT"
+  du -sh "$ROOT"/*/ 2>/dev/null | sort -rh | head -25 || echo "(empty)"
+else
+  echo "archive root $ROOT does not exist yet (created on first sim:archive)"
+fi
+'''
+
 # =============================================================================
 # TUNING (Namespaced)
 # =============================================================================

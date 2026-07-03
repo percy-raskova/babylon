@@ -199,6 +199,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 pole_a="wage-labor",
                 pole_b="capital",
                 unity="wage labor presupposes capital; capital presupposes wage labor",
+                level_name="county",
                 antagonistic=True,
             ),
             measure=_capital_labor_measure,
@@ -211,6 +212,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 unity="the wage⇄value adjunction: the price of labor-power (the wage) "
                 "commands the value produced; their gap is Φ (Fundamental Theorem W_c > V_c) "
                 "— see dialectics.instances.value_form",
+                level_name="county",
             ),
             measure=_wage_measure,
         ),
@@ -220,6 +222,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 pole_a="tenant",
                 pole_b="rent",
                 unity="occupancy presupposes the ground rent it is charged",
+                level_name="county",
             ),
             measure=_tenancy_measure,
         ),
@@ -229,6 +232,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 pole_a="atomized",
                 pole_b="unified",
                 unity="a class exists only as the (dis)connection of its members",
+                level_name="class",
             ),
             measure=_atomization_measure,
         ),
@@ -240,6 +244,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 unity="core accumulation presupposes peripheral value transfer; the wage⇄value "
                 "counit defect Φ made observable at the frame level "
                 "— see dialectics.instances.value_form",
+                level_name="bloc",
                 antagonistic=True,
             ),
             measure=_imperial_measure,

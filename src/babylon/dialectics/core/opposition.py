@@ -20,6 +20,25 @@ pole B over pole A; at exactly zero the leading pole is INERT — it
 holds its previous value, because a principal aspect persists until it
 is actually overturned.
 
+Two design rulings recorded here per ``project/06`` §9.2 (C2 §7–§8),
+each deferred deliberately — a construct with nothing to compute would be
+vocabulary, not machinery:
+
+- **Observation-relativity is deferred.** The measure protocol stays
+  ``(inputs: I) -> GapReading``. Frame-dependent observation (a commodity
+  read *through Transformation* yields price-of-production; *through
+  Imperial* yields unequal-exchange-distorted realization) enters later as
+  a keyword-only ``frame: str = "transformation"`` parameter on Phase D's
+  value-form measures. A frame abstraction carrying a single frame today
+  would compute nothing, so none ships; the signature is simply left able
+  to grow one.
+- **Events are pull-based hooks, not a subscriber system.** The
+  ``opposition_states`` graph attribute IS the hook surface: consumers PULL
+  the states they need each tick (ImperialRent, Struggle and Consciousness
+  read last tick's snapshot from it). RUPTURE on the EventBus remains the
+  only push. No hook/subscriber abstraction is added — nothing computes
+  with one yet.
+
 See Also:
     :class:`babylon.dialectics.core.cylinder.AdjointCylinder`: supplies
     balance readings for interval-shaped oppositions.
@@ -201,6 +220,14 @@ class OppositionState(BaseModel):
         default=False,
         description="Whether this is the principal contradiction this tick",
     )
+    governed_by: str = Field(
+        default="",
+        description="Sublation lineage: key of the successor governing this motion ('' = free)",
+    )
+    successor_key: str = Field(
+        default="",
+        description="Sublation lineage: key this opposition sublates into ('' = terminal)",
+    )
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -226,12 +253,12 @@ def _nesting_refs(specs: Sequence[OppositionSpec]) -> dict[str, tuple[str, ...]]
     return refs
 
 
-def _reject_nesting_cycles(refs: Mapping[str, tuple[str, ...]]) -> None:
-    """Raise ValueError naming the cycle if the nesting graph has one.
+def _reject_reference_cycles(refs: Mapping[str, tuple[str, ...]], label: str) -> None:
+    """Raise ValueError naming the cycle if the reference graph has one.
 
-    Three-colour depth-first search. Recursion depth and total edge visits are
-    each bounded by ``len(refs)`` (a simple path cannot repeat a node), so the
-    traversal is statically finite.
+    Three-colour depth-first search shared by pole-nesting and governance.
+    Recursion depth and total edge visits are each bounded by ``len(refs)`` (a
+    simple path cannot repeat a node), so the traversal is statically finite.
     """
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -240,10 +267,10 @@ def _reject_nesting_cycles(refs: Mapping[str, tuple[str, ...]]) -> None:
     def walk(node: str) -> None:
         visiting.add(node)
         path.append(node)
-        for child in refs[node]:  # <= 2 children per spec
+        for child in refs[node]:  # <= 2 children per node
             if child in visiting:
                 cycle = [*path[path.index(child) :], child]
-                raise ValueError(f"nesting cycle: {' -> '.join(cycle)}")
+                raise ValueError(f"{label} cycle: {' -> '.join(cycle)}")
             if child not in visited:
                 walk(child)
         visiting.discard(node)
@@ -255,12 +282,13 @@ def _reject_nesting_cycles(refs: Mapping[str, tuple[str, ...]]) -> None:
             walk(root)
 
 
-def _reject_excess_nesting_depth(refs: Mapping[str, tuple[str, ...]]) -> None:
-    """Raise ValueError if any nesting chain is deeper than ``MAX_NESTING_DEPTH``.
+def _reject_excess_reference_depth(refs: Mapping[str, tuple[str, ...]], label: str) -> None:
+    """Raise ValueError if any reference chain is deeper than ``MAX_NESTING_DEPTH``.
 
-    Longest-downward-chain by relaxation. The graph is already proven acyclic,
-    so the longest chain is at most ``len(refs)`` and relaxation converges in at
-    most that many rounds — the ``for`` bound below.
+    Longest-downward-chain by relaxation, shared by nesting and governance. The
+    graph is already proven acyclic, so the longest chain is at most
+    ``len(refs)`` and relaxation converges in at most that many rounds — the
+    ``for`` bound below.
     """
     depth = dict.fromkeys(refs, 1)
     for _ in range(len(refs)):  # bounded by node count (acyclic => converges)
@@ -276,7 +304,7 @@ def _reject_excess_nesting_depth(refs: Mapping[str, tuple[str, ...]]) -> None:
     if worst > MAX_NESTING_DEPTH:
         deepest = max(refs, key=lambda key: depth[key])
         raise ValueError(
-            f"nesting depth {worst} exceeds MAX_NESTING_DEPTH={MAX_NESTING_DEPTH} "
+            f"{label} depth {worst} exceeds MAX_NESTING_DEPTH={MAX_NESTING_DEPTH} "
             f"(deepest chain rooted at {deepest!r})"
         )
 
@@ -290,8 +318,33 @@ def _validate_nesting(specs: Sequence[OppositionSpec]) -> None:
             ``MAX_NESTING_DEPTH``.
     """
     refs = _nesting_refs(specs)
-    _reject_nesting_cycles(refs)
-    _reject_excess_nesting_depth(refs)
+    _reject_reference_cycles(refs, "nesting")
+    _reject_excess_reference_depth(refs, "nesting")
+
+
+def _validate_governance(governance: Mapping[str, str], registered: frozenset[str]) -> None:
+    """Validate the sublation-lineage graph: registered, acyclic, bounded.
+
+    Args:
+        governance: Predecessor key -> successor key.
+        registered: The registry's keys; both endpoints must be among them.
+
+    Raises:
+        KeyError: If a predecessor or successor is not registered.
+        ValueError: On a governance cycle or a chain deeper than
+            ``MAX_NESTING_DEPTH``.
+    """
+    refs: dict[str, tuple[str, ...]] = {}
+    for predecessor, successor in governance.items():
+        if predecessor not in registered:
+            raise KeyError(f"governance predecessor {predecessor!r} is not registered")
+        if successor not in registered:
+            raise KeyError(f"governance successor {successor!r} is not registered")
+        refs.setdefault(predecessor, ())
+        refs.setdefault(successor, ())
+        refs[predecessor] = (*refs[predecessor], successor)
+    _reject_reference_cycles(refs, "governance")
+    _reject_excess_reference_depth(refs, "governance")
 
 
 class OppositionRegistry[I]:
@@ -300,17 +353,25 @@ class OppositionRegistry[I]:
     Args:
         bindings: The oppositions to track; keys must be unique.
         rate_weight: Weight of |rate| in principal scoring (>= 0).
+        governance: Sublation lineage, predecessor key -> successor key. A
+            governed predecessor is EXCLUDED from principal selection (its
+            successor's development leads) and its state carries ``governed_by``.
+            Both endpoints must be registered; acyclic; chains bounded by
+            ``MAX_NESTING_DEPTH``. Empty by default — the mechanism ships
+            inert; WHO becomes governed WHEN is Phase E's Aufhebung condition.
 
     Raises:
-        ValueError: On duplicate keys, negative ``rate_weight``, a nesting
-            cycle, or a nesting chain deeper than ``MAX_NESTING_DEPTH``.
-        KeyError: If a pole nests an opposition key that is not registered.
+        ValueError: On duplicate keys, negative ``rate_weight``, a nesting or
+            governance cycle, or a chain deeper than ``MAX_NESTING_DEPTH``.
+        KeyError: If a pole nests, or governance references, an unregistered
+            opposition key.
     """
 
     def __init__(
         self,
         bindings: Sequence[BoundOpposition[I]],
         rate_weight: float = _DEFAULT_RATE_WEIGHT,
+        governance: Mapping[str, str] | None = None,
     ) -> None:
         if rate_weight < 0.0:
             raise ValueError(f"rate_weight must be non-negative, got {rate_weight}")
@@ -323,6 +384,8 @@ class OppositionRegistry[I]:
         )
         self._rate_weight = rate_weight
         _validate_nesting([binding.spec for binding in self._bindings])
+        self._governance: dict[str, str] = dict(governance or {})
+        _validate_governance(self._governance, frozenset(keys))
 
     @property
     def keys(self) -> tuple[str, ...]:
@@ -377,7 +440,13 @@ class OppositionRegistry[I]:
             return ()
         principal_key = self._principal_key(drafts)
         return tuple(
-            draft.model_copy(update={"is_principal": draft.key == principal_key})
+            draft.model_copy(
+                update={
+                    "is_principal": draft.key == principal_key,
+                    "governed_by": self._governance.get(draft.key, ""),
+                    "successor_key": self._governance.get(draft.key, ""),
+                }
+            )
             for draft in drafts
         )
 
@@ -386,10 +455,18 @@ class OppositionRegistry[I]:
         return state.gap * (1.0 + self._rate_weight * abs(state.rate))
 
     def _principal_key(self, drafts: Sequence[OppositionState]) -> str:
-        """Highest score wins; ties break to the lexicographically first key."""
-        best = drafts[0]
+        """Highest score wins; ties break to the lexicographically first key.
+
+        Governed oppositions are excluded: a predecessor whose motion its
+        successor governs never leads, even carrying the largest score. The
+        fallback to all drafts is unreachable given acyclic governance (the
+        terminal successor is always ungoverned) but keeps the pool non-empty.
+        """
+        governed = set(self._governance)
+        pool = [draft for draft in drafts if draft.key not in governed] or list(drafts)
+        best = pool[0]
         best_score = self._score(best)
-        for candidate in drafts[1:]:
+        for candidate in pool[1:]:
             score = self._score(candidate)
             if score > best_score:
                 best, best_score = candidate, score

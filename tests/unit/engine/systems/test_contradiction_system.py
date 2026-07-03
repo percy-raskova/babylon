@@ -241,3 +241,37 @@ class TestStanceInterventions:
         # Tick 2 with no fresh interventions: fresh measure only, NOT re-applied.
         system.step(graph, services, {"tick": 2})
         assert graph.graph["opposition_states"]["capital_labor"]["leading_pole"] == "a"
+
+
+class TestWageValuePairsExtraction:
+    """`_build_graph_inputs` lifts (w_paid, v_produced) off paid class nodes (D4)."""
+
+    @staticmethod
+    def _inputs(graph: nx.DiGraph[str]):  # type: ignore[no-untyped-def]
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+        return ContradictionSystem()._build_graph_inputs(NetworkXAdapter.wrap(graph))
+
+    def test_pairs_extracted_from_nodes_carrying_both_attrs(self) -> None:
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("c1", w_paid=6.0, v_produced=5.0)
+        graph.add_node("c2", w_paid=3.0, v_produced=4.0)
+        pairs = self._inputs(graph).wage_value_pairs
+        assert set(pairs) == {(6.0, 5.0), (3.0, 4.0)}
+
+    def test_node_missing_v_produced_is_skipped(self) -> None:
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("c1", w_paid=6.0)  # no v_produced
+        assert self._inputs(graph).wage_value_pairs == ()
+
+    def test_inactive_node_skipped(self) -> None:
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("c1", w_paid=6.0, v_produced=5.0, active=False)
+        assert self._inputs(graph).wage_value_pairs == ()
+
+    def test_no_pairs_when_no_accounting_attrs(self) -> None:
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("worker", wealth=10.0)
+        graph.add_node("owner", wealth=30.0)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        assert self._inputs(graph).wage_value_pairs == ()

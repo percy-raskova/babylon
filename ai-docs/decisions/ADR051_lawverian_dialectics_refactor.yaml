@@ -1,0 +1,124 @@
+# =============================================================================
+# ADR-051: Lawverian Dialectics Refactor (project/06, Phases A-E)
+# =============================================================================
+#
+# Decision: Replace the saturating add-only edge-`tension` accumulator AND the
+# dormant Feature-002 field-registry plumbing with an executable Lawverian
+# contradiction layer — an OppositionRegistry of measured adjunction defects,
+# scale/connectivity/value-form adjunction instances, level lattices with an
+# Aufhebung operator, and a fixed-point regime classifier — under the
+# earn-its-keep discipline (a categorical construct ships only if it yields a
+# law, a prediction, or a computation we run).
+#
+# Status: ACCEPTED (2026-07-03)
+# Contract: project/06-lawverian-dialectics.md (+ 06c-phase-e-design.md)
+# Related: ADR044 (engine-into-bridged-runner), the C1/C2/D commit series on
+#          branch refactor/lawverian-dialectics
+
+adr_051_lawverian_dialectics_refactor:
+  status: "accepted"
+  date: "2026-07-03"
+  title: "Lawverian dialectics: opposition registry + adjunction instances + level lattices + fixed-point regimes (project/06 A-E)"
+
+  context: |
+    project/06 §2's four inertness bugs: the contradiction layer was inert.
+    Edge `tension` was an add-only accumulator that pinned at exactly 1.0 by
+    ~t100 and carried no information (the "Formula" + "Consumption" bugs); the
+    dormant `engine/dialectics/` layer computed a `weight` float nothing read;
+    and the Feature-002 field stack (Systems 19-21) early-returned every tick on
+    `services.field_registry is None` (never wired in production), so the
+    `contradiction_field` table had 0 rows ever and the michigan baseline pinned
+    max_tension at 1.0. Percy's 2026-04-26 "category theory meme" chat set the
+    governing rule: a categorical construct ships only if it yields a LAW, a
+    PREDICTION, or a COMPUTATION — never as vocabulary.
+
+  decision: |
+    Phase A (core, src/babylon/dialectics/core/): GaloisConnection (poset
+    adjunctions), AdjointCylinder (UIAO), LevelLattice (levels + Aufhebung),
+    and the OppositionRegistry — contradictions as MEASURED adjunction defects
+    (gap = Laclau's failure of an identity to close; balance in [-1,1], 0 =
+    equilibrium). The registry ranks Mao's principal contradiction as
+    gap*(1 + rate_weight*|rate|).
+
+    Phase B/C1: the connectivity cylinder over the SOLIDARITY subgraph
+    (atomization instance), then ContradictionSystem @18 rewritten to write
+    FRESH per-edge tension (scale-free, recomputed, never accumulated) and step
+    the registry over a GraphInputs snapshot, stashing `opposition_states` on a
+    graph attr (the cross-tick + pre-@18-consumer handoff channel). RUPTURE
+    fires on the principal gap exceeding threshold AND rising (Mao's condition
+    AND level).
+
+    Phase C2: composition algebra (product/sum/nesting — the fractal four-node
+    recursion), a typed coupling graph (feeds/constrains/transforms/contains/
+    antagonizes) with player verbs as morphism mutations, sublation lineage
+    (governed_by/successor_key), and VIII.9 n-ary protection (a pole may
+    reference a COMMUNITY; dyadic reduction of an n-ary formation is forbidden;
+    apparatus flavor distinct from contradiction-pairs).
+
+    Phase D: the scale adjunction (allocate ⊣ aggregate; H3 aggregation named as
+    a sheaf — gluing = conservation, functoriality, extensive-sum vs
+    intensive-weighted-mean) and the value-form instance binding wage/imperial
+    to the true wage⇄value counit defect Φ.
+
+    Phase E (this ADR's focus):
+    - E0 repointed the dormant field stack onto the opposition layer: Systems
+      19-21 no longer early-return; with no registry, System 19 sources
+      per-node fields LOCALLY (exploitation = MEAN incident edge tension;
+      atomization = the global opposition gap), System 20 renamed its output
+      attr `principal_contradiction` -> `principal_field` (so the field-stack's
+      principal FIELD never collides with @18's Maoist principal OPPOSITION),
+      System 21's predicates run. `contradiction_fields`/`field_derivatives`
+      added to SOCIAL_CLASS_COMPUTED_FIELDS (round-trip exclusion).
+    - E1 built the spatial (hex<county<state<nation) and social
+      (individual<community<class<bloc) level lattices as LevelLattice
+      instances whose per-level closure broadcasts the share-weighted regional
+      mean (aggregate_intensive, since a gap is a RATIO; = allocate∘aggregate
+      for uniform shares). Resolution = variance decomposition: a field is
+      resolved at level L iff the within-(L+1)-region variance of its
+      L-aggregates is zero. OppositionSpec.level_name placed
+      (capital_labor/wage/tenancy=county, atomization=class, imperial=bloc).
+    - E2 shipped the fixed-point regime classifier (core/regime.py): one Picard
+      operator W_{n+1}=T(W_n), three outcomes — reproduction (|rate|<=eps),
+      crisis (rising gap not resolved above), sublation (rising gap AND
+      aufhebung_of returns a resolving level). RUPTURE is the crisis regime's
+      boiling point (the gate stays byte-identical). ContradictionSystem @18
+      classifies the regime each tick (`dialectical_regime` graph attr) and
+      publishes the new EventType.LEVEL_TRANSITION on the sublation branch (the
+      production Aufhebung signal). One new define: tension.regime_rate_epsilon
+      (1e-4). EdgeTransition gained a "regime" predicate metric (data only).
+    - E3 tested edge modes as a presented category over the 17 transitions.
+    - E4 tested the fractal check (scale-invariant recursion + lumpen fold),
+      both found cleanly expressible.
+    - E5/E6 added the induced-crisis and grundrisse fixed-point integration
+      tests. E8 re-baselined the canonical 520-tick michigan run.
+
+  rationale:
+    earn_its_keep: "Every categorical construct ships with a law test, a prediction, or a live computation — never vocabulary (Percy 2026-04-26)."
+    fresh_not_accumulated: "Tension is a fresh per-tick gap, killing the saturating add-only ratchet that pinned at 1.0."
+    regime_is_the_third_thing: "Rupture is the crisis regime's boiling point of the SAME Picard operator, not a separate mechanism (§9.4)."
+    resolution_is_intensive: "The level closure uses aggregate_intensive because a contradiction gap is a RATIO; this equals allocate∘aggregate for uniform shares and makes variance-zero resolution hold under population weighting."
+
+  rebaseline_acceptance:
+    run: "520-tick michigan-canada canonical, session 2071f952-e794-4cf9-98a0-036a6ccc94b1, 2026-07-03"
+    criteria:
+      a_liveness: "PASS — counties_alive == counties_with_population == 83"
+      b_contradiction_field: "PASS — 2595 rows (5 fields x 519 ticks; the table had 0 production rows ever before C1.4+E0)"
+      c_spatial_stddev: "FAIL AS WRITTEN, ACCEPTED RE-SCOPED (Fable review ruling 2026-07-03) — stddev(per-county capital_labor tension) at t300 = 6.9e-17: every county reads 0.091584 because bridge hydration seeds IDENTICAL synthetic wealth constants per county (ADR044-era worker 0.5 / bourgeois 10.0), so zero variance in => zero variance out. The criterion's INTENT (kill the degenerate pinned-tension field) is met on the temporal axis: tension is fresh, non-saturating, and moves 0.09-0.667 across the run. The spatial half is unsatisfiable until hydration differentiates county wealth (e.g. from QCEW county wages) — recorded as the open item below, NOT faked here."
+      d_non_saturating: "PASS — max_tension 0.667305 (old baseline: pinned at exactly 1.0)"
+    open_item: "Hydration heterogeneity: seed per-county class wealth from reference data (QCEW county wages) so spatial contradiction fields carry information. Belongs to the hydration/economics workstream (spec-062/066 family), NOT the dialectics layer — the field measurement is faithful; the input is uniform."
+
+  consequences:
+    positive:
+      - "contradiction_field rows now flow on the canonical run; the michigan baseline's max_tension drops below the pinned-1.0 artifact; tension is fresh and temporally live (the add-only inertness is gone). Spatial spread awaits hydration heterogeneity (see rebaseline_acceptance.open_item)."
+      - "Systems 19-21 do real work in production; the Aufhebung signal (LEVEL_TRANSITION) is emitted through the normal event pipeline."
+      - "Contradictions are measured, composable (product/sum/nesting), coupled by typed morphisms, and carry sublation lineage — extensible for spec-071 verbs/events."
+    negative:
+      - "The regime classifier keys off the CAPITAL_LABOR opposition (the antagonism whose per-county field E2 builds), not the abstract Maoist principal — resolving the design's field-vs-principal tension, since a large STATIC gap (atomization=1.0 in a disconnected county) can hold the principal slot while capital_labor is the one developing. Flagged for Fable review."
+      - "E3's literal universal 'every EXTRACTIVE->SOLIDARISTIC path transits TRANSACTIONAL' does NOT hold against the 17 (ANTAGONISTIC/CO_OPTIVE united-front routes exist); tested the TRUE law (no direct jump + a TRANSACTIONAL route exists) rather than faking the universal. Flagged for review."
+      - "A single-county field trivially resolves at the state level, so a rising single-county gap reads as sublation — a degeneracy of scope=1 worlds (the multi-county michigan run is meaningful)."
+
+  deferred:
+    observation_relativity: "observe() is frame-dependent (Commodity through Transformation -> price-of-production; through Imperial -> unequal-exchange-distorted). The measure signature can grow a keyword `frame` param; no frame ships today (a single frame computes nothing)."
+    rlf_simplex_to_071: "r+l+f=1 with liberal tie-break; ideological_contestation = H(r,l,f)/log3 is DIAGNOSTIC ONLY (entropy is permutation-symmetric, cannot carry the Jackson asymmetry); the asymmetry lives in the directed flow field — f->r forbidden or ε-gated (proletarianization ∧ adjacent-r ∧ solidarity edge), which breaks detailed balance (Kolmogorov) so NO potential/free-energy formulation exists (rejected); r->f carries a CAPACITY transfer; assimilation_ratio = f/(l+f). Rejected: (c,v,s)->(r,l,f) direct maps and F=E-T·S MaxEnt."
+    topology_monitor_unwired: "TopologyMonitor has ZERO production call sites (the headless runner has no observer path). The production Aufhebung signal is the engine-side LEVEL_TRANSITION event; the monitor gained an optional lattice_resolved hook exercised in its test suites only. Wiring it into the runner is out of scope."
+    transformation_problem: "The full value->price-of-production transformation is not implemented; the value-form instance measures Φ as the bounded (w-v)/(w+v) asymmetry proxy."

@@ -1,6 +1,6 @@
 meta:
-  version: 1.16.0
-  updated: '2026-07-02'
+  version: 1.17.0
+  updated: '2026-07-03'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
@@ -229,3 +229,8 @@ decisions:
     status: accepted
     date: '2026-07-02'
     file: ADR050_qcew_suppression_imputation.yaml
+  ADR051_lawverian_dialectics_refactor:
+    title: 'Lawverian dialectics: opposition registry + adjunction instances + level lattices + fixed-point regimes (project/06 A-E)'
+    status: accepted
+    date: '2026-07-03'
+    file: ADR051_lawverian_dialectics_refactor.yaml

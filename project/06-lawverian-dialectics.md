@@ -248,6 +248,25 @@ balance=0, unique-key validation, purity (same inputs → same states).
 
 ## 7. Phase E — levels + Aufhebung + re-baseline (delegate)
 
+**STATUS: COMPLETE (2026-07-03, ADR051).** Six commit units shipped — E0 field-stack
+repoint, E1 spatial+social level lattices, E2 fixed-point regimes +
+LEVEL_TRANSITION, E3 edge-mode category laws, E4 fractal check (expressed, not
+xfailed), E5 induced-crisis + E6 grundrisse fixed-point integration tests, E8
+canonical michigan re-baseline. Two resolutions flagged for review (see ADR051):
+the regime classifies the capital_labor opposition rather than the abstract
+Maoist principal; E3's "every EXTRACTIVE→SOLIDARISTIC path transits
+TRANSACTIONAL" universal is false against the 17 (united-front routes exist) so
+the TRUE law was tested instead. E7 rulings honored: TopologyMonitor stays a
+test/facade observer (LEVEL_TRANSITION is the production Aufhebung signal); RLF
+simplex constraints deferred to spec-071. Re-baseline acceptance: a/b/d PASS
+(83/83 liveness, 2595 contradiction_field rows, max_tension 0.667305 vs the
+old pinned 1.0); criterion (c) spatial stddev FAILS AS WRITTEN and was
+accepted RE-SCOPED by Fable review — hydration seeds identical synthetic
+wealth per county, so spatial spread is structurally zero regardless of the
+dialectics layer; the criterion's intent (non-degenerate, non-saturating
+tension) is met on the temporal axis, and hydration heterogeneity (per-county
+wealth from QCEW) is the recorded open item (ADR051 `rebaseline_acceptance`).
+
 - Level lattices: spatial hex≺county≺state≺nation (operators from scale
   maps); social individual≺community≺class≺bloc (communities via XGI
   membership span; NoCommunityFanOut-compatible).

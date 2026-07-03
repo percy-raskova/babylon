@@ -20,13 +20,19 @@ Algorithm:
 
 from __future__ import annotations
 
-import networkx as nx
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 from scipy.optimize import linprog  # type: ignore[import-untyped]
 
+if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph import BabylonUGraph
+
 
 def compute_ollivier_ricci(
-    graph: nx.Graph,  # type: ignore[type-arg]
+    graph: BabylonUGraph | nx.Graph[Any],
     u: int | str,
     v: int | str,
     alpha: float = 0.5,
@@ -89,7 +95,7 @@ def compute_ollivier_ricci(
 
 
 def _probability_measure(
-    graph: nx.Graph,  # type: ignore[type-arg]
+    graph: BabylonUGraph | nx.Graph[Any],
     node: int | str,
     alpha: float,
     weight_attr: str | None = None,
@@ -110,7 +116,7 @@ def _probability_measure(
     Returns:
         Dict mapping node -> probability.
     """
-    neighbors = list(graph.neighbors(node))
+    neighbors = list(graph.neighbors(node))  # type: ignore[arg-type]  # int nodes only on the legacy nx arm
     measure: dict[int | str, float] = {}
 
     if not neighbors:
@@ -124,7 +130,7 @@ def _probability_measure(
         # Weighted: distribute (1-alpha) proportional to edge weights
         neighbor_weights: list[tuple[int | str, float]] = []
         for neighbor in neighbors:
-            edge_data = graph.get_edge_data(node, neighbor)
+            edge_data = graph.get_edge_data(node, neighbor)  # type: ignore[arg-type]  # int nodes only on the legacy nx arm
             w = float(edge_data.get(weight_attr, 1.0)) if edge_data else 1.0
             neighbor_weights.append((neighbor, w))
 
@@ -148,7 +154,7 @@ def _probability_measure(
 
 
 def _graph_distance(
-    graph: nx.Graph,  # type: ignore[type-arg]
+    graph: BabylonUGraph | nx.Graph[Any],
     u: int | str,
     v: int | str,
     weight_attr: str | None = None,
@@ -165,13 +171,12 @@ def _graph_distance(
     Returns:
         Shortest path length. Returns inf if disconnected.
     """
-    if u == v:
-        return 0.0
-    try:
-        # nosemgrep: babylon.layer-boundary.no-raw-networkx
-        return float(nx.shortest_path_length(graph, u, v, weight=weight_attr))
-    except nx.NetworkXNoPath:
-        return float("inf")
+    # Function-local import: formulas are imported during babylon.models
+    # init (sovereign -> balkanization); a module-level engine import here
+    # closes an import cycle (models -> formulas -> engine -> ... -> models).
+    from babylon.engine.graph_algorithms import shortest_path_length_between
+
+    return shortest_path_length_between(graph, u, v, weight_attr=weight_attr)
 
 
 def _wasserstein_1(

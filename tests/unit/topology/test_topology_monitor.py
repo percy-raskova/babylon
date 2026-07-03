@@ -86,8 +86,10 @@ class TestSolidaritySubgraphExtraction:
 
         result = extract_solidarity_subgraph(connected_pair)
 
-        assert isinstance(result, nx.Graph)
-        assert not isinstance(result, nx.DiGraph)
+        from babylon.engine.graph import BabylonGraph, BabylonUGraph
+
+        assert isinstance(result, BabylonUGraph)
+        assert not isinstance(result, BabylonGraph)
 
 
 # =============================================================================

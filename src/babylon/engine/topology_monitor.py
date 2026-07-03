@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from babylon.dialectics.instances.connectivity import pieces
+from babylon.engine.graph import BabylonUGraph
 from babylon.models.enums import EdgeType
 from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
@@ -54,25 +55,25 @@ if TYPE_CHECKING:
 def extract_solidarity_subgraph(
     G: nx.DiGraph[str] | GraphProtocol,
     min_strength: float = 0.0,
-) -> nx.Graph[str]:
+) -> BabylonUGraph:
     """Extract undirected solidarity network from WorldState graph.
 
     Creates an undirected graph containing only social_class nodes and
     SOLIDARITY edges above the minimum strength threshold. Used for
-    connected component analysis via nx.connected_components.
+    connected component analysis via the connectivity cylinder's
+    :math:`\\Pi_0` (rustworkx-native since Amendment L).
 
     Args:
         G: Graph from WorldState.to_graph() (raw or protocol-wrapped)
         min_strength: Minimum solidarity_strength to include edge (default 0)
 
     Returns:
-        Undirected nx.Graph containing only solidarity connections.
-        Isolated social_class nodes are included.
+        Undirected :class:`BabylonUGraph` containing only solidarity
+        connections. Isolated social_class nodes are included.
 
     Note:
         Territory nodes are excluded as they represent spatial substrate,
         not class positions in the solidarity network.
-        Returns raw nx.Graph because component analysis requires NetworkX algorithms.
     """
     from babylon.engine.graph_protocol import GraphProtocol
 
@@ -81,8 +82,8 @@ def extract_solidarity_subgraph(
 
         G = NetworkXAdapter.wrap(G)
 
-    # Create undirected graph for component analysis (NetworkX-specific)
-    solidarity_graph: nx.Graph[str] = nx.Graph()
+    # Undirected analytics graph for component analysis (Amendment L)
+    solidarity_graph = BabylonUGraph()
 
     # Add all social_class nodes (even if isolated)
     for node in G.query_nodes(node_type="social_class"):
@@ -105,7 +106,7 @@ def extract_solidarity_subgraph(
 
 
 def calculate_component_metrics(
-    solidarity_graph: nx.Graph[str],
+    solidarity_graph: BabylonUGraph,
     total_social_classes: int,
 ) -> tuple[int, int, float]:
     """Calculate connected component metrics for solidarity network.
@@ -245,8 +246,8 @@ def check_resilience(
             seed=seed,
         )
 
-    # Calculate original L_max
-    original_components = list(nx.connected_components(solidarity_graph))
+    # Calculate original L_max (Pi_0 of the connectivity cylinder)
+    original_components = pieces(solidarity_graph)
     original_max = max(len(c) for c in original_components) if original_components else 0
 
     # Create copy and remove nodes
@@ -256,7 +257,7 @@ def check_resilience(
     purged_graph.remove_nodes_from(nodes_to_remove)
 
     # Calculate post-purge L_max
-    post_components = list(nx.connected_components(purged_graph))
+    post_components = pieces(purged_graph)
     post_max = max(len(c) for c in post_components) if post_components else 0
 
     # Check resilience

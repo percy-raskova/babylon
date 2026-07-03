@@ -125,6 +125,21 @@ class EdgesView:
         return self._host.number_of_edges()
 
     @overload
+    def get(self, key: tuple[str, str]) -> dict[str, Any] | None: ...
+
+    @overload
+    def get(self, key: tuple[str, str], default: dict[str, Any]) -> dict[str, Any]: ...
+
+    def get(
+        self, key: tuple[str, str], default: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        """Return the live payload dict for edge ``key``, or ``default``."""
+        stored = self._host._stored_edge_key(key[0], key[1])
+        if stored is None:
+            return default
+        return self._host._edge_payload[stored]
+
+    @overload
     def __call__(self, data: Literal[False] = ...) -> list[tuple[str, str]]: ...
 
     @overload

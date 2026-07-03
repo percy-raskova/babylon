@@ -171,7 +171,12 @@ def _old_component_metrics(
     """
     if total_social_classes == 0:
         return (0, 0, 0.0)
-    components = list(nx.connected_components(solidarity_graph))
+    # Rebuild an nx reference graph from the carrier's node/edge lists so
+    # the oracle stays meaningful for BabylonUGraph inputs (Amendment L).
+    reference: nx.Graph[str] = nx.Graph()
+    reference.add_nodes_from(solidarity_graph.nodes())
+    reference.add_edges_from(solidarity_graph.edges())
+    components = list(nx.connected_components(reference))
     num_components = len(components)
     max_component_size = 0 if num_components == 0 else max(len(c) for c in components)
     percolation_ratio = max_component_size / total_social_classes

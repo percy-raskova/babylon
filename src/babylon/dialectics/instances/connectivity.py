@@ -49,52 +49,59 @@ See Also:
 from __future__ import annotations
 
 from itertools import combinations
+from typing import TYPE_CHECKING
 
 import networkx as nx
+import rustworkx as rx
 
 from babylon.dialectics.core.cylinder import AdjointCylinder
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonUGraph
 
 __all__ = ["atomization_index", "connectivity_cylinder", "pieces"]
 
 NodeSet = frozenset[str]
 
 
-def _edgeless(nodes: NodeSet) -> nx.Graph[str]:
+def _edgeless(nodes: NodeSet) -> BabylonUGraph:
     """:math:`\\Delta` — the edgeless graph on ``nodes`` (skeleton pole)."""
-    graph: nx.Graph[str] = nx.Graph()
-    graph.add_nodes_from(nodes)
+    from babylon.engine.graph import BabylonUGraph
+
+    graph = BabylonUGraph()
+    graph.add_nodes_from(sorted(nodes))
     return graph
 
 
-def _complete(nodes: NodeSet) -> nx.Graph[str]:
+def _complete(nodes: NodeSet) -> BabylonUGraph:
     """:math:`\\nabla` — the complete graph on ``nodes`` (sheaf pole)."""
     graph = _edgeless(nodes)
     graph.add_edges_from(combinations(sorted(nodes), 2))
     return graph
 
 
-def _nodes(graph: nx.Graph[str]) -> NodeSet:
+def _nodes(graph: BabylonUGraph) -> NodeSet:
     """:math:`\\Gamma` — the underlying node set, forgetting edges."""
     return frozenset(graph.nodes())
 
 
-def _edge_set(graph: nx.Graph[str]) -> frozenset[frozenset[str]]:
+def _edge_set(graph: BabylonUGraph) -> frozenset[frozenset[str]]:
     """Every edge of ``graph``, normalized to an unordered pair."""
     return frozenset(frozenset(edge) for edge in graph.edges())
 
 
-def _edge_symmetric_difference(left: nx.Graph[str], right: nx.Graph[str]) -> float:
+def _edge_symmetric_difference(left: BabylonUGraph, right: BabylonUGraph) -> float:
     """The cylinder metric: size of the edge-set symmetric difference."""
     return float(len(_edge_set(left) ^ _edge_set(right)))
 
 
-def connectivity_cylinder() -> AdjointCylinder[NodeSet, nx.Graph[str]]:
+def connectivity_cylinder() -> AdjointCylinder[NodeSet, BabylonUGraph]:
     """Build the production connectivity cylinder over solidarity graphs.
 
     Returns:
         An :class:`AdjointCylinder` with base carrier ``S`` = frozenset
         of node ids and ambient carrier ``X`` = undirected
-        ``nx.Graph[str]``: ``embed_left`` is the edgeless graph
+        :class:`~babylon.engine.graph.BabylonUGraph`: ``embed_left`` is the edgeless graph
         (:math:`\\Delta`), ``embed_right`` is the complete graph
         (:math:`\\nabla`), ``project`` is the node set (:math:`\\Gamma`),
         and ``metric`` is the size of the edge-set symmetric difference.
@@ -112,8 +119,13 @@ def connectivity_cylinder() -> AdjointCylinder[NodeSet, nx.Graph[str]]:
     )
 
 
-def pieces(graph: nx.Graph[str]) -> tuple[NodeSet, ...]:
+def pieces(graph: BabylonUGraph | nx.Graph[str]) -> tuple[NodeSet, ...]:
     """:math:`\\Pi_0(x)` — connected components, deterministically ordered.
+
+    Computed rustworkx-native on :class:`BabylonUGraph` (Amendment L);
+    legacy ``nx.Graph`` fixtures take the NetworkX arm until the Phase-6
+    fixture sweep retires them. The min-element ordering contract makes
+    the result independent of either library's traversal order.
 
     Args:
         graph: An undirected graph, typically a solidarity subgraph from
@@ -125,18 +137,28 @@ def pieces(graph: nx.Graph[str]) -> tuple[NodeSet, ...]:
         traversal or insertion order.
 
     Example:
-        >>> import networkx as nx
-        >>> g = nx.Graph()
+        >>> from babylon.engine.graph import BabylonUGraph
+        >>> g = BabylonUGraph()
         >>> g.add_nodes_from(["b", "a", "c"])
         >>> g.add_edge("b", "c")
         >>> pieces(g) == (frozenset({"a"}), frozenset({"b", "c"}))
         True
     """
-    components = (frozenset(component) for component in nx.connected_components(graph))
+    # Function-local import: dialectics must not import engine at module
+    # level (models-init ordering; engine.graph pulls babylon.models.graph).
+    from babylon.engine.graph import BabylonUGraph
+
+    if isinstance(graph, BabylonUGraph):
+        components = (
+            frozenset(graph.id_of(index) for index in component)
+            for component in rx.connected_components(graph.core)
+        )
+    else:
+        components = (frozenset(component) for component in nx.connected_components(graph))
     return tuple(sorted(components, key=lambda piece: min(piece)))
 
 
-def atomization_index(graph: nx.Graph[str]) -> float:
+def atomization_index(graph: BabylonUGraph | nx.Graph[str]) -> float:
     """Fraction of possible splits realized: :math:`(|\\Pi_0|-1)/(|\\Gamma|-1)`.
 
     1.0 means every node is its own component (full atomization, the
@@ -151,8 +173,8 @@ def atomization_index(graph: nx.Graph[str]) -> float:
         The atomization index in [0, 1].
 
     Example:
-        >>> import networkx as nx
-        >>> g = nx.Graph()
+        >>> from babylon.engine.graph import BabylonUGraph
+        >>> g = BabylonUGraph()
         >>> g.add_nodes_from(["a", "b", "c"])
         >>> atomization_index(g)
         1.0

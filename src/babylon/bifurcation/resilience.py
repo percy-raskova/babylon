@@ -20,11 +20,22 @@ See Also:
 from __future__ import annotations
 
 from collections import Counter
+from typing import TYPE_CHECKING
 
-import networkx as nx
+from babylon.engine.graph_algorithms import (
+    articulation_point_set,
+    component_count,
+    component_sets,
+    min_edge_cut_edges,
+)
+
+if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph import BabylonUGraph
 
 
-def compute_betti_numbers(subgraph: nx.Graph[str]) -> tuple[int, int]:
+def compute_betti_numbers(subgraph: BabylonUGraph | nx.Graph[str]) -> tuple[int, int]:
     """Compute Betti numbers for an undirected graph.
 
     Args:
@@ -47,13 +58,13 @@ def compute_betti_numbers(subgraph: nx.Graph[str]) -> tuple[int, int]:
     if num_nodes == 0:
         return (0, 0)
 
-    beta_0: int = nx.number_connected_components(subgraph)
+    beta_0: int = component_count(subgraph)
     beta_1: int = num_edges - num_nodes + beta_0
 
     return (beta_0, beta_1)
 
 
-def compute_equivalence_classes(subgraph: nx.Graph[str]) -> dict[int, int]:
+def compute_equivalence_classes(subgraph: BabylonUGraph | nx.Graph[str]) -> dict[int, int]:
     """Group nodes by structural equivalence (identical neighbor sets).
 
     Two nodes are structurally equivalent if they have the exact same
@@ -91,7 +102,7 @@ def compute_equivalence_classes(subgraph: nx.Graph[str]) -> dict[int, int]:
     return dict(size_counts)
 
 
-def find_critical_singletons(subgraph: nx.Graph[str]) -> list[str]:
+def find_critical_singletons(subgraph: BabylonUGraph | nx.Graph[str]) -> list[str]:
     """Find articulation points whose removal disconnects the graph.
 
     Wraps :func:`networkx.articulation_points` and returns a sorted
@@ -112,12 +123,12 @@ def find_critical_singletons(subgraph: nx.Graph[str]) -> list[str]:
     if subgraph.number_of_nodes() == 0:
         return []
 
-    points: list[str] = sorted(str(n) for n in nx.articulation_points(subgraph))
+    points: list[str] = sorted(str(n) for n in articulation_point_set(subgraph))
     return points
 
 
 def find_critical_cutsets(
-    subgraph: nx.Graph[str],
+    subgraph: BabylonUGraph | nx.Graph[str],
     max_cutset_size: int = 3,
 ) -> list[frozenset[str]]:
     """Find minimum edge cuts per connected component, bounded by size.
@@ -145,12 +156,12 @@ def find_critical_cutsets(
     """
     result: list[frozenset[str]] = []
 
-    for component_nodes in nx.connected_components(subgraph):
+    for component_nodes in component_sets(subgraph):
         if len(component_nodes) < 2:
             continue
 
-        component: nx.Graph[str] = subgraph.subgraph(component_nodes).copy()
-        cut_edges: set[tuple[str, str]] = nx.minimum_edge_cut(component)
+        component = subgraph.subgraph(component_nodes).copy()
+        cut_edges: set[tuple[str, str]] = min_edge_cut_edges(component)
 
         if len(cut_edges) > max_cutset_size:
             continue
@@ -167,7 +178,7 @@ def find_critical_cutsets(
 
 
 def compute_purge_resilience(
-    subgraph: nx.Graph[str],
+    subgraph: BabylonUGraph | nx.Graph[str],
     removal_rate: float,
     seed: int | None = None,
 ) -> float:
@@ -201,7 +212,7 @@ def compute_purge_resilience(
         return 1.0
 
     # Pre-purge L_max
-    pre_components: list[set[str]] = list(nx.connected_components(subgraph))
+    pre_components: list[set[str]] = component_sets(subgraph)
     pre_l_max: int = max(len(c) for c in pre_components)
 
     # Sort nodes by degree (descending), use RNG for tie-breaking
@@ -220,14 +231,14 @@ def compute_purge_resilience(
     nodes_to_remove: list[str] = [node for node, _deg in nodes_by_degree[:num_to_remove]]
 
     # Create copy and remove targeted nodes
-    purged: nx.Graph[str] = subgraph.copy()
+    purged = subgraph.copy()
     purged.remove_nodes_from(nodes_to_remove)
 
     # Post-purge L_max
     if purged.number_of_nodes() == 0:
         post_l_max = 0
     else:
-        post_components: list[set[str]] = list(nx.connected_components(purged))
+        post_components: list[set[str]] = component_sets(purged)
         post_l_max = max(len(c) for c in post_components)
 
     # Compute ratio, clamped to [0, 1]

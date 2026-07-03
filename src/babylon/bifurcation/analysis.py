@@ -22,9 +22,10 @@ See Also:
 from __future__ import annotations
 
 from collections import Counter
+from typing import TYPE_CHECKING
 
 import networkx as nx
-import xgi  # type: ignore[import-untyped]
+import xgi  # type: ignore[import-untyped, unused-ignore]
 
 from babylon.bifurcation.axis import compute_axis_tendency, crosses_contradiction_axis
 from babylon.bifurcation.bridges import detect_bridges
@@ -37,6 +38,10 @@ from babylon.bifurcation.resilience import (
     find_critical_singletons,
 )
 from babylon.bifurcation.types import BifurcationResult
+from babylon.engine.graph import BabylonUGraph
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
     MARGINALIZED_COMMUNITIES,
@@ -46,7 +51,7 @@ from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, EdgeType
 
 
-def _extract_raw_solidarity_subgraph(graph: nx.DiGraph) -> nx.Graph:  # type: ignore[type-arg]
+def _extract_raw_solidarity_subgraph(graph: BabylonGraph | nx.DiGraph[str]) -> BabylonUGraph:
     """Extract undirected solidarity subgraph (all SOLIDARITY edges).
 
     Args:
@@ -55,7 +60,7 @@ def _extract_raw_solidarity_subgraph(graph: nx.DiGraph) -> nx.Graph:  # type: ig
     Returns:
         Undirected graph with social_class nodes and all SOLIDARITY edges.
     """
-    solidarity: nx.Graph = nx.Graph()  # type: ignore[type-arg]
+    solidarity = BabylonUGraph()
 
     # Add all social_class nodes
     for node_id, data in graph.nodes(data=True):
@@ -81,11 +86,11 @@ def _extract_raw_solidarity_subgraph(graph: nx.DiGraph) -> nx.Graph:  # type: ig
 
 
 def _extract_filtered_solidarity_subgraph(
-    graph: nx.DiGraph,  # type: ignore[type-arg]
+    graph: BabylonGraph | nx.DiGraph[str],
     H: xgi.Hypergraph,
     community_states: dict[CommunityType, CommunityState],
     defines: BifurcationDefines,
-) -> nx.Graph:  # type: ignore[type-arg]
+) -> BabylonUGraph:
     """Extract consciousness-filtered solidarity subgraph.
 
     Only includes SOLIDARITY edges where the consciousness-weighted
@@ -100,7 +105,7 @@ def _extract_filtered_solidarity_subgraph(
     Returns:
         Undirected graph with only consciousness-significant solidarity edges.
     """
-    filtered: nx.Graph = nx.Graph()  # type: ignore[type-arg]
+    filtered = BabylonUGraph()
 
     # Add all social_class nodes
     for node_id, data in graph.nodes(data=True):

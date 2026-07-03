@@ -36,7 +36,7 @@ The Core unfolds via fractal zoom into internal nations. Resolution determines w
 
 **Rule**: NEVER store derived quantities. Always recompute from primitives.
 
-### 3. NetworkX as Discretized Manifold
+### 3. Graph as Discretized Manifold (rustworkx)
 
 The graph is not merely a data structure—it is the discretized manifold on which fields propagate. Tensors are field values on nodes/edges.
 
@@ -102,25 +102,25 @@ WorldState contains only data (Pydantic models). Engine contains only functions 
 **The Hydration Pattern**:
 
 ```
-SQLite (cold) → hydrate → WorldState (warm) → to_graph → NetworkX (hot)
+SQLite (cold) → hydrate → WorldState (warm) → to_graph → rustworkx (hot)
                                                               ↓
                                                          [Systems mutate]
                                                               ↓
-SQLite (cold) ← dehydrate ← WorldState (warm) ← from_graph ← NetworkX (hot)
+SQLite (cold) ← dehydrate ← WorldState (warm) ← from_graph ← rustworkx (hot)
 ```
 
 **Implementation Requirement**: NO database I/O during tick execution. The simulation runs entirely in RAM. Persistence happens before and after, never during.
 
 **Rationale**: This separation enables deterministic testing, easy serialization, and clear reasoning about state transitions. When state and behavior are mixed, bugs hide in the interaction.
 
-### 7. Edges vs Hyperedges (NetworkX + XGI)
+### 7. Edges vs Hyperedges (rustworkx + XGI)
 
 The simulation uses two complementary graph structures. The decision rule is categorical:
 
-- **If value, solidarity, or repression flows between two entities** → NetworkX edge
+- **If value, solidarity, or repression flows between two entities** → rustworkx edge
 - **If multiple entities share membership in something** → XGI hyperedge
 
-**NetworkX edges** (dyadic flows): Value extraction, solidarity transmission, repression, wages, tribute, tenancy, adjacency. These are directional relationships between exactly two entities. One entity acts on another. Edge modes (I.6) and contradiction internals (I.14) live here.
+**rustworkx edges** (dyadic flows): Value extraction, solidarity transmission, repression, wages, tribute, tenancy, adjacency. These are directional relationships between exactly two entities. One entity acts on another. Edge modes (I.6) and contradiction internals (I.14) live here.
 
 **XGI hyperedges** (n-ary membership): Community, identity category, organizational affiliation, shared designation. These are collective structures that agents belong to. A community is not a relationship between agents — it is a thing agents are part of. The FBI does not surveil individuals who happen to share attributes; it targets communities as units (COINTELPRO).
 
@@ -128,25 +128,25 @@ The simulation uses two complementary graph structures. The decision rule is cat
 
 | Relationship Type | Structure | Library | Example |
 | ----------------------------------- | --------- | --------- | ------------------------------------ |
-| A extracts value from B | Edge | NetworkX | Oakland County ← Wayne County |
-| A and B share mutual aid | Edge | NetworkX | SOLIDARISTIC edge between nodes |
+| A extracts value from B | Edge | rustworkx | Oakland County ← Wayne County |
+| A and B share mutual aid | Edge | rustworkx | SOLIDARISTIC edge between nodes |
 | A, B, C belong to community X | Hyperedge | XGI | Black church membership |
 | State designates group as target | Hyperedge | XGI | "Black Nationalist Hate Groups" |
 
-**Interaction Between Layers**: Hyperedge overlap creates solidarity *potential*. Pairwise edges realize solidarity *actuality*. Two agents sharing three community memberships have high overlap — but solidarity only becomes real when organizing work (a verb, V.1) creates or transforms a NetworkX edge between them.
+**Interaction Between Layers**: Hyperedge overlap creates solidarity *potential*. Pairwise edges realize solidarity *actuality*. Two agents sharing three community memberships have high overlap — but solidarity only becomes real when organizing work (a verb, V.1) creates or transforms a rustworkx edge between them.
 
 **Update Frequencies**:
 
-- Edges (NetworkX): Updated per tick (flows are dynamic)
+- Edges (rustworkx): Updated per tick (flows are dynamic)
 - Hyperedges (XGI): Alpha-smoothed updates (identity and membership are stable)
 
 **Implementation Requirements**:
 
-1. **The two layers MUST remain separate data structures.** NetworkX for dyadic flows, XGI for membership topology. Do not flatten hyperedges into cliques of pairwise edges — this destroys the collective semantics.
+1. **The two layers MUST remain separate data structures.** rustworkx for dyadic flows, XGI for membership topology. Do not flatten hyperedges into cliques of pairwise edges — this destroys the collective semantics.
 
 1. **Membership queries MUST use XGI.** "Which agents belong to community X?" is a hyperedge incidence query, not a graph traversal.
 
-1. **Flow queries MUST use NetworkX.** "How much value flows from A to B?" is an edge attribute lookup, not a hypergraph operation.
+1. **Flow queries MUST use rustworkx.** "How much value flows from A to B?" is an edge attribute lookup, not a hypergraph operation.
 
 1. **Cross-layer computation is explicit.** When solidarity potential (derived from hyperedge overlap) informs edge creation or transformation, the computation MUST clearly bridge the two layers with documented functions.
 
@@ -203,7 +203,7 @@ Player intent (click/input)
       → Nginx (reverse proxy)
         → Gunicorn (WSGI)
           → Django REST API (durable contract)
-            → Engine (NetworkX, Systems, Formulas)
+            → Engine (rustworkx, Systems, Formulas)
               → Postgres (state persistence)
             ← Engine returns new state
           ← Django serializes to JSON

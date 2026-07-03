@@ -74,7 +74,7 @@ When animation is used, it MUST show *process*—value flowing along edges, not 
 
 ### 4. The Graph Is Primary
 
-The NetworkX graph is the core visual. Node position, size, and connection density ARE the data. Decoration is prohibited. If a node has a border, the border encodes something.
+The graph is the core visual. Node position, size, and connection density ARE the data. Decoration is prohibited. If a node has a border, the border encodes something.
 
 **Verbs Over Nouns**: Babylon models process: extraction, accumulation, crisis, recomposition. The UI MUST visualize verbs (flows, transfers, decay) not just nouns (current wealth).
 

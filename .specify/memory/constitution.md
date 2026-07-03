@@ -2,36 +2,41 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 2.6.0 → 2.6.1
-Bump Rationale: PATCH — agentic-AI consumption fixes. No new theoretical
-  primitives or principle redefinitions. Fixes amendment registry
-  inconsistency (F–J missing from IX.2), removes ghost article references,
-  extracts III.4 tables to machine-readable YAML, adds cross-reference
-  annotations, adds AI Decision Procedure (IX.3) and AI Context Budget
-  (III.9) as clarifications for agentic consumption. Amendment C deadline
-  deferred to v2.8.0.
+Version Change: 2.6.1 → 2.7.0
+Bump Rationale: MINOR — Amendments K and L registered in one cycle. K
+  records the executable implementation of the dialectic primitive
+  (Lawverian refactor, ADR051) and adds two principles (III.10
+  Earn-Its-Keep, VIII.11 Tension-as-Accumulator anti-pattern). L rebinds
+  the graph substrate implementation from NetworkX to rustworkx. No
+  primitive is removed or redefined: II.3's manifold commitment is
+  library-independent — only the implementation binding changes.
+  Amendment C remains deferred; it blocks v2.8.0.
 
 Modified Principles:
-  - I.16 — added See Also cross-reference to I.21 and V
-  - I.18 — added See Also cross-reference to II.7 and VIII.9
-  - I.21 — added See Also cross-reference to I.16 and II.5
-  - II.3 — added See Also cross-reference to II.9 and VIII.9
-  - II.5 — added See Also cross-reference to I.16 and I.21
-  - II.7 — added See Also cross-reference to I.18 and VIII.9
-  - III.4 — tables extracted to data-catalog.yaml; constitution now
-    references canonical YAML file
+  - II.3 — retitled "Graph as Discretized Manifold"; implementation
+    binding now rustworkx; [TRANSITION STATE — Amendment D] marker
+    preserved with the dual-graph commitment renamed to rustworkx+XGI
+  - II.6 — Embedded Trinity: "NetworkX Topology" → "rustworkx Topology";
+    "ChromaDB Archive" → "pgvector Archive" (factual drift fix per
+    spec-037, rider on Amendment L)
+  - II.12 — rustworkx is the authoring API (three-layer stack unchanged)
+  - III.9 — P2 tier label "II.3 NetworkX Manifold" → "II.3 Graph
+    Manifold"; III.10 added to the P1 tier
+  - X.5 — Hetzner compute list: NetworkX → rustworkx
 
 Added Principles:
-  - III.9 AI Context Budget (new)
-    - P0 / P1 / P2 principle tiers for agent context windows
-    - Mandatory retention rules per tier
+  - III.10 Earn-Its-Keep (Categorical Constructs) — a categorical
+    construct ships only with a law, a prediction, or a running
+    computation (Amendment K)
+  - VIII.11 Tension as Accumulator — contradiction intensity is a fresh
+    per-tick measured gap, never an add-only ratchet (Amendment K)
 
 Added Sections:
-  - IX.3 AI Decision Procedure (new)
-    - Read-and-Proceed, Read-and-Ask, Escalate, Transition-State
-      escalation ladder for AI agents
-  - IX.4 AI Context Budget Governance (new)
-    - Session rules for P0/P1/P2 retention and escalation
+  - IX.2 Amendment K — Lawverian Dialectics Implementation (ratified
+    v2.7.0; source ai-docs/decisions/ADR051)
+  - IX.2 Amendment L — Graph Substrate: NetworkX → rustworkx (ratified
+    v2.7.0; implementation on branch refactor/networkx-to-rustworkx,
+    ADR052 forthcoming)
 
 Templates Requiring Updates:
   ✅ plan-template.md: No hardcoded principle numbers
@@ -45,7 +50,15 @@ Follow-up TODOs:
     morphism-preserving coarse-graining
   - AMENDMENT C: OODA profile placement spec (three candidate homes:
     PartyDialectic pole, morphism metadata, independent agent registry).
-    Decision required before v2.8.0. **DEFERRED from v2.7.0.**
+    Decision required before v2.8.0. **v2.7.0 ratified without C — C is
+    the blocking item for the next amendment cycle.**
+  - CODE: Amendment L implementation (BabylonGraph substrate swap +
+    ADR052) lands on branch refactor/networkx-to-rustworkx; constitution
+    ratified ahead of code per IX.1 compliance triggers.
+  - ANNEX: constitution/ fragment files lag the monolith beyond library
+    mentions (article-ii §1 still pre-Amendment-A; article-iii lacks
+    III.6–III.10; article-viii lacks VIII.11). Only library mentions
+    synced this cycle; full annex regeneration deferred.
   - AMENDMENT D: Hyperedge reconciliation spec (preserve Anti-Pattern
     VIII.9 under strictly-dyadic morphism constraint)
   - CODE: Audit all Postgres schema definitions for subsystem table
@@ -66,6 +79,9 @@ Follow-up TODOs:
     per category, fixture pinning mechanism, provenance tracking schema
 
 Previous Version History:
+  2.6.1 (2026-04-28): PATCH — agentic-AI consumption fixes: amendment
+    registry consistency (F–J), III.4 tables → data-catalog.yaml, III.9
+    AI Context Budget, IX.3 AI Decision Procedure, cross-references
   2.6.0 (2026-04-28): Amendment J — Sparrow targeting, matrix layer,
     transport substrate, determinism hash, structural provenance,
     Investigate sub-verb decomposition
@@ -155,13 +171,13 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **2. Primitives vs Derived** — Store: dialectic poles (typed frozen BaseModel), morphism graph (source, target, relation, weight), reproduction requirements. Compute: ValueTensor4x3, SNLT, value, c/v/s, Φ, r, s/v, OCC. NEVER store derived quantities. The Dialectic is primitive; the tensor is derived.
 
-**3. NetworkX as Discretized Manifold** — Graph is the manifold. Tensors are field values. Connectivity determines information/value flow. [TRANSITION STATE — Pending Amendment D: In v2, the morphism graph is strictly dyadic (II.9). The NetworkX+XGI dual-graph commitment must be reconciled with this constraint without collapsing hyperedges into pairwise edges (Anti-Pattern VIII.9).] See Also: II.9 (strictly dyadic morphism layer), VIII.9 (anti-pattern preserving).
+**3. Graph as Discretized Manifold** — Graph is the manifold. Tensors are field values. Connectivity determines information/value flow. Implementation binding: rustworkx (Amendment L; NetworkX retired). [TRANSITION STATE — Pending Amendment D: In v2, the morphism graph is strictly dyadic (II.9). The rustworkx+XGI dual-graph commitment must be reconciled with this constraint without collapsing hyperedges into pairwise edges (Anti-Pattern VIII.9).] See Also: II.9 (strictly dyadic morphism layer), VIII.9 (anti-pattern preserving).
 
 **4. Quantities vs Coefficients** — Quantities flux per tick. Coefficients α-smooth. Crisis = discontinuous coefficient reset, not gradual drift.
 
 **5. AI Observes, Never Controls** — The AI is parser + narrator, never adjudicator. On the input path, the AI parses player prose into structured vectors (player intent → engine-compatible representation). On the output path, the AI narrates engine state into prose. In both directions the AI is a transformer of representation, not a source of truth. The engine adjudicates; the AI translates. AI failure is non-fatal: parsing fallback returns raw intent; narration fallback returns structured state. The AI layer consumes `observe()` projections, never invokes `step()` or mutates poles. See Also: I.16 (AI narrates org actions, never executes them), I.21 (targeting modes exposed through `observe()` if Org dialectic encodes them).
 
-**6. State is Data, Engine is Transformation** — World: frozen Pydantic `World` model holding dialectics, morphisms, events. Engine: pure `tick(world, actions) → (new_world, events)`. The Embedded Trinity (SQLite Ledger, NetworkX Topology, ChromaDB Archive) provides persistence and serialization; the `World` is the single runtime structure for tick computation. No DB I/O during tick. Persistence access is constrained by II.11: no subsystem may read another subsystem's tables directly.
+**6. State is Data, Engine is Transformation** — World: frozen Pydantic `World` model holding dialectics, morphisms, events. Engine: pure `tick(world, actions) → (new_world, events)`. The Embedded Trinity (SQLite Ledger, rustworkx Topology, pgvector Archive) provides persistence and serialization; the `World` is the single runtime structure for tick computation. No DB I/O during tick. Persistence access is constrained by II.11: no subsystem may read another subsystem's tables directly.
 
 **7. Edges vs Hyperedges** — Dyadic flows between two entities → morphism graph (II.9). N-ary membership → XGI hyperedge. Two layers MUST remain separate. Hyperedge overlap = solidarity potential; morphism edge = actuality. Edges per tick; hyperedges α-smooth. [TRANSITION STATE — Pending Amendment D: The v2 morphism graph is strictly dyadic. Reconciliation required: either (a) hyperedges as higher-order structures with 1-skeleton in the morphism graph plus explicit consistency constraints, (b) simplicial representation, or (c) hyperedges migrate to pole structure. Anti-Pattern VIII.9 MUST be preserved.] See Also: I.18 (material-ideological distinction), VIII.9 (oppressor hyperedge).
 
@@ -173,7 +189,7 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **11. Subsystem Table Ownership** — Each subsystem (consciousness, tensor, edge-mode state machine, dialectics, hex substrate, orgs) owns its persistence tables. Cross-subsystem reads MUST go through declared interfaces: SQL views with explicit contracts, RPC boundaries, or event streams. Direct table access from outside the owning subsystem is prohibited. If a monolithic deployment is chosen, the coupling must be explicitly documented per table with a federation migration plan. Unowned tables = undefined behavior. Epoch 3 federation requires this boundary discipline; its absence is a forward-blocking defect.
 
-**12. Matrix Representation Layer** — NetworkX is the authoring API for graph construction and inspection. scipy.sparse is the computation layer for large-scale matrix operations. The actual mathematical structure is operator algebra on these matrices. The three-layer stack MUST remain separable: authoring → sparse matrix → operator expression. Never conflate NetworkX traversal with matrix computation, and never implement operator logic directly in NetworkX. The operator algebra is the source of truth; the other two are interfaces.
+**12. Matrix Representation Layer** — rustworkx is the authoring API for graph construction and inspection. scipy.sparse is the computation layer for large-scale matrix operations. The actual mathematical structure is operator algebra on these matrices. The three-layer stack MUST remain separable: authoring → sparse matrix → operator expression. Never conflate rustworkx traversal with matrix computation, and never implement operator logic directly in rustworkx. The operator algebra is the source of truth; the other two are interfaces.
 
 **13. Transport Substrate** — The movement of value, goods, and people is modeled as a transport substrate with two mechanisms: **min-cost flow** for deterministic routing (roads, rail, shipping lanes) and **slime-mold conductivity** for emergent routing (networks that optimize under pressure, like informal supply chains or migration routes). Transport edges have types: AIR_LINK (high speed, high visibility), SHIPPING_LANE (bulk, slow, regulated), ROAD (flexible, medium visibility), RAIL (capacity-constrained, infrastructure-dependent). The transport substrate is a Volume II/III mechanic: it mediates between production (Volume I) and realization (Volume III), and its topology determines where crises of disproportionality and realization propagate.
 
@@ -207,11 +223,13 @@ The distinction is load-bearing for reproducibility: a test using a fixture must
 
 - **P0 (Never Drop)**: I.19 Dialectic Primitive, I.20 Spatial Substrate, II.9 Morphism Dyadic, III.7 Determinism Hash, III.8 Aleksandrov Test, V Verb Atomicity. These define the irreducible constraints of the system. An agent operating on any implementation task MUST retain these principles in context.
 
-- **P1 (Load-Bearing)**: I.1 Settler-Colonial Frame, I.2 Imperial Rent, I.4 Bifurcation, I.6 Solidarity Edge Mode, I.7 Quantitative→Qualitative, I.12 Catastrophe Surface, I.16 Organization vs Institution, I.21 Sparrow, II.1 Partition Emergence, II.2 Primitives vs Derived, II.5 AI Scope, II.6 State is Data, II.11 Subsystem Ownership, II.12 Matrix Layer, II.13 Transport Substrate, III.1 No Magic Constants, III.2 Falsifiability, III.4 Data Catalog, III.6 Model Pinning, IV Michigan Test Case. These constrain specific domains. An agent MUST retain domain-relevant P1 principles for the file(s) it is editing.
+- **P1 (Load-Bearing)**: I.1 Settler-Colonial Frame, I.2 Imperial Rent, I.4 Bifurcation, I.6 Solidarity Edge Mode, I.7 Quantitative→Qualitative, I.12 Catastrophe Surface, I.16 Organization vs Institution, I.21 Sparrow, II.1 Partition Emergence, II.2 Primitives vs Derived, II.5 AI Scope, II.6 State is Data, II.11 Subsystem Ownership, II.12 Matrix Layer, II.13 Transport Substrate, III.1 No Magic Constants, III.2 Falsifiability, III.4 Data Catalog, III.6 Model Pinning, III.10 Earn-Its-Keep, IV Michigan Test Case. These constrain specific domains. An agent MUST retain domain-relevant P1 principles for the file(s) it is editing.
 
-- **P2 (Elaboration)**: I.3 TRPF, I.5 Department III, I.8 Tragedy of Inevitability, I.9 Metabolic Rift, I.10 Terminal Crisis, I.11 Emergent Pedagogy, I.13 Principal Contradiction, I.14 Contradiction Internals, I.15 Edge Mode Transitions, I.17 OODA, I.18 Material-Ideological, II.3 NetworkX Manifold, II.4 Quantities vs Coefficients, II.7 Edges vs Hyperedges, II.8 Client Layer, II.10 World Runtime, III.3 Physics Cosplay, III.5 Empirical vs Strategic, VI Scope Control, VII Visual Design, VIII Anti-Patterns, X Deployment. These provide context and guardrails but are not load-bearing for implementation. Agents MAY drop P2 principles when context-constrained, provided P0 and relevant P1 are retained.
+- **P2 (Elaboration)**: I.3 TRPF, I.5 Department III, I.8 Tragedy of Inevitability, I.9 Metabolic Rift, I.10 Terminal Crisis, I.11 Emergent Pedagogy, I.13 Principal Contradiction, I.14 Contradiction Internals, I.15 Edge Mode Transitions, I.17 OODA, I.18 Material-Ideological, II.3 Graph Manifold, II.4 Quantities vs Coefficients, II.7 Edges vs Hyperedges, II.8 Client Layer, II.10 World Runtime, III.3 Physics Cosplay, III.5 Empirical vs Strategic, VI Scope Control, VII Visual Design, VIII Anti-Patterns, X Deployment. These provide context and guardrails but are not load-bearing for implementation. Agents MAY drop P2 principles when context-constrained, provided P0 and relevant P1 are retained.
 
 An agent MUST report which tier it is operating from if it drops context.
+
+**10. Earn-Its-Keep (Categorical Constructs)** — A categorical construct (adjunction, cylinder, level lattice, functor, operator) ships only if it yields a LAW (a testable invariant), a PREDICTION (a falsifiable claim), or a COMPUTATION that runs in production — never as vocabulary. This is III.3 and III.8 applied to category theory: name the law, the prediction, or the running computation, or the construct is banned regardless of its elegance. (Amendment K; governing rule of the Lawverian dialectics refactor, ADR051.)
 
 ## IV. Test Case: Michigan Statewide (2010-2025)
 
@@ -278,6 +296,7 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 8. **Decorative Visualization** — See VII.10.
 9. **Community as Pairwise Edge** — Community = XGI hyperedge, not combinatorial pairwise edges. See II.7.
 10. **Oppressor Hyperedge for Institutional Exclusion** — Category 2 communities (DISABLED, QUEER, UNDOCUMENTED, INCARCERATED) have NO paired oppressor hyperedge. ABLED is absence of disability, not a political community. HETEROSEXUAL is unmarked default, not solidarity community. Contrast with Category 1 where BOTH sides exist (SETTLER has institutions, recruits, defends extraction). See II.7.
+11. **Tension as Accumulator** — Contradiction intensity MUST be a fresh per-tick measured gap (an adjunction defect per I.19), never an add-only `+=` ratchet. Saturating accumulators pin at their bound and carry no information (the pre-Amendment-K inertness bug: edge tension pinned at exactly 1.0 by ~t100). See III.10, Amendment K.
 
 ## IX. Governance
 
@@ -295,7 +314,7 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 **Amendment C — OODA Placement** (pending): Architectural home for OODA profiles in v2. Requirement: spec with invariance proof before v2.7.0. **Deferred to v2.8.0** — no invariance proof ratified in this cycle.
 
-**Amendment D — Hyperedge Reconciliation** (pending): NetworkX+XGI and strictly-dyadic morphism constraint. Requirement: spec preserving Anti-Pattern VIII.9.
+**Amendment D — Hyperedge Reconciliation** (pending): rustworkx+XGI dual-graph commitment and strictly-dyadic morphism constraint (dual-graph binding renamed from NetworkX+XGI by Amendment L; the reconciliation requirement is unchanged). Requirement: spec preserving Anti-Pattern VIII.9.
 
 **Amendment E — Michigan Statewide** (ratified v2.1.0): Expands canonical test case to 83 Michigan counties. Adds BEA EAs as aggregation tier. Detroit-Windsor boundary condition required. Tri-county preserved as acceptance criterion.
 
@@ -308,6 +327,10 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 **Amendment I — AI Parser Scope** (ratified v2.5.0): AI is parser + narrator, never adjudicator. Model pinning and parsed vector persistence required. Replayability across model deprecation.
 
 **Amendment J — Determinism and Representation** (ratified v2.6.0): I.21 Sparrow targeting framework; II.12 matrix representation layer; II.13 transport substrate; III.7 determinism hash and replayability; III.8 structural provenance; V Investigate decomposed into three atomic sub-verbs.
+
+**Amendment K — Lawverian Dialectics Implementation** (ratified v2.7.0): I.19's dialectic primitive is executable. OppositionRegistry of measured adjunction defects (gap, balance ∈ [-1, 1], rate — fresh per tick, never accumulated); principal contradiction ranked by gap × (1 + rate_weight × |rate|), implementing I.13. Adjunction instances: connectivity (atomization), scale (allocate ⊣ aggregate; H3 aggregation as sheaf), value-form (wage⇄value counit defect Φ). Level lattices (spatial hex < county < state < nation; social individual < community < class < bloc) with Aufhebung operator. Fixed-point regime classifier: reproduction / crisis / sublation — RUPTURE is the crisis regime's boiling point; EventType.LEVEL_TRANSITION is the production Aufhebung signal. Composition algebra (product/sum/nesting), typed coupling graph (feeds/constrains/transforms/contains/antagonizes), sublation lineage. Anti-Pattern VIII.9 n-ary protection preserved. Adds III.10 and VIII.11. Source: ADR051.
+
+**Amendment L — Graph Substrate: NetworkX → rustworkx** (ratified v2.7.0): The manifold commitment (II.3) is library-independent; the implementation binding moves from NetworkX to rustworkx (Rust core) for runtime performance and memory behavior. II.3 retitled "Graph as Discretized Manifold"; II.6 Trinity updated (rustworkx Topology; pgvector Archive — ChromaDB drift fix per spec-037); II.12 authoring API; X.5 compute list. Determinism (III.7) MUST be preserved across the swap via insertion-ordered iteration surfaces; regression baselines regenerate only with written proof of an unavoidable order shift. Amendment D's pending reconciliation is unaffected: the dual-graph commitment becomes rustworkx+XGI.
 
 Additional amendments will be registered as they are identified during downstream translation.
 
@@ -338,10 +361,10 @@ Additional amendments will be registered as they are identified during downstrea
 
 **4. systemd as Sole Supervisor** — All processes (Postgres, Gunicorn, Nginx, Woodpecker) run as systemd units. No additional supervisors. Service dependencies, restart policies, and cgroup resource limits are declared in unit files deployed by Ansible.
 
-**5. Cloudflare Edge, Hetzner Compute** — Nothing computes on Cloudflare; nothing reaches users without Cloudflare first. Cloudflare handles DNS, SSL, DDoS, WAF, CDN, R2 storage, and Workers AI. Hetzner handles Django, Postgres, NetworkX, and CI/CD. Division of labor is strict — no function is shared between the two.
+**5. Cloudflare Edge, Hetzner Compute** — Nothing computes on Cloudflare; nothing reaches users without Cloudflare first. Cloudflare handles DNS, SSL, DDoS, WAF, CDN, R2 storage, and Workers AI. Hetzner handles Django, Postgres, rustworkx, and CI/CD. Division of labor is strict — no function is shared between the two.
 
 **6. Solo-Developer Constraint** — Every infrastructure component is filtered through: does this require a second full-time job to maintain? If yes, reject it. Kubernetes, Prometheus+Grafana, HashiCorp Vault, service meshes, and container orchestration are explicitly rejected until scale demands them.
 
 ______________________________________________________________________
 
-**Version**: 2.6.1 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-04-28
+**Version**: 2.7.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-03

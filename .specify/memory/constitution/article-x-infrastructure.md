@@ -123,7 +123,7 @@ resource limits (cgroups), and restart policies natively.
 
 Nothing computes on Cloudflare; nothing reaches users without Cloudflare
 first. Cloudflare handles DNS, SSL, DDoS, WAF, CDN, R2 storage, and
-Workers AI. Hetzner handles Django, Postgres, NetworkX, and CI/CD.
+Workers AI. Hetzner handles Django, Postgres, rustworkx, and CI/CD.
 Division of labor is strict — no function is shared between the two.
 
 **Request Path**:
@@ -131,7 +131,7 @@ Division of labor is strict — no function is shared between the two.
 ```
 Player → Cloudflare (DNS + SSL + WAF + CDN)
        → Hetzner VPS (Nginx → Gunicorn → Django)
-       → Engine (NetworkX, Systems, Formulas)
+       → Engine (rustworkx, Systems, Formulas)
        → Postgres (state persistence)
        → back up the chain
 ```
@@ -148,7 +148,7 @@ Player → Cloudflare (DNS + SSL + WAF + CDN)
 | Workers AI | Yes | No |
 | Django | No | Yes |
 | Postgres | No | Yes |
-| NetworkX engine | No | Yes |
+| rustworkx engine | No | Yes |
 | CI/CD (Woodpecker) | No | Yes |
 
 **Relationship to II.5**: Workers AI on the Cloudflare edge handles the

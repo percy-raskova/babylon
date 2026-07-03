@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from babylon.dialectics.core.coupling import StanceIntervention, apply_interventions
 from babylon.dialectics.core.opposition import OppositionState
 from babylon.dialectics.instances.catalog import GraphInputs
 from babylon.engine.event_bus import Event
@@ -56,6 +57,11 @@ if TYPE_CHECKING:
 
 #: Graph attribute holding ``{key: OppositionState.model_dump()}`` for the tick.
 OPPOSITION_STATES_ATTR = "opposition_states"
+
+#: Graph attribute holding a list of ``StanceIntervention`` dumps to apply this
+#: tick. Written by verb/OODA systems (spec-071), read + CLEARED here
+#: (consumed-once). No producer writes it yet; unit tests set it directly.
+OPPOSITION_INTERVENTIONS_ATTR = "opposition_interventions"
 
 #: Below this rent_level a TENANCY edge carries no contradiction (rent-free).
 _RENT_EPSILON = 1e-9
@@ -143,11 +149,29 @@ class ContradictionSystem(SystemBase):
         if not states:
             return
 
+        # Player-verb stances are signed shoves on balances (spec-071 writes
+        # them; consumed-once here). Applied AFTER the measure so a stance can
+        # flip a leading pole, BEFORE frames/rupture/stash so downstream sees it.
+        states = self._apply_interventions(graph, states)
+
         self._write_frames(graph, services, registry, states)
         self._maybe_rupture(services, states, tick)
         graph.set_graph_attr(
             OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in states}
         )
+
+    @staticmethod
+    def _apply_interventions(
+        graph: GraphProtocol, states: tuple[OppositionState, ...]
+    ) -> tuple[OppositionState, ...]:
+        """Apply + clear the ``opposition_interventions`` attr (consumed-once)."""
+        raw: list[dict[str, Any]] = graph.get_graph_attr(OPPOSITION_INTERVENTIONS_ATTR, []) or []
+        if not raw:
+            return states
+        interventions = [StanceIntervention(**dump) for dump in raw]
+        applied = apply_interventions(states, interventions)
+        graph.set_graph_attr(OPPOSITION_INTERVENTIONS_ATTR, [])
+        return applied
 
     @staticmethod
     def _read_previous(graph: GraphProtocol) -> dict[str, OppositionState]:

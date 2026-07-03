@@ -35,6 +35,8 @@ from babylon.dialectics.core import (
     OppositionSpec,
     OppositionState,
     PoleBinding,
+    StanceIntervention,
+    apply_interventions,
     product,
     sum_,
 )
@@ -55,6 +57,8 @@ __all__ = [
     "OppositionSpec",
     "OppositionState",
     "PoleBinding",
+    "StanceIntervention",
+    "apply_interventions",
     "product",
     "sum_",
 ]

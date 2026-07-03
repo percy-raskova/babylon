@@ -22,8 +22,12 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
+from babylon.dialectics.core.coupling import StanceIntervention
 from babylon.engine.services import ServiceContainer
-from babylon.engine.systems.contradiction import ContradictionSystem
+from babylon.engine.systems.contradiction import (
+    OPPOSITION_INTERVENTIONS_ATTR,
+    ContradictionSystem,
+)
 from babylon.models.enums import EdgeType, EventType
 
 pytestmark = pytest.mark.unit
@@ -191,3 +195,49 @@ class TestRuptureGate:
         assert cap["rate"] > 0.0  # the rising precondition really holds
         assert cap["gap"] < float(services.defines.tension.rupture_gap_threshold)
         assert _rupture_events(services) == []
+
+
+class TestStanceInterventions:
+    """``opposition_interventions`` attr: applied post-step, consumed once."""
+
+    def _labor_dominant_graph(self) -> nx.DiGraph[str]:
+        # Worker richer than owner -> capital_labor balance < 0 -> leading_pole "a".
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("worker", wealth=30.0)
+        graph.add_node("owner", wealth=10.0)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        return graph
+
+    def _dump(self, delta: float) -> dict[str, object]:
+        return StanceIntervention(
+            target_key="capital_labor", delta_balance=delta, source="test"
+        ).model_dump()
+
+    def test_no_intervention_leaves_the_natural_measure(self) -> None:
+        graph = self._labor_dominant_graph()
+        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        assert graph.graph["opposition_states"]["capital_labor"]["leading_pole"] == "a"
+
+    def test_intervention_flips_leading_pole_through_the_system(self) -> None:
+        graph = self._labor_dominant_graph()
+        graph.graph[OPPOSITION_INTERVENTIONS_ATTR] = [self._dump(1.0)]
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+
+        cap = graph.graph["opposition_states"]["capital_labor"]
+        assert cap["leading_pole"] == "b"  # flipped from "a" by the +1.0 shove
+        assert cap["balance"] == pytest.approx(0.5)  # clamp(-0.5 + 1.0)
+
+    def test_interventions_are_consumed_once(self) -> None:
+        graph = self._labor_dominant_graph()
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+        graph.graph[OPPOSITION_INTERVENTIONS_ATTR] = [self._dump(1.0)]
+
+        system.step(graph, services, {"tick": 1})
+        assert graph.graph["opposition_states"]["capital_labor"]["leading_pole"] == "b"
+        assert graph.graph[OPPOSITION_INTERVENTIONS_ATTR] == []  # cleared after use
+
+        # Tick 2 with no fresh interventions: fresh measure only, NOT re-applied.
+        system.step(graph, services, {"tick": 2})
+        assert graph.graph["opposition_states"]["capital_labor"]["leading_pole"] == "a"

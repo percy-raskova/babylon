@@ -41,11 +41,13 @@ aspirational reading in the spec's ``unity`` string.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import networkx as nx
 
+from babylon.dialectics.core.coupling import Coupling, CouplingGraph
 from babylon.dialectics.core.opposition import (
     BoundOpposition,
     GapReading,
@@ -58,7 +60,9 @@ from babylon.formulas.contradiction import (
     calculate_wealth_asymmetry_gap,
 )
 
-__all__ = ["GraphInputs", "build_default_registry"]
+__all__ = ["GraphInputs", "build_default_coupling_graph", "build_default_registry"]
+
+logger = logging.getLogger(__name__)
 
 # Pair convention across capital_labor + wage: (labor_wealth, capital_wealth),
 # i.e. (pole_a, pole_b), so balance > 0 == capital dominant for BOTH.
@@ -215,3 +219,56 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
         ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)
+
+
+# The ratified crisis-producer map. The four ``transforms`` edges reference
+# Phase D/E value-form oppositions (Circulation, Reproduction, Credit, ...) not
+# yet bound on this branch; the two class edges are bound today. The builder
+# keeps only edges whose BOTH endpoints are registered — it never invents a
+# null binding for an absent endpoint.
+_DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
+    # crisis producers: source's output becomes target's input prices
+    Coupling(source="circulation", target="realization", kind="transforms"),
+    Coupling(source="reproduction", target="disproportionality", kind="transforms"),
+    Coupling(source="surplus_distribution", target="debt_spiral", kind="transforms"),
+    Coupling(source="credit", target="financial", kind="transforms"),
+    # the two antagonistic class contradictions are mutually antagonistic
+    Coupling(source="capital_labor", target="imperial", kind="antagonizes"),
+    # capital_labor's development presupposes the wage relation it reads
+    Coupling(source="wage", target="capital_labor", kind="feeds"),
+)
+
+
+def build_default_coupling_graph(
+    registry: OppositionRegistry[GraphInputs],
+) -> CouplingGraph:
+    """Build the production coupling graph, skipping edges with unbound endpoints.
+
+    Encodes the ratified crisis-producer map (:data:`_DEFAULT_COUPLINGS`). Any
+    coupling whose source or target is not yet registered in ``registry`` is
+    skipped and logged at INFO — no null binding is invented for it. As Phase D
+    and E bind the value-form oppositions, those ``transforms`` edges begin to
+    survive automatically.
+
+    Args:
+        registry: The opposition registry the couplings are validated against;
+            typically :func:`build_default_registry`'s five-opposition registry.
+
+    Returns:
+        A :class:`~babylon.dialectics.core.coupling.CouplingGraph` over the
+        subset of couplings whose endpoints are both registered (plus any
+        ``contains`` edges auto-derived from nesting).
+    """
+    keys = set(registry.keys)
+    bound: list[Coupling] = []
+    for coupling in _DEFAULT_COUPLINGS:
+        if coupling.source in keys and coupling.target in keys:
+            bound.append(coupling)
+        else:
+            logger.info(
+                "Skipping coupling %s -> %s (%s): endpoint(s) not yet registered",
+                coupling.source,
+                coupling.target,
+                coupling.kind,
+            )
+    return CouplingGraph(bound, registry)

@@ -22,6 +22,9 @@ Design contract: ``project/06-lawverian-dialectics.md``.
 from babylon.dialectics.core import (
     AdjointCylinder,
     BoundOpposition,
+    Coupling,
+    CouplingGraph,
+    CouplingKind,
     GaloisConnection,
     GapMeasure,
     GapReading,
@@ -39,6 +42,9 @@ from babylon.dialectics.core import (
 __all__ = [
     "AdjointCylinder",
     "BoundOpposition",
+    "Coupling",
+    "CouplingGraph",
+    "CouplingKind",
     "GaloisConnection",
     "GapMeasure",
     "GapReading",

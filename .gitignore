@@ -65,6 +65,11 @@ results/
 
 # Test reports (verbose machine-readable artifacts; one subdir per mise test:* task)
 reports/test-results/
+# Ingest audit reports + per-run sim artifacts (regenerable byproducts)
+reports/ingest/
+reports/sim-runs/
+# Daemonized sim pidfiles/logs (sim:e2e-bg)
+.sim-pids/
 
 # Coverage HTML output (pyproject.toml's --cov-report=html default; landed locally before)
 htmlcov/

@@ -21,6 +21,8 @@ poetry = "latest"  # one `mise install` provisions Python AND Poetry (registry: 
 [env]
 PYTHONPATH = "src"
 BABYLON_ENV = "development"
+# Agent ergonomics: uncolored tool output (kills ANSI-strip pipelines)
+NO_COLOR = "1"
 # Soundfont for MIDI conversion
 SOUNDFONT = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 MUSIC_DIR = "assets/music"
@@ -69,6 +71,28 @@ run = "poetry run xenon --max-absolute C src/"
 [tasks.check]
 description = "Fast CI gate: lint + format + typecheck + unit tests"
 depends = ["lint", "format", "typecheck", "test:unit"]
+
+[tasks."check:quick"]
+description = "Quality gate without the test leg: lint + format + typecheck"
+depends = ["lint", "format", "typecheck"]
+
+[tasks.commit]
+description = "Hook-safe commit: pre-run hooks on staged files, re-stage their fixes, commit, verify HEAD moved"
+usage = 'arg "<message>" help="Conventional commit message"'
+run = '''
+set -e
+if git diff --cached --quiet; then
+  echo "nothing staged — git add first"; exit 1
+fi
+# First pass absorbs the 'files were modified by this hook' abort;
+# re-stage hook fixes for EXACTLY the staged set (not the whole tree);
+# the commit itself re-runs hooks and must pass.
+poetry run pre-commit run || true
+git diff --cached --name-only -z | xargs -0 -r git add --
+git commit -m "$usage_message"
+git log --oneline -1
+git status --short | grep -v "^??" || true
+'''
 
 # =============================================================================
 # TESTING (Namespaced)
@@ -224,6 +248,19 @@ poetry run pytest tests/integration/web/test_pg_contract.py \
 # Test report helpers
 # -----------------------------------------------------------------------------
 
+[tasks."test:q"]
+description = "Quiet scoped pytest for the inner loop (kept cache => --lf works); use: mise run test:q -- <paths>"
+run = "poetry run pytest -q --no-header -r fEX -o cache_dir=.pytest_cache/q"
+
+[tasks."test:failed"]
+description = "Re-run only the failures recorded by the last test:q run (no-op when all green)"
+run = '''
+code=0
+poetry run pytest -q --no-header -r fEX -o cache_dir=.pytest_cache/q --lf --lfnf none || code=$?
+if [ "$code" -eq 5 ]; then echo "(no failures recorded — nothing to re-run)"; exit 0; fi
+exit "$code"
+'''
+
 [tasks."test:clean"]
 description = "Wipe test artifacts: reports/, .pytest_cache, htmlcov, .coverage*, __pycache__ (idempotent)"
 run = """
@@ -334,6 +371,49 @@ poetry run python tools/monte_carlo.py \
 [tasks."sim:e2e-michigan"]
 description = "Headless 520-tick Michigan + Canada e2e (spec-065); refreshes tests/baselines/michigan-e2e.json via --write-baseline"
 run = "poetry run python -m babylon.engine.headless_runner --scope michigan-canada --ticks 520 --write-baseline tests/baselines/michigan-e2e.json"
+
+[tasks."sim:e2e-bg"]
+description = "Daemonize sim:e2e-michigan with pidfile + log under .sim-pids/ (watch via sim:status)"
+run = '''
+mkdir -p .sim-pids
+if [ -f .sim-pids/e2e.pid ] && kill -0 "$(cat .sim-pids/e2e.pid)" 2>/dev/null; then
+  echo "already running: PID $(cat .sim-pids/e2e.pid)"; exit 1
+fi
+nohup poetry run python -m babylon.engine.headless_runner --scope michigan-canada --ticks 520 \
+  --write-baseline tests/baselines/michigan-e2e.json > .sim-pids/e2e.log 2>&1 &
+echo $! > .sim-pids/e2e.pid
+echo "started PID $(cat .sim-pids/e2e.pid) — log .sim-pids/e2e.log"
+'''
+
+[tasks."sim:status"]
+description = "One-shot canonical-run status: process, tick/520, DB size, liveness, dialectics signals"
+run = '''
+if [ -f .sim-pids/e2e.pid ] && kill -0 "$(cat .sim-pids/e2e.pid)" 2>/dev/null; then
+  ps -o pid,pcpu,etime -p "$(cat .sim-pids/e2e.pid)" | tail -1
+else
+  echo "(no daemonized run; DB numbers below reflect whatever last wrote)"
+fi
+PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
+SELECT 'tick ' || max(tick) || '/520 (' || round(100.0*max(tick)/520, 1) || '%), db ' ||
+       pg_size_pretty(pg_database_size('babylon_test')) FROM dynamic_hex_state;" 2>/dev/null || true
+PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
+SELECT 'live counties: ' ||
+       (SELECT count(DISTINCT county_fips) FROM dynamic_hex_state WHERE tick=(SELECT max(tick) FROM dynamic_hex_state)) ||
+       ', contradiction_field rows: ' || (SELECT count(*) FROM contradiction_field);" 2>/dev/null || true
+PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
+SELECT 'max_tension t' || tick || ': ' || round(max(tension)::numeric, 4)
+FROM dynamic_relationship_state
+WHERE tick IN (SELECT DISTINCT tick FROM dynamic_relationship_state ORDER BY tick DESC LIMIT 3)
+GROUP BY tick ORDER BY tick;" 2>/dev/null || true
+'''
+
+[tasks."sim:watch"]
+description = "Live 30s refresh of sim:status"
+run = "watch -n 30 mise run sim:status"
+
+[tasks."sim:probe"]
+description = "Single-county Postgres tick probe; use: mise run sim:probe -- --county 26163 --ticks 3"
+run = "poetry run python tools/tick_probe.py"
 
 # =============================================================================
 # TUNING (Namespaced)
@@ -580,6 +660,13 @@ run = "docker stop babylon-pg-isolated && docker rm babylon-pg-isolated"
 [tasks."db:query"]
 description = "Run psql directly against the isolated test database"
 run = "PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test"
+
+[tasks."db:sql"]
+description = "One-shot SQL against the isolated test DB; use: mise run db:sql -- \"SELECT ...\""
+run = '''
+pg_isready -h localhost -p 5433 -q || { echo "babylon-pg-isolated not up (mise run db:up)"; exit 1; }
+PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -c
+'''
 
 [tasks."data:lodes-od"]
 description = "Download LODES OD commuter flow data (Michigan, current year). Tri-county minimum: --states mi"

@@ -68,6 +68,18 @@ DEFAULT_HICKEL_SCALE_TYPE: str = "Intensive"
 :class:`babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients.DefaultPeripheryLaborCoefficientsSource`'s
 existing convention."""
 
+_DISJOINT_BLOC_IDS: frozenset[int] = frozenset({1, 7, 8, 9, 10, 12})
+"""Non-overlapping bloc country_ids from dim_country.
+
+Mirrors the injective ``_NODE_TO_BLOC`` crosswalk in
+:mod:`babylon.persistence.postgres_initialization` — each engine node maps
+to at most one distinct bloc, so no bloc's trade is double-counted.
+Excludes parent/child overlaps (Europe ⊇ EU is resolved by using both as
+separate disjoint entries — the crosswalk assigns each node to exactly one)
+and cross-cutting commodity categories ('Advanced Technology Products',
+'Australia and Oceania').
+"""
+
 
 @runtime_checkable
 class GammaHydrationSource(Protocol):
@@ -149,7 +161,10 @@ class SQLiteGammaHydrationSource:
 
             total_imports = (
                 session.query(func.sum(FactBilateralTradeAnnual.imports_usd_millions))
-                .filter(FactBilateralTradeAnnual.time_id == time_id)
+                .filter(
+                    FactBilateralTradeAnnual.time_id == time_id,
+                    FactBilateralTradeAnnual.country_id.in_(_DISJOINT_BLOC_IDS),
+                )
                 .scalar()
             )
             if total_imports is None:

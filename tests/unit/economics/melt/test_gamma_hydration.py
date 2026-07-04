@@ -29,6 +29,86 @@ from babylon.reference.schema import (
 
 
 @pytest.fixture
+def overlapping_bloc_session_factory(
+    reference_sqlite_session_factory: sessionmaker[Session],
+) -> Iterator[sessionmaker[Session]]:
+    """Fixture mirroring the REAL reference DB's overlapping bloc structure.
+
+    The real dim_country has 8 is_region=1 rows that are NON-DISJOINT:
+    Europe (id=8) ⊇ European Union (id=1); Asia (id=12) overlaps
+    Pacific Rim (id=10); 'Advanced Technology Products' is a cross-cutting
+    commodity category, not a geography. A naive SUM over all rows
+    double-counts. The fix must sum only the 6 disjoint bloc IDs
+    {1, 7, 8, 9, 10, 12} — matching _NODE_TO_BLOC in
+    postgres_initialization.py.
+    """
+    with reference_sqlite_session_factory() as session:
+        t2012 = DimTime(year=2012, is_annual=True)
+        session.add(t2012)
+        session.flush()
+
+        eu = DimCountry(country_id=1, cty_code="EU", country_name="European Union", is_region=True)
+        na = DimCountry(country_id=7, cty_code="NA", country_name="North America", is_region=True)
+        europe = DimCountry(country_id=8, cty_code="EUR", country_name="Europe", is_region=True)
+        africa = DimCountry(country_id=9, cty_code="AFR", country_name="Africa", is_region=True)
+        pacific = DimCountry(
+            country_id=10, cty_code="PAC", country_name="Pacific Rim", is_region=True
+        )
+        asia = DimCountry(country_id=12, cty_code="ASI", country_name="Asia", is_region=True)
+        atp = DimCountry(
+            country_id=20,
+            cty_code="ATP",
+            country_name="Advanced Technology Products",
+            is_region=True,
+        )
+        session.add_all([eu, na, europe, africa, pacific, asia, atp])
+        session.flush()
+
+        disjoint_imports = {
+            1: 500_000,
+            7: 400_000,
+            8: 300_000,
+            9: 100_000,
+            10: 200_000,
+            12: 600_000,
+        }
+        for cid, imp in disjoint_imports.items():
+            session.add(
+                FactBilateralTradeAnnual(
+                    time_id=t2012.time_id,
+                    country_id=cid,
+                    imports_usd_millions=imp,
+                    exports_usd_millions=imp // 2,
+                    total_trade_usd_millions=imp + imp // 2,
+                )
+            )
+        session.add(
+            FactBilateralTradeAnnual(
+                time_id=t2012.time_id,
+                country_id=20,
+                imports_usd_millions=800_000,
+                exports_usd_millions=400_000,
+                total_trade_usd_millions=1_200_000,
+            )
+        )
+        session.flush()
+
+        farms = DimBEAIndustry(bea_code="111", industry_name="Farms", bea_level=3)
+        session.add(farms)
+        session.flush()
+        session.add(
+            FactBEAFinalDemandAnnual(
+                time_id=t2012.time_id,
+                bea_industry_id=farms.bea_industry_id,
+                total_final_uses_millions=10_000_000,
+            )
+        )
+        session.commit()
+
+    yield reference_sqlite_session_factory
+
+
+@pytest.fixture
 def seeded_session_factory(
     reference_sqlite_session_factory: sessionmaker[Session],
 ) -> Iterator[sessionmaker[Session]]:
@@ -38,15 +118,17 @@ def seeded_session_factory(
     verified directly — see specs/102-gamma-shocks/research.md R1).
     Trade + BEA final-demand values are synthetic but proportioned to
     produce a plausible ~0.25 import share.
+
+    Uses explicit country_ids from the disjoint bloc set
+    (12=Asia, 7=North America) so the alpha filter passes.
     """
     with reference_sqlite_session_factory() as session:
         t2012 = DimTime(year=2012, is_annual=True)
         session.add(t2012)
         session.flush()
 
-        # Two trading partners: imports sum to 2_500_000 (USD millions).
-        china = DimCountry(cty_code="CHN", country_name="China")
-        canada = DimCountry(cty_code="CAN", country_name="Canada")
+        china = DimCountry(country_id=12, cty_code="CHN", country_name="China")
+        canada = DimCountry(country_id=7, cty_code="CAN", country_name="Canada")
         session.add_all([china, canada])
         session.flush()
         session.add_all(
@@ -68,8 +150,6 @@ def seeded_session_factory(
             ]
         )
 
-        # Two BEA commodities: final uses sum to 10_000_000 (USD millions).
-        # -> alpha = 2_500_000 / 10_000_000 = 0.25
         farms = DimBEAIndustry(bea_code="111", industry_name="Farms", bea_level=3)
         motor = DimBEAIndustry(bea_code="336", industry_name="Motor vehicles", bea_level=3)
         session.add_all([farms, motor])
@@ -131,6 +211,26 @@ class TestGetAlpha:
 
         assert source.get_alpha(2020) is None
 
+    def test_alpha_excludes_overlapping_blocs_and_commodity_categories(
+        self, overlapping_bloc_session_factory: sessionmaker[Session]
+    ) -> None:
+        """get_alpha must sum only the 6 disjoint bloc IDs, not all rows.
+
+        The fixture seeds 7 trade rows: 6 disjoint blocs (total imports
+        2_100_000) plus 'Advanced Technology Products' (800_000). The
+        naive over-sum is 2_900_000 → alpha=0.29. The correct disjoint
+        sum is 2_100_000 → alpha=0.21.
+        """
+        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+
+        source = SQLiteGammaHydrationSource(overlapping_bloc_session_factory)
+
+        alpha = source.get_alpha(2012)
+
+        assert alpha is not None
+        assert alpha == pytest.approx(0.21)
+        assert alpha != pytest.approx(0.29)
+
     def test_year_without_final_demand_data_returns_none(
         self, reference_sqlite_session_factory: sessionmaker[Session]
     ) -> None:
@@ -141,7 +241,7 @@ class TestGetAlpha:
             t2013 = DimTime(year=2013, is_annual=True)
             session.add(t2013)
             session.flush()
-            china = DimCountry(cty_code="CHN", country_name="China")
+            china = DimCountry(country_id=12, cty_code="CHN", country_name="China")
             session.add(china)
             session.flush()
             session.add(

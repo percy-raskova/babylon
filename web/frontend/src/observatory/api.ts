@@ -26,9 +26,12 @@ export async function fetchStatus(): Promise<ObservatoryStatus | null> {
   return res.status === "ok" ? res.data : null;
 }
 
-/** List sessions with at least one committed tick. */
-export async function fetchSessions(): Promise<ObservatorySession[]> {
-  const res = await get<ObservatorySession[]>(`${BASE}/sessions/`);
+/** List sessions with at least one committed tick, for the given source. */
+export async function fetchSessions(
+  source: "live" | "archive" = "live",
+): Promise<ObservatorySession[]> {
+  const q = source === "archive" ? "?source=archive" : "";
+  const res = await get<ObservatorySession[]>(`${BASE}/sessions/${q}`);
   return res.status === "ok" ? res.data : [];
 }
 
@@ -43,7 +46,7 @@ export async function fetchSeries(
   sessionId: string,
   scope: Scope,
   scopeId: string,
-  opts: { fromTick?: number; toTick?: number } = {},
+  opts: { fromTick?: number; toTick?: number; source?: "live" | "archive" } = {},
 ): Promise<Series | null> {
   const params = new URLSearchParams({ scope });
   if (scope !== "national") {
@@ -54,6 +57,9 @@ export async function fetchSeries(
   }
   if (opts.toTick !== undefined) {
     params.set("to_tick", String(opts.toTick));
+  }
+  if (opts.source === "archive") {
+    params.set("source", "archive");
   }
   const res = await get<Series>(`${BASE}/sessions/${sessionId}/series/?${params.toString()}`);
   return res.status === "ok" ? res.data : null;

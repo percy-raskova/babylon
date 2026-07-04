@@ -20,10 +20,10 @@ const SCOPE_ID_LEN: Record<Scope, number> = { national: 0, state: 2, county: 5 }
 
 interface SeriesBrowserProps {
   session: ObservatorySession;
-  onBack: () => void;
+  source?: "live" | "archive";
 }
 
-export function SeriesBrowser({ session, onBack }: SeriesBrowserProps) {
+export function SeriesBrowser({ session, source = "live" }: SeriesBrowserProps) {
   const [scope, setScope] = useState<Scope>("national");
   const [scopeId, setScopeId] = useState("");
   const [metrics, setMetrics] = useState<SeriesMetric[]>(["v_sum", "s_sum"]);
@@ -40,7 +40,7 @@ export function SeriesBrowser({ session, onBack }: SeriesBrowserProps) {
     }
     let cancelled = false;
     async function load() {
-      const result = await fetchSeries(session.session_id, scope, scopeId);
+      const result = await fetchSeries(session.session_id, scope, scopeId, { source });
       if (!cancelled) {
         setSeries(result);
       }
@@ -49,7 +49,7 @@ export function SeriesBrowser({ session, onBack }: SeriesBrowserProps) {
     return () => {
       cancelled = true;
     };
-  }, [session.session_id, scope, scopeId, scopeReady]);
+  }, [session.session_id, scope, scopeId, scopeReady, source]);
 
   const toggleMetric = (metric: SeriesMetric) =>
     setMetrics((current) =>
@@ -63,12 +63,7 @@ export function SeriesBrowser({ session, onBack }: SeriesBrowserProps) {
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
-      <div className="flex items-center gap-3">
-        <button type="button" onClick={onBack} className="text-xs text-silver hover:text-gold">
-          ← sessions
-        </button>
-        <span className="font-mono text-xs text-ash">{session.session_id}</span>
-      </div>
+      <span className="font-mono text-xs text-ash">{session.session_id}</span>
 
       <div className="flex flex-wrap items-center gap-3">
         <select

@@ -216,10 +216,43 @@ re-baselines after the contradiction semantics change.
 - EndgameDetector docstring claims REVOLUTIONARY_VICTORY-first priority; code
   checks it last (FR-033).
 - Django `accounts` app has no `migrations/` dir.
-- `tests/integration/economics/` has ~34 data-availability failures
-  (NoDataSentinel — LODES rows absent from the reference DB build;
-  spec-086/097/098 remediation territory). Untouched by the 2026-07-03
-  programs; not migration breakage.
+- `tests/integration/economics/` had ~34 NoDataSentinel results (21 FAILED +
+  11 SKIPPED). **RESOLVED 2026-07-04 (spec-098 slice)**: LODES data was never
+  missing (`fact_lodes_commuter_flow` fully loaded, 2010-2021). The real cause
+  was `src/babylon/economics/throughput/adapters.py` reading the pre-spec-086
+  `fact_qcew_annual` shape (`own_code='0'` total rollup + 2-digit sectors);
+  post-086 that table is 6-digit-leaf-only and the county total moved to
+  `fact_qcew_county_rollup`. Fixed by pointing the total-employment read at
+  the rollup table and aggregating leaves to sector via
+  `dim_industry.sector_code`. The remaining 11 skips were a `TEST_YEAR=2022`
+  hardcode in `tests/integration/economics/test_throughput_validation.py`
+  exceeding LODES's max year (2021); LODES-dependent tests now pin to a
+  separate `LODES_YEAR = 2021` constant. Baseline-neutral: the throughput
+  calculator is unwired in the canonical runner. Net: 21 FAILED + 43 SKIPPED
+  (whole-file baseline including test_detroit_wiring.py) → 6 FAILED + 28
+  SKIPPED — see the two new items below for what's left.
+- **NEW (spec-098 slice, un-skipping LODES tests surfaced this)**: 3
+  `TestDetroitCommuterPatterns`/`TestCommuterAdjustedMetricsIntegration` tests
+  in `test_throughput_validation.py` fail on real data: Oakland County, MI is
+  a net job IMPORTER in every available LODES year (2019-2021, e.g. 2021:
+  +166,150), not the "bedroom community net exporter" the tests assume —
+  and this holds across years, so it isn't a 2021-pandemic artifact. This is
+  a pre-existing incorrect empirical assumption in the Feature-014 tests,
+  only now exercised (previously masked because `TEST_YEAR=2022` made them
+  skip unconditionally). Left failing deliberately — flagged inline in the
+  test file — pending an owner call on whether to correct the assertions or
+  investigate further. Out of scope for the QCEW-adapter fix.
+- **NEW (spec-098 slice)**: `TestCorrelationAnalysis::test_high_pi_wage_correlation`
+  and `::test_throughput_class_correlation` (200-county samples) now take
+  ~400s/~370s each once QCEW data actually flows (previously failed instantly
+  on the schema-drift bug). Each `SQLiteQCEWCountyNAICSSource` call opens its
+  own session/query; not fixed in this slice (correctness-only fix; flagged
+  for a future batching/session-reuse pass if `tests/integration/economics/`
+  runtime becomes a problem).
+- 3 `test_detroit_wiring.py` failures ("No tick dynamics snapshots after 52
+  ticks" / empty time-series) are a separate engine-wiring bug (MELT
+  unavailable for year 2022), unrelated to LODES/QCEW; predate and are
+  unaffected by the spec-098 slice.
 - `mise run test:doctest` is broken (models→formulas circular import under
   `--doctest-modules`); pre-existing, fails identically before Amendment L.
 - Django `game` app has model changes with no migration written

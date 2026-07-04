@@ -562,6 +562,23 @@ def game_alerts(request: Request, game_id: str) -> JsonResponse:
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_wire(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/wire/ - The Wire feed (spec 094).
+
+    Returns a WireFeed dict produced by the DeterministicNarrator over the
+    session's journal events. Constitution III: narrator is a pure function
+    with no engine state writes.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_wire_feed(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
 # ---------------------------------------------------------------------- #
 # Spatial Multi-Scale Endpoints
 # ---------------------------------------------------------------------- #

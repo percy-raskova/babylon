@@ -843,6 +843,45 @@ class EngineBridge:
         ]
         return {"alerts": alerts}
 
+    def get_wire_feed(self, session_id: UUID) -> dict[str, Any]:
+        """Return the Wire feed (spec 094) — a WireFeed dict produced by the
+        DeterministicNarrator over the session's journal events.
+
+        Sources the same ``tick_event`` rows as :meth:`get_journal_dashboard`,
+        builds presentation metadata from the session, and passes both through
+        a :class:`~game.narrator.DeterministicNarrator` (pure function, no
+        engine state writes — Constitution III). The narrator is deterministic:
+        same events produce byte-identical output (R-NARR).
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            WireFeed dict matching ``specs/094-the-wire/contracts/wire.yaml``.
+        """
+        from game.narrator import DeterministicNarrator
+
+        journal = self.get_journal_dashboard(session_id)
+        events = journal.get("events", [])
+
+        # Build meta from session + events
+        state, _graph = self.hydrate_state(session_id)
+        tick = state.tick
+        meta = {
+            "tick": tick,
+            "session": str(session_id),
+            "operator": "RASKOVA-2",
+            "freq": "88.7 MHz",
+            "qth": "WAYNE CO / GRID EN82",
+            "classification": "TS//SI//NOFORN",
+            "cable_id": f"{tick:04d}-A",
+            "page_of": "001/001",
+            "timestamp_utc": "2026-05-12T08:47:22Z",
+        }
+
+        narrator = DeterministicNarrator()
+        return narrator.narrate(events, meta)
+
     # ------------------------------------------------------------------ #
     # Inspector Views
     # ------------------------------------------------------------------ #

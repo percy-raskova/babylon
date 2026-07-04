@@ -681,6 +681,79 @@ class TestAlertsDashboard:
         assert result["alerts"][0]["type"] == "uprising"
 
 
+@pytest.mark.unit
+class TestWireFeed:
+    """Spec 094: get_wire_feed produces a WireFeed via DeterministicNarrator."""
+
+    def test_returns_valid_wirefeed_shape(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 1,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": "org1",
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising erupts",
+                "detail": {"org_id": "org1", "territory_id": "t_hamtramck"},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_wire_feed(sid)
+
+        assert "meta" in result
+        assert "index" in result
+        assert "euphemisms" in result
+        assert "story" in result
+        assert "filters" in result
+        assert len(result["filters"]) == 5
+        assert len(result["index"]) == 1
+
+    def test_empty_events_produces_empty_feed(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_session_events = None
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_wire_feed(uuid.uuid4())
+
+        assert result["index"] == []
+        assert result["euphemisms"] == {}
+        assert result["story"] is None
+        assert len(result["filters"]) == 5
+
+    def test_feed_is_deterministic(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 1,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": "org1",
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising",
+                "detail": {"territory_id": "t_hamtramck"},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        import json
+
+        out_a = bridge.get_wire_feed(sid)
+        out_b = bridge.get_wire_feed(sid)
+        assert json.dumps(out_a, sort_keys=True) == json.dumps(out_b, sort_keys=True)
+
+
 # --------------------------------------------------------------------- #
 # Spec 093: Territory Detail / Org Detail / Map Lens Set — shared fixture
 # --------------------------------------------------------------------- #

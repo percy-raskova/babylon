@@ -42,6 +42,7 @@ urlpatterns: list[URLPattern] = [
     ),
     path("games/<str:game_id>/journal/", api.game_journal, name="game-journal"),
     path("games/<str:game_id>/alerts/", api.game_alerts, name="game-alerts"),
+    path("games/<str:game_id>/wire/", api.game_wire, name="game-wire"),
     # API: Spatial Multi-Scale
     path("games/<str:game_id>/orgs/network/", api.org_network, name="org-network"),
     path(

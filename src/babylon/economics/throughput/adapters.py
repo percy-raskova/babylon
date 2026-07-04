@@ -71,6 +71,12 @@ def _sector_codes_for(naics_2digit: str) -> list[str]:
 
 
 # NAICS codes for 2-digit sectors used in supply chain depth calculation
+#
+# Known pre-existing coverage gap (spec-098 review, unchanged by this PR):
+# sector_code='99' ("Nonclassifiable establishments") is a real, populated
+# QCEW sector (22k+ leaf rows) that is NOT included here, so its employment
+# is silently excluded from get_county_employment_by_naics()/sector coverage
+# metrics. This predates the spec-086/098 adapter fixes and is left as-is.
 NAICS_2DIGIT_SECTORS = [
     "11",  # Agriculture
     "21",  # Mining

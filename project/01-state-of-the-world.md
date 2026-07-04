@@ -249,10 +249,24 @@ re-baselines after the contradiction semantics change.
   own session/query; not fixed in this slice (correctness-only fix; flagged
   for a future batching/session-reuse pass if `tests/integration/economics/`
   runtime becomes a problem).
-- 3 `test_detroit_wiring.py` failures ("No tick dynamics snapshots after 52
-  ticks" / empty time-series) are a separate engine-wiring bug (MELT
-  unavailable for year 2022), unrelated to LODES/QCEW; predate and are
-  unaffected by the spec-098 slice.
+- **CORRECTED (spec-098 review #2)**: the 3 `test_detroit_wiring.py` failures
+  ("No tick dynamics snapshots after 52 ticks" / empty time-series) were
+  previously mischaracterized above as "unrelated to LODES/QCEW". They are
+  actually the SAME spec-086 QCEW-schema-drift bug class as the throughput
+  fix, manifesting in an unpatched sibling adapter:
+  `SQLiteQCEWNationalEmploymentSource.get_national_employment` in
+  `src/babylon/economics/melt/adapters.py` still queried `fact_qcew_annual`
+  with `own_code='0'` + `naics_code='10'` (the pre-086 "total" row
+  convention) — both filters match zero rows post-086, so
+  `DefaultMELTCalculator.get_melt` returned `NoDataSentinel` ("Employment
+  data unavailable") for every year, which is what
+  `TickDynamics Step 2: MELT unavailable for year 2022` was logging. Same
+  trivial fix pattern as the throughput adapters: read the county
+  Total-Covered figure from
+  `fact_qcew_county_rollup` (own_code='0') and SUM across all counties
+  (the rollup table has no industry dimension, so no sector aggregation is
+  needed). Fixed in this slice — all 6 `test_detroit_wiring.py` tests now
+  pass (previously 3 failed).
 - `mise run test:doctest` is broken (models→formulas circular import under
   `--doctest-modules`); pre-existing, fails identically before Amendment L.
 - Django `game` app has model changes with no migration written

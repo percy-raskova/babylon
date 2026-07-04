@@ -21,8 +21,10 @@ from babylon.economics.throughput.adapters import (
     NAICS_2DIGIT_SECTORS,
     SQLiteBEACountyGDPSource,
     SQLiteQCEWCountyNAICSSource,
+    _sector_codes_for,
 )
 from babylon.reference.database import get_normalized_session_factory
+from babylon.reference.schema import DimIndustry
 
 # Mark all tests in this module as integration tests (require actual database)
 pytestmark = pytest.mark.integration
@@ -282,6 +284,26 @@ class TestNAICS2DigitSectors:
         expected = ["11", "21", "52", "62", "72", "92"]
         for sector in expected:
             assert sector in NAICS_2DIGIT_SECTORS, f"Missing sector {sector}"
+
+    def test_sector_codes_for_map_to_real_dim_industry_rows(self, session_factory):
+        """Guard ``_sector_codes_for``'s mapping against DB drift.
+
+        The unit tests in ``test_adapters_sector_expansion.py`` only restate
+        the function's own hardcoded ``ranges`` dict. This integration test
+        additionally verifies each expanded sector_code actually exists in
+        ``dim_industry`` for every adapter label, so a future reference-DB
+        rebuild that drops/renames a sector_code would be caught here.
+        """
+        with session_factory() as session:
+            existing_codes = {
+                row[0] for row in session.query(DimIndustry.sector_code).distinct().all()
+            }
+
+        for label in NAICS_2DIGIT_SECTORS:
+            for code in _sector_codes_for(label):
+                assert code in existing_codes, (
+                    f"{label} -> {code} does not exist in dim_industry.sector_code"
+                )
 
 
 class TestThroughputPositionValidation:

@@ -1,0 +1,110 @@
+ADR054_spec_071_reactionary_subject:
+  status: "accepted"
+  date: "2026-07-04"
+  title: "The Reactionary Subject — FascistFactionSystem + entitlement/chauvinism/volatility (spec-071)"
+  spec: "071-reactionary-subject"
+
+  context: |
+    The 2026-07-02 work built HEGEMONY: US core county workers hydrate as
+    LABOR_ARISTOCRACY, super-waged out of imperial rent (Phi), pacified with
+    P(S|A)->0.995 while agitation stays flat (crisis-gated). spec-071 is the
+    catalog's Wave-1 next unit and the OTHER branch of the George Jackson
+    bifurcation (Constitution I.4): what the bribed strata DO when the bribe
+    decays. When Phi falls, agitation that would route to revolution under
+    solidarity instead routes to FASCISM in its absence. It consumes the two
+    2026-07-03 foundations: ADR051 dialectics (the StanceIntervention /
+    opposition_interventions hook was designed FOR 071) and ADR052 rustworkx
+    substrate.
+
+    No user was available for speckit.clarify; ambiguities were resolved from
+    the kit docs + theory grounding and recorded in
+    specs/071-reactionary-subject/spec.md "Decisions" (D1-D6).
+
+  decision: |
+    Implement the full catalog entry on branch 071-reactionary-subject
+    (speckit lifecycle: spec -> plan -> tasks -> implement; TDD throughout).
+    Load-bearing decisions:
+
+      1. **SocialClass gains four frozen Intensity/optional fields**:
+         entitlement (role-defaulted P=0.2, C_la=0.8, C_pb=0.7, L_u=0.0),
+         volatility (L_u=0.8), fascist_alignment (drift accumulator), and
+         aligned_faction_id (the fascist faction that captured the node).
+         Role-defaulting mirrors _set_subsistence_multiplier_from_role; the
+         model-constant maps are pinned == ReactionaryDefines by test.
+
+      2. **New FascistFactionSystem at pipeline position 17.4** (D1): after
+         ConsciousnessSystem @17 (this tick's agitation), before
+         SovereigntySystem @17.5; classified CONSEQUENCE (spec-056 partition).
+         Per tick, for active C_la / C_pb nodes:
+         Fascist_Pull = Agitation * (Entitlement / (Solidarity + eps)); above
+         threshold it drifts fascist_alignment (+0.05) + emits FASCIST_DRIFT +
+         pushes a signed StanceIntervention onto opposition_interventions
+         (D5 — the pull moves the LIVE opposition registry, not a private
+         counter; III.10 earn-its-keep). At alignment >= 1.0 with a fascist
+         faction present it captures the node (aligned_faction_id set,
+         FASCIST_RECRUITMENT). READS dialectical_regime (never recomputes it).
+
+      3. **Chauvinism / defection / RED_BROWN_COUP**: chauvinism accrues on
+         org->LA MEMBERSHIP edges (base 0.01, +0.02 super-waged); on crisis
+         events each member rolls sigmoid(chi - discipline) (seed-deterministic
+         RNG), firing ORGANIZATIONAL_FRACTURE, and >50% -> RED_BROWN_COUP.
+
+      4. **Fascist-faction predicate** (D2): a BalkanizationFaction is
+         "fascist" iff is_settler_formation AND colonial_stance==UPHOLD, or its
+         ideology matches {fascist, reaction, revanch, settler}. Reassignment
+         is a class-level attribution (aligned_faction_id), NOT an INFLUENCES
+         edge mutation (I.20 keeps INFLUENCES as territory overlays).
+
+      5. **Volatility -> SPONTANEOUS_RIOT in StruggleSystem** (D6): L_u
+         disorder gated deterministically on volatility*(1-org_discipline) >
+         threshold — destroys wealth, builds NO solidarity (the reactionary
+         inverse of the George Floyd UPRISING).
+
+      6. **Fascist OODA verbs** POGROM/LOCKOUT/VIGILANTISM resolve in
+         action_effects with material graph effects; RED_BROWN_COUP is
+         auto-triggered by the system (eligibility False for all org types).
+
+      7. **DecompositionSystem carceral-enforcer gap closed via CREATE-ON-
+         DEMAND** (D4): the enforcer / internal-proletariat targets are created
+         with deterministic pattern-valid ids when absent — baseline-preserving
+         (the canonical decade never decomposes) vs per-county seeding which
+         would move the baseline.
+
+      8. **RLF simplex constraints** (ADR051 SS9.4, deferred to 071): the
+         f->r transition is ε-gated on (proletarianizing AND adjacent-r AND
+         solidarity) — breaks detailed balance, no potential function;
+         assimilation_ratio = f/(l+f); ideological_contestation = H/log3 is a
+         permutation-symmetric DIAGNOSTIC (cannot carry the Jackson asymmetry).
+
+      All numeric constants live in a new ReactionaryDefines (III.1); all four
+      reactionary formulas carry doctests.
+
+  rationale:
+    crisis_gated: |
+      Fascist_Pull is agitation-driven, and agitation is crisis-gated
+      (project/02 SS4). During the pacified canonical decade agitation ~= 0, so
+      Fascist_Pull ~= 0 and no drift/intervention fires — the always-on system
+      is dormant. This is WHY the R-PROOF tri-county 5-tick gate is
+      byte-identical (Delta=0.000%), needing no baseline regeneration.
+    stance_hook_over_counter: |
+      Expressing the pull as a StanceIntervention (the ADR051 071-hook) rather
+      than a parallel counter satisfies III.10 (earn-its-keep) and VIII.11
+      (no add-only ratchet); fascist_alignment is a bounded [0,1] accumulator
+      whose >=1.0 crossing is a legitimate I.7 quantity->quality capture.
+
+  consequences:
+    positive:
+      - "The fascism pole of I.4 is now executable; the reactionary mass base forms under crisis."
+      - "R-PROOF byte-identical (Delta=0.000%): no canonical dynamics regression."
+      - "Carceral-enforcer decomposition gap (project/02 SS5b) closed for crisis runs."
+      - "26 default systems; EventType 79; ActionType 25; 4 new reactionary formulas."
+    negative:
+      - "SPONTANEOUS_RIOT is a deterministic threshold gate (not stochastic); a chronically volatile, undisciplined L_u can riot repeatedly. Dormant in canonical (no L_u); refine to a stochastic/cooldown model in a later spec if desired."
+      - "Full autonomous org SELECTION of POGROM/LOCKOUT/VIGILANTISM (which reactionary org chooses which verb) is deferred to the Wave-2/3 AI-decision specs; 071 ships eligibility + resolution effects."
+      - "aligned_faction_id adds a 4th SocialClass field beyond the catalog's three (needed to persist the capture target)."
+
+  verification:
+    - "mise run check (lint + format + typecheck + unit) green."
+    - "tests/integration/test_bridge_income_circuit.py green (hegemony holds)."
+    - "mise run qa:e2e-regression: liveness 3/3, total_v Delta=0.000%, no conservation criticals."
+    - "Induced-crisis engine-integration test: drift -> saturation -> FASCIST_RECRUITMENT, deterministic (SC-001/SC-007)."

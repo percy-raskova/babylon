@@ -48,6 +48,17 @@ const LEGACY_SIBLINGS = [
   "components/inspector/Inspector.tsx",
 ];
 
+// Deletion-debris orphaned by the god-page removal (GameView imported the
+// first four; ActionPage imported VerbShell). None had a referrer or test;
+// scheduled specs rebuild these surfaces fresh from the design canon (§4).
+const REMOVED_ORPHANS = [
+  "components/ActionPanel.tsx",
+  "components/TickResults.tsx",
+  "components/ResourcePanel.tsx",
+  "components/TrapIndicator.tsx",
+  "components/action/VerbShell.tsx",
+];
+
 describe("frontend consolidation (spec-091)", () => {
   it(`no source file imports the retired ${LIB} map library`, () => {
     const importRe = new RegExp(`from\\s+["'](react-)?${LIB}`);
@@ -60,6 +71,10 @@ describe("frontend consolidation (spec-091)", () => {
   });
 
   it.each(LEGACY_SIBLINGS)("legacy sibling %s is deleted", (rel) => {
+    expect(existsSync(join(SRC, rel))).toBe(false);
+  });
+
+  it.each(REMOVED_ORPHANS)("deletion-debris orphan %s is removed", (rel) => {
     expect(existsSync(join(SRC, rel))).toBe(false);
   });
 

@@ -79,7 +79,7 @@ export function BreakdownTooltip({
           {breakdown.contributors.length > 0 ? (
             <BreakdownTree contributors={breakdown.contributors} format={format} depth={0} />
           ) : (
-            <p className="text-xs text-silver italic">No contributors</p>
+            <p className="text-xs text-silver">No contributors</p>
           )}
           <Popover.Arrow className="fill-wet-concrete" />
         </Popover.Content>

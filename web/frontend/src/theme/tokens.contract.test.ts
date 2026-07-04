@@ -143,12 +143,26 @@ describe("C5 — DATA_RAMPS match canon stops", () => {
 });
 
 describe("C6 — each lens resolves to its canon ramp", () => {
+  // Independently-stated expectation (NOT read back from LENS_DEFINITIONS): the
+  // canonical lens→layer binding. Pinning this here means a regression that
+  // repoints a lens's primaryLayer fails C6 instead of silently passing a
+  // read-back tautology (spec-090 residual e).
+  const EXPECTED_PRIMARY_LAYER: Record<LensId, keyof typeof DATA_RAMPS> = {
+    economic: "rent",
+    political: "consciousness",
+    social: "heat",
+    strategic: "consciousness",
+  };
+
   const lenses: LensId[] = ["economic", "political", "social", "strategic"];
   for (const id of lenses) {
-    it(`${id} lens ramp == DATA_RAMPS[primaryLayer]`, () => {
-      const primary = LENS_DEFINITIONS[id].primaryLayer as keyof typeof DATA_RAMPS;
-      expect(getLensRampStops(id)).toEqual(DATA_RAMPS[primary]);
-      expect(LENS_RAMP_STOPS[id]).toEqual(DATA_RAMPS[primary]);
+    it(`${id} lens is bound to the ${EXPECTED_PRIMARY_LAYER[id]} layer + ramp`, () => {
+      const expected = EXPECTED_PRIMARY_LAYER[id];
+      // 1) the mapping itself is pinned to the independent expectation
+      expect(LENS_DEFINITIONS[id].primaryLayer).toBe(expected);
+      // 2) the resolved ramp matches that layer's canon ramp
+      expect(getLensRampStops(id)).toEqual(DATA_RAMPS[expected]);
+      expect(LENS_RAMP_STOPS[id]).toEqual(DATA_RAMPS[expected]);
     });
   }
 });

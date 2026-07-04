@@ -277,6 +277,53 @@
   --font-display: "Redaction 35", "Major Mono Display", var(--font-sans);
   --font-pixel: "Departure Mono", "VT323", var(--font-mono);
   --font-system: "DIN Alternate", "DIN Next", var(--font-sans);
+
+  /* -------- Semantic type roles (Constitution VIII "SEMANTIC TYPE ROLES") --------
+     Ported from design/mockups/colors_and_type.css (spec-090 residual d). These
+     35 role tokens compose the scale/weight/font tokens above so components can
+     bind to a role (h3, data, code, label…) instead of raw sizes. Headings move
+     to bone+spire (not gold); numeric data is SPIRE, not gold. */
+  --h1-font: var(--font-sans);
+  --h1-size: var(--text-3xl);
+  --h1-weight: var(--weight-bold);
+  --h1-color: var(--babylon-bone);
+  --h1-tracking: var(--tracking-title);
+
+  --h2-font: var(--font-sans);
+  --h2-size: var(--text-2xl);
+  --h2-weight: var(--weight-semibold);
+  --h2-color: var(--babylon-bone);
+  --h2-tracking: normal;
+
+  --h3-font: var(--font-sans);
+  --h3-size: var(--text-xl);
+  --h3-weight: var(--weight-semibold);
+  --h3-color: var(--babylon-spire);
+  --h3-tracking: var(--tracking-label);
+
+  --body-font: var(--font-sans);
+  --body-size: var(--text-base);
+  --body-weight: var(--weight-normal);
+  --body-color: var(--babylon-bone);
+  --body-leading: var(--leading-normal);
+
+  --label-font: var(--font-mono);
+  --label-size: var(--text-xs);
+  --label-weight: var(--weight-medium);
+  --label-color: var(--babylon-fog);
+  --label-tracking: var(--tracking-widest);
+  --label-transform: uppercase;
+
+  --data-font: var(--font-mono);
+  --data-size: var(--text-sm);
+  --data-weight: var(--weight-semibold);
+  --data-color: var(--babylon-spire);
+
+  --code-font: var(--font-mono);
+  --code-size: var(--text-sm);
+  --code-bg: var(--babylon-rebar);
+  --code-color: var(--babylon-solidarity);
+  --code-border: var(--babylon-wet-steel);
 }
 
 /* ================================================================

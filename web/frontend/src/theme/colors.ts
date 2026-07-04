@@ -20,7 +20,14 @@ export type RGBAColor = [number, number, number, number];
 export type RampLayer = "heat" | "consciousness" | "rent" | "biocapacity" | "wealth" | "population";
 
 /**
- * The six canonical luminance-monotonic ramps.
+ * The six canonical data ramps.
+ *
+ * Luminance-monotonic (lightness encodes magnitude) **except** the two named
+ * alarm terminals — heat → laser (``#ff3344``) and rent → thermal
+ * (``#b8321f``) — which sacrifice strict top-end luminance monotonicity for
+ * danger signalling, and the diverging ``biocapacity`` ramp (collapse-red ↔
+ * regenerate-green). Per the Article VII amendment these are intentional,
+ * bounded exceptions, not rainbows.
  *
  * Source of truth: ``design/mockups/preview/colors-data.html``. Stop lists are
  * byte-identical to the canon swatches (pinned by the token-contract test).

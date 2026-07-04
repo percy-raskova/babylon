@@ -106,6 +106,29 @@ class PostgresUnreachableError(RunnerError):
     exit_name = "POSTGRES_UNREACHABLE"
 
 
+class TerminalAggregateResolutionError(RunnerError):
+    """Spec-102 STEP 0: hex rows exist but county resolution yielded zero.
+
+    Guards ``_query_terminal_aggregates`` / ``_county_terminal_snapshot``
+    against the hex_spatial_map contention bug (spec-088 S3): hex rows
+    persist with inline ``county_fips=NULL`` by design — county resolution
+    depends entirely on the GLOBAL ``hex_spatial_map`` table (populated by
+    ``mise run data:tiger-counties``). If a concurrent lane transiently
+    truncates ``hex_spatial_map`` (or the TIGER load never ran) while this
+    session's hex rows already exist, ``COALESCE(m.county_fips,
+    h.county_fips)`` resolves to NULL for every hex row, and
+    ``view_runtime_trace_emission`` silently reports
+    ``counties_alive=0``/``total_v=0`` — a garbage terminal aggregate that
+    looks like a legitimate all-dead-population outcome. This exact bug
+    once nearly shipped as spec-101's auto-refreshed baseline (caught only
+    by manual review). Raising here converts the silent zero into a loud,
+    diagnosable failure instead.
+    """
+
+    exit_code = 5
+    exit_name = "TERMINAL_AGGREGATE_RESOLUTION_FAILURE"
+
+
 class _StrictAbort(RunnerError):
     """Raised by the tick loop when --strict is set and an alarm row appears.
 
@@ -455,6 +478,61 @@ def _query_max_tension(
     return float(row[0])
 
 
+def _assert_county_resolution_or_raise(
+    *,
+    cur: Any,
+    session_id: UUID,
+    terminal_tick: int,
+    resolved_county_count: int,
+) -> None:
+    """Spec-102 STEP 0: fail loud on hex-rows-exist-but-zero-counties-resolved.
+
+    ``resolved_county_count`` is ``COUNT(DISTINCT entity_id)`` (NULLs
+    excluded) from ``view_runtime_trace_emission`` at ``terminal_tick`` —
+    the number of counties the hex→county spatial join actually resolved.
+    When that is zero we independently check whether hex rows exist for
+    this session/tick in ``v_hex_state_asof`` (which does NOT group by
+    county, so it is unaffected by a broken ``hex_spatial_map`` join). If
+    hex rows exist despite zero resolved counties, the COALESCE fallback
+    in the view (``COALESCE(m.county_fips, h.county_fips)``) resolved to
+    NULL for every hex row — the hex_spatial_map contention bug (spec-088
+    S3) — and we raise rather than let the caller silently treat this as
+    a legitimate zero-county outcome.
+
+    Args:
+        cur: Open cursor on the same connection/transaction.
+        session_id: Session UUID being queried.
+        terminal_tick: The tick being aggregated.
+        resolved_county_count: Distinct non-NULL county count already
+            observed by the caller's own query.
+
+    Raises:
+        TerminalAggregateResolutionError: If hex rows exist for this
+            session/tick but zero counties resolved.
+    """
+    if resolved_county_count > 0:
+        return
+    cur.execute(
+        "SELECT COUNT(*) FROM v_hex_state_asof WHERE session_id = %s AND tick = %s",
+        (str(session_id), terminal_tick),
+    )
+    hex_row = cur.fetchone()
+    hex_row_count = int(hex_row[0] or 0) if hex_row else 0
+    if hex_row_count > 0:
+        raise TerminalAggregateResolutionError(
+            f"session={session_id} tick={terminal_tick}: {hex_row_count} hex "
+            "row(s) exist in v_hex_state_asof but county resolution "
+            "(hex_spatial_map join in view_runtime_trace_emission) yielded "
+            "ZERO counties. Refusing to emit a silent counties_alive=0/"
+            "total_v=0 terminal aggregate — this is the known "
+            "hex_spatial_map/TIGER contention bug (spec-088 S3): a "
+            "concurrent lane may have truncated hex_spatial_map during this "
+            "run, or the TIGER county load never ran "
+            "(`mise run data:tiger-counties`). Re-run after confirming "
+            "hex_spatial_map is populated and stable for the run's duration."
+        )
+
+
 def _query_terminal_aggregates(
     *,
     pool: Any,
@@ -466,6 +544,11 @@ def _query_terminal_aggregates(
     Spec-065 T044: reads the actual terminal tick rather than tick 0.
     The bridge persists per-tick rows so the terminal aggregate
     reflects whatever final state the simulation reached.
+
+    Raises:
+        TerminalAggregateResolutionError: Spec-102 STEP 0 — hex rows exist
+            for this session/tick but county resolution yielded zero
+            counties (see :func:`_assert_county_resolution_or_raise`).
     """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
@@ -476,12 +559,21 @@ def _query_terminal_aggregates(
             # writes a consciousness row while a county's engine population
             # is > 0 — so non-NULL ideology at the terminal tick counts
             # counties whose populations are still alive.
-            "       COUNT(*) FILTER (WHERE ideology_r IS NOT NULL) "
+            "       COUNT(*) FILTER (WHERE ideology_r IS NOT NULL), "
+            # Spec-102 STEP 0: distinct resolved counties (NULLs excluded).
+            "       COUNT(DISTINCT entity_id) FILTER (WHERE entity_id IS NOT NULL) "
             "FROM view_runtime_trace_emission "
             "WHERE session_id = %s AND tick = %s",
             (str(session_id), terminal_tick),
         )
         row = cur.fetchone()
+        resolved_county_count = int(row[6] or 0) if row else 0
+        _assert_county_resolution_or_raise(
+            cur=cur,
+            session_id=session_id,
+            terminal_tick=terminal_tick,
+            resolved_county_count=resolved_county_count,
+        )
     counties_alive = int(row[0] or 0) if row else 0
     return {
         "tick": terminal_tick,
@@ -512,6 +604,11 @@ def _county_terminal_snapshot(
     consciousness/demographics/employment columns now flow from the
     bridge-persisted spec-065 subsystem state tables. ``delta_k_vs_initial``
     is computed from the difference between terminal-tick k and tick-0 k.
+
+    Raises:
+        TerminalAggregateResolutionError: Spec-102 STEP 0 — hex rows exist
+            for this session/tick but county resolution yielded zero
+            counties (see :func:`_assert_county_resolution_or_raise`).
     """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
@@ -525,6 +622,13 @@ def _county_terminal_snapshot(
             (str(session_id), terminal_tick),
         )
         terminal = cur.fetchall()
+        resolved_county_count = sum(1 for entity_row in terminal if entity_row[0] is not None)
+        _assert_county_resolution_or_raise(
+            cur=cur,
+            session_id=session_id,
+            terminal_tick=terminal_tick,
+            resolved_county_count=resolved_county_count,
+        )
         cur.execute(
             "SELECT entity_id, k FROM view_runtime_trace_emission "
             "WHERE session_id = %s AND tick = 0",

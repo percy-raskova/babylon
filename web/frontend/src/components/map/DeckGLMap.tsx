@@ -8,7 +8,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { DeckGL } from "@deck.gl/react";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
-import { ScatterplotLayer } from "@deck.gl/layers";
+import { PolygonLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useMapStore } from "@/stores/mapStore";
@@ -17,8 +17,67 @@ import { getColorScale, type RGBAColor } from "@/theme/colors";
 import { MapLegend } from "@/components/map/MapLegend";
 import { HexTooltip } from "@/components/map/HexTooltip";
 import { FramingSelector } from "@/components/map/FramingSelector";
+import { MapModeSelector } from "@/components/map/MapModeSelector";
+import { buildLensLayers, type RingSpec, type HullSpec } from "@/components/map/mapLensLayers";
+import { hullPolygonForTerritories } from "@/components/map/mapLensGeometry";
 import { useNavigate, useParams } from "react-router";
 import type { GameSnapshot, TerritoryState, MapLayer } from "@/types/game";
+
+type H3Territory = TerritoryState & { h3_index: string };
+
+/**
+ * Concentric influence rings (stance/collapse lenses only) — one
+ * `H3HexagonLayer` per ring, reusing `coverage` to shrink each hex to the
+ * ring's scale (1.0/0.62/0.30), per `map-canvas.jsx`'s `RING_SCALES`.
+ */
+function buildRingLayers(rings: RingSpec[], h3Territories: H3Territory[]): H3HexagonLayer[] {
+  const layers: H3HexagonLayer[] = [];
+  for (const ring of rings) {
+    const territory = h3Territories.find((t) => t.id === ring.territoryId);
+    if (!territory) continue;
+    layers.push(
+      new H3HexagonLayer({
+        id: `lens-ring-${ring.territoryId}-${ring.scale}`,
+        data: [territory],
+        getHexagon: (t: H3Territory) => t.h3_index,
+        getFillColor: () => ring.color,
+        coverage: ring.scale,
+        getElevation: 0,
+        extruded: false,
+        pickable: false,
+        stroked: false,
+      }),
+    );
+  }
+  return layers;
+}
+
+/**
+ * Sovereign CLAIMS hulls — geographic overlay derived ONLY from
+ * `SovereignSummary.claimed_territory_ids` (Constitution VIII.9: never
+ * hyperedge/community data).
+ */
+function buildClaimsHullLayers(hulls: HullSpec[], h3Territories: H3Territory[]): PolygonLayer[] {
+  const layers: PolygonLayer[] = [];
+  for (const hull of hulls) {
+    const polygon = hullPolygonForTerritories(hull.territoryIds, h3Territories);
+    if (!polygon) continue;
+    layers.push(
+      new PolygonLayer({
+        id: `claims-hull-${hull.sovereignId}`,
+        data: [{ polygon }],
+        getPolygon: (d: { polygon: [number, number][] }) => d.polygon,
+        getFillColor: [0, 0, 0, 0],
+        getLineColor: hull.color,
+        lineWidthMinPixels: 2,
+        filled: false,
+        stroked: true,
+        pickable: false,
+      }),
+    );
+  }
+  return layers;
+}
 
 /** Dark basemap style with actual map tiles (Carto Dark Matter). */
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
@@ -64,6 +123,8 @@ interface DeckGLMapProps {
 export function DeckGLMap({ snapshot }: DeckGLMapProps) {
   const activeLayer = useMapStore((s) => s.activeLayer);
   const layerOpacity = useMapStore((s) => s.layerOpacity);
+  const lensMode = useMapStore((s) => s.lensMode);
+  const factionFilter = useMapStore((s) => s.factionFilter);
   const navigate = useNavigate();
   const { id: gameId = "" } = useParams<{ id: string }>();
   const [hoverInfo, setHoverInfo] = useState<{
@@ -73,16 +134,39 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
   } | null>(null);
 
   const territories = snapshot.territories;
+  const balkanization = snapshot.balkanization ?? null;
   const colorScale = useMemo(() => getColorScale(activeLayer), [activeLayer]);
 
   const hasH3 = useMemo(() => territories.some((t) => t.h3_index != null), [territories]);
 
+  // Spec-093 US3: political-topology lens (stance/heat/habitability/faction/
+  // collapse) over spec-070 balkanization data. Distinct axis from
+  // `activeLayer`'s single-metric ramp. Degrades to `null` (no lens layer,
+  // falls back to `activeLayer`'s existing fill) when the session has no
+  // balkanization data yet — see `mapLensLayers.ts`'s module docstring.
+  const lensResult = useMemo(() => {
+    if (!balkanization) return null;
+    return buildLensLayers({
+      territories: territories.map((t) => ({
+        id: t.id,
+        h3_index: t.h3_index,
+        heat: t.heat,
+        biocapacity: t.biocapacity,
+        max_biocapacity: 100,
+      })),
+      balkanization,
+      lensMode,
+      factionFilter,
+    });
+  }, [territories, balkanization, lensMode, factionFilter]);
+
   const getColor = useCallback(
     (t: TerritoryState): RGBAColor => {
+      if (lensResult) return lensResult.getFillColor(t.id);
       const v = Math.max(0, Math.min(1, getMetricValue(t, activeLayer)));
       return colorScale(v);
     },
-    [activeLayer, colorScale],
+    [activeLayer, colorScale, lensResult],
   );
 
   const layers = useMemo(() => {
@@ -90,22 +174,26 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
       const h3Territories = territories.filter(
         (t): t is TerritoryState & { h3_index: string } => t.h3_index != null,
       );
+      const baseHexLayer = new H3HexagonLayer<TerritoryState & { h3_index: string }>({
+        id: "h3-hexagons",
+        data: h3Territories,
+        getHexagon: (t) => t.h3_index,
+        getFillColor: getColor,
+        getElevation: 0,
+        extruded: false,
+        opacity: layerOpacity,
+        pickable: true,
+        autoHighlight: true,
+        highlightColor: [200, 168, 96, 180],
+        updateTriggers: {
+          getFillColor: [activeLayer, lensMode, factionFilter],
+        },
+      });
+      if (!lensResult) return [baseHexLayer];
       return [
-        new H3HexagonLayer<TerritoryState & { h3_index: string }>({
-          id: "h3-hexagons",
-          data: h3Territories,
-          getHexagon: (t) => t.h3_index,
-          getFillColor: getColor,
-          getElevation: 0,
-          extruded: false,
-          opacity: layerOpacity,
-          pickable: true,
-          autoHighlight: true,
-          highlightColor: [200, 168, 96, 180],
-          updateTriggers: {
-            getFillColor: [activeLayer],
-          },
-        }),
+        baseHexLayer,
+        ...buildRingLayers(lensResult.rings, h3Territories),
+        ...buildClaimsHullLayers(lensResult.hulls, h3Territories),
       ];
     }
 
@@ -133,17 +221,39 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
         autoHighlight: true,
         highlightColor: [200, 168, 96, 180],
         updateTriggers: {
-          getFillColor: [activeLayer],
+          getFillColor: [activeLayer, lensMode, factionFilter],
         },
       }),
     ];
-  }, [territories, hasH3, getColor, layerOpacity, activeLayer]);
+  }, [
+    territories,
+    hasH3,
+    getColor,
+    layerOpacity,
+    activeLayer,
+    lensMode,
+    factionFilter,
+    lensResult,
+  ]);
 
   return (
     <div className="relative flex h-full flex-col">
       {/* Controls */}
-      <div className="absolute left-3 top-3 z-10 rounded-md bg-void/80 p-2 backdrop-blur-sm">
+      <div className="absolute left-3 top-3 z-10 flex flex-col gap-2 rounded-md bg-void/80 p-2 backdrop-blur-sm">
         <MapLegend />
+        {lensResult && (
+          <span
+            data-testid="lens-legend-label"
+            className="text-[10px] uppercase tracking-wider text-ash"
+          >
+            {lensResult.legendLabel}
+          </span>
+        )}
+      </div>
+
+      {/* Political-topology lens mode selector */}
+      <div className="absolute right-3 top-3 z-10">
+        <MapModeSelector />
       </div>
 
       {/* Framing level selector */}

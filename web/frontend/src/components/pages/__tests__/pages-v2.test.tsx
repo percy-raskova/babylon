@@ -47,7 +47,9 @@ describe("BriefingPage", () => {
 
   it("renders sparkline metrics strip", () => {
     renderAtRoute("/games/g1", <BriefingPage />);
-    expect(screen.getByText("HEAT")).toBeInTheDocument();
+    // "HEAT" also appears as the map's lens-mode button (spec-093
+    // MapModeSelector) — no longer a unique text on this page.
+    expect(screen.getAllByText("HEAT").length).toBeGreaterThan(0);
   });
 
   it("renders critical event dispatch", () => {

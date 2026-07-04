@@ -45,6 +45,19 @@ export interface GameSnapshot {
   traps?: TrapDetectionResult;
   derived: DerivedBlock;
   endgame?: EndgameData;
+  /**
+   * Spec-070 political-topology extension (spec-093 US3): factions,
+   * sovereigns, and per-territory influence, sourced from
+   * `GraphProtocol.query_faction_influence_by_territory` /
+   * `query_sovereign_claims` / `query_territory_claims`. Absent (or
+   * `null`) when the session has no balkanization graph data yet (see
+   * `specs/093-territory-org-detail/research.md` Q7) — the map lens set
+   * degrades to an explicit "no data" legend in that case, never a
+   * fabricated fill. Distinct from `hyperedges` (Constitution VIII.9):
+   * this block is never derived from, and never renders as, hyperedge/
+   * community membership.
+   */
+  balkanization?: import("@/components/map/mapLensLayers").BalkanizationBlock | null;
 }
 
 /** Trap detection output from the engine. */

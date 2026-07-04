@@ -67,9 +67,12 @@ describe("BriefingPage — first-class map", () => {
 describe("BriefingPage — lean strip (course-correction Phase 6)", () => {
   it("renders the six-metric sparkline strip", () => {
     renderBriefing();
-    for (const label of ["RENT", "CON", "SOL", "HEAT", "WEALTH", "BIOCAP"]) {
+    for (const label of ["RENT", "CON", "SOL", "WEALTH", "BIOCAP"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+    // "HEAT" also appears as the map's lens-mode button (spec-093
+    // MapModeSelector) — no longer unique on this page.
+    expect(screen.getAllByText("HEAT").length).toBeGreaterThan(0);
   });
 
   it("renders the End-Turn / Take-Actions call-to-action", () => {

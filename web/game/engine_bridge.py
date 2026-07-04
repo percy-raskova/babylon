@@ -2210,6 +2210,20 @@ def _game_event_from_tick_event_row(row: dict[str, Any]) -> dict[str, Any]:
     data = detail if isinstance(detail, dict) else {}
     severity = row.get("severity") or _classify_event(event_type)
     return {
+        # Spec-092 review (cheap minor, documented not aligned): this is
+        # NOT the same id as the deterministic UUID5 :func:`_serialize_event`
+        # computes for the live per-tick snapshot (over session/tick/
+        # event_type/data). The tick_event table has no column to persist
+        # that UUID5 — only the SQL-native `event_id SERIAL` — so the
+        # journal/alerts read path reconstructs a different, but still
+        # stable-per-row, id from the composite PK instead. The two id
+        # schemes never collide in the same render today (EventLogPage only
+        # reads the journal path; TickResolutionPage renders live-snapshot
+        # events and persisted alerts in separate steps keyed by step
+        # label, not event id), so this is a latent inconsistency, not a
+        # live bug. A real fix would add a `uuid5_id` column to tick_event
+        # and thread it through `_tick_event_row`; deferred as a bigger
+        # lift than this pass's scope.
         "id": f"{row.get('game_id')}-{row.get('tick')}-{row.get('event_id')}",
         "type": event_type,
         "tick": int(row.get("tick", 0)),

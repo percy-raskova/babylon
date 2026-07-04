@@ -156,7 +156,11 @@ class TestCommitsAndHex:
         for r in records:
             assert len(r["determinism_hash"]) == 64
             assert isinstance(r["is_checkpoint"], bool)
-            assert r["hex_rows_written"] >= 0
+        # De-tautologized: the sparse schedule writes a checkpoint frame (2),
+        # then single-hex deltas (1, 1), then a pure carry-forward tick (0).
+        assert [r["hex_rows_written"] for r in records] == list(
+            seeded_session.expected_rows_written
+        )
 
     def test_commit_chain_bounded_by_range(
         self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any
@@ -188,11 +192,42 @@ class TestCommitsAndHex:
         assert resp.status_code == 200
         hexes = body["data"]["hexes"]
         assert len(hexes) == 2  # both seeded hexes reconstruct at the tick
-        # Value tuple comes straight from the delta store (h.c), unaffected by
-        # the global hex_spatial_map COALESCE in the as-of view. At tick 3,
-        # scale=1.3 -> c = 10 * 1.3 = 13.0.
-        assert all(h["c"] == pytest.approx(13.0) for h in hexes)
-        assert {h["h3_index"] for h in hexes} == {"872a91055ffffff", "872a9105bffffff"}
+        assert {h["h3_index"] for h in hexes} == {seeded_session.h3_a, seeded_session.h3_b}
+        # At max_tick (a pure carry-forward tick) the value tuple is the one
+        # carried forward from earlier deltas (A's from tick 1, B's from tick 2).
+        assert {h["h3_index"]: h["v"] for h in hexes} == pytest.approx(seeded_session.carry_v)
+
+    def test_sparse_carry_forward_reconstruction(
+        self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any
+    ) -> None:
+        # II.11 / sparse-hex gotcha: the LAST tick writes ZERO hex rows, yet the
+        # as-of view must reconstruct the full frame by carrying forward the most
+        # recent delta/checkpoint value for every hex.
+        assert seeded_session.expected_rows_written[-1] == 0  # pure carry-forward tick
+
+        with django_db_blocker.unblock():
+            commits = _json(
+                _call(
+                    views.observatory_commits,
+                    f"/api/observatory/sessions/{seeded_session.session_id}/commits/",
+                    session_id=str(seeded_session.session_id),
+                )
+            )["data"]
+            frame = _json(
+                _call(
+                    views.observatory_hex,
+                    f"/api/observatory/sessions/{seeded_session.session_id}/hex/",
+                    session_id=str(seeded_session.session_id),
+                    tick=seeded_session.max_tick,
+                )
+            )["data"]
+        # The DB confirms zero hex rows were written at the last tick...
+        assert commits[seeded_session.max_tick]["hex_rows_written"] == 0
+        # ...yet the endpoint reconstructs BOTH hexes with their carried values.
+        assert len(frame["hexes"]) == 2
+        assert {h["h3_index"]: h["v"] for h in frame["hexes"]} == pytest.approx(
+            seeded_session.carry_v
+        )
 
     def test_hex_county_filter(
         self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any

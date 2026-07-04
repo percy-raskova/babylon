@@ -34,6 +34,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # GeoDjango — the default DB engine is the PostGIS backend
+    # (``django.contrib.gis.db.backends.postgis``); the app must be installed
+    # so spatial ORM features, admin widgets, and management commands load.
+    "django.contrib.gis",
     # Third-party
     "rest_framework",
     "corsheaders",

@@ -21,9 +21,14 @@ solidarity — routes to fascism. Each tick:
    crisis events, roll defection -> ORGANIZATIONAL_FRACTURE / RED_BROWN_COUP
    (spec-071 US2).
 
-Reads the ``dialectical_regime`` graph attribute (ContradictionSystem @18)
-rather than recomputing regime classification (FR-009). Determinism (III.7):
-sorted iteration + the seed RNG (:func:`_resolve_rng`).
+Reads the ``dialectical_regime`` graph attribute (FR-009 — never recomputes
+regime classification). NOTE the one-tick lag: ContradictionSystem @18 writes
+``dialectical_regime`` AFTER this system @17.4, so on tick N this reads tick
+N-1's regime (empty on tick 1). It is surfaced in the FASCIST_DRIFT event
+payload as observability only — the regime NEVER gates dynamics (the crisis
+gate is agitation, computed same-tick by ConsciousnessSystem @17), so the
+one-tick staleness is immaterial. Determinism (III.7): sorted iteration + the
+seed RNG (:func:`_resolve_rng`).
 """
 
 from __future__ import annotations
@@ -194,7 +199,12 @@ class FascistFactionSystem(SystemBase):
 
     @staticmethod
     def _read_regime(graph: GraphProtocol) -> str | None:
-        """Read (never recompute) the ContradictionSystem regime classification."""
+        """Read (never recompute) the ContradictionSystem regime classification.
+
+        Stale-by-one-tick: @18 writes it after this @17.4 system, so this
+        returns last tick's regime (None on tick 1). Observability-only — it
+        annotates the FASCIST_DRIFT payload and never gates drift.
+        """
         raw = graph.get_graph_attr("dialectical_regime", {}) or {}
         regime = raw.get("regime") if isinstance(raw, dict) else None
         return str(regime) if isinstance(regime, str) else None
@@ -278,7 +288,18 @@ class FascistFactionSystem(SystemBase):
                 )
 
     def _accrue_chauvinism(self, graph: GraphProtocol, edge: Any, defines: Any) -> float:
-        """Bump the MEMBERSHIP edge's chauvinism (base + super-wage bonus)."""
+        """Bump the MEMBERSHIP edge's chauvinism (base + super-wage bonus).
+
+        FACADE LIMITATION: ``chauvinism`` is graph edge-state, NOT a
+        Relationship model field, so ``WorldState.from_graph`` drops it. In the
+        canonical BRIDGED runner the graph persists in-place across ticks, so
+        chauvinism accrues correctly. But the in-memory ``Simulation`` facade
+        rebuilds the graph from ``WorldState`` each tick, resetting it to 0.0 —
+        so chauvinism-driven defection cannot accumulate on that path. This is
+        deliberate (adding it as a Relationship field would perturb
+        serialization/determinism); the org/defection layer is a bridged-runner
+        (spec-072+) concern, and the base canonical world seeds no player orgs.
+        """
         current = float(edge.attributes.get("chauvinism", 0.0))
         increment = float(defines.chauvinism_base_rate)
         if self._is_superwaged(graph, edge.target_id):
@@ -346,8 +367,12 @@ def _agitation_of(attrs: dict[str, Any]) -> float:
 
 
 def _resolve_rng(services: ServiceContainer, tick: int) -> random.Random:
-    """Seed-deterministic RNG (spec-070 precedent) for defection rolls."""
+    """Seed-deterministic RNG for defection rolls (spec-070 precedent).
+
+    Prefers ``services.rng``; else the ``random.Random(0xBA1AC1A + tick)``
+    fallback used by :mod:`babylon.engine.systems.faction_influence`.
+    """
     rng = getattr(services, "rng", None)
     if isinstance(rng, random.Random):
         return rng
-    return random.Random(0xF00DFACE + tick)
+    return random.Random(0xBA1AC1A + tick)

@@ -358,6 +358,14 @@ ones; test `assimilation_ratio` and the entropy diagnostic.
   graph edge-state that persists in-place across ticks in the bridged runner;
   round-trip via WorldState is out of scope for the canonical run (no orgs in
   the base world) but the edge attribute is documented.
+  - **Facade limitation** (review-noted): because `chauvinism` is graph
+    edge-state and NOT a `Relationship` model field, `WorldState.from_graph`
+    drops it. In the canonical BRIDGED runner the graph persists in-place, so
+    chauvinism accrues correctly; but the in-memory `Simulation` facade
+    (rebuilds the graph from `WorldState` each tick) resets it to 0.0, so
+    chauvinism-driven defection cannot accumulate on that path. Deliberate —
+    adding a Relationship field would risk perturbing serialization/
+    determinism; the org/defection layer is a spec-072+ bridged-runner concern.
 - **D4 — Carceral-enforcer gap**: closed by the CREATE-ON-DEMAND option
   (DecompositionSystem creates the enforcer / internal-proletariat entities
   when absent), NOT by seeding them per-county in the bridge. Rationale:

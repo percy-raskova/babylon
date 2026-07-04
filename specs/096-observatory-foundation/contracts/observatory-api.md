@@ -115,5 +115,5 @@ Query params:
 | `.../ticks/` | integration | (used by browser) |
 | `.../series/` (national/state/county) | integration | chart renders points |
 | `.../series.csv/` | integration | client CSV mirror test |
-| `.../commits/` | integration | (surfaced later; contract pinned) |
-| `.../hex/` | integration | contract pinned |
+| `.../commits/` | integration | contract pinned (`fetchCommits` MSW test) |
+| `.../hex/` | integration (+ bound + carry-forward) | **backend-only** — no frontend hex client/type/MSW yet; deep hex consumption is spec-099 |

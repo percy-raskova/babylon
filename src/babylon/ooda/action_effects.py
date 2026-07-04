@@ -22,9 +22,6 @@ from babylon.organizations.types import ConsciousnessDelta
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
 
-# Spec-071 fascist-verb effect coefficients (III.1 — all in defines).
-_REACT = ReactionaryDefines()
-
 # The fascist action verbs (spec-071) and their emitted event types.
 _FASCIST_VERBS: dict[ActionType, EventType] = {
     ActionType.POGROM: EventType.POGROM,
@@ -112,6 +109,7 @@ def resolve_action(
     graph: BabylonGraph,
     defines: OODADefines,
     org_defines: OrganizationDefines,
+    reactionary: ReactionaryDefines | None = None,
 ) -> ActionResult:
     """Resolve a single action, computing effects.
 
@@ -121,6 +119,10 @@ def resolve_action(
         graph: World graph.
         defines: OODADefines coefficients.
         org_defines: OrganizationDefines for credibility.
+        reactionary: ReactionaryDefines for the spec-071 fascist verbs
+            (POGROM / LOCKOUT / VIGILANTISM). Pass ``services.defines.reactionary``
+            so verb effects honor any ``defines.yaml`` override (III.5);
+            defaults to the dataclass defaults when omitted.
 
     Returns:
         ActionResult with success status and effects.
@@ -139,7 +141,7 @@ def resolve_action(
         return _resolve_assimilate(action, org_attrs, graph, defines, org_defines)
 
     if action_type in _FASCIST_VERBS:
-        return _resolve_fascist_verb(action, graph)
+        return _resolve_fascist_verb(action, graph, reactionary or ReactionaryDefines())
 
     # Consciousness-affecting actions
     ci_delta = compute_consciousness_delta(
@@ -161,7 +163,9 @@ def resolve_action(
     )
 
 
-def _resolve_fascist_verb(action: Action, graph: BabylonGraph) -> ActionResult:
+def _resolve_fascist_verb(
+    action: Action, graph: BabylonGraph, reactionary: ReactionaryDefines
+) -> ActionResult:
     """Resolve a spec-071 fascist verb (POGROM / LOCKOUT / VIGILANTISM).
 
     Materially grounded, directly mutating the target's graph state:
@@ -173,7 +177,9 @@ def _resolve_fascist_verb(action: Action, graph: BabylonGraph) -> ActionResult:
     - **LOCKOUT**: the employer withdraws income — attenuate the target's
       incoming WAGES value_flow.
 
-    All coefficients come from :class:`ReactionaryDefines` (III.1).
+    All coefficients come from the caller-supplied :class:`ReactionaryDefines`
+    (III.1 + III.5 — the run's defines, so ``defines.yaml`` overrides are
+    honored, mirroring :class:`~babylon.engine.systems.reactionary.FascistFactionSystem`).
     """
     action_type = action.action_type
     target_id = action.target_id
@@ -183,16 +189,16 @@ def _resolve_fascist_verb(action: Action, graph: BabylonGraph) -> ActionResult:
         node = graph.get_node(target_id)
         if node is not None:
             increment = (
-                _REACT.pogrom_repression_increment
+                reactionary.pogrom_repression_increment
                 if action_type == ActionType.POGROM
-                else _REACT.vigilantism_repression_increment
+                else reactionary.vigilantism_repression_increment
             )
             current_rep = float(node.attributes.get("repression_faced", 0.0))
             graph.update_node(target_id, repression_faced=min(1.0, current_rep + increment))
             effects["repression_increment"] = increment
             if action_type == ActionType.POGROM:
                 current_wealth = float(node.attributes.get("wealth", 0.0))
-                new_wealth = current_wealth * (1.0 - _REACT.pogrom_wealth_destruction)
+                new_wealth = current_wealth * (1.0 - reactionary.pogrom_wealth_destruction)
                 graph.update_node(target_id, wealth=new_wealth)
                 effects["wealth_destroyed"] = current_wealth - new_wealth
 
@@ -205,9 +211,9 @@ def _resolve_fascist_verb(action: Action, graph: BabylonGraph) -> ActionResult:
                 edge.source_id,
                 edge.target_id,
                 EdgeType.WAGES,
-                value_flow=flow * (1.0 - _REACT.lockout_wage_attenuation),
+                value_flow=flow * (1.0 - reactionary.lockout_wage_attenuation),
             )
-            effects["wage_attenuation"] = _REACT.lockout_wage_attenuation
+            effects["wage_attenuation"] = reactionary.lockout_wage_attenuation
 
     return ActionResult(
         action=action,

@@ -519,3 +519,162 @@ class TestEndgameDetection:
         events = result.get("events", [])
         assert len(events) >= 1
         assert any(e.get("type") == "REVOLUTIONARY_VICTORY" for e in events)
+
+
+# ---------------------------------------------------------------------- #
+# Spec 092: tick_event persistence + journal/alerts dashboards
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestTickEventPersistence:
+    """Spec 092: resolve_tick writes tick_event rows for the journal/alerts
+    dashboards to read back (R-CONS: endpoints built WITH their consumers)."""
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_persists_tick_events(self, mock_step: MagicMock) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+
+        mock_new_state = _make_mock_new_state(tick=7)
+        uprising_event = MagicMock()
+        uprising_event.event_type = "uprising"
+        uprising_event.tick = 7
+        uprising_event.data = {"org_id": "org1"}
+        mock_new_state.events = [uprising_event]
+        mock_step.return_value = mock_new_state
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        bridge.resolve_tick(sid)
+
+        assert mock_persistence.persist_tick_events.called
+        call_args = mock_persistence.persist_tick_events.call_args
+        assert call_args.args[0] == sid
+        assert call_args.args[1] == 7
+        rows = call_args.args[2]
+        assert len(rows) == 1
+        assert rows[0]["event_type"] == "uprising"
+        assert rows[0]["severity"] == "critical"
+        assert rows[0]["source_id"] == "org1"
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_skips_persist_when_no_events(self, mock_step: MagicMock) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        mock_new_state = _make_mock_new_state(tick=3)
+        mock_new_state.events = []
+        mock_step.return_value = mock_new_state
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        bridge.resolve_tick(sid)
+
+        assert not mock_persistence.persist_tick_events.called
+
+
+@pytest.mark.unit
+class TestJournalDashboard:
+    """Spec 092: get_journal_dashboard reads persisted tick_event history."""
+
+    def test_returns_empty_when_persistence_lacks_query_method(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_session_events = None  # simulate SQLite RuntimeDatabase
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_journal_dashboard(uuid.uuid4())
+
+        assert result == {"events": []}
+
+    def test_returns_events_from_query_session_events(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 3,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": "org1",
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising erupts",
+                "detail": {"org_id": "org1"},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_journal_dashboard(sid)
+
+        assert len(result["events"]) == 1
+        event = result["events"][0]
+        assert event["type"] == "uprising"
+        assert event["severity"] == "critical"
+        assert event["tick"] == 5
+        assert event["body"] == "Uprising erupts"
+        assert event["data"] == {"org_id": "org1"}
+
+    def test_query_failure_degrades_to_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_session_events.side_effect = RuntimeError("boom")
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_journal_dashboard(uuid.uuid4())
+
+        assert result == {"events": []}
+
+
+@pytest.mark.unit
+class TestAlertsDashboard:
+    """Spec 092: get_alerts_dashboard filters the latest tick's events to
+    critical/warning severities (the Tick Resolution screen's alert feed)."""
+
+    def test_returns_empty_when_persistence_lacks_query_method(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_tick_events = None  # simulate SQLite RuntimeDatabase
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_alerts_dashboard(uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+
+        assert result == {"alerts": []}
+
+    def test_returns_critical_and_warning_only(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        mock_persistence.query_tick_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 0,
+                "event_id": 1,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising",
+                "detail": {},
+            },
+            {
+                "game_id": str(sid),
+                "tick": 0,
+                "event_id": 2,
+                "event_type": "wage_payment",
+                "severity": "informational",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Wages paid",
+                "detail": {},
+            },
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_alerts_dashboard(sid)
+
+        assert len(result["alerts"]) == 1
+        assert result["alerts"][0]["type"] == "uprising"

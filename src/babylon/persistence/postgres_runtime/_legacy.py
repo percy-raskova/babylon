@@ -1969,6 +1969,37 @@ class PostgresRuntime:
             )
             return [dict(row) for row in cur.fetchall()]
 
+    def query_session_events(
+        self,
+        game_id: UUID,
+        *,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Get historical events across all ticks for a session (spec 092).
+
+        Backs ``EngineBridge.get_journal_dashboard`` — the Event Log page's
+        full cross-tick history, as opposed to :meth:`query_tick_events`
+        (single-tick, used by the alerts dashboard).
+
+        Args:
+            game_id: Game session UUID.
+            limit: Maximum rows to return.
+
+        Returns:
+            List of event dicts ordered newest-tick-first, capped at ``limit``.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT * FROM tick_event
+                WHERE game_id = %s
+                ORDER BY tick DESC, event_id DESC
+                LIMIT %s
+                """,
+                (game_id, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def query_tick_events(
         self,
         game_id: UUID,

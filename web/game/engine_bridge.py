@@ -44,6 +44,13 @@ _session_trap_state: dict[UUID, TrapDetectionResult] = {}
 
 _ACTION_HISTORY_CAP = 50
 
+# Spec 092: journal/alerts dashboards.
+# Max rows returned by get_journal_dashboard (newest tick first).
+_JOURNAL_LIMIT = 200
+# Severities surfaced by get_alerts_dashboard — "informational" is routine
+# flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
+_ALERT_SEVERITIES = frozenset({"critical", "warning"})
+
 # ---------------------------------------------------------------------- #
 # Verb-to-ActionType mapping (9 canonical player verbs → engine ActionType)
 # See: specs/041-mvp-nationwide-sim/research.md §2
@@ -528,13 +535,65 @@ class EngineBridge:
         """Return the state-apparatus intelligence screen data."""
         return {}
 
-    def get_journal_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the historical event log data."""
-        return {}
+    def get_journal_dashboard(self, session_id: UUID) -> dict[str, Any]:
+        """Return the historical event log data (spec 092 — Event Log page).
 
-    def get_alerts_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the active alerts and threshold crossings."""
-        return {}
+        Sources ``tick_event`` rows written by :func:`_persist_tick_events_safe`
+        during :meth:`resolve_tick`, via the persistence layer's optional
+        ``query_session_events(session_id, limit=...)`` capability. Ordered
+        newest-tick-first, capped at :data:`_JOURNAL_LIMIT` rows.
+
+        SQLite-backed ``RuntimeDatabase`` (dev/test) has no
+        ``query_session_events`` method and degrades to an empty list —
+        the same optional-capability pattern as :meth:`get_game_timeseries`.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``{"events": [GameEvent, ...]}`` in the same shape as
+            ``snapshot.events`` (id/type/tick/severity/title/body/data).
+        """
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_session_events", None)
+        if callable(query):
+            try:
+                rows = query(session_id, limit=_JOURNAL_LIMIT)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+                logger.exception("get_journal_dashboard: query_session_events failed")
+                rows = []
+        return {"events": [_game_event_from_tick_event_row(row) for row in rows]}
+
+    def get_alerts_dashboard(self, session_id: UUID) -> dict[str, Any]:
+        """Return active alerts — critical/warning events from the latest tick.
+
+        Sources the same ``tick_event`` rows as the journal but scoped to
+        the most recently resolved tick and filtered to non-informational
+        severities: the "threshold crossings" the Tick Resolution screen
+        surfaces immediately after :meth:`resolve_tick` (spec 092).
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``{"alerts": [GameEvent, ...]}`` in the same shape as
+            ``snapshot.events``, filtered to critical/warning severity.
+        """
+        state, _graph = self.hydrate_state(session_id)
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_tick_events", None)
+        if callable(query):
+            try:
+                rows = query(session_id, state.tick)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+                logger.exception("get_alerts_dashboard: query_tick_events failed")
+                rows = []
+        alerts = [
+            _game_event_from_tick_event_row(row)
+            for row in rows
+            if row.get("severity") in _ALERT_SEVERITIES
+        ]
+        return {"alerts": alerts}
 
     # ------------------------------------------------------------------ #
     # Inspector Views
@@ -695,6 +754,12 @@ class EngineBridge:
 
         # T019: Check for endgame conditions in events
         snapshot = _state_to_snapshot(new_state, session_id)
+
+        # Spec 092 R-CONS: persist this tick's events into tick_event so the
+        # journal/alerts dashboards (get_journal_dashboard/get_alerts_dashboard)
+        # have real history to read back. Best-effort — a journal-write
+        # failure must never fail tick resolution.
+        _persist_tick_events_safe(self._persistence, session_id, new_state.tick, snapshot["events"])
         endgame_types = {"REVOLUTIONARY_VICTORY", "ECOLOGICAL_COLLAPSE", "FASCIST_CONSOLIDATION"}
         for event in new_state.events:
             event_type = (
@@ -2054,6 +2119,103 @@ def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
         "severity": _classify_event(event_type_str),
         "title": _humanize_event_type(event_type_str),
         "body": narrative,
+        "data": data,
+    }
+
+
+def _tick_event_row(serialized_event: dict[str, Any]) -> dict[str, Any]:
+    """Convert a :func:`_serialize_event` dict into a ``tick_event`` row.
+
+    Spec 092: the inverse of :func:`_game_event_from_tick_event_row`. Used
+    by :func:`_persist_tick_events_safe` to shape events for
+    ``persist_tick_events`` (``tick_event`` table columns: event_type,
+    severity, source_id, target_id, county_fips, h3_index, summary, detail).
+
+    Args:
+        serialized_event: Output of :func:`_serialize_event`.
+
+    Returns:
+        Dict matching :meth:`PostgresRuntime.persist_tick_events`' row shape.
+    """
+    data = serialized_event.get("data") or {}
+    source_id = data.get("source_id") or data.get("org_id") or data.get("entity_id")
+    target_id = data.get("target_id") or data.get("territory_id")
+    summary = (
+        serialized_event.get("body") or serialized_event.get("title") or serialized_event["type"]
+    )
+    return {
+        "event_type": serialized_event["type"],
+        "severity": serialized_event.get("severity"),
+        "source_id": str(source_id) if source_id is not None else None,
+        "target_id": str(target_id) if target_id is not None else None,
+        "county_fips": data.get("county_fips"),
+        "h3_index": data.get("h3_index"),
+        "summary": summary,
+        "detail": data,
+    }
+
+
+def _persist_tick_events_safe(
+    persistence: RuntimePersistence,
+    session_id: UUID,
+    tick: int,
+    serialized_events: list[dict[str, Any]],
+) -> None:
+    """Best-effort write of a tick's events into the ``tick_event`` table.
+
+    Spec 092 R-CONS: gives ``get_journal_dashboard``/``get_alerts_dashboard``
+    real history to read back. Mirrors :func:`_persist_action_result`'s
+    optional-capability pattern — SQLite-backed ``RuntimeDatabase``
+    (dev/test) has no ``persist_tick_events`` method and this becomes a
+    silent no-op there (matches :meth:`EngineBridge.get_game_timeseries`'s
+    established SQLite fallback). Never raises: a journal-write failure
+    must not fail tick resolution.
+
+    Args:
+        persistence: The RuntimePersistence instance.
+        session_id: The game session UUID.
+        tick: The tick these events belong to.
+        serialized_events: Output of ``_serialize_event`` for each event
+            (i.e. ``snapshot["events"]``).
+    """
+    if not serialized_events:
+        return
+    persist_fn = getattr(persistence, "persist_tick_events", None)
+    if not callable(persist_fn):
+        return
+    rows = [_tick_event_row(e) for e in serialized_events]
+    try:
+        persist_fn(session_id, tick, rows)
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
+
+
+def _game_event_from_tick_event_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Convert a persisted ``tick_event`` row into frontend GameEvent shape.
+
+    Spec 092: the inverse of :func:`_tick_event_row` — used by
+    ``get_journal_dashboard``/``get_alerts_dashboard`` to present persisted
+    history in the same shape the frontend already consumes from
+    ``snapshot.events`` (spec 061 FR-012: id/type/tick/severity/title/body/data).
+
+    Args:
+        row: A ``tick_event`` row dict (from ``query_session_events`` or
+            ``query_tick_events``).
+
+    Returns:
+        Dict matching the frontend ``GameEvent`` TypeScript interface.
+    """
+    event_type = str(row.get("event_type", ""))
+    detail = row.get("detail")
+    data = detail if isinstance(detail, dict) else {}
+    severity = row.get("severity") or _classify_event(event_type)
+    return {
+        "id": f"{row.get('game_id')}-{row.get('tick')}-{row.get('event_id')}",
+        "type": event_type,
+        "tick": int(row.get("tick", 0)),
+        "severity": severity,
+        "title": _humanize_event_type(event_type),
+        "body": row.get("summary") or "",
         "data": data,
     }
 

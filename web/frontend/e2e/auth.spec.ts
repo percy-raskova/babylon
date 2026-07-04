@@ -12,7 +12,7 @@ test.describe("authentication", () => {
     await page.goto("/");
     await expect(page.getByPlaceholder("Username")).toBeVisible();
     await expect(page.getByPlaceholder("Password")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Log In" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Enter" })).toBeVisible();
   });
 
   test("successful login redirects to game list", async ({ page }) => {
@@ -20,7 +20,7 @@ test.describe("authentication", () => {
 
     await page.getByPlaceholder("Username").fill("testuser");
     await page.getByPlaceholder("Password").fill("testpass");
-    await page.getByRole("button", { name: "Log In" }).click();
+    await page.getByRole("button", { name: "Enter" }).click();
 
     // Should see game list after login
     await expect(page.getByText("Your Games")).toBeVisible({ timeout: 5000 });
@@ -31,7 +31,7 @@ test.describe("authentication", () => {
 
     await page.getByPlaceholder("Username").fill("baduser");
     await page.getByPlaceholder("Password").fill("badpass");
-    await page.getByRole("button", { name: "Log In" }).click();
+    await page.getByRole("button", { name: "Enter" }).click();
 
     // Should see error message
     await expect(page.locator("[class*='text-crimson']")).toBeVisible({ timeout: 5000 });
@@ -42,7 +42,7 @@ test.describe("authentication", () => {
     await page.goto("/");
     await page.getByPlaceholder("Username").fill("testuser");
     await page.getByPlaceholder("Password").fill("testpass");
-    await page.getByRole("button", { name: "Log In" }).click();
+    await page.getByRole("button", { name: "Enter" }).click();
     await expect(page.getByText("Your Games")).toBeVisible({ timeout: 5000 });
 
     // Logout

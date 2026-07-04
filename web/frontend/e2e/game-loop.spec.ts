@@ -12,7 +12,7 @@ async function loginAndNavigate(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByPlaceholder("Username").fill("testuser");
   await page.getByPlaceholder("Password").fill("testpass");
-  await page.getByRole("button", { name: "Log In" }).click();
+  await page.getByRole("button", { name: "Enter" }).click();
   await expect(page.getByText("Your Games")).toBeVisible({ timeout: 5000 });
 }
 

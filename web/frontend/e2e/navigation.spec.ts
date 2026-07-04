@@ -12,7 +12,7 @@ async function enterGameShell(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByPlaceholder("Username").fill("testuser");
   await page.getByPlaceholder("Password").fill("testpass");
-  await page.getByRole("button", { name: "Log In" }).click();
+  await page.getByRole("button", { name: "Enter" }).click();
   await expect(page.getByText("Your Games")).toBeVisible({ timeout: 5000 });
   await page.getByText("+ New Game").click();
   await expect(page.getByText("Tick")).toBeVisible({ timeout: 10000 });
@@ -59,7 +59,7 @@ test.describe("navigation", () => {
     await page.goto("/");
     await page.getByPlaceholder("Username").fill("testuser");
     await page.getByPlaceholder("Password").fill("testpass");
-    await page.getByRole("button", { name: "Log In" }).click();
+    await page.getByRole("button", { name: "Enter" }).click();
     await expect(page.getByText("Your Games")).toBeVisible({ timeout: 5000 });
 
     // Game list should show + New Game button

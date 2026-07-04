@@ -311,7 +311,7 @@ class SQLiteQCEWCountyNAICSSource:
                 .scalar()
             )
 
-            return int(total) if total else None
+            return int(total) if total is not None else None
 
     def get_county_employment_by_naics(self, fips: str, year: int) -> dict[str, int]:
         """Get private-sector employment by NAICS sector for a county.
@@ -326,7 +326,9 @@ class SQLiteQCEWCountyNAICSSource:
 
         Returns:
             Dict mapping NAICS sector labels to summed employment counts.
-            Sectors with no employment are excluded.
+            A confirmed zero (a real SUM(employment)=0 leaf) is included
+            with value 0; only sectors with no matching rows at all are
+            excluded.
         """
         # sector_code -> adapter label (e.g. "31" -> "31-33")
         code_to_label = {
@@ -361,7 +363,7 @@ class SQLiteQCEWCountyNAICSSource:
 
         result: dict[str, int] = {}
         for sector_code, emp in rows:
-            if emp:
+            if emp is not None:
                 label = code_to_label[sector_code]
                 result[label] = result.get(label, 0) + int(emp)
         return result

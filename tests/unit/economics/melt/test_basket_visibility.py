@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 
 from babylon.economics.melt import DefaultBasketVisibilityCalculator
+from babylon.economics.melt.gamma_hydration import GammaHydrationSource
 
 
 class TestBasketVisibilityFormula:
@@ -336,3 +337,81 @@ class TestNumericalStability:
         assert estimated is False
         # With α ≈ 1, γ_basket should be close to γ_import
         assert abs(gamma - 0.35) < 0.01
+
+
+class _FakeHydrationSource:
+    """Fake GammaHydrationSource returning scripted per-year values."""
+
+    def __init__(
+        self,
+        alpha_by_year: dict[int, float | None],
+        gamma_import_by_year: dict[int, float | None],
+    ) -> None:
+        self._alpha_by_year = alpha_by_year
+        self._gamma_import_by_year = gamma_import_by_year
+
+    def get_alpha(self, year: int) -> float | None:
+        return self._alpha_by_year.get(year)
+
+    def get_gamma_import(self, year: int, scale_type: str = "Intensive") -> float | None:  # noqa: ARG002
+        return self._gamma_import_by_year.get(year)
+
+
+class TestHydrationSourceWiring:
+    """Spec-102: DefaultBasketVisibilityCalculator hydrates via an injected source."""
+
+    def test_default_implements_protocol(self) -> None:
+        """SQLiteGammaHydrationSource-shaped fakes satisfy GammaHydrationSource."""
+        source = _FakeHydrationSource({2012: 0.25}, {2012: 1.0 / 7.86})
+        assert isinstance(source, GammaHydrationSource)
+
+    def test_hydrated_year_returns_estimated_false_with_real_value(self) -> None:
+        source = _FakeHydrationSource({2012: 0.25}, {2012: 1.0 / 7.86})
+        calculator = DefaultBasketVisibilityCalculator(hydration_source=source)
+
+        gamma, estimated = calculator.get_gamma_basket(2012)
+
+        assert estimated is False
+        assert gamma != 0.68
+        expected = 1.0 / (0.25 / (1.0 / 7.86) + 0.75)
+        assert abs(gamma - expected) < 1e-9
+
+    def test_unhydratable_year_falls_back_to_mvp(self) -> None:
+        """2020 has no Hickel row (spec.md FR-102-2) -> MVP fallback, not a crash."""
+        source = _FakeHydrationSource({2012: 0.25}, {2012: 1.0 / 7.86})
+        calculator = DefaultBasketVisibilityCalculator(hydration_source=source)
+
+        gamma, estimated = calculator.get_gamma_basket(2020)
+
+        assert gamma == 0.68
+        assert estimated is True
+
+    def test_partial_hydration_falls_back_to_mvp(self) -> None:
+        """alpha hydrates but gamma_import doesn't -> MVP fallback (no half-formula)."""
+        source = _FakeHydrationSource({2012: 0.25}, {})
+        calculator = DefaultBasketVisibilityCalculator(hydration_source=source)
+
+        gamma, estimated = calculator.get_gamma_basket(2012)
+
+        assert gamma == 0.68
+        assert estimated is True
+
+    def test_explicit_alpha_overrides_hydration(self) -> None:
+        """Caller-supplied alpha is used as-is; hydration only fills gaps."""
+        source = _FakeHydrationSource({2012: 0.99}, {2012: 1.0 / 7.86})
+        calculator = DefaultBasketVisibilityCalculator(hydration_source=source)
+
+        gamma, estimated = calculator.get_gamma_basket(2012, alpha=0.25)
+
+        assert estimated is False
+        expected = 1.0 / (0.25 / (1.0 / 7.86) + 0.75)
+        assert abs(gamma - expected) < 1e-9
+
+    def test_no_hydration_source_is_byte_identical_to_pre_spec_102(self) -> None:
+        """Constructing with zero args (the pre-existing call pattern) is unchanged."""
+        calculator = DefaultBasketVisibilityCalculator()
+
+        gamma, estimated = calculator.get_gamma_basket(2012)
+
+        assert gamma == 0.68
+        assert estimated is True

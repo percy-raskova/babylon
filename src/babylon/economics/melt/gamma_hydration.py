@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from sqlalchemy import func
 
@@ -69,6 +69,7 @@ DEFAULT_HICKEL_SCALE_TYPE: str = "Intensive"
 existing convention."""
 
 
+@runtime_checkable
 class GammaHydrationSource(Protocol):
     """Protocol for hydrating basket-visibility coefficients per year.
 

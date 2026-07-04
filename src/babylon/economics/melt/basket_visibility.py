@@ -9,18 +9,33 @@ per TVT Axiom D3: γ_basket = 1 / (α/γ_import + (1-α)).
 TVT Axiom Reference:
     - D3: Basket visibility derivation
     - D4: τ_effective = τ × γ_basket
+
+Spec-102 (2026-07-04): ``DefaultBasketVisibilityCalculator`` accepts an
+optional :class:`~babylon.economics.melt.gamma_hydration.GammaHydrationSource`
+that hydrates real, per-year α and γ_import from the reference database
+when the caller does not pass them explicitly. The MVP constants below
+remain the documented degrade path for years the hydration source cannot
+cover (or when no source is injected at all) — see
+``specs/102-gamma-shocks/spec.md`` FR-102-2 for the disclosed data-coverage
+gap.
 """
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from babylon.core.protocol_kit import CachedSource
+
+if TYPE_CHECKING:
+    from babylon.economics.melt.gamma_hydration import GammaHydrationSource
 
 # MVP constants (derived from Hickel et al. methodology)
 # α ≈ 0.25: Import share per Hickel et al. (2022) unequal exchange analysis
 # γ_import ≈ 0.35: Trade-weighted average ERDI of US trading partners
 # γ_basket = 1 / (0.25/0.35 + 0.75) = 1/1.464 ≈ 0.683
+# Retained as the disclosed MVP degrade path (spec-102 FR-102-2): used only
+# when no GammaHydrationSource is injected, or the injected source has no
+# data for the requested year.
 MVP_ALPHA: float = 0.25
 MVP_GAMMA_IMPORT: float = 0.35
 MVP_GAMMA_BASKET: float = 0.68
@@ -174,8 +189,11 @@ class BasketVisibilityCalculator(Protocol):
 class DefaultBasketVisibilityCalculator(CachedSource[float]):
     """Default implementation of BasketVisibilityCalculator.
 
-    This calculator supports both MVP mode (hardcoded values) and computed
-    mode (from explicit α and γ_import parameters).
+    This calculator supports three modes: explicit-parameter (caller passes
+    α and γ_import directly), hydrated (spec-102 — an injected
+    :class:`~babylon.economics.melt.gamma_hydration.GammaHydrationSource`
+    supplies real per-year values), and MVP (hardcoded fallback, when no
+    source is injected or the source has no data for the requested year).
 
     MVP Derivation (A-004):
         - α ≈ 0.25: Import share per Hickel et al. (2022) methodology
@@ -190,27 +208,68 @@ class DefaultBasketVisibilityCalculator(CachedSource[float]):
         >>> gamma, estimated = calculator.get_gamma_basket(2022)
         >>> print(f"γ_basket = {gamma}, estimated = {estimated}")
         γ_basket = 0.68, estimated = True
+
+    See Also:
+        :mod:`babylon.economics.melt.gamma_hydration`: Optional hydration source.
     """
+
+    def __init__(
+        self,
+        hydration_source: GammaHydrationSource | None = None,
+        *,
+        max_entries: int = 1024,
+    ) -> None:
+        """Initialize the calculator.
+
+        Args:
+            hydration_source: Optional spec-102 hydration source supplying
+                real per-year α/γ_import. When ``None`` (the default —
+                identical to pre-spec-102 construction), the calculator
+                behaves exactly as before: any call without explicit
+                ``alpha``/``gamma_import`` falls straight into MVP mode.
+            max_entries: Passed through to :class:`CachedSource`.
+        """
+        super().__init__(max_entries=max_entries)
+        self._hydration_source = hydration_source
 
     def get_gamma_basket(
         self,
-        year: int,  # noqa: ARG002 - year for API compatibility
+        year: int,
         alpha: float | None = None,
         gamma_import: float | None = None,
     ) -> tuple[float, bool]:
         """Compute basket visibility for a given year.
 
         Args:
-            year: Calendar year (currently unused, for future data integration)
-            alpha: Import share [0, 1] (optional)
-            gamma_import: Peripheral visibility (0, 1] (optional)
+            year: Calendar year. Used to query the injected hydration
+                source when ``alpha``/``gamma_import`` are not supplied.
+            alpha: Import share [0, 1] (optional — explicit value always
+                wins over hydration).
+            gamma_import: Peripheral visibility (0, 1] (optional — explicit
+                value always wins over hydration).
 
         Returns:
-            Tuple of (γ_basket, estimated)
+            Tuple of (γ_basket, estimated). ``estimated`` is ``False`` only
+            when both α and γ_import are either caller-supplied or
+            successfully hydrated for ``year``; ``True`` (MVP hardcode)
+            otherwise.
         """
-        # If either parameter is missing, use MVP mode
-        if alpha is None or gamma_import is None:
+        resolved_alpha = alpha
+        resolved_gamma_import = gamma_import
+
+        if self._hydration_source is not None:
+            if resolved_alpha is None:
+                resolved_alpha = self._hydration_source.get_alpha(year)
+            if resolved_gamma_import is None:
+                resolved_gamma_import = self._hydration_source.get_gamma_import(year)
+
+        # If either parameter is still missing (no source injected, or the
+        # source had no data for this year), use MVP mode.
+        if resolved_alpha is None or resolved_gamma_import is None:
             return (MVP_GAMMA_BASKET, True)
+
+        alpha = resolved_alpha
+        gamma_import = resolved_gamma_import
 
         # Edge case: no imports (α = 0)
         if alpha == 0.0:

@@ -35,3 +35,7 @@ DATABASES = {
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
+
+# spec-096: no read-only "sim" alias in this config → disable the Observatory
+# so its endpoints 404 rather than raise ConnectionDoesNotExist.
+OBSERVATORY_ENABLED = False

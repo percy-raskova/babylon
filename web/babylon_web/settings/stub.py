@@ -56,6 +56,11 @@ LOGGING["loggers"]["django.db.backends"]["level"] = "WARNING"  # type: ignore[in
 # because they're created by the Postgres runtime DDL)
 STUB_CREATE_TABLES = True
 
+# spec-096: the stub config has no read-only "sim" alias, so the Observatory
+# has nothing to read — keep it off so its endpoints 404 rather than raise
+# ConnectionDoesNotExist.
+OBSERVATORY_ENABLED = False
+
 # Spec 061 US7 (T111): BABYLON_MOCK_MODE removed.
 # StubEngineBridge remains for SQLite-only dev/test configurations
 # (see web.game.api._get_bridge fallback path).

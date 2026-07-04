@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from django.conf import settings
-from django.db import DatabaseError, OperationalError, connections
+from django.db import DatabaseError, connections
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseBase, JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -41,6 +41,11 @@ from .queries import (
 )
 
 SIM_ALIAS = "sim"
+
+#: Postgres INT4 bounds — tick columns are INT4; a value outside this range
+#: raises DataError, so tick params are rejected as 400 before reaching the DB.
+_INT4_MIN = -(2**31)
+_INT4_MAX = 2**31 - 1
 
 _SCOPE_ID_PATTERNS = {"state": re.compile(r"^\d{2}$"), "county": re.compile(r"^\d{5}$")}
 _SERIES_COLUMNS = ["tick", "c_sum", "v_sum", "s_sum", "k_sum", "biocapacity_sum", "hex_count"]
@@ -111,9 +116,12 @@ def _parse_int(raw: str | None, name: str) -> int | None:
     if raw is None or raw == "":
         return None
     try:
-        return int(raw)
+        value = int(raw)
     except ValueError as exc:
         raise _BadRequest(f"{name} must be an integer") from exc
+    if not _INT4_MIN <= value <= _INT4_MAX:
+        raise _BadRequest(f"{name} out of range")
+    return value
 
 
 def _parse_limit(raw: str | None) -> int:
@@ -172,7 +180,7 @@ def observatory_sessions(request: Request) -> JsonResponse:
     try:
         with _sim_cursor() as cursor:
             data = fetch_sessions(cursor)
-    except OperationalError:
+    except DatabaseError:
         return _err("Simulation database unavailable", 503)
     return _ok(data)
 
@@ -189,7 +197,7 @@ def observatory_ticks(request: Request, session_id: str) -> JsonResponse:
     try:
         with _sim_cursor() as cursor:
             data = fetch_tick_range(cursor, sid)
-    except OperationalError:
+    except DatabaseError:
         return _err("Simulation database unavailable", 503)
     if data is None:
         return _err("Session has no committed ticks", 404)
@@ -205,7 +213,7 @@ def observatory_series(request: Request, session_id: str) -> JsonResponse:
         payload = _series_payload(request, session_id)
     except _BadRequest as exc:
         return _err(str(exc), 400)
-    except OperationalError:
+    except DatabaseError:
         return _err("Simulation database unavailable", 503)
     return _ok(payload)
 
@@ -219,7 +227,7 @@ def observatory_series_csv(request: Request, session_id: str) -> HttpResponseBas
         payload = _series_payload(request, session_id)
     except _BadRequest as exc:
         return _err(str(exc), 400)
-    except OperationalError:
+    except DatabaseError:
         return _err("Simulation database unavailable", 503)
     filename = f"{payload['session_id']}_{payload['scope']}_{payload['scope_id']}.csv"
     response = HttpResponse(content_type="text/csv")
@@ -270,7 +278,7 @@ def observatory_commits(request: Request, session_id: str) -> JsonResponse:
     try:
         with _sim_cursor() as cursor:
             data = fetch_commits(cursor, sid)
-    except OperationalError:
+    except DatabaseError:
         return _err("Simulation database unavailable", 503)
     return _ok(data)
 

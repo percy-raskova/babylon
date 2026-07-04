@@ -367,6 +367,25 @@ ______________________________________________________________________
 
 **spec-099 — Observatory deep panes** (~1–2 sprints)
 
+**STATUS: DONE on branch `099-observatory-deep-panes` (2026-07-04; stacks on
+096, both awaiting BD merge).** Speckit in `specs/099-observatory-deep-panes/`.
+Adds `source=live|archive` to every read (DuckDB over `BABYLON_ARCHIVE_ROOT`
+Parquet via the sanctioned `query_archived_session` pattern, read-only) plus
+four deep panes: `/verify/` (structural `tick_commit` chain integrity —
+contiguity, checkpoint cadence, hash, gaps/dups; no engine re-run),
+`/boundary/` (empty-state-first), `/conservation/` (severity filter),
+`/diff/`. Frontend: source selector plus Series/Diagnostics tabs plus
+verify/boundary/conservation panes. **Gate met**: the real archived 520-tick
+session `edf07b2e-…` verifies valid via `source=archive` (chain 520 ticks, 10
+checkpoints, national series reconstructed over 45,572 hexes, files never
+rewritten). Tests: 83 backend unit, 29 integration (incl. real archive), 27
+Vitest/MSW. Also swept two 096 LOW nits (`__all__` hex-limit exports;
+server-side `logger.exception` on 503) plus a close-out regression:
+`deep_queries.py` imported `babylon.persistence.delta` directly, tripping the
+whole-`web/` engine-import-boundary test; fixed by mirroring the
+`CHECKPOINT_EVERY_TICKS` constant locally instead (`sources.py` already used
+this convention). Backend web 246/246 confirmed post-fix.
+
 - **Scope**: boundary-flow explorer over `boundary_flow_register`
   (DRAIN_EDGE / TRADE_EDGE / COMMUTE_OUT; ships against
   empty-state + any COMMUTE rows first — becomes Track T's human

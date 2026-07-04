@@ -41,6 +41,22 @@ consumes both:
   evening) — four parallel lanes: `[E:071→101→102→104→105]`
   `[W:090→091→092∥093→094→095→103]` `[D:100 ∥ 098-LODES ∥ 068-slice]`
   `[O:096→099]`. Design canon staged at `design/mockups/` (66 files).
+  - **Lane O spec-099 Observatory deep panes — DONE on branch
+    `099-observatory-deep-panes`** (2026-07-04; stacks on 096, both awaiting BD
+    merge). Adds `source=live|archive` to every read (DuckDB over
+    `BABYLON_ARCHIVE_ROOT` Parquet, read-only) + four deep panes: hash-chain
+    `/verify/` (structural `tick_commit` integrity, no engine re-run),
+    `/boundary/` (empty-state-first, lights up at spec-101), `/conservation/`
+    (audit-log severity filter), `/diff/` (two-session compare). Frontend:
+    source selector + Series/Diagnostics tabs. GATE MET: the real archived
+    520-tick session `edf07b2e-…` verifies valid via `source=archive`. Tests:
+    83 backend unit + 29 integration (incl. real archive read-only) + 27
+    Vitest/MSW. Also swept two 096 nits (`__all__`; server-side 503 logging)
+    plus one regression caught in close-out review: `deep_queries.py` had
+    imported `babylon.persistence.delta.CHECKPOINT_EVERY_TICKS`, tripping
+    `tests/unit/web/test_import_boundary.py`; fixed by mirroring the constant
+    locally (same convention `sources.py` already used) — backend web 246/246
+    confirmed genuinely green, not just asserted.
   - **Lane O spec-096 Observatory foundation — DONE on branch
     `096-observatory-foundation`** (2026-07-04, awaiting BD merge). Read-only
     bridge to the SIM Postgres: new Django app `web/observatory/` (no models),

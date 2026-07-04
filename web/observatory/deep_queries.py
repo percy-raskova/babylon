@@ -13,11 +13,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from babylon.persistence.delta import CHECKPOINT_EVERY_TICKS
-
 # --------------------------------------------------------------------------- #
 # Pure verification logic
 # --------------------------------------------------------------------------- #
+
+#: Mirrors :data:`babylon.persistence.delta.CHECKPOINT_EVERY_TICKS`. Duplicated
+#: (rather than imported) because ``web/`` may only import engine/persistence
+#: code from ``game/engine_bridge.py`` (see ``tests/unit/web/test_import_boundary.py``);
+#: the observatory app is a read-only bridge and must not cross that boundary.
+CHECKPOINT_EVERY_TICKS = 52
 
 
 def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:

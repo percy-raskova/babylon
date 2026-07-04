@@ -151,6 +151,15 @@ class EventType(StrEnum):
     DUAL_POWER_ACTIVE = "dual_power_active"  # FR-035
     RED_OGV_ENDGAME = "red_ogv_endgame"  # FR-031
     FRAGMENTED_COLLAPSE_ENDGAME = "fragmented_collapse_endgame"  # FR-031
+    # Spec-071 Reactionary Subject (fascism branch of the George Jackson bifurcation)
+    FASCIST_DRIFT = "fascist_drift"  # C_pb/C_la node drifts fascist (pull > threshold)
+    FASCIST_RECRUITMENT = "fascist_recruitment"  # drifted node captured by a fascist faction
+    ORGANIZATIONAL_FRACTURE = "organizational_fracture"  # LA member defects from a player org
+    RED_BROWN_COUP = "red_brown_coup"  # majority LA defection captures the org
+    POGROM = "pogrom"  # reactionary org action: targeted communal violence
+    LOCKOUT = "lockout"  # reactionary org action: employer withdraws wages/employment
+    VIGILANTISM = "vigilantism"  # reactionary org action: extra-state local repression
+    SPONTANEOUS_RIOT = "spontaneous_riot"  # L_u volatility-gated undirected disorder
 
 
 class GameOutcome(StrEnum):

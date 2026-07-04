@@ -30,10 +30,11 @@ class DecisionMode(StrEnum):
 
 
 class ActionType(StrEnum):
-    """Organizational action types for OODA resolution (Feature 032).
+    """Organizational action types for OODA resolution (Feature 032, spec-071).
 
-    21 action types across 7 categories. Eligibility depends on OrgType
-    and organization attributes.
+    25 action types: 21 base (Feature 032) + 4 fascist verbs (spec-071:
+    POGROM, LOCKOUT, VIGILANTISM, RED_BROWN_COUP). Eligibility depends on
+    OrgType and organization attributes.
 
     Values:
         RECRUIT: Recruit new members
@@ -80,6 +81,11 @@ class ActionType(StrEnum):
     BUILD_INFRASTRUCTURE = "build_infrastructure"
     ATTACK_INFRASTRUCTURE = "attack_infrastructure"
     ASSIMILATE = "assimilate"
+    # Spec-071 Reactionary Subject — fascist action verbs
+    POGROM = "pogrom"  # targeted communal violence
+    LOCKOUT = "lockout"  # employer withdraws wages/employment (Business)
+    VIGILANTISM = "vigilantism"  # extra-state local repression
+    RED_BROWN_COUP = "red_brown_coup"  # auto-triggered: reactionary base captures the org
 
 
 __all__ = [

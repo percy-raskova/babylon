@@ -1367,6 +1367,9 @@ def main_from_argv(args: argparse.Namespace) -> int:
     except PostgresUnreachableError as exc:
         _emit_error(exc.exit_name, str(exc), partial=None)
         return exc.exit_code
+    except TerminalAggregateResolutionError as exc:
+        _emit_error(exc.exit_name, str(exc), partial=None)
+        return exc.exit_code
     except Exception as exc:  # pragma: no cover - engine exceptions
         partial: Path | None = config.output_dir if config.output_dir.exists() else None
         _emit_error("ENGINE_FAILURE", f"{exc.__class__.__name__}: {exc}", partial=partial)

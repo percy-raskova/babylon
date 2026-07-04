@@ -1704,17 +1704,28 @@ class PostgresRuntime:
         *,
         _cursor: Any | None = None,
     ) -> None:
-        """Bulk INSERT tick_event rows.
+        """Bulk INSERT tick_event rows, idempotent per ``(game_id, tick)``.
 
         Spec 061 FR-004: ``tick_event.event_id`` is ``SERIAL`` and the
         composite PK is ``(game_id, tick, event_id)`` — retried inserts
         receive fresh ``event_id`` values, so a literal
         ``ON CONFLICT (game_id, tick, event_id) DO NOTHING`` would never
-        fire. The retry-safety guarantee for ``tick_event`` rows therefore
-        comes from the outer transaction wrap on
-        :meth:`persist_full_tick` plus the ``tick_log`` PK gate at the top
-        of that method (no second resolution can ever commit). The
-        helper does **not** add an ``ON CONFLICT`` clause for this reason.
+        fire. When called via :meth:`persist_full_tick`'s shared cursor,
+        retry-safety already comes from that method's outer transaction
+        plus the ``tick_log`` PK gate (no second resolution for the same
+        tick can ever reach this far). But this method is also called
+        directly by ``EngineBridge.resolve_tick`` (spec 092), which does
+        **not** go through :meth:`persist_full_tick` or its ``tick_log``
+        gate — a repeated ``resolve_tick()`` call for the same tick (e.g.
+        a client retry) would otherwise insert a duplicate row set with
+        no way to detect or collapse them (spec-092 review fix,
+        idempotency #2). To make the method idempotent standalone, it
+        now deletes any existing rows for ``(game_id, tick)`` before
+        inserting the new batch, in the same transaction — "latest write
+        wins," matching the monotonic-idempotent spirit of
+        :meth:`persist_tick`'s node/edge handling. This DELETE is a no-op
+        the first time a tick is persisted (nothing to delete), so it's
+        harmless for the :meth:`persist_full_tick` call path too.
 
         Args:
             game_id: Game session UUID.
@@ -1722,8 +1733,7 @@ class PostgresRuntime:
             events: List of event dicts.
             _cursor: Optional shared cursor for :meth:`persist_full_tick`.
         """
-        if not events:
-            return
+        delete_sql = "DELETE FROM tick_event WHERE game_id = %s AND tick = %s"
 
         rows = [
             (
@@ -1748,10 +1758,14 @@ class PostgresRuntime:
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
         if _cursor is not None:
-            _cursor.executemany(sql, rows)
+            _cursor.execute(delete_sql, (game_id, tick))
+            if rows:
+                _cursor.executemany(sql, rows)
             return
         with self._pool.connection() as conn, conn.cursor() as cur:
-            cur.executemany(sql, rows)
+            cur.execute(delete_sql, (game_id, tick))
+            if rows:
+                cur.executemany(sql, rows)
 
     def persist_full_tick(
         self,

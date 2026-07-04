@@ -364,6 +364,73 @@ class TestPersistTick:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Spec-092 review fix — idempotency #2: persist_tick_events deletes
+# existing (game_id, tick) rows before inserting, so a repeated
+# resolve_tick() call for the same tick doesn't duplicate tick_event rows.
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestPersistTickEvents:
+    """Tests for PostgresRuntime.persist_tick_events()."""
+
+    def test_deletes_before_insert_for_idempotency(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """Each call issues a DELETE for (game_id, tick) before the INSERT,
+        so a repeated call with the same tick doesn't duplicate rows."""
+        events = [
+            {
+                "event_type": "uprising",
+                "severity": "critical",
+                "summary": "Workers rose up",
+            },
+        ]
+
+        runtime.persist_tick_events(session_id, 5, events)
+
+        assert mock_cursor.execute.call_count == 1
+        delete_sql, delete_params = mock_cursor.execute.call_args_list[0][0]
+        assert "DELETE FROM tick_event" in delete_sql
+        assert delete_params == (session_id, 5)
+
+        assert mock_cursor.executemany.call_count == 1
+        insert_sql = mock_cursor.executemany.call_args_list[0][0][0]
+        assert "INSERT INTO tick_event" in insert_sql
+
+    def test_empty_events_still_deletes_stale_rows(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """A retry that now computes zero events must still clear any
+        rows a prior attempt for the same tick left behind."""
+        runtime.persist_tick_events(session_id, 5, [])
+
+        assert mock_cursor.execute.call_count == 1
+        assert "DELETE FROM tick_event" in mock_cursor.execute.call_args_list[0][0][0]
+        assert mock_cursor.executemany.call_count == 0
+
+    def test_shared_cursor_path_also_deletes_before_insert(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """The `_cursor` path (used by persist_full_tick) is idempotent too."""
+        events = [{"event_type": "wage_payment", "severity": "informational", "summary": "Paid"}]
+
+        runtime.persist_tick_events(session_id, 2, events, _cursor=mock_cursor)
+
+        assert mock_cursor.execute.call_count == 1
+        assert "DELETE FROM tick_event" in mock_cursor.execute.call_args_list[0][0][0]
+        assert mock_cursor.executemany.call_count == 1
+
+
+# ══════════════════════════════════════════════════════════════════════
 # T012: hydrate_graph — graph reconstruction + JSONB round-trip
 # ══════════════════════════════════════════════════════════════════════
 

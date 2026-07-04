@@ -123,3 +123,36 @@ class TestTickEventSeverityRoundTrip:
         )
         assert rows[0]["severity"] == "informational"
         assert rows[0]["event_type"] == "surplus_extraction"
+
+
+class TestTickEventPersistenceIdempotency:
+    """Spec-092 review fix — idempotency #2: a repeated persist_tick_events
+    call for the same (game_id, tick) must not duplicate rows.
+
+    Real-Postgres proof complementing the mocked unit tests in
+    ``tests/unit/persistence/test_postgres_runtime.py`` (which only assert
+    the DELETE-before-INSERT SQL shape).
+    """
+
+    def test_repeated_call_same_tick_does_not_duplicate(
+        self, runtime: Any, session_id: uuid.UUID
+    ) -> None:
+        events: list[dict[str, Any]] = [
+            {
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Workers rose up — idempotency probe",
+                "detail": None,
+            }
+        ]
+
+        runtime.persist_tick_events(session_id, 3, events)
+        runtime.persist_tick_events(session_id, 3, events)  # simulated retry
+
+        rows = runtime.query_session_events(session_id, limit=10)
+
+        assert len(rows) == 1, f"expected 1 row after a repeated call, got {len(rows)} (duplicated)"

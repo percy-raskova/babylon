@@ -371,7 +371,28 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**spec-100 — County-exposure loader (BEA I-O imports × QCEW shares)** (~1–2 sprints)
+**spec-100 — County-exposure loader (BEA I-O imports × QCEW shares)** —
+**DONE 2026-07-04** (branch `100-county-exposure`; two repos)
+
+- **Result**: `specs/100-county-exposure/` (speckit specify→plan→tasks→implement).
+  Two NEW SQLite reference tables (additive to `src/babylon/reference/schema.py`):
+  `fact_county_exposure_by_external` (384,200 rows = 8 blocs × ~3204 counties ×
+  15 yrs) + `fact_bilateral_trade_annual` (120 rows). Loader in babylon-data
+  `src/babylon_data/exposure/` (compute/writer/audit/validation/`__main__`) +
+  `src/babylon_data/trade/bilateral.py`; `mise run data:exposure`. All gates
+  green on the real DB: per-(bloc,year) weights sum to 1.0 (120/120), reconciliation
+  ±2% (residual ≈0, conservation identity), `logical_table_hash` reproduces
+  run-to-run (H1==H2), schema-valid audit artifact. Coverage 15–21% (goods-biased
+  `bridge_naics_bea` concordance → tradeable-goods import exposure; documented,
+  not a stub). 38 loader tests + 7 schema tests. Zero engine-dynamics change.
+
+- **Notes for spec-101** (in the spec's research.md): the 8 `dim_country`
+  is_region blocs (EU/ATP/NA/Europe/Africa/Pacific Rim/Asia/Australia) differ
+  from the engine's 8 external node_ids (canada/china/eu/…) — but the exposure
+  distribution is bloc-invariant (no bloc×industry data in the DB), so spec-101
+  may broadcast one map to all nodes. Trade agg is USD → feeds
+  `bilateral_trade_value`, NOT `bilateral_trade_tons` (needs FAF freight, out
+  of scope). `world_system_tier` is NULL for all 8 blocs by loader design.
 
 - **Scope**: build the never-computed `county_exposure_by_external`
   weight map — the exact formula named in
@@ -389,12 +410,16 @@ ______________________________________________________________________
   minerals ("regions with resources" — `fact_state_minerals`,
   `fact_mineral_production`, `dim_import_source` all exist at 0
   rows) is a FLAGGED STRETCH, not folded in (§6).
+
 - **Files**: babylon-data `src/babylon_data/exposure/` (new),
   `src/babylon/reference/schema.py` (additive),
   `.mise.toml` (`data:exposure` task).
+
 - **Deps**: none. Zero engine-dynamics change, zero baseline churn.
+
 - **TDD**: 086's fixture pattern (CSV builders, in-memory ORM
   seeding); reconciliation gate ±2% against published import totals.
+
 - **Gate**: `mise run data:exposure` green with audit artifact;
   per-bloc weights sum to 1.0; table hash reproduces run-to-run.
 

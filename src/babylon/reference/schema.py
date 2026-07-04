@@ -1536,6 +1536,62 @@ class FactTradeMonthly(NormalizedBase):
     )
 
 
+class FactCountyExposureByExternal(NormalizedBase):
+    """County import-exposure weights per external bloc and year (spec-100).
+
+    The materialized ``county_exposure_by_external`` map named in
+    :mod:`babylon.engine.systems.phi_distribution`. For each external bloc and
+    annual ``time_id``, the per-county ``weight`` values sum to 1.0 (within
+    1e-9); the Φ-distribution system splits a bloc's weekly imperial-rent
+    inflow across counties by these weights (it rejects a non-unit sum rather
+    than silently renormalize).
+
+    Grounding (Constitution III.8): ``weight`` derives from BEA I-O import
+    coefficients (``fact_bea_io_coefficient``, "Noncomparable imports" source)
+    times QCEW county industry shares (``fact_qcew_annual`` via the
+    ``bridge_naics_bea`` concordance). Because the reference DB has no
+    bloc-by-industry trade resolution, the distribution is currently the same
+    across blocs; it is stored per-bloc for the consumer contract and forward
+    compatibility. Loaded by ``python -m babylon_data.exposure``
+    (``mise run data:exposure``).
+    """
+
+    __tablename__ = "fact_county_exposure_by_external"
+
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    external_country_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_country.country_id"), primary_key=True
+    )
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    weight: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        Index("idx_county_exposure_bloc_year", "time_id", "external_country_id"),
+        Index("idx_county_exposure_county", "county_id"),
+    )
+
+
+class FactBilateralTradeAnnual(NormalizedBase):
+    """Bloc-year aggregation of monthly bilateral trade (spec-100).
+
+    Sums ``fact_trade_monthly`` (USD millions) to annual totals per country for
+    each annual ``time_id``. Feeds the engine's
+    ``ExternalNode.bilateral_trade_value`` (USD). NOTE: this is a USD magnitude,
+    not tonnage — the distinct ``bilateral_trade_tons`` engine field needs FAF
+    freight data (out of scope for spec-100; see the spec-100 research record).
+    """
+
+    __tablename__ = "fact_bilateral_trade_annual"
+
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    country_id: Mapped[int] = mapped_column(ForeignKey("dim_country.country_id"), primary_key=True)
+    imports_usd_millions: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    exports_usd_millions: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    total_trade_usd_millions: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    __table_args__ = (Index("idx_bilateral_trade_time", "time_id"),)
+
+
 # =============================================================================
 # ENERGY FACT TABLES
 # =============================================================================

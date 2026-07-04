@@ -41,6 +41,18 @@ consumes both:
   evening) — four parallel lanes: `[E:071→101→102→104→105]`
   `[W:090→091→092∥093→094→095→103]` `[D:100 ∥ 098-LODES ∥ 068-slice]`
   `[O:096→099]`. Design canon staged at `design/mockups/` (66 files).
+  - **Lane O spec-096 Observatory foundation — DONE on branch
+    `096-observatory-foundation`** (2026-07-04, awaiting BD merge). Read-only
+    bridge to the SIM Postgres: new Django app `web/observatory/` (no models),
+    a read-only `DATABASES["sim"]` alias (`BABYLON_PG_DSN`,
+    connection-level read-only) + `SimDatabaseRouter` (migration refusal),
+    `/api/observatory/*` endpoints over the declared views + `tick_commit`
+    (never raw
+    `dynamic_hex_state`), React `/observatory` lazy route gated by
+    `OBSERVATORY_ENABLED`. The two-DB split (5432 product vs 5433 sim) is now
+    documented in `web/HOW-TO-LOCAL-DEV.md`. Tests: 49 backend unit + 16
+    integration (live write-rejection proof) + 17 Vitest/MSW; product suites
+    untouched-green (Vitest 327/327). Deep panes → spec-099.
 
 ## What shipped 2026-07-02 (one session), by commit
 

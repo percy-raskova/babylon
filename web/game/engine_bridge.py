@@ -130,32 +130,6 @@ def _nodes_in_territory(graph: BabylonGraph, territory_id: str) -> list[tuple[st
     return found
 
 
-def _communities_in_territory(
-    graph: BabylonGraph, territory_id: str
-) -> list[tuple[str, dict[str, Any]]]:
-    """Return (community_id, data) for every community node with a member
-    whose ``territory_ids`` includes ``territory_id``."""
-    member_ids_in_territory = {node_id for node_id, _ in _nodes_in_territory(graph, territory_id)}
-    found: list[tuple[str, dict[str, Any]]] = []
-    for node_id, data in graph.nodes(data=True):
-        if data.get("_node_type") != "community":
-            continue
-        members = set(data.get("member_ids", []))
-        if members & member_ids_in_territory:
-            found.append((node_id, data))
-    return found
-
-
-def _avg_agitation_for_members(graph: BabylonGraph, member_ids: list[str]) -> float:
-    """Average real ``agitation`` across the given social_class member ids."""
-    values = [
-        float(graph.nodes[mid].get("agitation", 0.0))
-        for mid in member_ids
-        if mid in graph.nodes and graph.nodes[mid].get("_node_type") == "social_class"
-    ]
-    return sum(values) / len(values) if values else 0.0
-
-
 def _build_balkanization_block(graph: BabylonGraph) -> dict[str, Any]:
     """Build the spec-093 ``balkanization`` map-snapshot block from real
     spec-070 graph data (faction/sovereign nodes, INFLUENCES/CLAIMS edges).

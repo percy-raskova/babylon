@@ -497,10 +497,29 @@ class WorldStateBridge:
         # naturally without further wiring.
         audit_rows: list[Any] = []
         if self._auditor is not None:
+            # Spec-101 FR-101-5: hand the tick's flushed DRAIN_EDGE rows + the
+            # external-node Φ map to the auditor so the phi_week conservation
+            # evaluator can check Σ DRAIN_EDGE ≡ Φ_week per bloc. external_nodes_phi
+            # derives from the tick-0 external-node template (attributed Φ, D3) —
+            # the same values the runner threads into the phi-distribution context.
+            # Gated on tick >= 1: the runner persists tick 0 directly WITHOUT an
+            # engine run, so no Φ distribution has occurred and an empty register
+            # at tick 0 would false-alarm the identity. The distribution runs on
+            # every tick >= 1.
+            external_nodes_phi = (
+                {row.node_id: row.phi_year_inflow for row in self._external_template}
+                if tick >= 1
+                else {}
+            )
+            audit_context = {
+                "boundary_rows": boundary_rows,
+                "external_nodes_phi": external_nodes_phi,
+            }
             audit_rows_typed, _alarms = self._auditor.audit_end_of_tick(
                 session_id=self._session_id,
                 tick=tick,
                 hex_rows=hex_frame,
+                context=audit_context,
             )
             audit_rows = list(audit_rows_typed)
 

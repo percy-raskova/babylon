@@ -41,6 +41,7 @@ except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.economics.county_exposure import load_county_exposure_map
 from babylon.engine.context import TickContext
 from babylon.engine.event_bus import EventBus
 from babylon.engine.headless_runner.argparse_cli import build_parser
@@ -283,6 +284,9 @@ def _advance_tick(
     engine: SimulationEngine | None = None,
     services: ServiceContainer | None = None,
     graph: Any = None,
+    session_id: UUID | None = None,
+    county_exposure_by_external: dict[str, dict[str, float]] | None = None,
+    external_nodes_phi: dict[str, float] | None = None,
 ) -> Any:
     """Spec-066 T035: per-tick engine.run_tick() then bridge.persist_tick().
 
@@ -309,6 +313,19 @@ def _advance_tick(
     opposition_states: dict[str, Any] | None = None
     if engine is not None and services is not None and graph is not None:
         context = TickContext(tick=tick)
+        # Spec-101: populate the dormant TickContext keys so
+        # ImperialRentSystem._invoke_phi_distribution_if_wired records DRAIN_EDGE
+        # rows every tick (they were a silent no-op while these were absent). The
+        # register is the same instance the bridge flushes in persist_tick.
+        if (
+            session_id is not None
+            and county_exposure_by_external is not None
+            and external_nodes_phi is not None
+        ):
+            context["session_id"] = session_id
+            context["boundary_flow_register"] = services.boundary_register
+            context["external_nodes_phi"] = external_nodes_phi
+            context["county_exposure_by_external"] = county_exposure_by_external
         engine.run_tick(graph, services, context)
         world = WorldState.from_graph(graph, tick=tick)
         # C1.4: hand ContradictionSystem's per-tick OppositionRegistry snapshot
@@ -349,6 +366,31 @@ def _query_audit_log(*, pool: Any, session_id: UUID) -> list[AuditEntry]:
             )
         )
     return out
+
+
+def _query_external_nodes_phi(*, pool: Any, session_id: UUID) -> dict[str, float]:
+    """Read ``{node_id: phi_year_inflow}`` from the tick-0 external-node rows.
+
+    Spec-101 FR-101-3. The session bootstrap persists one
+    ``dynamic_external_node_state`` row per node at tick 0 carrying the attributed
+    national Φ (spec-101 D3). This is the same Φ map the conservation auditor
+    reads (via the bridge), so the ``Σ DRAIN_EDGE ≡ Φ_week`` identity is
+    self-consistent.
+
+    Args:
+        pool: Postgres connection pool.
+        session_id: Active session UUID.
+
+    Returns:
+        ``{node_id: phi_year_inflow}`` for all external nodes at tick 0.
+    """
+    with pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT node_id, phi_year_inflow FROM dynamic_external_node_state "
+            "WHERE session_id = %s AND tick = 0",
+            (str(session_id),),
+        ).fetchall()
+    return {str(node_id): float(phi) for node_id, phi in rows}
 
 
 def _query_trace(
@@ -550,8 +592,14 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
 
     from babylon.config.defines import GameDefines
     from babylon.persistence import PostgresRuntime
-    from babylon.persistence.conservation_audit import ConservationAuditor
-    from babylon.persistence.postgres_initialization import initialize_session
+    from babylon.persistence.conservation_audit import (
+        ConservationAuditor,
+        phi_week_conservation_evaluator,
+    )
+    from babylon.persistence.postgres_initialization import (
+        INTERNATIONAL_NODES,
+        initialize_session,
+    )
 
     t_total = time.perf_counter()
     wallclock_start = _dt.datetime.now(_dt.UTC)
@@ -607,6 +655,10 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             epsilon=defines.economy.epsilon_conservation,
             rng_seed=config.random_seed,
         )
+        # Spec-101 FR-101-5: the Σ DRAIN_EDGE ≡ Φ_week per-bloc identity.
+        auditor.register_invariant(
+            "imperial_rent_phi_week_distribution", phi_week_conservation_evaluator
+        )
         bridge = WorldStateBridge(
             runtime=runtime,
             defines=defines,
@@ -642,6 +694,23 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         # after each engine.run_tick so persist_tick can read.
         graph = world.to_graph()
 
+        # Spec-101 FR-101-1/2/3: assemble the Φ-distribution inputs once before
+        # the tick loop. The exposure map is bloc-invariant (spec-100 R6), so ONE
+        # scope-renormalised {fips: weight} map is broadcast to every
+        # international node. external_nodes_phi is read from the tick-0
+        # external-node rows the bootstrap persisted (they carry the attributed
+        # national Φ, spec-101 D3). Both are static for the run.
+        exposure_map = load_county_exposure_map(
+            sqlite_path=config.sqlite_reference_path,
+            year=config.start_year,
+            scope_fips=config.scope_fips,
+        )
+        # Bloc-invariant broadcast: every international node shares the one
+        # read-only exposure map (spec-100 R6 — the distribution is identical
+        # across blocs; the map is never mutated downstream).
+        county_exposure_by_external = dict.fromkeys(INTERNATIONAL_NODES, exposure_map)
+        external_nodes_phi = _query_external_nodes_phi(pool=pool, session_id=session_id)
+
         # Spec-065 T064: end-game detector (US4). Optional dotted path
         # resolved + instantiated; bridge.poll_endgame is called per tick.
         if config.endgame_detector:
@@ -664,6 +733,8 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                     session_id=session_id,
                     config=config,
                     per_tick_durations=per_tick_durations,
+                    county_exposure_by_external=county_exposure_by_external,
+                    external_nodes_phi=external_nodes_phi,
                 )
                 if endgame_event_payload is not None:
                     end_game_event = endgame_event_payload
@@ -811,6 +882,8 @@ def _tick_loop(
     graph: Any = None,
     engine: SimulationEngine | None = None,
     services: ServiceContainer | None = None,
+    county_exposure_by_external: dict[str, dict[str, float]] | None = None,
+    external_nodes_phi: dict[str, float] | None = None,
 ) -> tuple[int, dict[str, Any] | None]:
     """Drive the tick loop with tqdm + cooperative SIGINT.
 
@@ -871,6 +944,9 @@ def _tick_loop(
             engine=engine,
             services=services,
             graph=graph,
+            session_id=session_id,
+            county_exposure_by_external=county_exposure_by_external,
+            external_nodes_phi=external_nodes_phi,
         )
         per_tick_durations.append(time.perf_counter() - t_tick)
         ticks_completed = tick + 1

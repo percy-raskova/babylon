@@ -40,22 +40,22 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["year", "counties_with_weight", "blocs", "weight_sum_min", "weight_sum_max", "reconciliation", "concordance_coverage", "trade"],
+        "required": ["year", "counties_with_weight", "blocs", "weight_sum_min", "weight_sum_max", "conservation", "concordance_coverage", "trade"],
         "properties": {
           "year": { "type": "integer", "minimum": 2000, "maximum": 2050 },
           "counties_with_weight": { "type": "integer", "minimum": 0 },
           "blocs": { "type": "integer", "minimum": 0 },
           "weight_sum_min": { "type": "number" },
           "weight_sum_max": { "type": "number" },
-          "reconciliation": {
+          "conservation": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["sum_raw_exposure", "sum_covered_import_coeff", "residual_pct", "within_2pct"],
+            "required": ["sum_raw_exposure", "sum_covered_import_coeff", "residual_pct", "holds"],
             "properties": {
               "sum_raw_exposure": { "type": "number" },
               "sum_covered_import_coeff": { "type": "number" },
               "residual_pct": { "type": ["number", "null"] },
-              "within_2pct": { "type": "boolean" }
+              "holds": { "type": "boolean" }
             }
           },
           "concordance_coverage": {
@@ -86,11 +86,11 @@
     "gates": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sc002_weights_sum_to_one", "sc003_table_hashes_reproduced", "sc004_reconciliation_within_2pct", "sc005_trade_annual_exact_sum"],
+      "required": ["sc002_weights_sum_to_one", "sc003_table_hashes_reproduced", "sc004_weight_conservation", "sc005_trade_annual_exact_sum"],
       "properties": {
         "sc002_weights_sum_to_one": { "type": ["boolean", "null"] },
         "sc003_table_hashes_reproduced": { "type": ["boolean", "null"] },
-        "sc004_reconciliation_within_2pct": { "type": ["boolean", "null"] },
+        "sc004_weight_conservation": { "type": ["boolean", "null"] },
         "sc005_trade_annual_exact_sum": { "type": ["boolean", "null"] }
       }
     }

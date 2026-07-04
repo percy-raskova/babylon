@@ -51,6 +51,20 @@ consumes both:
   evening) — four parallel lanes: `[E:071→101→102→104→105]`
   `[W:090→091→092∥093→094→095→103]` `[D:100 ∥ 098-LODES ∥ 068-slice]`
   `[O:096→099]`. Design canon staged at `design/mockups/` (66 files).
+- **spec-101 Trade activation — CODE DONE 2026-07-04** (branch
+  `101-trade-activation`, on origin, ADR055, unmerged; opens the shared
+  101+102 proof window). Boundary flows are LIVE: the runner populates the
+  four dormant TickContext keys so `_invoke_phi_distribution_if_wired`
+  records DRAIN_EDGE rows every tick. **Discovery**: Hickel Φ is a single
+  national aggregate (all blocs hydrated Φ=0), so the national Φ is
+  attributed across engine nodes by bilateral-trade share via an injective
+  `_NODE_TO_BLOC` crosswalk (`postgres_initialization.py`) — **the #1
+  owner-review item** (india/latin_america get Φ=0; russia_csi→Europe is
+  weak). Conservation `Σ DRAIN_EDGE ≡ Φ_week` per bloc gated (relative
+  residual; migration 0031 admits `external:<node>` scale). `vol2_step`
+  TRADE_EDGE stays gated (needs 098-LODES). 18 unit + 4 integration tests
+  green; total_v + liveness unchanged; 5-tick baseline regenerated.
+  Canonical `sim:e2e-bg` launched for 83/83 re-verification.
   - **Lane D spec-100 County-exposure loader — DONE 2026-07-04** (branch
     `100-county-exposure`, unmerged; two repos: babylon worktree schema +
     babylon-data loader). Built the never-computed `county_exposure_by_external`

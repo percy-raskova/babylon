@@ -249,3 +249,8 @@ decisions:
     status: accepted
     date: '2026-07-04'
     file: ADR054_spec_071_reactionary_subject.yaml
+  ADR055_spec101_trade_activation:
+    title: 'Trade activation + national-Φ attribution to blocs by trade share (spec-101): boundary flows live, injective node→bloc crosswalk, scope-renormalised exposure, relative conservation residual'
+    status: accepted
+    date: '2026-07-04'
+    file: ADR055_spec101_trade_activation.yaml

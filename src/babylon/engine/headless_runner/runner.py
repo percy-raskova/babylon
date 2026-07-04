@@ -1084,6 +1084,14 @@ def _tick_loop(
     a non-None endgame event signals early termination via the
     configured detector.
 
+    Spec-102 SLICE B: ``config.shock_schedule`` (empty by default) is
+    compiled once into a tick-indexed timeline; each tick applies any
+    shocks due at that tick to a persistent ``active_multipliers`` map and
+    recomputes the *effective* ``external_nodes_phi`` passed to
+    ``_advance_tick`` for that tick. With an empty schedule this is a
+    value-identical no-op — ``_effective_external_nodes_phi`` returns a map
+    equal to ``external_nodes_phi`` — so canonical runs are unaffected.
+
     Returns:
         ``(ticks_completed, endgame_event)``.
     """
@@ -1096,6 +1104,11 @@ def _tick_loop(
         f"{session_id}:0:{config.random_seed}".encode()
     ).hexdigest()
     bridge.persist_tick(world, 0, determinism_hash_t0)
+
+    # Spec-102 SLICE B: shock timeline + persistent per-bloc multiplier
+    # state, threaded across tick-loop iterations (never reset per tick).
+    shock_timeline = _build_shock_timeline(config.shock_schedule)
+    active_shock_multipliers: dict[str, float] = {}
 
     tick_range = range(1, config.ticks)
     iterator: Any = tick_range
@@ -1121,6 +1134,22 @@ def _tick_loop(
         # fire events through services.event_bus.publish).
         if bridge.event_capture is not None:
             bridge.event_capture.set_tick(tick)
+        # Spec-102 SLICE B: apply any shocks scheduled at this tick, then
+        # recompute the effective (possibly shocked) external_nodes_phi.
+        # Level-set semantics — active_shock_multipliers persists across
+        # iterations, so a bloc's multiplier stays in effect on every tick
+        # after its scheduled tick.
+        effective_external_nodes_phi = external_nodes_phi
+        if external_nodes_phi is not None:
+            _apply_due_shocks(
+                tick=tick,
+                shock_timeline=shock_timeline,
+                active_multipliers=active_shock_multipliers,
+            )
+            effective_external_nodes_phi = _effective_external_nodes_phi(
+                base_external_nodes_phi=external_nodes_phi,
+                active_multipliers=active_shock_multipliers,
+            )
         # Spec-066 T035: _advance_tick now runs the engine when
         # engine+services+graph are provided. It returns the
         # reconstituted world from the mutated graph for subsequent ticks.
@@ -1134,7 +1163,7 @@ def _tick_loop(
             graph=graph,
             session_id=session_id,
             county_exposure_by_external=county_exposure_by_external,
-            external_nodes_phi=external_nodes_phi,
+            external_nodes_phi=effective_external_nodes_phi,
         )
         per_tick_durations.append(time.perf_counter() - t_tick)
         ticks_completed = tick + 1

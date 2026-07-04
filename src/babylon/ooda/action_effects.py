@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from babylon.config.defines import OODADefines, OrganizationDefines
-from babylon.models.enums import ActionType, ConsciousnessTendency, EventType
+from babylon.config.defines import OODADefines, OrganizationDefines, ReactionaryDefines
+from babylon.models.enums import ActionType, ConsciousnessTendency, EdgeType, EventType
 from babylon.ooda._helpers import _compute_membership_overlap
 from babylon.ooda.types import Action, ActionResult
 from babylon.organizations.consciousness import tendency_modifier
@@ -21,6 +21,16 @@ from babylon.organizations.types import ConsciousnessDelta
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
+
+# Spec-071 fascist-verb effect coefficients (III.1 — all in defines).
+_REACT = ReactionaryDefines()
+
+# The fascist action verbs (spec-071) and their emitted event types.
+_FASCIST_VERBS: dict[ActionType, EventType] = {
+    ActionType.POGROM: EventType.POGROM,
+    ActionType.LOCKOUT: EventType.LOCKOUT,
+    ActionType.VIGILANTISM: EventType.VIGILANTISM,
+}
 
 
 def compute_consciousness_delta(
@@ -128,6 +138,9 @@ def resolve_action(
     if action_type == ActionType.ASSIMILATE:
         return _resolve_assimilate(action, org_attrs, graph, defines, org_defines)
 
+    if action_type in _FASCIST_VERBS:
+        return _resolve_fascist_verb(action, graph)
+
     # Consciousness-affecting actions
     ci_delta = compute_consciousness_delta(
         org_attrs,
@@ -145,6 +158,62 @@ def resolve_action(
         success=True,
         consciousness_delta=ci_delta,
         events_generated=events,
+    )
+
+
+def _resolve_fascist_verb(action: Action, graph: BabylonGraph) -> ActionResult:
+    """Resolve a spec-071 fascist verb (POGROM / LOCKOUT / VIGILANTISM).
+
+    Materially grounded, directly mutating the target's graph state:
+
+    - **POGROM**: communal violence — raise the target's repression and
+      destroy a fraction of its wealth.
+    - **VIGILANTISM**: extra-state local repression — raise the target's
+      repression.
+    - **LOCKOUT**: the employer withdraws income — attenuate the target's
+      incoming WAGES value_flow.
+
+    All coefficients come from :class:`ReactionaryDefines` (III.1).
+    """
+    action_type = action.action_type
+    target_id = action.target_id
+    effects: dict[str, Any] = {}
+
+    if action_type in {ActionType.POGROM, ActionType.VIGILANTISM} and target_id is not None:
+        node = graph.get_node(target_id)
+        if node is not None:
+            increment = (
+                _REACT.pogrom_repression_increment
+                if action_type == ActionType.POGROM
+                else _REACT.vigilantism_repression_increment
+            )
+            current_rep = float(node.attributes.get("repression_faced", 0.0))
+            graph.update_node(target_id, repression_faced=min(1.0, current_rep + increment))
+            effects["repression_increment"] = increment
+            if action_type == ActionType.POGROM:
+                current_wealth = float(node.attributes.get("wealth", 0.0))
+                new_wealth = current_wealth * (1.0 - _REACT.pogrom_wealth_destruction)
+                graph.update_node(target_id, wealth=new_wealth)
+                effects["wealth_destroyed"] = current_wealth - new_wealth
+
+    elif action_type == ActionType.LOCKOUT and target_id is not None:
+        for edge in graph.query_edges(edge_type=EdgeType.WAGES):
+            if edge.target_id != target_id:
+                continue
+            flow = float(edge.attributes.get("value_flow", 0.0))
+            graph.update_edge(
+                edge.source_id,
+                edge.target_id,
+                EdgeType.WAGES,
+                value_flow=flow * (1.0 - _REACT.lockout_wage_attenuation),
+            )
+            effects["wage_attenuation"] = _REACT.lockout_wage_attenuation
+
+    return ActionResult(
+        action=action,
+        success=True,
+        direct_effects=effects,
+        events_generated=[_FASCIST_VERBS[action_type].value],
     )
 
 

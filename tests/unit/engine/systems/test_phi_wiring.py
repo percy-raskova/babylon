@@ -173,7 +173,7 @@ def test_step_calls_invoke_phi_distribution_seam(monkeypatch) -> None:  # type: 
     sys = ImperialRentSystem()
     seam_calls: list[TickContext] = []
 
-    def fake_invoke(self, context):  # type: ignore[no-untyped-def]
+    def fake_invoke(self, context, services=None):  # type: ignore[no-untyped-def]
         seam_calls.append(context)
 
     monkeypatch.setattr(ImperialRentSystem, "_invoke_phi_distribution_if_wired", fake_invoke)

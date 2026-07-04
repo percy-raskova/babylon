@@ -384,10 +384,14 @@ def _query_external_nodes_phi(*, pool: Any, session_id: UUID) -> dict[str, float
     Returns:
         ``{node_id: phi_year_inflow}`` for all external nodes at tick 0.
     """
+    # Spec-101 review minor (III.7 determinism): ORDER BY node_id — Postgres
+    # SELECT order is otherwise unspecified, and the returned dict's
+    # insertion order drives the boundary-register write order downstream
+    # (economic.py's ``_invoke_phi_distribution_if_wired``).
     with pool.connection() as conn:
         rows = conn.execute(
             "SELECT node_id, phi_year_inflow FROM dynamic_external_node_state "
-            "WHERE session_id = %s AND tick = 0",
+            "WHERE session_id = %s AND tick = 0 ORDER BY node_id",
             (str(session_id),),
         ).fetchall()
     return {str(node_id): float(phi) for node_id, phi in rows}
@@ -665,6 +669,9 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             boundary_register=boundary_register,
             event_bus=event_bus,
             auditor=auditor,
+            # Spec-101 review fix #3: raw national Φ, independent of the D3
+            # attribution — feeds the auditor's aggregate coverage check.
+            national_phi_reference=report.national_phi_reference,
         )
         world = bridge.hydrate_initial(
             session_id=session_id,

@@ -78,6 +78,64 @@ def test_none_context_yields_no_results() -> None:
     assert phi_week_conservation_evaluator(None, None, None) == []
 
 
+def test_weeks_per_year_is_configurable() -> None:
+    """Spec-101 review minor: 52 is sourced from context, not hardcoded twice."""
+    ctx = {
+        "boundary_rows": [_drain("canada", "26163", 10.0)],
+        "external_nodes_phi": {"canada": 20.0},
+        "weeks_per_year": 2.0,  # phi_week = 20.0 / 2.0 = 10.0, matches drain
+    }
+    (result,) = phi_week_conservation_evaluator(None, None, ctx)
+    assert result.computed_value == pytest.approx(1.0)
+
+
+def test_all_zero_attribution_alarms_via_national_reference() -> None:
+    """Spec-101 review fix #3: the genuine, independent detector.
+
+    Even if EVERY bloc's attributed Φ reads back 0 (the finding #1
+    catastrophic-attribution-failure mode), this must be caught via
+    ``national_phi_reference`` — a ground-truth value sourced independently
+    from the (potentially-compromised) per-bloc ``external_nodes_phi`` map.
+    Before this fix, the per-bloc loop skips every zero-phi bloc and the
+    evaluator returns ``[]`` — silently "passing" with zero audit rows and
+    zero alarms (the "all-zeros trivially satisfies" hole).
+    """
+    ctx = {
+        "boundary_rows": [],
+        "external_nodes_phi": {"canada": 0.0, "china": 0.0},
+        "national_phi_reference": 52.0,  # ground truth: real Φ was positive
+    }
+    results = phi_week_conservation_evaluator(None, None, ctx)
+    aggregate = [r for r in results if r.scale == "external:__national_aggregate__"]
+    assert aggregate, "no aggregate coverage row emitted despite national_phi_reference > 0"
+    assert aggregate[0].computed_value == pytest.approx(0.0)
+    assert aggregate[0].expected_value == 1.0
+
+
+def test_healthy_attribution_aggregate_is_ok() -> None:
+    """The aggregate check is a no-op (OK) on the canonical happy path."""
+    ctx = {
+        "boundary_rows": [_drain("canada", "26163", 1.0)],
+        "external_nodes_phi": {"canada": 52.0},
+        "national_phi_reference": 52.0,
+    }
+    results = phi_week_conservation_evaluator(None, None, ctx)
+    aggregate = [r for r in results if r.scale == "external:__national_aggregate__"]
+    assert aggregate[0].computed_value == pytest.approx(1.0)
+
+
+def test_no_national_reference_skips_aggregate_check() -> None:
+    """Back-compat: omitting national_phi_reference (existing callers/tests)
+
+    is a no-op — no aggregate row is emitted, and existing behavior is
+    unchanged.
+    """
+    ctx = {"boundary_rows": [], "external_nodes_phi": {"canada": 0.0}}
+    results = phi_week_conservation_evaluator(None, None, ctx)
+    assert not [r for r in results if r.scale == "external:__national_aggregate__"]
+    assert results == []  # canada is phi<=0 → skipped, no national_phi_reference → no aggregate
+
+
 def test_balanced_is_ok_underdrain_is_alarm_via_auditor() -> None:
     auditor = ConservationAuditor(epsilon=1e-9, rng_seed=0)
     auditor.register_invariant(

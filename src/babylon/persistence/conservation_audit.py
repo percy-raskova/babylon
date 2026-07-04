@@ -120,6 +120,9 @@ def _to_jsonable(obj: Any) -> Any:
     return obj
 
 
+_AGGREGATE_SCALE = "external:__national_aggregate__"
+
+
 def phi_week_conservation_evaluator(
     _pre_state: Any, _post_state: Any, context: Any
 ) -> list[_InvariantResult]:
@@ -132,23 +135,56 @@ def phi_week_conservation_evaluator(
     - ``context["boundary_rows"]``: iterable of ``BoundaryFlowRegisterRow`` for
       this tick (the bridge passes the just-flushed buffer).
     - ``context["external_nodes_phi"]``: ``{node_id: phi_year_inflow}``.
+    - ``context["national_phi_reference"]`` (optional): the RAW, un-attributed
+      national Φ (spec-101 review fix #3) — see the aggregate check below.
+    - ``context["weeks_per_year"]`` (optional, default 52.0): sourced from
+      ``GameDefines.timescale.weeks_per_year`` by the caller (review minor —
+      avoids an independently-hardcoded ``52`` literal in this module).
 
-    For each bloc with ``phi_year_inflow > 0`` the check is the **relative**
-    residual ``Σ(DRAIN_EDGE magnitude, source=bloc) / (phi_year/52)`` versus
-    ``1.0`` (D4). Φ is ~$1e12-scale, so an absolute residual would be meaningless
-    against the auditor's absolute alarm threshold (1e-6) and would false-alarm
-    ``--strict``; the ratio form keeps the residual at float epsilon (~1e-15).
-    Blocs with ``phi == 0`` emit no DRAIN rows and are skipped (FR-020). One
-    ``_InvariantResult`` per Φ>0 bloc, differentiated by ``scale=external:<node>``.
+    Two distinct checks are produced:
+
+    1. **Per-bloc consistency** (one result per bloc with ``phi_year_inflow >
+       0``, ``scale=external:<node>``): the **relative** residual
+       ``Σ(DRAIN_EDGE magnitude, source=bloc) / (phi_year/weeks_per_year)``
+       versus ``1.0`` (D4). Φ is ~$1e12-scale, so an absolute residual would
+       be meaningless against the auditor's absolute alarm threshold (1e-6)
+       and would false-alarm ``--strict``; the ratio form keeps the residual
+       at float epsilon (~1e-15). **Honesty note (review finding #3a)**: this
+       is a consistency assertion, not an independent conservation gate —
+       ``distribute_phi_week_to_counties`` computes both the recorded DRAIN
+       rows AND (transitively, via the same ``phi_year_inflow`` input) this
+       check's expected value from the SAME number, and that function's own
+       unit-sum-weights guard already enforces the identity whenever it runs
+       to completion. It can only ever hold once distribution has run, so it
+       cannot by itself detect an attribution-stage regression that feeds it
+       a wrong (e.g., zeroed) ``phi_year_inflow`` in the first place — that
+       failure mode is INHERENTLY invisible to a check built only from
+       already-attributed values (checks 1). Blocs with ``phi == 0`` emit no
+       DRAIN rows and are skipped (FR-020) — this is also why the "all
+       blocs read back 0" regression previously produced zero audit rows and
+       zero alarms (the "all-zeros trivially satisfies" hole).
+    2. **Aggregate coverage** (``scale=external:__national_aggregate__``,
+       emitted only when ``national_phi_reference > 0``): compares the TOTAL
+       recorded DRAIN across every bloc against
+       ``national_phi_reference / weeks_per_year`` — a ground truth sourced
+       INDEPENDENTLY of the per-bloc attribution (:attr:`InitializationReport.national_phi_reference`,
+       read once from ``immutable_reference_hickel_drain`` before the D3
+       trade-share split). This check genuinely CAN fail: if attribution
+       zeroes every bloc's ``phi_year_inflow`` (review finding #1's failure
+       mode) the per-bloc loop above skips everything, but this aggregate
+       check still sees ``national_phi_reference > 0`` and ``Σ DRAIN == 0``
+       → ALARM.
 
     Args:
         _pre_state: Unused (signature parity with other evaluators).
         _post_state: Unused.
         context: The per-tick audit context carrying ``boundary_rows`` and
-            ``external_nodes_phi``. A ``None`` context yields no results.
+            ``external_nodes_phi`` (plus the optional keys above). A
+            ``None`` context yields no results.
 
     Returns:
-        One ``_InvariantResult`` per bloc with positive Φ.
+        One ``_InvariantResult`` per bloc with positive Φ, plus (when
+        ``national_phi_reference > 0``) one aggregate-coverage result.
     """
     from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
 
@@ -156,6 +192,8 @@ def phi_week_conservation_evaluator(
         return []
     boundary_rows = context.get("boundary_rows") or []
     external_nodes_phi = context.get("external_nodes_phi") or {}
+    national_phi_reference = float(context.get("national_phi_reference") or 0.0)
+    weeks_per_year = float(context.get("weeks_per_year") or 52.0)
 
     drain_by_node: dict[str, float] = {}
     for row in boundary_rows:
@@ -169,7 +207,7 @@ def phi_week_conservation_evaluator(
         phi_year = float(external_nodes_phi[node_id])
         if phi_year <= 0.0:
             continue  # FR-020: zero-Φ blocs contribute no DRAIN rows
-        phi_week = phi_year / 52.0
+        phi_week = phi_year / weeks_per_year
         observed = drain_by_node.get(node_id, 0.0)
         ratio = observed / phi_week if phi_week > 0.0 else 0.0
         results.append(
@@ -177,6 +215,19 @@ def phi_week_conservation_evaluator(
                 scale=f"external:{node_id}"[:32],
                 invariant_name="imperial_rent_phi_week_distribution",
                 computed_value=ratio,
+                expected_value=1.0,
+            )
+        )
+
+    if national_phi_reference > 0.0:
+        national_phi_week = national_phi_reference / weeks_per_year
+        total_observed = sum(drain_by_node.values())
+        aggregate_ratio = total_observed / national_phi_week if national_phi_week > 0.0 else 0.0
+        results.append(
+            _InvariantResult(
+                scale=_AGGREGATE_SCALE,
+                invariant_name="imperial_rent_phi_week_distribution",
+                computed_value=aggregate_ratio,
                 expected_value=1.0,
             )
         )

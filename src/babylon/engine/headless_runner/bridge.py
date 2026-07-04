@@ -149,9 +149,17 @@ class WorldStateBridge:
         boundary_register: BoundaryFlowRegister | None = None,
         event_bus: EventBus | None = None,
         auditor: ConservationAuditor | None = None,
+        national_phi_reference: float = 0.0,
     ) -> None:
         self._runtime = runtime
         self._defines = defines
+        # Spec-101 review fix #3: the RAW, un-attributed national Φ
+        # (InitializationReport.national_phi_reference), independent of the
+        # per-node D3 trade-share attribution. Threaded into the per-tick
+        # audit context so the conservation auditor's aggregate coverage
+        # check can detect an attribution-stage regression that zeroes
+        # every node's Φ even though this value was positive.
+        self._national_phi_reference = national_phi_reference
         self._session_id: UUID | None = None
         self._scope_fips: frozenset[str] | None = None
         self._start_year: int = 2010  # set by hydrate_initial
@@ -514,6 +522,11 @@ class WorldStateBridge:
             audit_context = {
                 "boundary_rows": boundary_rows,
                 "external_nodes_phi": external_nodes_phi,
+                # Spec-101 review fix #3 — independent ground truth (see
+                # __init__) + review minor (weeks_per_year sourced from
+                # GameDefines rather than hardcoded in conservation_audit.py).
+                "national_phi_reference": self._national_phi_reference if tick >= 1 else 0.0,
+                "weeks_per_year": float(self._defines.timescale.weeks_per_year),
             }
             audit_rows_typed, _alarms = self._auditor.audit_end_of_tick(
                 session_id=self._session_id,

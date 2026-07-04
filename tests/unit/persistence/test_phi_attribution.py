@@ -17,6 +17,7 @@ from babylon.persistence.postgres_initialization import (
     _NODE_TO_BLOC,
     PhiAttributionUnavailableError,
     _attribute_phi_and_trade,
+    _preflight_hickel_intensive_coverage,
     _read_bloc_trade,
 )
 
@@ -99,3 +100,49 @@ def test_read_bloc_trade_from_sqlite(tmp_path: Path) -> None:
     trade = _read_bloc_trade(path, 2010)
     assert trade == {1: pytest.approx(558.9), 12: pytest.approx(1183.5)}
     assert _read_bloc_trade(path, 1999) == {}  # no annual time_id
+
+
+def _make_hickel_sqlite(tmp_path: Path, *, years: list[int]) -> Path:
+    path = tmp_path / "hickel.sqlite"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE dim_time (time_id INTEGER PRIMARY KEY, year INTEGER, is_annual INTEGER);
+        CREATE TABLE fact_hickel_erdi_annual (
+            id INTEGER PRIMARY KEY, time_id INTEGER, scale_type TEXT,
+            erdi REAL, annual_drain_usd_billions REAL
+        );
+        """
+    )
+    for i, year in enumerate(years):
+        conn.execute("INSERT INTO dim_time VALUES (?, ?, 1)", (i, year))
+        conn.execute(
+            "INSERT INTO fact_hickel_erdi_annual (time_id, scale_type, erdi, "
+            "annual_drain_usd_billions) VALUES (?, 'Intensive', 1.0, 100.0)",
+            (i,),
+        )
+    conn.commit()
+    conn.close()
+    return path
+
+
+def test_hickel_coverage_preflight_raises_outside_window(tmp_path: Path) -> None:
+    """Spec-101 review fix #2: start_year=2020 is outside the verified
+
+    1980-2017 'Intensive' coverage — must fail loud, not let
+    ``_fetch_national_phi`` read back its silent 0.0 fallback.
+    """
+    path = _make_hickel_sqlite(tmp_path, years=[1980, 2017])
+    with pytest.raises(PhiAttributionUnavailableError):
+        _preflight_hickel_intensive_coverage(sqlite_path=path, start_year=2020)
+
+
+def test_hickel_coverage_preflight_passes_inside_window(tmp_path: Path) -> None:
+    path = _make_hickel_sqlite(tmp_path, years=[1980, 2010, 2017])
+    _preflight_hickel_intensive_coverage(sqlite_path=path, start_year=2010)  # no raise
+
+
+def test_hickel_coverage_preflight_raises_when_no_intensive_rows(tmp_path: Path) -> None:
+    path = _make_hickel_sqlite(tmp_path, years=[])
+    with pytest.raises(PhiAttributionUnavailableError):
+        _preflight_hickel_intensive_coverage(sqlite_path=path, start_year=2010)

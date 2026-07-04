@@ -131,6 +131,21 @@ def test_drain_rows_every_tick_for_positive_phi_blocs(trade_run) -> None:
 
 def test_conservation_identity_holds_per_bloc(trade_run) -> None:
     _sid, phi_map, drain, _audit = trade_run
+    # Spec-101 review fix #4: without this non-emptiness guard the test
+    # passes VACUOUSLY when ``drain`` is empty (e.g. the wiring-reverted
+    # regression this test's docstring claims to catch) — the ``for`` loop
+    # below simply never executes and the assertion inside it never runs.
+    positive_blocs = {n for n, p in phi_map.items() if p > 0}
+    assert drain, (
+        "no DRAIN_EDGE rows at all — boundary rows must exist for the "
+        f"positive-Φ blocs {sorted(positive_blocs)}; a wiring regression "
+        "would silently make this test pass with an empty loop body"
+    )
+    drained_blocs = {str(node) for node, _tick, _mag in drain}
+    assert drained_blocs == positive_blocs, (
+        f"DRAIN rows cover {sorted(drained_blocs)} but positive-Φ blocs are "
+        f"{sorted(positive_blocs)} — missing or spurious bloc coverage"
+    )
     for node, _tick, mag in drain:
         phi_week = phi_map[str(node)] / _WEEKS_PER_YEAR
         assert mag == pytest.approx(phi_week, rel=1e-9), (

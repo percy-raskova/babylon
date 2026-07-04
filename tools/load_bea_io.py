@@ -352,19 +352,62 @@ def _run_us2_stage(
 
 def _run_us3_stage(
     audit_report: BEAIngestAuditReport,
-    reload_concordance: bool,
+    years: range,
+    reload_concordance: bool,  # noqa: ARG001
     dry_run: bool,  # noqa: ARG001
 ) -> None:
-    """US3: populate bridge_naics_bea + hex_hydrator wiring. Wired in T054."""
+    """US3: concordance coverage + stale-share fallback summary (SC-008).
+
+    Computes the ``StaleShareFallbackSummary`` — the employment-weighted
+    fraction of QCEW employment that falls back to ``GLOBAL_FALLBACK_SHARE``
+    because the mapped BEA industry has no ``fact_bea_national_industry``
+    data within the 5-year forward-fill window. SC-008 requires this to be
+    < 1% of total QCEW employment.
+
+    The concordance (``bridge_naics_bea``) is populated by the spec-025
+    loader and is shared with spec-068; it is NOT re-populated here unless
+    ``--reload-concordance`` is passed (deferred to a future T054 follow-up).
+    The hex_hydrator wiring (T056-T057) is in ``hex_hydrator.py`` +
+    ``postgres_initialization.py``, not in the ingest CLI.
+    """
     log = logging.getLogger("load_bea_io.us3")
-    _ = audit_report, reload_concordance
-    log.info("US3 stage: not yet wired (T054 — Phase 5 US3 work pending)")
+    log.info("US3 stage: computing stale-share fallback summary for SC-008")
+
+    from babylon.reference.bea.ingest.stale_share_summary import (
+        compute_stale_share_fallback_summary,
+    )
+
+    with get_normalized_session() as session:
+        audit_report.stale_share_fallback_summary = compute_stale_share_fallback_summary(
+            session, years
+        )
+
+    summary = audit_report.stale_share_fallback_summary
+    assert summary is not None  # just set above
+    log.info(
+        "US3 stage: total_lookups=%d forward_filled=%d global_default=%d "
+        "affected_employment_fraction=%.6f → sc_008_pass=%s",
+        summary.total_county_year_lookups,
+        summary.forward_filled_lookups,
+        summary.global_default_lookups,
+        summary.affected_employment_fraction,
+        summary.affected_employment_fraction < 0.01,
+    )
 
 
 def _finalize_audit_report(audit_report: BEAIngestAuditReport) -> None:
-    """Compute final SC pass/fail gates and the SC-007 wallclock judgement."""
+    """Compute final SC pass/fail gates and the SC-007 wallclock judgement.
+
+    SC-005 (stddev c/v >= 0.2) is post-hoc — set externally after running
+    ``mise run sim:e2e-michigan``. SC-008 is computed here from the
+    ``stale_share_fallback_summary`` populated in US3.
+    """
     audit_report.sc_007_wallclock_seconds = audit_report.duration_seconds
     audit_report.sc_007_pass = audit_report.duration_seconds < 900.0  # 15 minutes
+    if audit_report.stale_share_fallback_summary is not None:
+        audit_report.sc_008_pass = (
+            audit_report.stale_share_fallback_summary.affected_employment_fraction < 0.01
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -411,7 +454,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         _run_us1_stage(audit_report, args.years, args.dry_run)
         _run_us2_stage(audit_report, args.years, args.dry_run)
-        _run_us3_stage(audit_report, args.reload_concordance, args.dry_run)
+        _run_us3_stage(audit_report, args.years, args.reload_concordance, args.dry_run)
         # US4 is operator-driven via tools/validate_bea_io_against_shaikh.py.
 
     audit_report.duration_seconds = time.monotonic() - start_time

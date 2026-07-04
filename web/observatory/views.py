@@ -29,6 +29,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 
+from .deep_queries import read_commit_chain, read_national_series, read_tick_range
 from .queries import (
     DEFAULT_HEX_LIMIT,
     DEFAULT_MAX_TICK_SPAN,
@@ -40,10 +41,16 @@ from .queries import (
     fetch_sessions,
     fetch_tick_range,
 )
+from .sources import (
+    SIM_ALIAS,
+    Source,
+    SourceReadError,
+    list_archive_session_ids,
+    open_reader,
+    parse_source,
+)
 
 logger = logging.getLogger(__name__)
-
-SIM_ALIAS = "sim"
 
 #: Postgres INT4 bounds — tick columns are INT4; a value outside this range
 #: raises DataError, so tick params are rejected as 400 before reaching the DB.
@@ -172,6 +179,66 @@ def _resolve_range(
     return from_tick, to_tick
 
 
+def _source_or_400(request: Request) -> Source:
+    try:
+        return parse_source(request.query_params.get("source"))
+    except ValueError as exc:
+        raise _BadRequest(str(exc)) from exc
+
+
+def _archive_sessions() -> list[dict[str, Any]]:
+    """Session summaries reconstructed from archived Parquet (per-session dir)."""
+    out: list[dict[str, Any]] = []
+    for sid in list_archive_session_ids():
+        with open_reader(Source.ARCHIVE, sid) as reader:
+            rng = read_tick_range(reader, sid)
+            if rng is None:
+                continue
+            chain = read_commit_chain(reader, sid, rng[0], rng[1])
+        out.append(
+            {
+                "session_id": sid,
+                "min_tick": rng[0],
+                "max_tick": rng[1],
+                "tick_count": len(chain),
+                "checkpoint_count": sum(1 for c in chain if c["is_checkpoint"]),
+                "latest_hash": chain[-1]["determinism_hash"] if chain else None,
+                "scenario": None,
+                "status": None,
+                "created_at": None,
+            }
+        )
+    return out
+
+
+def _window(
+    rng: tuple[int, int] | None, from_tick: int | None, to_tick: int | None
+) -> tuple[int, int] | None:
+    """Resolve a bounded, span-capped tick window from a committed range."""
+    if rng is None:
+        return None
+    lo = rng[0] if from_tick is None else from_tick
+    hi = rng[1] if to_tick is None else to_tick
+    if lo > hi:
+        raise _BadRequest("from_tick must be <= to_tick")
+    return lo, min(hi, lo + DEFAULT_MAX_TICK_SPAN)
+
+
+def _archive_tick_range(sid: str) -> dict[str, Any] | None:
+    with open_reader(Source.ARCHIVE, sid) as reader:
+        rng = read_tick_range(reader, sid)
+        if rng is None:
+            return None
+        chain = read_commit_chain(reader, sid, rng[0], rng[1])
+    return {
+        "session_id": sid,
+        "min_tick": rng[0],
+        "max_tick": rng[1],
+        "tick_count": len(chain),
+        "checkpoint_ticks": [c["tick"] for c in chain if c["is_checkpoint"]],
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Endpoints
 # --------------------------------------------------------------------------- #
@@ -189,12 +256,21 @@ def observatory_status(request: Request) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def observatory_sessions(request: Request) -> JsonResponse:
-    """GET /api/observatory/sessions/ — sessions with >=1 committed tick."""
+    """GET /api/observatory/sessions/?source= — sessions with >=1 committed tick."""
     try:
-        with _sim_cursor() as cursor:
-            data = fetch_sessions(cursor)
+        source = _source_or_400(request)
+    except _BadRequest as exc:
+        return _err(str(exc), 400)
+    try:
+        if source is Source.ARCHIVE:
+            data = _archive_sessions()
+        else:
+            with _sim_cursor() as cursor:
+                data = fetch_sessions(cursor)
     except DatabaseError:
         return _sim_unavailable()
+    except SourceReadError:
+        return _err("Archive read failed", 503)
     return _ok(data)
 
 
@@ -202,16 +278,22 @@ def observatory_sessions(request: Request) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def observatory_ticks(request: Request, session_id: str) -> JsonResponse:
-    """GET /api/observatory/sessions/<id>/ticks/ — committed range + checkpoints."""
+    """GET /api/observatory/sessions/<id>/ticks/?source= — range + checkpoints."""
     try:
         sid = _valid_uuid(session_id)
+        source = _source_or_400(request)
     except _BadRequest as exc:
         return _err(str(exc), 400)
     try:
-        with _sim_cursor() as cursor:
-            data = fetch_tick_range(cursor, sid)
+        if source is Source.ARCHIVE:
+            data = _archive_tick_range(sid)
+        else:
+            with _sim_cursor() as cursor:
+                data = fetch_tick_range(cursor, sid)
     except DatabaseError:
         return _sim_unavailable()
+    except SourceReadError:
+        return _err("Archive read failed", 503)
     if data is None:
         return _err("Session has no committed ticks", 404)
     return _ok(data)
@@ -253,26 +335,42 @@ def observatory_series_csv(request: Request, session_id: str) -> HttpResponseBas
 
 
 def _series_payload(request: Request, session_id: str) -> dict[str, Any]:
-    """Shared parse + fetch for the JSON and CSV series endpoints."""
+    """Shared parse + fetch for the JSON and CSV series endpoints (source-aware).
+
+    Archive source supports the national scope only (archives carry no
+    ``hex_spatial_map``, so state/county grouping is unavailable) — a documented
+    empty result for those scopes.
+    """
     sid = _valid_uuid(session_id)
+    source = _source_or_400(request)
     scope = request.query_params.get("scope", "national")
     if scope not in SCOPE_VIEWS:
         raise _BadRequest(f"unknown scope: {scope!r}")
     scope_id = _resolve_scope_id(scope, request.query_params.get("scope_id"))
     from_tick = _parse_int(request.query_params.get("from_tick"), "from_tick")
     to_tick = _parse_int(request.query_params.get("to_tick"), "to_tick")
-    with _sim_cursor() as cursor:
-        window = _resolve_range(cursor, sid, from_tick, to_tick)
-        if window is None:
-            points: list[dict[str, Any]] = []
-            lo = hi = 0
-        else:
-            lo, hi = window
-            points = fetch_series(cursor, scope, sid, scope_id, lo, hi)
+    points: list[dict[str, Any]]
+    if source is Source.ARCHIVE:
+        with open_reader(Source.ARCHIVE, sid) as reader:
+            window = _window(read_tick_range(reader, sid), from_tick, to_tick)
+            if window is None or scope != "national":
+                points, lo, hi = [], (window[0] if window else 0), (window[1] if window else 0)
+            else:
+                lo, hi = window
+                points = read_national_series(reader, sid, lo, hi)
+    else:
+        with _sim_cursor() as cursor:
+            window = _resolve_range(cursor, sid, from_tick, to_tick)
+            if window is None:
+                points, lo, hi = [], 0, 0
+            else:
+                lo, hi = window
+                points = fetch_series(cursor, scope, sid, scope_id, lo, hi)
     return {
         "session_id": sid,
         "scope": scope,
         "scope_id": scope_id,
+        "source": source.value,
         "from_tick": lo,
         "to_tick": hi,
         "points": points,
@@ -291,18 +389,33 @@ def observatory_commits(request: Request, session_id: str) -> JsonResponse:
     """
     try:
         sid = _valid_uuid(session_id)
+        source = _source_or_400(request)
         from_tick = _parse_int(request.query_params.get("from_tick"), "from_tick")
         to_tick = _parse_int(request.query_params.get("to_tick"), "to_tick")
     except _BadRequest as exc:
         return _err(str(exc), 400)
     try:
-        with _sim_cursor() as cursor:
-            window = _resolve_range(cursor, sid, from_tick, to_tick)
-            data = [] if window is None else fetch_commits(cursor, sid, window[0], window[1])
+        if source is Source.ARCHIVE:
+            with open_reader(Source.ARCHIVE, sid) as reader:
+                window = _window(read_tick_range(reader, sid), from_tick, to_tick)
+                data = (
+                    []
+                    if window is None
+                    else [
+                        {**c, "created_at_utc": None}
+                        for c in read_commit_chain(reader, sid, window[0], window[1])
+                    ]
+                )
+        else:
+            with _sim_cursor() as cursor:
+                window = _resolve_range(cursor, sid, from_tick, to_tick)
+                data = [] if window is None else fetch_commits(cursor, sid, window[0], window[1])
     except _BadRequest as exc:
         return _err(str(exc), 400)
     except DatabaseError:
         return _sim_unavailable()
+    except SourceReadError:
+        return _err("Archive read failed", 503)
     return _ok(data)
 
 

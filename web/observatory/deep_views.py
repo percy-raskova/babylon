@@ -7,11 +7,9 @@ chosen source and runs the reader-based deep queries. All read-only.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Any
 
-from django.db import DatabaseError, connections
+from django.db import DatabaseError
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -25,16 +23,8 @@ from .deep_queries import (
     verify_chain,
 )
 from .queries import DEFAULT_MAX_TICK_SPAN
-from .sources import (
-    ArchiveReader,
-    LiveReader,
-    Source,
-    SourceReadError,
-    archive_dir,
-    parse_source,
-)
+from .sources import Source, SourceReadError, open_reader, parse_source
 from .views import (
-    SIM_ALIAS,
     _BadRequest,
     _err,
     _ok,
@@ -45,16 +35,6 @@ from .views import (
 )
 
 _CONSERVATION_SEVERITY = {"all", "non_ok"}
-
-
-@contextmanager
-def open_reader(source: Source, session_id: str) -> Iterator[Any]:
-    """Yield a read-only reader for the chosen source."""
-    if source is Source.ARCHIVE:
-        yield ArchiveReader(archive_dir(session_id))
-        return
-    with connections[SIM_ALIAS].cursor() as cursor:
-        yield LiveReader(cursor)
 
 
 def _resolve_reader_range(

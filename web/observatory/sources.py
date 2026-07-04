@@ -21,9 +21,14 @@ Postgres views; archive reconstructs over the raw hex Parquet).
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+#: The read-only Postgres alias (spec-096).
+SIM_ALIAS = "sim"
 
 
 class SourceReadError(Exception):
@@ -128,6 +133,22 @@ class ArchiveReader:
             con.close()
 
 
+@contextmanager
+def open_reader(source: Source, session_id: str) -> Iterator[Any]:
+    """Yield a read-only reader for the chosen source.
+
+    ``archive`` yields an :class:`ArchiveReader` over the session's Parquet dir
+    (no DB); ``live`` yields a :class:`LiveReader` over a ``sim``-alias cursor.
+    """
+    if source is Source.ARCHIVE:
+        yield ArchiveReader(archive_dir(session_id))
+        return
+    from django.db import connections
+
+    with connections[SIM_ALIAS].cursor() as cursor:
+        yield LiveReader(cursor)
+
+
 def list_archive_session_ids() -> list[str]:
     """Return session ids that have an archived ``tick_commit.parquet``.
 
@@ -152,12 +173,14 @@ def list_archive_session_ids() -> list[str]:
 
 
 __all__ = [
+    "SIM_ALIAS",
     "Source",
     "SourceReadError",
     "parse_source",
     "archive_root",
     "archive_dir",
     "list_archive_session_ids",
+    "open_reader",
     "translate_placeholders",
     "LiveReader",
     "ArchiveReader",

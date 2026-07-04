@@ -917,6 +917,8 @@ ADR0XX_descriptive_name:
 - PostgreSQL 16+ via existing graph bridge (spec-037 + (070-balkanization)
 - Python 3.12 (babylon venv; babylon-data code must avoid >3.12-only syntax it doesn't already use) + SQLAlchemy 2.x (canonical ORM `src/babylon/reference/schema.py` + sessions via `babylon.reference.database`), pandas (chunked singlefile streaming, existing pattern), Pydantic 2.x (audit-report models), jsonschema (audit contract validation), stdlib sqlite3/argparse (086-qcew-loader-imputation)
 - SQLite reference DB `/media/user/data/babylon-data/sqlite/marxist-data-3NF.sqlite` (canonical, reached via the repo's `data/sqlite` directory symlink — exactly one DB file); source: staged BLS annual singlefile CSVs 2010–2024 at `/media/user/data/babylon-data/qcew/` (8.3 GB, complete) (086-qcew-loader-imputation)
+- TypeScript 5.7, CSS (Tailwind v4 `@theme`) + React 19, Vite 6, Tailwind CSS v4 (`@tailwindcss/vite`), Vitest 4, Playwright 1.58 — **all already installed** (`web/frontend/node_modules` is a shared symlink; no `npm install`) (090-cold-collapse)
+- N/A (presentation-layer only; no engine/DB/endpoint change) (090-cold-collapse)
 
 ## Recent Changes
 - 062-cross-scale-integration: Two-phase persistence boundary, per-tick transactional atomicity (FR-008a), weekly tick + year-scoped coefficient interpolation, hex-as-source-of-truth aggregation views, 5-flow-type pipeline ordering, Canada boundary node, conservation audit log with determinism hash

@@ -12,6 +12,7 @@
 import { useNavigate, useParams } from "react-router";
 import { BblBadge, BblData, BblLabel, BblPanel, Sparkline } from "@/components/bbl";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { HexMapPlaceholder } from "@/components/viz";
 import { useGameState } from "@/hooks/useGameState";
 import { useTimeseries } from "@/hooks/useTimeseries";
@@ -92,9 +93,16 @@ export function BriefingPage() {
 
       {/* Main content: Map + Dispatch */}
       <div className="grid min-h-0 flex-1 grid-cols-[3fr_2fr] gap-3 p-3">
-        {/* Map placeholder */}
+        {/* First-class situation map (spec-091 US2): live deck.gl map fed by
+            the snapshot; the SVG placeholder is only the pre-snapshot fallback. */}
         <BblPanel title="Situation Map" right={<BblBadge color="#787878">heat layer</BblBadge>}>
-          <HexMapPlaceholder className="h-full min-h-[200px]" />
+          {snapshot ? (
+            <div data-testid="briefing-map" className="h-full min-h-[200px]">
+              <DeckGLMap snapshot={snapshot} />
+            </div>
+          ) : (
+            <HexMapPlaceholder className="h-full min-h-[200px]" />
+          )}
         </BblPanel>
 
         {/* Dispatch panel */}

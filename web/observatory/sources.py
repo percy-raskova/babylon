@@ -26,6 +26,10 @@ from pathlib import Path
 from typing import Any
 
 
+class SourceReadError(Exception):
+    """An archive (DuckDB/Parquet) read failed — mapped to a clean 503."""
+
+
 class Source(StrEnum):
     """Which backend an Observatory read targets."""
 
@@ -118,15 +122,42 @@ class ArchiveReader:
             result = con.execute(sql, list(params))
             columns = [d[0] for d in result.description]
             return [dict(zip(columns, row, strict=True)) for row in result.fetchall()]
+        except duckdb.Error as exc:
+            raise SourceReadError(str(exc)) from exc
         finally:
             con.close()
 
 
+def list_archive_session_ids() -> list[str]:
+    """Return session ids that have an archived ``tick_commit.parquet``.
+
+    Scans the archive root for per-session directories (a directory whose name
+    parses as a UUID and that holds a ``tick_commit.parquet``).
+    """
+    import uuid as _uuid
+
+    root = archive_root()
+    if not root.is_dir():
+        return []
+    found: list[str] = []
+    for child in sorted(root.iterdir()):
+        if not child.is_dir() or not (child / "tick_commit.parquet").is_file():
+            continue
+        try:
+            _uuid.UUID(child.name)
+        except ValueError:
+            continue
+        found.append(child.name)
+    return found
+
+
 __all__ = [
     "Source",
+    "SourceReadError",
     "parse_source",
     "archive_root",
     "archive_dir",
+    "list_archive_session_ids",
     "translate_placeholders",
     "LiveReader",
     "ArchiveReader",

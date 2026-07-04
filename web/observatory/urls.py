@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.urls import URLPattern, path
 
-from . import views
+from . import deep_views, views
 
 app_name = "observatory"
 
@@ -20,4 +20,13 @@ urlpatterns: list[URLPattern] = [
     ),
     path("sessions/<str:session_id>/commits/", views.observatory_commits, name="commits"),
     path("sessions/<str:session_id>/hex/", views.observatory_hex, name="hex"),
+    # spec-099 deep panes
+    path("sessions/<str:session_id>/verify/", deep_views.observatory_verify, name="verify"),
+    path("sessions/<str:session_id>/boundary/", deep_views.observatory_boundary, name="boundary"),
+    path(
+        "sessions/<str:session_id>/conservation/",
+        deep_views.observatory_conservation,
+        name="conservation",
+    ),
+    path("diff/", deep_views.observatory_diff, name="diff"),
 ]

@@ -68,16 +68,22 @@ DEFAULT_HICKEL_SCALE_TYPE: str = "Intensive"
 :class:`babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients.DefaultPeripheryLaborCoefficientsSource`'s
 existing convention."""
 
-_DISJOINT_BLOC_IDS: frozenset[int] = frozenset({1, 7, 8, 9, 10, 12})
+_DISJOINT_BLOC_IDS: frozenset[int] = frozenset({1, 7, 9, 10, 12})
 """Non-overlapping bloc country_ids from dim_country.
 
 Mirrors the injective ``_NODE_TO_BLOC`` crosswalk in
 :mod:`babylon.persistence.postgres_initialization` — each engine node maps
 to at most one distinct bloc, so no bloc's trade is double-counted.
-Excludes parent/child overlaps (Europe ⊇ EU is resolved by using both as
-separate disjoint entries — the crosswalk assigns each node to exactly one)
-and cross-cutting commodity categories ('Advanced Technology Products',
-'Australia and Oceania').
+
+Excludes Europe (id=8) because it is a geographic aggregate that
+CONTAINS European Union (id=1) member states' trade — summing both
+would double-count ~$381B of EU trade (verified 2012 data). Russia/CSI
+(mapped to Europe in the crosswalk) has its trade excluded from alpha;
+this is a conservative undercount, honest given the data structure.
+
+Also excludes cross-cutting commodity categories ('Advanced Technology
+Products' id=5) and 'Australia and Oceania' (id=14, no distinct engine
+node mapped to it).
 """
 
 

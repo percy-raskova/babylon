@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylon.local/specs/100/exposure_audit.schema.json",
+  "title": "County-Exposure Loader Audit Report (spec-100)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_metadata", "per_year", "gates"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "run_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timestamp_utc", "mode", "years", "database_path", "database_sha256_pre", "database_sha256_post", "duration_seconds", "babylon_git", "babylon_data_git", "table_hashes"],
+      "properties": {
+        "timestamp_utc": { "type": "string", "format": "date-time" },
+        "mode": { "enum": ["dry-run", "apply", "rollback-from-backup", "drop-backup"] },
+        "years": { "type": "array", "items": { "type": "integer", "minimum": 2000, "maximum": 2050 }, "minItems": 1 },
+        "database_path": { "type": "string" },
+        "database_sha256_pre": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "database_sha256_post": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "duration_seconds": { "type": "number", "minimum": 0 },
+        "babylon_git": { "$ref": "#/$defs/git_ref" },
+        "babylon_data_git": { "$ref": "#/$defs/git_ref" },
+        "table_hashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fact_county_exposure_by_external", "fact_bilateral_trade_annual"],
+          "properties": {
+            "fact_county_exposure_by_external": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "fact_bilateral_trade_annual": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        "bloc_invariant": { "type": "boolean" },
+        "blocs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "per_year": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["year", "counties_with_weight", "blocs", "weight_sum_min", "weight_sum_max", "conservation", "concordance_coverage", "trade"],
+        "properties": {
+          "year": { "type": "integer", "minimum": 2000, "maximum": 2050 },
+          "counties_with_weight": { "type": "integer", "minimum": 0 },
+          "blocs": { "type": "integer", "minimum": 0 },
+          "weight_sum_min": { "type": "number" },
+          "weight_sum_max": { "type": "number" },
+          "conservation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sum_raw_exposure", "sum_covered_import_coeff", "residual_pct", "holds"],
+            "properties": {
+              "sum_raw_exposure": { "type": "number" },
+              "sum_covered_import_coeff": { "type": "number" },
+              "residual_pct": { "type": ["number", "null"] },
+              "holds": { "type": "boolean" }
+            }
+          },
+          "concordance_coverage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["covered_industries", "total_import_coeff_industries", "covered_coeff_sum", "total_coeff_sum", "coverage_fraction"],
+            "properties": {
+              "covered_industries": { "type": "integer", "minimum": 0 },
+              "total_import_coeff_industries": { "type": "integer", "minimum": 0 },
+              "covered_coeff_sum": { "type": "number", "minimum": 0 },
+              "total_coeff_sum": { "type": "number", "minimum": 0 },
+              "coverage_fraction": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+            }
+          },
+          "trade": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bloc_rows", "total_imports_usd_millions", "total_exports_usd_millions"],
+            "properties": {
+              "bloc_rows": { "type": "integer", "minimum": 0 },
+              "total_imports_usd_millions": { "type": ["number", "null"] },
+              "total_exports_usd_millions": { "type": ["number", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sc002_weights_sum_to_one", "sc003_table_hashes_reproduced", "sc004_weight_conservation", "sc005_trade_annual_exact_sum"],
+      "properties": {
+        "sc002_weights_sum_to_one": { "type": ["boolean", "null"] },
+        "sc003_table_hashes_reproduced": { "type": ["boolean", "null"] },
+        "sc004_weight_conservation": { "type": ["boolean", "null"] },
+        "sc005_trade_annual_exact_sum": { "type": ["boolean", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "git_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "sha"],
+      "properties": {
+        "branch": { "type": "string" },
+        "sha": { "type": "string", "pattern": "^[a-f0-9]{7,40}$" }
+      }
+    }
+  }
+}

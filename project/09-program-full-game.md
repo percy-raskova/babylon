@@ -146,6 +146,18 @@ Free at time of writing: 090–096, 099+. Sprint ≈ 150k tokens.
 ______________________________________________________________________
 
 **spec-090 — Cold Collapse design-system migration** (~1 sprint)
+**Status: DONE (2026-07-03, branch `090-cold-collapse`) — awaiting BD
+merge, gated on Article VII ratification (R-VII).** `specs/090-cold-collapse/`
+(specify→plan→tasks→implement); token-contract test RED→GREEN;
+`mise run web:check` green (Vitest 357/357, +47); index.css on Cold
+Collapse tokens; 4 OFL fonts self-hosted under `web/frontend/public/fonts/`
+(Inter + Roboto Mono removed; no Google Fonts); six ramps in
+`theme/colors.ts` + `lib/lensDefinitions.ts`; Article VII amendment
+DRAFTED at `specs/090-cold-collapse/article-vii-amendment.md` (do NOT
+merge until Percy ratifies). Font-gate note: the literal
+`rg -i 'roboto mono|inter'` matches only `--interactive-*` and
+`pointer-events` (both present verbatim in the canon file); the FONT is
+provably absent (`rg -iw inter` empty; no `"Inter"`/`"Roboto Mono"` stack).
 
 Replace the pre-ratification token set with the ratified canon.
 

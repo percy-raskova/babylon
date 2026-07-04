@@ -170,10 +170,18 @@ re-baselines after the contradiction semantics change.
 - **Frontend**: React 19, Vite 6, Tailwind v4, Zustand 5, deck.gl 9,
   Recharts 2, Sigma 3; the v2 16-route architecture is LIVE in
   `web/frontend/src/App.tsx`; polling (2 s), no websockets; Vitest
-  310/310 and 8 Playwright suites green (2026-07-02).
-  `web/frontend/src/index.css` still carries the PRE-ratification
-  gold/Inter tokens — Cold Collapse migration is spec-090 (needs the
-  Article VII amendment, `09` §1 R-VII).
+  357/357 (was 310; +47 from spec-090's token-contract + ramp tests)
+  and 8 behavioural Playwright suites (2026-07-03).
+  `web/frontend/src/index.css` **now carries the ratified Cold Collapse
+  tokens** (spec-090, branch `090-cold-collapse`): cyan-spire primary,
+  gold demoted to scarce rupture, four self-hosted OFL font families
+  (JetBrains Mono / Space Grotesk / Redaction 35 / Departure Mono under
+  `web/frontend/public/fonts/`; Inter + Roboto Mono removed; no Google
+  Fonts at runtime), and the six luminance-monotonic data ramps in
+  `theme/colors.ts` + `lib/lensDefinitions.ts`. The **Article VII
+  amendment** is DRAFTED (`specs/090-cold-collapse/article-vii-amendment.md`)
+  and awaits Percy's ratification at PR review — per R-VII the branch
+  carries the full swap but must not merge until ratified.
 - **Stub inventory** (the debt program 09 retires): bridge dashboard
   methods return `{}` (`get_economy/edges/state_apparatus/journal/alerts/summary` and the wired `get_inspector_*` variants,
   `web/game/engine_bridge.py`); five verb-target methods return

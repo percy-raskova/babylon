@@ -18,6 +18,22 @@ meta:
     at design/mockups/ (66 files, replay-extracted from the claude.ai
     export; PROVENANCE.md). Same evening: dev fast-forwarded
     9dd4c4f6->2f506bc2 (97 commits) and pushed, owner-directed.
+  web_lane_w_spec_090: |
+    spec-090 Cold Collapse design-system migration DONE (branch
+    090-cold-collapse; specs/090-cold-collapse/ via speckit
+    specify->plan->tasks->implement). web/frontend/src/index.css ported
+    to the ratified Constitution VIII Cold Collapse tokens (cyan-spire
+    primary; gold demoted to scarce rupture; solidarity green); four OFL
+    font families self-hosted under web/frontend/public/fonts/ (JetBrains
+    Mono / Space Grotesk / Redaction 35 / Departure Mono — Inter + Roboto
+    Mono removed, no Google Fonts at runtime); six luminance-monotonic
+    data ramps in theme/colors.ts + lib/lensDefinitions.ts (rainbow scales
+    retired). TDD: red-first token-contract test (src/theme/
+    tokens.contract.test.ts) RED (40/42) -> GREEN. mise run web:check green,
+    Vitest 357/357 (was 310, +47). Production build bundles fonts to
+    dist/fonts, no google refs. Article VII amendment DRAFTED (specs/
+    090-cold-collapse/article-vii-amendment.md) — awaits Percy ratification
+    at PR (R-VII); constitution.md untouched; do NOT merge until ratified.
   lawverian_dialectics_refactor: |
     project/06 Lawverian dialectics refactor COMPLETE (branch
     refactor/lawverian-dialectics; Phases A-E, ADR051). The saturating add-only

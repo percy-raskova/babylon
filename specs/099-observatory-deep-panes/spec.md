@@ -165,7 +165,14 @@ their national series by tick and reports commit-count / range differences.
 **Source abstraction**
 
 - **FR-001**: Every Observatory read endpoint (096's and 099's) MUST accept a
-  `source` selector with values `live` (default) and `archive`.
+  `source` selector with values `live` (default) and `archive`. **Note
+  (2026-07-04 fix)**: `hex/` now dispatches on `source` per this requirement,
+  but `source=archive` is not implemented for `hex/` — it returns an explicit
+  `501`, not a silent empty/stale frame — because the archived Parquet export
+  excludes `hex_spatial_map` (reference data; see the Assumptions section and
+  the contract doc's hash-chain/hex-source-scope note). This is a documented,
+  deliberate deferral, not an FR-001 violation: the endpoint accepts and
+  validates `source`, it simply cannot yet serve the archive branch correctly.
 - **FR-002**: `source=live` MUST read the runner Postgres through the read-only
   `sim` alias (unchanged from 096). `source=archive` MUST read a session's
   exported Parquet under the archive root, read-only, via an embedded analytical
@@ -192,6 +199,16 @@ their national series by tick and reports commit-count / range differences.
 - **FR-008**: The verification MUST NOT re-run the engine; it verifies the
   persisted chain's structural integrity only, and its per-tick hashes MUST equal
   those read directly from the commit record (so live and archive agree).
+  **Clarified (2026-07-04 fix)**: "structural integrity only" means
+  contiguity, checkpoint cadence, and hash FORMAT (length) — it does NOT mean
+  hash CONTENT is recomputed or compared. `tick_commit.determinism_hash` is a
+  shallow identity hash (`sha256(session_id:tick:seed)`) whose `seed` input is
+  not reliably recoverable from persisted session metadata for headless-runner
+  sessions, so genuine content verification is not implementable without a
+  schema change or re-running the engine (the latter forbidden by this same
+  FR). The result payload and UI MUST label this scope explicitly
+  (`verification_scope: "structural"`) and MUST NOT present it as
+  content/tamper verification.
 
 **Conservation-audit browser**
 
@@ -266,7 +283,12 @@ their national series by tick and reports commit-count / range differences.
   views; archive-source series/verification reconstruct over the raw tables. The
   archive does not carry `hex_spatial_map`, so archive-source state/county
   aggregation is out of scope (national + commit chain + boundary + audit are the
-  archive-supported reads); documented as a known limitation.
+  archive-supported reads); documented as a known limitation. The same
+  `hex_spatial_map` gap ALSO blocks a faithful `hex/` archive reconstruction
+  (2026-07-04 fix): `dynamic_hex_state.county_fips`/`state_fips`/`region_id`
+  are persisted NULL (verified empirically against the real archived session),
+  so `hex/?source=archive` returns an explicit `501` rather than a
+  spatially-blank frame — tracked as an owner-review item, not implemented.
 - "Recompute the hash chain" means verify the persisted chain's structural
   integrity (contiguity, cadence, format, gaps) — not re-execute the engine (the
   Observatory only reads). This keeps every claim verifiable against persisted

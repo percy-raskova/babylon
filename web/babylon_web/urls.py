@@ -28,6 +28,8 @@ urlpatterns = [
     path("health/detail/", HealthDetailView.as_view(), name="health-detail"),
     path("admin/", admin.site.urls),
     path("api/", include("game.urls")),
+    # spec-096: read-only Observatory endpoints (flag-gated in views).
+    path("api/observatory/", include("observatory.urls")),
     path("accounts/", include("accounts.urls")),
     # Server-rendered pages (login required)
     path("games/", include("game.page_urls")),

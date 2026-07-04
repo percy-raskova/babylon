@@ -269,11 +269,11 @@ def build_manifest(
         "external_node_ids": sorted(config.external_node_ids),
         "defines_hash": defines_hash,
         "data_versions": data_versions,
-        # Spec-065 T081: engine system class names (ordered) — empty
-        # list when the engine is not yet wired (current first cut).
-        # Participates in input_hash so add/remove of engine systems
-        # between runs surfaces as hash drift.
         "engine_systems_invoked": engine_systems_invoked or [],
+        "shock_schedule": [
+            {"tick": s.tick, "bloc": s.bloc, "phi_multiplier": s.phi_multiplier}
+            for s in sorted(config.shock_schedule, key=lambda s: (s.tick, s.bloc))
+        ],
     }
     non_deterministic_inputs: dict[str, Any] = {
         "session_id": session_id,

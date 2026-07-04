@@ -283,7 +283,51 @@ is out of scope here.
 
 ______________________________________________________________________
 
-**spec-093 — Territory Detail, Org Detail, map lens set** (~2 sprints)
+**spec-093 — Territory Detail, Org Detail, map lens set** (~2 sprints) — **DONE**
+
+Backend: `EngineBridge.get_economy(session_id, territory_id=None)` — real per-territory
+value_produced/rent_extracted/exploitation_rate/extraction_intensity, honest `has_data: false`
+zeros when ungrounded (never fabricated); `_build_balkanization_block` surfaces spec-070
+factions/sovereigns/territory_influence through `get_map_snapshot`'s `metadata.balkanization`
+(reads `query_faction_influence_by_territory`/`query_sovereign_claims`/`query_territory_claims`
+directly — `WorldState.from_graph()` can't reconstruct `faction`/`sovereign`/`community` node
+types, a pre-existing engine-layer gap outside `web/**`, worked around in tests).
+
+All 5 verb-target endpoints (`get_educate_targets`/`get_aid_targets`/`get_mobilize_targets`/
+`get_attack_targets`/`get_reproduce_targets`) de-fixtured: iterate every territory (the `break`
+after the first match is gone), Wayne County/FIPS-26163 fallback blocks deleted entirely.
+`rg '26163' web/game/engine_bridge.py` is clean.
+
+Frontend: `TerritoryDetailView`/`OrgDetailView` (new `components/intel/`) replace
+`IntelPageV2`'s old 4-5-stat inline renderers — full stat grids, `useEconomy`-backed economic
+panel, real org-presence/relations lists (from real `territory_ids`/edge `mode`, never a random
+label), `BreakdownTooltip` on every stat (new
+`hex.wealth`/`hex.consciousness`/`org.cohesion`/`org.heat`/`org.opacity`/`org.vanguard_*`
+selectors). Map lens set: `mapLensLayers.ts` (pure `buildLensLayers()` — stance/heat/
+habitability/faction/collapse fills, concentric influence rings, sovereign CLAIMS hulls via
+`mapLensGeometry.ts`'s h3-js-centroid convex hull) + `MapModeSelector.tsx`, wired into
+`DeckGLMap.tsx`; ColonialStance encoded via the ratified Cold Collapse tokens (LASER=Blood/
+UPHOLD, CADRE=Blue/IGNORE, SOLIDARITY=Phosphor/ABOLISH) rather than new hex literals.
+
+**Close-out review caught and fixed a critical wiring bug**: the balkanization block lives on
+the `/map/` endpoint's `metadata`, not on `GameSnapshot` — `DeckGLMap` originally read
+`snapshot.balkanization` (only ever true in hand-built test fixtures); fixed via a new `mapData`
+prop threaded from `BriefingPage.tsx` (`useGameState()`'s `mapData` was fetched but had zero
+consumers before this).
+
+Gates: Vitest **417/417** (was 380 at spec-092 close-out); backend `tests/unit/web/`
+**268/268**; `mise run web:check` exit 0 (0 lint/type errors); Playwright
+`map-lens-cycling.spec.ts` **2/2**, backend-free/route-mocked, stable across repeated runs
+(diagnosed and fixed a real sandbox-environment WebGL/luma.gl limitation unrelated to this
+spec's logic — see report).
+
+**Owner-queue item (data availability)**: no scenario seeds any spec-070 balkanization graph
+data (factions/sovereigns/INFLUENCES/CLAIMS) — `seed_influences.json` (the file that would
+carry real per-county influence rows) doesn't exist and its producing pipeline
+(`compute_seed_influences`, T112) was never built; a live `mise run web:dev` game will show
+"no data" for the map's political lenses until a real seed lands. The bridge/frontend code is
+correct and fully tested against hand-built graph fixtures — this is a DATA-lane sourcing gap,
+not an engineering gap. Full detail: `.superpowers/sdd/reports/093.md`.
 
 - **Scope**: the two detail screens
   (`design/mockups/ui_kits/webapp/TerritoryDetail.jsx`,

@@ -2,7 +2,7 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.18.0"
+  version: "2.19.0"
   updated: "2026-07-04"
   active_program: |
     Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
@@ -99,6 +99,55 @@ meta:
     UPPERCASE while the real EventType enum values are lowercase snake_case
     (src/babylon/models/enums/events.py) — real production events default to
     "informational"; already affects the live notification tray, out of scope.
+  web_lane_w_spec_093: |
+    spec-093 Territory Detail + Org Detail + map lens set DONE (branch
+    093-territory-org-detail, stacks on 092; specs/093-territory-org-detail/
+    via speckit specify->plan->tasks->implement). Backend: EngineBridge.
+    get_economy(session_id, territory_id=None) — real per-territory
+    value_produced/rent_extracted/exploitation_rate/extraction_intensity from
+    wealth/extraction_intensity nodes + incident EXTRACTIVE/ANTAGONISTIC edges,
+    honest has_data:false zeros when ungrounded; _build_balkanization_block
+    surfaces spec-070 factions/sovereigns/territory_influence through
+    get_map_snapshot's metadata.balkanization (query_faction_influence_by_
+    territory/query_sovereign_claims/query_territory_claims read directly —
+    WorldState.from_graph() can't reconstruct faction/sovereign/community node
+    types, a pre-existing engine-layer gap outside web/**, worked around via
+    direct hydrate_state patching in tests). All 5 verb-target endpoints
+    de-fixtured (iterate every territory, no `break` after first match, Wayne
+    County/FIPS-26163 fallback blocks deleted) — rg '26163'
+    web/game/engine_bridge.py clean. Frontend: TerritoryDetailView/
+    OrgDetailView (new components/intel/) replace IntelPageV2's old 4-5-stat
+    inline renderers — full stat grids, useEconomy-backed economic panel, real
+    org-presence/relations lists (real territory_ids/edge mode, never a random
+    label), BreakdownTooltip on every stat (new hex.wealth/hex.consciousness/
+    org.cohesion/org.heat/org.opacity/org.vanguard_* selectors). Map lens set:
+    mapLensLayers.ts (pure buildLensLayers — stance/heat/habitability/faction/
+    collapse fills, concentric influence rings, sovereign CLAIMS hulls via
+    mapLensGeometry.ts's h3-js convex hull) + MapModeSelector.tsx wired into
+    DeckGLMap.tsx; ColonialStance via the ratified Cold Collapse tokens
+    (LASER=Blood/UPHOLD, CADRE=Blue/IGNORE, SOLIDARITY=Phosphor/ABOLISH), not
+    new hex literals. VIII.9 (hyperedge-as-hull) structural + runtime guarantee
+    tested in mapLensLayers.test.ts. CLOSE-OUT REVIEW caught + fixed a critical
+    wiring bug: the balkanization block lives on /map/'s metadata, not
+    GameSnapshot — DeckGLMap originally read snapshot.balkanization (only ever
+    true in hand-built test fixtures, never the real API); fixed via a new
+    mapData prop threaded from BriefingPage.tsx (useGameState()'s mapData was
+    fetched but had zero consumers before this). Gates: Vitest 417/417 (was
+    380); backend tests/unit/web/ 268/268; mise run web:check exit 0 (0 lint/
+    type errors, 88 pre-existing-style warnings); Playwright
+    map-lens-cycling.spec.ts 2/2, backend-free/route-mocked, stable across
+    repeated runs (diagnosed + fixed a real sandbox WebGL/luma.gl
+    maxTextureDimension2D limitation, reproduced independently of this spec's
+    lens logic, via minimal reproduction — filtered by exact message, any
+    other uncaught error still fails the test). OWNER-QUEUE (data
+    availability): no scenario seeds any spec-070 balkanization graph data
+    (factions/sovereigns/INFLUENCES/CLAIMS) — seed_influences.json (real
+    per-county influence rows) doesn't exist and its producing pipeline
+    (compute_seed_influences, T112) was never built; a live mise run web:dev
+    game shows "no data" for the map's political lenses until a real seed
+    lands — this is a DATA-lane sourcing gap, not an engineering gap (bridge/
+    frontend code is correct and fully tested against hand-built graph
+    fixtures). Full detail: .superpowers/sdd/reports/093.md.
   lawverian_dialectics_refactor: |
     project/06 Lawverian dialectics refactor COMPLETE (branch
     refactor/lawverian-dialectics; Phases A-E, ADR051). The saturating add-only

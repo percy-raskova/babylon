@@ -2,8 +2,8 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.16.0"
-  updated: "2026-07-03"
+  version: "2.17.0"
+  updated: "2026-07-04"
   active_program: |
     Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
     doc project/09-program-full-game.md). Percy's directive: React/
@@ -75,6 +75,36 @@ meta:
     rises by design; structural rate-of-profit invariants s>0, p' finite
     unaffected).
   previous_previous_sprint: "068-bea-national-io-ingest (Partial; ~60/77 tasks done — US1+US2+US3-partial+US4+ADR046 shipped; hex_hydrator wiring T056-T058 deferred to follow-up commit)"
+  spec_071_summary: |
+    The Reactionary Subject (spec-071, branch 071-reactionary-subject,
+    ADR054) — the fascism pole of the George Jackson bifurcation (I.4):
+    what the bribed strata do when the imperial bribe (Phi) decays.
+    Lane-E Program-09 next unit; consumes ADR051 dialectics + ADR052
+    substrate. Adds to SocialClass: entitlement / volatility /
+    fascist_alignment / aligned_faction_id (role-defaulted Intensity +
+    optional str; graph round-trip verified). New FascistFactionSystem at
+    pipeline position 17.4 (CONSEQUENCE) — pipeline 25 -> 26 systems:
+    Fascist_Pull = Agitation*(Entitlement/(Solidarity+eps)) drives
+    fascist_alignment drift (FASCIST_DRIFT) + a signed StanceIntervention
+    on the capital_labor opposition (the ADR051 071-hook, not a private
+    counter) + fascist-faction capture at saturation (FASCIST_RECRUITMENT);
+    reads dialectical_regime (never recomputes). Chauvinism accrues on
+    org->LA MEMBERSHIP edges; crisis defection -> ORGANIZATIONAL_FRACTURE,
+    >50% -> RED_BROWN_COUP (seed-deterministic). L_u volatility ->
+    SPONTANEOUS_RIOT in StruggleSystem (destroys wealth, builds no
+    solidarity). Fascist OODA verbs POGROM/LOCKOUT/VIGILANTISM resolve in
+    action_effects. DecompositionSystem carceral-enforcer gap closed via
+    create-on-demand (baseline-preserving). RLF simplex constraints
+    (ADR051 SS9.4): f->r ε-gate, assimilation_ratio, entropy diagnostic.
+    8 new EventTypes (79 total), 4 new ActionTypes (25 total), 4
+    reactionary formulas + 3 RLF helpers (all doctested), ReactionaryDefines
+    (III.1, no magic numbers). ~52 new tests across formulas/model/system/
+    integration. R-PROOF: tri-county 5-tick gate BYTE-IDENTICAL
+    (total_v Delta=0.000%, liveness 3/3) — the always-on system is dormant
+    during the pacified decade (agitation crisis-gated), so no baseline
+    regeneration needed. Income-circuit hegemony suite stays green.
+    Canonical 520-tick run: relaunched at close-out (orchestrator monitors).
+
   spec_070_summary: |
     Sovereign Topology + Faction Influence + Balkanization — adds the
     political-topology overlay realising Constitution I.20 + I.4 +
@@ -530,7 +560,7 @@ epoch_status:
         "2.1": { name: "Demographic Resolution", sub_epoch: "2A", spec: "ai-docs/demographics-spec.yaml" }
         "2.2a": { name: "Strategy Layer", sub_epoch: "2A", spec: "ai-docs/strategy-layer.yaml" }
         "2.2b": { name: "The Vanguard", sub_epoch: "2B", spec: "ai-docs/cohesion-mechanic.yaml" }
-        "2.3": { name: "Reactionary Subject", sub_epoch: "2B", spec: "ai-docs/reactionary-subject.yaml" }
+        "2.3": { name: "Reactionary Subject", sub_epoch: "2B", spec: "specs/071-reactionary-subject/", status: "BUILT (spec-071, ADR054; FascistFactionSystem @17.4)" }
         "2.4": { name: "Reproductive Labor", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
         "2.5": { name: "The Wire", sub_epoch: "2C", spec: "ai-docs/gramscian-wire-vision.yaml" }
         "2.6": { name: "Resource Economy", sub_epoch: "2A", spec: "ai-docs/vanguard-economy.yaml" }

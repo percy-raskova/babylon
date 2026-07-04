@@ -34,9 +34,19 @@ consumes both:
   partitioning + local Parquet archival; canonical Michigan run
   re-verified on the new substrate (Δ=0.000%, 455,720 vs 25.4M hex
   rows, 17 vs ~52 min).
-- **NOT STARTED**: 25 catalog specs (071–083 per audit Part 3, plus Waves
-  6–7 content). **Next: spec-071** (see `03-next-spec-071.md`) — now
-  unblocked on both foundations.
+- **IN REVIEW (2026-07-04)**: **spec-071 Reactionary Subject** — Lane-E
+  implemented on branch `071-reactionary-subject` (ADR054). 11 commits:
+  speckit spec/plan/tasks + formulas/defines + enums + SocialClass fields +
+  FascistFactionSystem @17.4 + chauvinism/defection + L_u SPONTANEOUS_RIOT +
+  fascist OODA verbs + carceral create-on-demand + crisis integration.
+  `mise run check` green; income-circuit suite green;
+  `qa:e2e-regression` **byte-identical (total_v Δ=0.000%, liveness 3/3)** —
+  the always-on FascistFactionSystem is dormant during the pacified decade
+  (agitation crisis-gated), so NO baseline regeneration was needed. Canonical
+  520-tick relaunched at close-out (orchestrator monitors/archives). Awaiting
+  BD merge to dev.
+- **NOT STARTED**: 24 catalog specs (072–083 per audit Part 3, plus Waves
+  6–7 content). Next engine unit after the trade window: Wave 2 (072–074).
 - **ACTIVE PROGRAM**: `09-program-full-game.md` (ratified 2026-07-03
   evening) — four parallel lanes: `[E:071→101→102→104→105]`
   `[W:090→091→092∥093→094→095→103]` `[D:100 ∥ 098-LODES ∥ 068-slice]`

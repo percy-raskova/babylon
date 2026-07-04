@@ -428,11 +428,19 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**spec-071 — Reactionary Subject** (next; unchanged)
+**spec-071 — Reactionary Subject** — **IMPLEMENTED 2026-07-04 (ADR054), in review**
 
 Per `03-next-spec-071.md`. First in the lane; both foundations
-(ADR051 dialectics, ADR052 substrate) landed 2026-07-03. Its proof
-window closes before 101 opens.
+(ADR051 dialectics, ADR052 substrate) landed 2026-07-03. Branch
+`071-reactionary-subject`, 11 commits. FascistFactionSystem @17.4
+(pipeline 25→26); entitlement/volatility/fascist_alignment/aligned_faction_id
+on SocialClass; chauvinism/defection/RED_BROWN_COUP; L_u SPONTANEOUS_RIOT;
+POGROM/LOCKOUT/VIGILANTISM OODA verbs; carceral create-on-demand; RLF
+simplex helpers; ReactionaryDefines. **Proof window CLOSED byte-identical**
+(tri-county 5-tick gate total_v Δ=0.000%, liveness 3/3 — the always-on
+system is dormant during the pacified decade, agitation crisis-gated), so no
+re-baseline was required. Canonical 520-tick relaunched at close-out.
+101 may open once the BD merges. Awaiting BD merge to dev.
 
 ______________________________________________________________________
 

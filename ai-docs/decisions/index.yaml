@@ -239,3 +239,13 @@ decisions:
     status: accepted
     date: '2026-07-03'
     file: ADR052_rustworkx_graph_substrate.yaml
+  ADR053_storage_scaling_program:
+    title: 'Storage scaling program: compose PG16 + partitioning + local Parquet archival + delta persistence + tick_commit hash chain (specs 087-089)'
+    status: accepted
+    date: '2026-07-03'
+    file: ADR053_storage_scaling_program.yaml
+  ADR054_spec_071_reactionary_subject:
+    title: 'The Reactionary Subject: FascistFactionSystem @17.4 + entitlement/chauvinism/volatility + carceral create-on-demand (spec-071)'
+    status: accepted
+    date: '2026-07-04'
+    file: ADR054_spec_071_reactionary_subject.yaml

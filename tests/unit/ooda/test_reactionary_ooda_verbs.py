@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.config.defines import OODADefines, OrganizationDefines
+from babylon.config.defines import OODADefines, OrganizationDefines, ReactionaryDefines
 from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import ActionType, EdgeType, EventType
 from babylon.ooda.action_effects import resolve_action
@@ -57,3 +57,15 @@ class TestFascistVerbResolution:
         assert EventType.LOCKOUT.value in result.events_generated
         edge = g.get_edge("C500", "C900", EdgeType.WAGES)
         assert edge.attributes["value_flow"] < 10.0
+
+    def test_reactionary_override_is_honored(self) -> None:
+        # III.5: a caller-supplied ReactionaryDefines override flows into the
+        # verb effect (vs the dataclass default) — the defines.yaml path.
+        g = BabylonGraph()
+        g.add_node("ORG1", **_ORG_ATTRS)
+        g.add_node("C900", _node_type="social_class", repression_faced=0.0, wealth=100.0)
+        override = ReactionaryDefines(pogrom_wealth_destruction=0.5)
+        action = Action(org_id="ORG1", action_type=ActionType.POGROM, target_id="C900")
+        resolve_action(action, _ORG_ATTRS, g, _DEFINES, _ORG_DEFINES, reactionary=override)
+        # 0.5 override (default is 0.1) → wealth halved.
+        assert g.get_node("C900").attributes["wealth"] == pytest.approx(50.0)

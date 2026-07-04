@@ -243,6 +243,28 @@ One codebase, one data path, no legacy siblings.
 ______________________________________________________________________
 
 **spec-092 — Event Log + Tick Resolution surfaces** (~1–2 sprints)
+**Status: DONE (2026-07-04, branch `092-event-log`, stacks on `091-frontend-consolidation`;
+awaiting BD merge).** `specs/092-event-log/` (specify→plan→tasks→implement, retroactively authored
+per the implement-then-document flow); backend: `get_journal_dashboard`/`get_alerts_dashboard`
+implemented over real `tick_event` history (`resolve_tick` now persists via a new
+`_persist_tick_events_safe` helper; `PostgresRuntime.query_session_events` added alongside the
+existing `query_tick_events`) — red-first `tests/unit/web/test_engine_bridge.py`
+(`TestTickEventPersistence`/`TestJournalDashboard`/`TestAlertsDashboard`, 31/31 file, 255/255
+suite, ruff+mypy strict clean). Frontend: `EventLogPage` (severity-filtered, ports
+`EventLog.jsx`'s design) replaces the `/log` stub; `TickResolutionPage` (ports
+`TickResolution.jsx`'s animated chrome, content grounded in real classified events + the alerts
+feed, not the mockup's fabricated OBSERVE/ORIENT/DECIDE/ACT/RESPOND phase narration) is new at
+`/games/:id/resolution`; End Turn button added to OrgsPage (the only `resolveTick()` caller).
+MSW contract test (`journal-alerts-contract.test.tsx`) written red-first against unmocked routes,
+then green. Gates: Vitest **378/378** (was 364, +14); `mise run web:check` green (fixed 2 real
+lint errors surfaced by the new code — a hooks-pattern lint mismatch and an effect-based
+tick-reset, both resolved without behavior change). Playwright `end-turn-flow.spec.ts` written +
+gated on `SPEC061_TEST_SESSION_ID` (spec-091 precedent) — **OWNER-RUN**, not exercised here (needs
+`mise run web:dev` + `seed_initial_game`); confirmed it skips cleanly unattended. **Known gap
+(documented, not fixed)**: `lib/eventClassifier.ts`'s severity map uses UPPERCASE event-type keys
+while the real `EventType` enum values are lowercase snake_case — real production events default
+to "informational" today; this predates spec-092 (already affects the live notification tray) and
+is out of scope here.
 
 - **Scope**: replace the `/games/:id/log` stub (App.tsx renders
   "coming soon") with the real Event Log page over the classified

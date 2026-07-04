@@ -220,10 +220,12 @@ Stacks on `090-cold-collapse` (`42232a15`). One codebase, no legacy siblings:
 - **Frontend**: React 19, Vite 6, Tailwind v4, Zustand 5, deck.gl 9,
   Recharts 2, Sigma 3; the v2 16-route architecture is LIVE in
   `web/frontend/src/App.tsx`; polling (2 s), no websockets; Vitest
-  **364/364** (was 357 at spec-090; +7 across spec-091 consolidation +
-  ErrorBoundary + orphan guards). Playwright: 3 backend-free green
-  (visual + route smoke); the god-page relics were deleted, leaving 6
-  behavioural suites that are **owner-run** (need a seeded backend).
+  **378/378** (was 364 at spec-091; +14 across spec-092's Event Log +
+  Tick Resolution pages, journal/alerts contract test, End Turn wiring).
+  Playwright: 3 backend-free green (visual + route smoke); the god-page
+  relics were deleted, leaving 7 behavioural suites (was 6; spec-092
+  added `end-turn-flow.spec.ts`) that are **owner-run** (need a seeded
+  backend).
   `web/frontend/src/index.css` **now carries the ratified Cold Collapse
   tokens** (spec-090, branch `090-cold-collapse`): cyan-spire primary,
   gold demoted to scarce rupture, four self-hosted OFL font families
@@ -235,15 +237,31 @@ Stacks on `090-cold-collapse` (`42232a15`). One codebase, no legacy siblings:
   and awaits Percy's ratification at PR review — per R-VII the branch
   carries the full swap but must not merge until ratified.
 - **Stub inventory** (the debt program 09 retires): bridge dashboard
-  methods return `{}` (`get_economy/edges/state_apparatus/journal/alerts/summary` and the wired `get_inspector_*` variants,
-  `web/game/engine_bridge.py`); five verb-target methods return
-  hardcoded Wayne County fixtures; `investigate`/`move`/`negotiate`
-  filtered as unsupported (their handlers belong in catalog specs
-  076/075/077); `/games/:id/log` renders "coming soon"; ~~the map only
-  renders via `/dev/hexmap`~~ **map is now first-class on Briefing
-  (spec-091); `/dev/hexmap` retired**; AnalysisPage
-  topology/correlations are placeholders; `StubEngineBridge` fallback
-  serves mock Wayne data when bridge init fails.
+  methods return `{}` (`get_economy/edges/state_apparatus/summary` and
+  the wired `get_inspector_*` variants, `web/game/engine_bridge.py`);
+  ~~`get_journal`/`get_alerts`~~ **RESOLVED (spec-092)**:
+  `get_journal_dashboard`/`get_alerts_dashboard` now read real
+  `tick_event` history (`resolve_tick` persists each tick's events via
+  the new `_persist_tick_events_safe` helper +
+  `PostgresRuntime.query_session_events`/existing `query_tick_events`);
+  five verb-target methods return hardcoded Wayne County fixtures;
+  `investigate`/`move`/`negotiate` filtered as unsupported (their
+  handlers belong in catalog specs 076/075/077); ~~`/games/:id/log`
+  renders "coming soon"~~ **RESOLVED (spec-092)**: `/games/:id/log` is
+  the real `EventLogPage` (severity-filtered over `useJournal`) and a
+  new `/games/:id/resolution` `TickResolutionPage` + End Turn button
+  (OrgsPage) now exist; ~~the map only renders via `/dev/hexmap`~~
+  **map is now first-class on Briefing (spec-091); `/dev/hexmap`
+  retired**; AnalysisPage topology/correlations are placeholders;
+  `StubEngineBridge` fallback serves mock Wayne data when bridge init
+  fails. **Known gap (spec-092, unfixed)**: `lib/eventClassifier.ts`'s
+  severity map uses UPPERCASE event-type keys (matching
+  `test/fixtures.ts`'s existing convention) while the real `EventType`
+  enum values are lowercase snake_case (verified in
+  `src/babylon/models/enums/events.py`) — real production events all
+  classify as "informational" today; predates spec-092 (already
+  affects the live notification tray via `gameStore.ts`), flagged, not
+  silently fixed.
 - ~~**Django debt** (fixed in spec-091)~~ **RESOLVED (spec-091)**:
   `accounts/migrations/0001_initial.py` materializes PlayerProfile;
   `game/migrations/0011_*` captures pending changes (all `managed=False`);

@@ -2,8 +2,8 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.17.0"
-  updated: "2026-07-03"
+  version: "2.18.0"
+  updated: "2026-07-04"
   active_program: |
     Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
     doc project/09-program-full-game.md). Percy's directive: React/
@@ -65,6 +65,40 @@ meta:
     OWNER-VERIFICATION-PENDING: the behavioural Playwright gate (auth login-success/
     logout + the 5 SPEC061_TEST_SESSION_ID suites) needs mise run web:dev + a
     testuser + a seeded session — owner-run checklist in reports/091.md; NOT run here.
+  web_lane_w_spec_092: |
+    spec-092 Event Log + Tick Resolution surfaces DONE (branch 092-event-log,
+    stacks on 091; specs/092-event-log/ via speckit specify->plan->tasks->implement,
+    written retroactively documenting an implement-then-document flow). R-CONS:
+    both empty {} bridge dashboard stubs implemented WITH real consumers in the
+    same spec. Backend: resolve_tick() now persists each tick's classified events
+    into tick_event (new _persist_tick_events_safe helper, best-effort/non-fatal);
+    get_journal_dashboard reads back full cross-tick history via a new
+    PostgresRuntime.query_session_events (session-wide sibling to the existing
+    per-tick query_tick_events); get_alerts_dashboard filters the latest tick's
+    events to critical/warning via the existing query_tick_events. Red-first
+    tests/unit/web/test_engine_bridge.py (TestTickEventPersistence/
+    TestJournalDashboard/TestAlertsDashboard) — 31/31 file, 255/255 suite,
+    ruff+mypy strict clean. Frontend: EventLogPage (severity-filtered, ports
+    EventLog.jsx's design) replaces the /log "coming soon" stub; TickResolutionPage
+    (NEW /games/:id/resolution route, ports TickResolution.jsx's animated chrome
+    but grounds content in real classified events + the alerts feed rather than
+    the mockup's fabricated OBSERVE/ORIENT/DECIDE/ACT/RESPOND phase narration);
+    End Turn button added to OrgsPage (previously resolveTick() had zero UI
+    callers). journal-alerts-contract.test.tsx written red-first against
+    unmocked MSW routes (ECONNREFUSED), then green after adding handlers.
+    Gates: Vitest 378/378 (was 364, +14); mise run web:check green (fixed 2 real
+    lint errors the new code surfaced: a react-hooks/set-state-in-effect pattern
+    mismatch — the two new hooks now match the useTimeseries/useCommunities
+    try/catch/fetch shape instead of the api/client.ts get<T>() helper, which
+    trips that rule — and a setStep(0) tick-reset effect in TickResolutionPage,
+    replaced with React's endorsed adjust-state-during-render pattern).
+    Playwright e2e/end-turn-flow.spec.ts written + gated on
+    SPEC061_TEST_SESSION_ID (spec-091 precedent) — OWNER-RUN, confirmed to skip
+    cleanly unattended; not exercised here. KNOWN GAP (documented, unfixed,
+    pre-existing): lib/eventClassifier.ts's EVENT_SEVERITY_MAP keys are
+    UPPERCASE while the real EventType enum values are lowercase snake_case
+    (src/babylon/models/enums/events.py) — real production events default to
+    "informational"; already affects the live notification tray, out of scope.
   lawverian_dialectics_refactor: |
     project/06 Lawverian dialectics refactor COMPLETE (branch
     refactor/lawverian-dialectics; Phases A-E, ADR051). The saturating add-only

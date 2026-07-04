@@ -1,0 +1,70 @@
+openapi: 3.1.0
+info:
+  title: Babylon Alerts Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/alerts/` — replaces the `{}` stub. Backs the Tick
+    Resolution screen's "STATE RESPONSE" step. Sources `tick_event` rows
+    for the *latest hydrated tick only* via the existing
+    `PostgresRuntime.query_tick_events(session_id, tick)`, filtered to
+    `severity in {critical, warning}` (informational events are routine
+    flow, not alerts). SQLite-backed `RuntimeDatabase` (dev/test) has no
+    `query_tick_events` method and degrades to an empty list.
+
+paths:
+  /api/games/{game_id}/alerts/:
+    get:
+      summary: Critical/warning events from the most recently resolved tick.
+      operationId: getAlertsDashboard
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Alerts envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/AlertsPayload" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    AlertsPayload:
+      type: object
+      required: [alerts]
+      properties:
+        alerts:
+          type: array
+          items: { $ref: "#/components/schemas/GameEvent" }
+          description: Every entry has severity critical or warning — never informational.
+
+    GameEvent:
+      type: object
+      description: Identical shape to journal.yaml's GameEvent (spec 061 FR-012).
+      required: [id, type, tick, severity, title, body, data]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        tick: { type: integer, minimum: 0 }
+        severity:
+          type: string
+          enum: [critical, warning]
+        title: { type: string }
+        body: { type: string }
+        data: { type: object }

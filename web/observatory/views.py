@@ -22,14 +22,16 @@ from contextlib import contextmanager
 from typing import Any
 
 from django.conf import settings
-from django.db import OperationalError, connections
+from django.db import DatabaseError, OperationalError, connections
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseBase, JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 
 from .queries import (
+    DEFAULT_HEX_LIMIT,
     DEFAULT_MAX_TICK_SPAN,
+    MAX_HEX_LIMIT,
     SCOPE_VIEWS,
     fetch_commits,
     fetch_hex_frame,
@@ -112,6 +114,19 @@ def _parse_int(raw: str | None, name: str) -> int | None:
         return int(raw)
     except ValueError as exc:
         raise _BadRequest(f"{name} must be an integer") from exc
+
+
+def _parse_limit(raw: str | None) -> int:
+    """Parse the hex page-size limit, defaulting and hard-capping it."""
+    if raw is None or raw == "":
+        return DEFAULT_HEX_LIMIT
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise _BadRequest("limit must be an integer") from exc
+    if value < 1:
+        raise _BadRequest("limit must be >= 1")
+    return min(value, MAX_HEX_LIMIT)
 
 
 def _resolve_range(
@@ -264,7 +279,13 @@ def observatory_commits(request: Request, session_id: str) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def observatory_hex(request: Request, session_id: str) -> JsonResponse:
-    """GET /api/observatory/sessions/<id>/hex/ — reconstructed hex frame at a tick."""
+    """GET /api/observatory/sessions/<id>/hex/ — bounded reconstructed hex frame.
+
+    Bounded by ``limit`` (default/cap :data:`DEFAULT_HEX_LIMIT` /
+    :data:`MAX_HEX_LIMIT`) and paged forward by the ``after_h3`` cursor. The
+    response signals ``truncated`` + ``next_h3`` so a national res-7 frame is
+    fetched page-by-page instead of buffered whole.
+    """
     try:
         sid = _valid_uuid(session_id)
         tick = _parse_int(request.query_params.get("tick"), "tick")
@@ -273,11 +294,25 @@ def observatory_hex(request: Request, session_id: str) -> JsonResponse:
         county_fips = request.query_params.get("county_fips") or None
         if county_fips is not None and not _SCOPE_ID_PATTERNS["county"].match(county_fips):
             raise _BadRequest(f"invalid county_fips {county_fips!r}")
+        limit = _parse_limit(request.query_params.get("limit"))
+        after_h3 = request.query_params.get("after_h3") or None
     except _BadRequest as exc:
         return _err(str(exc), 400)
     try:
         with _sim_cursor() as cursor:
-            hexes = fetch_hex_frame(cursor, sid, tick, county_fips)
-    except OperationalError:
+            hexes, truncated, next_h3 = fetch_hex_frame(
+                cursor, sid, tick, county_fips, limit=limit, after_h3=after_h3
+            )
+    except DatabaseError:
         return _err("Simulation database unavailable", 503)
-    return _ok({"session_id": sid, "tick": tick, "county_fips": county_fips, "hexes": hexes})
+    return _ok(
+        {
+            "session_id": sid,
+            "tick": tick,
+            "county_fips": county_fips,
+            "limit": limit,
+            "hexes": hexes,
+            "truncated": truncated,
+            "next_h3": next_h3,
+        }
+    )

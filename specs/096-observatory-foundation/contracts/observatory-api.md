@@ -81,15 +81,22 @@ Per-tick commit chain summary.
 ### `GET /api/observatory/sessions/<session_id>/hex/`
 
 Reconstructed hex frame at a committed tick (via `v_hex_state_asof`).
+**Bounded + paginated** — a national res-7 frame is hundreds of thousands of
+hexes, so the endpoint never buffers the whole frame.
 
 Query params:
-- `tick` — required (int).
-- `county_fips` — optional 5-digit spatial filter to bound the result.
+- `tick` — required (int, INT4-ranged).
+- `county_fips` — optional 5-digit spatial filter.
+- `limit` — optional page size (default 5000, hard cap 50000, min 1).
+- `after_h3` — optional pagination cursor; returns only `h3_index > after_h3`.
 
-- **200** `data`: `{session_id, tick, county_fips?, hexes: HexStatePoint[]}`.
-  Empty `hexes` when the tick is beyond the committed range or the county has
-  no hexes (not an error).
-- **400** on bad UUID or missing/invalid `tick`.
+- **200** `data`: `{session_id, tick, county_fips?, limit, hexes:
+  HexStatePoint[], truncated: bool, next_h3: str|null}`. `truncated` is true
+  when more rows exist; `next_h3` is the cursor for the next page (pass it as
+  `after_h3`) or null when exhausted. Empty `hexes` when the tick is beyond the
+  committed range or the county has no hexes (not an error).
+- **400** on bad UUID, missing/invalid `tick` (incl. out-of-INT4-range), or
+  `limit < 1`.
 
 ---
 

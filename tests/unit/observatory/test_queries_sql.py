@@ -35,7 +35,7 @@ class TestNoRawDynamicHexState:
             assert "dynamic_hex_state" not in sql
 
     def test_hex_query_uses_asof_view(self) -> None:
-        sql, _ = queries.build_hex_query(_SID, 3, None)
+        sql, _ = queries.build_hex_query(_SID, 3, None, None, 10)
         assert "v_hex_state_asof" in sql
         assert "dynamic_hex_state" not in sql
 
@@ -67,14 +67,28 @@ class TestSeriesQueryBuilder:
 
 
 class TestHexQueryBuilder:
+    def test_bounded_query_has_limit(self) -> None:
+        sql, params = queries.build_hex_query(_SID, 4, None, None, 10)
+        assert "LIMIT %s" in sql
+        # session_id, tick, fetch_limit
+        assert params == (_SID, 4, 10)
+        assert sql.count("%s") == 3
+
     def test_county_filter_adds_parameter(self) -> None:
-        sql_all, p_all = queries.build_hex_query(_SID, 4, None)
-        sql_cty, p_cty = queries.build_hex_query(_SID, 4, "26163")
-        assert sql_all.count("%s") == 2
-        assert p_all == (_SID, 4)
-        assert sql_cty.count("%s") == 3
-        assert p_cty == (_SID, 4, "26163")
-        assert "county_fips = %s" in sql_cty
+        sql, params = queries.build_hex_query(_SID, 4, "26163", None, 10)
+        assert "county_fips = %s" in sql
+        assert params == (_SID, 4, "26163", 10)
+
+    def test_after_h3_cursor_adds_predicate(self) -> None:
+        sql, params = queries.build_hex_query(_SID, 4, None, "872a91055ffffff", 10)
+        assert "h3_index > %s" in sql
+        assert params == (_SID, 4, "872a91055ffffff", 10)
+
+    def test_county_and_cursor_combined(self) -> None:
+        sql, params = queries.build_hex_query(_SID, 4, "26163", "872a91055ffffff", 10)
+        assert params == (_SID, 4, "26163", "872a91055ffffff", 10)
+        assert "county_fips = %s" in sql
+        assert "h3_index > %s" in sql
 
 
 class TestScopeWhitelist:

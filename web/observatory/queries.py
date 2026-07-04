@@ -33,6 +33,17 @@ SCOPE_VIEWS: dict[str, tuple[str, str, str | None]] = {
 #: aggregate views only yield committed ticks, so this is a guard, not a norm.
 DEFAULT_MAX_TICK_SPAN = 5000
 
+#: Default / hard-cap page size for the hex-frame endpoint. A national res-7
+#: session is hundreds of thousands of hexes; the endpoint MUST page rather
+#: than buffer the whole frame (spec-096 CRITICAL review finding; this is
+#: spec-105's national verification surface).
+DEFAULT_HEX_LIMIT = 5000
+MAX_HEX_LIMIT = 50000
+
+#: Cap on the session listing so a DB with thousands of runs cannot return an
+#: unbounded list (consistent with the series/hex bounds).
+DEFAULT_SESSION_LIMIT = 500
+
 # --------------------------------------------------------------------------- #
 # SQL (parameterized) — session/tick discovery, series, commits, hex frame
 # --------------------------------------------------------------------------- #
@@ -47,6 +58,7 @@ SELECT session_id,
 FROM tick_commit
 GROUP BY session_id
 ORDER BY max_tick DESC, session_id
+LIMIT %s
 """
 
 TICK_RANGE_SQL = """
@@ -74,8 +86,9 @@ SELECT h3_index, county_fips, state_fips, region_id,
        biocapacity_stock, energy_stock, raw_material_stock,
        internet_access_pct, surveillance_coupling, written_at_tick
 FROM v_hex_state_asof
-WHERE session_id = %s AND tick = %s{county_clause}
+WHERE session_id = %s AND tick = %s{county_clause}{after_clause}
 ORDER BY h3_index
+LIMIT %s
 """
 
 _SESSION_META_SQL = """
@@ -126,22 +139,37 @@ def build_hex_query(
     session_id: str,
     tick: int,
     county_fips: str | None,
+    after_h3: str | None,
+    fetch_limit: int,
 ) -> tuple[str, tuple[Any, ...]]:
-    """Build the as-of hex-frame query, optionally filtered by county.
+    """Build the bounded, paginated as-of hex-frame query.
+
+    Reads ``v_hex_state_asof`` only, ordered by ``h3_index`` and capped at
+    ``fetch_limit`` rows (the caller fetches one extra to detect truncation).
+    An ``after_h3`` cursor pages forward by h3 index.
 
     Args:
         session_id: Session UUID (string).
         tick: The committed tick to reconstruct the frame at.
         county_fips: Optional 5-digit county filter.
+        after_h3: Optional h3 cursor — return only ``h3_index > after_h3``.
+        fetch_limit: Hard row cap for this page.
 
     Returns:
         ``(sql, params)`` reading ``v_hex_state_asof`` only.
     """
+    params: list[Any] = [session_id, tick]
+    county_clause = ""
     if county_fips:
-        sql = HEX_FRAME_SQL.format(county_clause=" AND county_fips = %s")
-        return sql, (session_id, tick, county_fips)
-    sql = HEX_FRAME_SQL.format(county_clause="")
-    return sql, (session_id, tick)
+        county_clause = " AND county_fips = %s"
+        params.append(county_fips)
+    after_clause = ""
+    if after_h3:
+        after_clause = " AND h3_index > %s"
+        params.append(after_h3)
+    params.append(fetch_limit)
+    sql = HEX_FRAME_SQL.format(county_clause=county_clause, after_clause=after_clause)
+    return sql, tuple(params)
 
 
 # --------------------------------------------------------------------------- #
@@ -161,7 +189,7 @@ def fetch_sessions(cursor: Any) -> list[dict[str, Any]]:
     ``game_session`` when that table exists in the sim DB; its absence (e.g. a
     migrations-only test DB) is fine — FR-007 makes metadata optional.
     """
-    cursor.execute(SESSIONS_SQL)
+    cursor.execute(SESSIONS_SQL, (DEFAULT_SESSION_LIMIT,))
     rows = cursor.fetchall()
     sessions = [
         {
@@ -259,11 +287,21 @@ def fetch_hex_frame(
     session_id: str,
     tick: int,
     county_fips: str | None = None,
-) -> list[dict[str, Any]]:
-    """Return the reconstructed hex frame at a committed tick (as-of view)."""
-    sql, params = build_hex_query(session_id, tick, county_fips)
+    limit: int = DEFAULT_HEX_LIMIT,
+    after_h3: str | None = None,
+) -> tuple[list[dict[str, Any]], bool, str | None]:
+    """Return one bounded page of the reconstructed hex frame (as-of view).
+
+    Fetches ``limit + 1`` rows to detect truncation without a second query.
+
+    Returns:
+        ``(hexes, truncated, next_h3)`` — at most ``limit`` rows; ``truncated``
+        is True when more rows exist; ``next_h3`` is the pagination cursor for
+        the next page (the last h3 returned) or ``None`` when exhausted.
+    """
+    sql, params = build_hex_query(session_id, tick, county_fips, after_h3, limit + 1)
     cursor.execute(sql, params)
-    return [
+    rows = [
         {
             "h3_index": r[0],
             "county_fips": r[1],
@@ -282,6 +320,11 @@ def fetch_hex_frame(
         }
         for r in cursor.fetchall()
     ]
+    truncated = len(rows) > limit
+    if truncated:
+        rows = rows[:limit]
+    next_h3 = rows[-1]["h3_index"] if truncated and rows else None
+    return rows, truncated, next_h3
 
 
 __all__ = [

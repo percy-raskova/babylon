@@ -203,3 +203,40 @@ class TestCommitsAndHex:
                 session_id=str(seeded_session.session_id),
             )
         assert resp.status_code == 400
+
+    def test_hex_frame_bounded_and_paginates(
+        self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any
+    ) -> None:
+        # CRITICAL fix: /hex/ must be bounded. limit=1 over a 2-hex frame must
+        # signal truncation and hand back a cursor; the cursor fetches the rest.
+        with django_db_blocker.unblock():
+            first = _json(
+                _call(
+                    views.observatory_hex,
+                    f"/api/observatory/sessions/{seeded_session.session_id}/hex/",
+                    session_id=str(seeded_session.session_id),
+                    tick=seeded_session.max_tick,
+                    limit=1,
+                )
+            )["data"]
+        assert first["limit"] == 1
+        assert len(first["hexes"]) == 1
+        assert first["truncated"] is True
+        assert first["next_h3"] == first["hexes"][0]["h3_index"]
+
+        with django_db_blocker.unblock():
+            second = _json(
+                _call(
+                    views.observatory_hex,
+                    f"/api/observatory/sessions/{seeded_session.session_id}/hex/",
+                    session_id=str(seeded_session.session_id),
+                    tick=seeded_session.max_tick,
+                    limit=1,
+                    after_h3=first["next_h3"],
+                )
+            )["data"]
+        assert len(second["hexes"]) == 1
+        assert second["truncated"] is False
+        assert second["next_h3"] is None
+        # The two pages together cover both hexes, no overlap.
+        assert first["hexes"][0]["h3_index"] != second["hexes"][0]["h3_index"]

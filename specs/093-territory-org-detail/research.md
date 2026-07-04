@@ -134,6 +134,45 @@ inputs" level without needing a full WebGL canvas assertion, matching how
 `DeckGLMap.test.tsx` already tests layer construction (confirmed existing
 file: `web/frontend/src/components/map/DeckGLMap.test.tsx`).
 
+## Q7 (addendum, verified independently during implementation): does ANY seeded session
+have real spec-070 graph data to query?
+
+**Finding**: No. `rg -l "balkanization_faction|BalkanizationFaction" src/babylon/engine/` matches
+only `faction_influence.py` itself — none of the 5 scenario builders reachable from
+`EngineBridge.create_game()`'s dispatch table (`_build_initial_state_for_scenario`,
+`engine_bridge.py:1970-1998`: `us`/`default`, `imperial_circuit`, `two_node`,
+`labor_aristocracy`, `wayne_county`/`wayne`/`detroit` — the last is what `seed_initial_game`'s
+`--scenario` defaults to) create any `balkanization_faction`/`sovereign` node or
+INFLUENCES/CLAIMS edge. The canonical seed data that DOES exist
+(`src/babylon/data/game/balkanization/seed_factions.json` — 4 factions;
+`seed_sovereigns.json` — 3 sovereigns) is continental-scale (`SOV_USA_FED.initial_claims == []`;
+`SOV_CAN_FED` claims one `"canada"` node; `SOV_EXTERIOR_NULL` claims one `"rest_of_usa"` catch-all
+node), not Michigan-county-scale. `seed_influences.json` — the file that would carry real
+per-county faction-influence rows, per the loader module's own docstring ("produced by the
+proxy-data pipeline in `compute_seed_influences` (T112)") — **does not exist anywhere in the
+repo or the data trove**, and `compute_seed_influences` itself was never implemented (`find`
+returns nothing).
+
+**Consequence for this spec**: a live `mise run web:dev` session seeded via
+`seed_initial_game` (any scenario) has ZERO INFLUENCES/CLAIMS edges today. The map lens set's
+backend queries (`query_faction_influence_by_territory`, `query_sovereign_claims`,
+`query_territory_claims`) are real and correct — they are exercised directly in unit tests via
+hand-built `BabylonGraph` fixtures (the `adapter.add_edge(fac_id, territory_id, "influences",
+influence_level=..., support_type=...)` pattern already used in
+`tests/unit/balkanization/test_faction_influence_system.py`), which needs no scenario/seed at
+all — but a live demo game will render "no data" (empty `territory_influence`/`sovereigns`
+arrays) for the political lenses until a real seed exists.
+
+**Resolution** (per the owning brief's pre-authorized "prefer seed/fixture-at-the-data-layer over
+hardcoded endpoint fixtures" guidance): implement the bridge/frontend code fully and correctly
+against the real `GraphProtocol` query surface (so it activates the instant real seed data
+exists and degrades honestly to empty/no-data today); do NOT invent per-endpoint mock data to
+paper over the gap. The real per-county proxy-data methodology (what determines a county's
+starting ColonialStance/influence split — partisan lean? land-back movement presence? some other
+grounded signal?) is a DATA-lane sourcing decision, flagged to the owner as a queue item rather
+than invented here. If a minimal illustrative seed is wanted for local `web:dev` demos, that is a
+separate, explicitly-labeled-placeholder follow-up (not fabricated inside this spec's endpoints).
+
 ## Q6: Michigan BEA-EA LOD mechanism
 
 **Decision**: Reuse `_aggregate_hex_features` (`engine_bridge.py:301-381`)

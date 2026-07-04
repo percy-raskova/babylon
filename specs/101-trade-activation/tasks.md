@@ -31,9 +31,18 @@ Legend: [x] done · [ ] todo. Each numbered task = one commit unit.
 - [ ] **T8 — Verify loop.** `mise run check` → `test_bridge_income_circuit.py` →
   `test_trade_circuit.py` → `qa:e2e-regression`.
 - [ ] **T9 — Proof + re-baseline.** Write proof (in spec dir); regenerate
-  `tests/baselines/detroit-tri-county-5t.json`; commit proof + baseline together
-  (`--no-verify` for the baseline artifact per precedent). Commit:
-  `test(spec-101): re-baseline 5-tick + written proof (boundary flows populate)`.
+  `tests/baselines/detroit-tri-county-5t.json`; commit proof + baseline together.
+  Commit: `test(spec-101): re-baseline 5-tick + written proof (boundary flows populate)`.
+  **Review correction (spec-101 review, cheap minor)**: the historical commit
+  for this task used `--no-verify`, citing 635d234e ("chore(spec-069): commit
+  canonical headless-runner sim-run artifacts") as precedent. That precedent
+  doesn't actually apply: 635d234e bypassed the `check-added-large-files`
+  500KB gate for `summary.json` files OUTSIDE `tests/baselines/`, but
+  `.pre-commit-config.yaml`'s `check-added-large-files` hook already
+  `exclude`s `^tests/baselines/.*\.json$` — baseline JSON commits never
+  needed `--no-verify` on size grounds. Left uncorrected in the historical
+  commit message (git history is immutable); noted here so the justification
+  isn't repeated for future baseline commits.
 - [ ] **T10 — Close-out.** Update `project/01-state-of-the-world.md`, `09 §2`
   spec-101 status, `ai-docs/state.yaml`; add ADR (Φ attribution model). Commit:
   `docs(spec-101): close-out + ADR (Φ attribution + trade activation)`.

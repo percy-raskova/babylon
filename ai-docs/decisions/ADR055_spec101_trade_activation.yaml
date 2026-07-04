@@ -47,3 +47,42 @@ ADR055_spec101_phi_attribution_and_trade_activation:
   owner_review:
     - "Ratify or adjust the _NODE_TO_BLOC crosswalk + the trade-share attribution model (isolated dict in postgres_initialization.py)."
     - "Decide whether india/latin_america should get a bloc (needs a per-country trade slice) or stay Φ=0."
+    - "Scope-renormalisation (D2, county_exposure.py) makes a sub-national scoped run absorb the FULL national bloc Φ_week rather than a proportional share — the Σ DRAIN_EDGE ≡ Φ_week invariant validates plumbing, not real-world drain magnitude, at sub-national scope. Decide whether national-scope simulation is required before drain magnitudes are economically meaningful (the E:104/E:105 national axis). See proof.md for the observed magnitude (per-tick drain vs. per-county total_v: roughly two orders of magnitude, ~84x-141x across sampled counties on the 520-tick michigan-canada run)."
+
+  review_2026_07_04:
+    context: |
+      An adversarial review of this ADR + the shipped code (workflow
+      wf_d183f7a6-020) confirmed the core mechanism is sound — Φ distribution
+      is genuinely wired every non-dry-run tick, and total_v byte-identity
+      holds because the mechanism strictly REDISTRIBUTES (never creates)
+      national Φ — but found robustness, honesty, and test-rigor gaps. All
+      were fixed on the same branch; this section records what changed and,
+      separately, an honest disclosure this ADR's original text did not make.
+    fixes_applied:
+      - "#1: _attribute_phi_and_trade raises PhiAttributionUnavailableError (was a silent `return {}`) when no mapped bloc has positive trade — matches county_exposure.py's existing hard-fail discipline."
+      - "#2: new _preflight_hickel_intensive_coverage fails loud when start_year falls outside fact_hickel_erdi_annual's verified [1980, 2017] 'Intensive' coverage, instead of _fetch_national_phi silently reading back its 0.0 fallback."
+      - "#3: the conservation evaluator gained an aggregate coverage check (scale=external:__national_aggregate__) fed by InitializationReport.national_phi_reference — the RAW, un-attributed national Φ, sourced independently of the per-bloc attribution. This is the genuinely-failable detector: it alarms even when EVERY bloc's attributed Φ reads back 0, a regression the original per-bloc-only ratio check could not see (it only iterates blocs with phi>0, so an all-zeroed attribution produced zero audit rows and zero alarms)."
+      - "#4: test_conservation_identity_holds_per_bloc gained a non-emptiness + bloc-coverage guard; confirmed RED (AssertionError, not a silent pass) when the runner→TickContext wiring is reverted."
+      - "#5: aggregate_external_node_flows was silently grouping by the receiving COUNTY (dest_node_id for DRAIN_EDGE), not the bloc, contradicting its own name and this ADR's framing. Fixed to resolve whichever side carries kind='external', for every flow type."
+    honest_disclosure_non_gated_drift: |
+      The regenerated detroit-tri-county-5t.json baseline (commit e059e50e)
+      also shows non-gated drift NOT caused by spec-101: terminal_state.max_tension
+      1.0→0.667728; p_acquiescence/p_revolution homogenized to bit-identical
+      values across three demographically-distinct counties; event-type
+      composition shifted (ecological_overshoot/peripheral_revolt/rupture/
+      excessive_force out, lifecycle_transition/surplus_extraction in);
+      performance.per_system_ms gained FascistFactionSystem. Verified via
+      `git show <commit>:tests/baselines/detroit-tri-county-5t.json` on both
+      sides of e059e50e: none of spec-101's four feature commits touch
+      SurvivalSystem, ContradictionSystem, LifecycleSystem, or any
+      event-emission code (they touch only postgres_initialization.py,
+      conservation_audit.py, bridge.py, runner.py, audit_models.py, and
+      their tests). This drift is INHERITED from ~106 commits merged since
+      spec-086 last regenerated this artifact (spec-070 balkanization,
+      spec-071 reactionary/FascistFactionSystem, the ongoing dialectics
+      refactor) — those specs shipped under the narrower
+      `_compare_bundle_command` gate and never regenerated this full file.
+      e059e50e is simply the first commit since spec-086 to do a full
+      `--write-baseline` regen, so the accumulated drift surfaces in the
+      same diff as spec-101's own (total_v-neutral) additions. See
+      proof.md's "Honest disclosure" section for the full verification.

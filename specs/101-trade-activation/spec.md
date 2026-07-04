@@ -78,6 +78,20 @@ US counties every tick, recorded as an auditable ledger.
   study area receives the full bloc Φ_week, split by relative intra-scope
   exposure" — the contract the conservation identity (FR-101-5) requires. At
   national scope it is a near-no-op.
+  **Assumption disclosed (review finding #8, PLAUSIBLE, not a code bug)**: at
+  SUB-national scope this means a scoped run absorbs the FULL national bloc
+  Φ_week, not a proportional share of it — so `Σ DRAIN_EDGE ≡ Φ_week` is
+  tautologically satisfiable by construction at sub-national scope, and the
+  resulting per-tick drain magnitude is economically inflated relative to the
+  receiving counties' own output — verified on the 520-tick michigan-canada
+  canonical run (per-tick drain = cumulative `external_node_flows` phi-inflow
+  ÷ 519 ticks, vs. that county's terminal `total_v`): roughly two orders of
+  magnitude (~84×–141× across sampled counties). **The invariant validates
+  the plumbing (Σ recorded DRAIN equals the intended Φ_week slice), not the
+  real-world economics of the magnitude.** Owner-queue: whether national-scope
+  simulation is required before drain magnitudes are economically meaningful
+  (the E:104/E:105 national-scope axis). See `proof.md`'s "Owner-queue item"
+  section for the verification detail.
 - **D3 — Injective node→bloc crosswalk for Φ attribution + trade value.** The 8
   engine nodes (`canada, china, eu, india, sub_saharan_africa, latin_america,
   russia_csi, southeast_asia`) do not equal the 8 `dim_country is_region=1`

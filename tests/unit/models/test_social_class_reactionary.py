@@ -93,7 +93,7 @@ class TestGraphRoundTrip:
             role=SocialRole.LABOR_ARISTOCRACY,
             county_fips="26163",
             entitlement=0.8,
-            volatility=0.0,
+            volatility=0.6,  # non-default (LA role-default is 0.0) — asserted independently below
             fascist_alignment=0.45,
             aligned_faction_id="FAC_SETTLER",
         )
@@ -101,6 +101,7 @@ class TestGraphRoundTrip:
         graph = state.to_graph()
         recovered = WorldState.from_graph(graph, tick=0).entities["C001"]
         assert recovered.entitlement == pytest.approx(0.8)
+        assert recovered.volatility == pytest.approx(0.6)
         assert recovered.fascist_alignment == pytest.approx(0.45)
         assert recovered.aligned_faction_id == "FAC_SETTLER"
 

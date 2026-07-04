@@ -14,6 +14,7 @@ import { useNavigate, useParams } from "react-router";
 import { BblBadge, BblData, BblLabel, BblPanel, Gauge, Stat } from "@/components/bbl";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useGameState } from "@/hooks/useGameState";
+import { useGameStore } from "@/stores/gameStore";
 import type { OrgState } from "@/types/game";
 
 /** Spec 061 US4: static color palette for class characters (UI tokens, not data). */
@@ -187,11 +188,23 @@ export function OrgsPage() {
 
   // Spec 092: End Turn resolves the tick, then hands off to the Tick
   // Resolution screen for the animated summary of what just happened.
+  //
+  // Spec-092 review fix (Defect C): `resolveTick()` never throws — on
+  // failure it sets `error` in the gameStore and resolves to `null`
+  // (see `gameStore.ts`'s `resolveTick`). Navigating unconditionally
+  // therefore sent the player to the resolution screen even when the
+  // tick never actually resolved. Read the store's fresh `error` state
+  // right after the await (imperative `getState()`, not the reactive
+  // hook selector, since this closure isn't itself re-rendered) and only
+  // navigate when it's still clear; the existing `error` subtitle
+  // (`subtitleFor` below) already surfaces the failure to the player.
   const handleEndTurn = async () => {
     setResolving(true);
     try {
       await resolveTick();
-      navigate(`/games/${gameId}/resolution`);
+      if (!useGameStore.getState().error) {
+        navigate(`/games/${gameId}/resolution`);
+      }
     } finally {
       setResolving(false);
     }

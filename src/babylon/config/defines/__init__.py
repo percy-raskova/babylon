@@ -52,6 +52,7 @@ from babylon.config.defines.organizations import (
     NegotiateDefines,
     OrganizationDefines,
 )
+from babylon.config.defines.reactionary import ReactionaryDefines
 from babylon.config.defines.state_apparatus import (
     InstitutionDefines,
     StateApparatusAIDefines,
@@ -108,6 +109,7 @@ __all__ = [
     "OODADefines",
     "OrganizationDefines",
     "PrecisionDefines",
+    "ReactionaryDefines",
     "RentCircuitDefines",
     "ReserveArmyDefines",
     "ServicesDefines",

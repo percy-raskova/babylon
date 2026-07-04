@@ -28,12 +28,18 @@ See Also:
 
 from __future__ import annotations
 
+import math
+
 from babylon.config.defines import ConsciousnessDefines
 
 _DEFAULT_DEFINES = ConsciousnessDefines()
 
 # Division-by-zero guard
 _EPSILON = 1e-10
+
+# log(3): the maximum ternary entropy, used to normalize the contestation
+# diagnostic into [0, 1].
+_LOG3 = math.log(3.0)
 
 
 def compute_agitation_delta(
@@ -247,3 +253,117 @@ def normalize_to_simplex(r: float, lib: float, f: float) -> tuple[float, float, 
         lib += 1.0 - total
 
     return r, lib, f
+
+
+def assimilation_ratio(lib: float, f: float) -> float:
+    """Fascist share of the non-revolutionary tendency (spec-071, §9.4).
+
+    ``assimilation_ratio = f / (l + f)`` — how much of the passive
+    (non-revolutionary) mass has been absorbed into the fascist pole rather
+    than remaining liberal-hegemonic. Zero when there is no non-revolutionary
+    mass.
+
+    Args:
+        lib: Liberal tendency [0, 1].
+        f: Fascist tendency [0, 1].
+
+    Returns:
+        Fascist share of ``l + f`` in [0, 1]; 0.0 when ``l + f == 0``.
+
+    Example:
+        >>> assimilation_ratio(0.3, 0.1)
+        0.25
+        >>> assimilation_ratio(0.0, 0.0)
+        0.0
+    """
+    denom = lib + f
+    if denom < _EPSILON:
+        return 0.0
+    return f / denom
+
+
+def ideological_contestation(r: float, lib: float, f: float) -> float:
+    """Normalized ternary entropy of ``(r, l, f)`` — a DIAGNOSTIC only.
+
+    ``H(r, l, f) / log 3`` ∈ [0, 1]. 0 = one pole holds the whole mass
+    (settled consciousness); 1 = maximal contestation (equal thirds).
+
+    IMPORTANT (§9.4): entropy is permutation-symmetric, so it CANNOT carry
+    the George Jackson asymmetry (r and f are not interchangeable). This is a
+    read-only diagnostic; the asymmetry lives in the directed ``f → r`` gate
+    (:func:`apply_fr_gate`), never in a potential/free-energy function.
+
+    Args:
+        r: Revolutionary tendency [0, 1].
+        lib: Liberal tendency [0, 1].
+        f: Fascist tendency [0, 1].
+
+    Returns:
+        Normalized entropy in [0, 1].
+
+    Example:
+        >>> round(ideological_contestation(1.0, 0.0, 0.0), 6)
+        0.0
+        >>> round(ideological_contestation(1/3, 1/3, 1/3), 6)
+        1.0
+    """
+    total = r + lib + f
+    if total < _EPSILON:
+        return 0.0
+    entropy = 0.0
+    for p in (r / total, lib / total, f / total):
+        if p > _EPSILON:
+            entropy -= p * math.log(p)
+    return max(0.0, min(1.0, entropy / _LOG3))
+
+
+def apply_fr_gate(
+    delta_fr: float,
+    *,
+    proletarianizing: bool,
+    adjacent_r: bool,
+    has_solidarity: bool,
+    epsilon: float = 0.0,
+) -> float:
+    """Gate a fascist→revolutionary (``f → r``) flow (spec-071, §9.4).
+
+    The ``f → r`` transition is FORBIDDEN unless all three material
+    preconditions hold simultaneously: the node is proletarianizing (losing
+    its stake), it is adjacent to a revolutionary pole, AND a solidarity edge
+    is present. This asymmetry (fascism is easy to enter, hard to leave)
+    breaks detailed balance (Kolmogorov), so NO potential-function /
+    free-energy formulation exists — the gate is a directed flow constraint,
+    not a gradient.
+
+    Args:
+        delta_fr: The proposed ``f → r`` flow magnitude (>= 0).
+        proletarianizing: Whether the node is losing its material stake.
+        adjacent_r: Whether the node is adjacent to a revolutionary pole.
+        has_solidarity: Whether a solidarity edge is incident.
+        epsilon: The flow permitted when the gate is CLOSED (default 0.0 =
+            fully forbidden).
+
+    Returns:
+        ``delta_fr`` when all three preconditions hold, else ``epsilon``.
+
+    Example:
+        >>> apply_fr_gate(0.3, proletarianizing=True, adjacent_r=True, has_solidarity=True)
+        0.3
+        >>> apply_fr_gate(0.3, proletarianizing=True, adjacent_r=True, has_solidarity=False)
+        0.0
+    """
+    if proletarianizing and adjacent_r and has_solidarity:
+        return delta_fr
+    return epsilon
+
+
+__all__ = [
+    "apply_fr_gate",
+    "assimilation_ratio",
+    "compute_agitation_delta",
+    "compute_exploitation_visibility",
+    "compute_reification_buffer",
+    "ideological_contestation",
+    "normalize_to_simplex",
+    "route_agitation_to_ternary",
+]

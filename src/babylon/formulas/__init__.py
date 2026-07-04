@@ -106,6 +106,14 @@ from babylon.formulas.metabolic_rift import (
     calculate_overshoot_ratio,
 )
 
+# Re-export Reactionary Subject formulas (spec-071)
+from babylon.formulas.reactionary import (
+    calculate_defection_probability,
+    calculate_entitlement_effective,
+    calculate_fascist_pull,
+    calculate_spontaneous_riot_risk,
+)
+
 # Re-export Solidarity Transmission formula
 from babylon.formulas.solidarity import calculate_solidarity_transmission
 
@@ -209,6 +217,11 @@ __all__ = [
     "compute_pareto_gini",
     "compute_ideology_transmission",
     "compute_shadow_subsidy",
+    # Reactionary Subject (Spec 071)
+    "calculate_defection_probability",
+    "calculate_entitlement_effective",
+    "calculate_fascist_pull",
+    "calculate_spontaneous_riot_risk",
     # Balkanization (Spec 070)
     "calculate_metabolic_impact",
     "contiguous_influence_majority_subregion",

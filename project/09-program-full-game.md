@@ -380,8 +380,9 @@ ______________________________________________________________________
   15 yrs) + `fact_bilateral_trade_annual` (120 rows). Loader in babylon-data
   `src/babylon_data/exposure/` (compute/writer/audit/validation/`__main__`) +
   `src/babylon_data/trade/bilateral.py`; `mise run data:exposure`. All gates
-  green on the real DB: per-(bloc,year) weights sum to 1.0 (120/120), reconciliation
-  ±2% (residual ≈0, conservation identity), `logical_table_hash` reproduces
+  green on the real DB: per-(bloc,year) weights sum to 1.0 (120/120),
+  weight-conservation invariant ±2% (internal consistency, NOT external
+  reconciliation — none exists for this measure), `logical_table_hash` reproduces
   run-to-run (H1==H2), schema-valid audit artifact. Coverage 15–21% (goods-biased
   `bridge_naics_bea` concordance → tradeable-goods import exposure; documented,
   not a stub). 38 loader tests + 7 schema tests. Zero engine-dynamics change.
@@ -418,7 +419,11 @@ ______________________________________________________________________
 - **Deps**: none. Zero engine-dynamics change, zero baseline churn.
 
 - **TDD**: 086's fixture pattern (CSV builders, in-memory ORM
-  seeding); reconciliation gate ±2% against published import totals.
+  seeding); weight-conservation invariant ±2% (Σ raw exposure vs Σ covered
+  BEA import coefficient — an INTERNAL consistency invariant, since no
+  independent published import total exists in the DB for this measure;
+  corrected from the original "reconciliation against published totals"
+  wording per the spec-100 adversarial review).
 
 - **Gate**: `mise run data:exposure` green with audit artifact;
   per-bloc weights sum to 1.0; table hash reproduces run-to-run.

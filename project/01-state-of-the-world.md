@@ -48,7 +48,8 @@ consumes both:
     bloc-year bilateral trade. Two additive SQLite reference tables
     (`fact_county_exposure_by_external` 384,200 rows,
     `fact_bilateral_trade_annual` 120 rows) applied to the real DB; all gates
-    green (sum=1.0, recon ±2%, hash reproduces, schema-valid audit). Unblocks
+    green (sum=1.0, weight-conservation ±2%, hash reproduces, schema-valid
+    audit). Unblocks
     spec-101 (S1). Reconciliation notes in
     `specs/100-county-exposure/research.md`.
 

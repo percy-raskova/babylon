@@ -103,7 +103,7 @@ def observatory_boundary(request: Request, session_id: str) -> Any:
         with open_reader(source, sid) as reader:
             window = _resolve_reader_range(reader, sid, from_tick, to_tick)
             if window is None:
-                data: dict[str, Any] = {"by_flow_type": [], "rows": []}
+                data: dict[str, Any] = {"by_flow_type": [], "rows": [], "truncated": False}
                 lo = hi = 0
             else:
                 lo, hi = window
@@ -133,20 +133,18 @@ def observatory_conservation(request: Request, session_id: str) -> Any:
         with open_reader(source, sid) as reader:
             window = _resolve_reader_range(reader, sid, from_tick, to_tick)
             if window is None:
-                rows: list[dict[str, Any]] = []
+                data: dict[str, Any] = {"rows": [], "truncated": False}
                 lo = hi = 0
             else:
                 lo, hi = window
-                rows = read_conservation(reader, sid, lo, hi, non_ok_only=severity == "non_ok")
+                data = read_conservation(reader, sid, lo, hi, non_ok_only=severity == "non_ok")
     except _BadRequest as exc:
         return _err(str(exc), 400)
     except DatabaseError:
         return _sim_unavailable()
     except SourceReadError:
         return _err("Archive read failed", 503)
-    return _ok(
-        {"session_id": sid, "source": source.value, "from_tick": lo, "to_tick": hi, "rows": rows}
-    )
+    return _ok({"session_id": sid, "source": source.value, "from_tick": lo, "to_tick": hi, **data})
 
 
 @observatory_enabled_or_404

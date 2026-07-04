@@ -64,6 +64,9 @@ class TestArchiveSource:
         assert body["min_tick"] == 0 and body["max_tick"] == 519
         assert body["checkpoint_ticks"][:3] == [0, 52, 104]
         assert body["anomalies"] == []
+        # spec-099 fix #1/#2/#7: the verdict is honestly scoped — structural
+        # checks only, never a content/tamper claim.
+        assert body["verification_scope"] == "structural"
 
     def test_commits_archived_via_source(self) -> None:
         resp = _call(
@@ -76,6 +79,25 @@ class TestArchiveSource:
         assert resp.status_code == 200
         assert len(rows) == 520
         assert all(len(r["determinism_hash"]) == 64 for r in rows)
+        # spec-099 fix #1: created_at_utc must be the REAL archived timestamp,
+        # not silently nulled — non-null, ISO-8601, distinct across ticks.
+        assert all(r["created_at_utc"] is not None for r in rows)
+        assert all("T" in r["created_at_utc"] for r in rows)
+        assert len({r["created_at_utc"] for r in rows}) > 1
+
+    def test_hex_archive_source_is_explicit_501(self) -> None:
+        # spec-099 fix #3: hex/ dispatches on source but archive is not
+        # implemented (hex_spatial_map is reference-only, not exported
+        # per-session) — an honest 501, never silent empty/stale live data.
+        resp = _call(
+            views.observatory_hex,
+            f"/api/observatory/sessions/{_ARCHIVED_SID}/hex/",
+            session_id=_ARCHIVED_SID,
+            source="archive",
+            tick=0,
+        )
+        assert resp.status_code == 501
+        assert _json(resp)["status"] == "error"
 
     def test_sessions_lists_archived(self) -> None:
         resp = _call(views.observatory_sessions, "/api/observatory/sessions/", source="archive")
@@ -108,6 +130,7 @@ class TestArchiveSource:
         assert resp.status_code == 200
         assert body["by_flow_type"] == []
         assert body["rows"] == []
+        assert body["truncated"] is False
 
     def test_archive_reads_are_read_only(self) -> None:
         chain_file = archive_dir(_ARCHIVED_SID) / "tick_commit.parquet"
@@ -135,6 +158,7 @@ class TestLiveDeepPanes:
         assert body["valid"] is True
         assert body["tick_count"] == seeded_session.tick_count
         assert body["source"] == "live"
+        assert body["verification_scope"] == "structural"
 
     def test_boundary_empty_state_live(
         self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any
@@ -149,6 +173,7 @@ class TestLiveDeepPanes:
         assert resp.status_code == 200
         assert body["by_flow_type"] == []
         assert body["rows"] == []
+        assert body["truncated"] is False
 
     def test_conservation_empty_state_live(
         self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any
@@ -160,7 +185,9 @@ class TestLiveDeepPanes:
                 session_id=str(seeded_session.session_id),
             )
         assert resp.status_code == 200
-        assert _json(resp)["data"]["rows"] == []
+        data = _json(resp)["data"]
+        assert data["rows"] == []
+        assert data["truncated"] is False
 
     def test_diff_self_is_zero(
         self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any

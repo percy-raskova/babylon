@@ -399,12 +399,7 @@ def observatory_commits(request: Request, session_id: str) -> JsonResponse:
             with open_reader(Source.ARCHIVE, sid) as reader:
                 window = _window(read_tick_range(reader, sid), from_tick, to_tick)
                 data = (
-                    []
-                    if window is None
-                    else [
-                        {**c, "created_at_utc": None}
-                        for c in read_commit_chain(reader, sid, window[0], window[1])
-                    ]
+                    [] if window is None else read_commit_chain(reader, sid, window[0], window[1])
                 )
         else:
             with _sim_cursor() as cursor:
@@ -423,15 +418,27 @@ def observatory_commits(request: Request, session_id: str) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def observatory_hex(request: Request, session_id: str) -> JsonResponse:
-    """GET /api/observatory/sessions/<id>/hex/ — bounded reconstructed hex frame.
+    """GET /api/observatory/sessions/<id>/hex/?source= — bounded reconstructed hex frame.
 
     Bounded by ``limit`` (default/cap :data:`DEFAULT_HEX_LIMIT` /
     :data:`MAX_HEX_LIMIT`) and paged forward by the ``after_h3`` cursor. The
     response signals ``truncated`` + ``next_h3`` so a national res-7 frame is
     fetched page-by-page instead of buffered whole.
+
+    ``source=archive`` is dispatched but NOT implemented (explicit 501): the
+    archived Parquet export deliberately excludes ``hex_spatial_map``
+    (reference data, not session-keyed — see spec-088), and every archived
+    ``dynamic_hex_state`` row's ``county_fips``/``state_fips``/``region_id``
+    are persisted NULL (the single copy lives in ``hex_spatial_map``, per the
+    II.11 sparse-hex gotcha). Reconstructing a hex frame from the archive
+    alone would therefore always come back with no spatial keys, silently
+    breaking the ``county_fips`` filter and county/state display — worse than
+    an explicit "not supported" error. See ``ai-docs``/owner-review notes
+    (spec-099 fix #3) for the follow-up decision.
     """
     try:
         sid = _valid_uuid(session_id)
+        source = _source_or_400(request)
         tick = _parse_int(request.query_params.get("tick"), "tick")
         if tick is None:
             raise _BadRequest("tick is required")
@@ -442,6 +449,13 @@ def observatory_hex(request: Request, session_id: str) -> JsonResponse:
         after_h3 = request.query_params.get("after_h3") or None
     except _BadRequest as exc:
         return _err(str(exc), 400)
+    if source is Source.ARCHIVE:
+        return _err(
+            "archive hex read not yet implemented: archived sessions do not "
+            "carry hex_spatial_map (reference data, not exported per-session), "
+            "so county/state keys cannot be reconstructed from Parquet alone",
+            501,
+        )
     try:
         with _sim_cursor() as cursor:
             hexes, truncated, next_h3 = fetch_hex_frame(
@@ -452,6 +466,7 @@ def observatory_hex(request: Request, session_id: str) -> JsonResponse:
     return _ok(
         {
             "session_id": sid,
+            "source": source.value,
             "tick": tick,
             "county_fips": county_fips,
             "limit": limit,

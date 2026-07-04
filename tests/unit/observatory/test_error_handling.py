@@ -71,6 +71,30 @@ class TestIntRangeValidation:
         assert resp.status_code == 400
 
 
+class TestHexSourceDispatch:
+    """spec-099 fix #3: hex/ must dispatch on ``source``, never silently
+
+    serve live/empty data for ``source=archive`` (archived sessions lack
+    ``hex_spatial_map``, so an honest 501 is required instead)."""
+
+    def test_archive_source_is_explicit_501_not_silent_empty(self, settings: Any) -> None:
+        settings.OBSERVATORY_ENABLED = True
+        client = _authed_client("obs_hex_src")
+        url = reverse("observatory:hex", kwargs={"session_id": _SID})
+        resp = client.get(url, {"tick": "0", "source": "archive"})
+        assert resp.status_code == 501
+        body = resp.json()
+        assert body["status"] == "error"
+        assert "archive" in body["message"].lower()
+
+    def test_bad_source_is_400(self, settings: Any) -> None:
+        settings.OBSERVATORY_ENABLED = True
+        client = _authed_client("obs_hex_src2")
+        url = reverse("observatory:hex", kwargs={"session_id": _SID})
+        resp = client.get(url, {"tick": "0", "source": "cloud"})
+        assert resp.status_code == 400
+
+
 class TestTestConfigFlag:
     def test_testing_settings_disable_observatory(self, settings: Any) -> None:
         # Latent config bug: stub/testing/testing_pg drop the sim alias but

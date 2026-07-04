@@ -5,12 +5,40 @@ All functions take a ``reader`` (``LiveReader`` or ``ArchiveReader`` from
 ``table_available(table)``. Raw-table SQL is authored with ``?`` placeholders
 so the identical statement runs against Postgres (live) and DuckDB (archive).
 
-``verify_chain`` is pure (no I/O): it validates a commit chain's structural
-integrity — it never re-runs the engine (Constitution III.7 is *read* here).
+``verify_chain`` is pure (no I/O): it validates a commit chain's STRUCTURAL
+integrity only (tick contiguity, checkpoint cadence, hash FORMAT/length,
+gaps/duplicates) — it never re-runs the engine, and it never recomputes or
+compares hash CONTENT. This is a deliberate, ground-truthed scope limit, not
+an oversight (spec-099 fix #1/#2/#7, 2026-07-04 adversarial review):
+
+* ``tick_commit.determinism_hash`` is written by the headless runner
+  (``babylon.engine.headless_runner.runner._tick_loop``) as
+  ``sha256(f"{session_id}:{tick}:{random_seed}")`` — an IDENTITY hash over
+  three scalars. It does NOT hash tick inputs (world state / hex rows /
+  actions), so recomputing and comparing it would only re-derive the same
+  three already-known scalars — not a tamper/content check.
+* The genuine CONTENT hash Constitution III.7 describes ("deterministic hash
+  of its inputs: World state + player actions + random seed") DOES exist —
+  :func:`babylon.persistence.conservation_audit.compute_determinism_hash`
+  hashes canonicalized ``tick + sorted hex_state + actions + rng_seed`` — but
+  it is written to ``conservation_audit_log.determinism_hash``, a DIFFERENT
+  column on a DIFFERENT table that this pane does not read.
+* Even the shallow identity hash's ``random_seed`` input is not reliably
+  recoverable here: the headless runner's ``ensure_session`` writes only
+  ``(id, scenario)`` into ``game_session`` (``rng_seed`` keeps its DDL default
+  of 0) for canonical/national runs, so genuine per-tick recomputation is not
+  possible from persisted session metadata without re-running the engine
+  (which FR-008 forbids).
+
+True tick_commit-level content verification would require a schema change
+(persisting the content-hash inputs, or the content hash itself, into
+``tick_commit``) — an owner decision, not implemented here. See the spec-099
+fix report for the full ground-truth writeup.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 # --------------------------------------------------------------------------- #
@@ -24,8 +52,22 @@ from typing import Any
 CHECKPOINT_EVERY_TICKS = 52
 
 
+#: Machine-readable honesty marker on every :func:`verify_chain` verdict —
+#: "structural" means tick contiguity + checkpoint cadence + hash FORMAT
+#: (length) only. It is NOT "content" (hash recomputed/compared against tick
+#: inputs) — see the module docstring for why that is not implementable here.
+VERIFICATION_SCOPE = "structural"
+
+
 def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Structurally verify a commit chain (contiguity, cadence, hash, dups).
+    """Structurally verify a commit chain (contiguity, cadence, hash FORMAT, dups).
+
+    This checks the hash's FORMAT (64 lowercase hex chars) only — it never
+    recomputes or compares hash CONTENT, so it does NOT detect a
+    tampered-but-well-formed hash (see the module docstring for the
+    ground-truthed reason). Callers/UI MUST NOT present this as content/tamper
+    verification; the ``verification_scope`` field on the result names exactly
+    what was checked.
 
     Args:
         commit_rows: Rows with ``tick``, ``determinism_hash``,
@@ -33,9 +75,12 @@ def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     Returns:
         A verdict dict: ``valid`` (True iff no anomalies), committed range,
-        ``checkpoint_ticks``, ``expected_checkpoint_cadence``, and an
-        ``anomalies`` list of ``{kind, tick, detail}`` where ``kind`` is one of
-        ``gap`` / ``duplicate`` / ``bad_checkpoint`` / ``bad_hash``.
+        ``checkpoint_ticks``, ``expected_checkpoint_cadence``,
+        ``verification_scope`` (always ``"structural"`` — see
+        :data:`VERIFICATION_SCOPE`), and an ``anomalies`` list of
+        ``{kind, tick, detail}`` where ``kind`` is one of ``gap`` /
+        ``duplicate`` / ``bad_checkpoint`` / ``bad_hash`` (``bad_hash`` means
+        wrong LENGTH, not wrong content).
     """
     anomalies: list[dict[str, Any]] = []
     if not commit_rows:
@@ -46,6 +91,7 @@ def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
             "tick_count": 0,
             "checkpoint_ticks": [],
             "expected_checkpoint_cadence": CHECKPOINT_EVERY_TICKS,
+            "verification_scope": VERIFICATION_SCOPE,
             "anomalies": [],
         }
 
@@ -84,7 +130,8 @@ def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
                 {
                     "kind": "bad_hash",
                     "tick": tick,
-                    "detail": f"hash length {len(str(digest))} != 64",
+                    "detail": f"hash length {len(str(digest))} != 64 (format check only; "
+                    "content is not recomputed/compared — see verification_scope)",
                 }
             )
 
@@ -95,6 +142,7 @@ def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
         "tick_count": len(seen),
         "checkpoint_ticks": sorted(checkpoint_ticks),
         "expected_checkpoint_cadence": CHECKPOINT_EVERY_TICKS,
+        "verification_scope": VERIFICATION_SCOPE,
         "anomalies": anomalies,
     }
 
@@ -104,7 +152,8 @@ def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 COMMIT_CHAIN_SQL = """
-SELECT tick, determinism_hash, hex_rows_written, is_checkpoint
+SELECT tick, determinism_hash, hex_rows_written, is_checkpoint,
+       CAST(created_at_utc AS VARCHAR) AS created_at_utc
 FROM tick_commit
 WHERE CAST(session_id AS VARCHAR) = ? AND tick BETWEEN ? AND ?
 ORDER BY tick
@@ -187,6 +236,24 @@ def _num(value: Any) -> float:
     return float(value) if value is not None else 0.0
 
 
+def _iso_utc(value: Any) -> str | None:
+    """Normalize a ``CAST(timestamptz AS VARCHAR)`` string to UTC ISO-8601.
+
+    Postgres and DuckDB render a timestamptz-to-text cast with different (but
+    both tz-aware) offset notations depending on their respective session/
+    default timezone — e.g. ``"2026-07-03 21:48:51.947028-04"`` (Postgres,
+    local session zone) vs ``"2026-07-04 01:48:51.947028+00"`` (DuckDB,
+    UTC default). ``datetime.fromisoformat`` parses either (both are valid
+    ISO-ish, space-separated forms); re-emitting via ``.astimezone(UTC)``
+    +``.isoformat()`` yields an identical string for the same instant
+    regardless of which backend produced it — required for live/archive
+    parity (finding #1, spec-099 review).
+    """
+    if value is None:
+        return None
+    return datetime.fromisoformat(str(value)).astimezone(UTC).isoformat()
+
+
 def read_tick_range(reader: Any, session_id: str) -> tuple[int, int] | None:
     """Committed tick range for a session, or ``None`` if empty/absent."""
     if not reader.table_available("tick_commit"):
@@ -210,6 +277,7 @@ def read_commit_chain(
             "determinism_hash": r["determinism_hash"],
             "hex_rows_written": int(r["hex_rows_written"]),
             "is_checkpoint": bool(r["is_checkpoint"]),
+            "created_at_utc": _iso_utc(r["created_at_utc"]),
         }
         for r in rows
     ]
@@ -237,11 +305,21 @@ def read_national_series(
 
 
 def read_boundary(reader: Any, session_id: str, from_tick: int, to_tick: int) -> dict[str, Any]:
-    """Boundary flows grouped by flow type + capped raw rows (empty-state-safe)."""
+    """Boundary flows grouped by flow type + capped raw rows (empty-state-safe).
+
+    Fetches ``_MAX_BOUNDARY_ROWS + 1`` rows (the hex-frame pattern) so a
+    genuine over-cap result sets ``truncated`` rather than silently dropping
+    the highest-tick rows with no signal (finding #2, spec-099 review).
+    """
     if not reader.table_available("boundary_flow_register"):
-        return {"by_flow_type": [], "rows": []}
+        return {"by_flow_type": [], "rows": [], "truncated": False}
     summary = reader.execute(BOUNDARY_SUMMARY_SQL, (session_id, from_tick, to_tick))
-    rows = reader.execute(BOUNDARY_ROWS_SQL, (session_id, from_tick, to_tick, _MAX_BOUNDARY_ROWS))
+    rows = reader.execute(
+        BOUNDARY_ROWS_SQL, (session_id, from_tick, to_tick, _MAX_BOUNDARY_ROWS + 1)
+    )
+    truncated = len(rows) > _MAX_BOUNDARY_ROWS
+    if truncated:
+        rows = rows[:_MAX_BOUNDARY_ROWS]
     return {
         "by_flow_type": [
             {
@@ -263,6 +341,7 @@ def read_boundary(reader: Any, session_id: str, from_tick: int, to_tick: int) ->
             }
             for r in rows
         ],
+        "truncated": truncated,
     }
 
 
@@ -272,29 +351,43 @@ def read_conservation(
     from_tick: int,
     to_tick: int,
     non_ok_only: bool,
-) -> list[dict[str, Any]]:
-    """Conservation-audit rows over a tick range (optionally non-OK only)."""
+) -> dict[str, Any]:
+    """Conservation-audit rows over a tick range (optionally non-OK only).
+
+    Fetches ``_MAX_AUDIT_ROWS + 1`` rows so a genuine over-cap result sets
+    ``truncated`` rather than silently dropping the highest-tick rows with no
+    signal — a late-run ALARM could otherwise vanish from an audit browser
+    whose whole purpose is exhaustive verification (finding #2, spec-099
+    review).
+    """
     if not reader.table_available("conservation_audit_log"):
-        return []
+        return {"rows": [], "truncated": False}
     clause = " AND severity <> 'ok'" if non_ok_only else ""
     sql = CONSERVATION_SQL.format(severity_clause=clause)
-    rows = reader.execute(sql, (session_id, from_tick, to_tick, _MAX_AUDIT_ROWS))
-    return [
-        {
-            "tick": int(r["tick"]),
-            "scale": r["scale"],
-            "invariant_name": r["invariant_name"],
-            "computed_value": _num(r["computed_value"]),
-            "expected_value": _num(r["expected_value"]),
-            "residual": _num(r["residual"]),
-            "severity": r["severity"],
-        }
-        for r in rows
-    ]
+    rows = reader.execute(sql, (session_id, from_tick, to_tick, _MAX_AUDIT_ROWS + 1))
+    truncated = len(rows) > _MAX_AUDIT_ROWS
+    if truncated:
+        rows = rows[:_MAX_AUDIT_ROWS]
+    return {
+        "rows": [
+            {
+                "tick": int(r["tick"]),
+                "scale": r["scale"],
+                "invariant_name": r["invariant_name"],
+                "computed_value": _num(r["computed_value"]),
+                "expected_value": _num(r["expected_value"]),
+                "residual": _num(r["residual"]),
+                "severity": r["severity"],
+            }
+            for r in rows
+        ],
+        "truncated": truncated,
+    }
 
 
 __all__ = [
     "CHECKPOINT_EVERY_TICKS",
+    "VERIFICATION_SCOPE",
     "verify_chain",
     "read_tick_range",
     "read_commit_chain",

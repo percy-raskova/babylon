@@ -5,7 +5,7 @@
  * In-game routes nest under GameRouteShell for persistent TopBar + NavRail.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router";
 import { get, post } from "@/api/client";
 import { LoginPage } from "@/components/LoginPage";
@@ -19,6 +19,10 @@ import { IntelPageV2 } from "@/components/pages/IntelPageV2";
 import { AnalysisPage } from "@/components/pages/AnalysisPage";
 import { DevHarness } from "@/DevHarness";
 import type { AuthState } from "@/types/game";
+
+// spec-096: dev-facing Observatory dashboard — lazy chunk (backend gates on
+// OBSERVATORY_ENABLED; the page probes /api/observatory/status/).
+const ObservatoryPage = lazy(() => import("@/observatory/ObservatoryPage"));
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
@@ -131,6 +135,14 @@ export default function App() {
       </Route>
 
       <Route path="/dev/hexmap" element={<DevHarness />} />
+      <Route
+        path="/observatory/*"
+        element={
+          <Suspense fallback={null}>
+            <ObservatoryPage />
+          </Suspense>
+        }
+      />
       <Route path="*" element={<Navigate to={isAuthed ? "/games" : "/login"} replace />} />
     </Routes>
   );

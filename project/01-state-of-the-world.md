@@ -51,6 +51,17 @@ consumes both:
   evening) — four parallel lanes: `[E:071→101→102→104→105]`
   `[W:090→091→092∥093→094→095→103]` `[D:100 ∥ 098-LODES ∥ 068-slice]`
   `[O:096→099]`. Design canon staged at `design/mockups/` (66 files).
+  - **Lane D spec-100 County-exposure loader — DONE 2026-07-04** (branch
+    `100-county-exposure`, unmerged; two repos: babylon worktree schema +
+    babylon-data loader). Built the never-computed `county_exposure_by_external`
+    map (BEA I-O import coeffs × QCEW county shares via `bridge_naics_bea`) +
+    bloc-year bilateral trade. Two additive SQLite reference tables
+    (`fact_county_exposure_by_external` 384,200 rows,
+    `fact_bilateral_trade_annual` 120 rows) applied to the real DB; all gates
+    green (sum=1.0, weight-conservation ±2%, hash reproduces, schema-valid
+    audit). Unblocks
+    spec-101 (S1). Reconciliation notes in
+    `specs/100-county-exposure/research.md`.
 
 ## What shipped 2026-07-02 (one session), by commit
 

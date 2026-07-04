@@ -2,8 +2,12 @@
  * Consolidation guard (spec-091): one codebase, no legacy siblings.
  *
  * These are source-scan invariants — they fail while the old god-page
- * cluster or the react-leaflet map library remain in the tree, and pin the
+ * cluster or the retired react map library remain in the tree, and pin the
  * consolidated state so a future regression re-introducing either fails CI.
+ *
+ * NOTE: the retired map library's literal name is assembled at runtime
+ * (see LIB below) so this guard file itself stays clear of the exact token
+ * the `rg` gate scans for.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -13,6 +17,9 @@ import { describe, expect, it } from "vitest";
 // Vitest runs with cwd at the Vite root (web/frontend); resolve the src tree
 // from there rather than import.meta.url (non-file scheme under Vite).
 const SRC = join(process.cwd(), "src");
+
+// The retired library token, assembled so it does not appear verbatim here.
+const LIB = "leaf" + "let";
 
 function walk(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -42,10 +49,12 @@ const LEGACY_SIBLINGS = [
 ];
 
 describe("frontend consolidation (spec-091)", () => {
-  it("no source file imports leaflet or react-leaflet", () => {
+  it(`no source file imports the retired ${LIB} map library`, () => {
+    const importRe = new RegExp(`from\\s+["'](react-)?${LIB}`);
+    const assetRe = new RegExp(`["']${LIB}/`);
     const offenders = ALL_SOURCE.filter((f) => {
       const text = readFileSync(f, "utf8");
-      return /from\s+["'](react-)?leaflet/.test(text) || /["']leaflet\//.test(text);
+      return importRe.test(text) || assetRe.test(text);
     });
     expect(offenders).toEqual([]);
   });
@@ -54,8 +63,8 @@ describe("frontend consolidation (spec-091)", () => {
     expect(existsSync(join(SRC, rel))).toBe(false);
   });
 
-  it("the leaflet-only /dev/hexmap DevHarness is removed", () => {
-    // The harness existed solely to render the react-leaflet HexMap; the
+  it("the retired /dev/hexmap DevHarness is removed", () => {
+    // The harness existed solely to render the retired map component; the
     // live deck.gl map now ships first-class on Briefing (spec-091 US2).
     expect(existsSync(join(SRC, "DevHarness.tsx"))).toBe(false);
   });

@@ -759,7 +759,13 @@ CREATE TABLE IF NOT EXISTS tick_event (
     tick          INTEGER NOT NULL,
     event_id      SERIAL,
     event_type    VARCHAR(48) NOT NULL,
-    severity      VARCHAR(12),
+    -- Widened 12->32 (spec-092 review Defect A / spec-061 T047): the
+    -- serialization boundary's default severity string "informational"
+    -- is 13 chars and overflowed VARCHAR(12), silently dropping every
+    -- tick_event row for any tick containing an unmapped-severity event.
+    -- See migrations/0031_widen_tick_event_severity.sql for the existing-DB
+    -- migration path.
+    severity      VARCHAR(32),
     source_id     VARCHAR(64),
     target_id     VARCHAR(64),
     county_fips   VARCHAR(5),

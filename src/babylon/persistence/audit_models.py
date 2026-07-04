@@ -40,7 +40,8 @@ class ConservationAuditRow(BaseModel):
         session_id: Owning session UUID.
         tick: Simulation tick (>= 0).
         scale: One of ``hex``, ``county``, ``state``, ``national``,
-            ``global_phi``, or ``per_stage``.
+            ``global_phi``, or ``per_stage``; or an external-node boundary
+            scale ``external:<node_id>`` (spec-101 FR-101-5, migration 0031).
         invariant_name: Stable identifier (see ``audit_log.yaml#invariant_name``).
         computed_value: Engine-computed quantity for this invariant.
         expected_value: Reference quantity (sum, balance, identity).

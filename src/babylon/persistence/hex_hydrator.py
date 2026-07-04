@@ -61,6 +61,7 @@ from babylon.persistence.state_fips_to_region import region_for_state_fips
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
     from babylon.persistence.protocols import RuntimePersistence
+    from babylon.reference.bea.share_lookup_service import BEAShareLookupService
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ def hydrate_hex_state(
     defines: GameDefines,
     tiger_county_shapefile: Path | None = None,
     sqlite_path: Path | None = None,
+    bea_share_service: BEAShareLookupService | None = None,
 ) -> int:
     """Hydrate ``dynamic_hex_state`` for the study area at tick 0.
 
@@ -144,6 +146,12 @@ def hydrate_hex_state(
             per-county apportionment data in the current SQLite snapshot.
         tiger_county_shapefile: Optional override for the TIGER shapefile path.
         sqlite_path: Optional override for the SQLite reference DB path.
+        bea_share_service: Optional ``BEAShareLookupService`` (spec-068 II.11
+            contract). When provided, the per-county intermediate-inputs
+            share is looked up from ``fact_bea_national_industry`` via the
+            QCEW-employment-weighted concordance. When ``None``, falls back
+            to the economy-wide 0.5 constant (FR-010 backward-compat with
+            the spec-066/067 baseline).
 
     Returns:
         Total number of ``dynamic_hex_state`` rows persisted at tick 0.
@@ -172,6 +180,7 @@ def hydrate_hex_state(
             conn=sql_conn,
             counties=counties,
             year=start_year,
+            bea_share_service=bea_share_service,
         )
         # Spec-066 T065/T066/T067: per-county apportionment factors for
         # energy (population-weighted) and raw_material (area-weighted).
@@ -457,6 +466,7 @@ def _fetch_per_county_data(
     counties: frozenset[str],
     year: int,
     audit_alarms: list[_CalibrationAlarm] | None = None,
+    bea_share_service: BEAShareLookupService | None = None,
 ) -> dict[str, _CountyRow]:
     """Read per-county economic + infrastructure values for tick-0 seeding.
 
@@ -470,10 +480,13 @@ def _fetch_per_county_data(
       - fact_broadband_coverage: pct_25_3, pct_100_20 → internet/surveillance
       - fact_coercive_infrastructure: SUM(facility_count) → surveillance
 
-    The intermediate-inputs-fraction is a hardcoded national average
-    (0.5) since fact_bea_national_industry is empty in the current
-    SQLite snapshot. Future ingestion of BEA national I-O tables can
-    refine this per-industry (spec-068).
+    Spec-068 T056: when ``bea_share_service`` is provided, the per-county
+    intermediate-inputs share is looked up via the II.11 Protocol
+    (QCEW-employment-weighted concordance → fact_bea_national_industry).
+    When ``None``, the economy-wide 0.5 constant is used (FR-010
+    backward-compat with the spec-066/067 baseline). The service's
+    ``GLOBAL_FALLBACK_SHARE = 0.5`` ensures counties with no BEA data
+    still get 0.5 — the pre-068 behavior is preserved end-to-end.
 
     Spec-066 T020: callers may pass an ``audit_alarms`` list to receive
     structured ``_CalibrationAlarm`` records for any county where the
@@ -560,8 +573,17 @@ def _fetch_per_county_data(
     for fips in counties:
         v_per_week = qcew_wages_by_fips.get(fips, 0.0) / _WEEKS_PER_YEAR
         gdp_usd = bea_gdp_by_fips.get(fips, 0.0)
-        # c = GDP × intermediate-inputs-fraction (weekly).
-        c_per_week = gdp_usd * _INTERMEDIATE_INPUTS_FRACTION / _WEEKS_PER_YEAR
+        # c = GDP × intermediate-inputs-share (weekly). Spec-068 T056:
+        # when a BEAShareLookupService is provided, the per-county share
+        # comes from the QCEW-employment-weighted BEA national I-O
+        # concordance (II.11 Protocol). When None, the economy-wide 0.5
+        # constant is used (FR-010 backward-compat).
+        if bea_share_service is not None:
+            share_result = bea_share_service.lookup_county_share(county_fips=fips, year=year)
+            ii_share = share_result.intermediate_inputs_share
+        else:
+            ii_share = _INTERMEDIATE_INPUTS_FRACTION
+        c_per_week = gdp_usd * ii_share / _WEEKS_PER_YEAR
         # s = max(0, GDP/52 - v). Spec-066 T018: the value-added identity
         # is GDP = v + s (Marx Vol I Ch 9 + BEA accounting). Earlier code
         # subtracted c as well, which double-counts the constant-capital

@@ -703,17 +703,37 @@ def initialize_session(
     # Gated on `hex_hydration_counties` so existing callers that don't
     # need a populated hex graph (legacy unit tests, helper scripts)
     # remain unchanged. See `babylon.persistence.hex_hydrator`.
+    #
+    # Spec-068 T057: construct a ``DefaultBEAShareLookupService`` from the
+    # reference DB so the hydrator uses per-county BEA I-O shares instead
+    # of the 0.5 economy-wide constant. The service reads through the II.11
+    # Protocol (QCEW-employment-weighted concordance → fact_bea_national_industry).
+    # ``GLOBAL_FALLBACK_SHARE = 0.5`` preserves the FR-010 baseline for
+    # counties/years with no BEA data.
     if hex_hydration_counties:
-        from babylon.persistence.hex_hydrator import hydrate_hex_state
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session as _SASession
 
-        report.hex_count = hydrate_hex_state(
-            runtime=runtime,
-            session_id=session_id,
-            counties=hex_hydration_counties,
-            start_year=start_year,
-            defines=defines,
-            tiger_county_shapefile=tiger_county_shapefile,
-        )
+        from babylon.persistence.hex_hydrator import hydrate_hex_state
+        from babylon.reference.bea import DefaultBEAShareLookupService
+
+        bea_engine = create_engine(f"sqlite:///{sqlite_path}")
+        bea_session = _SASession(bea_engine)
+        try:
+            bea_share_service = DefaultBEAShareLookupService(bea_session)
+            report.hex_count = hydrate_hex_state(
+                runtime=runtime,
+                session_id=session_id,
+                counties=hex_hydration_counties,
+                start_year=start_year,
+                defines=defines,
+                tiger_county_shapefile=tiger_county_shapefile,
+                sqlite_path=sqlite_path,
+                bea_share_service=bea_share_service,
+            )
+        finally:
+            bea_session.close()
+            bea_engine.dispose()
     else:
         report.hex_count = 0
 

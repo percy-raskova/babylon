@@ -17,7 +17,6 @@ import { VerbPage } from "@/components/pages/VerbPage";
 import { ResultsPage } from "@/components/pages/ResultsPage";
 import { IntelPageV2 } from "@/components/pages/IntelPageV2";
 import { AnalysisPage } from "@/components/pages/AnalysisPage";
-import { DevHarness } from "@/DevHarness";
 import type { AuthState } from "@/types/game";
 
 export default function App() {
@@ -130,7 +129,6 @@ export default function App() {
         />
       </Route>
 
-      <Route path="/dev/hexmap" element={<DevHarness />} />
       <Route path="*" element={<Navigate to={isAuthed ? "/games" : "/login"} replace />} />
     </Routes>
   );

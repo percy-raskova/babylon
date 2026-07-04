@@ -1,16 +1,46 @@
 /**
- * Briefing map promotion (spec-091 US2 / FR-004).
+ * Briefing map promotion (spec-091 US2 / FR-004) + lean-strip (Phase 6).
  *
  * The Situation-Map panel must render the live deck.gl map fed by the
- * snapshot — not the SVG `HexMapPlaceholder` stub. RED-first: these assert
- * the promoted behaviour before BriefingPage is wired.
+ * snapshot — not the SVG `HexMapPlaceholder` stub.
+ *
+ * The two polling hooks are mocked so the render is deterministic and free of
+ * unhandled fetch rejections (there is no backend / timeseries MSW handler in
+ * jsdom); this isolates the test to BriefingPage's composition.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { seedGameStore, resetGameStore } from "@/__tests__/helpers/seedSnapshot";
-import { BriefingPage } from "@/components/pages/BriefingPage";
+
+vi.mock("@/hooks/useGameState", async () => {
+  const actual = await vi.importActual<typeof import("@/__tests__/helpers/seedSnapshot")>(
+    "@/__tests__/helpers/seedSnapshot",
+  );
+  return {
+    useGameState: () => ({ snapshot: actual.SEEDED_SNAPSHOT, loading: false, error: null }),
+  };
+});
+
+vi.mock("@/hooks/useTimeseries", () => ({
+  useTimeseries: () => ({
+    data: {
+      ticks: [],
+      imperial_rent: [],
+      consciousness: [],
+      solidarity: [],
+      heat: [],
+      wealth: [],
+      biocapacity: [],
+    },
+    loading: false,
+    error: null,
+    refresh: async () => {},
+  }),
+}));
+
+// Imported after the mocks so BriefingPage picks up the mocked hooks.
+const { BriefingPage } = await import("@/components/pages/BriefingPage");
 
 function renderBriefing() {
   return render(
@@ -21,14 +51,6 @@ function renderBriefing() {
     </MemoryRouter>,
   );
 }
-
-beforeEach(() => {
-  seedGameStore();
-});
-
-afterEach(() => {
-  resetGameStore();
-});
 
 describe("BriefingPage — first-class map", () => {
   it("mounts the live deck.gl map container", () => {

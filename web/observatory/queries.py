@@ -76,7 +76,7 @@ WHERE session_id = %s
 COMMITS_SQL = """
 SELECT tick, determinism_hash, hex_rows_written, is_checkpoint, created_at_utc
 FROM tick_commit
-WHERE session_id = %s
+WHERE session_id = %s AND tick BETWEEN %s AND %s
 ORDER BY tick
 """
 
@@ -267,9 +267,14 @@ def fetch_series(
     ]
 
 
-def fetch_commits(cursor: Any, session_id: str) -> list[dict[str, Any]]:
-    """Return the per-tick commit chain summary, ordered by tick."""
-    cursor.execute(COMMITS_SQL, (session_id,))
+def fetch_commits(
+    cursor: Any,
+    session_id: str,
+    from_tick: int,
+    to_tick: int,
+) -> list[dict[str, Any]]:
+    """Return the commit chain summary over an inclusive tick range, by tick."""
+    cursor.execute(COMMITS_SQL, (session_id, from_tick, to_tick))
     return [
         {
             "tick": r[0],

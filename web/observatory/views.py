@@ -270,14 +270,24 @@ def _series_payload(request: Request, session_id: str) -> dict[str, Any]:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def observatory_commits(request: Request, session_id: str) -> JsonResponse:
-    """GET /api/observatory/sessions/<id>/commits/ — commit hash chain summary."""
+    """GET /api/observatory/sessions/<id>/commits/ — commit hash chain summary.
+
+    Bounded like ``series/``: optional ``from_tick``/``to_tick`` default to the
+    session's committed range and the span is capped, so a national
+    multi-hundred-tick run cannot return the whole chain unbounded per call.
+    """
     try:
         sid = _valid_uuid(session_id)
+        from_tick = _parse_int(request.query_params.get("from_tick"), "from_tick")
+        to_tick = _parse_int(request.query_params.get("to_tick"), "to_tick")
     except _BadRequest as exc:
         return _err(str(exc), 400)
     try:
         with _sim_cursor() as cursor:
-            data = fetch_commits(cursor, sid)
+            window = _resolve_range(cursor, sid, from_tick, to_tick)
+            data = [] if window is None else fetch_commits(cursor, sid, window[0], window[1])
+    except _BadRequest as exc:
+        return _err(str(exc), 400)
     except DatabaseError:
         return _err("Simulation database unavailable", 503)
     return _ok(data)

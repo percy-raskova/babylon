@@ -158,6 +158,22 @@ class TestCommitsAndHex:
             assert isinstance(r["is_checkpoint"], bool)
             assert r["hex_rows_written"] >= 0
 
+    def test_commit_chain_bounded_by_range(
+        self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any
+    ) -> None:
+        # The commits endpoint must accept a tick window like the series one.
+        with django_db_blocker.unblock():
+            body = _json(
+                _call(
+                    views.observatory_commits,
+                    f"/api/observatory/sessions/{seeded_session.session_id}/commits/",
+                    session_id=str(seeded_session.session_id),
+                    from_tick=1,
+                    to_tick=2,
+                )
+            )
+        assert [r["tick"] for r in body["data"]] == [1, 2]
+
     def test_hex_frame_at_tick(
         self, seeded_session: SeededSession, sim_alias: str, django_db_blocker: Any
     ) -> None:

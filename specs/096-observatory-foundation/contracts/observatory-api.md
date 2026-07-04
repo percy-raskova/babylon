@@ -71,10 +71,16 @@ Same data as `series/` streamed as CSV.
 
 ### `GET /api/observatory/sessions/<session_id>/commits/`
 
-Per-tick commit chain summary.
+Per-tick commit chain summary. Bounded like `series/`.
+
+Query params:
+- `from_tick`, `to_tick` — optional inclusive bounds; default to the session's
+  committed range; span capped (a national multi-hundred-tick chain is never
+  returned unbounded per call).
 
 - **200** `data`: `CommitRecord[]` ordered by tick asc.
-- **400** on bad UUID.
+- **400** on bad UUID, non-integer / out-of-INT4-range bound, or
+  `from_tick > to_tick`.
 
 ---
 

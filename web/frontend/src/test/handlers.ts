@@ -281,4 +281,36 @@ export const handlers = [
       data: { alerts: mockJournalEvents.filter((e) => e.severity !== "informational") },
     }),
   ),
+
+  // Economy — per-territory economic summary (spec 093 US5)
+  http.get("/api/games/:id/economy/", ({ request }) => {
+    const url = new URL(request.url);
+    const territoryId = url.searchParams.get("territory_id");
+    if (!territoryId || territoryId === "unknown-territory") {
+      return HttpResponse.json({
+        status: "ok",
+        data: {
+          territory_id: territoryId,
+          has_data: false,
+          value_produced: 0,
+          wage_share: null,
+          rent_extracted: 0,
+          exploitation_rate: null,
+          extraction_intensity: 0,
+        },
+      });
+    }
+    return HttpResponse.json({
+      status: "ok",
+      data: {
+        territory_id: territoryId,
+        has_data: true,
+        value_produced: 812.4,
+        wage_share: null,
+        rent_extracted: 118.9,
+        exploitation_rate: 0.1464,
+        extraction_intensity: 0.41,
+      },
+    });
+  }),
 ];

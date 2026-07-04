@@ -37,7 +37,12 @@ export type ColonialStance = "UPHOLD" | "IGNORE" | "ABOLISH";
 
 export interface FactionSummary {
   id: string;
-  colonial_stance: ColonialStance;
+  /**
+   * Raw wire value — real engine data is the `ColonialStance` StrEnum's
+   * lowercase `.value` (`"uphold"`); some fixtures use uppercase display
+   * form. Always resolve via `normalizeStance()`, never compare directly.
+   */
+  colonial_stance: string;
   is_settler_formation?: boolean;
 }
 
@@ -161,12 +166,32 @@ function influenceRowsFor(
   );
 }
 
+/**
+ * Normalize a `colonial_stance` value to its canonical uppercase form.
+ *
+ * The backend's `_build_balkanization_block` (`web/game/engine_bridge.py`)
+ * passes through the raw graph attribute verbatim, which — for real
+ * engine-computed data — is the `ColonialStance` StrEnum's lowercase
+ * `.value` (`"uphold"`/`"ignore"`/`"abolish"`, `src/babylon/models/enums/
+ * balkanization.py:49-51`), not the uppercase form the mockup/contract
+ * doc use for display. Normalizing here (rather than assuming one casing)
+ * keeps this module correct against both real engine data and any
+ * uppercase test/dev fixtures.
+ */
+function normalizeStance(value: string): ColonialStance | null {
+  const upper = value.toUpperCase();
+  return upper === "UPHOLD" || upper === "IGNORE" || upper === "ABOLISH"
+    ? (upper as ColonialStance)
+    : null;
+}
+
 function factionStance(
   factionId: string | null | undefined,
   balkanization: BalkanizationBlock | null | undefined,
 ): ColonialStance | null {
   if (!factionId) return null;
-  return balkanization?.factions.find((f) => f.id === factionId)?.colonial_stance ?? null;
+  const raw = balkanization?.factions.find((f) => f.id === factionId)?.colonial_stance;
+  return raw ? normalizeStance(raw) : null;
 }
 
 // ---------------------------------------------------------------------------

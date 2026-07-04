@@ -86,6 +86,29 @@ describe("buildLensLayers", () => {
     expect(result.legendLabel.toLowerCase()).toContain("stance");
   });
 
+  it("handles the real engine's lowercase ColonialStance wire values (uphold/ignore/abolish)", () => {
+    // web/game/engine_bridge.py's _build_balkanization_block passes the raw
+    // graph attribute through verbatim, which for real engine-computed data
+    // is ColonialStance's lowercase .value (src/babylon/models/enums/
+    // balkanization.py:49-51) — not the uppercase display form used
+    // elsewhere in this test file's fixtures.
+    const lowercaseBalkanization: BalkanizationBlock = {
+      ...BALKANIZATION,
+      factions: BALKANIZATION.factions.map((f) => ({
+        ...f,
+        colonial_stance: f.colonial_stance.toLowerCase(),
+      })),
+    };
+    const result = buildLensLayers({
+      territories: TERRITORIES,
+      balkanization: lowercaseBalkanization,
+      lensMode: "stance",
+    });
+
+    expect(result.getFillColor("T1")).toEqual([255, 51, 68, expect.any(Number)]);
+    expect(result.getFillColor("T3")).toEqual([95, 191, 122, expect.any(Number)]);
+  });
+
   it("heat lens produces a materially different fill than stance for the same territory", () => {
     const stance = buildLensLayers({
       territories: TERRITORIES,

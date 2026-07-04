@@ -306,6 +306,20 @@ export interface AlertsPayload {
   alerts: GameEvent[];
 }
 
+/** Spec 093 US5: GET /api/games/{id}/economy/?territory_id= — real
+ *  per-territory economic summary for Territory Detail's economic panel.
+ *  See `specs/093-territory-org-detail/contracts/economy.yaml`. */
+export interface EconomyPayload {
+  territory_id: string | null;
+  /** False when no node/edge in the graph references this territory yet. */
+  has_data: boolean;
+  value_produced: number;
+  wage_share: number | null;
+  rent_extracted: number;
+  exploitation_rate: number | null;
+  extraction_intensity: number;
+}
+
 /** Available action for an organization. */
 export interface AvailableAction {
   org_id: string;

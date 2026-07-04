@@ -154,7 +154,7 @@ describe("buildLensLayers", () => {
     expect(desaturated).not.toEqual(shaded);
   });
 
-  it("stance and collapse lenses render concentric rings for multi-faction territories", () => {
+  it("stance lens renders concentric rings for multi-faction territories", () => {
     const stance = buildLensLayers({
       territories: TERRITORIES,
       balkanization: BALKANIZATION,
@@ -166,10 +166,25 @@ describe("buildLensLayers", () => {
       lensMode: "heat",
     });
 
-    // T1 has two influence rows -> at least one ring in stance/collapse lenses.
     expect(stance.rings.some((r) => r.territoryId === "T1")).toBe(true);
-    // Heat lens suppresses rings entirely (per mockup: stance reduced to outline).
     expect(heat.rings.length).toBe(0);
+  });
+
+  it("collapse lens renders contested territories distinctly from stance", () => {
+    const stance = buildLensLayers({
+      territories: TERRITORIES,
+      balkanization: BALKANIZATION,
+      lensMode: "stance",
+    });
+    const collapse = buildLensLayers({
+      territories: TERRITORIES,
+      balkanization: BALKANIZATION,
+      lensMode: "collapse",
+    });
+
+    const stanceT1 = stance.getFillColor("T1");
+    const collapseT1 = collapse.getFillColor("T1");
+    expect(collapseT1).not.toEqual(stanceT1);
   });
 
   it("renders sovereign CLAIMS hulls only in stance/collapse lenses, sourced from claimed_territory_ids", () => {
@@ -204,23 +219,29 @@ describe("buildLensLayers", () => {
     expect(result.legendLabel.toLowerCase()).toContain("no data");
   });
 
-  it("VIII.9: BalkanizationBlock carries no hyperedge/community field for the hull builder to read", () => {
-    // Structural guarantee: the type this module's hull logic consumes
-    // (BalkanizationBlock) has exactly these three keys. If a future edit
-    // added a `hyperedges`/`communities` field to this type and wired it
-    // into hull construction, this test's key-set assertion would catch it.
-    const keys = Object.keys(BALKANIZATION).sort();
-    expect(keys).toEqual(["factions", "sovereigns", "territory_influence"]);
+  it("degrades to no-data when balkanization block is structurally empty (not null)", () => {
+    const emptyBlock: BalkanizationBlock = {
+      factions: [],
+      sovereigns: [],
+      territory_influence: [],
+    };
+    const result = buildLensLayers({
+      territories: TERRITORIES,
+      balkanization: emptyBlock,
+      lensMode: "stance",
+    });
 
+    expect(result.hulls).toEqual([]);
+    expect(result.rings).toEqual([]);
+    expect(result.legendLabel.toLowerCase()).toContain("no data");
+  });
+
+  it("VIII.9: BalkanizationBlock carries no hyperedge/community field for the hull builder to read", () => {
     // Runtime guarantee: even if a caller attaches extra hyperedge-shaped
     // data onto the object (bypassing the type system, e.g. from an
     // untyped API response), buildLensLayers's hull output must still be
     // derived ONLY from `sovereigns[].claimed_territory_ids` — never from
     // any `hyperedges`/`communities` key, present or not.
-    // Spread + extra property: TS structural typing permits this (excess
-    // property checks only apply to object literals assigned directly), so
-    // this compiles — the guarantee under test is the RUNTIME behavior
-    // below, not a type error.
     const withHyperedgeNoise: BalkanizationBlock & { hyperedges: unknown[] } = {
       ...BALKANIZATION,
       hyperedges: [{ id: "H1", member_ids: ["T1", "T2", "T3"], category: "contradiction_pair" }],

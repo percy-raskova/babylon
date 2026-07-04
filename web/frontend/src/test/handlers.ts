@@ -313,4 +313,56 @@ export const handlers = [
       },
     });
   }),
+
+  // Map snapshot — GeoJSON + balkanization metadata (spec 093 US3)
+  http.get("/api/games/:id/map/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: {
+        type: "FeatureCollection",
+        features: [],
+        metadata: {
+          balkanization: {
+            factions: [
+              { id: "FAC_A", colonial_stance: "uphold", is_settler_formation: true },
+              { id: "FAC_B", colonial_stance: "ignore", is_settler_formation: true },
+              { id: "FAC_C", colonial_stance: "abolish", is_settler_formation: false },
+            ],
+            sovereigns: [
+              {
+                id: "SOV_A",
+                ruling_faction_id: "FAC_A",
+                extraction_policy: "intensify",
+                legitimacy: 0.58,
+                claimed_territory_ids: ["t2", "t3"],
+              },
+            ],
+            territory_influence: [
+              {
+                territory_id: "t1",
+                influences: [
+                  { faction_id: "FAC_A", influence_level: 0.47, support_type: "ideological" },
+                  { faction_id: "FAC_B", influence_level: 0.41, support_type: "material" },
+                ],
+                dominant_faction_id: "FAC_A",
+                current_sovereign_id: null,
+                contested: true,
+                habitability: 0.4,
+              },
+              {
+                territory_id: "t2",
+                influences: [
+                  { faction_id: "FAC_A", influence_level: 0.71, support_type: "ideological" },
+                ],
+                dominant_faction_id: "FAC_A",
+                current_sovereign_id: "SOV_A",
+                contested: false,
+                habitability: 0.9,
+              },
+            ],
+          },
+        },
+      },
+    }),
+  ),
 ];

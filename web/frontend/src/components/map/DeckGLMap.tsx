@@ -265,7 +265,7 @@ export function DeckGLMap({ snapshot, mapData }: DeckGLMapProps) {
 
       {/* Political-topology lens mode selector */}
       <div className="absolute right-3 top-3 z-10">
-        <MapModeSelector />
+        <MapModeSelector factions={balkanization?.factions} />
       </div>
 
       {/* Framing level selector */}

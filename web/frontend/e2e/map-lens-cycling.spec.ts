@@ -204,6 +204,47 @@ test.describe("Map lens cycling (backend-free, spec-093 US3 gate)", () => {
     );
   });
 
+  test("empty-but-present balkanization block shows honest no-data state", async ({ page }) => {
+    const ok = (data: unknown) => ({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "ok", data }),
+    });
+
+    const emptyBalkanization = { factions: [], sovereigns: [], territory_influence: [] };
+    const emptyMapData = {
+      type: "FeatureCollection",
+      features: [],
+      metadata: { balkanization: emptyBalkanization },
+    };
+
+    await page.route("**/accounts/whoami/", (r) =>
+      r.fulfill(ok({ is_authenticated: true, username: "lens-smoke" })),
+    );
+    await page.route("**/api/games/*/state/", (r) => r.fulfill(ok(SNAPSHOT)));
+    await page.route("**/api/games/*/actions/available/", (r) => r.fulfill(ok([])));
+    await page.route("**/api/games/*/map/**", (r) => r.fulfill(ok(emptyMapData)));
+    await page.route("**/api/games/*/timeseries/", (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(TIMESERIES),
+      }),
+    );
+
+    const pageErrors: string[] = [];
+    page.on("pageerror", (e) => pageErrors.push(e.message));
+
+    await page.goto("/games/lens-smoke");
+    await expect(page.getByRole("link", { name: "Briefing" })).toBeVisible({ timeout: 10000 });
+
+    await expect(page.getByTestId("lens-legend-label")).toContainText(/no data/i);
+
+    expect(unexpectedErrors(pageErrors), `uncaught page errors: ${pageErrors.join(" | ")}`).toEqual(
+      [],
+    );
+  });
+
   test("faction lens hides sovereign CLAIMS hulls while stance lens shows them", async ({
     page,
   }) => {

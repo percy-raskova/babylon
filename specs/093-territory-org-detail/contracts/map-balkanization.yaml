@@ -72,7 +72,11 @@ components:
         id: { type: string }
         colonial_stance:
           type: string
-          enum: [UPHOLD, IGNORE, ABOLISH]
+          description: >
+            ColonialStance StrEnum value. Real wire values are lowercase
+            (uphold/ignore/abolish) per src/babylon/models/enums/balkanization.py.
+            Frontend normalizes via normalizeStance() to uppercase display form.
+          enum: [uphold, ignore, abolish]
         is_settler_formation: { type: boolean }
 
     SovereignSummary:

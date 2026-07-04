@@ -5,8 +5,15 @@
  * onto live `GameSnapshot` data: the full material stat grid, the real
  * economic panel (`useEconomy`), organizations actually present in the
  * territory (derived from real `territory_ids`), and events actually
- * scoped to the territory. Every numeric stat is wrapped in
- * `BreakdownTooltip` for provenance (FR-006/FR-009).
+ * scoped to the territory. Every numeric stat in the material grid is
+ * wrapped in `BreakdownTooltip` for provenance (FR-006/FR-009).
+ *
+ * Economy panel (FR-006 note): the 4 economy stats (value_produced,
+ * rent_extracted, exploitation_rate, extraction_intensity) come from a
+ * separate `/economy/` API call and have no `ScriptValue` selector
+ * registered in the selectors registry — BreakdownTooltip requires a
+ * selector for provenance drill-down. Wrapping them is deferred until
+ * economy selectors are registered (follow-up spec).
  */
 
 import { BblBadge, BblPanel, Stat } from "@/components/bbl";

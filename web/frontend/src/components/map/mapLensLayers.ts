@@ -251,9 +251,12 @@ function collapseFill(
   territoryId: string,
   balkanization: BalkanizationBlock | null | undefined,
 ): RGBAColor {
-  // Same base fill as stance; DeckGLMap.tsx layers the contested pulse on
-  // top using `TerritoryInfluence.contested` (this function only supplies
-  // the base fill — rings/hulls are shared via RING_AND_HULL_LENSES below).
+  const rows = influenceRowsFor(territoryId, balkanization);
+  if (rows.length === 0) return NO_DATA;
+  const row = balkanization?.territory_influence.find((t) => t.territory_id === territoryId);
+  if (row?.contested) {
+    return [255, 180, 50, 220];
+  }
   return stanceFill(territoryId, balkanization);
 }
 
@@ -327,10 +330,14 @@ const LEGEND_LABELS: Record<LensMode, string> = {
 /** Lens modes that render concentric influence rings + sovereign CLAIMS hulls. */
 const RING_AND_HULL_LENSES: ReadonlySet<LensMode> = new Set(["stance", "collapse"]);
 
+function isBalkanizationEmpty(b: BalkanizationBlock): boolean {
+  return b.factions.length === 0 && b.sovereigns.length === 0 && b.territory_influence.length === 0;
+}
+
 export function buildLensLayers(input: BuildLensLayersInput): LensLayerResult {
   const { territories, balkanization, lensMode, factionFilter } = input;
 
-  if (!balkanization) {
+  if (!balkanization || isBalkanizationEmpty(balkanization)) {
     return {
       getFillColor: () => NO_DATA,
       rings: [],

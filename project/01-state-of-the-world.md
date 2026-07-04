@@ -35,7 +35,7 @@ consumes both:
   re-verified on the new substrate (Δ=0.000%, 455,720 vs 25.4M hex
   rows, 17 vs ~52 min).
 - **IN REVIEW (2026-07-04)**: **spec-071 Reactionary Subject** — Lane-E
-  implemented on branch `071-reactionary-subject` (ADR054). 11 commits:
+  implemented on branch `071-reactionary-subject` (ADR054):
   speckit spec/plan/tasks + formulas/defines + enums + SocialClass fields +
   FascistFactionSystem @17.4 + chauvinism/defection + L_u SPONTANEOUS_RIOT +
   fascist OODA verbs + carceral create-on-demand + crisis integration.

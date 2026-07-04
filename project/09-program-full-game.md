@@ -432,7 +432,7 @@ ______________________________________________________________________
 
 Per `03-next-spec-071.md`. First in the lane; both foundations
 (ADR051 dialectics, ADR052 substrate) landed 2026-07-03. Branch
-`071-reactionary-subject`, 11 commits. FascistFactionSystem @17.4
+`071-reactionary-subject`. FascistFactionSystem @17.4
 (pipeline 25→26); entitlement/volatility/fascist_alignment/aligned_faction_id
 on SocialClass; chauvinism/defection/RED_BROWN_COUP; L_u SPONTANEOUS_RIOT;
 POGROM/LOCKOUT/VIGILANTISM OODA verbs; carceral create-on-demand; RLF

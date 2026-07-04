@@ -332,6 +332,12 @@ ones; test `assimilation_ratio` and the entropy diagnostic.
   applies; if not, the baseline is byte-identical.
 - **Determinism RNG**: reuse the spec-070 `_resolve_rng(services, tick)`
   fallback (`random.Random(0xBA1AC1A + tick)`) for defection/riot rolls.
+- **`calculate_entitlement_effective` is shipped-but-inert**: FR-015 requires
+  the formula to EXIST with doctests (satisfied), and `entitlement_threat_gain`
+  is in `ReactionaryDefines`. But the threat-amplification is NOT wired into
+  the drift math — wiring it would change canonical dynamics and break the
+  byte-identical baseline, so it is deferred to a Wave-2 refinement that opens
+  its own proof window. The formula + coefficient are the ready substrate.
 
 ## Decisions *(ambiguities resolved from kit docs + theory grounding; no user available)*
 

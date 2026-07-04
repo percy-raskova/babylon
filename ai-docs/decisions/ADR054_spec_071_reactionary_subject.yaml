@@ -22,7 +22,12 @@ ADR054_spec_071_reactionary_subject:
 
   decision: |
     Implement the full catalog entry on branch 071-reactionary-subject
-    (speckit lifecycle: spec -> plan -> tasks -> implement; TDD throughout).
+    (speckit lifecycle: spec -> plan -> tasks -> implement). Tests written per
+    unit: red-first (failing test observed before implementation) for the
+    formula / defines / enum / SocialClass-field / system / struggle-volatility /
+    decomposition units; the chauvinism/defection and OODA-verb effect coverage
+    was added immediately alongside its implementation. No separate @red_phase
+    commits — each unit committed test + green implementation together.
     Load-bearing decisions:
 
       1. **SocialClass gains four frozen Intensity/optional fields**:
@@ -102,6 +107,10 @@ ADR054_spec_071_reactionary_subject:
       - "SPONTANEOUS_RIOT is a deterministic threshold gate (not stochastic); a chronically volatile, undisciplined L_u can riot repeatedly. Dormant in canonical (no L_u); refine to a stochastic/cooldown model in a later spec if desired."
       - "Full autonomous org SELECTION of POGROM/LOCKOUT/VIGILANTISM (which reactionary org chooses which verb) is deferred to the Wave-2/3 AI-decision specs; 071 ships eligibility + resolution effects."
       - "aligned_faction_id adds a 4th SocialClass field beyond the catalog's three (needed to persist the capture target)."
+      - "chauvinism is graph edge-state (not a Relationship field), so it round-trips only on the bridged-runner path; the in-memory Simulation facade resets it each tick (documented in _accrue_chauvinism + spec D3)."
+
+  deferred_shipped_but_inert:
+    - "calculate_entitlement_effective (+ entitlement_threat_gain define) ship DEFINED and DOCTESTED — satisfying FR-015 (the formula must EXIST) — but are NOT wired into the drift math. Wiring them would change canonical dynamics and break the byte-identical baseline, so it is deferred to a Wave-2 refinement that will open its own proof window. Do NOT delete; the formula/coefficient are the ready substrate for the threat-amplification wiring."
 
   verification:
     - "mise run check (lint + format + typecheck + unit) green."

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "run_metadata": {
-    "session_id": "1e2862bf-18c6-4403-bc8b-18d9e53063d3",
+    "session_id": "d5cfc5ac-a96d-4112-b012-3095cb3acba5",
     "exit_reason": "completed",
     "ticks_requested": 5,
     "ticks_completed": 5,
@@ -16,8 +16,8 @@
     "external_node_ids": [
       "canada"
     ],
-    "wallclock_start": "2026-07-04T04:54:46.247246Z",
-    "wallclock_end": "2026-07-04T04:55:08.296558Z"
+    "wallclock_start": "2026-07-04T23:09:40.642981Z",
+    "wallclock_end": "2026-07-04T23:10:12.631727Z"
   },
   "terminal_state": {
     "tick": 4,
@@ -25,7 +25,7 @@
     "counties_with_population": 3,
     "total_population": null,
     "total_v": 1496702270.2884655,
-    "total_c": 1759843201.9230785,
+    "total_c": 1947426031.296344,
     "total_s": 2022984133.5576897,
     "total_k": 549071079000.00183,
     "mean_p_acquiescence": null,
@@ -37,22 +37,43 @@
   },
   "external_node_flows": [
     {
-      "node_id": "26099",
-      "total_phi_inflow": 219323212571.83,
+      "node_id": "canada",
+      "total_phi_inflow": 138052212384.74554,
       "total_trade_inbound": 0.0,
       "total_commute_outbound": 0.0,
       "tick_count_with_inflow": 4
     },
     {
-      "node_id": "26125",
-      "total_phi_inflow": 166839228926.507,
+      "node_id": "china",
+      "total_phi_inflow": 177485550229.13843,
       "total_trade_inbound": 0.0,
       "total_commute_outbound": 0.0,
       "tick_count_with_inflow": 4
     },
     {
-      "node_id": "26163",
-      "total_phi_inflow": 277299096963.2014,
+      "node_id": "eu",
+      "total_phi_inflow": 83810425513.52832,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    },
+    {
+      "node_id": "russia_csi",
+      "total_phi_inflow": 100100193911.4864,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    },
+    {
+      "node_id": "southeast_asia",
+      "total_phi_inflow": 147014561301.97943,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    },
+    {
+      "node_id": "sub_saharan_africa",
+      "total_phi_inflow": 16998595120.660324,
       "total_trade_inbound": 0.0,
       "total_commute_outbound": 0.0,
       "tick_count_with_inflow": 4
@@ -62,7 +83,7 @@
     {
       "entity_id": "26099",
       "v": 246750326.71153876,
-      "c": 287873538.46153986,
+      "c": 384593436.02921826,
       "s": 328996750.21153903,
       "k": 89816544000.0004,
       "p_acquiescence": 0.2505638275862069,
@@ -76,7 +97,7 @@
     {
       "entity_id": "26125",
       "v": 611029583.9423078,
-      "c": 736126259.6153895,
+      "c": 659049501.8948244,
       "s": 861222935.2884539,
       "k": 229671393000.0022,
       "p_acquiescence": 0.2505638275862069,
@@ -90,7 +111,7 @@
     {
       "entity_id": "26163",
       "v": 638922359.634619,
-      "c": 735843403.8461493,
+      "c": 903783093.3723013,
       "s": 832764448.0576967,
       "k": 229583141999.99924,
       "p_acquiescence": 0.2505638275862069,
@@ -170,6 +191,17 @@
       }
     },
     {
+      "tick": 1,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 1.0,
+        "expected_value": 1.0,
+        "residual": 0.0,
+        "scale": "external:__national_aggregate__"
+      }
+    },
+    {
       "tick": 2,
       "invariant_name": "imperial_rent_phi_week_distribution",
       "severity": "info",
@@ -236,6 +268,17 @@
       }
     },
     {
+      "tick": 2,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 1.0,
+        "expected_value": 1.0,
+        "residual": 0.0,
+        "scale": "external:__national_aggregate__"
+      }
+    },
+    {
       "tick": 3,
       "invariant_name": "imperial_rent_phi_week_distribution",
       "severity": "info",
@@ -302,6 +345,17 @@
       }
     },
     {
+      "tick": 3,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 1.0,
+        "expected_value": 1.0,
+        "residual": 0.0,
+        "scale": "external:__national_aggregate__"
+      }
+    },
+    {
       "tick": 4,
       "invariant_name": "imperial_rent_phi_week_distribution",
       "severity": "info",
@@ -365,45 +419,56 @@
         "expected_value": 1.0,
         "residual": -1.1102230246251565e-16,
         "scale": "external:sub_saharan_africa"
+      }
+    },
+    {
+      "tick": 4,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 1.0,
+        "expected_value": 1.0,
+        "residual": 0.0,
+        "scale": "external:__national_aggregate__"
       }
     }
   ],
   "performance": {
-    "total_wallclock_sec": 22.04933615300979,
-    "session_init_sec": 12.859326842997689,
-    "hex_hydration_sec": 12.859326842997689,
-    "tick_loop_sec": 0.174223001988139,
+    "total_wallclock_sec": 31.98877391498536,
+    "session_init_sec": 7.513064144004602,
+    "hex_hydration_sec": 7.513064144004602,
+    "tick_loop_sec": 0.14578121301019564,
     "artifact_emission_sec": 0.0,
-    "per_tick_median_ms": 42.91772600117838,
-    "per_tick_p99_ms": 55.657083998085,
-    "per_tick_max_ms": 55.657083998085,
+    "per_tick_median_ms": 34.13947550870944,
+    "per_tick_p99_ms": 46.20219301432371,
+    "per_tick_max_ms": 46.20219301432371,
     "per_system_ms": {
-      "VitalitySystem": 0.8110439957818016,
-      "TerritorySystem": 0.4744420002680272,
-      "SubstrateSystem": 0.5191660166019574,
-      "ProductionSystem": 0.9357789967907593,
-      "TickDynamicsSystem": 0.008628019713796675,
-      "ReserveArmySystem": 0.06842002039775252,
-      "CommunitySystem": 0.011701995390467346,
-      "LifecycleSystem": 1.298290997510776,
-      "SolidaritySystem": 0.08059099491219968,
-      "ImperialRentSystem": 1.9241160043748096,
-      "DispossessionEventSystem": 0.077195989433676,
-      "DecompositionSystem": 0.1030650018947199,
-      "ControlRatioSystem": 0.010028001270256937,
-      "MetabolismSystem": 0.4495860048336908,
-      "OODASystem": 0.2209739905083552,
-      "FactionInfluenceSystem": 0.518965010996908,
-      "SurvivalSystem": 0.6177220056997612,
-      "StruggleSystem": 0.8400189835811034,
-      "ConsciousnessSystem": 1.1380679934518412,
-      "FascistFactionSystem": 0.531558005604893,
-      "SovereigntySystem": 0.15869901108089834,
-      "ContradictionSystem": 4.952499002683908,
-      "ContradictionFieldSystem": 1.9166229903930798,
-      "FieldDerivativeSystem": 2.43382497865241,
-      "CollapseTransitionSystem": 0.13529500574804842,
-      "EdgeTransitionSystem": 0.3649260033853352
+      "VitalitySystem": 0.6654789613094181,
+      "TerritorySystem": 0.388601009035483,
+      "SubstrateSystem": 0.45397301437333226,
+      "ProductionSystem": 0.7648550090380013,
+      "TickDynamicsSystem": 0.0076039868872612715,
+      "ReserveArmySystem": 0.05786796100437641,
+      "CommunitySystem": 0.009167066309601068,
+      "LifecycleSystem": 1.044242992065847,
+      "SolidaritySystem": 0.06488201324827969,
+      "ImperialRentSystem": 1.3718669943045825,
+      "DispossessionEventSystem": 0.06444103200919926,
+      "DecompositionSystem": 0.08995801908895373,
+      "ControlRatioSystem": 0.010500982170924544,
+      "MetabolismSystem": 0.3185170062351972,
+      "OODASystem": 0.18984597409144044,
+      "FactionInfluenceSystem": 0.44377200538292527,
+      "SurvivalSystem": 0.5010510212741792,
+      "StruggleSystem": 0.7027189712971449,
+      "ConsciousnessSystem": 0.9672459855210036,
+      "FascistFactionSystem": 0.4312999953981489,
+      "SovereigntySystem": 0.13291003415361047,
+      "ContradictionSystem": 3.014240995980799,
+      "ContradictionFieldSystem": 1.389839977491647,
+      "FieldDerivativeSystem": 1.8923239840660244,
+      "CollapseTransitionSystem": 0.10410399409011006,
+      "EdgeTransitionSystem": 0.3121450135949999
     }
   },
   "events": [
@@ -420,7 +485,7 @@
           "remaining_population": 72,
           "attrition_rate": 0.15441176470588236
         },
-        "timestamp": "2026-07-04 00:55:08.066031"
+        "timestamp": "2026-07-04 19:10:12.415468"
       }
     },
     {
@@ -436,7 +501,7 @@
           "remaining_population": 72,
           "attrition_rate": 0.15441176470588236
         },
-        "timestamp": "2026-07-04 00:55:08.066134"
+        "timestamp": "2026-07-04 19:10:12.415560"
       }
     },
     {
@@ -452,7 +517,7 @@
           "remaining_population": 72,
           "attrition_rate": 0.15441176470588236
         },
-        "timestamp": "2026-07-04 00:55:08.066190"
+        "timestamp": "2026-07-04 19:10:12.415614"
       }
     },
     {
@@ -469,7 +534,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.066908"
+        "timestamp": "2026-07-04 19:10:12.416325"
       }
     },
     {
@@ -486,7 +551,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.067006"
+        "timestamp": "2026-07-04 19:10:12.416422"
       }
     },
     {
@@ -503,7 +568,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.067075"
+        "timestamp": "2026-07-04 19:10:12.416486"
       }
     },
     {
@@ -518,7 +583,7 @@
           "action_count": 0,
           "org_count": 0
         },
-        "timestamp": "2026-07-04 00:55:08.068077"
+        "timestamp": "2026-07-04 19:10:12.417190"
       }
     },
     {
@@ -535,7 +600,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.124684"
+        "timestamp": "2026-07-04 19:10:12.464239"
       }
     },
     {
@@ -552,7 +617,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.124798"
+        "timestamp": "2026-07-04 19:10:12.464324"
       }
     },
     {
@@ -569,7 +634,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.124878"
+        "timestamp": "2026-07-04 19:10:12.464379"
       }
     },
     {
@@ -585,7 +650,7 @@
           "amount": 0.024677924841750177,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.125010"
+        "timestamp": "2026-07-04 19:10:12.464474"
       }
     },
     {
@@ -601,7 +666,7 @@
           "amount": 0.024677924841750177,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.125055"
+        "timestamp": "2026-07-04 19:10:12.464505"
       }
     },
     {
@@ -617,7 +682,7 @@
           "amount": 0.024677924841750177,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.125095"
+        "timestamp": "2026-07-04 19:10:12.464532"
       }
     },
     {
@@ -632,7 +697,7 @@
           "action_count": 0,
           "org_count": 0
         },
-        "timestamp": "2026-07-04 00:55:08.125592"
+        "timestamp": "2026-07-04 19:10:12.464868"
       }
     },
     {
@@ -649,7 +714,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.170791"
+        "timestamp": "2026-07-04 19:10:12.502145"
       }
     },
     {
@@ -666,7 +731,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.170908"
+        "timestamp": "2026-07-04 19:10:12.502258"
       }
     },
     {
@@ -683,7 +748,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.170986"
+        "timestamp": "2026-07-04 19:10:12.502325"
       }
     },
     {
@@ -699,7 +764,7 @@
           "amount": 0.04066551796970402,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.171190"
+        "timestamp": "2026-07-04 19:10:12.502421"
       }
     },
     {
@@ -715,7 +780,7 @@
           "amount": 0.04066551796970402,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.171235"
+        "timestamp": "2026-07-04 19:10:12.502454"
       }
     },
     {
@@ -731,7 +796,7 @@
           "amount": 0.04066551796970402,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.171277"
+        "timestamp": "2026-07-04 19:10:12.502483"
       }
     },
     {
@@ -746,7 +811,7 @@
           "action_count": 0,
           "org_count": 0
         },
-        "timestamp": "2026-07-04 00:55:08.171806"
+        "timestamp": "2026-07-04 19:10:12.502835"
       }
     },
     {
@@ -763,7 +828,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.212516"
+        "timestamp": "2026-07-04 19:10:12.534349"
       }
     },
     {
@@ -780,7 +845,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.212613"
+        "timestamp": "2026-07-04 19:10:12.534440"
       }
     },
     {
@@ -797,7 +862,7 @@
           "pop_d_prime": 0.0,
           "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-04 00:55:08.212676"
+        "timestamp": "2026-07-04 19:10:12.534498"
       }
     },
     {
@@ -813,7 +878,7 @@
           "amount": 0.05649620576174376,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.212774"
+        "timestamp": "2026-07-04 19:10:12.534589"
       }
     },
     {
@@ -829,7 +894,7 @@
           "amount": 0.05649620576174376,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.212808"
+        "timestamp": "2026-07-04 19:10:12.534621"
       }
     },
     {
@@ -845,7 +910,7 @@
           "amount": 0.05649620576174376,
           "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-04 00:55:08.212837"
+        "timestamp": "2026-07-04 19:10:12.534650"
       }
     },
     {
@@ -860,7 +925,7 @@
           "action_count": 0,
           "org_count": 0
         },
-        "timestamp": "2026-07-04 00:55:08.213190"
+        "timestamp": "2026-07-04 19:10:12.534996"
       }
     }
   ]

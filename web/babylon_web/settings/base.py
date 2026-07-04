@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from observatory.db import build_sim_database_alias, default_sim_dsn
+
 # --------------------------------------------------------------------------- #
 # Paths
 # --------------------------------------------------------------------------- #
@@ -40,6 +42,8 @@ INSTALLED_APPS = [
     # Project apps
     "game.apps.GameConfig",
     "accounts.apps.AccountsConfig",
+    # spec-096 Observatory — read-only debug dashboard over the simulation DB.
+    "observatory.apps.ObservatoryConfig",
 ]
 
 MIDDLEWARE = [
@@ -88,7 +92,22 @@ DATABASES = {
         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     },
+    # spec-096: the second, READ-ONLY alias pointing at the simulation runner's
+    # Postgres (spec-062 dynamic_* schema + spec-087-089 additions). DSN from
+    # BABYLON_PG_DSN (default localhost:5433/babylon_test — the tick_probe
+    # pattern). The SimDatabaseRouter refuses migrations for this alias; the
+    # connection is opened default_transaction_read_only=on. See
+    # observatory/db.py and web/HOW-TO-LOCAL-DEV.md (two-DB alias map).
+    "sim": build_sim_database_alias(default_sim_dsn()),
 }
+
+# spec-096: only SimDatabaseRouter refuses migrations for the "sim" alias;
+# it abstains on all product-model routing.
+DATABASE_ROUTERS = ["observatory.router.SimDatabaseRouter"]
+
+# spec-096: master feature flag for the Observatory dashboard + endpoints.
+# Enabled by default here; production.py flips it off (development.py keeps On).
+OBSERVATORY_ENABLED = True
 
 # --------------------------------------------------------------------------- #
 # Auth

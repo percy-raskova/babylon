@@ -13,6 +13,10 @@ DEBUG = False
 
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
 
+# spec-096: the Observatory exposes internal simulation data — OFF in production
+# so end users never reach the debug dashboard.
+OBSERVATORY_ENABLED = False
+
 # HTTPS / security
 SECURE_SSL_REDIRECT = True
 SECURE_HSTS_SECONDS = 31_536_000

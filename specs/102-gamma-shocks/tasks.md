@@ -63,16 +63,21 @@ Legend: [x] done · [ ] todo. Each numbered task = one commit unit.
   bloc's `external_nodes_phi` / per-tick `DRAIN_EDGE` sum steps at the
   scheduled tick by the configured multiplier; unaffected before. Commit:
   `test(spec-102): shock scenario bends bloc Φ trajectory at scheduled tick`.
-- [ ] **T12 — Verify loop.** `mise run check` → full unit suite → integration
-  tests (T10, T11) → `mise run qa:e2e-regression` (expected green against the
-  EXISTING baseline per D1 — no regen).
-- [ ] **T13 — Proof + close-out.** Write `proof.md` (D1 baseline-neutrality
+- [x] **T12 — Verify loop.** `mise run check` GREEN (8995 passed, 17
+  skipped, 4 xfailed — all pre-existing, 515.55s). `mise run
+  qa:e2e-regression` GREEN against the EXISTING `detroit-tri-county-5t.json`
+  baseline (`counties_alive==3`, `population liveness 3/3`, `total_v
+  Δ=0.000%`) — confirms D1 empirically, no regen.
+- [x] **T13 — Proof + close-out.** `proof.md` written (D1 baseline-neutrality
   empirical confirmation via qa:e2e-regression; D5 determinism-gate scope
-  disclosure). Update `project/09-program-full-game.md` spec-102 status,
-  `ai-docs/state.yaml`. Commit:
+  disclosure + course-correction). `project/09-program-full-game.md`,
+  `project/01-state-of-the-world.md`, `ai-docs/state.yaml`,
+  `ai-docs/decisions/ADR056_spec102_gamma_hydration_and_shocks.yaml` +
+  `index.yaml` updated. Commit:
   `docs(spec-102): proof + close-out (baseline-neutral gamma hydration + shock determinism)`.
-- [ ] **T14 — Confirm canonical baseline untouched.** Per D1, no re-baseline
-  is required. Confirm `mise run sim:status` shows no conflicting 5433
-  activity, and that `tests/baselines/michigan-e2e.json` (spec-101's
-  committed session `a8202ed0`) remains the checked-in canonical baseline —
-  no new canonical run is launched by spec-102.
+- [x] **T14 — Confirm canonical baseline untouched.** Per D1, no re-baseline
+  was required. `mise run sim:status` showed no conflicting 5433 activity
+  (no daemonized run) before the `qa:e2e-regression` run.
+  `tests/baselines/michigan-e2e.json` (spec-101's committed session
+  `a8202ed0`) remains the checked-in canonical baseline, unmodified — no new
+  canonical run was launched by spec-102 (correctly: none was needed).

@@ -65,6 +65,28 @@ consumes both:
   TRADE_EDGE stays gated (needs 098-LODES). 18 unit + 4 integration tests
   green; total_v + liveness unchanged; 5-tick baseline regenerated.
   Canonical `sim:e2e-bg` launched for 83/83 re-verification.
+- **spec-102 Gamma hydration + scheduled bloc shocks — CODE DONE
+  2026-07-04** (branch `102-gamma-shocks`, stacked on
+  `101-trade-activation`@`8210db17`, ADR056, unmerged; closes the shared
+  101+102 proof window). `SQLiteGammaHydrationSource` hydrates real
+  per-year α (BEA final demand + bilateral trade) and γ_import
+  (1/Hickel-ERDI), killing `basket_visibility.py`'s MVP hardcode (III.1).
+  **Decisive verified finding**: NO canonical re-baseline needed —
+  `ServiceContainer.create(defines=defines)` in the headless runner never
+  wires `melt_calculator`/`basket_calculator`, so `TickDynamicsSystem`
+  (the only caller of `get_gamma_basket`) is an unconditional no-op in
+  every headless-runner execution today, canonical included.
+  `ScheduledBlocShock` + `SimulationRunConfig.shock_schedule` ship a
+  deterministic, non-agentic (R-AMEND) exogenous Φ-multiplier schedule,
+  empty by default. **Course-corrected mid-implementation** (empirical):
+  the planned `tick_commit.determinism_hash` cross-run diff was found to
+  always diverge (embeds `session_id` by construction — confirmed by
+  running the unmodified spec-101 baseline twice); the shipped
+  determinism test instead compares raw persisted hex state +
+  `DRAIN_EDGE` magnitudes (byte-identical across two runs). A separate
+  test confirms the shock visibly bends a bloc's Φ trajectory at its
+  scheduled tick. 35 unit + 5 integration tests green; both existing
+  baselines (`michigan-e2e.json`, `detroit-tri-county-5t.json`) untouched.
   - **Lane D spec-100 County-exposure loader — DONE 2026-07-04** (branch
     `100-county-exposure`, unmerged; two repos: babylon worktree schema +
     babylon-data loader). Built the never-computed `county_exposure_by_external`

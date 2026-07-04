@@ -522,6 +522,27 @@ ______________________________________________________________________
 
 **spec-102 — Gamma hydration + scheduled bloc shocks** (~1–2 sprints, same proof window as 101)
 
+> **STATUS: CODE DONE 2026-07-04** (branch `102-gamma-shocks`, stacked on
+> `101-trade-activation` at `8210db17`; closes the shared 101+102 proof
+> window). Gamma hydration ships (`SQLiteGammaHydrationSource` computing
+> α from BEA final-demand + bilateral trade, γ_import = 1/Hickel-ERDI) and
+> scheduled bloc shocks ship (`ScheduledBlocShock`, deterministic, empty by
+> default). **Key finding (repo-verified, program §0 "repo wins")**: gamma
+> hydration required **no re-baseline** — `ServiceContainer.create(...)` in
+> the headless runner never wires `melt_calculator`/`basket_calculator`, so
+> `TickDynamicsSystem` (the only caller of
+> `get_gamma_basket`) is an unconditional no-op in every headless-runner
+> execution today (canonical included) — exactly the "like MELT/n_calculator"
+> gap the task brief flagged. **Course-correction (empirical, not assumed)**:
+> the planned `tick_commit.determinism_hash` shock-determinism gate does not
+> work as specified — that hash (and `conservation_audit_log`'s) both embed
+> `session_id`, so they can never match across two independent runs
+> regardless of determinism (confirmed by running the UNMODIFIED spec-101
+> baseline twice — it also diverges). The shipped determinism test compares
+> actual persisted values instead (hex state + DRAIN_EDGE magnitudes,
+> byte-identical across two runs) — see `specs/102-gamma-shocks/proof.md`.
+> See `specs/102-gamma-shocks/`.
+
 - **Scope**: kill the hardcoded seam in
   `src/babylon/economics/melt/basket_visibility.py` (lines ~24–26:
   import share α≈0.25, γ_import≈0.35, placeholder γ_basket=0.68) —

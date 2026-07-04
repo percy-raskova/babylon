@@ -104,13 +104,15 @@ describe("C4 — self-hosted @font-face, no Google Fonts at runtime", () => {
 describe("C5 — DATA_RAMPS match canon stops", () => {
   for (const [layer, stops] of Object.entries(CANON_RAMPS)) {
     it(`${layer} ramp equals canon`, () => {
-      expect(DATA_RAMPS[layer as keyof typeof DATA_RAMPS].map((s) => s.toLowerCase())).toEqual(stops);
+      expect(DATA_RAMPS[layer as keyof typeof DATA_RAMPS].map((s) => s.toLowerCase())).toEqual(
+        stops,
+      );
     });
   }
 
   it("sequential ramps start at the darkest substrate #0d1016", () => {
     for (const layer of ["heat", "consciousness", "rent", "wealth", "population"] as const) {
-      expect(DATA_RAMPS[layer][0].toLowerCase()).toBe("#0d1016");
+      expect((DATA_RAMPS[layer][0] ?? "").toLowerCase()).toBe("#0d1016");
     }
   });
 

@@ -13,7 +13,9 @@ import { useNavigate, useParams } from "react-router";
 import { BblBadge, BblData, BblLabel, BblPanel, Stat } from "@/components/bbl";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useGameState } from "@/hooks/useGameState";
-import type { HyperedgeState, OrgState } from "@/types/game";
+import { TerritoryDetailView } from "@/components/intel/TerritoryDetailView";
+import { OrgDetailView } from "@/components/intel/OrgDetailView";
+import type { EdgeState, GameSnapshot, HyperedgeState, OrgState } from "@/types/game";
 
 type IntelTab = "territories" | "orgs" | "edges" | "communities";
 
@@ -152,39 +154,43 @@ interface DetailProps {
   orgs: OrgState[];
   edges: SnapshotEdge[];
   communities: HyperedgeState[];
+  snapshot: GameSnapshot;
 }
 
-function TerritoryDetail({ t }: { t: SnapshotTerritory }) {
+function TerritoryDetail({ t, snapshot }: { t: SnapshotTerritory; snapshot: GameSnapshot }) {
+  // Spec-093 US1: full detail view ported from
+  // design/mockups/ui_kits/webapp/TerritoryDetail.jsx onto live data
+  // (economic panel, real org presence, real scoped events, provenance
+  // tooltips). `t` is the already-narrowed index-list projection; look up
+  // the full `TerritoryState` for the fields TerritoryDetailView needs
+  // (h3_index, biocapacity, under_eviction, etc.) that the narrowed
+  // `SnapshotTerritory` type doesn't carry.
+  const full = snapshot.territories.find((x) => x.id === t.id);
+  if (!full) return <EmptyState label="Territory not found." />;
   return (
-    <div className="flex flex-col gap-3">
-      <BblLabel color="#c8a860">{t.name}</BblLabel>
-      <div className="flex gap-6">
-        <Stat label="Heat" value={`${(t.heat * 100).toFixed(0)}%`} color="#e04040" />
-        <Stat label="Rent" value={`${(t.rent_level * 100).toFixed(0)}%`} color="#a070d0" />
-        <Stat label="Pop" value={String(t.population)} color="#80b0e0" />
-        <Stat label="CON" value={`${((t.consciousness ?? 0) * 100).toFixed(0)}%`} color="#80b0e0" />
-      </div>
-      {t.dominant_community && (
-        <div className="text-[10px] text-ash">
-          Dominant community: <span className="text-bone">{t.dominant_community}</span>
-        </div>
-      )}
-    </div>
+    <TerritoryDetailView
+      territory={{ ...full, consciousness: t.consciousness, wealth: t.wealth }}
+      snapshot={snapshot}
+    />
   );
 }
 
-function OrgDetail({ o }: { o: OrgState }) {
-  return (
-    <div className="flex flex-col gap-3">
-      <BblLabel color="#c8a860">{o.short_name ?? o.name}</BblLabel>
-      <div className="flex gap-6">
-        <Stat label="Cohesion" value={`${(o.cohesion * 100).toFixed(0)}%`} color="#c8a860" />
-        <Stat label="Heat" value={`${(o.heat * 100).toFixed(0)}%`} color="#e04040" />
-        <Stat label="Opacity" value={`${((o.opacity ?? 0) * 100).toFixed(0)}%`} color="#a070d0" />
-      </div>
-      <BblData size={10}>OODA phase: {o.ooda?.phase ?? "observe"}</BblData>
-    </div>
-  );
+function OrgDetail({
+  o,
+  snapshot,
+  edges,
+}: {
+  o: OrgState;
+  snapshot: GameSnapshot;
+  edges: SnapshotEdge[];
+}) {
+  // Spec-093 US2: full detail view ported from
+  // design/mockups/ui_kits/webapp/OrgDetail.jsx onto live data (vanguard
+  // economy, real relation classification, real org-scoped events,
+  // provenance tooltips). `edges` is cast back to the real `EdgeState[]`
+  // shape OrgDetailView expects — `SnapshotEdge` only widens
+  // `rate_of_profit`/`rent_burden`/`age_ticks` onto the real edge fields.
+  return <OrgDetailView org={o} snapshot={snapshot} edges={edges as unknown as EdgeState[]} />;
 }
 
 function EdgeDetail({ e }: { e: SnapshotEdge }) {
@@ -237,15 +243,31 @@ function CommunityDetail({ c }: { c: HyperedgeState }) {
   );
 }
 
-function DetailPanel({ targetType, targetId, territories, orgs, edges, communities }: DetailProps) {
+function DetailPanel({
+  targetType,
+  targetId,
+  territories,
+  orgs,
+  edges,
+  communities,
+  snapshot,
+}: DetailProps) {
   if (!targetType || !targetId) return <EmptyState label="Pick a target from the index." />;
   if (targetType === "territory") {
     const t = territories.find((x) => x.id === targetId);
-    return t ? <TerritoryDetail t={t} /> : <EmptyState label="Territory not found." />;
+    return t ? (
+      <TerritoryDetail t={t} snapshot={snapshot} />
+    ) : (
+      <EmptyState label="Territory not found." />
+    );
   }
   if (targetType === "org") {
     const o = orgs.find((x) => x.id === targetId);
-    return o ? <OrgDetail o={o} /> : <EmptyState label="Org not found." />;
+    return o ? (
+      <OrgDetail o={o} snapshot={snapshot} edges={edges} />
+    ) : (
+      <EmptyState label="Org not found." />
+    );
   }
   if (targetType === "edge") {
     const e = edges.find((x) => x.id === targetId);
@@ -331,14 +353,19 @@ export function IntelPageV2() {
         </BblPanel>
 
         <BblPanel title="Detail" accent="#c8a860">
-          <DetailPanel
-            targetType={targetType}
-            targetId={targetId}
-            territories={territories}
-            orgs={enemyOrgs}
-            edges={edges}
-            communities={communities}
-          />
+          {snapshot ? (
+            <DetailPanel
+              targetType={targetType}
+              targetId={targetId}
+              territories={territories}
+              orgs={enemyOrgs}
+              edges={edges}
+              communities={communities}
+              snapshot={snapshot}
+            />
+          ) : (
+            <EmptyState label="Loading game state…" />
+          )}
         </BblPanel>
       </div>
     </div>

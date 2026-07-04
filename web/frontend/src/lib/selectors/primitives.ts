@@ -95,6 +95,52 @@ const hexBiocapacity: ScriptValue = {
   },
 };
 
+/** Loosely-typed territory shape for fields the backend snapshot may carry
+ * beyond the strict `TerritoryState` interface (matches the existing
+ * `SnapshotTerritory` convention in `IntelPageV2.tsx`). */
+interface LooseTerritory {
+  wealth?: number;
+  consciousness?: number;
+}
+
+const hexWealth: ScriptValue = {
+  name: "hex.wealth",
+  label: "Wealth",
+  description: "Territory-scoped accumulated wealth.",
+  scopeKind: "hex",
+  evaluate: (scope: Scope): number => {
+    if (!scope.this || scope.this.kind !== "hex") return 0;
+    const territory = scope.snapshot.territories.find((t) => t.id === scope.this!.id) as
+      | (LooseTerritory & { id: string })
+      | undefined;
+    return territory?.wealth ?? 0;
+  },
+  breakdown: (scope: Scope): Breakdown => {
+    const value = hexWealth.evaluate(scope);
+    const id = scope.this?.id ?? "unknown";
+    return leafBreakdown("Wealth", value, `territories[${id}].wealth`);
+  },
+};
+
+const hexConsciousness: ScriptValue = {
+  name: "hex.consciousness",
+  label: "Consciousness",
+  description: "Territory-scoped consciousness level (0-1 normalized).",
+  scopeKind: "hex",
+  evaluate: (scope: Scope): number => {
+    if (!scope.this || scope.this.kind !== "hex") return 0;
+    const territory = scope.snapshot.territories.find((t) => t.id === scope.this!.id) as
+      | (LooseTerritory & { id: string })
+      | undefined;
+    return territory?.consciousness ?? 0;
+  },
+  breakdown: (scope: Scope): Breakdown => {
+    const value = hexConsciousness.evaluate(scope);
+    const id = scope.this?.id ?? "unknown";
+    return leafBreakdown("Consciousness", value, `territories[${id}].consciousness`);
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Org primitives
 // ---------------------------------------------------------------------------
@@ -133,6 +179,109 @@ const orgBudget: ScriptValue = {
   },
 };
 
+const orgHeat: ScriptValue = {
+  name: "org.heat",
+  label: "Heat",
+  description: "Organization state-attention level (0-1 normalized).",
+  scopeKind: "org",
+  evaluate: (scope: Scope): number => {
+    if (!scope.this || scope.this.kind !== "org") return 0;
+    const org = scope.snapshot.organizations.find((o) => o.id === scope.this!.id);
+    return org?.heat ?? 0;
+  },
+  breakdown: (scope: Scope): Breakdown => {
+    const value = orgHeat.evaluate(scope);
+    const id = scope.this?.id ?? "unknown";
+    return leafBreakdown("Heat", value, `organizations[${id}].heat`);
+  },
+};
+
+const orgCohesion: ScriptValue = {
+  name: "org.cohesion",
+  label: "Cohesion",
+  description: "Organization internal cohesion (0-1 normalized).",
+  scopeKind: "org",
+  evaluate: (scope: Scope): number => {
+    if (!scope.this || scope.this.kind !== "org") return 0;
+    const org = scope.snapshot.organizations.find((o) => o.id === scope.this!.id);
+    return org?.cohesion ?? 0;
+  },
+  breakdown: (scope: Scope): Breakdown => {
+    const value = orgCohesion.evaluate(scope);
+    const id = scope.this?.id ?? "unknown";
+    return leafBreakdown("Cohesion", value, `organizations[${id}].cohesion`);
+  },
+};
+
+const orgOpacity: ScriptValue = {
+  name: "org.opacity",
+  label: "Opacity",
+  description: "Organization counter-intelligence opacity (0-1 normalized).",
+  scopeKind: "org",
+  evaluate: (scope: Scope): number => {
+    if (!scope.this || scope.this.kind !== "org") return 0;
+    const org = scope.snapshot.organizations.find((o) => o.id === scope.this!.id);
+    return org?.opacity ?? 0;
+  },
+  breakdown: (scope: Scope): Breakdown => {
+    const value = orgOpacity.evaluate(scope);
+    const id = scope.this?.id ?? "unknown";
+    return leafBreakdown("Opacity", value, `organizations[${id}].opacity`);
+  },
+};
+
+function vanguardField(
+  scope: Scope,
+  field: "cadre_labor" | "sympathizer_labor" | "reputation",
+): number {
+  if (!scope.this || scope.this.kind !== "org") return 0;
+  const org = scope.snapshot.organizations.find((o) => o.id === scope.this!.id);
+  return org?.vanguard?.[field] ?? 0;
+}
+
+const orgVanguardCadreLabor: ScriptValue = {
+  name: "org.vanguard_cadre_labor",
+  label: "Cadre Labor",
+  description: "Vanguard-economy cadre labor pool.",
+  scopeKind: "org",
+  evaluate: (scope: Scope): number => vanguardField(scope, "cadre_labor"),
+  breakdown: (scope: Scope): Breakdown => {
+    const value = vanguardField(scope, "cadre_labor");
+    const id = scope.this?.id ?? "unknown";
+    return leafBreakdown("Cadre Labor", value, `organizations[${id}].vanguard.cadre_labor`);
+  },
+};
+
+const orgVanguardSympathizerLabor: ScriptValue = {
+  name: "org.vanguard_sympathizer_labor",
+  label: "Sympathizer Labor",
+  description: "Vanguard-economy sympathizer labor pool.",
+  scopeKind: "org",
+  evaluate: (scope: Scope): number => vanguardField(scope, "sympathizer_labor"),
+  breakdown: (scope: Scope): Breakdown => {
+    const value = vanguardField(scope, "sympathizer_labor");
+    const id = scope.this?.id ?? "unknown";
+    return leafBreakdown(
+      "Sympathizer Labor",
+      value,
+      `organizations[${id}].vanguard.sympathizer_labor`,
+    );
+  },
+};
+
+const orgVanguardReputation: ScriptValue = {
+  name: "org.vanguard_reputation",
+  label: "Reputation",
+  description: "Vanguard-economy reputation (0-1 normalized).",
+  scopeKind: "org",
+  evaluate: (scope: Scope): number => vanguardField(scope, "reputation"),
+  breakdown: (scope: Scope): Breakdown => {
+    const value = vanguardField(scope, "reputation");
+    const id = scope.this?.id ?? "unknown";
+    return leafBreakdown("Reputation", value, `organizations[${id}].vanguard.reputation`);
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Register all primitives
 // ---------------------------------------------------------------------------
@@ -141,5 +290,13 @@ selectors.register(hexHeat);
 selectors.register(hexRentLevel);
 selectors.register(hexPopulation);
 selectors.register(hexBiocapacity);
+selectors.register(hexWealth);
+selectors.register(hexConsciousness);
 selectors.register(orgCadre);
 selectors.register(orgBudget);
+selectors.register(orgHeat);
+selectors.register(orgCohesion);
+selectors.register(orgOpacity);
+selectors.register(orgVanguardCadreLabor);
+selectors.register(orgVanguardSympathizerLabor);
+selectors.register(orgVanguardReputation);

@@ -885,8 +885,10 @@ ______________________________________________________________________
 
 **IMPLEMENTED** (commits `3c5055ff`→`ea0e3661`; see ADR051 for the accepted
 re-baseline + the spatial-stddev open item). §E7's RLF simplex constraints
-are DEFERRED TO SPEC-071. Storage note: the §E8 canonical run writes ~7 GB
-into babylon_test — see `08-graph-substrate.md` and `mise run clean:testdb`.
+are DEFERRED TO SPEC-071. Storage note (updated 2026-07-03, ADR053): the
+§E8-era 7 GB/run problem is solved — canonical runs now delta-persist
+(~455k hex rows) and finished sessions are archived+purged via
+`mise run sim:archive` — see `08-graph-substrate.md` RESOLVED block.
 
 Fable's binding design for `project/06` §7 + §9.4 (+ §9.1 edge-modes),
 written 2026-07-03 from a full surface recon. Delegate: read `project/06`

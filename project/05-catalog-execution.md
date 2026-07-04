@@ -7,6 +7,17 @@ locally". Do NOT duplicate the spec text here — read the audit section when
 starting each spec. Process for every spec: `00-mission.md` working
 agreements (speckit lifecycle, TDD, full-vision no-MVP).
 
+## Program 09 cross-cut (ratified 2026-07-03 — read `09-program-full-game.md`)
+
+The full-game program runs BESIDE this catalog on four parallel lanes:
+`[E: 071→101→102→104→105]` (engine, serialized, owns baselines),
+`[W: 090→091→{092∥093}→094→095→103]` (web product per design canon),
+`[D: 100 ∥ 098-LODES ∥ 068-slice]` (data), `[O: 096→099]` (Observatory
+debug dashboard). It does not reorder this catalog; it feeds it —
+092–095 build the surfaces Wave-3 specs animate, and Lane E resumes
+Wave 2 (072–074) after the trade window closes. File-ownership law and
+sync points: `09` §3.
+
 ## Wave order (after 071; interleave 098 throughout)
 
 ### Wave 2 — Player Organizational Economy (unblocks the game loop)
@@ -85,9 +96,15 @@ stay demand-driven:
 
 - **Wave 6 (experience + distribution)**: in-game wiki via composable
   tooltips + term-registry linter (X3 — the onboarding strategy, pairs
-  with 085); chronicle/Journal if not shipped with 081; visual identity +
-  palette (X5 — RULED 2026-07-03: AI discretion, "impress me";
-  Constitution VII + JetBrains Mono + GOLD=solidarity still bind);
+  with 085); chronicle/Journal if not shipped with 081 (095 builds the
+  surfaces early — `09` §2); visual identity + palette (X5 — RULED
+  2026-07-03: AI discretion, "impress me"; **executing NOW as spec-090**
+  on the Percy-ratified Cold Collapse canon. CORRECTION: the earlier
+  "GOLD=solidarity still binds" note is superseded — Cold Collapse
+  assigns solidarity `#5fbf7a` and reserves gold as scarce `rupture`;
+  Constitution Article VII's literal "GOLD (action/solidarity)" clause
+  therefore needs the amendment 090 drafts and Percy ratifies —
+  `09` §1 R-VII);
   accessibility requirements (X8 — colorblind-safe ramps, non-color
   magnitude channel, keyboard nav); audio direction (X7); modding +
   console (M6); Steam distribution (M7 — RULED: web app stays the
@@ -96,9 +113,16 @@ stay demand-driven:
   exists; narrator RULED: Workers-AI with LoRA in scope); map viz specs
   (X6 — value-flow arrows lens, BubbleSets hulls, unit iconography,
   sovereignty-overlay rendering); Synopticon surface (X9, with 078/079).
-- **Wave 7 (horizon)**: international circulation layer (M9 — needs
-  constitutional amendment); scale-out (M10 — RULED 2026-07-03: keep it
-  all in one Postgres; federation/columnar substrate stays parked).
+- **Wave 7 (horizon)**: international circulation layer (M9 — its first
+  spec set was PULLED FORWARD 2026-07-03 as program-09 specs 100–103
+  (owner-scoped: the canonical 8 bloc nodes, boundary-flow activation,
+  gamma hydration, scheduled shocks, trade UI surfaces). RULING (`09`
+  §1 R-AMEND): non-agentic Layer-0 register-pattern blocs need NO
+  constitutional amendment — spec-062 machinery is already sanctioned;
+  the amendment trigger is blocs becoming agentic or growing recursive
+  internal structure, which stays a Wave-7 decision); scale-out (M10 —
+  RULED 2026-07-03: keep it all in one Postgres; federation/columnar
+  substrate stays parked).
 
 ## "Game works locally" — remaining non-catalog items
 
@@ -120,8 +144,11 @@ Remaining, in rough order of player-visible value:
 1. **Dashboard endpoints** (`get_economy`, `get_edges`, `get_state_apparatus`,
    `get_journal`, `get_alerts` return `{}` in EngineBridge): descoped
    2026-07-02 WITH EVIDENCE — zero frontend consumers exist. Build each one
-   WITH the page that consumes it (mostly Wave-3 specs). Do not build them
-   speculatively.
+   WITH the page that consumes it. *Update 2026-07-03: the consumers are
+   now SCHEDULED (program 09): `get_journal`/`get_alerts` → 092,
+   `get_economy` → 093, trade sections → 103, Observatory endpoints →
+   096/099. The rule stands — nothing ships without its page — but
+   "descoped" no longer means "unplanned".*
 1. **Playtest pass**: after 072 (vanguard economy) + one Wave-3 verb, do a
    real seeded-game playthrough (`mise run web:dev`, new game, ~50 ticks) and
    file what breaks as issues — that list, not intuition, drives the next
@@ -148,9 +175,13 @@ mise run sim:e2e-bg                # daemonized 520-tick canonical (~1-2 h); wat
 # then verify: terminal_state.counties_with_population == counties_alive == 83
 ```
 
-> **STORAGE CAUTION (2026-07-03)**: every canonical 520-tick run writes
-> **~7 GB** into `babylon_test` and NOTHING prunes finished runs (spec-037
-> archival is still stubs — `08-graph-substrate.md`). Repeated invocation of
-> this loop is exactly what once bloated the DB to 71 GB and exhausted /var.
-> Run `mise run clean:testdb` between canonical runs (and `clean:docker` if
-> test runs were killed mid-flight).
+> **STORAGE LIFECYCLE (updated 2026-07-03, specs 087–089/ADR053)**: the
+> old 7 GB/run problem is SOLVED (delta persistence + partitioning —
+> canonical Michigan now writes ~455k hex rows, ~100 MB-class). The
+> standing rule: after every canonical run, archive it —
+> `mise run sim:archive -- archive --session <id>` (Parquet+zstd →
+> verify → instant DROP-PARTITION purge; DuckDB reads the archive).
+> `mise run sim:status` shows liveness; `qa:storage-budget` gates
+> rows/tick regressions; `clean:docker` still flushes leaked test
+> containers. Hex history reads go through `v_hex_state_asof` — raw
+> `dynamic_hex_state` is sparse by design.

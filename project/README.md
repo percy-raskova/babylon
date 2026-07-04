@@ -12,18 +12,19 @@ locally (Django+React app playable end-to-end against the real engine).
 
 ## Reading order
 
-| File                           | What it holds                                                                                            | Read when                                            |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `00-mission.md`                | Goal, roadmap authority, sequencing, working agreements                                                  | Always, first                                        |
-| `01-state-of-the-world.md`     | What is DONE (with commits), what is in flight, environment facts                                        | Always, second                                       |
-| `02-engine-truths.md`          | Engine architecture truths + gotchas + repro recipes from the 2026-07-02 forensics                       | Before touching the engine or bridge                 |
-| `03-next-spec-071.md`          | Concrete execution plan for spec-071 Reactionary Subject (the next unit)                                 | When starting 071                                    |
-| `04-data-program-098.md`       | Reference-DB build pipeline program (spec-098)                                                           | When starting 098 or any loader work                 |
-| `05-catalog-execution.md`      | Waves 2–5 execution order, per-spec notes, local-play completion items, doc hygiene                      | For everything after 071                             |
-| `06-lawverian-dialectics.md`   | MASTER RECORD: dialectics refactor design + Phase C2/D/E designs (Parts I–IV), IMPLEMENTED (ADR051)      | Before touching contradiction/opposition/regime code |
-| `07-chat-corpus-alignment.md`  | Owner rulings + uncatalogued mechanics (M1–M12) + experience layer (X1–X9) from the 271-chat corpus mine | Before scoping any new feature or UX work            |
-| `08-graph-substrate.md`        | Graph substrate record: BabylonGraph/rustworkx (Amendment L, ADR052), gotchas, storage reality           | Before touching graph/engine internals               |
-| `c17-test-migration-ledger.md` | Frozen forensic ledger: the 224 dormant-dialectics tests (evidence base for ADR051)                      | When auditing dialectics test coverage               |
+| File                           | What it holds                                                                                                                  | Read when                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `00-mission.md`                | Goal, roadmap authority, sequencing, working agreements                                                                        | Always, first                                         |
+| `01-state-of-the-world.md`     | What is DONE (with commits), what is in flight, environment facts                                                              | Always, second                                        |
+| `02-engine-truths.md`          | Engine architecture truths + gotchas + repro recipes from the 2026-07-02 forensics                                             | Before touching the engine or bridge                  |
+| `03-next-spec-071.md`          | Concrete execution plan for spec-071 Reactionary Subject (the next unit)                                                       | When starting 071                                     |
+| `04-data-program-098.md`       | Reference-DB build pipeline program (spec-098)                                                                                 | When starting 098 or any loader work                  |
+| `05-catalog-execution.md`      | Waves 2–5 execution order, per-spec notes, local-play completion items, doc hygiene                                            | For everything after 071                              |
+| `06-lawverian-dialectics.md`   | MASTER RECORD: dialectics refactor design + Phase C2/D/E designs (Parts I–IV), IMPLEMENTED (ADR051)                            | Before touching contradiction/opposition/regime code  |
+| `07-chat-corpus-alignment.md`  | Owner rulings + uncatalogued mechanics (M1–M12) + experience layer (X1–X9) from the 271-chat corpus mine                       | Before scoping any new feature or UX work             |
+| `08-graph-substrate.md`        | Graph substrate record: BabylonGraph/rustworkx (Amendment L, ADR052), gotchas, storage reality                                 | Before touching graph/engine internals                |
+| `09-program-full-game.md`      | ACTIVE PROGRAM: full-game build — 4 lanes (UI / Observatory / trade blocs / nationwide), spec catalog 090+, execution protocol | Before starting any 090+ spec; kickoff map for agents |
+| `c17-test-migration-ledger.md` | Frozen forensic ledger: the 224 dormant-dialectics tests (evidence base for ADR051)                                            | When auditing dialectics test coverage                |
 
 ## How to use this kit
 

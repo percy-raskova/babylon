@@ -1,6 +1,6 @@
 # 01 — State of the World
 
-**As of**: 2026-07-03 ~15:20 EDT. Update this file whenever a unit completes.
+**As of**: 2026-07-03 ~21:30 EDT. Update this file whenever a unit completes.
 
 ## Current branch + the two foundations (both COMPLETE 2026-07-03)
 
@@ -29,10 +29,18 @@ consumes both:
 
 - **DONE**: spec-070 Balkanization (pre-session), spec-086 QCEW loader +
   imputation, spec-097 (decision record), Lawverian dialectics refactor
-  (ADR051), graph-substrate migration (ADR052).
+  (ADR051), graph-substrate migration (ADR052), **storage scaling
+  program specs 087+088+089 (ADR053, same day)** — delta persistence +
+  partitioning + local Parquet archival; canonical Michigan run
+  re-verified on the new substrate (Δ=0.000%, 455,720 vs 25.4M hex
+  rows, 17 vs ~52 min).
 - **NOT STARTED**: 25 catalog specs (071–083 per audit Part 3, plus Waves
   6–7 content). **Next: spec-071** (see `03-next-spec-071.md`) — now
   unblocked on both foundations.
+- **ACTIVE PROGRAM**: `09-program-full-game.md` (ratified 2026-07-03
+  evening) — four parallel lanes: `[E:071→101→102→104→105]`
+  `[W:090→091→092∥093→094→095→103]` `[D:100 ∥ 098-LODES ∥ 068-slice]`
+  `[O:096→099]`. Design canon staged at `design/mockups/` (66 files).
 
 ## What shipped 2026-07-02 (one session), by commit
 
@@ -88,13 +96,18 @@ re-baselines after the contradiction semantics change.
 
 ## In-flight / awaiting Percy (BD)
 
-- **Merge to dev**: the branch chain `fix/web-local-play-wireup` →
-  `refactor/lawverian-dialectics` → `refactor/networkx-to-rustworkx`
-  (contains everything above plus ADR051+ADR052 programs). Suggest
-  splitting engine vs web vs substrate at PR time if clean revert lines
-  wanted.
+- ~~Merge to dev~~ **DONE 2026-07-03 ~20:15 EDT** (owner-directed):
+  `dev` fast-forwarded `9dd4c4f6 → 2f506bc2` (97 commits — web
+  local-play sprint, ADR051 dialectics, ADR052 substrate, ADR053
+  storage program) and pushed to origin. Historical branch lines are
+  preserved as `archive/*` tags; working branches now: `main`, `dev`,
+  `u/percy`, plus per-program branches.
 - **dev → main release**: explicitly DEFERRED by owner (main ~200 commits behind).
 - `--drop-backup` operator step (above).
+- **Program 09 owner items** (see `09-program-full-game.md` §6):
+  Article VII palette amendment (with 090); DB convergence question;
+  095's chronicle partial-forward; national tick budget (after 104);
+  USGS minerals stretch; EndgameDetector priority resolution (at 095).
 
 ## Environment facts (verified 2026-07-02)
 
@@ -103,17 +116,25 @@ re-baselines after the contradiction semantics change.
 - **Reference DB (SQLite)**: `data/sqlite/marxist-data-3NF.sqlite` — the
   `data/sqlite` DIRECTORY is a symlink to `/media/user/data/babylon-data/sqlite/`
   (the trove is canonical; one DB file, one inode). The symlink is NOT in git.
-- **Runtime DB (Postgres)**: Docker container `babylon-pg-isolated`
-  (postgres:15, host port 5433),
+- **Runtime DB (Postgres)**: compose-managed container `babylon-pg-isolated`
+  (pinned `postgis/postgis:16-3.4` + pgvector, tuned conf, data dir on
+  the 3.6 TB drive via `BABYLON_PG_DATA`; `docker-compose.yml` +
+  `docker/postgres/`), host port 5433,
   DSN `host=localhost port=5433 dbname=babylon_test user=test password=test`.
-  Env var consumed by the runner: `BABYLON_PG_DSN`.
-  **Storage reality (measured 2026-07-03)**: one canonical 520-tick
-  michigan-canada run writes **~7 GB** into `babylon_test`
-  (48,827 H3 hexes × full per-tick state); nothing prunes finished runs
-  (spec-037 archival is still `NotImplementedError` stubs). Pressure
-  valves: `mise run clean:testdb` (drop/recreate/re-bootstrap) and
-  `mise run clean:docker` (leaked test containers + volumes). Killed
-  test runs leak ephemeral postgis containers — clean:docker flushes.
+  Env var consumed by the runner: `BABYLON_PG_DSN`. Fresh-clone
+  bootstrap: `mise run setup`.
+  **Storage (solved 2026-07-03, specs 087–089/ADR053)**: delta
+  persistence (changed rows + yearly checkpoint frames; canonical
+  Michigan = 455,720 hex rows vs 25.4M before), LIST(session_id)
+  partitioning, `tick_commit` (per-tick commit marker + queryable
+  III.7 hash chain), as-of views (`v_hex_state_asof` is the hex-history
+  read interface — raw `dynamic_hex_state` is SPARSE), local Parquet
+  archival: `mise run sim:archive -- archive --session <id>` →
+  verify → DROP PARTITION → DuckDB reads under `BABYLON_ARCHIVE_ROOT`
+  (`/media/user/data/babylon-archives`). Archive finished sessions
+  instead of letting them accumulate; `mise run clean:docker` still
+  flushes leaked test containers. National res-7 projection:
+  6.8–22.7 GiB/run (was ~450 GB). `qa:storage-budget` gates rows/tick.
 - **babylon-data repo** (loader home): `/home/user/projects/game/babylon-data`;
   imported via committed symlink `src/babylon_data` → that repo's
   `src/babylon_data`, with `PYTHONPATH=src`. QCEW loader modules:
@@ -131,6 +152,44 @@ re-baselines after the contradiction semantics change.
   `reports/test-results/<task>/{junit.xml,report.json,report.html}`.
 - **Web**: `mise run web:dev` / `web:test` / `web:check`; backend web tests
   `poetry run pytest tests/unit/web/`.
+
+## Web layer facts (verified 2026-07-03 — read before any web/ or Observatory work)
+
+- **THE TWO-DB SPLIT** (documented nowhere else until now): the web app
+  (Django, `web/babylon_web/settings/base.py`) runs against its OWN
+  Postgres at `localhost:5432/babylon` using the spec-037 layer schema
+  (`game_session`, `hex_latest`, `territory_snapshot`, `tick_summary`,
+  …; Django models are `managed=False` wrappers). The headless sim
+  runner writes `localhost:5433/babylon_test` using the spec-062
+  `dynamic_*` schema + the 087–089 additions (`tick_commit`,
+  `v_hex_state_asof`, `v_county/state/national_value_aggregate`,
+  session partitioning). **Nothing bridges them** — no Django model,
+  endpoint, or ETL reads `dynamic_*`. The Observatory (program 09,
+  spec-096) adds a read-only `DATABASES["sim"]` alias for exactly this;
+  DSN pattern: `tools/tick_probe.py`.
+- **Frontend**: React 19, Vite 6, Tailwind v4, Zustand 5, deck.gl 9,
+  Recharts 2, Sigma 3; the v2 16-route architecture is LIVE in
+  `web/frontend/src/App.tsx`; polling (2 s), no websockets; Vitest
+  310/310 and 8 Playwright suites green (2026-07-02).
+  `web/frontend/src/index.css` still carries the PRE-ratification
+  gold/Inter tokens — Cold Collapse migration is spec-090 (needs the
+  Article VII amendment, `09` §1 R-VII).
+- **Stub inventory** (the debt program 09 retires): bridge dashboard
+  methods return `{}` (`get_economy/edges/state_apparatus/journal/alerts/summary` and the wired `get_inspector_*` variants,
+  `web/game/engine_bridge.py`); five verb-target methods return
+  hardcoded Wayne County fixtures; `investigate`/`move`/`negotiate`
+  filtered as unsupported (their handlers belong in catalog specs
+  076/075/077); `/games/:id/log` renders "coming soon"; the map only
+  renders via `/dev/hexmap` (no in-game map route); AnalysisPage
+  topology/correlations are placeholders; `StubEngineBridge` fallback
+  serves mock Wayne data when bridge init fails.
+- **Django debt** (fixed in spec-091): `accounts` app has NO
+  `migrations/` dir (PlayerProfile table never created); `game` app has
+  model changes pending `makemigrations`; DB engine is postgis but
+  `django.contrib.gis` is absent from `INSTALLED_APPS`.
+- **Design canon**: staged at `design/mockups/` (66 files, replay-
+  extracted from the claude.ai export 2026-07-03; provenance +
+  fidelity caveats in `design/mockups/PROVENANCE.md`).
 
 ## Known non-blockers (pre-existing, documented, do not "fix" in passing)
 

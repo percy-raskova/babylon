@@ -79,27 +79,50 @@ coefficients (time_id 14–28), QCEW annual (~1M rows/year), trade monthly (15
 years). Annual facts share one `time_id` per year. A year missing from BEA I-O or
 QCEW is skipped for exposure with a recorded reason (never fabricated).
 
-## R5 — Reconciliation gate (±2%, from the DB's own BEA import rows)
+## R5 — Weight-conservation invariant (NOT an external reconciliation; review #1)
 
-**Decision**: for each covered year, compute the conservation residual
-`Σ_C raw_exposure[C]` vs `Σ_bea∈covered import_coeff[bea]` and require it within
-±2%.
+**Decision (revised after review #1)**: the ±2% check is an INTERNAL
+weight-conservation invariant, honestly named as such — `Σ_C raw_exposure[C]` vs
+`Σ_bea∈covered import_coeff[bea]`. It is explicitly **NOT** a "reconciliation
+against published import totals."
 
-**Rationale**: because county shares `s[C,b] = emp[C,b]/nat_emp[b]` sum to 1.0 per
-covered industry b, `Σ_C raw[C] = Σ_b coeff[b]·(Σ_C s[C,b]) = Σ_b coeff[b]`. So
-the residual is ~0 by construction and any deviation exposes a real bug — a county
-missing from the national total, a broken antichain, or a split-weight error.
-Verified 2024: residual = +0.000000% against covered coefficients. The comparison
-is sourced entirely from the DB's own BEA import rows (per the task wording). The
-audit ALSO records `concordance_coverage = Σcovered / Σall` (≈15% in 2024) as the
-data-quality metric that documents the goods-bias — this is the number a reviewer
-reads to understand the map's scope, distinct from the ±2% correctness gate.
+**Why it is not an external reconciliation**: because county shares
+`s[C,b] = emp[C,b]/nat_emp[b]` sum to 1.0 per covered industry b,
+`Σ_C raw[C] = Σ_b coeff[b]·(Σ_C s[C,b]) = Σ_b coeff[b]` — the two sides are
+algebraically identical by construction, so the residual is ≈0 for ANY input and
+this comparison alone can never fail on a data discrepancy. The original spec/report
+wording ("reconciliation ±2% against published import totals") over-claimed and is
+corrected everywhere.
 
-**Alternatives considered**: reconciling against an external published US-imports
-total — rejected: it would require turning coefficients into levels (industry
-output not in the DB) and the blocs overlap so `fact_trade_monthly` cannot be
-summed to a clean national total. The task explicitly says "source the comparison
-from the DB's own BEA import rows."
+**Why no external reconciliation is available** (verified 2026-07-04): the DB has
+no independent published total for THIS measure — `fact_bea_io_coefficient` carries
+only USE + TOTAL_REQ (no import matrix / levels); the sole import row is
+"Noncomparable imports"; `dim_import_source` is empty; `fact_trade_monthly` is
+*total* imports over overlapping blocs (wrong measure, wrong granularity — cannot be
+summed to a clean national noncomparable-imports total). Reconstructing a level from
+`fact_bea_national_industry.gross_output` would compare noncomparable-import levels
+to a total-imports figure — not like-for-like. So a genuine external reconciliation
+is not possible; the invariant is retained as an internal consistency check (it
+still catches a covered-set mismatch between numerator and coefficient sum, a broken
+NAICS antichain, or a split-weight error) and the audit records
+`concordance_coverage = Σcovered / Σall` (≈15% in 2024) as the data-quality metric.
+
+**The real regression detector** (review #1): correctness of the *computation* is
+guarded by the golden-value test (`test_weights_match_hand_computation`) and the
+input-perturbation test (`TestExposureRegressionDetector` — doubling a county's
+employment must raise its weight). These FAIL under any perturbation; they do not
+pass by identity.
+
+## R5b — BEA source-row choice (review #5)
+
+The import coefficient uses BEA industry 107 "Noncomparable imports and
+rest-of-the-world adjustment" (USE table). Verified: it is the ONLY import row in
+this reference DB (no comparable-imports coefficient, no IMPORT_USE matrix). It
+measures imports **without a comparable domestic equivalent** used per industry — a
+partial proxy for total import exposure, biased toward specialized-foreign-input
+industries. Kept (only option); documented in `compute.py` and the spec
+assumptions. Switching to a comparable-import coefficient requires loading a BEA
+IMPORT_USE matrix (a future data-program spec).
 
 ## R6 — Bloc keying + bloc-invariance
 
@@ -141,10 +164,16 @@ aggregation from fact_trade_monthly" is imprecise: this source can only produce 
 USD aggregate.
 
 **Decision**: aggregate to `fact_bilateral_trade_annual` with honest USD columns
-(`imports_usd_millions`, `exports_usd_millions`, `total_trade_usd_millions`). This
-feeds the engine's `bilateral_trade_value` (USD). True `bilateral_trade_tons`
-needs FAF freight tonnage (a future 098-family slice, out of scope). Flagged for
-spec-101.
+(`imports_usd_millions`, `exports_usd_millions`, `total_trade_usd_millions`).
+
+**spec-101 handoff (review #7) — UNAMBIGUOUS**: spec-101 MUST consume
+`fact_bilateral_trade_annual.total_trade_usd_millions` (or the imports/exports USD
+columns) to populate `ExternalNode.bilateral_trade_value` (USD). It MUST NOT map
+this table to `ExternalNode.bilateral_trade_tons` — that field is tonnage and needs
+FAF freight (a future 098-family slice, out of scope here). The spec's original
+"bilateral_trade_tons" name is superseded: the only bilateral trade source in this
+DB is monetary. The schema docstring for `FactBilateralTradeAnnual` carries the
+same "See spec-101" directive so the consumer cannot pick the wrong field.
 
 ## R9 — Table naming + persistence pattern
 

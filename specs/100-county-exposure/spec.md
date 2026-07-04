@@ -79,7 +79,7 @@ months for imports, exports, and total.
 2. **Given** two identical runs, **When** aggregation completes, **Then** the
    `logical_table_hash` of `fact_bilateral_trade_annual` reproduces.
 
-### User Story 3 - Audit artifact with reconciliation & coverage (Priority: P2)
+### User Story 3 - Audit artifact with conservation & coverage (Priority: P2)
 
 Every run emits a schema-validated JSON audit report plus a human Markdown
 render, recording per-year reconciliation, concordance coverage, table hashes,
@@ -96,9 +96,10 @@ gate field reflects the ±2% band.
 
 1. **Given** a completed run, **When** the audit is written, **Then** the JSON
    validates against `contracts/exposure_audit.schema.json`.
-2. **Given** a completed year, **When** the reconciliation is computed, **Then**
-   the report records `Σ county raw-exposure` vs `Σ covered BEA import
-   coefficients` and whether it is within ±2%.
+2. **Given** a completed year, **When** the weight-conservation invariant is
+   computed, **Then** the report records `Σ county raw-exposure` vs `Σ covered
+   BEA import coefficients` and whether it holds within ±2% (an internal
+   invariant, not an external reconciliation — FR-011).
 
 ### Edge Cases
 
@@ -112,7 +113,7 @@ gate field reflects the ±2% band.
   year QCEW has): that year is skipped for exposure with a recorded reason; it is
   never fabricated.
 - **Industry with import coefficient but zero national employment** (uncovered
-  by the concordance): excluded from both numerator and the reconciliation
+  by the concordance): excluded from both the numerator and the conservation
   denominator; counted in the reported coverage metric.
 - **First-ever build** (no canonical table to back up): swap succeeds without a
   `__pre_100` backup; `logical_table_hash` of the absent prior table is the
@@ -160,9 +161,18 @@ gate field reflects the ±2% band.
   render, recording: mode, years, DB path, DB sha256 pre/post, duration, git
   provenance for both repos, per-table `logical_table_hash`, per-year
   reconciliation, and concordance coverage.
-- **FR-011**: The reconciliation gate MUST compare `Σ_C raw_exposure[C]` against
-  `Σ_bea import_coeff[bea]` over the covered industries (sourced from the DB's
-  own BEA import rows) and record whether the residual is within ±2%.
+- **FR-011**: The loader MUST record a **weight-conservation invariant**:
+  `Σ_C raw_exposure[C]` must equal `Σ_bea import_coeff[bea]` over the covered
+  industries (both sourced from the DB's own BEA import rows) within ±2%. This is
+  an INTERNAL consistency invariant (the county exposure conserves the national
+  covered-import-coefficient mass because per-industry county shares sum to 1) —
+  it is explicitly **NOT** a reconciliation against an independent published
+  import total, because none exists in the reference DB for this measure
+  (verified: only USE + TOTAL_REQ table types; the sole import row is
+  "Noncomparable imports"; `dim_import_source` is empty; `fact_trade_monthly` is
+  *total* imports over overlapping blocs — the wrong measure and granularity).
+  The primary detector that the computation is CORRECT is the golden-value
+  regression test (it fails under any perturbation; it does not pass by identity).
 - **FR-012**: The audit MUST record `concordance_coverage` = (Σ covered import
   coefficient) / (Σ all import coefficient) as a first-class data-quality metric,
   and MUST record `bloc_invariant = true` while the county distribution is the
@@ -189,8 +199,8 @@ gate field reflects the ±2% band.
   industry's production.
 - **NAICS↔BEA concordance**: `bridge_naics_bea`, the reference DB's grounded map
   from QCEW NAICS industries to BEA industries.
-- **Audit report**: per-run JSON/Markdown provenance + reconciliation + coverage
-  + table hashes.
+- **Audit report**: per-run JSON/Markdown provenance + weight-conservation
+  invariant + coverage + table hashes.
 
 ## Success Criteria *(mandatory)*
 
@@ -201,8 +211,10 @@ gate field reflects the ±2% band.
 - **SC-002**: For every (bloc, year), the county weights sum to 1.0 within 1e-9.
 - **SC-003**: Running the loader twice yields identical `logical_table_hash`
   values for both tables (determinism).
-- **SC-004**: For every covered year, the reconciliation residual
-  (`Σ raw-exposure` vs `Σ covered import coefficients`) is within ±2%.
+- **SC-004**: For every covered year, the weight-conservation invariant holds:
+  the residual `Σ raw-exposure` vs `Σ covered import coefficients` is within ±2%
+  (an internal consistency invariant, not an external reconciliation — see
+  FR-011).
 - **SC-005**: The bilateral-trade annual total for each seeded bloc-year equals
   the exact sum of its monthly source rows.
 - **SC-006**: The audit reports a `concordance_coverage` value and the
@@ -220,21 +232,44 @@ gate field reflects the ±2% band.
   manufacturing/tradeable-goods import-exposure map. The concordance is **not
   extended** in this spec (that would fabricate mappings; III.8) — coverage is
   reported instead, and extending it to full service coverage is a future spec.
-- **The county distribution is currently bloc-invariant.** The reference DB has
-  no bloc×industry trade resolution (`fact_trade_monthly` is bloc-level total
-  USD; one "bloc" is the product category "Advanced Technology Products"; the
-  blocs geographically overlap). So the same import-exposure distribution
-  applies to every bloc. This is disclosed via the audit `bloc_invariant` flag
-  and stored per-bloc to match the consumer contract and to allow a future
-  bloc×industry spec to differentiate without a schema migration.
+- **The BEA import coefficient measures NONCOMPARABLE imports (review #5).** The
+  reference DB's `fact_bea_io_coefficient` carries only USE + TOTAL_REQ table
+  types and exactly one import row: "Noncomparable imports and rest-of-the-world
+  adjustment". That row is the value of imports with **no comparable domestic
+  production** used by each industry — NOT the full import content (comparable
+  imports are commingled into the domestic commodity rows and cannot be separated
+  without a BEA IMPORT_USE matrix, which is absent — verified 2026-07-04). So the
+  exposure is the *noncomparable-import intensity*, a partial proxy biased toward
+  industries reliant on specialized foreign inputs. It is kept because it is the
+  only import-content measure in this DB; switching requires loading an
+  IMPORT_USE matrix (a future data-program spec).
+- **The county distribution is currently bloc-invariant — an INTENTIONAL,
+  data-bounded modeling choice (review #6), not a shortcut.** `phi_distribution`'s
+  own docstring defines the exposure weight as "BEA I-O imports × QCEW industry
+  shares" — a NATIONAL quantity — and the reference DB has no bloc×industry×county
+  import resolution (`fact_trade_monthly` is bloc-level total USD; one "bloc" is
+  the product category "Advanced Technology Products"; the blocs geographically
+  overlap). Per-bloc differentiation legitimately flows through the per-bloc
+  `phi_year_inflow` (Hickel drain), NOT the county weights. The same distribution
+  is therefore stored per-bloc (disclosed via the audit `bloc_invariant` flag) to
+  match the consumer contract and to allow a future spec to differentiate without
+  a schema migration. Making the weights genuinely bloc-specific would require a
+  **bloc × industry × county import-flow dataset** (none exists in the DB); that
+  is an owner decision on record, routed to Percy.
 - **`world_system_tier` is NULL for all 8 blocs** by original-loader design
   (the trade loader only classifies `is_region = 0` countries). The Program 09
   §2 note "(+ world_system_tier core/semi_periphery/periphery)" does not hold for
   these region rows; this spec does not populate the tier.
-- **`fact_trade_monthly` is USD millions, not tons.** The aggregation therefore
-  feeds the engine's `bilateral_trade_value` (USD) field; the distinct
-  `bilateral_trade_tons` field needs FAF freight tonnage and is out of scope
-  (a future 098-family slice). This unit reconciliation is a note for spec-101.
+- **`fact_trade_monthly` is USD millions, not tons — spec-101 handoff (review
+  #7).** The aggregation is monetary. spec-101 MUST consume
+  `fact_bilateral_trade_annual.total_trade_usd_millions` (or the
+  imports/exports USD columns) to populate the engine's
+  `ExternalNode.bilateral_trade_value` (USD) field. It MUST NOT map this to
+  `bilateral_trade_tons`: that field is tonnage and needs FAF freight data (out
+  of scope here; a future 098-family slice). The spec's original
+  "bilateral_trade_tons" name is superseded because the only bilateral source in
+  the DB is monetary. This is spelled out so the spec-101 agent cannot consume
+  the wrong column.
 - **The engine's 8 external node ids** (`canada, china, eu, india,
   sub_saharan_africa, latin_america, russia_csi, southeast_asia`) differ from
   the 8 `dim_country` `is_region` blocs (EU, Advanced Technology Products, North

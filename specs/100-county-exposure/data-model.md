@@ -50,7 +50,11 @@ Steps:
 
 Invariants:
 - `Σ_C weight[C] = 1.0 ± 1e-9` (FR-004; consumer contract).
-- Reconciliation: `total ≈ Σ_{b∈covered} import_coeff[b]` within ±2% (FR-011).
+- Weight-conservation invariant: `total ≈ Σ_{b∈covered} import_coeff[b]` within
+  ±2% (FR-011) — an INTERNAL consistency invariant, not an external reconciliation
+  (no independent published total exists in the DB for this measure; see research
+  R5). The real computation-correctness detectors are the golden-value + input-
+  perturbation regression tests.
 - `concordance_coverage = Σ_{b∈covered} import_coeff[b] / Σ_{b∈import_coeff} import_coeff[b]` (FR-012).
 
 Determinism: iterate counties/blocs/industries in sorted-id order; the writer

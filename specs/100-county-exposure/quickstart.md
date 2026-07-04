@@ -34,12 +34,17 @@ sqlite3 data/sqlite/marxist-data-3NF.sqlite \
 ## Read the audit
 
 `reports/ingest/exposure_<UTC>.{json,md}`:
-- `per_year[].reconciliation.within_2pct` — the ±2% correctness gate (Σraw vs Σcovered coeff).
+- `per_year[].conservation.holds` — the weight-conservation invariant (Σraw vs
+  Σcovered coeff, ±2%). An INTERNAL consistency invariant, NOT an external
+  reconciliation (research R5). Computation correctness is guarded by the
+  golden-value + input-perturbation regression tests.
 - `per_year[].concordance_coverage.coverage_fraction` — the goods-bias metric (~0.15;
   the covered coefficient mass, documenting the map's tradeable-goods scope).
+- `gates.sc005_trade_annual_exact_sum` — real check: persisted annual trade equals
+  an independent `SUM(fact_trade_monthly)` (None on dry-run).
 - `run_metadata.bloc_invariant` — `true` while the county distribution is the same
-  across blocs (no bloc×industry resolution in the DB).
-- `run_metadata.table_hashes` — the determinism hashes.
+  across blocs (no bloc×industry resolution in the DB; intentional — research R6).
+- `run_metadata.table_hashes` — the determinism hashes (order-independent, review #4).
 
 ## Tests
 

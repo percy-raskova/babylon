@@ -1575,10 +1575,16 @@ class FactBilateralTradeAnnual(NormalizedBase):
     """Bloc-year aggregation of monthly bilateral trade (spec-100).
 
     Sums ``fact_trade_monthly`` (USD millions) to annual totals per country for
-    each annual ``time_id``. Feeds the engine's
-    ``ExternalNode.bilateral_trade_value`` (USD). NOTE: this is a USD magnitude,
-    not tonnage — the distinct ``bilateral_trade_tons`` engine field needs FAF
-    freight data (out of scope for spec-100; see the spec-100 research record).
+    each annual ``time_id``.
+
+    **See spec-101 (consumer directive)**: this is a USD magnitude. spec-101 MUST
+    map ``total_trade_usd_millions`` (or the imports/exports USD columns) to the
+    engine's ``ExternalNode.bilateral_trade_value`` (USD). It MUST NOT map this
+    table to ``ExternalNode.bilateral_trade_tons`` — that field is tonnage and
+    needs FAF freight data (out of scope for spec-100; the spec's original
+    "bilateral_trade_tons" name is superseded because the only bilateral trade
+    source in the reference DB is monetary). See ``specs/100-county-exposure``
+    research R8.
     """
 
     __tablename__ = "fact_bilateral_trade_annual"

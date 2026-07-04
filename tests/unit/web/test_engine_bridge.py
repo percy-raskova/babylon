@@ -8,6 +8,7 @@ a real database or simulation engine.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import networkx as nx
@@ -678,3 +679,329 @@ class TestAlertsDashboard:
 
         assert len(result["alerts"]) == 1
         assert result["alerts"][0]["type"] == "uprising"
+
+
+# --------------------------------------------------------------------- #
+# Spec 093: Territory Detail / Org Detail / Map Lens Set — shared fixture
+# --------------------------------------------------------------------- #
+#
+# NOTE: WorldState.from_graph() reconstructs every non-territory/
+# organization/key_figure/institution/industry node as a SocialClass, whose
+# model_config is `extra="forbid"` — so a graph containing spec-070
+# `faction`/`sovereign`/`community` nodes crashes `hydrate_state()`'s
+# internal `WorldState.from_graph()` call (confirmed empirically; a
+# pre-existing engine-layer gap, out of this spec's `web/**` ownership).
+# Tests that need those node types patch `EngineBridge.hydrate_state`
+# directly so they exercise the same `graph` object the real bridge
+# methods already read via `graph.nodes[...]`, without going through the
+# crashing reconstruction path.
+
+
+def _patched_hydrate_state(bridge: EngineBridge, graph: BabylonGraph, tick: int = 10) -> Any:
+    """Patch ``bridge.hydrate_state`` to return ``(mock_state, graph)`` directly."""
+    mock_state = MagicMock()
+    mock_state.tick = tick
+    return patch.object(bridge, "hydrate_state", return_value=(mock_state, graph))
+
+
+def _make_balkanization_graph() -> BabylonGraph:
+    """Build a graph with orgs, territories, a community, and spec-070
+    faction/sovereign/INFLUENCES/CLAIMS data for de-fixture + balkanization
+    tests. Territory "T1" is contested (two factions close in influence);
+    "T2" has a single dominant faction and a sovereign claim.
+    """
+    g = BabylonGraph()
+    g.graph["tick"] = 10
+    g.graph["economy"] = {"imperial_rent": 0.0}
+    g.graph["state_finances"] = {}
+    g.graph["events"] = []
+    g.graph["event_log"] = []
+
+    g.add_node(
+        "org-player",
+        "organization",
+        name="Vanguard Cell",
+        org_type="political_faction",
+        cadre_level=5.0,
+        cohesion=0.6,
+        budget=200.0,
+        heat=0.3,
+        territory_ids=["T1", "T2"],
+    )
+    g.add_node(
+        "T1",
+        "territory",
+        name="Genesee County",
+        county_fips="26049",
+        heat=0.4,
+        rent_level=1.2,
+        population=5000,
+        biocapacity=40.0,
+        max_biocapacity=100.0,
+    )
+    g.add_node(
+        "T2",
+        "territory",
+        name="Washtenaw County",
+        county_fips="26161",
+        heat=0.2,
+        rent_level=0.9,
+        population=8000,
+        biocapacity=90.0,
+        max_biocapacity=100.0,
+    )
+    g.add_node(
+        "sc-genesee-proles",
+        "social_class",
+        name="Genesee Proletariat",
+        role="proletariat",
+        wealth=812.4,
+        agitation=0.62,
+        territory_ids=["T1"],
+        extraction_intensity=0.41,
+    )
+    g.add_node(
+        "comm-genesee",
+        "community",
+        community_type="NEW_AFRIKAN",
+        r=0.34,
+        l=0.48,
+        f=0.18,
+        member_ids=["sc-genesee-proles"],
+    )
+    g.add_edge(
+        "org-player",
+        "sc-genesee-proles",
+        "EXTRACTIVE",
+        value_flow=118.9,
+        tension=0.34,
+    )
+
+    g.add_node("FAC_A", "faction", colonial_stance="UPHOLD", is_settler_formation=True)
+    g.add_node("FAC_B", "faction", colonial_stance="IGNORE", is_settler_formation=True)
+    g.add_node(
+        "SOV_A",
+        "sovereign",
+        ruling_faction_id="FAC_A",
+        extraction_policy="INTENSIFY",
+        legitimacy=0.58,
+    )
+    # T1: contested — two factions within the 0.12 delta.
+    g.add_edge("FAC_A", "T1", "influences", influence_level=0.47, support_type="ideological")
+    g.add_edge("FAC_B", "T1", "influences", influence_level=0.41, support_type="material")
+    # T2: dominant, claimed by SOV_A.
+    g.add_edge("FAC_A", "T2", "influences", influence_level=0.71, support_type="ideological")
+    g.add_edge("SOV_A", "T2", "claims", control_level=0.8, legal_status="de_jure")
+
+    return g
+
+
+@pytest.mark.unit
+class TestGetEconomy:
+    """Spec 093 US5: get_economy(session_id, territory_id) real per-territory summary."""
+
+    def test_territory_not_found_returns_no_data(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="not-a-territory")
+
+        assert result["has_data"] is False
+        assert result["value_produced"] == 0.0
+        assert result["rent_extracted"] == 0.0
+        assert result["exploitation_rate"] is None
+
+    def test_real_data_derived_from_nodes_and_edges(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
+
+        assert result["has_data"] is True
+        assert result["value_produced"] == pytest.approx(812.4)
+        assert result["rent_extracted"] == pytest.approx(118.9)
+        assert result["exploitation_rate"] is not None
+        assert result["extraction_intensity"] == pytest.approx(0.41)
+
+    def test_territory_with_no_economic_nodes_is_honest_zero(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T2")
+
+        assert result["has_data"] is False
+        assert result["value_produced"] == 0.0
+        assert result["exploitation_rate"] is None
+
+    def test_no_territory_id_delegates_to_dashboard(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_economy(uuid.uuid4())
+
+        assert result == {}
+
+
+@pytest.mark.unit
+class TestBalkanizationMapFields:
+    """Spec 093 US3: get_map_snapshot's balkanization block (real spec-070 graph reads)."""
+
+    def test_balkanization_block_present_with_real_factions_and_sovereigns(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        graph = _make_balkanization_graph()
+        mock_persistence.hydrate_graph.return_value = graph
+        with patch("game.models.GameSession") as mock_session_model:
+            mock_session_row = MagicMock()
+            mock_session_row.current_tick = 10
+            mock_session_row.scenario = "default"
+            mock_session_model.objects.get.return_value = mock_session_row
+            with patch("game.models.HexState") as mock_hex_state:
+                mock_hex_state.objects.filter.return_value = []
+                bridge = EngineBridge(mock_persistence)
+                result = bridge.get_map_snapshot(uuid.uuid4())
+
+        balk = result["metadata"]["balkanization"]
+        faction_ids = {f["id"] for f in balk["factions"]}
+        assert faction_ids == {"FAC_A", "FAC_B"}
+        assert balk["sovereigns"][0]["id"] == "SOV_A"
+        assert balk["sovereigns"][0]["claimed_territory_ids"] == ["T2"]
+
+        by_id = {t["territory_id"]: t for t in balk["territory_influence"]}
+        assert by_id["T1"]["contested"] is True
+        assert by_id["T1"]["dominant_faction_id"] == "FAC_A"
+        assert by_id["T2"]["contested"] is False
+        assert by_id["T2"]["current_sovereign_id"] == "SOV_A"
+        assert by_id["T1"]["habitability"] == pytest.approx(0.4)
+
+
+@pytest.mark.unit
+class TestDefixturedVerbTargets:
+    """Spec 093 US4: the 5 verb-target methods derive real graph data,
+    iterate ALL of the org's territories, and never fall back to a
+    hardcoded Wayne County / FIPS 26163 fixture."""
+
+    NO_FIXTURE_LITERALS = ("Wayne County", "territory-26163", "wayne", "26163")
+
+    def _assert_no_fixture_literals(self, payload: object) -> None:
+        text = str(payload)
+        for literal in self.NO_FIXTURE_LITERALS:
+            assert literal not in text, f"found fixture literal {literal!r} in {text[:200]}"
+
+    def test_educate_targets_reads_real_community_consciousness(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        assert result["status"] == "ok"
+        assert len(result["targets"]) >= 1
+        target = result["targets"][0]
+        assert target["consciousness"]["r"] == pytest.approx(0.34)
+        assert target["consciousness"]["l"] == pytest.approx(0.48)
+        assert target["consciousness"]["f"] == pytest.approx(0.18)
+        assert target["material_readiness"]["avg_agitation"] == pytest.approx(0.62)
+        self._assert_no_fixture_literals(result)
+
+    def test_educate_targets_iterates_all_territories_not_just_first(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        # Second community, scoped to T2, so a correct implementation must
+        # surface targets from BOTH of org-player's territories.
+        graph.add_node(
+            "sc-washtenaw-proles",
+            "social_class",
+            name="Washtenaw Proletariat",
+            role="proletariat",
+            wealth=200.0,
+            agitation=0.2,
+            territory_ids=["T2"],
+        )
+        graph.add_node(
+            "comm-washtenaw",
+            "community",
+            community_type="NEW_AFRIKAN",
+            r=0.1,
+            l=0.7,
+            f=0.2,
+            member_ids=["sc-washtenaw-proles"],
+        )
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        territory_ids = {t["territory_id"] for t in result["targets"]}
+        assert territory_ids == {"T1", "T2"}
+
+    def test_educate_targets_empty_when_org_has_no_territories(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", territory_ids=[])
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        assert result["targets"] == []
+
+    def test_aid_targets_reads_real_territory_data(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        assert result["status"] == "ok"
+        self._assert_no_fixture_literals(result)
+        assert len(result["population_targets"]) >= 1
+
+    def test_aid_targets_empty_when_org_has_no_territories(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", territory_ids=[])
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        assert result["population_targets"] == []
+        assert result["org_targets"] == []
+
+    def test_mobilize_targets_no_fixture_literals(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_mobilize_targets(uuid.uuid4(), "org-player")
+
+        self._assert_no_fixture_literals(result)
+
+    def test_attack_targets_no_fixture_literals(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_attack_targets(uuid.uuid4(), "org-player")
+
+        self._assert_no_fixture_literals(result)
+
+    def test_reproduce_targets_no_fixture_literals(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_reproduce_targets(uuid.uuid4(), "org-player")
+
+        self._assert_no_fixture_literals(result)

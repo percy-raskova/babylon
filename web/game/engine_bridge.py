@@ -26,7 +26,9 @@ from babylon.engine.scenarios import (
 from babylon.engine.scenarios_wayne_county import create_wayne_county_scenario
 from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
+from babylon.formulas.unequal_exchange import calculate_exploitation_rate
 from babylon.models.config import SimulationConfig
+from babylon.models.entities.consciousness import TernaryConsciousness
 from babylon.models.enums import ActionType
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
@@ -96,6 +98,190 @@ def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
     except Exception:  # noqa: BLE001 — non-fatal; defaults to 0
         logger.exception("Failed to read rng_seed for session %s", session_id)
     return 0
+
+
+# ---------------------------------------------------------------------- #
+# Spec 093: real graph reads shared by get_economy, the balkanization
+# map-snapshot block, and the de-fixtured verb-target methods.
+# ---------------------------------------------------------------------- #
+
+# Edge modes counted as extraction/rent for get_economy (matches EdgeMode's
+# EXTRACTIVE/ANTAGONISTIC values, compared case-insensitively since graph
+# edges may carry either the enum's lowercase value or an uppercase legacy
+# literal depending on which System wrote them).
+_EXTRACTIVE_EDGE_MODES: frozenset[str] = frozenset({"extractive", "antagonistic"})
+
+# Contested-territory threshold, ported verbatim from the design canon's
+# documented values (design/mockups/themap/map-data.jsx: `(dominant_share -
+# second_share) < 0.12 || dominant_share < 0.45`) — not a new invented
+# constant.
+_CONTESTED_INFLUENCE_DELTA: float = 0.12
+_CONTESTED_DOMINANCE_FLOOR: float = 0.45
+
+
+def _nodes_in_territory(graph: BabylonGraph, territory_id: str) -> list[tuple[str, dict[str, Any]]]:
+    """Return (node_id, data) for every social_class/organization node whose
+    ``territory_ids`` includes ``territory_id``."""
+    found: list[tuple[str, dict[str, Any]]] = []
+    for node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") not in ("social_class", "organization"):
+            continue
+        if territory_id in data.get("territory_ids", []):
+            found.append((node_id, data))
+    return found
+
+
+def _communities_in_territory(
+    graph: BabylonGraph, territory_id: str
+) -> list[tuple[str, dict[str, Any]]]:
+    """Return (community_id, data) for every community node with a member
+    whose ``territory_ids`` includes ``territory_id``."""
+    member_ids_in_territory = {node_id for node_id, _ in _nodes_in_territory(graph, territory_id)}
+    found: list[tuple[str, dict[str, Any]]] = []
+    for node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") != "community":
+            continue
+        members = set(data.get("member_ids", []))
+        if members & member_ids_in_territory:
+            found.append((node_id, data))
+    return found
+
+
+def _avg_agitation_for_members(graph: BabylonGraph, member_ids: list[str]) -> float:
+    """Average real ``agitation`` across the given social_class member ids."""
+    values = [
+        float(graph.nodes[mid].get("agitation", 0.0))
+        for mid in member_ids
+        if mid in graph.nodes and graph.nodes[mid].get("_node_type") == "social_class"
+    ]
+    return sum(values) / len(values) if values else 0.0
+
+
+def _build_balkanization_block(graph: BabylonGraph) -> dict[str, Any]:
+    """Build the spec-093 ``balkanization`` map-snapshot block from real
+    spec-070 graph data (faction/sovereign nodes, INFLUENCES/CLAIMS edges).
+
+    Reads the RAW graph directly (never via ``WorldState.from_graph()``,
+    which reconstructs unrecognized ``_node_type`` values — ``faction``,
+    ``sovereign``, ``community`` — as a strict ``SocialClass(extra=
+    "forbid")`` and crashes on their real attributes; a pre-existing
+    engine-layer gap outside this spec's ``web/**`` ownership). Habitability
+    and contested-state have no stored field on Territory — both are
+    derived at read time here rather than invented as new engine state.
+    """
+    factions: list[dict[str, Any]] = []
+    sovereigns: list[dict[str, Any]] = []
+    territory_ids: set[str] = set()
+
+    for node_id, data in graph.nodes(data=True):
+        node_type = data.get("_node_type")
+        if node_type == "faction":
+            factions.append(
+                {
+                    "id": node_id,
+                    "colonial_stance": data.get("colonial_stance"),
+                    "is_settler_formation": bool(data.get("is_settler_formation", False)),
+                }
+            )
+        elif node_type == "sovereign":
+            claimed = [tid for tid, _level, _status in graph.query_sovereign_claims(node_id)]
+            sovereigns.append(
+                {
+                    "id": node_id,
+                    "ruling_faction_id": data.get("ruling_faction_id"),
+                    "extraction_policy": data.get("extraction_policy"),
+                    "legitimacy": float(data.get("legitimacy", 0.0)),
+                    "claimed_territory_ids": claimed,
+                }
+            )
+        elif node_type == "territory":
+            territory_ids.add(node_id)
+
+    territory_influence: list[dict[str, Any]] = []
+    for tid in sorted(territory_ids):
+        rows = graph.query_faction_influence_by_territory(tid)
+        if not rows:
+            continue
+        influences = [
+            {"faction_id": fid, "influence_level": level, "support_type": support}
+            for fid, level, support in rows
+        ]
+        top_share = rows[0][1]
+        second_share = rows[1][1] if len(rows) > 1 else 0.0
+        contested = (top_share - second_share) < _CONTESTED_INFLUENCE_DELTA or (
+            top_share < _CONTESTED_DOMINANCE_FLOOR
+        )
+        claim_rows = graph.query_territory_claims(tid)
+        current_sovereign_id = claim_rows[0][0] if claim_rows else None
+        terr_data = graph.nodes[tid]
+        biocapacity = float(terr_data.get("biocapacity", 0.0))
+        max_biocapacity = float(terr_data.get("max_biocapacity", 0.0)) or 1.0
+        habitability = max(0.0, min(1.0, biocapacity / max_biocapacity))
+
+        territory_influence.append(
+            {
+                "territory_id": tid,
+                "influences": influences,
+                "dominant_faction_id": rows[0][0],
+                "current_sovereign_id": current_sovereign_id,
+                "contested": contested,
+                "habitability": round(habitability, 4),
+            }
+        )
+
+    return {
+        "factions": factions,
+        "sovereigns": sovereigns,
+        "territory_influence": territory_influence,
+    }
+
+
+def _outgoing_extractive_edges(graph: BabylonGraph, source_id: str) -> list[dict[str, Any]]:
+    """Return real EXTRACTIVE/ANTAGONISTIC edges outgoing from ``source_id``."""
+    found: list[dict[str, Any]] = []
+    for source, target in graph.edges:
+        if source != source_id:
+            continue
+        data = graph.edges[(source, target)]
+        mode = str(data.get("edge_type", data.get("_edge_type", ""))).lower()
+        if mode not in _EXTRACTIVE_EDGE_MODES:
+            continue
+        found.append(
+            {
+                "edge_id": f"{source}->{target}",
+                "target_name": graph.nodes.get(target, {}).get("name", target),
+                "flow_type": mode.upper(),
+                "s_flow_per_tick": float(data.get("value_flow", 0.0)),
+            }
+        )
+    return found
+
+
+def _edge_status_between(graph: BabylonGraph, node_a: str, node_b: str) -> dict[str, Any]:
+    """Return a real edge-mode summary between two nodes (either direction),
+    or an honest ``"NONE"`` status when no edge exists."""
+    for source, target in ((node_a, node_b), (node_b, node_a)):
+        if (source, target) in graph.edges:
+            data = graph.edges[(source, target)]
+            mode = str(data.get("edge_type", data.get("_edge_type", "none"))).upper()
+            return {
+                "type": mode,
+                "value_flow": float(data.get("value_flow", 0.0)),
+                "tension": float(data.get("tension", 0.0)),
+            }
+    return {"type": "NONE", "value_flow": 0.0, "tension": 0.0}
+
+
+def _empty_economy_payload(territory_id: str | None) -> dict[str, Any]:
+    return {
+        "territory_id": territory_id,
+        "has_data": False,
+        "value_produced": 0.0,
+        "wage_share": None,
+        "rent_extracted": 0.0,
+        "exploitation_rate": None,
+        "extraction_intensity": 0.0,
+    }
 
 
 class EngineBridge:
@@ -279,22 +465,34 @@ class EngineBridge:
             # Aggregated zoom level — group by dimension column
             features = self._aggregate_hex_features(hex_states, zoom)
 
+        metadata: dict[str, Any] = {
+            "tick": target_tick,
+            "scenario": session.scenario,
+            "h3_resolution": 7,
+            "zoom": zoom,
+            "available_metrics": [
+                "profit_rate",
+                "exploitation_rate",
+                "occ",
+                "imperial_rent",
+                "heat",
+                "org_presence",
+            ],
+        }
+
+        # Spec 093 US3: balkanization block for the map lens set. Reads the
+        # raw graph directly (see _build_balkanization_block docstring for
+        # why WorldState.from_graph() must be avoided here). Best-effort —
+        # a hydration failure must not break the rest of the map snapshot.
+        try:
+            graph = self._persistence.hydrate_graph(tick=target_tick, session_id=session_id)
+            metadata["balkanization"] = _build_balkanization_block(graph)
+        except Exception:  # noqa: BLE001 — optional block, never fails the map
+            logger.exception("Failed to build balkanization block for session %s", session_id)
+
         return {
             "type": "FeatureCollection",
-            "metadata": {
-                "tick": target_tick,
-                "scenario": session.scenario,
-                "h3_resolution": 7,
-                "zoom": zoom,
-                "available_metrics": [
-                    "profit_rate",
-                    "exploitation_rate",
-                    "occ",
-                    "imperial_rent",
-                    "heat",
-                    "org_presence",
-                ],
-            },
+            "metadata": metadata,
             "features": features,
         }
 
@@ -442,6 +640,77 @@ class EngineBridge:
     def get_economy_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         """Return the economy left-panel dashboard data."""
         return {}
+
+    def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:
+        """Return a per-territory economic summary (spec 093 US5).
+
+        Aggregates real ``wealth``/``extraction_intensity`` from
+        social_class/organization nodes located in ``territory_id`` and
+        real ``value_flow`` from incident EXTRACTIVE/ANTAGONISTIC edges.
+        Returns ``has_data: False`` with honest zeros when the territory
+        has no such nodes/edges yet — never a fabricated nonzero value.
+
+        Without ``territory_id``, delegates to the (still-stub)
+        dashboard-wide :meth:`get_economy_dashboard` for backward
+        compatibility with the existing ``/economy/`` route.
+        """
+        if territory_id is None:
+            return self.get_economy_dashboard(session_id)
+
+        _state, graph = self.hydrate_state(session_id)
+        if territory_id not in graph.nodes:
+            return _empty_economy_payload(territory_id)
+
+        econ_nodes = _nodes_in_territory(graph, territory_id)
+        node_ids = {node_id for node_id, _ in econ_nodes}
+        value_produced = sum(float(data.get("wealth", 0.0)) for _, data in econ_nodes)
+        extraction_values = [
+            float(data["extraction_intensity"])
+            for _, data in econ_nodes
+            if "extraction_intensity" in data
+        ]
+
+        rent_extracted = 0.0
+        tension_values: list[float] = []
+        for source, target in graph.edges:
+            # Both endpoints must be local to this territory — an org
+            # operating across multiple territories shouldn't bleed one
+            # territory's edge activity into another's summary.
+            if source not in node_ids or target not in node_ids:
+                continue
+            edge_data = graph.edges[(source, target)]
+            mode = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+            if mode not in _EXTRACTIVE_EDGE_MODES:
+                continue
+            rent_extracted += float(edge_data.get("value_flow", 0.0))
+            tension = edge_data.get("tension")
+            if tension is not None:
+                tension_values.append(float(tension))
+
+        has_data = value_produced > 0.0 or rent_extracted > 0.0 or bool(extraction_values)
+        exploitation_rate: float | None = None
+        if has_data and value_produced > 0.0:
+            # Real, locally-derivable exchange-ratio proxy: how much extra
+            # value was extracted relative to what this territory produced
+            # (epsilon > 1 == giving away more than receiving, matching
+            # unequal_exchange's semantics), fed through the existing
+            # calculate_exploitation_rate formula rather than a new one.
+            exchange_ratio = (value_produced + rent_extracted) / value_produced
+            exploitation_rate = round(calculate_exploitation_rate(exchange_ratio) / 100.0, 4)
+
+        return {
+            "territory_id": territory_id,
+            "has_data": has_data,
+            "value_produced": round(value_produced, 4),
+            "wage_share": None,
+            "rent_extracted": round(rent_extracted, 4),
+            "exploitation_rate": exploitation_rate,
+            "extraction_intensity": (
+                round(sum(extraction_values) / len(extraction_values), 4)
+                if extraction_values
+                else 0.0
+            ),
+        }
 
     def get_communities_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         """Return communities dashboard (spec 061 US6 T089, FR-018).
@@ -997,114 +1266,76 @@ class EngineBridge:
             "over_budget_penalty": None,
         }
 
-        targets = []
-        unavailable_communities = []
+        targets: list[dict[str, Any]] = []
+        unavailable_communities: list[dict[str, Any]] = []
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
         for tid in territory_ids:
-            if tid in graph.nodes:
-                terr_data = graph.nodes[tid]
-                terr_name = terr_data.get("name", tid)
+            if tid not in graph.nodes:
+                continue
+            terr_data = graph.nodes[tid]
+            terr_name = terr_data.get("name", tid)
 
-                # Mock target aligned with graph
-                targets.append(
-                    {
-                        "community_id": f"community-new-afrikan-{tid}",
-                        "community_type": "NEW_AFRIKAN",
-                        "category": "contradiction_pair",
-                        "territory_name": terr_name,
-                        "territory_id": str(tid),
-                        "credibility": org_status.get("cohesion", 0.72),
-                        "credibility_explanation": f"{int(org_status.get('cohesion', 0.72) * 100)}% membership overlap",
-                        "consciousness": {
-                            "r": 0.25,
-                            "l": 0.55,
-                            "f": 0.20,
-                            "dominant_tendency": "liberal",
-                            "collective_identity": 0.25,
-                            "ideological_contestation": 0.82,
-                        },
-                        "material_readiness": {
-                            "avg_agitation": 0.45,
-                            "readiness_score": 1.0,
-                            "readiness_explanation": "Material conditions have prepared the ground.",
-                        },
-                        "education_pressure": {
-                            "current": 0.12,
-                            "projected_delta": 0.036,
-                            "projected_new": 0.156,
-                            "decay_per_tick": 0.012,
-                        },
-                        "feedforward": {
-                            "projected_routing_shift": {
-                                "r_gain_per_tick": 0.008,
-                                "f_reduction_per_tick": 0.005,
-                                "l_reduction_per_tick": 0.003,
-                                "explanation": "Education will shift ~0.8% toward revolutionary tendency per tick",
-                            },
-                            "state_ai_visibility": "medium",
-                            "state_ai_likely_response": "RESEARCH",
-                            "turns_to_dominant_tendency_shift": 18,
-                            "turns_explanation": "~18 ticks assuming sustained effort",
-                        },
-                    }
-                )
-
+            communities = _communities_in_territory(graph, tid)
+            if not communities:
                 unavailable_communities.append(
                     {
-                        "community_id": f"community-settler-{tid}",
-                        "community_type": "SETTLER",
+                        "community_id": f"community-unknown-{tid}",
+                        "community_type": "UNKNOWN",
                         "territory_name": terr_name,
-                        "reason": "No membership overlap — credibility ≈ 0",
+                        "reason": "No community data present for this territory yet.",
                     }
                 )
-                break
+                continue
 
-        # Default mock if no matching territory
-        if not targets:
-            targets.append(
-                {
-                    "community_id": "community-new-afrikan-wayne",
-                    "community_type": "NEW_AFRIKAN",
-                    "category": "contradiction_pair",
-                    "territory_name": "Wayne County",
-                    "territory_id": "territory-26163",
-                    "credibility": 0.72,
-                    "credibility_explanation": "72% membership overlap",
-                    "consciousness": {
-                        "r": 0.25,
-                        "l": 0.55,
-                        "f": 0.20,
-                        "dominant_tendency": "liberal",
-                        "collective_identity": 0.25,
-                        "ideological_contestation": 0.82,
-                    },
-                    "material_readiness": {
-                        "avg_agitation": 0.45,
-                        "readiness_score": 1.0,
-                        "readiness_explanation": "Material conditions have prepared the ground.",
-                    },
-                    "education_pressure": {
-                        "current": 0.12,
-                        "projected_delta": 0.036,
-                        "projected_new": 0.156,
-                        "decay_per_tick": 0.012,
-                    },
-                    "feedforward": {
-                        "projected_routing_shift": {
-                            "r_gain_per_tick": 0.008,
-                            "f_reduction_per_tick": 0.005,
-                            "l_reduction_per_tick": 0.003,
-                            "explanation": "Education will shift ~0.8% toward revolutionary tendency per tick",
+            for community_id, community_data in communities:
+                consciousness = TernaryConsciousness(
+                    r=float(community_data.get("r", 0.0)),
+                    l=float(community_data.get("l", 0.0)),
+                    f=float(community_data.get("f", 0.0)),
+                )
+                avg_agitation = _avg_agitation_for_members(
+                    graph, list(community_data.get("member_ids", []))
+                )
+                education_pressure_current = float(community_data.get("education_pressure", 0.0))
+                cohesion = float(org_status.get("cohesion", 0.0))
+
+                targets.append(
+                    {
+                        "community_id": community_id,
+                        "community_type": str(community_data.get("community_type", "UNKNOWN")),
+                        "category": str(community_data.get("category", "contradiction_pair")),
+                        "territory_name": terr_name,
+                        "territory_id": str(tid),
+                        "credibility": cohesion,
+                        "credibility_explanation": f"{int(cohesion * 100)}% org cohesion (real, not membership survey — no per-community overlap metric exists yet)",
+                        "consciousness": {
+                            "r": float(consciousness.r),
+                            "l": float(consciousness.l),
+                            "f": float(consciousness.f),
+                            "dominant_tendency": consciousness.dominant_tendency.value,
+                            "collective_identity": consciousness.collective_identity,
+                            "ideological_contestation": consciousness.ideological_contestation,
                         },
-                        "state_ai_visibility": "medium",
-                        "state_ai_likely_response": "RESEARCH",
-                        "turns_to_dominant_tendency_shift": 18,
-                        "turns_explanation": "~18 ticks assuming sustained effort",
-                    },
-                }
-            )
+                        "material_readiness": {
+                            "avg_agitation": avg_agitation,
+                            "readiness_score": min(1.0, avg_agitation / 0.5)
+                            if avg_agitation
+                            else 0.0,
+                            "readiness_explanation": "Derived from real SocialClass.agitation for this community's members.",
+                        },
+                        "education_pressure": {
+                            "current": education_pressure_current,
+                            "projected_delta": None,
+                            "projected_new": None,
+                            "decay_per_tick": None,
+                        },
+                        "feedforward": {
+                            "note": "No per-tick routing-shift projection exists in the engine yet.",
+                        },
+                    }
+                )
 
         return {
             "status": "ok",
@@ -1138,134 +1369,68 @@ class EngineBridge:
             "over_budget_penalty": None,
         }
 
-        population_targets = []
-        org_targets = []
-        unavailable_targets = []
+        population_targets: list[dict[str, Any]] = []
+        org_targets: list[dict[str, Any]] = []
+        unavailable_targets: list[dict[str, Any]] = []
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
 
         for tid in territory_ids:
-            if tid in graph.nodes:
-                terr_data = graph.nodes[tid]
-                terr_name = terr_data.get("name", tid)
+            if tid not in graph.nodes:
+                continue
+            terr_data = graph.nodes[tid]
+            terr_name = terr_data.get("name", tid)
 
-                # Mock Population Target
-                population_targets.append(
-                    {
-                        "community_id": f"community-new-afrikan-{tid}",
-                        "community_name": f"New Afrikan Proletariat ({terr_name})",
-                        "population": 45000,
-                        "class_name": "PROLETARIAT",
-                        "material_conditions": {
-                            "v_value_produced": 120.5,
-                            "wage_received": 95.0,
-                            "consumption_gap": 25.5,
-                            "subsistence_level": 100.0,
-                            "agitation_level": 0.45,
-                        },
-                        "edge_status": {
-                            "type": "TRANSACTIONAL",
-                            "solidarity_accumulation": 0.3,
-                            "education_pressure": 0.12,
-                        },
-                        "feedforward": {
-                            "consumption_ratio_delta": 0.1,
-                            "agitation_delta": -0.05,
-                            "solidarity_added": 0.15,
-                            "economism_risk": "WARNING: High agitation relief without sufficient education pressure could trigger right-routing.",
-                        },
-                    }
-                )
+            econ_nodes = _nodes_in_territory(graph, tid)
+            found_any = False
+            for node_id, data in econ_nodes:
+                node_type = data.get("_node_type")
+                if node_type == "social_class":
+                    found_any = True
+                    population_targets.append(
+                        {
+                            "community_id": node_id,
+                            "community_name": data.get("name", node_id),
+                            "population": data.get("population"),
+                            "class_name": str(data.get("role", "UNKNOWN")).upper(),
+                            "material_conditions": {
+                                "v_value_produced": float(data.get("wealth", 0.0)),
+                                "wage_received": None,
+                                "consumption_gap": None,
+                                "subsistence_level": data.get("subsistence_threshold"),
+                                "agitation_level": float(data.get("agitation", 0.0)),
+                            },
+                            "edge_status": _edge_status_between(graph, org_id, node_id),
+                            "feedforward": {
+                                "note": "No per-tick aid-effect projection exists in the engine yet."
+                            },
+                        }
+                    )
+                elif node_type == "organization" and node_id != org_id:
+                    found_any = True
+                    org_targets.append(
+                        {
+                            "org_id": node_id,
+                            "org_name": data.get("name", node_id),
+                            "org_type": str(data.get("org_type", "UNKNOWN")),
+                            "material_stock": float(data.get("budget", 0.0)),
+                            "edge_status": _edge_status_between(graph, org_id, node_id),
+                            "feedforward": {
+                                "note": "No per-tick aid-effect projection exists in the engine yet."
+                            },
+                        }
+                    )
 
-                # Mock Org Target
-                org_targets.append(
-                    {
-                        "org_id": f"org-mutual-aid-{tid}",
-                        "org_name": f"Detroit Mutual Aid ({terr_name})",
-                        "org_type": "CIVIL_SOCIETY",
-                        "material_stock": 450.0,
-                        "edge_status": {
-                            "type": "NONE",
-                            "solidarity_accumulation": 0.0,
-                            "education_pressure": 0.0,
-                        },
-                        "feedforward": {
-                            "consumption_ratio_delta": 0.0,
-                            "agitation_delta": 0.0,
-                            "solidarity_added": 0.15,
-                            "economism_risk": None,
-                        },
-                    }
-                )
-
+            if not found_any:
                 unavailable_targets.append(
                     {
-                        "community_id": f"community-settler-{tid}",
-                        "community_type": "SETTLER",
+                        "community_id": f"community-unknown-{tid}",
+                        "community_type": "UNKNOWN",
                         "territory_name": terr_name,
-                        "reason": "Geographically inaccessible or no material deficit.",
+                        "reason": "No population or organization data present for this territory yet.",
                     }
                 )
-                break
-
-        # Default mock if no matching territory
-        if not population_targets:
-            population_targets.append(
-                {
-                    "community_id": "community-new-afrikan-wayne",
-                    "community_name": "New Afrikan Proletariat (Wayne County)",
-                    "population": 45000,
-                    "class_name": "PROLETARIAT",
-                    "material_conditions": {
-                        "v_value_produced": 120.5,
-                        "wage_received": 95.0,
-                        "consumption_gap": 25.5,
-                        "subsistence_level": 100.0,
-                        "agitation_level": 0.45,
-                    },
-                    "edge_status": {
-                        "type": "TRANSACTIONAL",
-                        "solidarity_accumulation": 0.3,
-                        "education_pressure": 0.12,
-                    },
-                    "feedforward": {
-                        "consumption_ratio_delta": 0.1,
-                        "agitation_delta": -0.05,
-                        "solidarity_added": 0.15,
-                        "economism_risk": "WARNING: High agitation relief without sufficient education pressure could trigger right-routing.",
-                    },
-                }
-            )
-
-            org_targets.append(
-                {
-                    "org_id": "org-mutual-aid-wayne",
-                    "org_name": "Detroit Mutual Aid (Wayne County)",
-                    "org_type": "CIVIL_SOCIETY",
-                    "material_stock": 450.0,
-                    "edge_status": {
-                        "type": "NONE",
-                        "solidarity_accumulation": 0.0,
-                        "education_pressure": 0.0,
-                    },
-                    "feedforward": {
-                        "consumption_ratio_delta": 0.0,
-                        "agitation_delta": 0.0,
-                        "solidarity_added": 0.15,
-                        "economism_risk": None,
-                    },
-                }
-            )
-
-            unavailable_targets.append(
-                {
-                    "community_id": "community-settler-wayne",
-                    "community_type": "SETTLER",
-                    "territory_name": "Wayne County",
-                    "reason": "Geographically inaccessible or no material deficit.",
-                }
-            )
 
         return {
             "status": "ok",
@@ -1290,52 +1455,44 @@ class EngineBridge:
         if not org_status:
             return {"status": "error", "error": "Org not found"}
 
+        org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+
+        targets: list[dict[str, Any]] = []
+        for tid in territory_ids:
+            if tid not in graph.nodes:
+                continue
+            for node_id, data in _nodes_in_territory(graph, tid):
+                if data.get("_node_type") != "organization" or node_id == org_id:
+                    continue
+                if str(data.get("org_type", "")) not in ("business", "civil_society_org"):
+                    continue
+                allies = [
+                    {"id": ally_id, "name": graph.nodes[ally_id].get("name", ally_id)}
+                    for ally_id, ally_data in _nodes_in_territory(graph, tid)
+                    if ally_data.get("_node_type") == "organization"
+                    and ally_id not in (org_id, node_id)
+                ]
+                targets.append(
+                    {
+                        "id": node_id,
+                        "name": data.get("name", node_id),
+                        "type": str(data.get("org_type", "UNKNOWN")).upper(),
+                        "heat": float(data.get("heat", 0.0)),
+                        "cohesion": float(data.get("cohesion", 0.0)),
+                        "coordination_opportunities": [
+                            {"type": "SOLIDARITY_AMPLIFICATION", "ally": ally} for ally in allies
+                        ],
+                    }
+                )
+
         return {
             "entity_id": org_id,
             "name": org_status.get("name", "Unknown Org"),
-            "available_sl": org_status.get("solidarity", 0.0),
-            "available_cl": org_status.get("consciousness", 0.0),
-            "mobilize_cost_cl": 0.2,  # Hardcoded matching GameDefines for mock
-            "targets": [
-                {
-                    "id": "biz_auto_plant_1",
-                    "name": "Jefferson North Assembly",
-                    "type": "BUSINESS",
-                    "consciousness": 0.55,
-                    "heat": 0.2,
-                    "base_agitation": 0.4,
-                    "coordination_opportunities": [
-                        {
-                            "type": "SOLIDARITY_AMPLIFICATION",
-                            "ally": {"id": "org_uaw_local", "name": "UAW Local"},
-                            "multiplier": 1.15,
-                        }
-                    ],
-                    "sl_options": [
-                        {
-                            "sl_committed": 100.0,
-                            "estimated_effects": {
-                                "solidarity_overview": {
-                                    "base_turnout": 1000,
-                                    "amplified_turnout": 1150,
-                                    "total_multiplier": 1.15,
-                                    "allies_activated": 1,
-                                },
-                                "consciousness": {"agitation_delta": 0.07, "new_agitation": 0.47},
-                                "value": {
-                                    "disrupted_production": 50000.0,
-                                    "surplus_denied": 15000.0,
-                                },
-                                "state_response": {
-                                    "heat_delta": 0.05,
-                                    "new_heat": 0.25,
-                                    "ddos_effect": {"active": False, "attention_diverted": 0},
-                                },
-                            },
-                        }
-                    ],
-                }
-            ],
+            "available_sl": org_status.get("resources", {}).get("sympathizer_labor", 0.0),
+            "available_cl": org_status.get("resources", {}).get("cadre_labor", 0.0),
+            "mobilize_cost_cl": GameDefines().mobilize.mobilize_cl_cost,
+            "targets": targets,
         }
 
     def get_attack_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
@@ -1350,199 +1507,103 @@ class EngineBridge:
         if not org_status:
             return {"status": "error", "error": "Org not found"}
 
-        # Compute cost metrics
+        resources = org_status.get("resources", {})
         cost = {
             "action_points": 3,
             "cadre_labor_if_targeted": 2.5,
             "sympathizer_labor_if_mass": 25.0,
             "material": 100.0,
-            "can_afford_targeted": True,
-            "can_afford_mass": True,
+            "can_afford_targeted": resources.get("cadre_labor", 0) >= 2.5,
+            "can_afford_mass": resources.get("sympathizer_labor", 0) >= 25.0,
             "over_budget_ap": False,
             "cost_explanation": "TARGETED attacks use dense cadre formations. MASS actions use diffused sympathizer labor. Both require AP and initial materials.",
         }
 
-        ultra_left_warning = {
-            "active": True,
-            "trap_score": 0.85,
-            "indicators": [
-                "Premature violence without mass base",
-                "High potential for severe state repression",
-            ],
-            "explanation": "Carrying out armed struggle without sufficient mass support or defensive capacity triggers the ultra-left trap, isolating vanguard elements.",
-        }
+        # Real ultra-left trap status from the last resolved tick, when
+        # available (spec 056 trap detection — see resolve_tick()).
+        trap_state = _session_trap_state.get(session_id)
+        if trap_state is not None:
+            ultra_left_warning = {
+                "active": trap_state.ultra_left.severity != "none",
+                "trap_score": trap_state.ultra_left.score,
+                "indicators": list(trap_state.ultra_left.indicators),
+                "explanation": "Real ultra-left trap detection from this session's action history.",
+            }
+        else:
+            ultra_left_warning = {
+                "active": False,
+                "trap_score": 0.0,
+                "indicators": [],
+                "explanation": "No trap detection has run yet this session (requires a resolved tick).",
+            }
 
+        org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+
+        organizations: list[dict[str, Any]] = []
+        institutions: list[dict[str, Any]] = []
+        unavailable_targets: list[dict[str, Any]] = []
+        p_acquiescence_values: list[float] = []
+
+        for tid in territory_ids:
+            if tid not in graph.nodes:
+                continue
+            terr_data = graph.nodes[tid]
+            terr_name = terr_data.get("name", tid)
+            found_any = False
+
+            for node_id, data in graph.nodes(data=True):
+                node_type = data.get("_node_type")
+                if node_type == "social_class" and tid in data.get("territory_ids", []):
+                    if "p_acquiescence" in data:
+                        p_acquiescence_values.append(float(data["p_acquiescence"]))
+                    continue
+                if (
+                    node_type == "organization"
+                    and node_id != org_id
+                    and tid in data.get("territory_ids", [])
+                ):
+                    found_any = True
+                    extractive_edges = _outgoing_extractive_edges(graph, node_id)
+                    organizations.append(
+                        {
+                            "target_id": node_id,
+                            "target_type": str(data.get("org_type", "UNKNOWN")).upper(),
+                            "name": data.get("name", node_id),
+                            "territory_name": terr_name,
+                            "territory_id": str(tid),
+                            "defensive_capacity": float(data.get("budget", 0.0)),
+                            "extractive_edges": extractive_edges,
+                        }
+                    )
+                elif node_type == "institution" and tid in data.get("territory_ids", []):
+                    found_any = True
+                    institutions.append(
+                        {
+                            "target_id": node_id,
+                            "target_type": "INSTITUTION",
+                            "name": data.get("name", node_id),
+                            "factional_control": dict(data.get("factional_composition", {})),
+                        }
+                    )
+
+            if not found_any:
+                unavailable_targets.append(
+                    {
+                        "target_id": f"unknown-{tid}",
+                        "name": "No hostile organization or institution present",
+                        "territory_name": terr_name,
+                        "reason": "No target data present for this territory yet.",
+                    }
+                )
+
+        min_p_acquiescence = min(p_acquiescence_values) if p_acquiescence_values else None
         warsaw_ghetto_flag = {
-            "active": False,
-            "population_p_acquiescence": 0.45,
+            "active": min_p_acquiescence is not None and min_p_acquiescence <= 0.05,
+            "population_p_acquiescence": min_p_acquiescence,
             "threshold": 0.05,
             "explanation": "If survival probabilities reach near absolute zero, mass base will endorse desperate measures regardless of military feasibility.",
         }
-
-        organizations = [
-            {
-                "target_id": "org-wayne-auto-parts-inc",
-                "target_type": "CAPITAL",
-                "name": "Wayne Auto Parts Inc.",
-                "territory_name": "Wayne County",
-                "territory_id": "wayne",
-                "defensive_capacity": 450.0,
-                "description": "Mid-sized Constant Capital depot relying heavily on extracted labor from the periphery.",
-                "value_tensor_role": {
-                    "department": "Department_I",
-                    "c_stock": 120500.0,
-                    "annual_s_extracted": 45000.0,
-                    "s_v_ratio": 4.5,
-                    "explanation": "High s/v ratio indicates hyper-exploitation. Destroying this stock degrades upstream Imperial Rent.",
-                },
-                "extractive_edges": [
-                    {
-                        "edge_id": "edge-wage-wayne",
-                        "target_name": "New Afrikan Proletariat (Wayne)",
-                        "flow_type": "WAGES",
-                        "s_flow_per_tick": 450.5,
-                        "explanation": "Exploitation channel extracting surplus value.",
-                    }
-                ],
-                "attack_projection": {
-                    "modes": {
-                        "targeted_sabotage": {
-                            "resource_cost": {
-                                "cadre_labor": 3.0,
-                                "action_points": 3,
-                                "material": 150.0,
-                            },
-                            "damage_to_target": {
-                                "c_destroyed": 24000.0,
-                                "c_destruction_pct": 0.20,
-                                "capacity_degradation": 15.0,
-                                "recovery_ticks": 6,
-                                "explanation": "Targeted strikes hit critical infrastructure, bypassing general security.",
-                            },
-                            "value_flow_disruption": {
-                                "s_flow_interrupted": 250.0,
-                                "s_flow_interrupt_duration": 4,
-                                "explanation": "Production halts briefly.",
-                            },
-                            "heat_generated": 0.4,
-                            "opsec_exposure": 0.15,
-                            "detection_probability": 0.35,
-                            "explanation": "Highly effective but risks detection of specialized cadres.",
-                        },
-                        "mass_action": {
-                            "resource_cost": {
-                                "sympathizer_labor": 50.0,
-                                "action_points": 3,
-                                "agitation": 10.0,
-                            },
-                            "damage_to_target": {
-                                "wealth_reduction": 15000.0,
-                                "capacity_degradation": 5.0,
-                                "recovery_ticks": 2,
-                                "explanation": "Mass pickets and property damage.",
-                            },
-                            "value_flow_disruption": {
-                                "s_flow_interrupted": 450.0,
-                                "s_flow_interrupt_duration": 1,
-                                "explanation": "Complete shutdown of site for duration of mass action.",
-                            },
-                            "heat_generated": 0.1,
-                            "detection_probability": 0.05,
-                            "explanation": "Broad action diffuses heat but may lack permanent disruptive power.",
-                        },
-                    },
-                    "collateral_damage": {
-                        "affected_population": "community-new-afrikan-wayne",
-                        "population_name": "New Afrikan Proletariat",
-                        "workers_affected": 450,
-                        "wealth_impact": -15.0,
-                        "wealth_impact_explanation": "Lost wages from temporary shutdown.",
-                        "agitation_effect": 0.05,
-                        "agitation_explanation": "Displays of power increase structural agitation.",
-                    },
-                    "state_ai_response": {
-                        "visibility": "HIGH",
-                        "immediate_response": "Deployment of tactical state security variants.",
-                        "escalation_risk": "High likelihood of activating surveillance grid.",
-                        "repression_backfire": {
-                            "agitation_generated_on_community": 0.15,
-                            "affected_community": "Wayne County",
-                            "routing_analysis": "P(S|A) significantly reduced; routing to revolutionary vector.",
-                        },
-                    },
-                    "coherence_check": {
-                        "current_coherence": 0.85,
-                        "coherence_threshold": 0.50,
-                        "network_collapse_risk": False,
-                        "explanation": "Target organization maintains high redundancy.",
-                    },
-                },
-            }
-        ]
-
-        edges = [
-            {
-                "target_id": "edge-imperial-rent-core",
-                "target_type": "EXTRACTIVE_EDGE",
-                "edge_description": "Financial conduit moving surplus from periphery to core.",
-                "source_name": "Global South Periphery",
-                "sink_name": "Finance Capital",
-                "s_flow_per_tick": 4500.0,
-                "attack_projection": {
-                    "modes": {
-                        "targeted_disruption": {
-                            "resource_cost": {"cadre_labor": 5.0, "action_points": 4},
-                            "heat_generated": 0.7,
-                            "detection_probability": 0.4,
-                            "edge_effect": "SEVERED",
-                            "recovery_duration": 3,
-                            "reconnection_probability": 0.85,
-                            "effect": "Halts S_flow for 3 ticks.",
-                            "explanation": "A high-risk action disrupting global imperial rent algorithms.",
-                        }
-                    },
-                    "state_ai_response": {
-                        "visibility": "CRITICAL",
-                        "immediate_response": "National Security protocols activated.",
-                        "attention_thread_consumed": 2,
-                        "thread_diversion_explanation": "State AI shifts 2 operation threads from counter-insurgency to economic stabilization.",
-                    },
-                },
-            }
-        ]
-
-        institutions = [
-            {
-                "target_id": "inst-dpt-of-defense",
-                "target_type": "INSTITUTION",
-                "name": "State Security Apparatus",
-                "factional_control": {"security_state": 45.0, "finance_capital": 55.0},
-                "attack_projection": {
-                    "modes": {
-                        "targeted_sabotage": {
-                            "resource_cost": {
-                                "cadre_labor": 8.0,
-                                "action_points": 5,
-                                "material": 400.0,
-                            },
-                            "heat_generated": 0.95,
-                            "detection_probability": 0.85,
-                            "legitimacy_note": "Direct assault on state capacity immediately triggers Endgame criteria if unsuccessful.",
-                            "explanation": "Massive capacity degradation but extreme risk.",
-                        }
-                    }
-                },
-            }
-        ]
-
-        unavailable_targets = [
-            {
-                "target_id": "org-oakland-hedge-fund",
-                "name": "Oakland Capital Management",
-                "territory_name": "Oakland County",
-                "reason": "Your organization has no presence in Oakland County. Use MOVE first, or use INVESTIGATE to gather intelligence remotely.",
-            }
-        ]
 
         return {
             "status": "ok",
@@ -1554,7 +1615,7 @@ class EngineBridge:
             "warsaw_ghetto_flag": warsaw_ghetto_flag,
             "targets": {
                 "organizations": organizations,
-                "edges": edges,
+                "edges": [],
                 "institutions": institutions,
             },
             "unavailable_targets": unavailable_targets,
@@ -1580,6 +1641,15 @@ class EngineBridge:
             "over_budget_penalty": None,
         }
 
+        org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+        base_population = sum(
+            int(data.get("population", 0))
+            for tid in territory_ids
+            for node_id, data in _nodes_in_territory(graph, tid)
+            if data.get("_node_type") == "social_class"
+        )
+
         targets = [
             {
                 "target_id": org_id,
@@ -1595,7 +1665,7 @@ class EngineBridge:
                         },
                         "recruitment_pool": {
                             "sympathizers": int(
-                                org_status.get("resources", {}).get("sympathizer_labor", 15)
+                                org_status.get("resources", {}).get("sympathizer_labor", 0)
                             )
                         },
                         "cooldown_applied": 0,
@@ -1608,7 +1678,7 @@ class EngineBridge:
                             "cohesion_delta": -0.05,
                             "agitation_delta": 0.1,
                         },
-                        "recruitment_pool": {"base_population": 45000},
+                        "recruitment_pool": {"base_population": base_population},
                         "cooldown_applied": 1,
                         "explanation": "Spends cadre labor to prospect among the agitated base. Dilutes cohesion but gains sympathizers.",
                     },
@@ -1648,16 +1718,17 @@ class EngineBridge:
 
         observe_capability = {"intel_network_strength": 0.6, "max_scan_depth": "TARGETED"}
 
+        org_data = graph.nodes.get(org_id, {})
         territory_scans = [
             {
-                "target_id": "territory-26163",
-                "name": "Wayne County",
+                "target_id": str(tid),
+                "name": graph.nodes[tid].get("name", tid),
                 "target_type": "TERRITORY",
-                "heat": 0.45,
+                "heat": float(graph.nodes[tid].get("heat", 0.0)),
                 "current_knowledge": {
                     "visibility_level": "SURFACE",
-                    "known_attributes": ["population", "dominant_tendency"],
-                    "last_scanned_tick": state.tick - 5,
+                    "known_attributes": ["population"],
+                    "last_scanned_tick": None,
                 },
                 "resource_cost": {"sympathizer_labor": 5.0},
                 "projected_reveals": {
@@ -1665,6 +1736,8 @@ class EngineBridge:
                     "likely_reveals": ["material_readiness", "hidden_factions", "state_deployment"],
                 },
             }
+            for tid in org_data.get("territory_ids", [])
+            if tid in graph.nodes
         ]
 
         targeted_scans = [

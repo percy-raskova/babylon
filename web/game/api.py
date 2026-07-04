@@ -474,12 +474,18 @@ def game_timeseries(request: Request, game_id: str) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def game_economy(request: Request, game_id: str) -> JsonResponse:
-    """GET /api/games/{id}/economy/ - Economy left-panel dashboard."""
+    """GET /api/games/{id}/economy/[?territory_id=] - Economy panel.
+
+    Spec 093: with ``?territory_id=``, returns Territory Detail's real
+    per-territory economic summary (:meth:`EngineBridge.get_economy`).
+    Without it, falls back to the still-stub dashboard-wide summary.
+    """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
     bridge = _get_bridge()
-    data = bridge.get_economy_dashboard(uuid.UUID(str(session.id)))
+    territory_id = request.query_params.get("territory_id")
+    data = bridge.get_economy(uuid.UUID(str(session.id)), territory_id=territory_id)
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 

@@ -192,7 +192,7 @@ export function VerbPage() {
   const activeOrgFallback =
     activeOrgId && playerOrgs.some((o) => o.id === activeOrgId)
       ? activeOrgId
-      : playerOrgs[0]?.id ?? "";
+      : (playerOrgs[0]?.id ?? "");
   const [filter, setFilter] = useState("all");
   const [selectedId, setSelectedId] = useState("");
   const [paramVals, setParamVals] = useState<Record<string, unknown>>(() =>

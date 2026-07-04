@@ -2,7 +2,7 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.16.0"
+  version: "2.17.0"
   updated: "2026-07-03"
   active_program: |
     Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
@@ -34,6 +34,29 @@ meta:
     dist/fonts, no google refs. Article VII amendment DRAFTED (specs/
     090-cold-collapse/article-vii-amendment.md) — awaits Percy ratification
     at PR (R-VII); constitution.md untouched; do NOT merge until ratified.
+  web_lane_w_spec_091: |
+    spec-091 Frontend consolidation + Django debt DONE (branch
+    091-frontend-consolidation, stacks on 090; specs/091-frontend-consolidation/
+    via speckit specify->plan->tasks->implement). (1) 042 audited + closed
+    superseded (R-042): specs/042-game-ui-overhaul/AUDIT-091.md classifies all
+    49 tasks (done-with-evidence/superseded/residual->092/093/095). (2)
+    Course-correction phases 1-7 verified; Phase-4/5 infra (lib/verbs+VerbShell,
+    HexInspector+BreakdownTooltip) exists+tested but UNROUTED (superseded by
+    spec-061 VerbPage/IntelPageV2) — PRESERVED for spec-093 provenance wiring.
+    (3) Deleted the 7 legacy siblings (ActionPage/GameView/HexMap/IntelPage/
+    OrganizationsPage/OrgDashboard/TimeSeriesPanel) + dead Inspector cluster +
+    react-leaflet (rg leaflet web/frontend/src EMPTY; lockfile-only). (4) deck.gl
+    map promoted to first-class on Briefing (was SVG placeholder); /dev/hexmap
+    retired. (5) Django debt cleared: accounts/migrations/0001_initial (PlayerProfile),
+    game/migrations/0011 (7 managed=False runner-owned snapshot models),
+    django.contrib.gis in INSTALLED_APPS. (6) All 090 residuals a-f: prettier
+    hook -> 3.8.1, 35 semantic type-role tokens ported to index.css, faux-italic
+    removed, C6 lens->layer contract pinned independently, ramp docstrings aligned
+    to the amendment, NEW Playwright visual-baseline suite (e2e/visual.spec.ts).
+    Gates: Vitest 358/358; tests/unit/web 248 green; visual suite green.
+    CONCERN: the 8 behavioural Playwright suites need a live seeded backend
+    (Django + Postgres 5432 + testuser) not bootable in the unattended web lane;
+    a pre-existing stale login selector (Log In -> Enter) was corrected.
   lawverian_dialectics_refactor: |
     project/06 Lawverian dialectics refactor COMPLETE (branch
     refactor/lawverian-dialectics; Phases A-E, ADR051). The saturating add-only

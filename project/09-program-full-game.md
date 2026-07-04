@@ -186,6 +186,23 @@ Replace the pre-ratification token set with the ratified canon.
 ______________________________________________________________________
 
 **spec-091 — Frontend consolidation + Django debt** (~1–2 sprints)
+**Status: DONE (2026-07-03, branch `091-frontend-consolidation`, stacks on 090) —
+awaiting BD merge.** `specs/091-frontend-consolidation/` (specify→plan→tasks→
+implement); 042 evidence audit committed (`specs/042-game-ui-overhaul/AUDIT-091.md`,
+all 49 tasks classified, 042 marked superseded); course-correction phases 1–7
+verified (`course-correction-verification.md`); the 7 legacy siblings + the dead
+`Inspector` cluster + react-leaflet deleted (`rg leaflet web/frontend/src` empty);
+deck.gl map promoted to first-class on Briefing (`/dev/hexmap` harness retired);
+Django debt cleared (`accounts` 0001 initial migration → PlayerProfile, `game`
+0011 makemigrations, `django.contrib.gis` in INSTALLED_APPS); all six 090
+residuals a–f landed incl. the NEW Playwright visual-baseline suite. Gates:
+Vitest 358/358; `poetry run pytest tests/unit/web/` 248 green; visual suite green.
+NOTE: the 8 behavioural Playwright suites require a live seeded backend
+(Django + Postgres 5432 + testuser) not safely bootable in the unattended
+web-only lane; a pre-existing stale login selector ("Log In"→"Enter", since the
+16-route pivot) was corrected. `lib/selectors`/`lib/verbs`/`VerbShell`/
+`HexInspector`/`BreakdownTooltip` are PRESERVED as tested infra — live provenance
+wiring is spec-093 (program §2).
 
 One codebase, one data path, no legacy siblings.
 

@@ -153,6 +153,42 @@ re-baselines after the contradiction semantics change.
 - **Web**: `mise run web:dev` / `web:test` / `web:check`; backend web tests
   `poetry run pytest tests/unit/web/`.
 
+## spec-091 — Frontend consolidation + Django debt (DONE 2026-07-03, branch `091-frontend-consolidation`)
+
+Stacks on `090-cold-collapse` (`42232a15`). One codebase, no legacy siblings:
+
+- **042 audited + closed superseded** (R-042): `specs/042-game-ui-overhaul/AUDIT-091.md`
+  classifies all 49 tasks (done-with-evidence / superseded / residual→092/093/095);
+  042's god-page composition (`GameShell`/`RightPanel`/`BottomPanel`/`LensBar`) is
+  gone, its library layer survived in the 16-route app.
+- **Course-correction verified** (phases 1–7): `specs/091-.../course-correction-verification.md`.
+  Phases 1/2/3/6/7 met; Phase-4/5 infra (`lib/verbs`+`VerbShell`, `HexInspector`+
+  `BreakdownTooltip`) exists+tested but UNROUTED (superseded by spec-061 `VerbPage`/
+  `IntelPageV2`) — PRESERVED as infra; live provenance wiring is spec-093.
+- **Legacy siblings deleted**: `ActionPage`, `GameView`, `HexMap`, `IntelPage`,
+  `OrganizationsPage`, `OrgDashboard`, `TimeSeriesPanel` + the dead panel-`Inspector`
+  cluster (`Inspector`, `Breadcrumbs`) + their dead tests; react-leaflet removed
+  (`rg leaflet web/frontend/src` EMPTY; lockfile-only, node_modules untouched).
+  `mock_map_data.json` was RESTORED (it is the backend `seed_hex_data` fixture, not
+  DevHarness-only). The `/dev/hexmap` DevHarness (leaflet-only) retired.
+- **Map promoted to first-class**: `BriefingPage` now renders the live `DeckGLMap`
+  (was the SVG `HexMapPlaceholder`), snapshot-fed.
+- **Django debt cleared**: `web/accounts/migrations/0001_initial.py` (PlayerProfile
+  → `player_profile` table), `web/game/migrations/0011_*` (7 runner-owned snapshot
+  models, all `managed=False` — Django tracks state, does NOT own the spec-037
+  tables), `django.contrib.gis` added to INSTALLED_APPS.
+- **090 residuals a–f**: prettier hook pinned to 3.8.1; 35 semantic type-role
+  tokens ported into `index.css`; faux-italic removed (BreakdownTooltip); C6
+  lens→layer contract pinned against independent expectations; ramp docstrings
+  aligned to the Article VII amendment (monotonic EXCEPT named alarm terminals/
+  diverging); NEW Playwright visual-baseline suite (`e2e/visual.spec.ts` + login
+  chrome baseline) pinning the Cold Collapse canon.
+- **Gates**: Vitest **358/358**; `poetry run pytest tests/unit/web/` **248 green**;
+  visual suite green; tsc clean. CONCERN: the 8 behavioural Playwright suites need
+  a live seeded backend (Django + Postgres 5432 + testuser) not bootable in the
+  unattended web-only lane; a pre-existing stale login selector ("Log In"→"Enter")
+  was corrected but end-to-end behavioural green is unverified here.
+
 ## Web layer facts (verified 2026-07-03 — read before any web/ or Observatory work)
 
 - **THE TWO-DB SPLIT** (documented nowhere else until now): the web app
@@ -187,14 +223,15 @@ re-baselines after the contradiction semantics change.
   `web/game/engine_bridge.py`); five verb-target methods return
   hardcoded Wayne County fixtures; `investigate`/`move`/`negotiate`
   filtered as unsupported (their handlers belong in catalog specs
-  076/075/077); `/games/:id/log` renders "coming soon"; the map only
-  renders via `/dev/hexmap` (no in-game map route); AnalysisPage
+  076/075/077); `/games/:id/log` renders "coming soon"; ~~the map only
+  renders via `/dev/hexmap`~~ **map is now first-class on Briefing
+  (spec-091); `/dev/hexmap` retired**; AnalysisPage
   topology/correlations are placeholders; `StubEngineBridge` fallback
   serves mock Wayne data when bridge init fails.
-- **Django debt** (fixed in spec-091): `accounts` app has NO
-  `migrations/` dir (PlayerProfile table never created); `game` app has
-  model changes pending `makemigrations`; DB engine is postgis but
-  `django.contrib.gis` is absent from `INSTALLED_APPS`.
+- ~~**Django debt** (fixed in spec-091)~~ **RESOLVED (spec-091)**:
+  `accounts/migrations/0001_initial.py` materializes PlayerProfile;
+  `game/migrations/0011_*` captures pending changes (all `managed=False`);
+  `django.contrib.gis` is now in `INSTALLED_APPS`.
 - **Design canon**: staged at `design/mockups/` (66 files, replay-
   extracted from the claude.ai export 2026-07-03; provenance +
   fidelity caveats in `design/mockups/PROVENANCE.md`).

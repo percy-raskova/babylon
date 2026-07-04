@@ -45,35 +45,44 @@ describe("DeckGLMap", () => {
     expect(container.querySelector("div")).toBeTruthy();
   });
 
-  it("renders the lens legend + mode selector when balkanization data is present (spec-093)", () => {
+  it("renders the lens legend + mode selector when mapData carries balkanization data (spec-093)", () => {
+    // Spec-093: balkanization lives under mapData.metadata.balkanization
+    // (GET /api/games/{id}/map/), NOT on GameSnapshot (GET .../state/) —
+    // see types/game.ts's MapSnapshotMetadata docstring.
     const snapshot = makeSnapshot({
       territories: [makeTerritory({ id: "T1", h3_index: "872a3072cffffff" })],
-      balkanization: {
-        factions: [{ id: "FAC_A", colonial_stance: "UPHOLD" }],
-        sovereigns: [
-          {
-            id: "SOV_A",
-            ruling_faction_id: "FAC_A",
-            legitimacy: 0.5,
-            claimed_territory_ids: [],
-          },
-        ],
-        territory_influence: [
-          {
-            territory_id: "T1",
-            influences: [{ faction_id: "FAC_A", influence_level: 0.6, support_type: "material" }],
-            dominant_faction_id: "FAC_A",
-            current_sovereign_id: null,
-            contested: false,
-            habitability: 0.5,
-          },
-        ],
-      },
     });
+    const mapData = {
+      type: "FeatureCollection" as const,
+      features: [],
+      metadata: {
+        balkanization: {
+          factions: [{ id: "FAC_A", colonial_stance: "UPHOLD" }],
+          sovereigns: [
+            {
+              id: "SOV_A",
+              ruling_faction_id: "FAC_A",
+              legitimacy: 0.5,
+              claimed_territory_ids: [],
+            },
+          ],
+          territory_influence: [
+            {
+              territory_id: "T1",
+              influences: [{ faction_id: "FAC_A", influence_level: 0.6, support_type: "material" }],
+              dominant_faction_id: "FAC_A",
+              current_sovereign_id: null,
+              contested: false,
+              habitability: 0.5,
+            },
+          ],
+        },
+      },
+    };
 
     render(
       <MemoryRouter>
-        <DeckGLMap snapshot={snapshot} />
+        <DeckGLMap snapshot={snapshot} mapData={mapData} />
       </MemoryRouter>,
     );
 
@@ -81,11 +90,11 @@ describe("DeckGLMap", () => {
     expect(screen.getByTestId("map-mode-selector")).toBeInTheDocument();
   });
 
-  it("renders without a lens legend when no balkanization data exists (honest no-data, no crash)", () => {
-    const snapshot = makeSnapshot({ balkanization: null });
+  it("renders without a lens legend when mapData has no balkanization block (honest no-data, no crash)", () => {
+    const snapshot = makeSnapshot();
     render(
       <MemoryRouter>
-        <DeckGLMap snapshot={snapshot} />
+        <DeckGLMap snapshot={snapshot} mapData={null} />
       </MemoryRouter>,
     );
     expect(screen.queryByTestId("lens-legend-label")).not.toBeInTheDocument();

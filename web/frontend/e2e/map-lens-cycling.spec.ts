@@ -2,9 +2,11 @@
  * Map lens-cycling smoke (spec-093 US3 gate) — backend-free.
  *
  * Uses Playwright route-mocking (same pattern as `briefing-map-smoke.spec.ts`)
- * to stub the auth + game-state contract with a snapshot carrying real
- * spec-070 balkanization data (factions/sovereigns/territory_influence), so
- * the map's political-topology lens set renders in a REAL browser. Cycles
+ * to stub the auth + game-state + map-snapshot contracts — the map-snapshot
+ * mock carries real spec-070 balkanization data (factions/sovereigns/
+ * territory_influence) under `metadata.balkanization`, matching
+ * `EngineBridge.get_map_snapshot`'s real response shape — so the map's
+ * political-topology lens set renders in a REAL browser. Cycles
  * through all 5 lens modes (stance/heat/habitability/faction/collapse) via
  * the visible `MapModeSelector` control and asserts:
  *
@@ -55,51 +57,62 @@ const SNAPSHOT = {
   hyperedges: [],
   edges: [],
   events: [],
-  balkanization: {
-    factions: [
-      { id: "FAC_A", colonial_stance: "uphold", is_settler_formation: true },
-      { id: "FAC_B", colonial_stance: "ignore", is_settler_formation: true },
-      { id: "FAC_C", colonial_stance: "abolish", is_settler_formation: false },
-    ],
-    sovereigns: [
-      {
-        id: "SOV_A",
-        ruling_faction_id: "FAC_A",
-        extraction_policy: "intensify",
-        legitimacy: 0.58,
-        claimed_territory_ids: ["t2", "t3"],
-      },
-    ],
-    territory_influence: [
-      {
-        territory_id: "t1",
-        influences: [
-          { faction_id: "FAC_A", influence_level: 0.47, support_type: "ideological" },
-          { faction_id: "FAC_B", influence_level: 0.41, support_type: "material" },
-        ],
-        dominant_faction_id: "FAC_A",
-        current_sovereign_id: null,
-        contested: true,
-        habitability: 0.4,
-      },
-      {
-        territory_id: "t2",
-        influences: [{ faction_id: "FAC_A", influence_level: 0.71, support_type: "ideological" }],
-        dominant_faction_id: "FAC_A",
-        current_sovereign_id: "SOV_A",
-        contested: false,
-        habitability: 0.9,
-      },
-      {
-        territory_id: "t3",
-        influences: [{ faction_id: "FAC_C", influence_level: 0.62, support_type: "material" }],
-        dominant_faction_id: "FAC_C",
-        current_sovereign_id: "SOV_A",
-        contested: false,
-        habitability: 0.1,
-      },
-    ],
-  },
+};
+
+// Spec-093: the balkanization block lives under GET /api/games/{id}/map/'s
+// `metadata.balkanization` (EngineBridge.get_map_snapshot ->
+// _build_balkanization_block) — NOT on the /state/ snapshot. See
+// types/game.ts's MapSnapshotMetadata docstring.
+const BALKANIZATION = {
+  factions: [
+    { id: "FAC_A", colonial_stance: "uphold", is_settler_formation: true },
+    { id: "FAC_B", colonial_stance: "ignore", is_settler_formation: true },
+    { id: "FAC_C", colonial_stance: "abolish", is_settler_formation: false },
+  ],
+  sovereigns: [
+    {
+      id: "SOV_A",
+      ruling_faction_id: "FAC_A",
+      extraction_policy: "intensify",
+      legitimacy: 0.58,
+      claimed_territory_ids: ["t2", "t3"],
+    },
+  ],
+  territory_influence: [
+    {
+      territory_id: "t1",
+      influences: [
+        { faction_id: "FAC_A", influence_level: 0.47, support_type: "ideological" },
+        { faction_id: "FAC_B", influence_level: 0.41, support_type: "material" },
+      ],
+      dominant_faction_id: "FAC_A",
+      current_sovereign_id: null,
+      contested: true,
+      habitability: 0.4,
+    },
+    {
+      territory_id: "t2",
+      influences: [{ faction_id: "FAC_A", influence_level: 0.71, support_type: "ideological" }],
+      dominant_faction_id: "FAC_A",
+      current_sovereign_id: "SOV_A",
+      contested: false,
+      habitability: 0.9,
+    },
+    {
+      territory_id: "t3",
+      influences: [{ faction_id: "FAC_C", influence_level: 0.62, support_type: "material" }],
+      dominant_faction_id: "FAC_C",
+      current_sovereign_id: "SOV_A",
+      contested: false,
+      habitability: 0.1,
+    },
+  ],
+};
+
+const MAP_DATA = {
+  type: "FeatureCollection",
+  features: [],
+  metadata: { balkanization: BALKANIZATION },
 };
 
 const TIMESERIES = {
@@ -120,17 +133,19 @@ const LENSES = ["stance", "heat", "habitability", "faction", "collapse"] as cons
  * `undefined` occasionally fires from luma.gl's device-capability query
  * under this headless/software-rendered (SwiftShader) Chromium when deck.gl
  * rewrites its fill-color GPU buffer several times in quick succession.
- * Verified by minimal reproduction: a `DeckGLMap` render with
- * `balkanization: null` (i.e., the pre-spec-093 code path, untouched by
- * `buildLensLayers`) still occasionally hits it under a tight interaction
- * loop; `briefing-map-smoke.spec.ts`'s own docstring anticipates this class
- * of failure ("even a deck.gl/WebGL failure degrades gracefully") — the
+ * Verified by minimal reproduction: a `DeckGLMap` render with no
+ * `mapData.metadata.balkanization` (i.e., `lensResult === null`, the
+ * pre-spec-093 code path untouched by `buildLensLayers`) still occasionally
+ * hits it under a tight interaction loop; `briefing-map-smoke.spec.ts`'s own
+ * docstring anticipates this class of failure ("even a deck.gl/WebGL
+ * failure degrades gracefully") — the
  * page here renders fully (Map region, all 5 lens buttons, correct legend
  * text) with no white-screen, confirmed via Playwright's page snapshot.
  * Filtered here by exact message match so any OTHER uncaught error still
  * fails the test.
  */
-const KNOWN_SANDBOX_WEBGL_ERROR = "Cannot read properties of undefined (reading 'maxTextureDimension2D')";
+const KNOWN_SANDBOX_WEBGL_ERROR =
+  "Cannot read properties of undefined (reading 'maxTextureDimension2D')";
 
 function unexpectedErrors(pageErrors: string[]): string[] {
   return pageErrors.filter((e) => e !== KNOWN_SANDBOX_WEBGL_ERROR);
@@ -149,9 +164,7 @@ test.describe("Map lens cycling (backend-free, spec-093 US3 gate)", () => {
     );
     await page.route("**/api/games/*/state/", (r) => r.fulfill(ok(SNAPSHOT)));
     await page.route("**/api/games/*/actions/available/", (r) => r.fulfill(ok([])));
-    await page.route("**/api/games/*/map/**", (r) =>
-      r.fulfill(ok({ type: "FeatureCollection", features: [] })),
-    );
+    await page.route("**/api/games/*/map/**", (r) => r.fulfill(ok(MAP_DATA)));
     await page.route("**/api/games/*/timeseries/", (r) =>
       r.fulfill({
         status: 200,
@@ -186,10 +199,9 @@ test.describe("Map lens cycling (backend-free, spec-093 US3 gate)", () => {
       await page.waitForTimeout(150);
     }
 
-    expect(
-      unexpectedErrors(pageErrors),
-      `uncaught page errors: ${pageErrors.join(" | ")}`,
-    ).toEqual([]);
+    expect(unexpectedErrors(pageErrors), `uncaught page errors: ${pageErrors.join(" | ")}`).toEqual(
+      [],
+    );
   });
 
   test("faction lens hides sovereign CLAIMS hulls while stance lens shows them", async ({
@@ -206,9 +218,7 @@ test.describe("Map lens cycling (backend-free, spec-093 US3 gate)", () => {
     );
     await page.route("**/api/games/*/state/", (r) => r.fulfill(ok(SNAPSHOT)));
     await page.route("**/api/games/*/actions/available/", (r) => r.fulfill(ok([])));
-    await page.route("**/api/games/*/map/**", (r) =>
-      r.fulfill(ok({ type: "FeatureCollection", features: [] })),
-    );
+    await page.route("**/api/games/*/map/**", (r) => r.fulfill(ok(MAP_DATA)));
     await page.route("**/api/games/*/timeseries/", (r) =>
       r.fulfill({
         status: 200,

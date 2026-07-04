@@ -40,7 +40,7 @@ function compactSeries(series: (number | null)[]): number[] {
 export function BriefingPage() {
   const navigate = useNavigate();
   const { id: gameId } = useParams<{ id: string }>();
-  const { snapshot } = useGameState(gameId ?? null);
+  const { snapshot, mapData } = useGameState(gameId ?? null);
   const { data: timeseries } = useTimeseries(gameId ?? null);
 
   const tick = snapshot?.tick ?? 0;
@@ -106,7 +106,7 @@ export function BriefingPage() {
                 fallbackLabel="Situation map"
                 fallback={<HexMapPlaceholder className="h-full min-h-[200px]" />}
               >
-                <DeckGLMap snapshot={snapshot} />
+                <DeckGLMap snapshot={snapshot} mapData={mapData} />
               </ErrorBoundary>
             </div>
           ) : (

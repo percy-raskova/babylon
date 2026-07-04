@@ -21,7 +21,8 @@ import { MapModeSelector } from "@/components/map/MapModeSelector";
 import { buildLensLayers, type RingSpec, type HullSpec } from "@/components/map/mapLensLayers";
 import { hullPolygonForTerritories } from "@/components/map/mapLensGeometry";
 import { useNavigate, useParams } from "react-router";
-import type { GameSnapshot, TerritoryState, MapLayer } from "@/types/game";
+import type { GameSnapshot, TerritoryState, MapLayer, MapSnapshotMetadata } from "@/types/game";
+import type { FeatureCollection } from "geojson";
 
 type H3Territory = TerritoryState & { h3_index: string };
 
@@ -118,9 +119,20 @@ function getMetricValue(territory: TerritoryState, layer: MapLayer): number {
 
 interface DeckGLMapProps {
   snapshot: GameSnapshot;
+  /**
+   * The map-snapshot FeatureCollection from `GET /api/games/{id}/map/`
+   * (`useGameState()`'s `mapData`). Spec-093's balkanization block lives
+   * under `mapData.metadata.balkanization` — NOT on `GameSnapshot` — see
+   * `types/game.ts`'s `MapSnapshotMetadata` docstring. `metadata` isn't a
+   * standard GeoJSON `FeatureCollection` field; the backend attaches it as
+   * an extra top-level key (`EngineBridge.get_map_snapshot`). Optional so
+   * existing callers/tests that only care about `activeLayer`'s
+   * single-metric fill keep working unchanged.
+   */
+  mapData?: (FeatureCollection & { metadata?: MapSnapshotMetadata }) | null;
 }
 
-export function DeckGLMap({ snapshot }: DeckGLMapProps) {
+export function DeckGLMap({ snapshot, mapData }: DeckGLMapProps) {
   const activeLayer = useMapStore((s) => s.activeLayer);
   const layerOpacity = useMapStore((s) => s.layerOpacity);
   const lensMode = useMapStore((s) => s.lensMode);
@@ -134,7 +146,7 @@ export function DeckGLMap({ snapshot }: DeckGLMapProps) {
   } | null>(null);
 
   const territories = snapshot.territories;
-  const balkanization = snapshot.balkanization ?? null;
+  const balkanization = mapData?.metadata?.balkanization ?? null;
   const colorScale = useMemo(() => getColorScale(activeLayer), [activeLayer]);
 
   const hasH3 = useMemo(() => territories.some((t) => t.h3_index != null), [territories]);

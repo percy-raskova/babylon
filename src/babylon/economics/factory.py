@@ -9,10 +9,17 @@ resolves the dependency graph between data sources and calculators,
 returning a dict suitable for injection into ServiceContainer.
 
 Dependency wiring order (3 levels):
-    Level 0: No dependencies (basket, imperial rent)
-    Level 1: Data source adapters (BEA, QCEW, ATUS, savings, dispossession)
-    Level 2: Calculators with data deps (MELT, capital, gamma, accumulation, etc.)
+    Level 1: Data source adapters (BEA, QCEW, ATUS, savings, dispossession,
+        gamma hydration — spec-102)
+    Level 2: Calculators with data deps (MELT, capital, gamma, accumulation,
+        basket visibility — spec-102, etc.)
     Level 3: Calculators with calculator deps (throughput, transition engine)
+
+Note: a separate process-wide :class:`~babylon.core.protocol_kit.SourceRegistry`
+(``_get_builtin_registry()``) holds parameterless ``Default*`` classes for
+OTHER consumers (see ``test_factory_shims.py``); ``basket_calculator`` moved
+off that registry in spec-102 (now Level 2, data-adapter-injected) so it can
+hydrate real per-year coefficients instead of always defaulting to MVP mode.
 
 Usage:
     from babylon.reference.database import get_normalized_session_factory
@@ -52,7 +59,8 @@ from babylon.economics.melt.adapters import (
     SQLiteBEANationalGDPSource,
     SQLiteQCEWNationalEmploymentSource,
 )
-from babylon.economics.melt.basket_visibility import BasketVisibilityCalculator
+from babylon.economics.melt.basket_visibility import DefaultBasketVisibilityCalculator
+from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 from babylon.economics.throughput.adapters import (
     SQLiteBEACountyGDPSource,
     SQLiteQCEWCountyNAICSSource,
@@ -101,13 +109,6 @@ def create_economics_services(
         Dict with keys matching ServiceContainer calculator field names,
         all values non-None.
     """
-    # Level 0: No dependencies — pulled from SourceRegistry per Spec 058 / FR-006.
-    # The registry holds the parameterless subset of migrated melt+gamma Default*
-    # classes; the dep-laden classes (MELT, etc.) stay constructed below in
-    # explicit topological order (SC-004 not-met-by-design — see plan.md §R5).
-    registry = _get_builtin_registry()
-    basket = registry.get(BasketVisibilityCalculator)
-
     # Level 1: Data source adapters
     bea_national = SQLiteBEANationalGDPSource(session_factory)
     qcew_national = SQLiteQCEWNationalEmploymentSource(session_factory)
@@ -117,6 +118,12 @@ def create_economics_services(
     disp_data = HardcodedNationalDispossessionSource()
     bea_county = SQLiteBEACountyGDPSource(session_factory)
     qcew_county = SQLiteQCEWCountyNAICSSource(session_factory)
+    # Spec-102: BasketVisibilityCalculator moves from the Level-0 parameterless
+    # registry to an explicitly data-adapter-injected instance (matching
+    # DefaultMELTCalculator's pattern below) so it can hydrate real per-year
+    # alpha/gamma_import instead of always falling into MVP mode.
+    gamma_hydration_source = SQLiteGammaHydrationSource(session_factory)
+    basket = DefaultBasketVisibilityCalculator(hydration_source=gamma_hydration_source)
 
     # Level 2: Calculators with data deps
     melt = DefaultMELTCalculator(bea_national, qcew_national)

@@ -1,0 +1,49 @@
+ADR055_spec101_phi_attribution_and_trade_activation:
+  status: "accepted"
+  date: "2026-07-04"
+  spec: "101-trade-activation"
+  title: "Trade activation + national-Φ attribution to blocs by trade share"
+  context: |
+    spec-101 was scoped as "wire the four dormant TickContext keys so the
+    already-built Φ→county distribution stops no-op'ing." Verification found the
+    reference DB's Hickel drain is a SINGLE national aggregate
+    (fact_hickel_erdi_annual.scale_type = 'Intensive'/'Extensive', ~$8.6T for
+    2010) with NO per-bloc/per-partner resolution, so _bootstrap_external_nodes
+    hydrated every external node with phi_year_inflow = 0. Pure wiring alone
+    would emit zero DRAIN_EDGE rows and the gate ("DRAIN rows for all blocs with
+    nonzero Φ") would be unsatisfiable. A grounded Φ-attribution decision was
+    therefore required, beyond wiring.
+  decision: |
+    (1) Attribute the national Hickel Φ across the international engine nodes by
+    bilateral-trade share, sourced from spec-100's fact_bilateral_trade_annual
+    (satisfies spec-100 R8: consume that table for a USD value), via an INJECTIVE
+    engine-node → dim_country(is_region=1) bloc crosswalk (_NODE_TO_BLOC):
+    eu→EU, canada→North America, sub_saharan_africa→Africa, china→Asia,
+    southeast_asia→Pacific Rim, russia_csi→Europe. india + latin_america have no
+    distinct grounded bloc (Asia taken by china; no Latin-America is_region bloc)
+    → Φ=0, disclosed (not fabricated). Shares sum to 1.0 → Σ_nodes Φ = national Φ.
+    bilateral_trade_value (USD) is populated from the same source; bilateral_trade_tons
+    stays 0.0 (needs FAF freight — future 098-family slice).
+    (2) Broadcast ONE scope-renormalised, bloc-invariant county-exposure map to
+    all nodes (spec-100 R6). Renormalise present scope weights to sum to 1.0 so
+    the distribution's unit-sum contract + the conservation identity both hold.
+    (3) The vol2_step TRADE_EDGE/COMMUTE_OUT path stays GATED — TRADE_EDGE is
+    inseparable from COMMUTE_OUT and both need the LODES OD matrix (098-LODES).
+    (4) Conservation invariant reports the RELATIVE residual (Σdrain/Φ_week vs
+    1.0) so absolute float error at $1e12 scale cannot false-alarm --strict.
+  rationale:
+    theory_grounding: "Unequal-exchange imperial rent scales with trade volume (Amin, Hickel, Cope); trade-share attribution is the theory-apt interim when per-bloc drain data is absent."
+    conservation: "Injective crosswalk → no bloc double-counted → shares partition national Φ exactly."
+    iii_8_honesty: "Bloc-granularity and the two zero-Φ nodes are disclosed everywhere (spec, code, this ADR); nothing is fabricated. A future per-bloc drain / per-country trade slice replaces the proxy."
+  consequences:
+    positive:
+      - "Boundary flows are live: DRAIN_EDGE rows + external_node_flows populate every tick."
+      - "Conservation Σ DRAIN ≡ Φ_week per bloc is gated (relative residual)."
+      - "total_v + liveness provably unchanged; determinism hashes byte-identical."
+      - "fact_bilateral_trade_annual is consumed functionally, not just observationally."
+    negative:
+      - "The engine-node→bloc crosswalk is lossy at bloc granularity (SSA=all Africa; SE Asia=all Pacific Rim; russia_csi→Europe is weak); india + latin_america receive Φ=0. THIS IS THE #1 OWNER-REVIEW ITEM."
+      - "National-scale DRAIN row volume = counties × Φ>0 blocs/tick (~3156×6/tick) — flag for spec-104/105 storage budget."
+  owner_review:
+    - "Ratify or adjust the _NODE_TO_BLOC crosswalk + the trade-share attribution model (isolated dict in postgres_initialization.py)."
+    - "Decide whether india/latin_america should get a bloc (needs a per-country trade slice) or stay Φ=0."

@@ -476,6 +476,18 @@ ______________________________________________________________________
 
 **spec-101 — Trade activation: boundary flows live** (~1–2 sprints)
 
+> **STATUS: CODE DONE 2026-07-04** (branch `101-trade-activation`, ADR055,
+> unmerged; opens the shared 101+102 proof window). Boundary flows populate
+> every tick. **Deviation from scope (repo-verified, program §0 "repo wins")**:
+> (a) the hydrated external nodes carried Φ=0 (Hickel is a single national
+> aggregate, no per-bloc resolution), so spec-101 ATTRIBUTES the national Φ to
+> blocs by bilateral-trade share via an injective node→bloc crosswalk — **#1
+> owner-review item**; (b) `vol2_step` TRADE_EDGE is NOT wired — it is
+> inseparable from COMMUTE_OUT and both need LODES (098-LODES), and the program
+> directs COMMUTE_OUT stays gated; (c) `bilateral_trade_value` (not `_tons`)
+> populated per spec-100 R8. Conservation `Σ DRAIN_EDGE ≡ Φ_week` per bloc gated
+> (relative residual; migration 0031). See `specs/101-trade-activation/`.
+
 - **Scope**: populate the dormant TickContext keys in the runner
   tick loop. Verified state 2026-07-03: `runner.py:311` builds
   `TickContext(tick=tick)` only, while

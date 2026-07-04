@@ -705,10 +705,15 @@ def _patched_hydrate_state(bridge: EngineBridge, graph: BabylonGraph, tick: int 
 
 
 def _make_balkanization_graph() -> BabylonGraph:
-    """Build a graph with orgs, territories, a community, and spec-070
+    """Build a graph with orgs, territories, social classes, and spec-070
     faction/sovereign/INFLUENCES/CLAIMS data for de-fixture + balkanization
     tests. Territory "T1" is contested (two factions close in influence);
     "T2" has a single dominant faction and a sovereign claim.
+
+    Matches the real engine's graph shape:
+    - extraction_intensity lives on Territory nodes (ProductionSystem)
+    - edge_mode is a separate attribute from edge_type (EdgeTransitionSystem)
+    - No community nodes in the main graph (they live in XGI hypergraph)
     """
     g = BabylonGraph()
     g.graph["tick"] = 10
@@ -738,6 +743,7 @@ def _make_balkanization_graph() -> BabylonGraph:
         population=5000,
         biocapacity=40.0,
         max_biocapacity=100.0,
+        extraction_intensity=0.41,
     )
     g.add_node(
         "T2",
@@ -758,21 +764,12 @@ def _make_balkanization_graph() -> BabylonGraph:
         wealth=812.4,
         agitation=0.62,
         territory_ids=["T1"],
-        extraction_intensity=0.41,
-    )
-    g.add_node(
-        "comm-genesee",
-        "community",
-        community_type="NEW_AFRIKAN",
-        r=0.34,
-        l=0.48,
-        f=0.18,
-        member_ids=["sc-genesee-proles"],
     )
     g.add_edge(
         "org-player",
         "sc-genesee-proles",
-        "EXTRACTIVE",
+        "exploitation",
+        edge_mode="extractive",
         value_flow=118.9,
         tension=0.34,
     )
@@ -893,7 +890,7 @@ class TestDefixturedVerbTargets:
         for literal in self.NO_FIXTURE_LITERALS:
             assert literal not in text, f"found fixture literal {literal!r} in {text[:200]}"
 
-    def test_educate_targets_reads_real_community_consciousness(self) -> None:
+    def test_educate_targets_reads_real_social_class_nodes(self) -> None:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
@@ -904,9 +901,7 @@ class TestDefixturedVerbTargets:
         assert result["status"] == "ok"
         assert len(result["targets"]) >= 1
         target = result["targets"][0]
-        assert target["consciousness"]["r"] == pytest.approx(0.34)
-        assert target["consciousness"]["l"] == pytest.approx(0.48)
-        assert target["consciousness"]["f"] == pytest.approx(0.18)
+        assert target["community_id"] == "sc-genesee-proles"
         assert target["material_readiness"]["avg_agitation"] == pytest.approx(0.62)
         self._assert_no_fixture_literals(result)
 
@@ -914,8 +909,6 @@ class TestDefixturedVerbTargets:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
-        # Second community, scoped to T2, so a correct implementation must
-        # surface targets from BOTH of org-player's territories.
         graph.add_node(
             "sc-washtenaw-proles",
             "social_class",
@@ -924,15 +917,6 @@ class TestDefixturedVerbTargets:
             wealth=200.0,
             agitation=0.2,
             territory_ids=["T2"],
-        )
-        graph.add_node(
-            "comm-washtenaw",
-            "community",
-            community_type="NEW_AFRIKAN",
-            r=0.1,
-            l=0.7,
-            f=0.2,
-            member_ids=["sc-washtenaw-proles"],
         )
 
         with _patched_hydrate_state(bridge, graph):
@@ -1005,3 +989,76 @@ class TestDefixturedVerbTargets:
             result = bridge.get_reproduce_targets(uuid.uuid4(), "org-player")
 
         self._assert_no_fixture_literals(result)
+
+
+@pytest.mark.unit
+class TestDefixturedQueryCorrectness:
+    """Regression tests for spec-093 review findings #1-#4: the de-fixtured
+    queries must read the CORRECT node types, attributes, and enum values
+    that the real engine writes — not the wrong ones that silently returned
+    empty results."""
+
+    def test_extraction_intensity_read_from_territory_node(self) -> None:
+        """Finding #3: extraction_intensity lives on Territory nodes, not
+        social_class/organization nodes. The old code read it from the wrong
+        node type and always got empty."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
+
+        assert result["extraction_intensity"] == pytest.approx(0.41)
+
+    def test_extractive_edges_read_edge_mode_attribute(self) -> None:
+        """Finding #2: the engine writes edge_mode as a separate attribute
+        from edge_type. The old code read edge_type (which carries EdgeType
+        values like 'exploitation') and compared against EdgeMode values
+        like 'extractive' — always empty."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
+
+        assert result["rent_extracted"] == pytest.approx(118.9)
+
+    def test_educate_targets_uses_social_class_not_community(self) -> None:
+        """Finding #1: community nodes live in the XGI hypergraph, not the
+        main graph. The old code queried _node_type=='community' which never
+        exists in production. Correct targets are social_class nodes."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        assert len(result["targets"]) >= 1
+        target_ids = {t["community_id"] for t in result["targets"]}
+        assert "sc-genesee-proles" in target_ids
+
+    def test_mobilize_targets_uses_correct_org_type_enum(self) -> None:
+        """Finding #4: OrgType.CIVIL_SOCIETY.value is 'civil_society', not
+        'civil_society_org'. The old code filtered the wrong string and
+        missed all civil-society organizations."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "org-civil-society",
+            "organization",
+            name="Tenants Union",
+            org_type="civil_society",
+            heat=0.5,
+            cohesion=0.4,
+            territory_ids=["T1"],
+        )
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_mobilize_targets(uuid.uuid4(), "org-player")
+
+        target_ids = {t["id"] for t in result["targets"]}
+        assert "org-civil-society" in target_ids

@@ -28,7 +28,6 @@ from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
 from babylon.formulas.unequal_exchange import calculate_exploitation_rate
 from babylon.models.config import SimulationConfig
-from babylon.models.entities.consciousness import TernaryConsciousness
 from babylon.models.enums import ActionType
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
@@ -243,7 +242,7 @@ def _outgoing_extractive_edges(graph: BabylonGraph, source_id: str) -> list[dict
         if source != source_id:
             continue
         data = graph.edges[(source, target)]
-        mode = str(data.get("edge_type", data.get("_edge_type", ""))).lower()
+        mode = str(data.get("edge_mode", data.get("edge_type", data.get("_edge_type", "")))).lower()
         if mode not in _EXTRACTIVE_EDGE_MODES:
             continue
         found.append(
@@ -263,7 +262,9 @@ def _edge_status_between(graph: BabylonGraph, node_a: str, node_b: str) -> dict[
     for source, target in ((node_a, node_b), (node_b, node_a)):
         if (source, target) in graph.edges:
             data = graph.edges[(source, target)]
-            mode = str(data.get("edge_type", data.get("_edge_type", "none"))).upper()
+            mode = str(
+                data.get("edge_mode", data.get("edge_type", data.get("_edge_type", "none")))
+            ).upper()
             return {
                 "type": mode,
                 "value_flow": float(data.get("value_flow", 0.0)),
@@ -664,11 +665,11 @@ class EngineBridge:
         econ_nodes = _nodes_in_territory(graph, territory_id)
         node_ids = {node_id for node_id, _ in econ_nodes}
         value_produced = sum(float(data.get("wealth", 0.0)) for _, data in econ_nodes)
-        extraction_values = [
-            float(data["extraction_intensity"])
-            for _, data in econ_nodes
-            if "extraction_intensity" in data
-        ]
+        terr_data = graph.nodes.get(territory_id, {})
+        terr_extraction_intensity = terr_data.get("extraction_intensity")
+        extraction_values = (
+            [float(terr_extraction_intensity)] if terr_extraction_intensity is not None else []
+        )
 
         rent_extracted = 0.0
         tension_values: list[float] = []
@@ -679,7 +680,11 @@ class EngineBridge:
             if source not in node_ids or target not in node_ids:
                 continue
             edge_data = graph.edges[(source, target)]
-            mode = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+            mode = str(
+                edge_data.get(
+                    "edge_mode", edge_data.get("edge_type", edge_data.get("_edge_type", ""))
+                )
+            ).lower()
             if mode not in _EXTRACTIVE_EDGE_MODES:
                 continue
             rent_extracted += float(edge_data.get("value_flow", 0.0))
@@ -1277,59 +1282,55 @@ class EngineBridge:
             terr_data = graph.nodes[tid]
             terr_name = terr_data.get("name", tid)
 
-            communities = _communities_in_territory(graph, tid)
-            if not communities:
+            social_classes = [
+                (nid, nd)
+                for nid, nd in _nodes_in_territory(graph, tid)
+                if nd.get("_node_type") == "social_class"
+            ]
+            if not social_classes:
                 unavailable_communities.append(
                     {
                         "community_id": f"community-unknown-{tid}",
                         "community_type": "UNKNOWN",
                         "territory_name": terr_name,
-                        "reason": "No community data present for this territory yet.",
+                        "reason": "No social_class nodes present for this territory yet.",
                     }
                 )
                 continue
 
-            for community_id, community_data in communities:
-                consciousness = TernaryConsciousness(
-                    r=float(community_data.get("r", 0.0)),
-                    l=float(community_data.get("l", 0.0)),
-                    f=float(community_data.get("f", 0.0)),
-                )
-                avg_agitation = _avg_agitation_for_members(
-                    graph, list(community_data.get("member_ids", []))
-                )
-                education_pressure_current = float(community_data.get("education_pressure", 0.0))
+            for sc_id, sc_data in social_classes:
+                agitation = float(sc_data.get("agitation", 0.0))
                 cohesion = float(org_status.get("cohesion", 0.0))
 
                 targets.append(
                     {
-                        "community_id": community_id,
-                        "community_type": str(community_data.get("community_type", "UNKNOWN")),
-                        "category": str(community_data.get("category", "contradiction_pair")),
+                        "community_id": sc_id,
+                        "community_type": str(sc_data.get("role", "UNKNOWN")).upper(),
+                        "category": "social_class",
                         "territory_name": terr_name,
                         "territory_id": str(tid),
                         "credibility": cohesion,
                         "credibility_explanation": f"{int(cohesion * 100)}% org cohesion (real, not membership survey — no per-community overlap metric exists yet)",
                         "consciousness": {
-                            "r": float(consciousness.r),
-                            "l": float(consciousness.l),
-                            "f": float(consciousness.f),
-                            "dominant_tendency": consciousness.dominant_tendency.value,
-                            "collective_identity": consciousness.collective_identity,
-                            "ideological_contestation": consciousness.ideological_contestation,
+                            "r": 0.0,
+                            "l": 0.0,
+                            "f": 0.0,
+                            "dominant_tendency": "unknown",
+                            "collective_identity": None,
+                            "ideological_contestation": None,
+                            "note": "TernaryConsciousness lives on XGI hypergraph communities, not main-graph social_class nodes; community hypergraph integration pending.",
                         },
                         "material_readiness": {
-                            "avg_agitation": avg_agitation,
-                            "readiness_score": min(1.0, avg_agitation / 0.5)
-                            if avg_agitation
-                            else 0.0,
-                            "readiness_explanation": "Derived from real SocialClass.agitation for this community's members.",
+                            "avg_agitation": agitation,
+                            "readiness_score": min(1.0, agitation / 0.5) if agitation else 0.0,
+                            "readiness_explanation": "Derived from real SocialClass.agitation for this node.",
                         },
                         "education_pressure": {
-                            "current": education_pressure_current,
+                            "current": 0.0,
                             "projected_delta": None,
                             "projected_new": None,
                             "decay_per_tick": None,
+                            "note": "education_pressure lives on XGI community hyperedges, not main-graph nodes; hypergraph integration pending.",
                         },
                         "feedforward": {
                             "note": "No per-tick routing-shift projection exists in the engine yet.",
@@ -1465,7 +1466,7 @@ class EngineBridge:
             for node_id, data in _nodes_in_territory(graph, tid):
                 if data.get("_node_type") != "organization" or node_id == org_id:
                     continue
-                if str(data.get("org_type", "")) not in ("business", "civil_society_org"):
+                if str(data.get("org_type", "")) not in ("business", "civil_society"):
                     continue
                 allies = [
                     {"id": ally_id, "name": graph.nodes[ally_id].get("name", ally_id)}

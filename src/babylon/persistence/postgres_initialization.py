@@ -55,6 +55,18 @@ class InitializationError(RuntimeError):
     """
 
 
+class PhiAttributionUnavailableError(InitializationError):
+    """Raised when the national Φ cannot be attributed across engine nodes.
+
+    Spec-101 review fix #1/#2: the sibling ``county_exposure.py`` hard-fails
+    when its distribution would be a silent no-op (III.8 — no silent
+    conservation break); ``_attribute_phi_and_trade`` and its Hickel-coverage
+    preflight now match that discipline instead of returning ``{}`` /
+    ``0.0`` and letting 100% of national Φ vanish with no operator-visible
+    signal.
+    """
+
+
 @dataclass
 class InitializationReport:
     """Summary returned by :func:`initialize_session`.
@@ -74,6 +86,12 @@ class InitializationReport:
             completes; lets integration tests distinguish "set declared"
             from "rows persisted" (T078).
         sqlite_path: Resolved path of the source SQLite file (for log).
+        national_phi_reference: The RAW, un-attributed national Hickel Φ
+            (USD) read at bootstrap (spec-101 review fix #3). Independent of
+            the per-node D3 trade-share attribution — threaded through to
+            the conservation auditor so it can detect an attribution-stage
+            regression that zeroes every node's Φ even though this value
+            was positive (0.0 when no Hickel row was found for the year).
     """
 
     session_id: UUID
@@ -87,6 +105,8 @@ class InitializationReport:
     lodes_row_count: int = 0
     # Spec 063 — Option B border-commute synthesis hydration counts.
     border_synthesis_row_count: int = 0
+    # Spec-101 review fix #3 — raw national Φ, independent of attribution.
+    national_phi_reference: float = 0.0
 
 
 # The canonical fixed external-node set per FR-036 (R4 amendment: Canada
@@ -222,6 +242,53 @@ def _preflight_reference_data_window(
 
     allowed_length = max(1, allowed_end_year - start_year + 1)
     return allowed_length, warnings_collected
+
+
+# Spec-101 review fix #2: ``fact_hickel_erdi_annual`` (the source of national Φ,
+# scale_type='Intensive') is verified to cover exactly [1980, 2017]. Outside that
+# window ``_copy_hickel_drain`` copies zero 'Intensive' rows, so
+# ``_fetch_national_phi`` reads back its 0.0 fallback and every attributed Φ
+# silently collapses to zero — defeating spec-101's purpose with no
+# operator-visible signal (III.8). This preflight fails loud instead.
+_HICKEL_INTENSIVE_COVERAGE_QUERY = (
+    "SELECT MIN(t.year), MAX(t.year) FROM fact_hickel_erdi_annual f "
+    "JOIN dim_time t ON t.time_id = f.time_id WHERE f.scale_type = 'Intensive'"
+)
+
+
+def _preflight_hickel_intensive_coverage(*, sqlite_path: Path, start_year: int) -> None:
+    """Fail loud when ``start_year`` falls outside Hickel 'Intensive' coverage.
+
+    Spec-101 review fix #2. Companion to fix #1 (:class:`PhiAttributionUnavailableError`
+    when the trade-share denominator is zero) — this guards the numerator side:
+    a ``start_year`` with no 'Intensive' row copied means ``national_phi`` reads
+    back 0.0 and every node's attributed Φ silently collapses to zero.
+
+    Args:
+        sqlite_path: Path to ``marxist-data-3NF.sqlite``.
+        start_year:  Requested first simulation year.
+
+    Raises:
+        PhiAttributionUnavailableError: If ``fact_hickel_erdi_annual`` has no
+            'Intensive' rows at all, or ``start_year`` falls outside the
+            covered ``[MIN(year), MAX(year)]`` window.
+    """
+    with sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True) as conn:
+        row = conn.execute(_HICKEL_INTENSIVE_COVERAGE_QUERY).fetchone()
+    if row is None or row[0] is None or row[1] is None:
+        raise PhiAttributionUnavailableError(
+            "fact_hickel_erdi_annual has no scale_type='Intensive' rows; "
+            "national Φ attribution (spec-101 D3) cannot run."
+        )
+    min_year, max_year = int(row[0]), int(row[1])
+    if not (min_year <= start_year <= max_year):
+        raise PhiAttributionUnavailableError(
+            f"fact_hickel_erdi_annual 'Intensive' coverage is "
+            f"[{min_year}, {max_year}]; requested start_year={start_year} is "
+            f"outside this window. National Φ attribution (spec-101 D3) would "
+            f"silently collapse to zero for every engine node — refusing to "
+            f"proceed (III.8)."
+        )
 
 
 def copy_reference_series(
@@ -368,6 +435,13 @@ def _attribute_phi_and_trade(
         ``{node_id: (phi_year_inflow_usd, bilateral_trade_value_usd)}`` for nodes
         with a grounded, positive-trade bloc. Nodes absent from the map get
         ``(0.0, 0.0)`` at the call site (disclosed Φ=0 for india / latin_america).
+
+    Raises:
+        PhiAttributionUnavailableError: If no mapped bloc has positive
+            recorded trade (spec-101 review fix #1). Silently returning
+            ``{}`` would zero 100% of national Φ across every engine node
+            with no operator-visible signal — the same conservation-break
+            class the sibling ``county_exposure.py`` hard-fails on.
     """
     node_trade: dict[str, float] = {}
     for node_id, bloc_id in _NODE_TO_BLOC.items():
@@ -376,7 +450,12 @@ def _attribute_phi_and_trade(
             node_trade[node_id] = trade
     total_trade = sum(node_trade.values())
     if total_trade <= 0.0:
-        return {}
+        raise PhiAttributionUnavailableError(
+            f"No _NODE_TO_BLOC bloc has positive recorded trade (national_phi="
+            f"{national_phi!r}); attribution would silently drop 100% of "
+            f"national Φ across every engine node. Check "
+            f"fact_bilateral_trade_annual coverage for this start_year."
+        )
     out: dict[str, tuple[float, float]] = {}
     for node_id in sorted(node_trade):
         trade = node_trade[node_id]
@@ -404,23 +483,24 @@ def _fetch_national_phi(pg_conn: Any, session_id: UUID, year: int) -> float:
     return 0.0
 
 
-def _fetch_node_phi_and_trade(
-    pg_conn: Any, session_id: UUID, year: int, node_id: str
-) -> tuple[float, float, float, float]:
-    """Look up phi_year, bilateral_trade_value, bilateral_trade_tons, erdi.
+def _fetch_node_erdi(pg_conn: Any, session_id: UUID, year: int, node_id: str) -> float:
+    """Look up the per-node ERDI ratio (neutral 1.0 default).
 
-    Falls back to (0, 0, 0, 1.0) when no Hickel/Ricci/FAF row matches the
-    node's acceptable partner-name keys. Erdi defaults to 1.0 (neutral
-    exchange) since 0 would violate the CHECK constraint.
+    Spec-101 review cleanup: phi_year and bilateral_trade_value were
+    superseded by the D3 trade-share attribution (:func:`_attribute_phi_and_trade`)
+    and are no longer consumed by :func:`_bootstrap_external_nodes` — this
+    function used to also query ``immutable_reference_hickel_drain`` and
+    ``immutable_reference_ricci_unequal`` and discard both results. Only
+    ``erdi_ratio`` (from ``immutable_reference_erdi``, no D3 equivalent) is
+    still needed per node.
+
+    Falls back to 1.0 (neutral exchange) when no ``immutable_reference_erdi``
+    row matches the node's acceptable partner-name keys, since 0 would
+    violate the CHECK constraint.
     """
     keys = _EXTERNAL_PARTNER_KEYS.get(node_id, ())
-    phi = 0.0
-    bilateral_value = 0.0
-    bilateral_tons = 0.0
-    erdi = 1.0
-
     if not keys:
-        return phi, bilateral_value, bilateral_tons, erdi
+        return 1.0
 
     # psycopg 3 canonical pattern for list parameters: ``= ANY(%s)`` with a
     # Python list (adapted to a Postgres array). Per psycopg docs, the
@@ -428,27 +508,6 @@ def _fetch_node_phi_and_trade(
     # work (whereas ``IN ()`` is not valid SQL).
     key_list = list(keys)
 
-    # Hickel drain
-    row = pg_conn.execute(
-        "SELECT phi_year FROM immutable_reference_hickel_drain "
-        "WHERE session_id = %s AND year = %s AND partner_node_id = ANY(%s) "
-        "ORDER BY phi_year DESC LIMIT 1",
-        (str(session_id), year, key_list),
-    ).fetchone()
-    if row and row[0] is not None:
-        phi = float(row[0])
-
-    # Bilateral trade value
-    row = pg_conn.execute(
-        "SELECT bilateral_value FROM immutable_reference_ricci_unequal "
-        "WHERE session_id = %s AND year = %s AND partner_node_id = ANY(%s) "
-        "ORDER BY bilateral_value DESC LIMIT 1",
-        (str(session_id), year, key_list),
-    ).fetchone()
-    if row and row[0] is not None:
-        bilateral_value = float(row[0])
-
-    # ERDI
     row = pg_conn.execute(
         "SELECT erdi_ratio FROM immutable_reference_erdi "
         "WHERE session_id = %s AND year = %s AND partner_node_id = ANY(%s) "
@@ -456,14 +515,13 @@ def _fetch_node_phi_and_trade(
         (str(session_id), year, key_list),
     ).fetchone()
     if row and row[0] is not None and row[0] > 0:
-        erdi = float(row[0])
-
-    return phi, bilateral_value, bilateral_tons, erdi
+        return float(row[0])
+    return 1.0
 
 
 def _bootstrap_external_nodes(
     *, session_id: UUID, runtime: PostgresRuntime, start_year: int, sqlite_path: Path
-) -> int:
+) -> tuple[int, float]:
     """Populate ``dynamic_external_node_state`` at tick 0 from hydrated refs.
 
     Spec 062 T078 + spec-101 D3/FR-101-3/FR-101-4. Reads the national Hickel Φ
@@ -477,7 +535,16 @@ def _bootstrap_external_nodes(
     per canonical node id (8 international + 1 domestic_rest) via
     ``persist_tick_atomic()`` under the FR-008a atomic-tick guarantee.
 
-    Returns the number of rows written (always 9 for a successful bootstrap).
+    Returns:
+        ``(row_count, national_phi)`` — ``row_count`` is the number of rows
+        written (always 9 for a successful bootstrap); ``national_phi`` is
+        the RAW, un-attributed national Φ read from
+        ``immutable_reference_hickel_drain`` (spec-101 review fix #3 — an
+        independent ground-truth signal, distinct from the per-node
+        attributed values, threaded through :attr:`InitializationReport.national_phi_reference`
+        so the conservation auditor can detect an attribution-stage
+        regression that zeroes every node's Φ even though the true national
+        Φ was positive).
     """
     from babylon.persistence.envelope import PerTickTransactionEnvelope
     from babylon.persistence.external_node import ExternalNode, ExternalNodeKind
@@ -491,9 +558,7 @@ def _bootstrap_external_nodes(
         for node_id in INTERNATIONAL_NODES:
             # erdi still comes from the per-node reference lookup (neutral default);
             # phi + bilateral_trade_value are the attributed values (D3).
-            _phi, _btv, _btt, erdi = _fetch_node_phi_and_trade(
-                conn, session_id, start_year, node_id
-            )
+            erdi = _fetch_node_erdi(conn, session_id, start_year, node_id)
             phi, btv = attribution.get(node_id, (0.0, 0.0))
             rows.append(
                 ExternalNode(
@@ -530,7 +595,7 @@ def _bootstrap_external_nodes(
     # persist_tick_atomic is monkey-patched onto PostgresRuntime by
     # _spec_062.py at module load; mypy doesn't see the attachment.
     runtime.persist_tick_atomic(envelope)  # type: ignore[attr-defined]
-    return len(rows)
+    return len(rows), national_phi
 
 
 def initialize_session(
@@ -586,6 +651,11 @@ def initialize_session(
     if allowed_length < scenario_length:
         scenario_length = allowed_length
 
+    # Spec-101 review fix #2: fail loud (before any Postgres write) when
+    # start_year falls outside Hickel 'Intensive' coverage — otherwise
+    # national Φ attribution silently collapses to zero for every node.
+    _preflight_hickel_intensive_coverage(sqlite_path=sqlite_path, start_year=start_year)
+
     report = InitializationReport(session_id=session_id, sqlite_path=sqlite_path.resolve())
 
     # Spec-088 FR-005: create this session's partitions before any
@@ -625,7 +695,7 @@ def initialize_session(
     # The bootstrap function reads the just-hydrated Hickel/Ricci/FAF rows
     # and persists one ExternalNode per canonical node_id at tick 0.
     report.external_node_ids = set(INTERNATIONAL_NODES) | {DOMESTIC_REST_NODE}
-    report.external_node_count = _bootstrap_external_nodes(
+    report.external_node_count, report.national_phi_reference = _bootstrap_external_nodes(
         session_id=session_id, runtime=runtime, start_year=start_year, sqlite_path=sqlite_path
     )
 

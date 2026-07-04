@@ -15,6 +15,7 @@ import pytest
 
 from babylon.persistence.postgres_initialization import (
     _NODE_TO_BLOC,
+    PhiAttributionUnavailableError,
     _attribute_phi_and_trade,
     _read_bloc_trade,
 )
@@ -55,10 +56,17 @@ def test_unmapped_and_missing_blocs_absent() -> None:
     assert out["eu"][0] == pytest.approx(1.0)
 
 
-def test_no_trade_yields_empty() -> None:
-    assert _attribute_phi_and_trade(national_phi=9.9e12, bloc_trade={}) == {}
-    # bloc present but zero trade contributes nothing
-    assert _attribute_phi_and_trade(national_phi=9.9e12, bloc_trade={1: 0.0}) == {}
+def test_no_trade_raises_loud() -> None:
+    """Spec-101 fix #1: a zero-trade denominator must fail loud, not silently
+
+    zero the national Φ across every bloc. Mirrors the sibling
+    ``county_exposure.py`` hard-fail (III.8: no silent conservation break).
+    """
+    with pytest.raises(PhiAttributionUnavailableError):
+        _attribute_phi_and_trade(national_phi=9.9e12, bloc_trade={})
+    # bloc present but zero trade contributes nothing to the denominator either.
+    with pytest.raises(PhiAttributionUnavailableError):
+        _attribute_phi_and_trade(national_phi=9.9e12, bloc_trade={1: 0.0})
 
 
 def test_zero_phi_still_populates_trade_value() -> None:

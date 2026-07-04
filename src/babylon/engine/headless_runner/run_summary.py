@@ -126,23 +126,46 @@ def aggregate_external_node_flows(
     cumulative summaries:
 
       - ``total_phi_inflow``: SUM(magnitude) for ``flow_type='drain_edge'``
-      - ``total_trade_inbound``: SUM for ``flow_type='trade_inbound'``
-      - ``total_commute_outbound``: SUM for ``flow_type='commute_outbound'``
+      - ``total_trade_inbound``: SUM for ``flow_type='trade_edge'``
+      - ``total_commute_outbound``: SUM for ``flow_type='commute_out'``
       - ``tick_count_with_inflow``: distinct ticks with at least one row
+
+    Spec-101 review fix #5: the external node plays a DIFFERENT structural
+    role depending on ``flow_type`` — ``DRAIN_EDGE``/``TRADE_EDGE`` put it on
+    ``source_node_id`` (:mod:`babylon.engine.systems.phi_distribution`,
+    :mod:`babylon.engine.systems.vol2_circulation`), while ``COMMUTE_OUT``
+    puts it on ``dest_node_id``. A single ``GROUP BY dest_node_id`` (as this
+    function used before the fix) is therefore WRONG for the only currently-
+    live flow type: for ``DRAIN_EDGE`` rows ``dest_node_id`` is the
+    *receiving county* FIPS, not the bloc — ``node_id`` in the returned rows
+    was silently a county view, contradicting this function's own name and
+    ADR055/proof.md's "per external node" framing. The corrected query picks
+    whichever side carries ``kind='external'`` per row, so the aggregation is
+    genuinely per-bloc for every flow type (current and future).
 
     Returns one entry per external node id present in the register.
     Empty list when the engine has not yet integrated boundary flows.
     """
     sql = """
-        SELECT dest_node_id,
+        WITH flows AS (
+            SELECT
+                CASE
+                    WHEN source_kind = 'external' THEN source_node_id
+                    WHEN dest_kind = 'external' THEN dest_node_id
+                END AS external_node_id,
+                flow_type, magnitude, tick
+            FROM boundary_flow_register
+            WHERE session_id = %s
+        )
+        SELECT external_node_id,
                COALESCE(SUM(magnitude) FILTER (WHERE flow_type = 'drain_edge'), 0) AS phi_in,
-               COALESCE(SUM(magnitude) FILTER (WHERE flow_type = 'trade_inbound'), 0) AS trade_in,
-               COALESCE(SUM(magnitude) FILTER (WHERE flow_type = 'commute_outbound'), 0) AS commute_out,
+               COALESCE(SUM(magnitude) FILTER (WHERE flow_type = 'trade_edge'), 0) AS trade_in,
+               COALESCE(SUM(magnitude) FILTER (WHERE flow_type = 'commute_out'), 0) AS commute_out,
                COUNT(DISTINCT tick) FILTER (WHERE flow_type = 'drain_edge') AS tick_count
-        FROM boundary_flow_register
-        WHERE session_id = %s
-        GROUP BY dest_node_id
-        ORDER BY dest_node_id
+        FROM flows
+        WHERE external_node_id IS NOT NULL
+        GROUP BY external_node_id
+        ORDER BY external_node_id
     """
     with pool.connection() as conn:
         rows = conn.execute(sql, (session_id,)).fetchall()

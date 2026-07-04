@@ -104,7 +104,7 @@ class TestQueryTerminalAggregatesGuard:
         # Guard's hex-row-count query: (5,) — hex rows DO exist.
         pool = _FakePool(
             scripted_calls=[
-                (0, 100.0, 50.0, 25.0, 500.0, 0, 0),
+                (0, 100.0, 50.0, 25.0, 500.0, 0, 0, 5),
                 (5,),
             ]
         )
@@ -112,11 +112,10 @@ class TestQueryTerminalAggregatesGuard:
             _query_terminal_aggregates(pool=pool, session_id=uuid4(), terminal_tick=519)
 
     def test_ok_when_counties_resolved(self) -> None:
-        # resolved_county_count = row[6] = 83 > 0 -> guard short-circuits,
-        # no second query issued.
+        # resolved_county_count = row[6] = 83 > 0, null_entity_count = row[7] = 0
         pool = _FakePool(
             scripted_calls=[
-                (83, 1000.0, 500.0, 250.0, 5000.0, 83, 83),
+                (83, 1000.0, 500.0, 250.0, 5000.0, 83, 83, 0),
             ]
         )
         result = _query_terminal_aggregates(pool=pool, session_id=uuid4(), terminal_tick=519)
@@ -131,13 +130,28 @@ class TestQueryTerminalAggregatesGuard:
         """
         pool = _FakePool(
             scripted_calls=[
-                (0, 0.0, 0.0, 0.0, 0.0, 0, 0),
+                (0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0),
                 (0,),
             ]
         )
         result = _query_terminal_aggregates(pool=pool, session_id=uuid4(), terminal_tick=519)
         assert result["counties_alive"] == 0
         assert result["total_v"] == 0.0
+
+    def test_raises_on_partial_resolution_gap(self) -> None:
+        """Some hex rows resolve, some don't — NULL entity_id rows leak.
+
+        resolved_county_count=50 > 0 so the old guard passed, but
+        null_entity_count=3 means 3 hex rows have NULL entity_id.
+        """
+        pool = _FakePool(
+            scripted_calls=[
+                (50, 500.0, 250.0, 125.0, 2500.0, 50, 50, 3),
+                (53,),
+            ]
+        )
+        with pytest.raises(TerminalAggregateResolutionError, match="partial"):
+            _query_terminal_aggregates(pool=pool, session_id=uuid4(), terminal_tick=519)
 
 
 class TestCountyTerminalSnapshotGuard:
@@ -177,3 +191,17 @@ class TestCountyTerminalSnapshotGuard:
         )
         result = _county_terminal_snapshot(pool=pool, session_id=uuid4(), terminal_tick=519)
         assert result == []
+
+    def test_raises_on_partial_resolution_null_entity_leak(self) -> None:
+        """Some rows resolve, one has NULL entity_id — must not leak."""
+        pool = _FakePool(
+            scripted_calls=[
+                [
+                    ("26163", 10.0, 5.0, 2.0, 50.0, 0.3, 0.4, 0.1, 0.1, 0.1, 1000),
+                    (None, 5.0, 2.0, 1.0, 25.0, None, None, None, None, None, None),
+                ],
+                (2,),
+            ]
+        )
+        with pytest.raises(TerminalAggregateResolutionError, match="partial"):
+            _county_terminal_snapshot(pool=pool, session_id=uuid4(), terminal_tick=519)

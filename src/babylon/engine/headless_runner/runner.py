@@ -561,20 +561,13 @@ def _assert_county_resolution_or_raise(
     session_id: UUID,
     terminal_tick: int,
     resolved_county_count: int,
+    null_entity_count: int = 0,
 ) -> None:
     """Spec-102 STEP 0: fail loud on hex-rows-exist-but-zero-counties-resolved.
 
-    ``resolved_county_count`` is ``COUNT(DISTINCT entity_id)`` (NULLs
-    excluded) from ``view_runtime_trace_emission`` at ``terminal_tick`` —
-    the number of counties the hex→county spatial join actually resolved.
-    When that is zero we independently check whether hex rows exist for
-    this session/tick in ``v_hex_state_asof`` (which does NOT group by
-    county, so it is unaffected by a broken ``hex_spatial_map`` join). If
-    hex rows exist despite zero resolved counties, the COALESCE fallback
-    in the view (``COALESCE(m.county_fips, h.county_fips)``) resolved to
-    NULL for every hex row — the hex_spatial_map contention bug (spec-088
-    S3) — and we raise rather than let the caller silently treat this as
-    a legitimate zero-county outcome.
+    Also detects PARTIAL resolution gaps: when ``null_entity_count > 0``
+    some hex rows have NULL entity_id (hex_spatial_map partially populated),
+    which would leak bogus NULL-entity rows into downstream aggregates.
 
     Args:
         cur: Open cursor on the same connection/transaction.
@@ -582,11 +575,30 @@ def _assert_county_resolution_or_raise(
         terminal_tick: The tick being aggregated.
         resolved_county_count: Distinct non-NULL county count already
             observed by the caller's own query.
+        null_entity_count: Number of rows with NULL entity_id (0 if
+            the caller hasn't checked).
 
     Raises:
         TerminalAggregateResolutionError: If hex rows exist for this
-            session/tick but zero counties resolved.
+            session/tick but zero counties resolved, or if any rows have
+            NULL entity_id (partial resolution gap).
     """
+    if null_entity_count > 0:
+        cur.execute(
+            "SELECT COUNT(*) FROM v_hex_state_asof WHERE session_id = %s AND tick = %s",
+            (str(session_id), terminal_tick),
+        )
+        hex_row = cur.fetchone()
+        hex_row_count = int(hex_row[0] or 0) if hex_row else 0
+        raise TerminalAggregateResolutionError(
+            f"session={session_id} tick={terminal_tick}: partial resolution gap — "
+            f"{null_entity_count} row(s) have NULL entity_id out of "
+            f"{resolved_county_count + null_entity_count} total rows "
+            f"({hex_row_count} hex rows in v_hex_state_asof). "
+            "Refusing to leak NULL-entity rows into downstream aggregates. "
+            "This is the known hex_spatial_map/TIGER contention bug "
+            "(spec-088 S3) in partial form."
+        )
     if resolved_county_count > 0:
         return
     cur.execute(
@@ -631,25 +643,22 @@ def _query_terminal_aggregates(
         cur.execute(
             "SELECT COUNT(*) FILTER (WHERE v > 0), "
             "       SUM(v), SUM(c), SUM(s), SUM(k), "
-            # Liveness (ADR044-completion gate, 2026-07-02): the trace view
-            # LEFT JOINs dynamic_consciousness_state, and the bridge only
-            # writes a consciousness row while a county's engine population
-            # is > 0 — so non-NULL ideology at the terminal tick counts
-            # counties whose populations are still alive.
             "       COUNT(*) FILTER (WHERE ideology_r IS NOT NULL), "
-            # Spec-102 STEP 0: distinct resolved counties (NULLs excluded).
-            "       COUNT(DISTINCT entity_id) FILTER (WHERE entity_id IS NOT NULL) "
+            "       COUNT(DISTINCT entity_id) FILTER (WHERE entity_id IS NOT NULL), "
+            "       COUNT(*) FILTER (WHERE entity_id IS NULL) "
             "FROM view_runtime_trace_emission "
             "WHERE session_id = %s AND tick = %s",
             (str(session_id), terminal_tick),
         )
         row = cur.fetchone()
         resolved_county_count = int(row[6] or 0) if row else 0
+        null_entity_count = int(row[7] or 0) if row else 0
         _assert_county_resolution_or_raise(
             cur=cur,
             session_id=session_id,
             terminal_tick=terminal_tick,
             resolved_county_count=resolved_county_count,
+            null_entity_count=null_entity_count,
         )
     counties_alive = int(row[0] or 0) if row else 0
     return {
@@ -700,11 +709,13 @@ def _county_terminal_snapshot(
         )
         terminal = cur.fetchall()
         resolved_county_count = sum(1 for entity_row in terminal if entity_row[0] is not None)
+        null_entity_count = sum(1 for entity_row in terminal if entity_row[0] is None)
         _assert_county_resolution_or_raise(
             cur=cur,
             session_id=session_id,
             terminal_tick=terminal_tick,
             resolved_county_count=resolved_county_count,
+            null_entity_count=null_entity_count,
         )
         cur.execute(
             "SELECT entity_id, k FROM view_runtime_trace_emission "

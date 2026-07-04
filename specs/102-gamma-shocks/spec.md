@@ -161,20 +161,47 @@ spec adds a deterministic, exogenous scheduling layer for that.
   touch the graph, and are computed before `_advance_tick` calls
   `engine.run_tick`. This keeps blocs non-agentic (R-AMEND): the shock
   schedule is declarative data, not a decision any node makes.
-- **D5 — The `tick_commit` determinism-hash gate is necessary but structurally
-  insensitive to Phi.** `compute_determinism_hash` hashes `tick + rng_seed +
-  sorted(hex_state) + actions` only (verified:
-  `src/babylon/persistence/conservation_audit.py:70`) — `external_nodes_phi`,
-  `boundary_flow_register`, and `conservation_audit_log` are outside its
-  input set entirely, matching D1's finding that Φ machinery never touches
-  hex state. Running the same shock config twice and diffing the
-  `tick_commit` hash chain is therefore a **regression test against
-  accidentally-introduced nondeterminism in the new scheduling code** (e.g.
-  unsorted dict iteration, wall-clock/RNG use) rather than a test that is
-  *specific* to shock correctness — disclosed honestly rather than
-  overclaiming what the gate proves. The shock's *actual* effect is verified
-  separately (FR-102-6 test: the bloc's `external_nodes_phi` — and therefore
-  its per-tick `DRAIN_EDGE` sum — visibly steps at the scheduled tick).
+- **D5 — CORRECTED (2026-07-04, empirical): neither on-disk "determinism
+  hash" table is directly comparable across two different session ids —
+  the shock-determinism gate compares raw persisted VALUES instead.**
+  The original plan assumed `tick_commit.determinism_hash` was a pure
+  function of `(tick, rng_seed, hex_state, actions)` per
+  `compute_determinism_hash`'s signature
+  (`src/babylon/persistence/conservation_audit.py:70`) and could therefore
+  be diffed across two independent runs. Running the actual integration
+  test surfaced two problems, both confirmed by direct experiment (not
+  just code reading):
+  1. `tick_commit.determinism_hash` is actually
+     `sha256(f"{session_id}:{tick}:{random_seed}")` (see `_tick_loop` in
+     `runner.py`) — a DIFFERENT, simpler hash than
+     `compute_determinism_hash`, and it embeds `session_id` directly, so it
+     can never match across two sessions by construction.
+  2. `conservation_audit_log.determinism_hash` genuinely IS computed via
+     `compute_determinism_hash`, but the `hex_rows` it hashes are
+     `DynamicHexState`-shaped Pydantic models carrying their own
+     `session_id` field, and `compute_determinism_hash` hashes each row's
+     full `model_dump(mode="json")` — so `session_id` leaks into this
+     "state hash" too. Verified by running the **unmodified spec-101
+     baseline (empty `shock_schedule`)** twice: its
+     `conservation_audit_log.determinism_hash` sequence ALSO diverges
+     between the two runs — proving this is a pre-existing latent gap in
+     the determinism-hash instrumentation, unrelated to spec-102's
+     scheduling code, and out of scope to fix here (same "flagged, not
+     remediated" class as the STEP-0 guard's deferred session-scoping
+     half).
+
+  Given that, the shipped determinism test
+  (`tests/integration/engine/headless_runner/test_shock_determinism.py`)
+  instead compares the actual persisted VALUES between two runs of the
+  identical shock config: hex-level `(tick, h3_index, c, v, s, k)` from
+  `v_hex_state_asof` (byte-identical), and per-bloc `DRAIN_EDGE` magnitudes
+  from `boundary_flow_register` (byte-identical, within Postgres
+  `SUM()`-order float noise) — which is exactly what a hash chain would be
+  a *proxy* for if the session-id leak did not exist. Both were verified
+  GREEN empirically. The shock's *actual bending effect* is verified
+  separately (`test_shock_bends_phi.py`: the bloc's per-tick `DRAIN_EDGE`
+  sum visibly steps at the scheduled tick by the configured multiplier;
+  other blocs and pre-shock ticks are unaffected).
 
 ## Gate (program 09 §2)
 
@@ -183,8 +210,10 @@ spec adds a deterministic, exogenous scheduling layer for that.
   when a working `hydration_source` is injected; falls back to `estimated=True`
   for years outside coverage (e.g. 2020) — both paths tested.
 - RED→GREEN: running the same `shock_schedule` config twice (same seed,
-  different session ids) produces an identical `tick_commit.determinism_hash`
-  sequence.
+  different session ids) produces byte-identical hex-level state
+  (`v_hex_state_asof`) and byte-identical per-bloc `DRAIN_EDGE` magnitudes
+  (`boundary_flow_register`) — see D5 for why this replaces a direct
+  `tick_commit.determinism_hash` diff.
 - A dedicated shock-scenario integration test shows a bloc's
   `external_nodes_phi` (and its per-tick `DRAIN_EDGE` sum) step-changing at
   the scheduled tick by the configured multiplier.

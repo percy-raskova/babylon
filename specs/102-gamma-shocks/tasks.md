@@ -43,17 +43,22 @@ Legend: [x] done · [ ] todo. Each numbered task = one commit unit.
   `runner.py`: `_build_shock_timeline`, `_apply_due_shocks` (pure,
   deterministic, sorted). Commit:
   `feat(spec-102): scheduled bloc shocks — deterministic exogenous phi multiplier`.
-- [ ] **T9 — Wire into tick loop.** Thread effective (shocked)
+- [x] **T9 — Wire into tick loop.** Thread effective (shocked)
   `external_nodes_phi` through `_tick_loop`/`_advance_tick`, recomputed each
   tick from base map + active multiplier state. Default empty schedule ⇒
   behavior-identical to spec-101 (base map, no shocks). Commit:
   `feat(spec-102): apply scheduled shocks to per-tick external_nodes_phi`.
-- [ ] **T10 — RED→GREEN: determinism integration test.**
+- [x] **T10 — RED→GREEN: determinism integration test.**
   `tests/integration/engine/headless_runner/test_shock_determinism.py` — same
-  shock config run twice (different session ids) → identical
-  `tick_commit.determinism_hash` sequence. Commit:
-  `test(spec-102): shock-schedule determinism (identical tick_commit hash chain)`.
-- [ ] **T11 — RED→GREEN: shock bends the Φ trajectory.**
+  shock config run twice (different session ids) → byte-identical hex state
+  (`v_hex_state_asof`) + `DRAIN_EDGE` magnitudes. **Course-corrected during
+  implementation** (D5): a direct `tick_commit.determinism_hash` diff was
+  attempted first and found, empirically, to ALWAYS diverge across sessions
+  (the hash embeds `session_id` by construction) — even for the unmodified
+  spec-101 baseline with no shock schedule at all. Re-designed to compare
+  raw persisted values instead (byte-identical, confirmed GREEN). Commit:
+  `test(spec-102): shock-schedule determinism (hex state + DRAIN_EDGE reproduce byte-identically)`.
+- [x] **T11 — RED→GREEN: shock bends the Φ trajectory.**
   `tests/integration/engine/headless_runner/test_shock_bends_phi.py` — a
   bloc's `external_nodes_phi` / per-tick `DRAIN_EDGE` sum steps at the
   scheduled tick by the configured multiplier; unaffected before. Commit:

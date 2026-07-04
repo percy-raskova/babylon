@@ -50,7 +50,7 @@ _tick_loop (every tick)
 | `tests/unit/economics/melt/test_basket_visibility.py` | New tests: hydration-source-injected path returns `estimated=False` with real value; falls back to MVP when hydration source returns `None`; all EXISTING tests (parameterless construction) stay green unmodified. |
 | `tests/unit/economics/test_factory.py` | Extend: `basket_calculator` is `DefaultBasketVisibilityCalculator` with a non-`None` `_hydration_source` after `create_economics_services()`. |
 | `tests/unit/engine/headless_runner/test_shock_schedule.py` (new) | `ScheduledBlocShock` validation; shock-timeline build (sorted, level-set semantics). |
-| `tests/integration/engine/headless_runner/test_shock_determinism.py` (new) | RED→GREEN: same shock config run twice (different session ids) → identical `tick_commit.determinism_hash` sequence. |
+| `tests/integration/engine/headless_runner/test_shock_determinism.py` (new) | RED→GREEN: same shock config run twice (different session ids) → byte-identical hex state (`v_hex_state_asof`) + `DRAIN_EDGE` magnitudes (D5 — corrected from an original `tick_commit.determinism_hash` diff plan after empirical testing found both on-disk hash tables embed `session_id`). |
 | `tests/integration/engine/headless_runner/test_shock_bends_phi.py` (new) | Shock scenario: bloc's `external_nodes_phi` / `DRAIN_EDGE` sum step-changes at the scheduled tick by the configured multiplier; ticks before the schedule are unaffected. |
 
 ## Constitution v2.7.0 gate checklist (per §4)
@@ -62,8 +62,11 @@ _tick_loop (every tick)
   coverage (unchanged contract).
 - **III.7 determinism / frozen models** — PASS. `ScheduledBlocShock` is a
   frozen Pydantic model; shock application is a pure dict transform over
-  sorted bloc keys, no RNG, no wall-clock. D5 discloses the precise (limited)
-  scope of what the `tick_commit` hash-chain determinism test can prove.
+  sorted bloc keys, no RNG, no wall-clock. D5 discloses (empirically
+  verified) that neither on-disk "determinism hash" table is directly
+  comparable across two session ids — the shipped test compares raw
+  persisted hex state + DRAIN_EDGE values instead, which is what a hash
+  chain would be a proxy for.
 - **III.8 data-grounding** — PASS w/ DISCLOSURE. α from BEA final-demand +
   bilateral trade (spec-068 + spec-100); γ_import from Hickel ERDI
   (spec-057's existing ingestion). Data-coverage gap (Hickel 1980–2016 only)

@@ -25,6 +25,29 @@ if TYPE_CHECKING:
 from babylon.engine.systems.base import SystemBase
 from babylon.engine.systems.protocol import ContextType
 
+# Spec-071 create-on-demand id offsets (keep clear of bridge ids: workers
+# C000-C082, bourgeois C500-C582). Enforcers land in the C7xx band, internal
+# proletariat in the C8xx band.
+_ENFORCER_ID_OFFSET = 700
+_INTERNAL_PROLETARIAT_ID_OFFSET = 800
+
+
+def _derive_entity_id(graph: GraphProtocol, base_id: str, offset: int) -> str:
+    """Deterministically derive a free, pattern-valid (``^C[0-9]{3}$``) node id.
+
+    The numeric part of ``base_id`` plus ``offset`` (mod 1000), advanced past
+    any collision. Deterministic (no ``hash()`` — III.7): the same graph +
+    inputs always yield the same id. Falls back to the offset alone when
+    ``base_id`` carries no digits (e.g. test ids like ``C_w``).
+    """
+    digits = "".join(c for c in base_id if c.isdigit())
+    seed = (int(digits) % 1000) if digits else 0
+    for i in range(1000):
+        candidate = f"C{(seed + offset + i) % 1000:03d}"
+        if graph.get_node(candidate) is None:
+            return candidate
+    return f"C{(seed + offset) % 1000:03d}"  # pragma: no cover - 1000 ids exhausted
+
 
 def _find_entity_by_role(
     graph: GraphProtocol,
@@ -198,6 +221,37 @@ class DecompositionSystem(SystemBase):
             persistent["_decomposition_complete"] = True
             persistent["_class_decomposition_tick"] = tick
 
+    @staticmethod
+    def _create_target_entity(
+        graph: GraphProtocol,
+        role: SocialRole,
+        la_id: str,
+        la_data: dict[str, Any],
+        offset: int,
+    ) -> tuple[str, dict[str, Any]]:
+        """Create an inactive decomposition target node on demand (spec-071).
+
+        Seeds a minimal ``social_class`` node (population/wealth 0, ``active``
+        False until the transfer flips it on) inheriting the LA's county so it
+        participates in per-county aggregation. Returns ``(id, attributes)``
+        matching the :func:`_find_entity_by_role` shape.
+        """
+        new_id = _derive_entity_id(graph, la_id, offset)
+        graph.add_node(
+            new_id,
+            "social_class",
+            role=role.value,
+            active=False,
+            population=0,
+            wealth=0.0,
+            county_fips=la_data.get("county_fips"),
+            subsistence_threshold=la_data.get("subsistence_threshold", 0.0),
+            s_bio=la_data.get("s_bio", 0.01),
+            s_class=la_data.get("s_class", 0.0),
+        )
+        created = graph.get_node(new_id)
+        return (new_id, created.attributes if created is not None else {})
+
     def _execute_decomposition(
         self,
         graph: GraphProtocol,
@@ -238,30 +292,40 @@ class DecompositionSystem(SystemBase):
         enforcer_wealth_gain = la_wealth * enforcer_fraction
         proletariat_wealth = la_wealth * proletariat_fraction
 
-        # Find target entities
+        # Find (or, spec-071, create on demand) target entities. The bridged
+        # canonical world seeds no CARCERAL_ENFORCER / INTERNAL_PROLETARIAT
+        # entity, so without this the enforcer branch no-ops (project/02 §5b).
         enforcer = _find_entity_by_role(graph, SocialRole.CARCERAL_ENFORCER, include_inactive=True)
+        if enforcer is None:
+            enforcer = self._create_target_entity(
+                graph, SocialRole.CARCERAL_ENFORCER, la_id, la_data, _ENFORCER_ID_OFFSET
+            )
         internal_proletariat = _find_entity_by_role(
             graph, SocialRole.INTERNAL_PROLETARIAT, include_inactive=True
         )
+        if internal_proletariat is None:
+            internal_proletariat = self._create_target_entity(
+                graph,
+                SocialRole.INTERNAL_PROLETARIAT,
+                la_id,
+                la_data,
+                _INTERNAL_PROLETARIAT_ID_OFFSET,
+            )
 
         # Transfer to CARCERAL_ENFORCER
-        if enforcer is not None:
-            enforcer_id, enforcer_data = enforcer
-            current_pop = enforcer_data.get("population", 0)
-            current_wealth = enforcer_data.get("wealth", 0.0)
-            graph.update_node(
-                enforcer_id,
-                population=current_pop + enforcer_pop_gain,
-                wealth=current_wealth + enforcer_wealth_gain,
-                active=True,
-            )
+        enforcer_id, enforcer_data = enforcer
+        current_pop = enforcer_data.get("population", 0)
+        current_wealth = enforcer_data.get("wealth", 0.0)
+        graph.update_node(
+            enforcer_id,
+            population=current_pop + enforcer_pop_gain,
+            wealth=current_wealth + enforcer_wealth_gain,
+            active=True,
+        )
 
         # Transfer to INTERNAL_PROLETARIAT
-        if internal_proletariat is not None:
-            ip_id, _ = internal_proletariat
-            graph.update_node(
-                ip_id, population=proletariat_pop, wealth=proletariat_wealth, active=True
-            )
+        ip_id, _ = internal_proletariat
+        graph.update_node(ip_id, population=proletariat_pop, wealth=proletariat_wealth, active=True)
 
         # Deactivate Labor Aristocracy (decomposed)
         graph.update_node(la_id, active=False)

@@ -11,6 +11,7 @@
 
 import { useNavigate, useParams } from "react-router";
 import { BblBadge, BblData, BblLabel, BblPanel, Sparkline } from "@/components/bbl";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { HexMapPlaceholder } from "@/components/viz";
@@ -98,7 +99,15 @@ export function BriefingPage() {
         <BblPanel title="Situation Map" right={<BblBadge color="#787878">heat layer</BblBadge>}>
           {snapshot ? (
             <div data-testid="briefing-map" className="h-full min-h-[200px]">
-              <DeckGLMap snapshot={snapshot} />
+              {/* deck.gl is WebGL; a GPU/context init failure must NOT
+                  white-screen the in-game index route. Degrade to the static
+                  placeholder on any render crash (spec-091 review fix #1). */}
+              <ErrorBoundary
+                fallbackLabel="Situation map"
+                fallback={<HexMapPlaceholder className="h-full min-h-[200px]" />}
+              >
+                <DeckGLMap snapshot={snapshot} />
+              </ErrorBoundary>
             </div>
           ) : (
             <HexMapPlaceholder className="h-full min-h-[200px]" />

@@ -9,8 +9,15 @@ import { Component, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
-  /** Label shown when the boundary catches an error. */
+  /** Label shown in the default fallback when the boundary catches an error. */
   fallbackLabel?: string;
+  /**
+   * Custom fallback UI rendered instead of the default error card when a child
+   * throws. Used to degrade gracefully (e.g. the Briefing map falls back to the
+   * static placeholder on a WebGL/deck.gl init failure instead of white-screening
+   * the route).
+   */
+  fallback?: ReactNode;
 }
 
 interface State {
@@ -37,6 +44,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.error) {
+      if (this.props.fallback !== undefined) {
+        return this.props.fallback;
+      }
       return (
         <div className="flex h-full w-full items-center justify-center rounded-lg border border-wet-concrete bg-dark-metal p-4 text-center">
           <div>

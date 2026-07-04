@@ -69,7 +69,7 @@ _tick_loop (every tick)
   chain would be a proxy for.
 - **III.8 data-grounding** — PASS w/ DISCLOSURE. α from BEA final-demand +
   bilateral trade (spec-068 + spec-100); γ_import from Hickel ERDI
-  (spec-057's existing ingestion). Data-coverage gap (Hickel 1980–2016 only)
+  (spec-057's existing ingestion). Data-coverage: Hickel 1980–2017 (37 rows incl. 2017 erdi=7.20)
   disclosed in spec.md FR-102-2, not silently ignored or fabricated past.
   Hickel's own `alpha` column is explicitly NOT reused for α (D2) to avoid a
   false-cognate fabrication.

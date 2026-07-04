@@ -8,7 +8,7 @@
 ```
 scale_type                    row count   year range
 Extensive                     20          1960–1979
-Intensive                     37          1980–2016
+Intensive                     37          1980–2017
 Intensive_China_Inflection    1           2005 (variant, not a series)
 ```
 

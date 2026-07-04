@@ -44,7 +44,7 @@ spec adds a deterministic, exogenous scheduling layer for that.
     introduced, III.8).
   - Returns `None` for a year with no Hickel/BEA/trade row (see FR-102-2).
 - **FR-102-2** — **Disclosed data-coverage gap**: `fact_hickel_erdi_annual`
-  only carries `scale_type='Intensive'` rows for 1980–2016 (`'Extensive'` for
+  only carries `scale_type='Intensive'` rows for 1980–2017 (`'Extensive'` for
   1960–1979; a single `'Intensive_China_Inflection'` 2005 variant row). The
   canonical `michigan-canada` run starts 2010 across 520 weekly ticks (~10
   calendar years, through ~2019/2020) — years 2018+ have no Hickel row.

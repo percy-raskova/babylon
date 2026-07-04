@@ -54,15 +54,21 @@ class ScheduledBlocShock(BaseModel):
     exogenous scenario-authoring data — blocs never decide to shock
     themselves (R-AMEND, blocs stay Layer-0 register machinery).
 
-    Note: the tick loop only visits ticks ``1..(config.ticks - 1)`` (tick 0
-    is a raw hex-state persist that never reads ``external_nodes_phi``), so
-    a shock scheduled at ``tick=0`` is accepted by validation but never
-    fires.
+    ``tick`` must be >= 1: the tick loop only visits ticks
+    ``1..(config.ticks - 1)`` (tick 0 is a raw hex-state persist that
+    never reads ``external_nodes_phi``).
     """
 
     model_config = ConfigDict(frozen=True)
 
-    tick: int = Field(ge=0)
+    tick: int = Field(
+        ge=1,
+        description=(
+            "Tick at which the shock fires (1-indexed). Tick 0 is a raw "
+            "hex-state persist that never reads external_nodes_phi, so "
+            "tick=0 shocks would silently never fire."
+        ),
+    )
     bloc: str = Field(description="One of the 8 canonical INTERNATIONAL_NODES.")
     phi_multiplier: float = Field(gt=0.0)
 
@@ -73,6 +79,17 @@ class ScheduledBlocShock(BaseModel):
 
         if value not in INTERNATIONAL_NODES:
             raise ValueError(f"bloc must be one of {INTERNATIONAL_NODES}, got {value!r}")
+        # india and latin_america have phi_year_inflow=0 at bootstrap (ADR055) —
+        # a shock multiplier on them is a silent no-op. Warn the operator.
+        if value in ("india", "latin_america"):
+            import warnings
+
+            warnings.warn(
+                f"ScheduledBlocShock bloc={value!r} has phi_year_inflow=0 at "
+                "bootstrap (no distinct bilateral-trade bloc per ADR055). "
+                "The shock multiplier will have no effect.",
+                stacklevel=2,
+            )
         return value
 
 

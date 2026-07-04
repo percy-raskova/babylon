@@ -11,7 +11,7 @@ import {
   fetchConservation,
   fetchVerify,
   type BoundaryResult,
-  type ConservationRow,
+  type ConservationResult,
   type Source,
   type VerifyResult,
 } from "./deepApi";
@@ -93,13 +93,17 @@ export function VerificationPane({ sessionId, source }: DeepPanesProps) {
             result.valid ? "bg-dark-metal text-data-green" : "bg-dark-metal text-crimson"
           }`}
         >
-          {result.valid ? "CHAIN VALID" : "CHAIN INVALID"}
+          {result.valid ? "STRUCTURE OK" : "STRUCTURE ANOMALY"}
         </span>
         <span className="text-ash">
           ticks {result.min_tick ?? "—"}–{result.max_tick ?? "—"} · {result.tick_count} committed ·{" "}
           {result.checkpoint_ticks.length} checkpoints
         </span>
       </div>
+      <p className="text-[11px] text-ash" data-testid="verify-scope-note">
+        Checks tick contiguity, checkpoint cadence, and hash FORMAT (length) only — NOT
+        content/tamper verification of the hash itself.
+      </p>
       {result.anomalies.length > 0 && (
         <ul
           className="flex flex-col gap-0.5 font-mono text-xs text-crimson"
@@ -148,24 +152,35 @@ export function BoundaryPane({ sessionId, source }: DeepPanesProps) {
     );
   }
   return (
-    <table className="w-full text-left text-xs" data-testid="boundary-table">
-      <thead className="text-ash">
-        <tr>
-          <th className="py-1">flow type</th>
-          <th>rows</th>
-          <th>total magnitude</th>
-        </tr>
-      </thead>
-      <tbody className="font-mono text-bone">
-        {result.by_flow_type.map((f) => (
-          <tr key={f.flow_type} className="border-t border-soot">
-            <td className="py-1">{f.flow_type}</td>
-            <td>{f.row_count}</td>
-            <td>{f.total_magnitude.toFixed(2)}</td>
+    <div className="flex flex-col gap-2">
+      {result.truncated && (
+        <div
+          role="status"
+          className="text-xs font-bold text-warning-amber"
+          data-testid="boundary-truncated"
+        >
+          Results truncated at {result.rows.length} rows — narrow the tick range to see more.
+        </div>
+      )}
+      <table className="w-full text-left text-xs" data-testid="boundary-table">
+        <thead className="text-ash">
+          <tr>
+            <th className="py-1">flow type</th>
+            <th>rows</th>
+            <th>total magnitude</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody className="font-mono text-bone">
+          {result.by_flow_type.map((f) => (
+            <tr key={f.flow_type} className="border-t border-soot">
+              <td className="py-1">{f.flow_type}</td>
+              <td>{f.row_count}</td>
+              <td>{f.total_magnitude.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -176,14 +191,14 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 export function ConservationPane({ sessionId, source }: DeepPanesProps) {
-  const [state, setState] = useState<Loadable<ConservationRow[]>>({ status: "loading" });
+  const [state, setState] = useState<Loadable<ConservationResult>>({ status: "loading" });
   const [nonOkOnly, setNonOkOnly] = useState(false);
   useEffect(() => {
     let active = true;
     async function load() {
-      const rows = await fetchConservation(sessionId, source, nonOkOnly);
+      const result = await fetchConservation(sessionId, source, nonOkOnly);
       if (active) {
-        setState({ status: "ready", data: rows });
+        setState({ status: "ready", data: result });
       }
     }
     void load();
@@ -207,34 +222,49 @@ export function ConservationPane({ sessionId, source }: DeepPanesProps) {
           Loading…
         </div>
       )}
-      {state.status === "ready" && state.data.length === 0 && (
+      {state.status === "ready" && state.data.rows.length === 0 && (
         <div role="status" className="text-sm text-ash" data-testid="conservation-empty">
           No conservation-audit rows.
         </div>
       )}
-      {state.status === "ready" && state.data.length > 0 && (
-        <table className="w-full text-left text-xs" data-testid="conservation-table">
-          <thead className="text-ash">
-            <tr>
-              <th className="py-1">tick</th>
-              <th>scale</th>
-              <th>invariant</th>
-              <th>residual</th>
-              <th>severity</th>
-            </tr>
-          </thead>
-          <tbody className="font-mono text-bone">
-            {state.data.map((r) => (
-              <tr key={`${r.tick}-${r.scale}-${r.invariant_name}`} className="border-t border-soot">
-                <td className="py-1">{r.tick}</td>
-                <td>{r.scale}</td>
-                <td>{r.invariant_name}</td>
-                <td>{r.residual.toFixed(4)}</td>
-                <td className={SEVERITY_COLOR[r.severity] ?? "text-bone"}>{r.severity}</td>
+      {state.status === "ready" && state.data.rows.length > 0 && (
+        <>
+          {state.data.truncated && (
+            <div
+              role="status"
+              className="text-xs font-bold text-warning-amber"
+              data-testid="conservation-truncated"
+            >
+              Results truncated at {state.data.rows.length} rows — narrow the tick range or filter
+              to warn/alarm only.
+            </div>
+          )}
+          <table className="w-full text-left text-xs" data-testid="conservation-table">
+            <thead className="text-ash">
+              <tr>
+                <th className="py-1">tick</th>
+                <th>scale</th>
+                <th>invariant</th>
+                <th>residual</th>
+                <th>severity</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="font-mono text-bone">
+              {state.data.rows.map((r) => (
+                <tr
+                  key={`${r.tick}-${r.scale}-${r.invariant_name}`}
+                  className="border-t border-soot"
+                >
+                  <td className="py-1">{r.tick}</td>
+                  <td>{r.scale}</td>
+                  <td>{r.invariant_name}</td>
+                  <td>{r.residual.toFixed(4)}</td>
+                  <td className={SEVERITY_COLOR[r.severity] ?? "text-bone"}>{r.severity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   );

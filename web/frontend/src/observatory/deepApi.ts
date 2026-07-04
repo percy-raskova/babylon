@@ -27,6 +27,14 @@ export interface VerifyResult {
   tick_count: number;
   checkpoint_ticks: number[];
   expected_checkpoint_cadence: number;
+  /**
+   * Names exactly what `valid`/`anomalies` cover: always `"structural"`
+   * (tick contiguity + checkpoint cadence + hash FORMAT/length). This is
+   * NOT content/tamper verification — `tick_commit.determinism_hash` is a
+   * shallow identity hash whose content is never recomputed here (spec-099
+   * fix #1/#2/#7; see `observatory.deep_queries` module docstring).
+   */
+  verification_scope: "structural";
   anomalies: ChainAnomaly[];
 }
 
@@ -53,6 +61,8 @@ export interface BoundaryResult {
   to_tick: number;
   by_flow_type: FlowTypeSummary[];
   rows: BoundaryFlowRow[];
+  /** True when the raw-row cap was hit — `rows` is not the full result. */
+  truncated: boolean;
 }
 
 export interface ConservationRow {
@@ -63,6 +73,12 @@ export interface ConservationRow {
   expected_value: number;
   residual: number;
   severity: "ok" | "warn" | "alarm";
+}
+
+export interface ConservationResult {
+  rows: ConservationRow[];
+  /** True when the raw-row cap was hit — `rows` is not the full result. */
+  truncated: boolean;
 }
 
 export interface DiffResult {
@@ -107,15 +123,15 @@ export async function fetchConservation(
   sessionId: string,
   source: Source,
   nonOkOnly = false,
-): Promise<ConservationRow[]> {
+): Promise<ConservationResult> {
   const params = new URLSearchParams();
   if (nonOkOnly) {
     params.set("severity", "non_ok");
   }
-  const res = await get<{ rows: ConservationRow[] }>(
+  const res = await get<ConservationResult>(
     `${BASE}/sessions/${sessionId}/conservation/${withSource(params, source)}`,
   );
-  return res.status === "ok" ? res.data.rows : [];
+  return res.status === "ok" ? res.data : { rows: [], truncated: false };
 }
 
 export async function fetchDiff(a: string, b: string, source: Source): Promise<DiffResult | null> {

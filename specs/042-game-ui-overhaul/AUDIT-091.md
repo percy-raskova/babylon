@@ -35,9 +35,9 @@ the 16-route `pages/*` architecture (051/061) and the course-correction. Remaini
 
 | Task | Deliverable | Status | Evidence / assignment |
 |------|-------------|--------|-----------------------|
-| T001 | New TS types (`LensId`…`ActionPreviewResult`) | **DONE** | `web/frontend/src/types/game.ts` (547 lines) |
+| T001 | New TS types (`LensId`…`ActionPreviewResult`) | **DONE** | `web/frontend/src/types/game.ts` (578 lines) |
 | T002 | `eventClassifier.ts` | **DONE** | `web/frontend/src/lib/eventClassifier.ts` (`classifyEvents`) |
-| T003 | `lensDefinitions.ts` (4 lenses, indicators) | **DONE** | `web/frontend/src/lib/lensDefinitions.ts` (318 lines) |
+| T003 | `lensDefinitions.ts` (4 lenses, indicators) | **DONE** | `web/frontend/src/lib/lensDefinitions.ts` (340 lines) |
 | T004 | uiStore extensions (activeLens, breadcrumbs, notifications, pinned, panel sizes) | **DONE** | `web/frontend/src/stores/uiStore.ts` |
 | T005 | mapStore `lensOverride` (+ setActiveLayer sets it) | **SUPERSEDED** | Added by 042, **removed by course-correction Phase 7** — `mapStore.ts` header: "Phase 7: lensOverride removed. LensBar is the sole layer selector." |
 | T006 | gameStore accumulates ClassifiedEvent ring buffer | **DONE** | `gameStore.ts:66-67` (`classifyEvents` → `useUIStore.addEvents`) |

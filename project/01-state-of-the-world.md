@@ -183,11 +183,25 @@ Stacks on `090-cold-collapse` (`42232a15`). One codebase, no legacy siblings:
   aligned to the Article VII amendment (monotonic EXCEPT named alarm terminals/
   diverging); NEW Playwright visual-baseline suite (`e2e/visual.spec.ts` + login
   chrome baseline) pinning the Cold Collapse canon.
-- **Gates**: Vitest **358/358**; `poetry run pytest tests/unit/web/` **248 green**;
-  visual suite green; tsc clean. CONCERN: the 8 behavioural Playwright suites need
-  a live seeded backend (Django + Postgres 5432 + testuser) not bootable in the
-  unattended web-only lane; a pre-existing stale login selector ("Log In"→"Enter")
-  was corrected but end-to-end behavioural green is unverified here.
+- **Review fixes (2026-07-04, same branch)**: (1) the Briefing deck.gl map is
+  now wrapped in an `ErrorBoundary` (HexMapPlaceholder fallback) so a WebGL init
+  failure degrades gracefully instead of white-screening the in-game index route
+  (+ Vitest test forcing a throw); (2) the two god-page e2e relics
+  (`navigation.spec`, `game-loop.spec`) that asserted DELETED UI were removed
+  (superseded by the spec-061 live suites) and a backend-free real-browser route
+  smoke added; (3) 5 GameView/ActionPage orphans (ActionPanel, TickResults,
+  ResourcePanel, TrapIndicator, VerbShell — all untested, no consumer) DELETED as
+  deletion debris; (4) 042-audit line counts corrected (game.ts 578, lensDefinitions.ts 340).
+- **Gates**: Vitest **364/364** (44 files); `poetry run pytest tests/unit/web/`
+  **248 green**; backend-free Playwright (visual + route smoke) **3 green**; tsc
+  clean. **OWNER-VERIFICATION-PENDING**: the behavioural Playwright gate (auth
+  login-success/logout + the 5 `SPEC061_TEST_SESSION_ID` suites — briefing-live-data,
+  orgs-live-data, verb-submit, intel-results-analysis, polling-tick-aligned) needs
+  a live seeded backend (`mise run web:dev` + a testuser + a seeded session);
+  these were NOT run here — see the owner-run checklist in
+  `.superpowers/sdd/reports/091.md`. The code work is done; this gate leg awaits
+  Percy. (Pre-existing note: a few fetch-error unit tests are mildly flaky under
+  network-race; a clean `npx vitest run` is 364 green.)
 
 ## Web layer facts (verified 2026-07-03 — read before any web/ or Observatory work)
 
@@ -206,8 +220,10 @@ Stacks on `090-cold-collapse` (`42232a15`). One codebase, no legacy siblings:
 - **Frontend**: React 19, Vite 6, Tailwind v4, Zustand 5, deck.gl 9,
   Recharts 2, Sigma 3; the v2 16-route architecture is LIVE in
   `web/frontend/src/App.tsx`; polling (2 s), no websockets; Vitest
-  357/357 (was 310; +47 from spec-090's token-contract + ramp tests)
-  and 8 behavioural Playwright suites (2026-07-03).
+  **364/364** (was 357 at spec-090; +7 across spec-091 consolidation +
+  ErrorBoundary + orphan guards). Playwright: 3 backend-free green
+  (visual + route smoke); the god-page relics were deleted, leaving 6
+  behavioural suites that are **owner-run** (need a seeded backend).
   `web/frontend/src/index.css` **now carries the ratified Cold Collapse
   tokens** (spec-090, branch `090-cold-collapse`): cyan-spire primary,
   gold demoted to scarce rupture, four self-hosted OFL font families

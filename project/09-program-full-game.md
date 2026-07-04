@@ -186,23 +186,31 @@ Replace the pre-ratification token set with the ratified canon.
 ______________________________________________________________________
 
 **spec-091 — Frontend consolidation + Django debt** (~1–2 sprints)
-**Status: DONE (2026-07-03, branch `091-frontend-consolidation`, stacks on 090) —
-awaiting BD merge.** `specs/091-frontend-consolidation/` (specify→plan→tasks→
-implement); 042 evidence audit committed (`specs/042-game-ui-overhaul/AUDIT-091.md`,
-all 49 tasks classified, 042 marked superseded); course-correction phases 1–7
-verified (`course-correction-verification.md`); the 7 legacy siblings + the dead
-`Inspector` cluster + react-leaflet deleted (`rg leaflet web/frontend/src` empty);
-deck.gl map promoted to first-class on Briefing (`/dev/hexmap` harness retired);
-Django debt cleared (`accounts` 0001 initial migration → PlayerProfile, `game`
-0011 makemigrations, `django.contrib.gis` in INSTALLED_APPS); all six 090
-residuals a–f landed incl. the NEW Playwright visual-baseline suite. Gates:
-Vitest 358/358; `poetry run pytest tests/unit/web/` 248 green; visual suite green.
-NOTE: the 8 behavioural Playwright suites require a live seeded backend
-(Django + Postgres 5432 + testuser) not safely bootable in the unattended
-web-only lane; a pre-existing stale login selector ("Log In"→"Enter", since the
-16-route pivot) was corrected. `lib/selectors`/`lib/verbs`/`VerbShell`/
-`HexInspector`/`BreakdownTooltip` are PRESERVED as tested infra — live provenance
-wiring is spec-093 (program §2).
+**Status: DONE — code complete; behavioural Playwright gate OWNER-VERIFICATION-PENDING
+(2026-07-04, branch `091-frontend-consolidation`, stacks on 090; awaiting BD merge).**
+`specs/091-frontend-consolidation/` (specify→plan→tasks→implement); 042 evidence
+audit committed (`specs/042-game-ui-overhaul/AUDIT-091.md`, all 49 tasks classified,
+042 marked superseded); course-correction phases 1–7 verified
+(`course-correction-verification.md`); the 7 legacy siblings + the dead `Inspector`
+cluster + react-leaflet deleted (`rg leaflet web/frontend/src` empty); deck.gl map
+promoted to first-class on Briefing **wrapped in an ErrorBoundary** (WebGL failure
+degrades to placeholder, not a white screen; `/dev/hexmap` harness retired); Django
+debt cleared (`accounts` 0001 initial migration → PlayerProfile, `game` 0011
+makemigrations all `managed=False`, `django.contrib.gis` in INSTALLED_APPS); all six
+090 residuals a–f landed incl. the Playwright visual-baseline suite. **Review fixes
+(2026-07-04)**: ErrorBoundary on the map (+test); deleted the 2 god-page e2e relics
+(navigation, game-loop) that asserted DELETED UI; deleted 5 untested orphans
+(ActionPanel/TickResults/ResourcePanel/TrapIndicator/VerbShell — VerbShell was NOT
+"tested infra", corrected); 042-audit line counts fixed (game.ts 578, lensDefinitions.ts 340);
+added a backend-free real-browser route smoke. Gates: Vitest **364/364** (44 files);
+`poetry run pytest tests/unit/web/` 248 green; backend-free Playwright (visual + route
+smoke) 3 green; tsc clean. **OWNER-VERIFICATION-PENDING**: the behavioural Playwright
+gate (auth login-success/logout + the 5 `SPEC061_TEST_SESSION_ID` suites) needs
+`mise run web:dev` + a testuser + a seeded session — owner-run checklist in
+`.superpowers/sdd/reports/091.md`; NOT run here. `lib/selectors`/`lib/verbs`/
+`HexInspector`/`NodeInspector`/`BreakdownTooltip` are PRESERVED as tested infra
+(live provenance wiring is spec-093); after the VerbShell deletion `lib/verbs` is
+now test-only reserved infra.
 
 One codebase, one data path, no legacy siblings.
 

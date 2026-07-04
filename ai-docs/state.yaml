@@ -53,10 +53,18 @@ meta:
     hook -> 3.8.1, 35 semantic type-role tokens ported to index.css, faux-italic
     removed, C6 lens->layer contract pinned independently, ramp docstrings aligned
     to the amendment, NEW Playwright visual-baseline suite (e2e/visual.spec.ts).
-    Gates: Vitest 358/358; tests/unit/web 248 green; visual suite green.
-    CONCERN: the 8 behavioural Playwright suites need a live seeded backend
-    (Django + Postgres 5432 + testuser) not bootable in the unattended web lane;
-    a pre-existing stale login selector (Log In -> Enter) was corrected.
+    Review fixes (2026-07-04, same branch): ErrorBoundary wraps the Briefing
+    deck.gl map (WebGL failure -> placeholder, not white-screen; +test); deleted
+    2 god-page e2e relics (navigation, game-loop) that asserted DELETED UI
+    (superseded by spec-061 live suites) + added a backend-free real-browser route
+    smoke; deleted 5 untested orphans (ActionPanel/TickResults/ResourcePanel/
+    TrapIndicator/VerbShell - VerbShell was NOT tested infra, overclaim corrected);
+    fixed 042-audit line counts (game.ts 578, lensDefinitions.ts 340).
+    Gates: Vitest 364/364 (44 files); tests/unit/web 248 green; backend-free
+    Playwright (visual + route smoke) 3 green; tsc clean.
+    OWNER-VERIFICATION-PENDING: the behavioural Playwright gate (auth login-success/
+    logout + the 5 SPEC061_TEST_SESSION_ID suites) needs mise run web:dev + a
+    testuser + a seeded session — owner-run checklist in reports/091.md; NOT run here.
   lawverian_dialectics_refactor: |
     project/06 Lawverian dialectics refactor COMPLETE (branch
     refactor/lawverian-dialectics; Phases A-E, ADR051). The saturating add-only

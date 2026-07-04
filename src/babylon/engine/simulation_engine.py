@@ -59,6 +59,7 @@ from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.ooda import OODASystem
 from babylon.engine.systems.production import ProductionSystem
 from babylon.engine.systems.protocol import ContextType, System
+from babylon.engine.systems.reactionary import FascistFactionSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.engine.systems.sovereignty import SovereigntySystem
@@ -315,6 +316,7 @@ class SimulationEngine:
 # 15. SurvivalSystem - Risk assessment from material state (P(S|A), P(S|R))
 # 16. StruggleSystem - Agency responds to survival odds (George Floyd Dynamic)
 # 17. ConsciousnessSystem - Ideology responds to material (Bifurcation)
+# 17.4 FascistFactionSystem - Reactionary drift + fascist capture (Spec 071)
 # 18. ContradictionSystem - Systemic tension accounting (The Reckoning)
 # 19. ContradictionFieldSystem - Contradiction field computation (Feature 002)
 # 20. FieldDerivativeSystem - Spatial/temporal derivatives + principal (Feature 002)
@@ -342,6 +344,7 @@ _DEFAULT_SYSTEMS: list[System] = [
     SurvivalSystem(),  # 15. Risk assessment
     StruggleSystem(),  # 16. Action/Revolt
     ConsciousnessSystem(),  # 17. Ideological drift
+    FascistFactionSystem(),  # 17.4. Spec-071 reactionary drift + fascist capture + stance hook
     SovereigntySystem(),  # 17.5. Spec-070 sovereign metabolic_impact (FR-019, FR-043)
     ContradictionSystem(),  # 18. Tension aggregation
     ContradictionFieldSystem(),  # 19. Contradiction field computation (Feature 002)
@@ -382,6 +385,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         SurvivalSystem,
         StruggleSystem,
         ConsciousnessSystem,
+        FascistFactionSystem,  # Spec-071 reactionary subject (position 17.4)
         FactionInfluenceSystem,  # Spec-070 FR-042 (research.md R-003)
         SovereigntySystem,  # Spec-070 FR-042
         CollapseTransitionSystem,  # Spec-070 FR-042

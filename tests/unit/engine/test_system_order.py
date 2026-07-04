@@ -73,6 +73,7 @@ class TestMaterialistCausalityOrder:
             "Survival Calculus",  # 15. SurvivalSystem
             "Struggle",  # 16. StruggleSystem
             "Consciousness Drift",  # 17. ConsciousnessSystem
+            "Fascist Faction",  # 17.4. FascistFactionSystem (Spec 071 reactionary subject)
             "Sovereignty",  # 17.5. SovereigntySystem (Spec 070 FR-019, FR-043)
             "Contradiction Tension",  # 18. ContradictionSystem
             "contradiction_field",  # 19. ContradictionFieldSystem (Feature 002)
@@ -163,12 +164,13 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_twenty_five_systems_present(self) -> None:
-        """All 25 systems must be registered.
+    def test_all_twenty_six_systems_present(self) -> None:
+        """All 26 systems must be registered.
 
         13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology
         + 1 OODA + 1 substrate (Spec 062 US7) + 3 Spec-070 systems
         (FactionInfluenceSystem at 14.5 + SovereigntySystem at 17.5 +
-        CollapseTransitionSystem at 20.5).
+        CollapseTransitionSystem at 20.5) + 1 Spec-071 system
+        (FascistFactionSystem at 17.4).
         """
-        assert len(_DEFAULT_SYSTEMS) == 25, f"Expected 25 systems, got {len(_DEFAULT_SYSTEMS)}"
+        assert len(_DEFAULT_SYSTEMS) == 26, f"Expected 26 systems, got {len(_DEFAULT_SYSTEMS)}"

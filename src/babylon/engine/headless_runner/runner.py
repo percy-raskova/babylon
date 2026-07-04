@@ -52,6 +52,7 @@ from babylon.engine.headless_runner.models import (
     AuditEntry,
     ExitReason,
     PerformanceBreakdown,
+    ScheduledBlocShock,
     SimulationRunConfig,
     SimulationRunResult,
 )
@@ -418,6 +419,82 @@ def _query_external_nodes_phi(*, pool: Any, session_id: UUID) -> dict[str, float
             (str(session_id),),
         ).fetchall()
     return {str(node_id): float(phi) for node_id, phi in rows}
+
+
+def _build_shock_timeline(
+    shock_schedule: tuple[ScheduledBlocShock, ...],
+) -> dict[int, tuple[ScheduledBlocShock, ...]]:
+    """Group a run's scheduled shocks by tick, sorted deterministically.
+
+    Spec-102 SLICE B. Within a tick, shocks are sorted by ``bloc`` so
+    ``_apply_due_shocks`` iterates in a fixed, reproducible order — no
+    dependence on ``shock_schedule``'s (caller-supplied) input order.
+
+    Args:
+        shock_schedule: The run config's declared shocks (any order).
+
+    Returns:
+        ``{tick: (shocks sorted by bloc, ...)}``. Empty dict for an empty
+        schedule (the canonical-scenario default).
+    """
+    by_tick: dict[int, list[ScheduledBlocShock]] = {}
+    for shock in sorted(shock_schedule, key=lambda s: (s.tick, s.bloc)):
+        by_tick.setdefault(shock.tick, []).append(shock)
+    return {tick: tuple(shocks) for tick, shocks in by_tick.items()}
+
+
+def _apply_due_shocks(
+    *,
+    tick: int,
+    shock_timeline: dict[int, tuple[ScheduledBlocShock, ...]],
+    active_multipliers: dict[str, float],
+) -> None:
+    """Update ``active_multipliers`` in-place for shocks scheduled at ``tick``.
+
+    Spec-102 SLICE B. Level-set semantics: a shock REPLACES (not
+    accumulates onto) the bloc's active multiplier, and the new value
+    persists on every subsequent tick until a later shock for the same
+    bloc supersedes it — ``active_multipliers`` is a plain dict threaded
+    through the tick-loop closure across iterations, never reset per tick.
+    Pure and deterministic: no RNG, sorted iteration (via
+    :func:`_build_shock_timeline`).
+
+    Args:
+        tick: Current simulation tick.
+        shock_timeline: Output of :func:`_build_shock_timeline`.
+        active_multipliers: Mutable ``{bloc: multiplier}`` state, updated
+            in-place.
+    """
+    for shock in shock_timeline.get(tick, ()):
+        active_multipliers[shock.bloc] = shock.phi_multiplier
+
+
+def _effective_external_nodes_phi(
+    *,
+    base_external_nodes_phi: dict[str, float],
+    active_multipliers: dict[str, float],
+) -> dict[str, float]:
+    """Recompute the per-tick effective Φ map (base × active multiplier).
+
+    Spec-102 SLICE B. Pure function — does not mutate ``base_external_nodes_phi``.
+    Blocs absent from ``active_multipliers`` pass through unchanged
+    (multiplier defaults to 1.0), so an empty ``active_multipliers`` (the
+    no-shocks-yet or no-shock-schedule-at-all case) returns a map
+    value-equal to the base — byte-identical Φ distribution behavior to
+    pre-spec-102 spec-101.
+
+    Args:
+        base_external_nodes_phi: The static ``{node_id: phi_year_inflow}``
+            map read once at session setup (spec-101 FR-101-3).
+        active_multipliers: Current ``{bloc: multiplier}`` state.
+
+    Returns:
+        A new ``{node_id: phi_year_inflow}`` dict with shocked blocs scaled.
+    """
+    return {
+        node: phi * active_multipliers.get(node, 1.0)
+        for node, phi in base_external_nodes_phi.items()
+    }
 
 
 def _query_trace(

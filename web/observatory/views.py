@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import functools
+import logging
 import re
 import uuid
 from collections.abc import Callable, Iterator
@@ -40,6 +41,8 @@ from .queries import (
     fetch_tick_range,
 )
 
+logger = logging.getLogger(__name__)
+
 SIM_ALIAS = "sim"
 
 #: Postgres INT4 bounds — tick columns are INT4; a value outside this range
@@ -62,6 +65,16 @@ def _ok(data: Any, http_status: int = 200) -> JsonResponse:
 
 def _err(message: str, http_status: int) -> JsonResponse:
     return JsonResponse({"status": "error", "message": message}, status=http_status)
+
+
+def _sim_unavailable() -> JsonResponse:
+    """Log the DB error server-side (with traceback) and return a clean 503.
+
+    The client-facing body carries NO internals — the traceback (which may
+    reference SQL/relation names) stays in the server log only.
+    """
+    logger.exception("Observatory sim-DB query failed")
+    return _err("Simulation database unavailable", 503)
 
 
 def observatory_enabled_or_404(
@@ -181,7 +194,7 @@ def observatory_sessions(request: Request) -> JsonResponse:
         with _sim_cursor() as cursor:
             data = fetch_sessions(cursor)
     except DatabaseError:
-        return _err("Simulation database unavailable", 503)
+        return _sim_unavailable()
     return _ok(data)
 
 
@@ -198,7 +211,7 @@ def observatory_ticks(request: Request, session_id: str) -> JsonResponse:
         with _sim_cursor() as cursor:
             data = fetch_tick_range(cursor, sid)
     except DatabaseError:
-        return _err("Simulation database unavailable", 503)
+        return _sim_unavailable()
     if data is None:
         return _err("Session has no committed ticks", 404)
     return _ok(data)
@@ -214,7 +227,7 @@ def observatory_series(request: Request, session_id: str) -> JsonResponse:
     except _BadRequest as exc:
         return _err(str(exc), 400)
     except DatabaseError:
-        return _err("Simulation database unavailable", 503)
+        return _sim_unavailable()
     return _ok(payload)
 
 
@@ -228,7 +241,7 @@ def observatory_series_csv(request: Request, session_id: str) -> HttpResponseBas
     except _BadRequest as exc:
         return _err(str(exc), 400)
     except DatabaseError:
-        return _err("Simulation database unavailable", 503)
+        return _sim_unavailable()
     filename = f"{payload['session_id']}_{payload['scope']}_{payload['scope_id']}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -289,7 +302,7 @@ def observatory_commits(request: Request, session_id: str) -> JsonResponse:
     except _BadRequest as exc:
         return _err(str(exc), 400)
     except DatabaseError:
-        return _err("Simulation database unavailable", 503)
+        return _sim_unavailable()
     return _ok(data)
 
 
@@ -322,7 +335,7 @@ def observatory_hex(request: Request, session_id: str) -> JsonResponse:
                 cursor, sid, tick, county_fips, limit=limit, after_h3=after_h3
             )
     except DatabaseError:
-        return _err("Simulation database unavailable", 503)
+        return _sim_unavailable()
     return _ok(
         {
             "session_id": sid,

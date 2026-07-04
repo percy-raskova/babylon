@@ -4,10 +4,10 @@
  * MSW-backed — useJournal fetches /api/games/:id/journal/ (mocked in
  * test/handlers.ts) rather than reading from the Zustand gameStore.
  *
- * Fixture types (RUPTURE/UPRISING/VALUE_TRANSFER) are chosen to hit all
- * three `lib/eventClassifier.ts` severity tiers (critical/important/
- * informational respectively) so the filter buttons have something real
- * to demonstrate against.
+ * Fixture types (uprising/eviction_pipeline/wage_payment) are real
+ * lowercase-snake-case `EventType` values whose `severity` field (critical/
+ * warning/informational) is read directly by EventLogPage — no
+ * `lib/eventClassifier.ts` re-derivation (spec-092 review Defect B fix).
  */
 
 import { describe, it, expect } from "vitest";
@@ -36,46 +36,54 @@ describe("EventLogPage", () => {
   it("renders events fetched from the journal endpoint", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Contradiction rupture threshold crossed/)).toBeInTheDocument();
+      expect(screen.getByText(/Workers rose up in Hamtramck/)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Workers rose up in Hamtramck/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Eviction pipeline triggered against striking tenants/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Wages paid to proletariat/)).toBeInTheDocument();
   });
 
   it("filters events by critical severity", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Contradiction rupture threshold crossed/)).toBeInTheDocument();
+      expect(screen.getByText(/Workers rose up in Hamtramck/)).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "critical" }));
 
-    expect(screen.getByText(/Contradiction rupture threshold crossed/)).toBeInTheDocument();
-    expect(screen.queryByText(/Workers rose up in Hamtramck/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Workers rose up in Hamtramck/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Eviction pipeline triggered against striking tenants/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/Wages paid to proletariat/)).not.toBeInTheDocument();
   });
 
-  it("filters events by important severity", async () => {
+  it("filters events by warning severity", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Workers rose up in Hamtramck/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Eviction pipeline triggered against striking tenants/),
+      ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "important" }));
+    fireEvent.click(screen.getByRole("button", { name: "warning" }));
 
-    expect(screen.getByText(/Workers rose up in Hamtramck/)).toBeInTheDocument();
-    expect(screen.queryByText(/Contradiction rupture threshold crossed/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Eviction pipeline triggered against striking tenants/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Workers rose up in Hamtramck/)).not.toBeInTheDocument();
   });
 
   it("filters events by informational severity", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Contradiction rupture threshold crossed/)).toBeInTheDocument();
+      expect(screen.getByText(/Workers rose up in Hamtramck/)).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "informational" }));
     expect(screen.getByText(/Wages paid to proletariat/)).toBeInTheDocument();
-    expect(screen.queryByText(/Contradiction rupture threshold crossed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Workers rose up in Hamtramck/)).not.toBeInTheDocument();
   });
 
   it("shows empty state when the journal has no events", async () => {

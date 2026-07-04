@@ -6,11 +6,18 @@
  * only — fresh code against real data, not a JSX port). The mockup's
  * fabricated OBSERVE/ORIENT/DECIDE/ACT/RESPOND phase narration doesn't
  * exist in the engine, so steps are grounded in real data instead:
- * `snapshot.events` (the just-resolved tick's events, classified via the
- * existing `lib/eventClassifier.ts`) grouped by severity, ascending in
- * drama, followed by a final "State Response" step sourced from the
- * real `get_alerts_dashboard` endpoint (`useAlerts`) — satisfying
- * R-CONS's requirement that the alerts endpoint gets a real consumer.
+ * `snapshot.events` (the just-resolved tick's events) grouped by
+ * severity, ascending in drama, followed by a final "State Response" step
+ * sourced from the real `get_alerts_dashboard` endpoint (`useAlerts`) —
+ * satisfying R-CONS's requirement that the alerts endpoint gets a real
+ * consumer.
+ *
+ * Spec-092 review fix (Defect B): severity buckets are read directly from
+ * the backend's `GameEvent.severity` (spec-061 FR-012: critical/warning/
+ * informational) rather than re-derived via `lib/eventClassifier.ts` —
+ * that classifier's map is keyed by UPPERCASE event-type names while real
+ * `EventType` values are lowercase snake_case, so every event used to
+ * bucket into the single OBSERVED step regardless of actual severity.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -18,8 +25,7 @@ import { useNavigate, useParams } from "react-router";
 import { BblBadge } from "@/components/bbl";
 import { useAlerts } from "@/hooks/useAlerts";
 import { useGameState } from "@/hooks/useGameState";
-import { classifyEvents } from "@/lib/eventClassifier";
-import type { ClassifiedEvent, EventSeverity } from "@/types/game";
+import type { GameEvent } from "@/types/game";
 
 const STEP_DELAY_MS = 1100;
 
@@ -31,22 +37,22 @@ interface Step {
 
 /** Ascending drama: routine flow first, alarming last (mirrors the mockup's
  *  OBSERVE→RESPOND escalation without fabricating phase names). */
-const SEVERITY_ORDER: EventSeverity[] = ["informational", "important", "critical"];
+const SEVERITY_ORDER: GameEvent["severity"][] = ["informational", "warning", "critical"];
 
-const SEVERITY_LABEL: Record<EventSeverity, string> = {
+const SEVERITY_LABEL: Record<GameEvent["severity"], string> = {
   informational: "OBSERVED",
-  important: "ESCALATION",
+  warning: "ESCALATION",
   critical: "RUPTURE",
 };
 
-const SEVERITY_COLOR: Record<EventSeverity, string> = {
+const SEVERITY_COLOR: Record<GameEvent["severity"], string> = {
   informational: "#4dd9e6",
-  important: "#d97a2c",
+  warning: "#d97a2c",
   critical: "#ff3344",
 };
 
-function lineFor(c: ClassifiedEvent): string {
-  return c.event.body || c.event.title;
+function lineFor(e: GameEvent): string {
+  return e.body || e.title;
 }
 
 export function TickResolutionPage() {
@@ -60,13 +66,12 @@ export function TickResolutionPage() {
 
   const steps: Step[] = useMemo(() => {
     const events = snapshot?.events ?? [];
-    const classified = classifyEvents(events);
     const bySeverity: Step[] = SEVERITY_ORDER.filter((sev) =>
-      classified.some((c) => c.severity === sev),
+      events.some((e) => e.severity === sev),
     ).map((sev) => ({
       label: SEVERITY_LABEL[sev],
       color: SEVERITY_COLOR[sev],
-      lines: classified.filter((c) => c.severity === sev).map(lineFor),
+      lines: events.filter((e) => e.severity === sev).map(lineFor),
     }));
 
     if (alertsData.alerts.length > 0) {

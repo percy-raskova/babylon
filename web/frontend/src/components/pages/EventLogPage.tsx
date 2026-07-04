@@ -6,28 +6,34 @@
  * `design/mockups/ui_kits/webapp/EventLog.jsx` (design reference only —
  * this is fresh code against the real `useJournal` contract, not a port
  * of the mockup's JSX). Fed by `GET /api/games/:id/journal/`
- * (`EngineBridge.get_journal_dashboard`) and classified via the existing
- * `lib/eventClassifier.ts` (shared with the notification tray).
+ * (`EngineBridge.get_journal_dashboard`).
+ *
+ * Spec-092 review fix (Defect B): severity is read directly from the
+ * backend's `GameEvent.severity` (spec-061 FR-012: critical/warning/
+ * informational) rather than re-derived via `lib/eventClassifier.ts` —
+ * that classifier's map is keyed by UPPERCASE event-type names while real
+ * `EventType` values are lowercase snake_case, so on production data every
+ * event misclassified as "informational". Mirrors the pattern already
+ * used by `BriefingPage`'s Priority Dispatch (`severityColor` below).
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router";
 import { BblBadge, BblPanel } from "@/components/bbl";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useJournal } from "@/hooks/useJournal";
-import { classifyEvents } from "@/lib/eventClassifier";
-import type { EventSeverity, GameEvent } from "@/types/game";
+import type { GameEvent } from "@/types/game";
 
-type FilterOption = "all" | EventSeverity;
+type FilterOption = "all" | GameEvent["severity"];
 
-const FILTERS: FilterOption[] = ["all", "informational", "important", "critical"];
+const FILTERS: FilterOption[] = ["all", "informational", "warning", "critical"];
 
 /** Severity → badge color token (matches BriefingPage's Priority Dispatch). */
-function severityColor(severity: EventSeverity): string {
+function severityColor(severity: GameEvent["severity"]): string {
   switch (severity) {
     case "critical":
       return "#e04040";
-    case "important":
+    case "warning":
       return "#e0a030";
     case "informational":
     default:
@@ -41,8 +47,8 @@ function subtitleFor(loading: boolean, error: string | null, count: number): str
   return `${count} events recorded`;
 }
 
-function EventRow({ event, severity }: { event: GameEvent; severity: EventSeverity }) {
-  const color = severityColor(severity);
+function EventRow({ event }: { event: GameEvent }) {
+  const color = severityColor(event.severity);
   return (
     <div
       className="flex items-baseline gap-3 border-b border-soot/50 px-3 py-2 hover:bg-soot/30"
@@ -53,7 +59,7 @@ function EventRow({ event, severity }: { event: GameEvent; severity: EventSeveri
         {event.type}
       </span>
       <span className="flex-1 text-[12px] text-bone">{event.body || event.title}</span>
-      <BblBadge color={color}>{severity}</BblBadge>
+      <BblBadge color={color}>{event.severity}</BblBadge>
     </div>
   );
 }
@@ -63,9 +69,8 @@ export function EventLogPage() {
   const { data, loading, error } = useJournal(gameId ?? null);
   const [filter, setFilter] = useState<FilterOption>("all");
 
-  const classified = useMemo(() => classifyEvents(data.events), [data.events]);
-
-  const filtered = filter === "all" ? classified : classified.filter((c) => c.severity === filter);
+  const filtered =
+    filter === "all" ? data.events : data.events.filter((e) => e.severity === filter);
 
   const subtitle = subtitleFor(loading, error, data.events.length);
 
@@ -102,8 +107,8 @@ export function EventLogPage() {
             </div>
           ) : (
             <div className="flex flex-col">
-              {filtered.map((c) => (
-                <EventRow key={c.id} event={c.event} severity={c.severity} />
+              {filtered.map((e) => (
+                <EventRow key={e.id} event={e} />
               ))}
             </div>
           )}

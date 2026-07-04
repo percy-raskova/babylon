@@ -19,36 +19,41 @@ let queuedActions: { verb: string; targets?: string[] }[] = [];
 
 // Spec 092: journal/alerts fixture — a mix of severities across ticks so
 // the Event Log filter buttons and the Tick Resolution alert feed both
-// have something real to render against. Types use the UPPERCASE
-// convention `lib/eventClassifier.ts`'s EVENT_SEVERITY_MAP keys expect
-// (matching `test/fixtures.ts`'s `makeEvent()` precedent) — the real
-// engine's EventType enum values are lowercase snake_case, a pre-existing
-// mismatch predating spec-092 (see spec-092 close-out notes).
+// have something real to render against.
+//
+// Spec-092 review fix (Defect D): types use the REAL engine's lowercase
+// snake_case `EventType` casing (verified against
+// `src/babylon/models/enums/events.py`), and severities match the
+// backend's `_EVENT_SEVERITY` classification table
+// (`web/game/engine_bridge.py`) rather than `lib/eventClassifier.ts`'s
+// UPPERCASE-keyed map — EventLogPage/TickResolutionPage no longer consult
+// that classifier (they read `event.severity` directly), so a green test
+// suite against these fixtures now means something on real production data.
 const mockJournalEvents: GameEvent[] = [
   {
     id: "journal-1",
-    type: "RUPTURE",
+    type: "uprising",
     tick: 5,
     severity: "critical",
-    title: "Rupture",
-    body: "Contradiction rupture threshold crossed in Dearborn",
+    title: "Uprising",
+    body: "Workers rose up in Hamtramck",
     data: { org_id: "ORG001" },
   },
   {
     id: "journal-2",
-    type: "UPRISING",
+    type: "eviction_pipeline",
     tick: 4,
     severity: "warning",
-    title: "Uprising",
-    body: "Workers rose up in Hamtramck",
+    title: "Eviction Pipeline",
+    body: "Eviction pipeline triggered against striking tenants in Dearborn",
     data: {},
   },
   {
     id: "journal-3",
-    type: "VALUE_TRANSFER",
+    type: "wage_payment",
     tick: 3,
     severity: "informational",
-    title: "Value Transfer",
+    title: "Wage Payment",
     body: "Wages paid to proletariat",
     data: {},
   },

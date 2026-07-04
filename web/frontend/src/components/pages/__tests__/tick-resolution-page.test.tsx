@@ -8,6 +8,10 @@
  * throughout — the component's 1100ms auto-advance is real `setTimeout`,
  * and mixing that with fake timers deadlocks testing-library's `waitFor`
  * polling (which also runs on the timer clock).
+ *
+ * Event fixtures use real lowercase-snake-case `EventType` casing with an
+ * explicit `severity` (spec-092 review Defect B fix: the page reads
+ * `event.severity` directly, no `lib/eventClassifier.ts` re-derivation).
  */
 
 import { describe, it, expect, afterEach } from "vitest";
@@ -38,7 +42,12 @@ afterEach(() => {
 
 describe("TickResolutionPage", () => {
   it("shows the resolving-tick header with prev → current tick", () => {
-    seedGameStore(makeSnapshot({ tick: 42, events: [makeEvent({ type: "RUPTURE", tick: 42 })] }));
+    seedGameStore(
+      makeSnapshot({
+        tick: 42,
+        events: [makeEvent({ type: "rupture", severity: "critical", tick: 42 })],
+      }),
+    );
     renderPage();
 
     expect(screen.getByText(/Resolving Tick 0041 → 0042/)).toBeInTheDocument();
@@ -48,7 +57,14 @@ describe("TickResolutionPage", () => {
     seedGameStore(
       makeSnapshot({
         tick: 5,
-        events: [makeEvent({ type: "RUPTURE", tick: 5, body: "Critical rupture line" })],
+        events: [
+          makeEvent({
+            type: "rupture",
+            severity: "critical",
+            tick: 5,
+            body: "Critical rupture line",
+          }),
+        ],
       }),
     );
     renderPage();
@@ -63,7 +79,14 @@ describe("TickResolutionPage", () => {
     seedGameStore(
       makeSnapshot({
         tick: 5,
-        events: [makeEvent({ type: "RUPTURE", tick: 5, body: "Critical rupture line" })],
+        events: [
+          makeEvent({
+            type: "rupture",
+            severity: "critical",
+            tick: 5,
+            body: "Critical rupture line",
+          }),
+        ],
       }),
     );
     renderPage();
@@ -79,7 +102,14 @@ describe("TickResolutionPage", () => {
     seedGameStore(
       makeSnapshot({
         tick: 5,
-        events: [makeEvent({ type: "RUPTURE", tick: 5, body: "Critical rupture line" })],
+        events: [
+          makeEvent({
+            type: "rupture",
+            severity: "critical",
+            tick: 5,
+            body: "Critical rupture line",
+          }),
+        ],
       }),
     );
     renderPage();
@@ -102,5 +132,36 @@ describe("TickResolutionPage", () => {
 
     expect(await screen.findByText(/No changes recorded this tick/)).toBeInTheDocument();
     expect(screen.getByText(/Continue/)).toBeInTheDocument();
+  });
+
+  it("buckets a real lowercase EventType by its own severity, not the classifier's UPPERCASE map (spec 092 review Defect B)", async () => {
+    // "wage_payment" is not a key `lib/eventClassifier.ts`'s UPPERCASE-only
+    // EVENT_SEVERITY_MAP recognizes, so the old classifyEvents-based code
+    // always fell through to "informational" (OBSERVED) here regardless of
+    // the event's real `severity` field. Explicitly marking it "warning"
+    // should bucket it as ESCALATION.
+    server.use(
+      http.get("/api/games/:id/alerts/", () =>
+        HttpResponse.json({ status: "ok", data: { alerts: [] } }),
+      ),
+    );
+    seedGameStore(
+      makeSnapshot({
+        tick: 9,
+        events: [
+          makeEvent({
+            type: "wage_payment",
+            severity: "warning",
+            tick: 9,
+            body: "Wage escalation line",
+          }),
+        ],
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/Wage escalation line/)).toBeInTheDocument();
+    expect(screen.getByText("ESCALATION")).toBeInTheDocument();
+    expect(screen.queryByText("OBSERVED")).not.toBeInTheDocument();
   });
 });

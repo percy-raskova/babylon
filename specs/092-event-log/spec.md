@@ -118,8 +118,20 @@ see `e2e/end-turn-flow.spec.ts`. Owner-run per the spec-091 precedent (this agen
 ...), matching the pre-existing test-fixture convention (`test/fixtures.ts`'s `makeEvent()`). The
 real engine's `EventType` enum values are lowercase snake_case (`"uprising"`, `"rupture"`, ...,
 verified in `src/babylon/models/enums/events.py`), so on real production data every event
-classifies as the default `"informational"` bucket today. This mismatch **predates this spec** —
-it already affects the live notification tray (`gameStore.ts`'s `accumulateEvents`) — and is out
-of this spec's scope (fixing it means either re-casing 70+ `EventType` enum values or the
-classifier's map, a call for the owner). Flagged here per the Verifiability principle rather than
-silently patched.
+classified as the default `"informational"` bucket via that classifier. This mismatch
+**predates this spec**.
+
+**Update (spec-092 review fix, 2026-07-04)**: the original framing above overstated the fix
+cost — "re-casing 70+ `EventType` enum values" was never the realistic option; the actual
+smaller fix is re-casing (or adding lowercase aliases to) the classifier's own ~15-entry
+`EVENT_SEVERITY_MAP`, a small, localized change. More importantly, `EventLogPage` and
+`TickResolutionPage` (this spec's two pages) no longer depend on the classifier at all — the
+review fix (Defect B) changed both to read the backend's already-correct `GameEvent.severity`
+(spec-061 FR-012: `critical`/`warning`/`informational`, derived server-side in
+`engine_bridge.py`'s `_classify_event`) directly, making the classifier's casing irrelevant to
+these two consumers. The gap is now scoped down to its one remaining real consumer: the live
+notification tray (`gameStore.ts`'s `accumulateEvents` → `uiStore.ts`'s
+`groupEventsBySeverity`, still keyed on the classifier's `"critical"/"important"/
+"informational"` vocabulary) and the legacy `components/events/EventLog.tsx` panel. Recasing
+those is still out of this spec's scope, but is a smaller lift than originally stated — a call
+for the owner.

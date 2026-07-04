@@ -7,6 +7,7 @@ hook (ADR051), and the dialectical_regime read.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import MagicMock
@@ -16,7 +17,20 @@ import pytest
 from babylon.config.defines import GameDefines
 from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.reactionary import FascistFactionSystem
-from babylon.models.enums import EventType
+from babylon.models.enums import EdgeType, EventType
+
+
+class _AlwaysDefect(random.Random):
+    """Deterministic RNG whose roll always succeeds (roll < any p_defect)."""
+
+    def random(self) -> float:  # type: ignore[override]
+        return 0.0
+
+
+class _NeverDefect(random.Random):
+    def random(self) -> float:  # type: ignore[override]
+        return 1.0
+
 
 pytestmark = pytest.mark.unit
 
@@ -182,6 +196,106 @@ class TestStanceInterventionHook:
         services = _services()
         FascistFactionSystem().step(g, services, {"tick": 5})
         assert g.get_graph_attr("opposition_interventions", []) == []
+
+
+def _add_org_with_la_members(
+    g: BabylonGraph, org_id: str, member_ids: list[str], *, cadre_level: float = 0.0
+) -> None:
+    g.add_node(org_id, "organization", cadre_level=cadre_level)
+    for mid in member_ids:
+        g.add_node(
+            mid,
+            "social_class",
+            role="labor_aristocracy",
+            active=True,
+            entitlement=0.8,
+            fascist_alignment=0.0,
+            aligned_faction_id=None,
+            ideology={"class_consciousness": 0.1, "national_identity": 0.5, "agitation": 0.0},
+        )
+        g.add_edge(org_id, mid, "membership")
+
+
+class TestChauvinism:
+    def test_chauvinism_accrues_base_rate(self) -> None:
+        g = BabylonGraph()
+        _add_org_with_la_members(g, "ORG1", ["C001"])
+        services = _services()
+        FascistFactionSystem().step(g, services, {"tick": 5})
+        edge = g.get_edge("ORG1", "C001", EdgeType.MEMBERSHIP)
+        base = services.defines.reactionary.chauvinism_base_rate
+        assert edge.attributes["chauvinism"] == pytest.approx(base)
+
+    def test_superwage_adds_bonus(self) -> None:
+        g = BabylonGraph()
+        _add_org_with_la_members(g, "ORG1", ["C001"])
+        # A WAGES edge with a positive super-wage bonus.
+        g.add_node("C500", "social_class", role="core_bourgeoisie", active=True)
+        g.add_edge("C500", "C001", "wages", super_wage_bonus=0.5)
+        services = _services()
+        FascistFactionSystem().step(g, services, {"tick": 5})
+        edge = g.get_edge("ORG1", "C001", EdgeType.MEMBERSHIP)
+        r = services.defines.reactionary
+        assert edge.attributes["chauvinism"] == pytest.approx(
+            r.chauvinism_base_rate + r.chauvinism_superwage_bonus
+        )
+
+
+class TestDefectionAndCoup:
+    def _crisis_services(self, rng: random.Random) -> Any:
+        services = _services()
+        services.rng = rng
+        services.event_bus.events.append(
+            _CapturedEvent(type=EventType.ECONOMIC_CRISIS, tick=5, payload={})
+        )
+        return services
+
+    def test_defection_fires_organizational_fracture(self) -> None:
+        g = BabylonGraph()
+        _add_org_with_la_members(g, "ORG1", ["C001"])
+        # pre-load high chauvinism so p_defect is high
+        g.update_edge("ORG1", "C001", EdgeType.MEMBERSHIP, chauvinism=0.99)
+        services = self._crisis_services(_AlwaysDefect())
+        FascistFactionSystem().step(g, services, {"tick": 5})
+        assert len(_events_of(services, EventType.ORGANIZATIONAL_FRACTURE)) == 1
+
+    def test_no_defection_without_crisis(self) -> None:
+        g = BabylonGraph()
+        _add_org_with_la_members(g, "ORG1", ["C001"])
+        g.update_edge("ORG1", "C001", EdgeType.MEMBERSHIP, chauvinism=0.99)
+        services = _services()
+        services.rng = _AlwaysDefect()  # would defect IF crisis, but no crisis event
+        FascistFactionSystem().step(g, services, {"tick": 5})
+        assert _events_of(services, EventType.ORGANIZATIONAL_FRACTURE) == []
+
+    def test_majority_defection_fires_red_brown_coup(self) -> None:
+        g = BabylonGraph()
+        _add_org_with_la_members(g, "ORG1", ["C001", "C002", "C003"])
+        for mid in ("C001", "C002", "C003"):
+            g.update_edge("ORG1", mid, EdgeType.MEMBERSHIP, chauvinism=0.99)
+        services = self._crisis_services(_AlwaysDefect())
+        FascistFactionSystem().step(g, services, {"tick": 5})
+        assert len(_events_of(services, EventType.RED_BROWN_COUP)) == 1
+        assert len(_events_of(services, EventType.ORGANIZATIONAL_FRACTURE)) == 3
+
+    def test_no_coup_when_no_defections(self) -> None:
+        g = BabylonGraph()
+        _add_org_with_la_members(g, "ORG1", ["C001", "C002"])
+        services = self._crisis_services(_NeverDefect())
+        FascistFactionSystem().step(g, services, {"tick": 5})
+        assert _events_of(services, EventType.RED_BROWN_COUP) == []
+
+    def test_defection_is_deterministic(self) -> None:
+        results = []
+        for _ in range(2):
+            g = BabylonGraph()
+            _add_org_with_la_members(g, "ORG1", ["C001", "C002"])
+            for mid in ("C001", "C002"):
+                g.update_edge("ORG1", mid, EdgeType.MEMBERSHIP, chauvinism=0.6)
+            services = self._crisis_services(random.Random(1234))
+            FascistFactionSystem().step(g, services, {"tick": 5})
+            results.append(len(_events_of(services, EventType.ORGANIZATIONAL_FRACTURE)))
+        assert results[0] == results[1]
 
 
 class TestRegimeRead:

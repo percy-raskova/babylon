@@ -120,6 +120,69 @@ def _to_jsonable(obj: Any) -> Any:
     return obj
 
 
+def phi_week_conservation_evaluator(
+    _pre_state: Any, _post_state: Any, context: Any
+) -> list[_InvariantResult]:
+    """Evaluate ``Σ DRAIN_EDGE ≡ Φ_week`` per external bloc (spec-101 FR-101-5).
+
+    Registered on the :class:`ConservationAuditor` under the enumerated
+    ``imperial_rent_phi_week_distribution`` invariant. Reads the tick's flushed
+    boundary rows and the external-node Φ map from ``context``:
+
+    - ``context["boundary_rows"]``: iterable of ``BoundaryFlowRegisterRow`` for
+      this tick (the bridge passes the just-flushed buffer).
+    - ``context["external_nodes_phi"]``: ``{node_id: phi_year_inflow}``.
+
+    For each bloc with ``phi_year_inflow > 0`` the check is the **relative**
+    residual ``Σ(DRAIN_EDGE magnitude, source=bloc) / (phi_year/52)`` versus
+    ``1.0`` (D4). Φ is ~$1e12-scale, so an absolute residual would be meaningless
+    against the auditor's absolute alarm threshold (1e-6) and would false-alarm
+    ``--strict``; the ratio form keeps the residual at float epsilon (~1e-15).
+    Blocs with ``phi == 0`` emit no DRAIN rows and are skipped (FR-020). One
+    ``_InvariantResult`` per Φ>0 bloc, differentiated by ``scale=external:<node>``.
+
+    Args:
+        _pre_state: Unused (signature parity with other evaluators).
+        _post_state: Unused.
+        context: The per-tick audit context carrying ``boundary_rows`` and
+            ``external_nodes_phi``. A ``None`` context yields no results.
+
+    Returns:
+        One ``_InvariantResult`` per bloc with positive Φ.
+    """
+    from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+
+    if context is None:
+        return []
+    boundary_rows = context.get("boundary_rows") or []
+    external_nodes_phi = context.get("external_nodes_phi") or {}
+
+    drain_by_node: dict[str, float] = {}
+    for row in boundary_rows:
+        if row.flow_type is BoundaryEdgeKind.DRAIN_EDGE and row.source_kind is NodeKind.EXTERNAL:
+            drain_by_node[row.source_node_id] = (
+                drain_by_node.get(row.source_node_id, 0.0) + row.magnitude
+            )
+
+    results: list[_InvariantResult] = []
+    for node_id in sorted(external_nodes_phi):
+        phi_year = float(external_nodes_phi[node_id])
+        if phi_year <= 0.0:
+            continue  # FR-020: zero-Φ blocs contribute no DRAIN rows
+        phi_week = phi_year / 52.0
+        observed = drain_by_node.get(node_id, 0.0)
+        ratio = observed / phi_week if phi_week > 0.0 else 0.0
+        results.append(
+            _InvariantResult(
+                scale=f"external:{node_id}"[:32],
+                invariant_name="imperial_rent_phi_week_distribution",
+                computed_value=ratio,
+                expected_value=1.0,
+            )
+        )
+    return results
+
+
 class ConservationAlarmEvent(BaseModel):
     """Event payload emitted when an audit row has severity=alarm.
 
@@ -325,4 +388,5 @@ __all__ = [
     "ConservationAlarmEvent",
     "compute_determinism_hash",
     "grade_severity",
+    "phi_week_conservation_evaluator",
 ]

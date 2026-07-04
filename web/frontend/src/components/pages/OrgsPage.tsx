@@ -169,8 +169,10 @@ function CommunitiesPanel({ memberships }: { memberships: string[] }) {
 }
 
 export function OrgsPage() {
+  const navigate = useNavigate();
   const { id: gameId } = useParams<{ id: string }>();
-  const { snapshot, loading, error } = useGameState(gameId ?? null);
+  const { snapshot, loading, error, resolveTick } = useGameState(gameId ?? null);
+  const [resolving, setResolving] = useState(false);
 
   const playerOrgs: OrgState[] = useMemo(
     () => (snapshot?.organizations ?? []).filter((o) => Boolean(o.player_controlled)),
@@ -183,13 +185,36 @@ export function OrgsPage() {
   const oodaPhase = org?.ooda?.phase ?? "observe";
   const subtitle = subtitleFor(loading, error);
 
+  // Spec 092: End Turn resolves the tick, then hands off to the Tick
+  // Resolution screen for the animated summary of what just happened.
+  const handleEndTurn = async () => {
+    setResolving(true);
+    try {
+      await resolveTick();
+      navigate(`/games/${gameId}/resolution`);
+    } finally {
+      setResolving(false);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title="Organizations"
         subtitle={subtitle}
         breadcrumbs={["Operation", "Organizations"]}
-        right={<BblBadge color="#40c040">{playerOrgs.length} allied orgs</BblBadge>}
+        right={
+          <div className="flex items-center gap-2">
+            <BblBadge color="#40c040">{playerOrgs.length} allied orgs</BblBadge>
+            <button
+              onClick={() => void handleEndTurn()}
+              disabled={resolving}
+              className="rounded-md bg-gold px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-void transition-all hover:brightness-110 disabled:opacity-50"
+            >
+              {resolving ? "Resolving…" : "End Turn ▸"}
+            </button>
+          </div>
+        }
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr] gap-3 p-3">

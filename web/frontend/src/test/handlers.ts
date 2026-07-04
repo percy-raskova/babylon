@@ -9,13 +9,50 @@ import {
   makeGameSummary,
   makeActionResult,
 } from "./fixtures";
-import { GameSnapshot } from "../types/game";
+import { GameSnapshot, GameEvent } from "../types/game";
 import orgsFixture from "../mocks/organizations.json";
 import educateTargetsFixture from "../mocks/educate_targets.json";
 
 // In-memory state machine for the mock game loop
 let mockState: GameSnapshot = makeWayneCountySnapshot();
 let queuedActions: { verb: string; targets?: string[] }[] = [];
+
+// Spec 092: journal/alerts fixture — a mix of severities across ticks so
+// the Event Log filter buttons and the Tick Resolution alert feed both
+// have something real to render against. Types use the UPPERCASE
+// convention `lib/eventClassifier.ts`'s EVENT_SEVERITY_MAP keys expect
+// (matching `test/fixtures.ts`'s `makeEvent()` precedent) — the real
+// engine's EventType enum values are lowercase snake_case, a pre-existing
+// mismatch predating spec-092 (see spec-092 close-out notes).
+const mockJournalEvents: GameEvent[] = [
+  {
+    id: "journal-1",
+    type: "RUPTURE",
+    tick: 5,
+    severity: "critical",
+    title: "Rupture",
+    body: "Contradiction rupture threshold crossed in Dearborn",
+    data: { org_id: "ORG001" },
+  },
+  {
+    id: "journal-2",
+    type: "UPRISING",
+    tick: 4,
+    severity: "warning",
+    title: "Uprising",
+    body: "Workers rose up in Hamtramck",
+    data: {},
+  },
+  {
+    id: "journal-3",
+    type: "VALUE_TRANSFER",
+    tick: 3,
+    severity: "informational",
+    title: "Value Transfer",
+    body: "Wages paid to proletariat",
+    data: {},
+  },
+];
 
 // Reset state function for testing
 export const resetMockState = () => {
@@ -221,6 +258,22 @@ export const handlers = [
     HttpResponse.json({
       status: "ok",
       data: [makeActionResult()],
+    }),
+  ),
+
+  // Journal — full cross-tick event history (spec 092)
+  http.get("/api/games/:id/journal/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: { events: mockJournalEvents },
+    }),
+  ),
+
+  // Alerts — critical/warning events from the latest tick (spec 092)
+  http.get("/api/games/:id/alerts/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: { alerts: mockJournalEvents.filter((e) => e.severity !== "informational") },
     }),
   ),
 ];

@@ -17,6 +17,8 @@ import { VerbPage } from "@/components/pages/VerbPage";
 import { ResultsPage } from "@/components/pages/ResultsPage";
 import { IntelPageV2 } from "@/components/pages/IntelPageV2";
 import { AnalysisPage } from "@/components/pages/AnalysisPage";
+import { EventLogPage } from "@/components/pages/EventLogPage";
+import { TickResolutionPage } from "@/components/pages/TickResolutionPage";
 import type { AuthState } from "@/types/game";
 
 export default function App() {
@@ -118,15 +120,11 @@ export default function App() {
         {/* Analysis page */}
         <Route path="analysis" element={<AnalysisPage />} />
 
-        {/* Event log */}
-        <Route
-          path="log"
-          element={
-            <div className="flex h-full items-center justify-center text-sm text-ash">
-              Event log — coming soon
-            </div>
-          }
-        />
+        {/* Event log (spec 092) */}
+        <Route path="log" element={<EventLogPage />} />
+
+        {/* Tick resolution screen (spec 092) */}
+        <Route path="resolution" element={<TickResolutionPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to={isAuthed ? "/games" : "/login"} replace />} />

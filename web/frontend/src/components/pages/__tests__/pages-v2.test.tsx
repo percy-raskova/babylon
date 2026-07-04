@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { seedGameStore, resetGameStore } from "@/__tests__/helpers/seedSnapshot";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { BriefingPage } from "@/components/pages/BriefingPage";
 import { OrgsPage } from "@/components/pages/OrgsPage";
@@ -77,6 +77,21 @@ describe("OrgsPage", () => {
   it("shows note directing to Intel for enemy orgs", () => {
     renderAtRoute("/games/g1/orgs", <OrgsPage />);
     expect(screen.getByText(/Intel/)).toBeInTheDocument();
+  });
+
+  it("End Turn resolves the tick then navigates to the resolution screen (spec 092)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/games/g1/orgs"]}>
+        <Routes>
+          <Route path="/games/:id/orgs" element={<OrgsPage />} />
+          <Route path="/games/:id/resolution" element={<div>Tick Resolution landing</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText(/End Turn/));
+
+    expect(await screen.findByText("Tick Resolution landing")).toBeInTheDocument();
   });
 });
 

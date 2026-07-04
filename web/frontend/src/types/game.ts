@@ -282,6 +282,17 @@ export interface GameEvent {
   data: Record<string, unknown>;
 }
 
+/** Spec 092: GET /api/games/{id}/journal/ — full cross-tick event history. */
+export interface JournalPayload {
+  events: GameEvent[];
+}
+
+/** Spec 092: GET /api/games/{id}/alerts/ — critical/warning events from the
+ *  latest resolved tick (the Tick Resolution screen's alert feed). */
+export interface AlertsPayload {
+  alerts: GameEvent[];
+}
+
 /** Available action for an organization. */
 export interface AvailableAction {
   org_id: string;

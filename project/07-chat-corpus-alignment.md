@@ -34,6 +34,11 @@ applied" paragraph after the list.
 
    **I trust the AI judgment on what looks best, impress me.** - percys ruling
 
+   *(Superseded on the facts 2026-07-03 — see §7: a full replay of the
+   design-chat export found Percy's verbatim ratification of Cold
+   Collapse cyan; "V8 may be drift" was wrong. The ruling above still
+   governs authority; the anchor palette is Cold Collapse.)*
+
 1. **Steam desktop binary vs. web app.** The endorsed Steam plan
    (2026-02-06) packaged a PyInstaller/PyQt6 desktop binary; the later web
    pivot (Django+React, Unity rejected 2026-05-18) is the current
@@ -181,3 +186,45 @@ rejected, PyQt6 dev-only).
   attachments; owner-decision pointers added.
 - `00-mission.md`: "complete game" definition now points here.
 - This file created as the master record.
+
+## 7. Design-canon recovery + program-09 attachments (2026-07-03, evening)
+
+A second, deeper mining pass replayed the raw `design_chats/` export
+(7 core "Babylon Design System" conversations; the mockup source code
+is embedded as `write_file`/`str_replace_edit` tool-call payloads).
+Corrections and status changes against §§1–3:
+
+- **Palette (Decision 1) — factual correction**: Cold Collapse
+  (cyan `#4dd9e6` primary, gold demoted to scarce `rupture #d4a02c`)
+  was **Percy-ratified in-chat** (2026-05-17: "YES! LETS FUCKING GO
+  CLAUDE!!!! … I want this to become official babylon canon … Lets
+  redesign it all"). The §1 caveat "V8 may be design-agent drift" is
+  wrong. Anchor = Cold Collapse under the "impress me" authority
+  delegation. **Constitution catch**: Article VII literally binds
+  "GOLD (action/solidarity)" — the amendment ships with spec-090
+  (`09-program-full-game.md` §1 R-VII). Typography ratified in the
+  same chat: JetBrains Mono / Space Grotesk / Redaction / Departure
+  Mono; Inter + Roboto Mono explicitly rejected.
+- **X9 correction**: the PyQt6 "God Mode" desktop dashboard is NOT a
+  running artifact — `src/babylon/ui/` was deleted 2026-05-10 (commit
+  `323e4d30`). Its web-native successor is the **Observatory**
+  (program-09 specs 096/099, over the runtime DB). The in-game
+  Synopticon surface (same name collision, different thing) stays
+  attached to 078/079.
+- **Mockups staged in-repo**: `design/mockups/` (66 files, 643 KiB) —
+  final file states recovered by chronological replay; recipe +
+  fidelity caveats in `design/mockups/PROVENANCE.md`; per-file
+  provenance in `manifest.json`. Nobody needs to re-mine the export.
+- **Attachment updates**: X5 visual identity → **executing as
+  spec-090**; X2 Wire triptych → **spec-094** (deterministic
+  `NarratorProvider` now; Workers-AI/LoRA per Decision 3 lands with
+  M8); M4 chronicle/Journal surfaces → **spec-095** (081 enriches
+  later); M9 international layer → first spec set = **100–103**
+  (owner-scoped 2026-07-03; no amendment needed while blocs stay
+  non-agentic — `09` §1 R-AMEND); M12 speed controls + X6 map-viz
+  lens work → fold into 093's map upgrade where in scope.
+- Trade-UI decision confirmed from the corpus (2026-03-03): blocs are
+  background noise, **no interactive world map**; CONUS stays primary.
+- Map hierarchy confirmed decided (2026-04-10): CONUS → BEA Economic
+  Areas (~300 max) → counties; Michigan modeled whole
+  (`specs/040-michigan-statewide-scope`).

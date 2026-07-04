@@ -2,8 +2,22 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.15.0"
+  version: "2.16.0"
   updated: "2026-07-03"
+  active_program: |
+    Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
+    doc project/09-program-full-game.md). Percy's directive: React/
+    Django UI build-out per the design canon, Observatory debug
+    dashboard, trade-bloc international layer, nationwide scope — with
+    the FULL GAME as the stated end state. Four parallel agent lanes:
+    E[071->101->102->104->105] W[090->091->092||093->094->095->103]
+    D[100 || 098-LODES || 068-slice] O[096->099]. Owner decisions
+    P1-P4 recorded in 09 SS0; program rulings (no-MVP nuance, R-AMEND
+    non-agentic blocs, R-VII Article-VII amendment for Cold Collapse,
+    R-CRT chrome-vs-data texture rule) in 09 SS1. Design canon staged
+    at design/mockups/ (66 files, replay-extracted from the claude.ai
+    export; PROVENANCE.md). Same evening: dev fast-forwarded
+    9dd4c4f6->2f506bc2 (97 commits) and pushed, owner-directed.
   lawverian_dialectics_refactor: |
     project/06 Lawverian dialectics refactor COMPLETE (branch
     refactor/lawverian-dialectics; Phases A-E, ADR051). The saturating add-only

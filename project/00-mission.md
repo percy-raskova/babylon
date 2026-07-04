@@ -27,6 +27,16 @@ scale=single Postgres; rulings verbatim in `07` §1) — and chat-sourced
 requirements folded into the dialectics contract (`06` §9). "The game works locally" remains the near goal; 07
 defines what "a complete game" adds beyond it.
 
+**Full-game directive (2026-07-03, evening)**: Percy: "the desired end
+state is a full game, with all of the features — and that's what we're
+trying to build." The COMPLETE GAME (catalog Waves 2–7 + 07's M1–M12
+mechanics + X1–X9 experience layer) is the destination; "works locally"
+is a milestone on the way. The ratified execution program for the four
+new tracks — React/Django UI build-out per the design canon, the
+Observatory debug dashboard, the trade-bloc international layer, and
+nationwide scope — is **`09-program-full-game.md`** (four parallel
+agent lanes; owner decisions P1–P4 recorded there).
+
 ## Roadmap authority (ratified 2026-07-02)
 
 - The **living roadmap** = the audit report + `ai-docs/state.yaml`.
@@ -45,15 +55,24 @@ defines what "a complete game" adds beyond it.
    migration~~ **DONE 2026-07-03** (ADR052, Amendment L,
    `08-graph-substrate.md`) — the two foundations 071 consumes.
 1. **spec-071 Reactionary Subject** — next catalog spec (see `03-next-spec-071.md`).
+1. **Program 09 (ratified 2026-07-03)**: four parallel lanes kick off
+   alongside 071 — `[E: 071] [W: 090→091] [D: 100 ∥ 098-LODES] [O: 096]`
+   — see `09-program-full-game.md` §3. 071 remains the engine lane's
+   next unit; the web/data/observatory lanes touch disjoint files.
 1. **spec-098 reference-DB build pipeline** — interleaved with catalog work
-   (see `04-data-program-098.md`).
+   (see `04-data-program-098.md`); its LODES OD slice is prioritized
+   first (Lane D of program 09).
 1. Waves 2 → 5 per the audit (see `05-catalog-execution.md`).
 
 ## Working agreements (Percy's standing rules — non-negotiable)
 
 - **No MVP scoping.** The full Epoch-3 feature surface IS the minimum viable
   plan. Never propose MVP/Phase-1 splits of features that already have a full
-  spec. (Memory: `feedback_full_vision_no_mvps`.)
+  spec. (Memory: `feedback_full_vision_no_mvps`.) *Clarified 2026-07-03
+  (`09` §1 R-MVP): the rule bars splitting SPECCED features;
+  owner-directed scoping of an unspecced horizon item (e.g. M9 trade
+  blocs) is the act of writing its first spec, not an MVP split — and
+  those specs never self-describe as "phase 1".*
 - **TDD mandatory**: Red → Green → Refactor. Intentionally-failing tests get
   `@pytest.mark.red_phase`. Write the failing test FIRST and run it to observe
   RED before implementing.

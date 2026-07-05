@@ -1,0 +1,97 @@
+openapi: 3.1.0
+info:
+  title: Babylon Contradiction Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/contradiction/` — the Dialectic screen's live contradiction
+    snapshot. Reads `contradiction_field` rows (the OppositionRegistry's per-tick gap +
+    rate) and graph attributes (`contradiction_frames`, `dialectical_regime`) from the
+    engine's `ContradictionSystem`.
+
+    Per Constitution III, this is a READ-ONLY endpoint — it surfaces dialectical state
+    the engine already computed, never computes it. Per ADR051, the contradiction layer
+    is executable: OppositionRegistry of measured adjunction defects, level lattices +
+    Aufhebung, fixed-point regimes.
+
+paths:
+  /api/games/{game_id}/contradiction/:
+    get:
+      summary: Live contradiction snapshot — the Dialectic screen feed.
+      operationId: getContradictionSnapshot
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Contradiction snapshot envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/ContradictionSnapshot" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    ContradictionSnapshot:
+      type: object
+      required: [tick, regime, oppositions, principal_key, frame]
+      properties:
+        tick: { type: integer, minimum: 0 }
+        regime:
+          type: string
+          enum: [reproduction, crisis, sublation]
+          description: "Dialectical regime: reproduction, crisis, or sublation (Aufhebung)."
+        oppositions:
+          type: array
+          description: One entry per registered opposition, ranked by principal score.
+          items: { $ref: "#/components/schemas/OppositionEntry" }
+        principal_key:
+          type: string
+          description: The key of the principal contradiction (Mao's principal-contradiction ranking).
+        frame:
+          $ref: "#/components/schemas/ContradictionFrame"
+          description: The principal + secondary contradiction frame (aspects + intensities).
+
+    OppositionEntry:
+      type: object
+      required: [key, gap, rate, is_principal]
+      properties:
+        key: { type: string, description: "Opposition key (e.g. capital_labor, imperial)." }
+        gap: { type: number, description: "The measured adjunction defect (tension intensity)." }
+        rate: { type: number, description: "d(gap)/dtick — positive = rising, negative = falling." }
+        is_principal: { type: boolean }
+        leading_pole: { type: string, description: "Which pole is currently ahead (a or b)." }
+
+    ContradictionFrame:
+      type: object
+      required: [principal, secondary]
+      properties:
+        principal: { $ref: "#/components/schemas/ContradictionAspect" }
+        secondary: { $ref: "#/components/schemas/ContradictionAspect" }
+
+    ContradictionAspect:
+      type: object
+      required: [id, aspect_a, aspect_b, intensity, aspect_balance]
+      properties:
+        id: { type: string }
+        aspect_a: { type: string, description: "Thesis pole label." }
+        aspect_b: { type: string, description: "Antithesis pole label." }
+        principal_aspect: { type: string, description: "The currently-leading pole." }
+        intensity: { type: number, description: "The gap (tension intensity)." }
+        aspect_balance: { type: number, description: "The rate of change." }
+        is_antagonistic: { type: boolean }

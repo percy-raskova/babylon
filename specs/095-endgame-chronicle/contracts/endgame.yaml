@@ -1,0 +1,63 @@
+openapi: 3.1.0
+info:
+  title: Babylon Endgame Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/endgame/` — the chronicle end-screen's terminal outcome.
+    Reads the latest snapshot's endgame block. Recognizes all 5 GameOutcome terminal
+    types (REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV,
+    FRAGMENTED_COLLAPSE). Returns `outcome: null` when the game is still in progress.
+
+paths:
+  /api/games/{game_id}/endgame/:
+    get:
+      summary: Terminal outcome + chronicle stat cards.
+      operationId: getEndgameState
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Endgame state envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/EndgameState" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    EndgameState:
+      type: object
+      required: [tick, outcome, stats]
+      properties:
+        tick: { type: integer, minimum: 0, description: "Final tick." }
+        outcome:
+          type: string
+          enum: [revolutionary_victory, ecological_collapse, fascist_consolidation, red_ogv, fragmented_collapse]
+          description: "Terminal outcome, or null if game still in progress."
+        headline: { type: string, description: "Canonical headline (BABYLON FALLS / THE BUNKER FAILS)." }
+        summary: { type: string, description: "Chronicle paragraph (spec-081 enriches)." }
+        stats:
+          type: object
+          required: [final_tick, consciousness, solidarity_edges, heat]
+          properties:
+            final_tick: { type: integer }
+            consciousness: { type: number }
+            solidarity_edges: { type: integer }
+            heat: { type: number }

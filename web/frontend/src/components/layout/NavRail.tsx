@@ -29,7 +29,7 @@ export function NavRail({ gameId }: NavRailProps) {
   const coreItems: NavItem[] = [
     { to: base, label: "Briefing", glyph: "◐", matchPrefix: "EXACT" },
     { to: `${base}/orgs`, label: "Orgs", glyph: "◇" },
-    { to: `${base}/intel`, label: "Intel", glyph: "◉" },
+    { to: `${base}/intel`, label: "Intel", glyph: "⊛" },
     { to: `${base}/results`, label: "Results", glyph: "▦" },
   ];
 
@@ -40,12 +40,15 @@ export function NavRail({ gameId }: NavRailProps) {
     { to: `${base}/actions/aid`, label: "Aid", glyph: "◇" },
     { to: `${base}/actions/attack`, label: "Attack", glyph: "▲" },
     { to: `${base}/actions/move`, label: "Move", glyph: "→" },
-    { to: `${base}/actions/investigate`, label: "Investigate", glyph: "◉" },
+    { to: `${base}/actions/investigate`, label: "Investigate", glyph: "⊛" },
     { to: `${base}/actions/reproduce`, label: "Reproduce", glyph: "⬡" },
     { to: `${base}/actions/negotiate`, label: "Negotiate", glyph: "⇄" },
   ];
 
-  const postItems: NavItem[] = [{ to: `${base}/analysis`, label: "Analysis", glyph: "◊" }];
+  const postItems: NavItem[] = [
+    { to: `${base}/analysis`, label: "Analysis", glyph: "◊" },
+    { to: `${base}/wire`, label: "Wire", glyph: "⊛" },
+  ];
 
   return (
     <nav

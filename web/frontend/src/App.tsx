@@ -19,6 +19,7 @@ import { IntelPageV2 } from "@/components/pages/IntelPageV2";
 import { AnalysisPage } from "@/components/pages/AnalysisPage";
 import { EventLogPage } from "@/components/pages/EventLogPage";
 import { TickResolutionPage } from "@/components/pages/TickResolutionPage";
+import { WirePage } from "@/components/pages/WirePage";
 import type { AuthState } from "@/types/game";
 
 export default function App() {
@@ -125,6 +126,9 @@ export default function App() {
 
         {/* Tick resolution screen (spec 092) */}
         <Route path="resolution" element={<TickResolutionPage />} />
+
+        {/* The Wire — 4-tab window (spec 094) */}
+        <Route path="wire" element={<WirePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to={isAuthed ? "/games" : "/login"} replace />} />

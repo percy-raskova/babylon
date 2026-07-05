@@ -65,6 +65,159 @@ export const resetMockState = () => {
   queuedActions = [];
 };
 
+// Spec 094: WireFeed fixture — a single uprising story with all 3 channels.
+const mockWireFeed = {
+  meta: {
+    tick: 5,
+    session: "wayne-county-001",
+    operator: "RASKOVA-2",
+    freq: "88.7 MHz",
+    qth: "WAYNE CO / GRID EN82",
+    classification: "TS//SI//NOFORN",
+    cable_id: "0005-A",
+    page_of: "001/001",
+    timestamp_utc: "2026-05-12T08:47:22Z",
+  },
+  index: [
+    {
+      id: "journal-1",
+      tick: 5,
+      slug: "UPRISING \u00b7 HAMTRAMCK",
+      hed: {
+        c: "Authorities Report Civil Disturbance in Hamtramck",
+        l: "WORKERS ROSE UP IN HAMTRAMCK // THE STREET HOLDS",
+        i: "CIVIL DISTURBANCE // HAMTRAMCK // RESPONSE ACTIVE",
+      },
+      coverage: ["c", "l", "i"],
+      severity: "critical",
+    },
+  ],
+  euphemisms: {
+    disturbance: {
+      c: "civil disturbance",
+      l: "UPRISING",
+      filter: "ideology",
+      note: "Framing a political act as a public-order issue erases the grievance.",
+    },
+    authorities: {
+      c: "authorities",
+      l: "COPS / PIGS",
+      filter: "sourcing",
+      note: "State spokesperson is sole source.",
+    },
+  },
+  story: {
+    id: "journal-1",
+    tick: 5,
+    location: "Hamtramck",
+    time_local: "",
+    continental: {
+      brand: "CONTINENTAL",
+      monogram: "C\u2022N",
+      kicker: "NATIONAL \u00b7 LAW ENFORCEMENT",
+      hed: "Authorities Report Civil Disturbance in Hamtramck",
+      dek: "Law enforcement officials say a civil disturbance was brought under control.",
+      byline: "By Continental Staff \u00b7 Updated 2h ago",
+      paragraphs: [
+        [
+          "Hamtramck \u2014 ",
+          { euph: "authorities", text: "authorities" },
+          " responded to reports of a ",
+          { euph: "disturbance", text: "civil disturbance" },
+          " in the area early Tuesday.",
+          { sup: 1 },
+        ],
+      ],
+      bibliography: [
+        {
+          n: 1,
+          src: "DHS Office of Public Affairs",
+          kind: "press release",
+          id: "DHS-OPA-001",
+          chunk: "chunk_dhs_pr_001",
+          sim: 0.91,
+        },
+      ],
+    },
+    liberated: {
+      brand: "FREE SIGNAL",
+      callsign: "WCLF-PIRATE-887",
+      operator: "RASKOVA-2",
+      hed: "WORKERS ROSE UP IN HAMTRAMCK // THE STREET HOLDS",
+      pre: "[ BEGIN TRANSMISSION \u00b7 CIPHER: NONE \u00b7 BROADCAST IN THE CLEAR ]",
+      post: "[ END TRANSMISSION \u00b7 TUNE NEXT HOUR \u00b7 WE HOLD THE LINE ]",
+      paragraphs: [
+        {
+          body: [
+            "THE STREET HELD IN HAMTRAMCK. WORKERS DROPPED THEIR TOOLS AND THE ",
+            { euph: "authorities", text: "COPS / PIGS" },
+            " SENT THE SHOCK TEAMS.",
+          ],
+          margin: {
+            ref: "WITNESS-001",
+            chunk: "chunk_wit_001",
+            note: "front-line timestamp confirmed",
+          },
+        },
+      ],
+    },
+    intel: {
+      classification: "TS//SI//NOFORN",
+      cable_id: "0005-A",
+      origin: "FBI/HSI JOINT TASKFORCE \u2014 DETROIT FIELD OFFICE",
+      routing: ["\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae/CT", "DHS/I&A", "DOJ/NSD"],
+      caveat: "HANDLE VIA COMINT CHANNELS ONLY",
+      subj: "CIVIL DISTURBANCE \u00b7 HAMTRAMCK \u00b7 POST-ACTION",
+      fields: [
+        ["EVENT", "DISTURBANCE / DETAIN"],
+        ["LOCATION", "Hamtramck"],
+        ["DETAINEES", "8\u00d7 PROCESSED"],
+        ["CONFIDENCE", "HIGH \u00b7 0.82"],
+      ],
+      assessment: ["Action timed to suppress labor coordination."],
+      refs: [{ tag: "CHUNK", id: "chunk_sigint_001", sim: 0.95, src: "SIGINT capture" }],
+      distribution: "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 NOFORN \u00b7 30D RETAIN",
+    },
+  },
+  filters: [
+    {
+      id: "ownership",
+      label: "Ownership",
+      desc: "Continental is owned by a holding group with auto/defense exposure.",
+      hits: 1,
+      color: "var(--rent)",
+    },
+    {
+      id: "advertising",
+      label: "Advertising",
+      desc: "Advertiser pressure shapes coverage of implicated industries.",
+      hits: 0,
+      color: "var(--heat)",
+    },
+    {
+      id: "sourcing",
+      label: "Sourcing",
+      desc: "Named sources are state or state-adjacent.",
+      hits: 2,
+      color: "var(--cadre)",
+    },
+    {
+      id: "flak",
+      label: "Flak",
+      desc: "Prior favorable coverage was retracted under pressure.",
+      hits: 0,
+      color: "var(--thermal)",
+    },
+    {
+      id: "ideology",
+      label: "Anti-radical ideology",
+      desc: "The frame presupposes the legitimacy of the existing order.",
+      hits: 2,
+      color: "var(--laser)",
+    },
+  ],
+};
+
 export const handlers = [
   // Auth endpoints
   http.get("/accounts/whoami/", () =>
@@ -279,6 +432,14 @@ export const handlers = [
     HttpResponse.json({
       status: "ok",
       data: { alerts: mockJournalEvents.filter((e) => e.severity !== "informational") },
+    }),
+  ),
+
+  // The Wire — WireFeed from DeterministicNarrator (spec 094)
+  http.get("/api/games/:id/wire/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: mockWireFeed,
     }),
   ),
 

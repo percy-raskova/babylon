@@ -12,7 +12,7 @@ JSON-serializable, suitable for DRF serializer consumption.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from babylon.config.defines import GameDefines
@@ -33,6 +33,9 @@ from babylon.models.vanguard_resources import VanguardResources, check_can_affor
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.persistence.protocols import RuntimePersistence
+
+if TYPE_CHECKING:
+    from game.narrator import NarratorProvider
 
 logger = logging.getLogger(__name__)
 
@@ -266,8 +269,15 @@ class EngineBridge:
     that orchestrate create → hydrate → step → persist → snapshot cycles.
     """
 
-    def __init__(self, persistence: RuntimePersistence) -> None:
+    def __init__(
+        self, persistence: RuntimePersistence, narrator: NarratorProvider | None = None
+    ) -> None:
         self._persistence = persistence
+        if narrator is None:
+            from game.narrator import DeterministicNarrator
+
+            narrator = DeterministicNarrator()
+        self._narrator = narrator
         logger.info("EngineBridge initialized with %s", type(persistence).__name__)
 
     # ------------------------------------------------------------------ #
@@ -859,7 +869,6 @@ class EngineBridge:
         Returns:
             WireFeed dict matching ``specs/094-the-wire/contracts/wire.yaml``.
         """
-        from game.narrator import DeterministicNarrator
 
         journal = self.get_journal_dashboard(session_id)
         events = journal.get("events", [])
@@ -879,8 +888,7 @@ class EngineBridge:
             "timestamp_utc": "2026-05-12T08:47:22Z",
         }
 
-        narrator = DeterministicNarrator()
-        return narrator.narrate(events, meta)
+        return self._narrator.narrate(events, meta)
 
     # ------------------------------------------------------------------ #
     # Inspector Views

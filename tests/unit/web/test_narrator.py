@@ -353,6 +353,52 @@ class TestProviderSwap:
         assert result["story"] is None
         assert len(result["filters"]) == 5
 
+    def test_bridge_injects_narrator_provider(
+        self, events: list[dict[str, Any]], meta: dict[str, Any]
+    ) -> None:
+        """The EngineBridge must honor an injected NarratorProvider (FR-094-03).
+
+        Constructs a bridge with a MockNarrator and verifies get_wire_feed
+        uses the injected provider's output, not the default DeterministicNarrator.
+        """
+        from unittest.mock import MagicMock
+
+        from game.engine_bridge import EngineBridge
+
+        canned_feed: dict[str, Any] = {
+            "meta": meta,
+            "index": [],
+            "euphemisms": {},
+            "story": {"id": "MOCK-STORY"},
+            "filters": [],
+        }
+
+        class MockNarrator:
+            def narrate(
+                self,
+                events: list[dict[str, Any]],
+                meta: dict[str, Any],
+                visibility: dict[str, Any] | None = None,
+            ) -> dict[str, Any]:
+                return dict(canned_feed)
+
+        # Inject the mock narrator into the bridge
+        persistence = MagicMock()
+        bridge = EngineBridge(persistence=persistence, narrator=MockNarrator())
+
+        # Verify the bridge uses the injected narrator
+        assert isinstance(bridge._narrator, MockNarrator)
+
+        # get_wire_feed should produce the mock's canned output
+        # (we mock hydrate_state and get_journal_dashboard to avoid DB access)
+        bridge._persistence = persistence
+        bridge.hydrate_state = MagicMock(return_value=(MagicMock(tick=42), None))
+        bridge.get_journal_dashboard = MagicMock(return_value={"events": events})
+
+        feed = bridge.get_wire_feed(session_id=MagicMock())
+        assert feed["story"] == {"id": "MOCK-STORY"}
+        assert feed["meta"] == meta
+
     def test_narrator_accepts_visibility_param(
         self, events: list[dict[str, Any]], meta: dict[str, Any]
     ) -> None:

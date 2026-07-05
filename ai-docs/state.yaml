@@ -148,6 +148,26 @@ meta:
     lands — this is a DATA-lane sourcing gap, not an engineering gap (bridge/
     frontend code is correct and fully tested against hand-built graph
     fixtures). Full detail: .superpowers/sdd/reports/093.md.
+  web_lane_w_spec_094: |
+    spec-094 The Wire (4-tab window, deterministic narrator) DONE (branch
+    094-the-wire, stacks on 093's post-fix HEAD e3024c8c; specs/094-the-wire/
+    via speckit specify->plan->tasks->implement). Ports the 9-file
+    design/mockups/wire/ canon into a real 4-tab presentation window fed by
+    the event stream (spec-092). Introduces a NarratorProvider Python Protocol +
+    DeterministicNarrator (template-based, pure dict->dict function, ZERO
+    babylon.* imports — Article III enforced structurally). R-NARR compliant:
+    no LLM calls; interface designed for M8/Wave-6 LLM drop-in. Wire feed
+    endpoint: GET /api/games/:id/wire/ (bridge.get_wire_feed -> narrator.narrate).
+    Frontend: useWire hook, WireApp 4-tab shell (WIRE triptych / INDEX /
+    PATTERNS / CORPUS), 3 channel columns (Continental/Liberated/Intel) with
+    euphemism sync-highlight, TranslationFooter, wire.css channel textures.
+    Cold Collapse tokens (spec-090). Hegemony visibility hooks are no-op
+    pass-throughs (spec-077 supplies the mechanic later). TDD: 19 narrator
+    tests (determinism, Article III, euphemism sync, provider swap) red-first;
+    3 bridge tests; 1 MSW contract test; 9 Wire component tests. Gates:
+    294/294 backend, 427/430 Vitest (3 pre-existing tick-resolution failures,
+    not caused by this spec), tsc+eslint+prettier clean. Playwright e2e
+    (owner-run, gated on SPEC061_TEST_SESSION_ID).
   lawverian_dialectics_refactor: |
     project/06 Lawverian dialectics refactor COMPLETE (branch
     refactor/lawverian-dialectics; Phases A-E, ADR051). The saturating add-only

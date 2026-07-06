@@ -2,8 +2,8 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.18.0"
-  updated: "2026-07-04"
+  version: "2.19.0"
+  updated: "2026-07-06"
   active_program: |
     Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
     doc project/09-program-full-game.md). Percy's directive: React/
@@ -35,7 +35,9 @@ meta:
     true law). Pre-existing red left alone: test_grundrisse_cycle.py::
     test_fast_developing_wage_overtakes_then_cedes (stale C1.7 test superseded by
     D5's wage rebind; @integration, outside the fast gate).
-  last_sprint: "Storage scaling program COMPLETE (specs 087+088+089, 2026-07-03, branch feature/087-storage-foundations, ADR053). All sprints landed same-day: compose-managed tuned postgis:16+pgvector on the data drive + mise run setup (087); LIST(session_id) partitioning + hex_spatial_map normalization + LOCAL-only Parquet archival with sim:archive CLI — spec-037 Phase 8 done, R2 retired (088); delta persistence + tick_commit III.7 hash chain + as-of fill-forward views incl. v_hex_state_asof (089). Verified: trace.csv byte-identical (sha256), hex writes 5,225→1,045 per 5-tick gate, storage-budget baseline locked at 209 rows/tick, national dress rehearsal 3.17M-hex frame = 629 MiB/54s → 520-tick national projection 6.8–22.7 GiB vs ~450 GB before. GOTCHA: dynamic_hex_state is now sparse — read via v_hex_state_asof; last committed tick = tick_commit."
+  last_sprint: "spec-105 National canonical acceptance (2026-07-06, branch 105-national-canonical-acceptance). Liveness gate --liveness-gate implemented: runtime assertion counties_alive > 0, counties_with_population == counties_alive, total_v > 0, derived from N_scope = len(scope_fips). Scope-agnostic (tri-county N=3, Michigan N=83, national N=3156). Verified at Michigan statewide (83 counties, 5 ticks, all checks pass). National run: hex hydration SUCCESS (1.88M hex rows, 3144 counties), tick 0 SUCCESS (consciousness=3156), tick loop TOO SLOW (>30 min/tick, ContradictionFieldSystem super-linear scaling). National-scale bug fixes: SocialClass/Territory ID patterns 3-digit to 3+-digit, bourgeoisie offset 500 to max(500, N+1). Storage budget baseline regenerated for spec-101/102. Tri-county Delta=0.000%. 247 unit tests. National 200-tick projected ~100 hours (operator-side)."
+  previous_sprint_104: "spec-104 National tick-compute profile + budget (2026-07-05). per_system_ms wired, qa:tick-budget gate, 26 systems measured. ContradictionFieldSystem #1 hotspot. hex_spatial_map isolation fix #18."
+  previous_sprint_storage: "Storage scaling program COMPLETE (specs 087+088+089, 2026-07-03). Postgres+postgis, partitioning, delta persistence, storage-budget 209 rows/tick. National projection 6.8-22.7 GiB for 520-tick. dynamic_hex_state sparse -- read via v_hex_state_asof."
   previous_sprint_086: "086-qcew-loader-imputation (Implementation complete + LIVE APPLIED 2026-07-02; 37/41 tasks — see specs/086-qcew-loader-imputation/tasks.md and ADR050. T038 michigan-e2e re-baseline DONE by the Lawverian Phase E re-baseline; T039-T041 docs/ledger close-out.)"
   previous_sprint: "070-balkanization (Complete; ~100/118 tasks done — see specs/070-balkanization/tasks.md and ADR048. Phase 1+2 foundational, Phase 3 US1 MVP, Phase 4 US2 faction competition, Phase 5 US3 collapse+endgames, Phase 6 US4 secession+O(K) fracture shipped. Phase 7 polish + Phase 7b post-analyze remediation partially deferred — see ADR048 follow_ups.)"
   previous_sprint_069: "069-sqlite-cache-optimization (Complete; 37/37 tasks done — see specs/069-sqlite-cache-optimization/tasks.md and ADR047. SC-001 absolute 60-min wallclock gate deferred to operator-side canonical run per quickstart.md T036.)"

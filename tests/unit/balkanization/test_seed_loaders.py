@@ -108,15 +108,28 @@ def test_load_seed_influences_absent_returns_empty(tmp_path: Path) -> None:
 
 
 def test_load_seed_influences_reads_present_file(tmp_path: Path) -> None:
+    """The loader reads the ``edges`` array per the seed_influences.schema.json
+    contract (the schema's required top-level key is ``edges``, not
+    ``influences``)."""
     target = tmp_path / "seed_influences.json"
     payload = {
         "version": "1.0.0",
-        "influences": [
+        "computed_at_iso": "2026-01-01T00:00:00Z",
+        "proxy_data_provenance": {
+            "qcew_vintage": "2024",
+            "natural_earth_version": "5.1.2",
+            "election_source": "CENSUS_BUREAU_FIXTURE",
+            "election_year": 2020,
+        },
+        "edges": [
             {
                 "faction_id": "FAC_DECOLONIAL",
-                "territory_id": "HEX_001",
+                "territory_id": "872ab2c73ffffff",
                 "influence_level": 0.4,
                 "support_type": "ideological",
+                "cadre_count": 0,
+                "sympathizer_count": 0,
+                "established_tick": 0,
             }
         ],
     }
@@ -124,3 +137,4 @@ def test_load_seed_influences_reads_present_file(tmp_path: Path) -> None:
     rows = load_seed_influences(target)
     assert len(rows) == 1
     assert rows[0]["faction_id"] == "FAC_DECOLONIAL"
+    assert rows[0]["territory_id"] == "872ab2c73ffffff"

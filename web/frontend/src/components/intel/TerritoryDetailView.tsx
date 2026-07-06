@@ -18,6 +18,7 @@
 
 import { BblBadge, BblPanel, Stat } from "@/components/bbl";
 import { BreakdownTooltip } from "@/components/inspector/BreakdownTooltip";
+import { ImportExposurePanel } from "./ImportExposurePanel";
 import { useEconomy } from "@/hooks/useEconomy";
 import { selectors } from "@/lib/selectors";
 import type { Scope } from "@/lib/selectors";
@@ -73,7 +74,7 @@ function StatWithBreakdown({
   );
 }
 
-export function TerritoryDetailView({ territory, snapshot }: TerritoryDetailViewProps) {
+export function TerritoryDetailView({ territory, snapshot, gameId }: TerritoryDetailViewProps) {
   const scope: Scope = { snapshot, this: { kind: "hex", id: territory.id } };
   const economy = useEconomy(snapshot.session_id, territory.id);
   const orgs = orgsInTerritory(snapshot, territory.id);
@@ -161,6 +162,8 @@ export function TerritoryDetailView({ territory, snapshot }: TerritoryDetailView
           </div>
         )}
       </BblPanel>
+
+      <ImportExposurePanel gameId={gameId ?? null} countyFips={territory.county_fips} />
 
       <div className="grid grid-cols-2 gap-3">
         <BblPanel title="Active Organizations" accent="#2a2a3a">

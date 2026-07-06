@@ -10,6 +10,7 @@ import { useParams } from "react-router";
 import { BblBadge, BblLabel, BblPanel, Sparkline } from "@/components/bbl";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TopologyGraphPlaceholder } from "@/components/viz";
+import { TradePanel } from "./TradePanel";
 import { useTimeseries } from "@/hooks/useTimeseries";
 
 function compactSeries(series: (number | null)[]): number[] {
@@ -71,6 +72,10 @@ export function AnalysisPage() {
             </div>
           </div>
         </BblPanel>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 p-3 pt-0">
+        <TradePanel gameId={gameId ?? null} />
       </div>
     </div>
   );

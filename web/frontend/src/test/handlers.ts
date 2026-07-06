@@ -647,4 +647,196 @@ export const handlers = [
       },
     }),
   ),
+
+  // Spec 103: Trade flows — per-bloc price/flow lines for Wire INDEX
+  http.get("/api/games/:id/trade-flows/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: {
+        tick: 5,
+        has_data: true,
+        blocs: [
+          {
+            node_id: "canada",
+            label: "Canada",
+            kind: "international",
+            latest: {
+              phi_year_inflow: 5200.0,
+              bilateral_trade_value: 8_000_000,
+              bilateral_trade_tons: 12_000,
+              erdi_ratio: 1.18,
+            },
+            phi_series: [
+              { tick: 1, magnitude: 100.0 },
+              { tick: 2, magnitude: 105.0 },
+              { tick: 3, magnitude: 98.0 },
+            ],
+            trade_series: [
+              { tick: 1, magnitude: 50.0 },
+              { tick: 2, magnitude: 55.0 },
+            ],
+          },
+          {
+            node_id: "china",
+            label: "China",
+            kind: "international",
+            latest: {
+              phi_year_inflow: 13_000.0,
+              bilateral_trade_value: 20_000_000,
+              bilateral_trade_tons: 30_000,
+              erdi_ratio: 1.42,
+            },
+            phi_series: [
+              { tick: 1, magnitude: 250.0 },
+              { tick: 2, magnitude: 260.0 },
+              { tick: 3, magnitude: 270.0 },
+            ],
+            trade_series: [],
+          },
+        ],
+      },
+    }),
+  ),
+
+  // Spec 103: County import-exposure provenance breakdown
+  http.get("/api/games/:id/exposure/", ({ request }) => {
+    const url = new URL(request.url);
+    const countyFips = url.searchParams.get("county_fips");
+    if (!countyFips || countyFips === "99999") {
+      return HttpResponse.json({
+        status: "ok",
+        data: {
+          county_fips: countyFips ?? "",
+          has_data: false,
+          total_exposure: 0,
+          breakdown: { total: 0, contributors: [] },
+          citations: [],
+        },
+      });
+    }
+    return HttpResponse.json({
+      status: "ok",
+      data: {
+        county_fips: countyFips,
+        has_data: true,
+        total_exposure: 189.2,
+        breakdown: {
+          total: 189.2,
+          contributors: [
+            {
+              label: "Canada",
+              value: 60.8,
+              share: 0.32,
+              source: { kind: "derived", path: `exposure[${countyFips}][canada]` },
+              children: [
+                {
+                  label: "spec-100 exposure weight",
+                  value: 0.32,
+                  share: 1.0,
+                  source: {
+                    kind: "reference_table",
+                    path: `county_exposure_by_external[canada][${countyFips}]`,
+                  },
+                  children: [],
+                },
+                {
+                  label: "live flow (drain_edge)",
+                  value: 190.0,
+                  share: 1.0,
+                  source: {
+                    kind: "dynamic_table",
+                    path: `boundary_flow_register[canada→${countyFips}]`,
+                  },
+                  children: [],
+                },
+              ],
+            },
+            {
+              label: "China",
+              value: 128.4,
+              share: 0.68,
+              source: { kind: "derived", path: `exposure[${countyFips}][china]` },
+              children: [
+                {
+                  label: "spec-100 exposure weight",
+                  value: 0.55,
+                  share: 1.0,
+                  source: {
+                    kind: "reference_table",
+                    path: `county_exposure_by_external[china][${countyFips}]`,
+                  },
+                  children: [],
+                },
+                {
+                  label: "live flow (drain_edge)",
+                  value: 233.5,
+                  share: 1.0,
+                  source: {
+                    kind: "dynamic_table",
+                    path: `boundary_flow_register[china→${countyFips}]`,
+                  },
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+        citations: [
+          {
+            id: "bea-io-2023",
+            source: "BEA I-O imports",
+            table: "fact_bea_io_coefficient",
+            year: 2023,
+            notes: "Import coefficients per industry.",
+          },
+          {
+            id: "qcew-2023q2",
+            source: "QCEW county industry shares",
+            table: "fact_qcew",
+            year: "2023Q2",
+            notes: "County-level industry employment shares.",
+          },
+          {
+            id: "hickel-drain",
+            source: "Hickel drain",
+            table: "immutable_reference_hickel_drain",
+            notes: "Annual Φ inflow per external bloc.",
+          },
+        ],
+      },
+    });
+  }),
+
+  // Spec 103: Trade panel — aggregate trade panel for Analysis page
+  http.get("/api/games/:id/trade-panel/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: {
+        tick: 5,
+        has_data: true,
+        total_phi_inflow: 715.0,
+        total_trade: 105.0,
+        blocs: [
+          {
+            node_id: "canada",
+            label: "Canada",
+            phi_inflow: 205.0,
+            trade: 105.0,
+            erdi_ratio: 1.18,
+          },
+          {
+            node_id: "china",
+            label: "China",
+            phi_inflow: 510.0,
+            trade: 0.0,
+            erdi_ratio: 1.42,
+          },
+        ],
+        flow_types: [
+          { flow_type: "drain_edge", total: 715.0, tick_count: 2 },
+          { flow_type: "trade_inbound", total: 105.0, tick_count: 2 },
+        ],
+      },
+    }),
+  ),
 ];

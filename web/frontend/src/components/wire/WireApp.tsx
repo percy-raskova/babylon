@@ -166,7 +166,12 @@ export function WireApp({ gameId }: Props) {
             </div>
           )}
           {tab === "index" && (
-            <IndexPage index={feed.index} activeId={story?.id ?? null} onOpen={goToWire} />
+            <IndexPage
+              index={feed.index}
+              activeId={story?.id ?? null}
+              onOpen={goToWire}
+              gameId={gameId}
+            />
           )}
           {tab === "patterns" && (
             <PatternsPage euphemisms={euphs} filters={feed.filters} story={story} />

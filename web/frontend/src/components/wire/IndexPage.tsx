@@ -5,11 +5,13 @@
 
 import { useState } from "react";
 import type { WireStoryIndex, WireSeverity } from "@/types/wire";
+import { BlocFlowLines } from "./BlocFlowLines";
 
 interface Props {
   index: WireStoryIndex[];
   activeId: string | null;
   onOpen: (storyId: string) => void;
+  gameId?: string | null;
 }
 
 type FilterOption = "all" | WireSeverity;
@@ -22,12 +24,13 @@ function sevColor(s: WireSeverity): string {
   return "var(--babylon-solidarity)";
 }
 
-export function IndexPage({ index, activeId, onOpen }: Props) {
+export function IndexPage({ index, activeId, onOpen, gameId = null }: Props) {
   const [filter, setFilter] = useState<FilterOption>("all");
   const shown = filter === "all" ? index : index.filter((s) => s.severity === filter);
 
   return (
     <div className="h-full overflow-y-auto p-4" style={{ background: "var(--babylon-void)" }}>
+      <BlocFlowLines gameId={gameId} />
       <div className="mb-4 flex items-baseline justify-between">
         <div>
           <div className="wire-label mb-1">{"\u25b8"} Wire Index</div>

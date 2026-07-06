@@ -1,0 +1,83 @@
+.trade-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.trade-bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.trade-bar-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 60px 60px;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 11px;
+}
+
+.trade-bar-label {
+  color: var(--babylon-bone, #d4d4e0);
+  font-size: 10px;
+}
+
+.trade-bar-track {
+  height: 8px;
+  background: var(--babylon-concrete, #1a1a24);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.trade-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.trade-bar-value {
+  color: var(--babylon-bone, #d4d4e0);
+  font-size: 10px;
+  text-align: right;
+}
+
+.trade-bar-ratio {
+  color: var(--babylon-fog, #6a6a7a);
+  font-size: 9px;
+  text-align: right;
+}
+
+.trade-flowtype-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.trade-flowtype-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 60px;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 11px;
+  border-bottom: 1px solid var(--babylon-rebar, #2a2a3a);
+  padding-bottom: 0.15rem;
+}
+.trade-flowtype-row:last-child {
+  border-bottom: none;
+}
+
+.trade-flowtype-label {
+  color: var(--babylon-ash, #8a8a9a);
+  font-size: 10px;
+}
+
+.trade-flowtype-value {
+  color: var(--babylon-bone, #d4d4e0);
+  font-size: 11px;
+  text-align: right;
+}
+
+.trade-flowtype-ticks {
+  text-align: right;
+}

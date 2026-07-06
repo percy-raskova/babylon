@@ -210,6 +210,56 @@ re-baselines after the contradiction semantics change.
 - **Web**: `mise run web:dev` / `web:test` / `web:check`; backend web tests
   `poetry run pytest tests/unit/web/`.
 
+## spec-091 — Frontend consolidation + Django debt (DONE 2026-07-03, branch `091-frontend-consolidation`)
+
+Stacks on `090-cold-collapse` (`42232a15`). One codebase, no legacy siblings:
+
+- **042 audited + closed superseded** (R-042): `specs/042-game-ui-overhaul/AUDIT-091.md`
+  classifies all 49 tasks (done-with-evidence / superseded / residual→092/093/095);
+  042's god-page composition (`GameShell`/`RightPanel`/`BottomPanel`/`LensBar`) is
+  gone, its library layer survived in the 16-route app.
+- **Course-correction verified** (phases 1–7): `specs/091-.../course-correction-verification.md`.
+  Phases 1/2/3/6/7 met; Phase-4/5 infra (`lib/verbs`+`VerbShell`, `HexInspector`+
+  `BreakdownTooltip`) exists+tested but UNROUTED (superseded by spec-061 `VerbPage`/
+  `IntelPageV2`) — PRESERVED as infra; live provenance wiring is spec-093.
+- **Legacy siblings deleted**: `ActionPage`, `GameView`, `HexMap`, `IntelPage`,
+  `OrganizationsPage`, `OrgDashboard`, `TimeSeriesPanel` + the dead panel-`Inspector`
+  cluster (`Inspector`, `Breadcrumbs`) + their dead tests; react-leaflet removed
+  (`rg leaflet web/frontend/src` EMPTY; lockfile-only, node_modules untouched).
+  `mock_map_data.json` was RESTORED (it is the backend `seed_hex_data` fixture, not
+  DevHarness-only). The `/dev/hexmap` DevHarness (leaflet-only) retired.
+- **Map promoted to first-class**: `BriefingPage` now renders the live `DeckGLMap`
+  (was the SVG `HexMapPlaceholder`), snapshot-fed.
+- **Django debt cleared**: `web/accounts/migrations/0001_initial.py` (PlayerProfile
+  → `player_profile` table), `web/game/migrations/0011_*` (7 runner-owned snapshot
+  models, all `managed=False` — Django tracks state, does NOT own the spec-037
+  tables), `django.contrib.gis` added to INSTALLED_APPS.
+- **090 residuals a–f**: prettier hook pinned to 3.8.1; 35 semantic type-role
+  tokens ported into `index.css`; faux-italic removed (BreakdownTooltip); C6
+  lens→layer contract pinned against independent expectations; ramp docstrings
+  aligned to the Article VII amendment (monotonic EXCEPT named alarm terminals/
+  diverging); NEW Playwright visual-baseline suite (`e2e/visual.spec.ts` + login
+  chrome baseline) pinning the Cold Collapse canon.
+- **Review fixes (2026-07-04, same branch)**: (1) the Briefing deck.gl map is
+  now wrapped in an `ErrorBoundary` (HexMapPlaceholder fallback) so a WebGL init
+  failure degrades gracefully instead of white-screening the in-game index route
+  (+ Vitest test forcing a throw); (2) the two god-page e2e relics
+  (`navigation.spec`, `game-loop.spec`) that asserted DELETED UI were removed
+  (superseded by the spec-061 live suites) and a backend-free real-browser route
+  smoke added; (3) 5 GameView/ActionPage orphans (ActionPanel, TickResults,
+  ResourcePanel, TrapIndicator, VerbShell — all untested, no consumer) DELETED as
+  deletion debris; (4) 042-audit line counts corrected (game.ts 578, lensDefinitions.ts 340).
+- **Gates**: Vitest **364/364** (44 files); `poetry run pytest tests/unit/web/`
+  **248 green**; backend-free Playwright (visual + route smoke) **3 green**; tsc
+  clean. **OWNER-VERIFICATION-PENDING**: the behavioural Playwright gate (auth
+  login-success/logout + the 5 `SPEC061_TEST_SESSION_ID` suites — briefing-live-data,
+  orgs-live-data, verb-submit, intel-results-analysis, polling-tick-aligned) needs
+  a live seeded backend (`mise run web:dev` + a testuser + a seeded session);
+  these were NOT run here — see the owner-run checklist in
+  `.superpowers/sdd/reports/091.md`. The code work is done; this gate leg awaits
+  Percy. (Pre-existing note: a few fetch-error unit tests are mildly flaky under
+  network-race; a clean `npx vitest run` is 364 green.)
+
 ## Web layer facts (verified 2026-07-03 — read before any web/ or Observatory work)
 
 - **THE TWO-DB SPLIT** (documented nowhere else until now): the web app
@@ -227,23 +277,52 @@ re-baselines after the contradiction semantics change.
 - **Frontend**: React 19, Vite 6, Tailwind v4, Zustand 5, deck.gl 9,
   Recharts 2, Sigma 3; the v2 16-route architecture is LIVE in
   `web/frontend/src/App.tsx`; polling (2 s), no websockets; Vitest
-  310/310 and 8 Playwright suites green (2026-07-02).
-  `web/frontend/src/index.css` still carries the PRE-ratification
-  gold/Inter tokens — Cold Collapse migration is spec-090 (needs the
-  Article VII amendment, `09` §1 R-VII).
+  **378/378** (was 364 at spec-091; +14 across spec-092's Event Log +
+  Tick Resolution pages, journal/alerts contract test, End Turn wiring).
+  Playwright: 3 backend-free green (visual + route smoke); the god-page
+  relics were deleted, leaving 7 behavioural suites (was 6; spec-092
+  added `end-turn-flow.spec.ts`) that are **owner-run** (need a seeded
+  backend).
+  `web/frontend/src/index.css` **now carries the ratified Cold Collapse
+  tokens** (spec-090, branch `090-cold-collapse`): cyan-spire primary,
+  gold demoted to scarce rupture, four self-hosted OFL font families
+  (JetBrains Mono / Space Grotesk / Redaction 35 / Departure Mono under
+  `web/frontend/public/fonts/`; Inter + Roboto Mono removed; no Google
+  Fonts at runtime), and the six luminance-monotonic data ramps in
+  `theme/colors.ts` + `lib/lensDefinitions.ts`. The **Article VII
+  amendment** is DRAFTED (`specs/090-cold-collapse/article-vii-amendment.md`)
+  and awaits Percy's ratification at PR review — per R-VII the branch
+  carries the full swap but must not merge until ratified.
 - **Stub inventory** (the debt program 09 retires): bridge dashboard
-  methods return `{}` (`get_economy/edges/state_apparatus/journal/alerts/summary` and the wired `get_inspector_*` variants,
-  `web/game/engine_bridge.py`); five verb-target methods return
-  hardcoded Wayne County fixtures; `investigate`/`move`/`negotiate`
-  filtered as unsupported (their handlers belong in catalog specs
-  076/075/077); `/games/:id/log` renders "coming soon"; the map only
-  renders via `/dev/hexmap` (no in-game map route); AnalysisPage
-  topology/correlations are placeholders; `StubEngineBridge` fallback
-  serves mock Wayne data when bridge init fails.
-- **Django debt** (fixed in spec-091): `accounts` app has NO
-  `migrations/` dir (PlayerProfile table never created); `game` app has
-  model changes pending `makemigrations`; DB engine is postgis but
-  `django.contrib.gis` is absent from `INSTALLED_APPS`.
+  methods return `{}` (`get_economy/edges/state_apparatus/summary` and
+  the wired `get_inspector_*` variants, `web/game/engine_bridge.py`);
+  ~~`get_journal`/`get_alerts`~~ **RESOLVED (spec-092)**:
+  `get_journal_dashboard`/`get_alerts_dashboard` now read real
+  `tick_event` history (`resolve_tick` persists each tick's events via
+  the new `_persist_tick_events_safe` helper +
+  `PostgresRuntime.query_session_events`/existing `query_tick_events`);
+  five verb-target methods return hardcoded Wayne County fixtures;
+  `investigate`/`move`/`negotiate` filtered as unsupported (their
+  handlers belong in catalog specs 076/075/077); ~~`/games/:id/log`
+  renders "coming soon"~~ **RESOLVED (spec-092)**: `/games/:id/log` is
+  the real `EventLogPage` (severity-filtered over `useJournal`) and a
+  new `/games/:id/resolution` `TickResolutionPage` + End Turn button
+  (OrgsPage) now exist; ~~the map only renders via `/dev/hexmap`~~
+  **map is now first-class on Briefing (spec-091); `/dev/hexmap`
+  retired**; AnalysisPage topology/correlations are placeholders;
+  `StubEngineBridge` fallback serves mock Wayne data when bridge init
+  fails. **Known gap (spec-092, unfixed)**: `lib/eventClassifier.ts`'s
+  severity map uses UPPERCASE event-type keys (matching
+  `test/fixtures.ts`'s existing convention) while the real `EventType`
+  enum values are lowercase snake_case (verified in
+  `src/babylon/models/enums/events.py`) — real production events all
+  classify as "informational" today; predates spec-092 (already
+  affects the live notification tray via `gameStore.ts`), flagged, not
+  silently fixed.
+- ~~**Django debt** (fixed in spec-091)~~ **RESOLVED (spec-091)**:
+  `accounts/migrations/0001_initial.py` materializes PlayerProfile;
+  `game/migrations/0011_*` captures pending changes (all `managed=False`);
+  `django.contrib.gis` is now in `INSTALLED_APPS`.
 - **Design canon**: staged at `design/mockups/` (66 files, replay-
   extracted from the claude.ai export 2026-07-03; provenance +
   fidelity caveats in `design/mockups/PROVENANCE.md`).

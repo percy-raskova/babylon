@@ -95,11 +95,12 @@ def _payloads(game_id) -> dict[str, Any]:
         },
         "events": [
             {
-                # Note: tick_event.severity column is currently VARCHAR(12); the
-                # full "informational" enum string overflows. Spec 061 US3 (T047)
-                # will widen the column when severity becomes part of the
-                # serialized event contract. For this atomicity test the
-                # severity literal value is irrelevant — use a short marker.
+                # Note: tick_event.severity was VARCHAR(12) until the spec-092
+                # review fix (migration 0031_widen_tick_event_severity.sql,
+                # the T047 this comment predicted) widened it to VARCHAR(32) —
+                # the full "informational" enum string (13 chars) used to
+                # overflow it. For this atomicity test the severity literal
+                # value is irrelevant — use a short marker.
                 "event_type": "TEST_EVENT",
                 "severity": "info",
                 "summary": "spec 061 T023 atomicity probe",

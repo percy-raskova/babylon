@@ -2,7 +2,11 @@
 
 **Feature Branch**: `042-game-ui-overhaul`
 **Created**: 2026-03-03
-**Status**: Draft
+**Status**: **SUPERSEDED** (2026-07-03, spec-091 per program ruling R-042) — never executed
+as-written. Its library layer shipped via specs 051/061 + the frontend course-correction; its
+god-page composition (`GameShell`/`RightPanel`/`BottomPanel`/`LensBar`) was replaced by the
+16-route `pages/*` architecture and is deleted from the tree; residual panels are assigned to
+092/093/095. Full evidence audit of all 49 tasks: **`AUDIT-091.md`** (this directory).
 **Input**: User description: "Victoria 3-inspired comprehensive UI overhaul for Babylon, informed by deep research into grand strategy UIs, classic UX design principles, and the existing codebase"
 
 ## Research Foundation

@@ -474,12 +474,18 @@ def game_timeseries(request: Request, game_id: str) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def game_economy(request: Request, game_id: str) -> JsonResponse:
-    """GET /api/games/{id}/economy/ - Economy left-panel dashboard."""
+    """GET /api/games/{id}/economy/[?territory_id=] - Economy panel.
+
+    Spec 093: with ``?territory_id=``, returns Territory Detail's real
+    per-territory economic summary (:meth:`EngineBridge.get_economy`).
+    Without it, falls back to the still-stub dashboard-wide summary.
+    """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
     bridge = _get_bridge()
-    data = bridge.get_economy_dashboard(uuid.UUID(str(session.id)))
+    territory_id = request.query_params.get("territory_id")
+    data = bridge.get_economy(uuid.UUID(str(session.id)), territory_id=territory_id)
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
@@ -553,6 +559,139 @@ def game_alerts(request: Request, game_id: str) -> JsonResponse:
         return _error("Game not found", http_status=404)
     bridge = _get_bridge()
     data = bridge.get_alerts_dashboard(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_wire(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/wire/ - The Wire feed (spec 094).
+
+    Returns a WireFeed dict produced by the DeterministicNarrator over the
+    session's journal events. Constitution III: narrator is a pure function
+    with no engine state writes.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_wire_feed(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+# ---------------------------------------------------------------------- #
+# Spec 095: Endgame Chronicle + Journal + Dialectic screen
+# ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_contradiction(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/contradiction/ — live contradiction snapshot.
+
+    Spec 095 FR-095-04. The Dialectic screen's feed. Reads
+    ``contradiction_field`` rows and graph attributes (contradiction_frames,
+    dialectical_regime). Constitution III: pure read — surfaces dialectical
+    state the engine already computed, never computes it.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_contradiction_snapshot(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_endgame(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/endgame/ — terminal outcome + chronicle stat cards.
+
+    Spec 095 FR-095-05. Reads the latest snapshot's endgame block. All 5
+    GameOutcome terminal types are recognized (FR-095-02). Returns
+    ``outcome: null`` when the game is still in progress.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_endgame_state(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_objectives(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/objectives/ — Vic3-style objectives tracker.
+
+    Spec 095 FR-095-06. Derives objective progress from the current game
+    state, mapping the 5 endgame conditions to trackable objectives.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_journal_objectives(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+# ---------------------------------------------------------------------- #
+# Spec 103: Trade surfaces — Wire INDEX per-bloc lines, Territory Detail
+# import-exposure breakdown, Analysis trade panel.
+# ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_trade_flows(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/trade-flows/ — per-bloc price/flow lines.
+
+    Spec 103 FR-103-04. The Wire INDEX tab's trade section. Reads
+    ``boundary_flow_register`` + ``dynamic_external_node_state`` via the
+    persistence pool. Constitution III: pure read.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_trade_flows(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_county_exposure(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/exposure/?county_fips= — import-exposure breakdown.
+
+    Spec 103 FR-103-05. Territory Detail's import-exposure provenance panel.
+    A BabylonScriptValue-style breakdown over spec-100 weights + live
+    ``boundary_flow_register`` flows, with a drill-down chain ending at
+    reference-data citations.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    county_fips = request.query_params.get("county_fips")
+    if not county_fips:
+        return _error("county_fips query parameter is required", http_status=400)
+    bridge = _get_bridge()
+    data = bridge.get_county_import_exposure(uuid.UUID(str(session.id)), county_fips)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_trade_panel(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/trade-panel/ — aggregate trade panel.
+
+    Spec 103 FR-103-06. The Analysis page's trade panel. Session-cumulative
+    Φ inflow, per-bloc breakdown, and flow-type summary.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_trade_panel(uuid.UUID(str(session.id)))
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 

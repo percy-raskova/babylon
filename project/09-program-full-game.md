@@ -146,6 +146,18 @@ Free at time of writing: 090–096, 099+. Sprint ≈ 150k tokens.
 ______________________________________________________________________
 
 **spec-090 — Cold Collapse design-system migration** (~1 sprint)
+**Status: DONE (2026-07-03, branch `090-cold-collapse`) — awaiting BD
+merge, gated on Article VII ratification (R-VII).** `specs/090-cold-collapse/`
+(specify→plan→tasks→implement); token-contract test RED→GREEN;
+`mise run web:check` green (Vitest 357/357, +47); index.css on Cold
+Collapse tokens; 4 OFL fonts self-hosted under `web/frontend/public/fonts/`
+(Inter + Roboto Mono removed; no Google Fonts); six ramps in
+`theme/colors.ts` + `lib/lensDefinitions.ts`; Article VII amendment
+DRAFTED at `specs/090-cold-collapse/article-vii-amendment.md` (do NOT
+merge until Percy ratifies). Font-gate note: the literal
+`rg -i 'roboto mono|inter'` matches only `--interactive-*` and
+`pointer-events` (both present verbatim in the canon file); the FONT is
+provably absent (`rg -iw inter` empty; no `"Inter"`/`"Roboto Mono"` stack).
 
 Replace the pre-ratification token set with the ratified canon.
 
@@ -174,6 +186,31 @@ Replace the pre-ratification token set with the ratified canon.
 ______________________________________________________________________
 
 **spec-091 — Frontend consolidation + Django debt** (~1–2 sprints)
+**Status: DONE — code complete; behavioural Playwright gate OWNER-VERIFICATION-PENDING
+(2026-07-04, branch `091-frontend-consolidation`, stacks on 090; awaiting BD merge).**
+`specs/091-frontend-consolidation/` (specify→plan→tasks→implement); 042 evidence
+audit committed (`specs/042-game-ui-overhaul/AUDIT-091.md`, all 49 tasks classified,
+042 marked superseded); course-correction phases 1–7 verified
+(`course-correction-verification.md`); the 7 legacy siblings + the dead `Inspector`
+cluster + react-leaflet deleted (`rg leaflet web/frontend/src` empty); deck.gl map
+promoted to first-class on Briefing **wrapped in an ErrorBoundary** (WebGL failure
+degrades to placeholder, not a white screen; `/dev/hexmap` harness retired); Django
+debt cleared (`accounts` 0001 initial migration → PlayerProfile, `game` 0011
+makemigrations all `managed=False`, `django.contrib.gis` in INSTALLED_APPS); all six
+090 residuals a–f landed incl. the Playwright visual-baseline suite. **Review fixes
+(2026-07-04)**: ErrorBoundary on the map (+test); deleted the 2 god-page e2e relics
+(navigation, game-loop) that asserted DELETED UI; deleted 5 untested orphans
+(ActionPanel/TickResults/ResourcePanel/TrapIndicator/VerbShell — VerbShell was NOT
+"tested infra", corrected); 042-audit line counts fixed (game.ts 578, lensDefinitions.ts 340);
+added a backend-free real-browser route smoke. Gates: Vitest **364/364** (44 files);
+`poetry run pytest tests/unit/web/` 248 green; backend-free Playwright (visual + route
+smoke) 3 green; tsc clean. **OWNER-VERIFICATION-PENDING**: the behavioural Playwright
+gate (auth login-success/logout + the 5 `SPEC061_TEST_SESSION_ID` suites) needs
+`mise run web:dev` + a testuser + a seeded session — owner-run checklist in
+`.superpowers/sdd/reports/091.md`; NOT run here. `lib/selectors`/`lib/verbs`/
+`HexInspector`/`NodeInspector`/`BreakdownTooltip` are PRESERVED as tested infra
+(live provenance wiring is spec-093); after the VerbShell deletion `lib/verbs` is
+now test-only reserved infra.
 
 One codebase, one data path, no legacy siblings.
 
@@ -206,6 +243,28 @@ One codebase, one data path, no legacy siblings.
 ______________________________________________________________________
 
 **spec-092 — Event Log + Tick Resolution surfaces** (~1–2 sprints)
+**Status: DONE (2026-07-04, branch `092-event-log`, stacks on `091-frontend-consolidation`;
+awaiting BD merge).** `specs/092-event-log/` (specify→plan→tasks→implement, retroactively authored
+per the implement-then-document flow); backend: `get_journal_dashboard`/`get_alerts_dashboard`
+implemented over real `tick_event` history (`resolve_tick` now persists via a new
+`_persist_tick_events_safe` helper; `PostgresRuntime.query_session_events` added alongside the
+existing `query_tick_events`) — red-first `tests/unit/web/test_engine_bridge.py`
+(`TestTickEventPersistence`/`TestJournalDashboard`/`TestAlertsDashboard`, 31/31 file, 255/255
+suite, ruff+mypy strict clean). Frontend: `EventLogPage` (severity-filtered, ports
+`EventLog.jsx`'s design) replaces the `/log` stub; `TickResolutionPage` (ports
+`TickResolution.jsx`'s animated chrome, content grounded in real classified events + the alerts
+feed, not the mockup's fabricated OBSERVE/ORIENT/DECIDE/ACT/RESPOND phase narration) is new at
+`/games/:id/resolution`; End Turn button added to OrgsPage (the only `resolveTick()` caller).
+MSW contract test (`journal-alerts-contract.test.tsx`) written red-first against unmocked routes,
+then green. Gates: Vitest **378/378** (was 364, +14); `mise run web:check` green (fixed 2 real
+lint errors surfaced by the new code — a hooks-pattern lint mismatch and an effect-based
+tick-reset, both resolved without behavior change). Playwright `end-turn-flow.spec.ts` written +
+gated on `SPEC061_TEST_SESSION_ID` (spec-091 precedent) — **OWNER-RUN**, not exercised here (needs
+`mise run web:dev` + `seed_initial_game`); confirmed it skips cleanly unattended. **Known gap
+(documented, not fixed)**: `lib/eventClassifier.ts`'s severity map uses UPPERCASE event-type keys
+while the real `EventType` enum values are lowercase snake_case — real production events default
+to "informational" today; this predates spec-092 (already affects the live notification tray) and
+is out of scope here.
 
 - **Scope**: replace the `/games/:id/log` stub (App.tsx renders
   "coming soon") with the real Event Log page over the classified
@@ -224,7 +283,51 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**spec-093 — Territory Detail, Org Detail, map lens set** (~2 sprints)
+**spec-093 — Territory Detail, Org Detail, map lens set** (~2 sprints) — **DONE**
+
+Backend: `EngineBridge.get_economy(session_id, territory_id=None)` — real per-territory
+value_produced/rent_extracted/exploitation_rate/extraction_intensity, honest `has_data: false`
+zeros when ungrounded (never fabricated); `_build_balkanization_block` surfaces spec-070
+factions/sovereigns/territory_influence through `get_map_snapshot`'s `metadata.balkanization`
+(reads `query_faction_influence_by_territory`/`query_sovereign_claims`/`query_territory_claims`
+directly — `WorldState.from_graph()` can't reconstruct `faction`/`sovereign`/`community` node
+types, a pre-existing engine-layer gap outside `web/**`, worked around in tests).
+
+All 5 verb-target endpoints (`get_educate_targets`/`get_aid_targets`/`get_mobilize_targets`/
+`get_attack_targets`/`get_reproduce_targets`) de-fixtured: iterate every territory (the `break`
+after the first match is gone), Wayne County/FIPS-26163 fallback blocks deleted entirely.
+`rg '26163' web/game/engine_bridge.py` is clean.
+
+Frontend: `TerritoryDetailView`/`OrgDetailView` (new `components/intel/`) replace
+`IntelPageV2`'s old 4-5-stat inline renderers — full stat grids, `useEconomy`-backed economic
+panel, real org-presence/relations lists (from real `territory_ids`/edge `mode`, never a random
+label), `BreakdownTooltip` on every stat (new
+`hex.wealth`/`hex.consciousness`/`org.cohesion`/`org.heat`/`org.opacity`/`org.vanguard_*`
+selectors). Map lens set: `mapLensLayers.ts` (pure `buildLensLayers()` — stance/heat/
+habitability/faction/collapse fills, concentric influence rings, sovereign CLAIMS hulls via
+`mapLensGeometry.ts`'s h3-js-centroid convex hull) + `MapModeSelector.tsx`, wired into
+`DeckGLMap.tsx`; ColonialStance encoded via the ratified Cold Collapse tokens (LASER=Blood/
+UPHOLD, CADRE=Blue/IGNORE, SOLIDARITY=Phosphor/ABOLISH) rather than new hex literals.
+
+**Close-out review caught and fixed a critical wiring bug**: the balkanization block lives on
+the `/map/` endpoint's `metadata`, not on `GameSnapshot` — `DeckGLMap` originally read
+`snapshot.balkanization` (only ever true in hand-built test fixtures); fixed via a new `mapData`
+prop threaded from `BriefingPage.tsx` (`useGameState()`'s `mapData` was fetched but had zero
+consumers before this).
+
+Gates: Vitest **417/417** (was 380 at spec-092 close-out); backend `tests/unit/web/`
+**268/268**; `mise run web:check` exit 0 (0 lint/type errors); Playwright
+`map-lens-cycling.spec.ts` **2/2**, backend-free/route-mocked, stable across repeated runs
+(diagnosed and fixed a real sandbox-environment WebGL/luma.gl limitation unrelated to this
+spec's logic — see report).
+
+**Owner-queue item (data availability)**: no scenario seeds any spec-070 balkanization graph
+data (factions/sovereigns/INFLUENCES/CLAIMS) — `seed_influences.json` (the file that would
+carry real per-county influence rows) doesn't exist and its producing pipeline
+(`compute_seed_influences`, T112) was never built; a live `mise run web:dev` game will show
+"no data" for the map's political lenses until a real seed lands. The bridge/frontend code is
+correct and fully tested against hand-built graph fixtures — this is a DATA-lane sourcing gap,
+not an engineering gap. Full detail: `.superpowers/sdd/reports/093.md`.
 
 - **Scope**: the two detail screens
   (`design/mockups/ui_kits/webapp/TerritoryDetail.jsx`,

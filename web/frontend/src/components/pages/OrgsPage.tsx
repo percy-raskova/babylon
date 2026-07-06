@@ -14,6 +14,7 @@ import { useNavigate, useParams } from "react-router";
 import { BblBadge, BblData, BblLabel, BblPanel, Gauge, Stat } from "@/components/bbl";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useGameState } from "@/hooks/useGameState";
+import { useGameStore } from "@/stores/gameStore";
 import type { OrgState } from "@/types/game";
 
 /** Spec 061 US4: static color palette for class characters (UI tokens, not data). */
@@ -169,8 +170,10 @@ function CommunitiesPanel({ memberships }: { memberships: string[] }) {
 }
 
 export function OrgsPage() {
+  const navigate = useNavigate();
   const { id: gameId } = useParams<{ id: string }>();
-  const { snapshot, loading, error } = useGameState(gameId ?? null);
+  const { snapshot, loading, error, resolveTick } = useGameState(gameId ?? null);
+  const [resolving, setResolving] = useState(false);
 
   const playerOrgs: OrgState[] = useMemo(
     () => (snapshot?.organizations ?? []).filter((o) => Boolean(o.player_controlled)),
@@ -183,13 +186,48 @@ export function OrgsPage() {
   const oodaPhase = org?.ooda?.phase ?? "observe";
   const subtitle = subtitleFor(loading, error);
 
+  // Spec 092: End Turn resolves the tick, then hands off to the Tick
+  // Resolution screen for the animated summary of what just happened.
+  //
+  // Spec-092 review fix (Defect C): `resolveTick()` never throws — on
+  // failure it sets `error` in the gameStore and resolves to `null`
+  // (see `gameStore.ts`'s `resolveTick`). Navigating unconditionally
+  // therefore sent the player to the resolution screen even when the
+  // tick never actually resolved. Read the store's fresh `error` state
+  // right after the await (imperative `getState()`, not the reactive
+  // hook selector, since this closure isn't itself re-rendered) and only
+  // navigate when it's still clear; the existing `error` subtitle
+  // (`subtitleFor` below) already surfaces the failure to the player.
+  const handleEndTurn = async () => {
+    setResolving(true);
+    try {
+      await resolveTick();
+      if (!useGameStore.getState().error) {
+        navigate(`/games/${gameId}/resolution`);
+      }
+    } finally {
+      setResolving(false);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title="Organizations"
         subtitle={subtitle}
         breadcrumbs={["Operation", "Organizations"]}
-        right={<BblBadge color="#40c040">{playerOrgs.length} allied orgs</BblBadge>}
+        right={
+          <div className="flex items-center gap-2">
+            <BblBadge color="#40c040">{playerOrgs.length} allied orgs</BblBadge>
+            <button
+              onClick={() => void handleEndTurn()}
+              disabled={resolving}
+              className="rounded-md bg-gold px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-void transition-all hover:brightness-110 disabled:opacity-50"
+            >
+              {resolving ? "Resolving…" : "End Turn ▸"}
+            </button>
+          </div>
+        }
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr] gap-3 p-3">

@@ -1,5 +1,10 @@
 /**
  * Color scale legend for the active map layer.
+ *
+ * When a spec-070 political-topology lens is active (lensMode !== "stance"
+ * or any lens with balkanization data), the lens legend label is rendered
+ * by `DeckGLMap.tsx` via `LensLayerResult.legendLabel` — this component
+ * hides itself to avoid rendering stale/contradictory content.
  */
 
 import { useMapStore } from "@/stores/mapStore";
@@ -9,7 +14,12 @@ const LEGEND_STEPS = 8;
 
 export function MapLegend() {
   const activeLayer = useMapStore((s) => s.activeLayer);
+  const lensMode = useMapStore((s) => s.lensMode);
   const scale = getColorScale(activeLayer);
+
+  if (lensMode !== "stance") {
+    return null;
+  }
 
   const stops = Array.from({ length: LEGEND_STEPS }, (_, i) => {
     const t = i / (LEGEND_STEPS - 1);

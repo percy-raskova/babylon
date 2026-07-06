@@ -8,6 +8,7 @@ a real database or simulation engine.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import networkx as nx
@@ -519,3 +520,618 @@ class TestEndgameDetection:
         events = result.get("events", [])
         assert len(events) >= 1
         assert any(e.get("type") == "REVOLUTIONARY_VICTORY" for e in events)
+
+
+# ---------------------------------------------------------------------- #
+# Spec 092: tick_event persistence + journal/alerts dashboards
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestTickEventPersistence:
+    """Spec 092: resolve_tick writes tick_event rows for the journal/alerts
+    dashboards to read back (R-CONS: endpoints built WITH their consumers)."""
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_persists_tick_events(self, mock_step: MagicMock) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+
+        mock_new_state = _make_mock_new_state(tick=7)
+        uprising_event = MagicMock()
+        uprising_event.event_type = "uprising"
+        uprising_event.tick = 7
+        uprising_event.data = {"org_id": "org1"}
+        mock_new_state.events = [uprising_event]
+        mock_step.return_value = mock_new_state
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        bridge.resolve_tick(sid)
+
+        assert mock_persistence.persist_tick_events.called
+        call_args = mock_persistence.persist_tick_events.call_args
+        assert call_args.args[0] == sid
+        assert call_args.args[1] == 7
+        rows = call_args.args[2]
+        assert len(rows) == 1
+        assert rows[0]["event_type"] == "uprising"
+        assert rows[0]["severity"] == "critical"
+        assert rows[0]["source_id"] == "org1"
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_skips_persist_when_no_events(self, mock_step: MagicMock) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        mock_new_state = _make_mock_new_state(tick=3)
+        mock_new_state.events = []
+        mock_step.return_value = mock_new_state
+
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        bridge.resolve_tick(sid)
+
+        assert not mock_persistence.persist_tick_events.called
+
+
+@pytest.mark.unit
+class TestJournalDashboard:
+    """Spec 092: get_journal_dashboard reads persisted tick_event history."""
+
+    def test_returns_empty_when_persistence_lacks_query_method(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_session_events = None  # simulate SQLite RuntimeDatabase
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_journal_dashboard(uuid.uuid4())
+
+        assert result == {"events": []}
+
+    def test_returns_events_from_query_session_events(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 3,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": "org1",
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising erupts",
+                "detail": {"org_id": "org1"},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_journal_dashboard(sid)
+
+        assert len(result["events"]) == 1
+        event = result["events"][0]
+        assert event["type"] == "uprising"
+        assert event["severity"] == "critical"
+        assert event["tick"] == 5
+        assert event["body"] == "Uprising erupts"
+        assert event["data"] == {"org_id": "org1"}
+
+    def test_query_failure_degrades_to_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_session_events.side_effect = RuntimeError("boom")
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_journal_dashboard(uuid.uuid4())
+
+        assert result == {"events": []}
+
+
+@pytest.mark.unit
+class TestAlertsDashboard:
+    """Spec 092: get_alerts_dashboard filters the latest tick's events to
+    critical/warning severities (the Tick Resolution screen's alert feed)."""
+
+    def test_returns_empty_when_persistence_lacks_query_method(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_tick_events = None  # simulate SQLite RuntimeDatabase
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_alerts_dashboard(uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+
+        assert result == {"alerts": []}
+
+    def test_returns_critical_and_warning_only(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        mock_persistence.query_tick_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 0,
+                "event_id": 1,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising",
+                "detail": {},
+            },
+            {
+                "game_id": str(sid),
+                "tick": 0,
+                "event_id": 2,
+                "event_type": "wage_payment",
+                "severity": "informational",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Wages paid",
+                "detail": {},
+            },
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_alerts_dashboard(sid)
+
+        assert len(result["alerts"]) == 1
+        assert result["alerts"][0]["type"] == "uprising"
+
+
+@pytest.mark.unit
+class TestWireFeed:
+    """Spec 094: get_wire_feed produces a WireFeed via DeterministicNarrator."""
+
+    def test_returns_valid_wirefeed_shape(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 1,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": "org1",
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising erupts",
+                "detail": {"org_id": "org1", "territory_id": "t_hamtramck"},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_wire_feed(sid)
+
+        assert "meta" in result
+        assert "index" in result
+        assert "euphemisms" in result
+        assert "story" in result
+        assert "filters" in result
+        assert len(result["filters"]) == 5
+        assert len(result["index"]) == 1
+
+    def test_empty_events_produces_empty_feed(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_session_events = None
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_wire_feed(uuid.uuid4())
+
+        assert result["index"] == []
+        assert result["euphemisms"] == {}
+        assert result["story"] is None
+        assert len(result["filters"]) == 5
+
+    def test_feed_is_deterministic(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 1,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": "org1",
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising",
+                "detail": {"territory_id": "t_hamtramck"},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        import json
+
+        out_a = bridge.get_wire_feed(sid)
+        out_b = bridge.get_wire_feed(sid)
+        assert json.dumps(out_a, sort_keys=True) == json.dumps(out_b, sort_keys=True)
+
+
+# --------------------------------------------------------------------- #
+# Spec 093: Territory Detail / Org Detail / Map Lens Set — shared fixture
+# --------------------------------------------------------------------- #
+#
+# NOTE: WorldState.from_graph() reconstructs every non-territory/
+# organization/key_figure/institution/industry node as a SocialClass, whose
+# model_config is `extra="forbid"` — so a graph containing spec-070
+# `faction`/`sovereign`/`community` nodes crashes `hydrate_state()`'s
+# internal `WorldState.from_graph()` call (confirmed empirically; a
+# pre-existing engine-layer gap, out of this spec's `web/**` ownership).
+# Tests that need those node types patch `EngineBridge.hydrate_state`
+# directly so they exercise the same `graph` object the real bridge
+# methods already read via `graph.nodes[...]`, without going through the
+# crashing reconstruction path.
+
+
+def _patched_hydrate_state(bridge: EngineBridge, graph: BabylonGraph, tick: int = 10) -> Any:
+    """Patch ``bridge.hydrate_state`` to return ``(mock_state, graph)`` directly."""
+    mock_state = MagicMock()
+    mock_state.tick = tick
+    return patch.object(bridge, "hydrate_state", return_value=(mock_state, graph))
+
+
+def _make_balkanization_graph() -> BabylonGraph:
+    """Build a graph with orgs, territories, social classes, and spec-070
+    faction/sovereign/INFLUENCES/CLAIMS data for de-fixture + balkanization
+    tests. Territory "T1" is contested (two factions close in influence);
+    "T2" has a single dominant faction and a sovereign claim.
+
+    Matches the real engine's graph shape:
+    - extraction_intensity lives on Territory nodes (ProductionSystem)
+    - edge_mode is a separate attribute from edge_type (EdgeTransitionSystem)
+    - No community nodes in the main graph (they live in XGI hypergraph)
+    """
+    g = BabylonGraph()
+    g.graph["tick"] = 10
+    g.graph["economy"] = {"imperial_rent": 0.0}
+    g.graph["state_finances"] = {}
+    g.graph["events"] = []
+    g.graph["event_log"] = []
+
+    g.add_node(
+        "org-player",
+        "organization",
+        name="Vanguard Cell",
+        org_type="political_faction",
+        cadre_level=5.0,
+        cohesion=0.6,
+        budget=200.0,
+        heat=0.3,
+        territory_ids=["T1", "T2"],
+    )
+    g.add_node(
+        "T1",
+        "territory",
+        name="Genesee County",
+        county_fips="26049",
+        heat=0.4,
+        rent_level=1.2,
+        population=5000,
+        biocapacity=40.0,
+        max_biocapacity=100.0,
+        extraction_intensity=0.41,
+    )
+    g.add_node(
+        "T2",
+        "territory",
+        name="Washtenaw County",
+        county_fips="26161",
+        heat=0.2,
+        rent_level=0.9,
+        population=8000,
+        biocapacity=90.0,
+        max_biocapacity=100.0,
+    )
+    g.add_node(
+        "sc-genesee-proles",
+        "social_class",
+        name="Genesee Proletariat",
+        role="proletariat",
+        wealth=812.4,
+        agitation=0.62,
+        territory_ids=["T1"],
+    )
+    g.add_edge(
+        "org-player",
+        "sc-genesee-proles",
+        "exploitation",
+        edge_mode="extractive",
+        value_flow=118.9,
+        tension=0.34,
+    )
+
+    g.add_node("FAC_A", "faction", colonial_stance="UPHOLD", is_settler_formation=True)
+    g.add_node("FAC_B", "faction", colonial_stance="IGNORE", is_settler_formation=True)
+    g.add_node(
+        "SOV_A",
+        "sovereign",
+        ruling_faction_id="FAC_A",
+        extraction_policy="INTENSIFY",
+        legitimacy=0.58,
+    )
+    # T1: contested — two factions within the 0.12 delta.
+    g.add_edge("FAC_A", "T1", "influences", influence_level=0.47, support_type="ideological")
+    g.add_edge("FAC_B", "T1", "influences", influence_level=0.41, support_type="material")
+    # T2: dominant, claimed by SOV_A.
+    g.add_edge("FAC_A", "T2", "influences", influence_level=0.71, support_type="ideological")
+    g.add_edge("SOV_A", "T2", "claims", control_level=0.8, legal_status="de_jure")
+
+    return g
+
+
+@pytest.mark.unit
+class TestGetEconomy:
+    """Spec 093 US5: get_economy(session_id, territory_id) real per-territory summary."""
+
+    def test_territory_not_found_returns_no_data(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="not-a-territory")
+
+        assert result["has_data"] is False
+        assert result["value_produced"] == 0.0
+        assert result["rent_extracted"] == 0.0
+        assert result["exploitation_rate"] is None
+
+    def test_real_data_derived_from_nodes_and_edges(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
+
+        assert result["has_data"] is True
+        assert result["value_produced"] == pytest.approx(812.4)
+        assert result["rent_extracted"] == pytest.approx(118.9)
+        assert result["exploitation_rate"] is not None
+        assert result["extraction_intensity"] == pytest.approx(0.41)
+
+    def test_territory_with_no_economic_nodes_is_honest_zero(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T2")
+
+        assert result["has_data"] is False
+        assert result["value_produced"] == 0.0
+        assert result["exploitation_rate"] is None
+
+    def test_no_territory_id_delegates_to_dashboard(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_economy(uuid.uuid4())
+
+        assert result == {}
+
+
+@pytest.mark.unit
+class TestBalkanizationMapFields:
+    """Spec 093 US3: get_map_snapshot's balkanization block (real spec-070 graph reads)."""
+
+    def test_balkanization_block_present_with_real_factions_and_sovereigns(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        graph = _make_balkanization_graph()
+        mock_persistence.hydrate_graph.return_value = graph
+        with patch("game.models.GameSession") as mock_session_model:
+            mock_session_row = MagicMock()
+            mock_session_row.current_tick = 10
+            mock_session_row.scenario = "default"
+            mock_session_model.objects.get.return_value = mock_session_row
+            with patch("game.models.HexState") as mock_hex_state:
+                mock_hex_state.objects.filter.return_value = []
+                bridge = EngineBridge(mock_persistence)
+                result = bridge.get_map_snapshot(uuid.uuid4())
+
+        balk = result["metadata"]["balkanization"]
+        faction_ids = {f["id"] for f in balk["factions"]}
+        assert faction_ids == {"FAC_A", "FAC_B"}
+        assert balk["sovereigns"][0]["id"] == "SOV_A"
+        assert balk["sovereigns"][0]["claimed_territory_ids"] == ["T2"]
+
+        by_id = {t["territory_id"]: t for t in balk["territory_influence"]}
+        assert by_id["T1"]["contested"] is True
+        assert by_id["T1"]["dominant_faction_id"] == "FAC_A"
+        assert by_id["T2"]["contested"] is False
+        assert by_id["T2"]["current_sovereign_id"] == "SOV_A"
+        assert by_id["T1"]["habitability"] == pytest.approx(0.4)
+
+
+@pytest.mark.unit
+class TestDefixturedVerbTargets:
+    """Spec 093 US4: the 5 verb-target methods derive real graph data,
+    iterate ALL of the org's territories, and never fall back to a
+    hardcoded Wayne County / FIPS 26163 fixture."""
+
+    NO_FIXTURE_LITERALS = ("Wayne County", "territory-26163", "wayne", "26163")
+
+    def _assert_no_fixture_literals(self, payload: object) -> None:
+        text = str(payload)
+        for literal in self.NO_FIXTURE_LITERALS:
+            assert literal not in text, f"found fixture literal {literal!r} in {text[:200]}"
+
+    def test_educate_targets_reads_real_social_class_nodes(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        assert result["status"] == "ok"
+        assert len(result["targets"]) >= 1
+        target = result["targets"][0]
+        assert target["community_id"] == "sc-genesee-proles"
+        assert target["material_readiness"]["avg_agitation"] == pytest.approx(0.62)
+        self._assert_no_fixture_literals(result)
+
+    def test_educate_targets_iterates_all_territories_not_just_first(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "sc-washtenaw-proles",
+            "social_class",
+            name="Washtenaw Proletariat",
+            role="proletariat",
+            wealth=200.0,
+            agitation=0.2,
+            territory_ids=["T2"],
+        )
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        territory_ids = {t["territory_id"] for t in result["targets"]}
+        assert territory_ids == {"T1", "T2"}
+
+    def test_educate_targets_empty_when_org_has_no_territories(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", territory_ids=[])
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        assert result["targets"] == []
+
+    def test_aid_targets_reads_real_territory_data(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        assert result["status"] == "ok"
+        self._assert_no_fixture_literals(result)
+        assert len(result["population_targets"]) >= 1
+
+    def test_aid_targets_empty_when_org_has_no_territories(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", territory_ids=[])
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        assert result["population_targets"] == []
+        assert result["org_targets"] == []
+
+    def test_mobilize_targets_no_fixture_literals(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_mobilize_targets(uuid.uuid4(), "org-player")
+
+        self._assert_no_fixture_literals(result)
+
+    def test_attack_targets_no_fixture_literals(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_attack_targets(uuid.uuid4(), "org-player")
+
+        self._assert_no_fixture_literals(result)
+
+    def test_reproduce_targets_no_fixture_literals(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_reproduce_targets(uuid.uuid4(), "org-player")
+
+        self._assert_no_fixture_literals(result)
+
+
+@pytest.mark.unit
+class TestDefixturedQueryCorrectness:
+    """Regression tests for spec-093 review findings #1-#4: the de-fixtured
+    queries must read the CORRECT node types, attributes, and enum values
+    that the real engine writes — not the wrong ones that silently returned
+    empty results."""
+
+    def test_extraction_intensity_read_from_territory_node(self) -> None:
+        """Finding #3: extraction_intensity lives on Territory nodes, not
+        social_class/organization nodes. The old code read it from the wrong
+        node type and always got empty."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
+
+        assert result["extraction_intensity"] == pytest.approx(0.41)
+
+    def test_extractive_edges_read_edge_mode_attribute(self) -> None:
+        """Finding #2: the engine writes edge_mode as a separate attribute
+        from edge_type. The old code read edge_type (which carries EdgeType
+        values like 'exploitation') and compared against EdgeMode values
+        like 'extractive' — always empty."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
+
+        assert result["rent_extracted"] == pytest.approx(118.9)
+
+    def test_educate_targets_uses_social_class_not_community(self) -> None:
+        """Finding #1: community nodes live in the XGI hypergraph, not the
+        main graph. The old code queried _node_type=='community' which never
+        exists in production. Correct targets are social_class nodes."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        assert len(result["targets"]) >= 1
+        target_ids = {t["community_id"] for t in result["targets"]}
+        assert "sc-genesee-proles" in target_ids
+
+    def test_mobilize_targets_uses_correct_org_type_enum(self) -> None:
+        """Finding #4: OrgType.CIVIL_SOCIETY.value is 'civil_society', not
+        'civil_society_org'. The old code filtered the wrong string and
+        missed all civil-society organizations."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "org-civil-society",
+            "organization",
+            name="Tenants Union",
+            org_type="civil_society",
+            heat=0.5,
+            cohesion=0.4,
+            territory_ids=["T1"],
+        )
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_mobilize_targets(uuid.uuid4(), "org-player")
+
+        target_ids = {t["id"] for t in result["targets"]}
+        assert "org-civil-society" in target_ids

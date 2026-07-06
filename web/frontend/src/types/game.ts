@@ -47,6 +47,31 @@ export interface GameSnapshot {
   endgame?: EndgameData;
 }
 
+/**
+ * Spec-070 political-topology extension to the map-snapshot response
+ * (spec-093 US3): factions, sovereigns, and per-territory influence,
+ * sourced from `GraphProtocol.query_faction_influence_by_territory` /
+ * `query_sovereign_claims` / `query_territory_claims`.
+ *
+ * IMPORTANT: this lives under `GET /api/games/{id}/map/`'s
+ * `metadata.balkanization` (`EngineBridge.get_map_snapshot`,
+ * `_build_balkanization_block`) — it is NOT part of `GameSnapshot`
+ * (`GET .../state/`). `useGameState()`'s `mapData` field is the source;
+ * `DeckGLMap` reads `mapData?.metadata?.balkanization`, never
+ * `snapshot.balkanization` (that field doesn't exist on the real API).
+ *
+ * Absent (or `null`) when the session has no balkanization graph data yet
+ * (see `specs/093-territory-org-detail/research.md` Q7) — the map lens set
+ * degrades to an explicit "no data" legend in that case, never a
+ * fabricated fill. Distinct from `hyperedges` (Constitution VIII.9): this
+ * block is never derived from, and never renders as, hyperedge/community
+ * membership.
+ */
+export interface MapSnapshotMetadata {
+  balkanization?: import("@/components/map/mapLensLayers").BalkanizationBlock | null;
+  [key: string]: unknown;
+}
+
 /** Trap detection output from the engine. */
 export interface TrapDetectionResult {
   liberal: TrapStatus;
@@ -280,6 +305,31 @@ export interface GameEvent {
   /** Short prose body. May be the empty string when no narrative is available. */
   body: string;
   data: Record<string, unknown>;
+}
+
+/** Spec 092: GET /api/games/{id}/journal/ — full cross-tick event history. */
+export interface JournalPayload {
+  events: GameEvent[];
+}
+
+/** Spec 092: GET /api/games/{id}/alerts/ — critical/warning events from the
+ *  latest resolved tick (the Tick Resolution screen's alert feed). */
+export interface AlertsPayload {
+  alerts: GameEvent[];
+}
+
+/** Spec 093 US5: GET /api/games/{id}/economy/?territory_id= — real
+ *  per-territory economic summary for Territory Detail's economic panel.
+ *  See `specs/093-territory-org-detail/contracts/economy.yaml`. */
+export interface EconomyPayload {
+  territory_id: string | null;
+  /** False when no node/edge in the graph references this territory yet. */
+  has_data: boolean;
+  value_produced: number;
+  wage_share: number | null;
+  rent_extracted: number;
+  exploitation_rate: number | null;
+  extraction_intensity: number;
 }
 
 /** Available action for an organization. */

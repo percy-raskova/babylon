@@ -12,7 +12,7 @@ JSON-serializable, suitable for DRF serializer consumption.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from babylon.config.defines import GameDefines
@@ -26,12 +26,16 @@ from babylon.engine.scenarios import (
 from babylon.engine.scenarios_wayne_county import create_wayne_county_scenario
 from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
+from babylon.formulas.unequal_exchange import calculate_exploitation_rate
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import ActionType
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.persistence.protocols import RuntimePersistence
+
+if TYPE_CHECKING:
+    from game.narrator import NarratorProvider
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +47,40 @@ _session_action_history: dict[UUID, list[dict[str, Any]]] = {}
 _session_trap_state: dict[UUID, TrapDetectionResult] = {}
 
 _ACTION_HISTORY_CAP = 50
+
+# Spec 092: journal/alerts dashboards.
+# Max rows returned by get_journal_dashboard (newest tick first).
+_JOURNAL_LIMIT = 200
+# Severities surfaced by get_alerts_dashboard — "informational" is routine
+# flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
+_ALERT_SEVERITIES = frozenset({"critical", "warning"})
+
+# Spec 095: all 5 terminal GameOutcome event types (FR-095-02). The previous
+# bridge layer only recognized 3 of 5 (the Slice 1.6 set), so RED_OGV and
+# FRAGMENTED_COLLAPSE endgames never surfaced in the snapshot's ``endgame``
+# block. This set is the authoritative source for both ``resolve_tick`` and
+# ``get_endgame_state``. Matches ``babylon.models.enums.GameOutcome`` minus
+# ``IN_PROGRESS`` (the non-terminal sentinel).
+_TERMINAL_OUTCOMES: frozenset[str] = frozenset(
+    {
+        "REVOLUTIONARY_VICTORY",
+        "ECOLOGICAL_COLLAPSE",
+        "FASCIST_CONSOLIDATION",
+        "RED_OGV",
+        "FRAGMENTED_COLLAPSE",
+    }
+)
+
+# Spec 095: canonical headlines for the chronicle end-screen (FR-095-09).
+# REVOLUTIONARY_VICTORY → rupture palette ("BABYLON FALLS"); all others →
+# defeat palette ("THE BUNKER FAILS"). Matches the EndState.jsx mockup.
+_OUTCOME_HEADLINES: dict[str, str] = {
+    "REVOLUTIONARY_VICTORY": "BABYLON FALLS",
+    "ECOLOGICAL_COLLAPSE": "THE BUNKER FAILS",
+    "FASCIST_CONSOLIDATION": "THE BUNKER FAILS",
+    "RED_OGV": "THE BUNKER FAILS",
+    "FRAGMENTED_COLLAPSE": "THE BUNKER FAILS",
+}
 
 # ---------------------------------------------------------------------- #
 # Verb-to-ActionType mapping (9 canonical player verbs → engine ActionType)
@@ -91,6 +129,604 @@ def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------- #
+# Spec 095: contradiction snapshot + endgame + objectives helpers.
+# Pure reads over persisted state — Constitution III (AI observes).
+# ---------------------------------------------------------------------- #
+
+
+def _fetch_contradiction_field_rows(pool: Any, session_id: UUID) -> list[dict[str, Any]]:
+    """Read ``contradiction_field`` rows for the latest tick (FR-095-01).
+
+    Mirrors :func:`_fetch_session_rng_seed_from_pool`'s SQL-read pattern.
+    Returns one row per opposition key at the latest tick, with
+    ``field_name``, ``value`` (gap), ``dt`` (rate). Degrades to an empty
+    list when the pool is unavailable (SQLite dev/test) or the query fails.
+    """
+    if pool is None:
+        return []
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tick, field_name, value, dt
+                FROM contradiction_field
+                WHERE session_id = %s
+                  AND tick = (
+                      SELECT MAX(tick) FROM contradiction_field WHERE session_id = %s
+                  )
+                """,
+                (session_id, session_id),
+            )
+            rows = cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    result.append(row)
+                elif isinstance(row, (tuple, list)) and len(row) >= 4:
+                    result.append(
+                        {
+                            "tick": row[0],
+                            "field_name": row[1],
+                            "value": row[2],
+                            "dt": row[3],
+                        }
+                    )
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
+        logger.exception("Failed to read contradiction_field rows for session %s", session_id)
+        return []
+
+
+def _aspect_to_frame_entry(aspect: Any) -> dict[str, Any]:
+    """Normalize a contradiction aspect dict for the frame block."""
+    if not isinstance(aspect, dict):
+        return {}
+    return {
+        "id": str(aspect.get("id", "")),
+        "aspect_a": str(aspect.get("aspect_a", "")),
+        "aspect_b": str(aspect.get("aspect_b", "")),
+        "principal_aspect": str(aspect.get("principal_aspect", "")),
+        "intensity": float(aspect.get("intensity", 0.0)),
+        "aspect_balance": float(aspect.get("aspect_balance", 0.0)),
+        "is_antagonistic": bool(aspect.get("is_antagonistic", False)),
+    }
+
+
+# ---------------------------------------------------------------------- #
+# Spec 103: Trade surfaces — helpers for boundary_flow_register +
+# dynamic_external_node_state + county_exposure_by_external reads.
+# Pure reads over persisted engine state — Constitution III.
+# ---------------------------------------------------------------------- #
+
+_BLOC_LABELS: dict[str, str] = {
+    "canada": "Canada",
+    "china": "China",
+    "eu": "EU",
+    "india": "India",
+    "sub_saharan_africa": "Sub-Saharan Africa",
+    "latin_america": "Latin America",
+    "russia_csi": "Russia/CSI",
+    "southeast_asia": "Southeast Asia",
+    "rest_of_usa": "Rest of USA",
+}
+
+# Canonical citation provenance for the exposure breakdown's terminal leaves.
+# These describe the reference-data lineage the spec-100 weights trace to.
+_EXPOSURE_CITATIONS: list[dict[str, Any]] = [
+    {
+        "id": "bea-io-2023",
+        "source": "BEA I-O imports",
+        "table": "fact_bea_io_coefficient",
+        "year": 2023,
+        "notes": "Import coefficients per industry — the import exposure numerator.",
+    },
+    {
+        "id": "qcew-2023q2",
+        "source": "QCEW county industry shares",
+        "table": "fact_qcew",
+        "year": "2023Q2",
+        "notes": "County-level industry employment shares — the exposure allocation key.",
+    },
+    {
+        "id": "hickel-drain",
+        "source": "Hickel drain",
+        "table": "immutable_reference_hickel_drain",
+        "notes": "Annual Φ (drain) inflow per external bloc.",
+    },
+]
+
+
+def _fetch_boundary_flow_series(pool: Any, session_id: UUID) -> list[dict[str, Any]]:
+    """Read ``boundary_flow_register`` per-tick rows grouped by source + flow_type.
+
+    Returns one dict per ``(tick, source_node_id, flow_type)`` with the summed
+    magnitude. Degrades to an empty list when the pool is unavailable or the
+    query fails (SQLite dev/test, SIM DB absent).
+    """
+    if pool is None:
+        return []
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tick, source_node_id, flow_type, SUM(magnitude) AS magnitude
+                FROM boundary_flow_register
+                WHERE session_id = %s
+                  AND source_kind = 'external'
+                GROUP BY tick, source_node_id, flow_type
+                ORDER BY tick, source_node_id, flow_type
+                """,
+                (session_id,),
+            )
+            rows = cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    result.append(
+                        {
+                            "tick": int(row["tick"]),
+                            "source_node_id": str(row["source_node_id"]),
+                            "flow_type": str(row["flow_type"]),
+                            "magnitude": float(row["magnitude"] or 0.0),
+                        }
+                    )
+                elif isinstance(row, (tuple, list)) and len(row) >= 4:
+                    result.append(
+                        {
+                            "tick": int(row[0]),
+                            "source_node_id": str(row[1]),
+                            "flow_type": str(row[2]),
+                            "magnitude": float(row[3] or 0.0),
+                        }
+                    )
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
+        logger.exception("Failed to read boundary_flow_register for session %s", session_id)
+        return []
+
+
+def _fetch_county_boundary_flows(
+    pool: Any, session_id: UUID, county_fips: str
+) -> list[dict[str, Any]]:
+    """Read ``boundary_flow_register`` rows where ``dest_node_id = county_fips``.
+
+    Returns one dict per ``(tick, source_node_id, flow_type, magnitude)``.
+    Degrades to an empty list when the pool is unavailable or the query fails.
+    """
+    if pool is None:
+        return []
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tick, source_node_id, flow_type, magnitude
+                FROM boundary_flow_register
+                WHERE session_id = %s
+                  AND dest_node_id = %s
+                ORDER BY source_node_id, tick
+                """,
+                (session_id, county_fips),
+            )
+            rows = cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    result.append(
+                        {
+                            "tick": int(row["tick"]),
+                            "source_node_id": str(row["source_node_id"]),
+                            "flow_type": str(row["flow_type"]),
+                            "magnitude": float(row["magnitude"] or 0.0),
+                        }
+                    )
+                elif isinstance(row, (tuple, list)) and len(row) >= 4:
+                    result.append(
+                        {
+                            "tick": int(row[0]),
+                            "source_node_id": str(row[1]),
+                            "flow_type": str(row[2]),
+                            "magnitude": float(row[3] or 0.0),
+                        }
+                    )
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
+        logger.exception("Failed to read county boundary flows for %s/%s", session_id, county_fips)
+        return []
+
+
+def _fetch_external_node_latest(pool: Any, session_id: UUID) -> dict[str, dict[str, Any]]:
+    """Read the latest ``dynamic_external_node_state`` row per node_id.
+
+    Returns ``{node_id: {kind, phi_year_inflow, bilateral_trade_value,
+    bilateral_trade_tons, erdi_ratio, tick}}``. Degrades to an empty dict
+    when the pool is unavailable or the query fails.
+    """
+    if pool is None:
+        return {}
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT node_id, kind, phi_year_inflow, bilateral_trade_value,
+                       bilateral_trade_tons, erdi_ratio, tick
+                FROM dynamic_external_node_state e
+                WHERE session_id = %s
+                  AND tick = (
+                      SELECT MAX(tick) FROM dynamic_external_node_state
+                      WHERE session_id = %s AND node_id = e.node_id
+                  )
+                ORDER BY node_id
+                """,
+                (session_id, session_id),
+            )
+            rows = cur.fetchall()
+            result: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                if isinstance(row, dict):
+                    nid = str(row["node_id"])
+                    result[nid] = {
+                        "kind": str(row.get("kind", "international")),
+                        "phi_year_inflow": float(row.get("phi_year_inflow", 0.0)),
+                        "bilateral_trade_value": float(row.get("bilateral_trade_value", 0.0)),
+                        "bilateral_trade_tons": float(row.get("bilateral_trade_tons", 0.0)),
+                        "erdi_ratio": float(row.get("erdi_ratio", 1.0)),
+                        "tick": int(row.get("tick", 0)),
+                    }
+                elif isinstance(row, (tuple, list)) and len(row) >= 7:
+                    nid = str(row[0])
+                    result[nid] = {
+                        "kind": str(row[1]),
+                        "phi_year_inflow": float(row[2]),
+                        "bilateral_trade_value": float(row[3]),
+                        "bilateral_trade_tons": float(row[4]),
+                        "erdi_ratio": float(row[5]),
+                        "tick": int(row[6]),
+                    }
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty dict
+        logger.exception("Failed to read external_node_state for session %s", session_id)
+        return {}
+
+
+def _fetch_county_exposure_weights(pool: Any, county_fips: str) -> dict[str, float]:
+    """Read spec-100's ``county_exposure_by_external`` weights for a county.
+
+    Returns ``{bloc_node_id: weight}``. The table is not yet built (spec-100
+    is Lane D, unbuilt) — this degrades to an empty dict when the table is
+    absent or the query fails. Forward-compatible: when spec-100 lands, the
+    weights populate without a frontend change.
+    """
+    if pool is None:
+        return {}
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT bloc_node_id, weight
+                FROM county_exposure_by_external
+                WHERE county_fips = %s
+                ORDER BY bloc_node_id
+                """,
+                (county_fips,),
+            )
+            rows = cur.fetchall()
+            result: dict[str, float] = {}
+            for row in rows:
+                if isinstance(row, dict):
+                    result[str(row["bloc_node_id"])] = float(row.get("weight", 0.0))
+                elif isinstance(row, (tuple, list)) and len(row) >= 2:
+                    result[str(row[0])] = float(row[1])
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; spec-100 table may be absent
+        logger.debug("county_exposure_by_external not available for %s", county_fips)
+        return {}
+
+
+def _fetch_flow_type_totals(pool: Any, session_id: UUID) -> list[dict[str, Any]]:
+    """Read session-cumulative ``boundary_flow_register`` totals per flow_type.
+
+    Returns one dict per ``flow_type`` with ``total`` (SUM magnitude) and
+    ``tick_count`` (distinct ticks). Degrades to an empty list.
+    """
+    if pool is None:
+        return []
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT flow_type,
+                       COALESCE(SUM(magnitude), 0) AS total,
+                       COUNT(DISTINCT tick) AS tick_count
+                FROM boundary_flow_register
+                WHERE session_id = %s
+                GROUP BY flow_type
+                ORDER BY flow_type
+                """,
+                (session_id,),
+            )
+            rows = cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    result.append(
+                        {
+                            "flow_type": str(row["flow_type"]),
+                            "total": float(row.get("total", 0.0)),
+                            "tick_count": int(row.get("tick_count", 0)),
+                        }
+                    )
+                elif isinstance(row, (tuple, list)) and len(row) >= 3:
+                    result.append(
+                        {
+                            "flow_type": str(row[0]),
+                            "total": float(row[1]),
+                            "tick_count": int(row[2]),
+                        }
+                    )
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
+        logger.exception("Failed to read flow_type totals for session %s", session_id)
+        return []
+
+
+def _extract_event_type(event: Any) -> str:
+    """Extract a normalized event_type string from a dict or object event."""
+    if isinstance(event, dict):
+        return str(event.get("event_type", ""))
+    et = getattr(event, "event_type", None)
+    if et is None:
+        return ""
+    if hasattr(et, "value"):
+        return str(et.value)
+    return str(et)
+
+
+def _extract_event_data(event: Any, key: str, default: Any = None) -> Any:
+    """Extract a field from an event's ``data`` block (dict or object)."""
+    data: Any = event.get("data") if isinstance(event, dict) else getattr(event, "data", None)
+    if isinstance(data, dict):
+        return data.get(key, default)
+    return default
+
+
+def _compute_avg_node_attr(graph: Any, attr: str, default: float = 0.0) -> float:
+    """Compute the mean of a numeric node attribute across all graph nodes.
+
+    Constitution III: pure read over already-persisted graph state.
+    """
+    nodes_fn = getattr(graph, "nodes", None)
+    if nodes_fn is None:
+        return default
+    try:
+        total = 0.0
+        count = 0
+        for _node_id, data in nodes_fn(data=True):
+            val = data.get(attr) if isinstance(data, dict) else None
+            if val is not None:
+                try:
+                    total += float(val)
+                    count += 1
+                except (TypeError, ValueError):
+                    continue
+        return total / count if count > 0 else default
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+        return default
+
+
+def _count_edges_by_mode(graph: Any, modes: frozenset[str]) -> int:
+    """Count graph edges whose ``mode`` matches the given set (case-insensitive)."""
+    edges_fn = getattr(graph, "edges", None)
+    if edges_fn is None:
+        return 0
+    try:
+        modes_lower = {m.lower() for m in modes}
+        iterable: Any = edges_fn(data=True) if callable(edges_fn) else []
+        count = 0
+        for entry in iterable:
+            data = entry[2] if isinstance(entry, (tuple, list)) and len(entry) >= 3 else None
+            if isinstance(data, dict):
+                mode = str(data.get("mode", "")).lower()
+                if mode in modes_lower:
+                    count += 1
+        return count
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+        return 0
+
+
+def _detect_terminal_outcome(graph_attrs: dict[str, Any]) -> str | None:
+    """Scan a graph's ``events`` list for a terminal GameOutcome event."""
+    events = graph_attrs.get("events", []) or []
+    for event in events:
+        event_type = _extract_event_type(event)
+        if event_type.upper() in _TERMINAL_OUTCOMES:
+            return event_type.lower()
+    return None
+
+
+def _objective_status(category: str, outcome: str | None) -> str:
+    """Derive an objective's status from the terminal outcome.
+
+    - The objective whose category matches the fired outcome is ``complete``.
+    - All other endgame-aligned objectives are ``failed`` (their path lost).
+    - When no outcome has fired, every objective is ``active``.
+    """
+    if outcome is None:
+        return "active"
+    outcome_upper = outcome.upper()
+    if category == "revolution" and outcome_upper == "REVOLUTIONARY_VICTORY":
+        return "complete"
+    if category == "collapse" and outcome_upper == "ECOLOGICAL_COLLAPSE":
+        return "complete"
+    if category == "fascist" and outcome_upper == "FASCIST_CONSOLIDATION":
+        return "complete"
+    if category == "red_ogv" and outcome_upper == "RED_OGV":
+        return "complete"
+    if category == "fragmented" and outcome_upper == "FRAGMENTED_COLLAPSE":
+        return "complete"
+    return "failed"
+
+
+# ---------------------------------------------------------------------- #
+# Spec 093: real graph reads shared by get_economy, the balkanization
+# map-snapshot block, and the de-fixtured verb-target methods.
+# ---------------------------------------------------------------------- #
+
+# Edge modes counted as extraction/rent for get_economy (matches EdgeMode's
+# EXTRACTIVE/ANTAGONISTIC values, compared case-insensitively since graph
+# edges may carry either the enum's lowercase value or an uppercase legacy
+# literal depending on which System wrote them).
+_EXTRACTIVE_EDGE_MODES: frozenset[str] = frozenset({"extractive", "antagonistic"})
+
+# Contested-territory threshold, ported verbatim from the design canon's
+# documented values (design/mockups/themap/map-data.jsx: `(dominant_share -
+# second_share) < 0.12 || dominant_share < 0.45`) — not a new invented
+# constant.
+_CONTESTED_INFLUENCE_DELTA: float = 0.12
+_CONTESTED_DOMINANCE_FLOOR: float = 0.45
+
+
+def _nodes_in_territory(graph: BabylonGraph, territory_id: str) -> list[tuple[str, dict[str, Any]]]:
+    """Return (node_id, data) for every social_class/organization node whose
+    ``territory_ids`` includes ``territory_id``."""
+    found: list[tuple[str, dict[str, Any]]] = []
+    for node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") not in ("social_class", "organization"):
+            continue
+        if territory_id in data.get("territory_ids", []):
+            found.append((node_id, data))
+    return found
+
+
+def _build_balkanization_block(graph: BabylonGraph) -> dict[str, Any]:
+    """Build the spec-093 ``balkanization`` map-snapshot block from real
+    spec-070 graph data (faction/sovereign nodes, INFLUENCES/CLAIMS edges).
+
+    Reads the RAW graph directly (never via ``WorldState.from_graph()``,
+    which reconstructs unrecognized ``_node_type`` values — ``faction``,
+    ``sovereign``, ``community`` — as a strict ``SocialClass(extra=
+    "forbid")`` and crashes on their real attributes; a pre-existing
+    engine-layer gap outside this spec's ``web/**`` ownership). Habitability
+    and contested-state have no stored field on Territory — both are
+    derived at read time here rather than invented as new engine state.
+    """
+    factions: list[dict[str, Any]] = []
+    sovereigns: list[dict[str, Any]] = []
+    territory_ids: set[str] = set()
+
+    for node_id, data in graph.nodes(data=True):
+        node_type = data.get("_node_type")
+        if node_type == "faction":
+            factions.append(
+                {
+                    "id": node_id,
+                    "colonial_stance": data.get("colonial_stance"),
+                    "is_settler_formation": bool(data.get("is_settler_formation", False)),
+                }
+            )
+        elif node_type == "sovereign":
+            claimed = [tid for tid, _level, _status in graph.query_sovereign_claims(node_id)]
+            sovereigns.append(
+                {
+                    "id": node_id,
+                    "ruling_faction_id": data.get("ruling_faction_id"),
+                    "extraction_policy": data.get("extraction_policy"),
+                    "legitimacy": float(data.get("legitimacy", 0.0)),
+                    "claimed_territory_ids": claimed,
+                }
+            )
+        elif node_type == "territory":
+            territory_ids.add(node_id)
+
+    territory_influence: list[dict[str, Any]] = []
+    for tid in sorted(territory_ids):
+        rows = graph.query_faction_influence_by_territory(tid)
+        if not rows:
+            continue
+        influences = [
+            {"faction_id": fid, "influence_level": level, "support_type": support}
+            for fid, level, support in rows
+        ]
+        top_share = rows[0][1]
+        second_share = rows[1][1] if len(rows) > 1 else 0.0
+        contested = (top_share - second_share) < _CONTESTED_INFLUENCE_DELTA or (
+            top_share < _CONTESTED_DOMINANCE_FLOOR
+        )
+        claim_rows = graph.query_territory_claims(tid)
+        current_sovereign_id = claim_rows[0][0] if claim_rows else None
+        terr_data = graph.nodes[tid]
+        biocapacity = float(terr_data.get("biocapacity", 0.0))
+        max_biocapacity = float(terr_data.get("max_biocapacity", 0.0)) or 1.0
+        habitability = max(0.0, min(1.0, biocapacity / max_biocapacity))
+
+        territory_influence.append(
+            {
+                "territory_id": tid,
+                "influences": influences,
+                "dominant_faction_id": rows[0][0],
+                "current_sovereign_id": current_sovereign_id,
+                "contested": contested,
+                "habitability": round(habitability, 4),
+            }
+        )
+
+    return {
+        "factions": factions,
+        "sovereigns": sovereigns,
+        "territory_influence": territory_influence,
+    }
+
+
+def _outgoing_extractive_edges(graph: BabylonGraph, source_id: str) -> list[dict[str, Any]]:
+    """Return real EXTRACTIVE/ANTAGONISTIC edges outgoing from ``source_id``."""
+    found: list[dict[str, Any]] = []
+    for source, target in graph.edges:
+        if source != source_id:
+            continue
+        data = graph.edges[(source, target)]
+        mode = str(data.get("edge_mode", data.get("edge_type", data.get("_edge_type", "")))).lower()
+        if mode not in _EXTRACTIVE_EDGE_MODES:
+            continue
+        found.append(
+            {
+                "edge_id": f"{source}->{target}",
+                "target_name": graph.nodes.get(target, {}).get("name", target),
+                "flow_type": mode.upper(),
+                "s_flow_per_tick": float(data.get("value_flow", 0.0)),
+            }
+        )
+    return found
+
+
+def _edge_status_between(graph: BabylonGraph, node_a: str, node_b: str) -> dict[str, Any]:
+    """Return a real edge-mode summary between two nodes (either direction),
+    or an honest ``"NONE"`` status when no edge exists."""
+    for source, target in ((node_a, node_b), (node_b, node_a)):
+        if (source, target) in graph.edges:
+            data = graph.edges[(source, target)]
+            mode = str(
+                data.get("edge_mode", data.get("edge_type", data.get("_edge_type", "none")))
+            ).upper()
+            return {
+                "type": mode,
+                "value_flow": float(data.get("value_flow", 0.0)),
+                "tension": float(data.get("tension", 0.0)),
+            }
+    return {"type": "NONE", "value_flow": 0.0, "tension": 0.0}
+
+
+def _empty_economy_payload(territory_id: str | None) -> dict[str, Any]:
+    return {
+        "territory_id": territory_id,
+        "has_data": False,
+        "value_produced": 0.0,
+        "wage_share": None,
+        "rent_extracted": 0.0,
+        "exploitation_rate": None,
+        "extraction_intensity": 0.0,
+    }
+
+
 class EngineBridge:
     """Translates between Django request/response and simulation engine.
 
@@ -98,8 +734,15 @@ class EngineBridge:
     that orchestrate create → hydrate → step → persist → snapshot cycles.
     """
 
-    def __init__(self, persistence: RuntimePersistence) -> None:
+    def __init__(
+        self, persistence: RuntimePersistence, narrator: NarratorProvider | None = None
+    ) -> None:
         self._persistence = persistence
+        if narrator is None:
+            from game.narrator import DeterministicNarrator
+
+            narrator = DeterministicNarrator()
+        self._narrator = narrator
         logger.info("EngineBridge initialized with %s", type(persistence).__name__)
 
     # ------------------------------------------------------------------ #
@@ -272,22 +915,34 @@ class EngineBridge:
             # Aggregated zoom level — group by dimension column
             features = self._aggregate_hex_features(hex_states, zoom)
 
+        metadata: dict[str, Any] = {
+            "tick": target_tick,
+            "scenario": session.scenario,
+            "h3_resolution": 7,
+            "zoom": zoom,
+            "available_metrics": [
+                "profit_rate",
+                "exploitation_rate",
+                "occ",
+                "imperial_rent",
+                "heat",
+                "org_presence",
+            ],
+        }
+
+        # Spec 093 US3: balkanization block for the map lens set. Reads the
+        # raw graph directly (see _build_balkanization_block docstring for
+        # why WorldState.from_graph() must be avoided here). Best-effort —
+        # a hydration failure must not break the rest of the map snapshot.
+        try:
+            graph = self._persistence.hydrate_graph(tick=target_tick, session_id=session_id)
+            metadata["balkanization"] = _build_balkanization_block(graph)
+        except Exception:  # noqa: BLE001 — optional block, never fails the map
+            logger.exception("Failed to build balkanization block for session %s", session_id)
+
         return {
             "type": "FeatureCollection",
-            "metadata": {
-                "tick": target_tick,
-                "scenario": session.scenario,
-                "h3_resolution": 7,
-                "zoom": zoom,
-                "available_metrics": [
-                    "profit_rate",
-                    "exploitation_rate",
-                    "occ",
-                    "imperial_rent",
-                    "heat",
-                    "org_presence",
-                ],
-            },
+            "metadata": metadata,
             "features": features,
         }
 
@@ -436,6 +1091,81 @@ class EngineBridge:
         """Return the economy left-panel dashboard data."""
         return {}
 
+    def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:
+        """Return a per-territory economic summary (spec 093 US5).
+
+        Aggregates real ``wealth``/``extraction_intensity`` from
+        social_class/organization nodes located in ``territory_id`` and
+        real ``value_flow`` from incident EXTRACTIVE/ANTAGONISTIC edges.
+        Returns ``has_data: False`` with honest zeros when the territory
+        has no such nodes/edges yet — never a fabricated nonzero value.
+
+        Without ``territory_id``, delegates to the (still-stub)
+        dashboard-wide :meth:`get_economy_dashboard` for backward
+        compatibility with the existing ``/economy/`` route.
+        """
+        if territory_id is None:
+            return self.get_economy_dashboard(session_id)
+
+        _state, graph = self.hydrate_state(session_id)
+        if territory_id not in graph.nodes:
+            return _empty_economy_payload(territory_id)
+
+        econ_nodes = _nodes_in_territory(graph, territory_id)
+        node_ids = {node_id for node_id, _ in econ_nodes}
+        value_produced = sum(float(data.get("wealth", 0.0)) for _, data in econ_nodes)
+        terr_data = graph.nodes.get(territory_id, {})
+        terr_extraction_intensity = terr_data.get("extraction_intensity")
+        extraction_values = (
+            [float(terr_extraction_intensity)] if terr_extraction_intensity is not None else []
+        )
+
+        rent_extracted = 0.0
+        tension_values: list[float] = []
+        for source, target in graph.edges:
+            # Both endpoints must be local to this territory — an org
+            # operating across multiple territories shouldn't bleed one
+            # territory's edge activity into another's summary.
+            if source not in node_ids or target not in node_ids:
+                continue
+            edge_data = graph.edges[(source, target)]
+            mode = str(
+                edge_data.get(
+                    "edge_mode", edge_data.get("edge_type", edge_data.get("_edge_type", ""))
+                )
+            ).lower()
+            if mode not in _EXTRACTIVE_EDGE_MODES:
+                continue
+            rent_extracted += float(edge_data.get("value_flow", 0.0))
+            tension = edge_data.get("tension")
+            if tension is not None:
+                tension_values.append(float(tension))
+
+        has_data = value_produced > 0.0 or rent_extracted > 0.0 or bool(extraction_values)
+        exploitation_rate: float | None = None
+        if has_data and value_produced > 0.0:
+            # Real, locally-derivable exchange-ratio proxy: how much extra
+            # value was extracted relative to what this territory produced
+            # (epsilon > 1 == giving away more than receiving, matching
+            # unequal_exchange's semantics), fed through the existing
+            # calculate_exploitation_rate formula rather than a new one.
+            exchange_ratio = (value_produced + rent_extracted) / value_produced
+            exploitation_rate = round(calculate_exploitation_rate(exchange_ratio) / 100.0, 4)
+
+        return {
+            "territory_id": territory_id,
+            "has_data": has_data,
+            "value_produced": round(value_produced, 4),
+            "wage_share": None,
+            "rent_extracted": round(rent_extracted, 4),
+            "exploitation_rate": exploitation_rate,
+            "extraction_intensity": (
+                round(sum(extraction_values) / len(extraction_values), 4)
+                if extraction_values
+                else 0.0
+            ),
+        }
+
     def get_communities_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         """Return communities dashboard (spec 061 US6 T089, FR-018).
 
@@ -528,13 +1258,607 @@ class EngineBridge:
         """Return the state-apparatus intelligence screen data."""
         return {}
 
-    def get_journal_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the historical event log data."""
-        return {}
+    def get_journal_dashboard(self, session_id: UUID) -> dict[str, Any]:
+        """Return the historical event log data (spec 092 — Event Log page).
 
-    def get_alerts_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the active alerts and threshold crossings."""
-        return {}
+        Sources ``tick_event`` rows written by :func:`_persist_tick_events_safe`
+        during :meth:`resolve_tick`, via the persistence layer's optional
+        ``query_session_events(session_id, limit=...)`` capability. Ordered
+        newest-tick-first, capped at :data:`_JOURNAL_LIMIT` rows.
+
+        SQLite-backed ``RuntimeDatabase`` (dev/test) has no
+        ``query_session_events`` method and degrades to an empty list —
+        the same optional-capability pattern as :meth:`get_game_timeseries`.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``{"events": [GameEvent, ...]}`` in the same shape as
+            ``snapshot.events`` (id/type/tick/severity/title/body/data).
+        """
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_session_events", None)
+        if callable(query):
+            try:
+                rows = query(session_id, limit=_JOURNAL_LIMIT)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+                logger.exception("get_journal_dashboard: query_session_events failed")
+                rows = []
+        return {"events": [_game_event_from_tick_event_row(row) for row in rows]}
+
+    def get_alerts_dashboard(self, session_id: UUID) -> dict[str, Any]:
+        """Return active alerts — critical/warning events from the latest tick.
+
+        Sources the same ``tick_event`` rows as the journal but scoped to
+        the most recently resolved tick and filtered to non-informational
+        severities: the "threshold crossings" the Tick Resolution screen
+        surfaces immediately after :meth:`resolve_tick` (spec 092).
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``{"alerts": [GameEvent, ...]}`` in the same shape as
+            ``snapshot.events``, filtered to critical/warning severity.
+        """
+        state, _graph = self.hydrate_state(session_id)
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_tick_events", None)
+        if callable(query):
+            try:
+                rows = query(session_id, state.tick)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+                logger.exception("get_alerts_dashboard: query_tick_events failed")
+                rows = []
+        alerts = [
+            _game_event_from_tick_event_row(row)
+            for row in rows
+            if row.get("severity") in _ALERT_SEVERITIES
+        ]
+        return {"alerts": alerts}
+
+    def get_wire_feed(self, session_id: UUID) -> dict[str, Any]:
+        """Return the Wire feed (spec 094) — a WireFeed dict produced by the
+        DeterministicNarrator over the session's journal events.
+
+        Sources the same ``tick_event`` rows as :meth:`get_journal_dashboard`,
+        builds presentation metadata from the session, and passes both through
+        a :class:`~game.narrator.DeterministicNarrator` (pure function, no
+        engine state writes — Constitution III). The narrator is deterministic:
+        same events produce byte-identical output (R-NARR).
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            WireFeed dict matching ``specs/094-the-wire/contracts/wire.yaml``.
+        """
+
+        journal = self.get_journal_dashboard(session_id)
+        events = journal.get("events", [])
+
+        # Build meta from session + events
+        state, _graph = self.hydrate_state(session_id)
+        tick = state.tick
+        meta = {
+            "tick": tick,
+            "session": str(session_id),
+            "operator": "RASKOVA-2",
+            "freq": "88.7 MHz",
+            "qth": "WAYNE CO / GRID EN82",
+            "classification": "TS//SI//NOFORN",
+            "cable_id": f"{tick:04d}-A",
+            "page_of": "001/001",
+            "timestamp_utc": "2026-05-12T08:47:22Z",
+        }
+
+        return self._narrator.narrate(events, meta)
+
+    # ------------------------------------------------------------------ #
+    # Spec 095: Endgame Chronicle + Journal + Dialectic screen
+    # ------------------------------------------------------------------ #
+
+    def get_contradiction_snapshot(self, session_id: UUID) -> dict[str, Any]:
+        """Return the live contradiction snapshot — the Dialectic screen feed.
+
+        Spec 095 FR-095-01. Reads ``contradiction_field`` rows (the
+        OppositionRegistry's per-tick gap + rate) via the persistence pool's
+        SQL (same pattern as :func:`_fetch_session_rng_seed_from_pool`), and
+        graph attributes (``contradiction_frames``, ``dialectical_regime``)
+        via :meth:`hydrate_graph`. Constitution III: pure read — never
+        computes dialectical state.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``ContradictionSnapshot`` dict matching
+            ``specs/095-endgame-chronicle/contracts/contradiction.yaml``.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+        regime = str(graph_attrs.get("dialectical_regime", "reproduction") or "reproduction")
+
+        frames_raw = graph_attrs.get("contradiction_frames", {}) or {}
+        global_frame = frames_raw.get("global", {}) if isinstance(frames_raw, dict) else {}
+        principal_aspect = (
+            global_frame.get("principal", {}) if isinstance(global_frame, dict) else {}
+        )
+        principal_key = (
+            str(principal_aspect.get("id", "")) if isinstance(principal_aspect, dict) else ""
+        )
+
+        rows = _fetch_contradiction_field_rows(
+            getattr(self._persistence, "_pool", None), session_id
+        )
+
+        oppositions: list[dict[str, Any]] = []
+        for row in rows:
+            key = str(row.get("field_name", ""))
+            gap = float(row.get("value", 0.0))
+            rate = float(row.get("dt") or 0.0)
+            is_principal = bool(key and key == principal_key) if principal_key else False
+            leading_pole = ""
+            if isinstance(principal_aspect, dict) and key == principal_key:
+                leading_pole = str(principal_aspect.get("principal_aspect", ""))
+            oppositions.append(
+                {
+                    "key": key,
+                    "gap": gap,
+                    "rate": rate,
+                    "is_principal": is_principal,
+                    "leading_pole": leading_pole,
+                }
+            )
+
+        if not oppositions and isinstance(principal_aspect, dict) and principal_aspect:
+            oppositions.append(
+                {
+                    "key": principal_key,
+                    "gap": float(principal_aspect.get("intensity", 0.0)),
+                    "rate": float(principal_aspect.get("aspect_balance", 0.0)),
+                    "is_principal": True,
+                    "leading_pole": str(principal_aspect.get("principal_aspect", "")),
+                }
+            )
+
+        for opp in oppositions:
+            opp["is_principal"] = (
+                bool(opp.get("key") and opp["key"] == principal_key)
+                if principal_key
+                else opp.get("is_principal", False)
+            )
+
+        frame_block = {
+            "principal": _aspect_to_frame_entry(global_frame.get("principal", {}))
+            if isinstance(global_frame, dict)
+            else {},
+            "secondary": _aspect_to_frame_entry(global_frame.get("secondary", {}))
+            if isinstance(global_frame, dict)
+            else {},
+        }
+
+        return {
+            "tick": tick,
+            "regime": regime,
+            "oppositions": oppositions,
+            "principal_key": principal_key,
+            "frame": frame_block,
+        }
+
+    def get_endgame_state(self, session_id: UUID) -> dict[str, Any]:
+        """Return the terminal outcome + chronicle stat cards.
+
+        Spec 095 FR-095-02. Reads the latest snapshot's endgame block. All 5
+        GameOutcome terminal types are recognized (FR-095-02 fix). Returns
+        ``outcome: None`` when the game is still in progress.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``EndgameState`` dict matching
+            ``specs/095-endgame-chronicle/contracts/endgame.yaml``.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        outcome: str | None = None
+        summary = ""
+        events_raw = graph_attrs.get("events", []) or []
+        for event in events_raw:
+            event_type = _extract_event_type(event)
+            if event_type.upper() in _TERMINAL_OUTCOMES:
+                outcome = event_type.lower()
+                summary = str(_extract_event_data(event, "summary", ""))
+                break
+
+        headline = _OUTCOME_HEADLINES.get((outcome or "").upper(), "") if outcome else ""
+
+        consciousness_avg = _compute_avg_node_attr(graph, "class_consciousness", 0.0)
+        heat_avg = _compute_avg_node_attr(graph, "heat", 0.0)
+        solidarity_edges = _count_edges_by_mode(graph, frozenset({"solidarity"}))
+
+        return {
+            "tick": tick,
+            "outcome": outcome,
+            "headline": headline,
+            "summary": summary,
+            "stats": {
+                "final_tick": tick,
+                "consciousness": consciousness_avg,
+                "solidarity_edges": solidarity_edges,
+                "heat": heat_avg,
+            },
+        }
+
+    def get_journal_objectives(self, session_id: UUID) -> dict[str, Any]:
+        """Return Vic3-style objectives derived from the current game state.
+
+        Spec 095 FR-095-03. Each objective maps to one of the 5 endgame
+        conditions, with a progress bar (0–1) and status
+        (active/complete/failed). Progress is derived from material state
+        (class consciousness, contradiction gap, regime) — never invented.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``ObjectivesTracker`` dict matching
+            ``specs/095-endgame-chronicle/contracts/objectives.yaml``.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+        regime = str(graph_attrs.get("dialectical_regime", "reproduction") or "reproduction")
+
+        consciousness_avg = _compute_avg_node_attr(graph, "class_consciousness", 0.0)
+        heat_avg = _compute_avg_node_attr(graph, "heat", 0.0)
+
+        frames_raw = graph_attrs.get("contradiction_frames", {}) or {}
+        global_frame = frames_raw.get("global", {}) if isinstance(frames_raw, dict) else {}
+        principal_aspect = (
+            global_frame.get("principal", {}) if isinstance(global_frame, dict) else {}
+        )
+        principal_gap = (
+            float(principal_aspect.get("intensity", 0.0))
+            if isinstance(principal_aspect, dict)
+            else 0.0
+        )
+
+        outcome = _detect_terminal_outcome(graph_attrs)
+
+        objectives: list[dict[str, Any]] = [
+            {
+                "id": "revolution",
+                "title": "Revolutionary Victory",
+                "description": "Build mass class consciousness and solidarity edges to overthrow the empire.",
+                "progress": min(1.0, consciousness_avg),
+                "status": _objective_status("revolution", outcome),
+                "category": "revolution",
+            },
+            {
+                "id": "ecological_collapse",
+                "title": "Ecological Collapse",
+                "description": "Biocapacity depletion forces a terminal retreat from extraction.",
+                "progress": min(1.0, heat_avg),
+                "status": _objective_status("collapse", outcome),
+                "category": "collapse",
+            },
+            {
+                "id": "fascist_consolidation",
+                "title": "Fascist Consolidation",
+                "description": "False-consciousness bloc achieves a sovereign grip on the state.",
+                "progress": min(1.0, principal_gap),
+                "status": _objective_status("fascist", outcome),
+                "category": "fascist",
+            },
+            {
+                "id": "red_ogv",
+                "title": "Red OGV Trap",
+                "description": "Settler-socialist formation captures the movement without abolishing empire.",
+                "progress": min(1.0, principal_gap * 0.5),
+                "status": _objective_status("red_ogv", outcome),
+                "category": "red_ogv",
+            },
+            {
+                "id": "fragmented_collapse",
+                "title": "Fragmented Collapse",
+                "description": "Balkanization — sovereign fragmentation outpaces solidarity.",
+                "progress": min(1.0, principal_gap * 0.7)
+                if regime == "crisis"
+                else min(1.0, heat_avg * 0.5),
+                "status": _objective_status("fragmented", outcome),
+                "category": "fragmented",
+            },
+        ]
+
+        return {
+            "tick": tick,
+            "objectives": objectives,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Spec 103: Trade surfaces — Wire INDEX per-bloc lines, Territory
+    # Detail import-exposure breakdown, Analysis trade panel.
+    # ------------------------------------------------------------------ #
+
+    def get_trade_flows(self, session_id: UUID) -> dict[str, Any]:
+        """Return per-bloc price/flow lines for the Wire INDEX tab.
+
+        Spec 103 FR-103-01. Reads ``boundary_flow_register`` rows (per-tick,
+        grouped by source_node_id + flow_type) and
+        ``dynamic_external_node_state`` rows (latest per node) via the
+        persistence pool's SQL. Constitution III: pure read — never computes
+        trade state.
+
+        Degrades to ``has_data: False`` with an empty ``blocs`` list when the
+        pool is unavailable or both tables are empty/absent.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``TradeFlowsPayload`` dict matching
+            ``specs/103-trade-surfaces/contracts/trade-flows.yaml``.
+        """
+        pool = getattr(self._persistence, "_pool", None)
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        series_rows = _fetch_boundary_flow_series(pool, session_id)
+        node_latest = _fetch_external_node_latest(pool, session_id)
+
+        # Collect all node_ids from both sources (series may have nodes not in
+        # latest, and vice versa).
+        all_node_ids = sorted(set(node_latest.keys()) | {r["source_node_id"] for r in series_rows})
+        if not all_node_ids:
+            return {"tick": tick, "has_data": False, "blocs": []}
+
+        blocs: list[dict[str, Any]] = []
+        for nid in all_node_ids:
+            latest = node_latest.get(
+                nid,
+                {
+                    "kind": "international",
+                    "phi_year_inflow": 0.0,
+                    "bilateral_trade_value": 0.0,
+                    "bilateral_trade_tons": 0.0,
+                    "erdi_ratio": 1.0,
+                    "tick": tick,
+                },
+            )
+            phi_series = [
+                {"tick": r["tick"], "magnitude": r["magnitude"]}
+                for r in series_rows
+                if r["source_node_id"] == nid and r["flow_type"] == "drain_edge"
+            ]
+            trade_series = [
+                {"tick": r["tick"], "magnitude": r["magnitude"]}
+                for r in series_rows
+                if r["source_node_id"] == nid
+                and r["flow_type"] in ("trade_inbound", "trade_outbound")
+            ]
+            blocs.append(
+                {
+                    "node_id": nid,
+                    "label": _BLOC_LABELS.get(nid, nid.replace("_", " ").title()),
+                    "kind": latest["kind"],
+                    "latest": {
+                        "phi_year_inflow": latest["phi_year_inflow"],
+                        "bilateral_trade_value": latest["bilateral_trade_value"],
+                        "bilateral_trade_tons": latest["bilateral_trade_tons"],
+                        "erdi_ratio": latest["erdi_ratio"],
+                    },
+                    "phi_series": phi_series,
+                    "trade_series": trade_series,
+                }
+            )
+
+        return {"tick": tick, "has_data": True, "blocs": blocs}
+
+    def get_county_import_exposure(self, session_id: UUID, county_fips: str) -> dict[str, Any]:
+        """Return an import-exposure provenance breakdown for a county.
+
+        Spec 103 FR-103-02. A BabylonScriptValue-style ``{value, breakdown}``
+        over spec-100 ``county_exposure_by_external`` weights + live
+        ``boundary_flow_register`` flows. The breakdown's per-bloc contributors
+        each drill down to (a) the spec-100 weight (source: reference_table)
+        and (b) the live DRAIN_EDGE/TRADE_EDGE flow (source: dynamic_table).
+        The ``citations`` array carries the terminal reference-data
+        provenance.
+
+        Degrades to ``has_data: False`` with honest zeros when no data is
+        available (spec-100 table absent + boundary_flow_register empty).
+
+        Args:
+            session_id: The game session UUID.
+            county_fips: 5-digit county FIPS code.
+
+        Returns:
+            ``ExposurePayload`` dict matching
+            ``specs/103-trade-surfaces/contracts/county-exposure.yaml``.
+        """
+        pool = getattr(self._persistence, "_pool", None)
+        # hydrate_graph is called for its side-effect of ensuring the session
+        # is bootstrapped; the exposure payload itself carries no tick field.
+        self._persistence.hydrate_graph(tick=None, session_id=session_id)
+
+        weights = _fetch_county_exposure_weights(pool, county_fips)
+        flow_rows = _fetch_county_boundary_flows(pool, session_id, county_fips)
+
+        # Sum flows per bloc (DRAIN_EDGE + TRADE_EDGE).
+        flow_by_bloc: dict[str, float] = {}
+        for r in flow_rows:
+            if r["flow_type"] in ("drain_edge", "trade_inbound", "trade_outbound"):
+                flow_by_bloc[r["source_node_id"]] = (
+                    flow_by_bloc.get(r["source_node_id"], 0.0) + r["magnitude"]
+                )
+
+        all_blocs = sorted(set(weights.keys()) | set(flow_by_bloc.keys()))
+        if not all_blocs:
+            return {
+                "county_fips": county_fips,
+                "has_data": False,
+                "total_exposure": 0.0,
+                "breakdown": {"total": 0.0, "contributors": []},
+                "citations": _EXPOSURE_CITATIONS,
+            }
+
+        contributors: list[dict[str, Any]] = []
+        total = 0.0
+        for nid in all_blocs:
+            weight = weights.get(nid, 0.0)
+            flow = flow_by_bloc.get(nid, 0.0)
+            value = weight * flow
+            total += value
+            contributors.append(
+                {
+                    "label": _BLOC_LABELS.get(nid, nid.replace("_", " ").title()),
+                    "value": round(value, 4),
+                    "share": 0.0,  # filled after total is known
+                    "source": {
+                        "kind": "derived",
+                        "path": f"exposure[{county_fips}][{nid}]",
+                    },
+                    "children": [
+                        {
+                            "label": "spec-100 exposure weight",
+                            "value": weight,
+                            "share": 1.0 if weight > 0 else 0.0,
+                            "source": {
+                                "kind": "reference_table",
+                                "path": f"county_exposure_by_external[{nid}][{county_fips}]",
+                            },
+                            "children": [],
+                        },
+                        {
+                            "label": f"live flow ({'+'.join(sorted({r['flow_type'] for r in flow_rows if r['source_node_id'] == nid}))})"
+                            if any(r["source_node_id"] == nid for r in flow_rows)
+                            else "live flow (none)",
+                            "value": flow,
+                            "share": 1.0 if flow > 0 else 0.0,
+                            "source": {
+                                "kind": "dynamic_table",
+                                "path": f"boundary_flow_register[{nid}→{county_fips}]",
+                            },
+                            "children": [],
+                        },
+                    ],
+                }
+            )
+
+        # Fill shares now that total is known.
+        if total > 0:
+            for c in contributors:
+                c["share"] = round(c["value"] / total, 4)
+        else:
+            # When total is zero but we have data (weights or flows present),
+            # distribute share equally among blocs with any signal.
+            nonzero = [
+                c
+                for c in contributors
+                if c["value"] > 0 or c["children"][0]["value"] > 0 or c["children"][1]["value"] > 0
+            ]
+            share = round(1.0 / len(nonzero), 4) if nonzero else 0.0
+            for c in contributors:
+                c["share"] = share
+
+        return {
+            "county_fips": county_fips,
+            "has_data": True,
+            "total_exposure": round(total, 4),
+            "breakdown": {"total": round(total, 4), "contributors": contributors},
+            "citations": _EXPOSURE_CITATIONS,
+        }
+
+    def get_trade_panel(self, session_id: UUID) -> dict[str, Any]:
+        """Return the aggregate trade panel for the Analysis page.
+
+        Spec 103 FR-103-03. Session-cumulative Φ inflow, per-bloc breakdown,
+        and flow-type summary from ``boundary_flow_register`` aggregates +
+        ``dynamic_external_node_state``. Constitution III: pure read.
+
+        Degrades to ``has_data: False`` with honest zeros when no data is
+        available.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``TradePanelPayload`` dict matching
+            ``specs/103-trade-surfaces/contracts/trade-panel.yaml``.
+        """
+        pool = getattr(self._persistence, "_pool", None)
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        series_rows = _fetch_boundary_flow_series(pool, session_id)
+        node_latest = _fetch_external_node_latest(pool, session_id)
+        flow_type_rows = _fetch_flow_type_totals(pool, session_id)
+
+        if not series_rows and not node_latest:
+            return {
+                "tick": tick,
+                "has_data": False,
+                "total_phi_inflow": 0.0,
+                "total_trade": 0.0,
+                "blocs": [],
+                "flow_types": [],
+            }
+
+        # Per-bloc cumulative totals.
+        all_node_ids = sorted(set(node_latest.keys()) | {r["source_node_id"] for r in series_rows})
+        blocs: list[dict[str, Any]] = []
+        total_phi = 0.0
+        total_trade = 0.0
+        for nid in all_node_ids:
+            phi = sum(
+                r["magnitude"]
+                for r in series_rows
+                if r["source_node_id"] == nid and r["flow_type"] == "drain_edge"
+            )
+            trade = sum(
+                r["magnitude"]
+                for r in series_rows
+                if r["source_node_id"] == nid
+                and r["flow_type"] in ("trade_inbound", "trade_outbound")
+            )
+            total_phi += phi
+            total_trade += trade
+            latest = node_latest.get(nid, {})
+            blocs.append(
+                {
+                    "node_id": nid,
+                    "label": _BLOC_LABELS.get(nid, nid.replace("_", " ").title()),
+                    "phi_inflow": round(phi, 4),
+                    "trade": round(trade, 4),
+                    "erdi_ratio": float(latest.get("erdi_ratio", 1.0)),
+                }
+            )
+
+        flow_types = [
+            {
+                "flow_type": r["flow_type"],
+                "total": round(r["total"], 4),
+                "tick_count": r["tick_count"],
+            }
+            for r in flow_type_rows
+        ]
+
+        return {
+            "tick": tick,
+            "has_data": True,
+            "total_phi_inflow": round(total_phi, 4),
+            "total_trade": round(total_trade, 4),
+            "blocs": blocs,
+            "flow_types": flow_types,
+        }
 
     # ------------------------------------------------------------------ #
     # Inspector Views
@@ -695,7 +2019,18 @@ class EngineBridge:
 
         # T019: Check for endgame conditions in events
         snapshot = _state_to_snapshot(new_state, session_id)
-        endgame_types = {"REVOLUTIONARY_VICTORY", "ECOLOGICAL_COLLAPSE", "FASCIST_CONSOLIDATION"}
+
+        # Spec 092 R-CONS: persist this tick's events into tick_event so the
+        # journal/alerts dashboards (get_journal_dashboard/get_alerts_dashboard)
+        # have real history to read back. Best-effort — a journal-write
+        # failure must never fail tick resolution.
+        _persist_tick_events_safe(self._persistence, session_id, new_state.tick, snapshot["events"])
+        # Spec 095 FR-095-02: recognize ALL 5 terminal GameOutcome event types
+        # (was 3-of-5 — RED_OGV and FRAGMENTED_COLLAPSE were missing, so those
+        # endgames never surfaced in the snapshot's ``endgame`` block). The
+        # _TERMINAL_OUTCOMES constant is the authoritative set, matching
+        # ``babylon.models.enums.GameOutcome`` minus IN_PROGRESS.
+        endgame_types = _TERMINAL_OUTCOMES
         for event in new_state.events:
             event_type = (
                 event.event_type.value
@@ -932,114 +2267,72 @@ class EngineBridge:
             "over_budget_penalty": None,
         }
 
-        targets = []
-        unavailable_communities = []
+        targets: list[dict[str, Any]] = []
+        unavailable_communities: list[dict[str, Any]] = []
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
         for tid in territory_ids:
-            if tid in graph.nodes:
-                terr_data = graph.nodes[tid]
-                terr_name = terr_data.get("name", tid)
+            if tid not in graph.nodes:
+                continue
+            terr_data = graph.nodes[tid]
+            terr_name = terr_data.get("name", tid)
 
-                # Mock target aligned with graph
-                targets.append(
-                    {
-                        "community_id": f"community-new-afrikan-{tid}",
-                        "community_type": "NEW_AFRIKAN",
-                        "category": "contradiction_pair",
-                        "territory_name": terr_name,
-                        "territory_id": str(tid),
-                        "credibility": org_status.get("cohesion", 0.72),
-                        "credibility_explanation": f"{int(org_status.get('cohesion', 0.72) * 100)}% membership overlap",
-                        "consciousness": {
-                            "r": 0.25,
-                            "l": 0.55,
-                            "f": 0.20,
-                            "dominant_tendency": "liberal",
-                            "collective_identity": 0.25,
-                            "ideological_contestation": 0.82,
-                        },
-                        "material_readiness": {
-                            "avg_agitation": 0.45,
-                            "readiness_score": 1.0,
-                            "readiness_explanation": "Material conditions have prepared the ground.",
-                        },
-                        "education_pressure": {
-                            "current": 0.12,
-                            "projected_delta": 0.036,
-                            "projected_new": 0.156,
-                            "decay_per_tick": 0.012,
-                        },
-                        "feedforward": {
-                            "projected_routing_shift": {
-                                "r_gain_per_tick": 0.008,
-                                "f_reduction_per_tick": 0.005,
-                                "l_reduction_per_tick": 0.003,
-                                "explanation": "Education will shift ~0.8% toward revolutionary tendency per tick",
-                            },
-                            "state_ai_visibility": "medium",
-                            "state_ai_likely_response": "RESEARCH",
-                            "turns_to_dominant_tendency_shift": 18,
-                            "turns_explanation": "~18 ticks assuming sustained effort",
-                        },
-                    }
-                )
-
+            social_classes = [
+                (nid, nd)
+                for nid, nd in _nodes_in_territory(graph, tid)
+                if nd.get("_node_type") == "social_class"
+            ]
+            if not social_classes:
                 unavailable_communities.append(
                     {
-                        "community_id": f"community-settler-{tid}",
-                        "community_type": "SETTLER",
+                        "community_id": f"community-unknown-{tid}",
+                        "community_type": "UNKNOWN",
                         "territory_name": terr_name,
-                        "reason": "No membership overlap — credibility ≈ 0",
+                        "reason": "No social_class nodes present for this territory yet.",
                     }
                 )
-                break
+                continue
 
-        # Default mock if no matching territory
-        if not targets:
-            targets.append(
-                {
-                    "community_id": "community-new-afrikan-wayne",
-                    "community_type": "NEW_AFRIKAN",
-                    "category": "contradiction_pair",
-                    "territory_name": "Wayne County",
-                    "territory_id": "territory-26163",
-                    "credibility": 0.72,
-                    "credibility_explanation": "72% membership overlap",
-                    "consciousness": {
-                        "r": 0.25,
-                        "l": 0.55,
-                        "f": 0.20,
-                        "dominant_tendency": "liberal",
-                        "collective_identity": 0.25,
-                        "ideological_contestation": 0.82,
-                    },
-                    "material_readiness": {
-                        "avg_agitation": 0.45,
-                        "readiness_score": 1.0,
-                        "readiness_explanation": "Material conditions have prepared the ground.",
-                    },
-                    "education_pressure": {
-                        "current": 0.12,
-                        "projected_delta": 0.036,
-                        "projected_new": 0.156,
-                        "decay_per_tick": 0.012,
-                    },
-                    "feedforward": {
-                        "projected_routing_shift": {
-                            "r_gain_per_tick": 0.008,
-                            "f_reduction_per_tick": 0.005,
-                            "l_reduction_per_tick": 0.003,
-                            "explanation": "Education will shift ~0.8% toward revolutionary tendency per tick",
+            for sc_id, sc_data in social_classes:
+                agitation = float(sc_data.get("agitation", 0.0))
+                cohesion = float(org_status.get("cohesion", 0.0))
+
+                targets.append(
+                    {
+                        "community_id": sc_id,
+                        "community_type": str(sc_data.get("role", "UNKNOWN")).upper(),
+                        "category": "social_class",
+                        "territory_name": terr_name,
+                        "territory_id": str(tid),
+                        "credibility": cohesion,
+                        "credibility_explanation": f"{int(cohesion * 100)}% org cohesion (real, not membership survey — no per-community overlap metric exists yet)",
+                        "consciousness": {
+                            "r": 0.0,
+                            "l": 0.0,
+                            "f": 0.0,
+                            "dominant_tendency": "unknown",
+                            "collective_identity": None,
+                            "ideological_contestation": None,
+                            "note": "TernaryConsciousness lives on XGI hypergraph communities, not main-graph social_class nodes; community hypergraph integration pending.",
                         },
-                        "state_ai_visibility": "medium",
-                        "state_ai_likely_response": "RESEARCH",
-                        "turns_to_dominant_tendency_shift": 18,
-                        "turns_explanation": "~18 ticks assuming sustained effort",
-                    },
-                }
-            )
+                        "material_readiness": {
+                            "avg_agitation": agitation,
+                            "readiness_score": min(1.0, agitation / 0.5) if agitation else 0.0,
+                            "readiness_explanation": "Derived from real SocialClass.agitation for this node.",
+                        },
+                        "education_pressure": {
+                            "current": 0.0,
+                            "projected_delta": None,
+                            "projected_new": None,
+                            "decay_per_tick": None,
+                            "note": "education_pressure lives on XGI community hyperedges, not main-graph nodes; hypergraph integration pending.",
+                        },
+                        "feedforward": {
+                            "note": "No per-tick routing-shift projection exists in the engine yet.",
+                        },
+                    }
+                )
 
         return {
             "status": "ok",
@@ -1073,134 +2366,68 @@ class EngineBridge:
             "over_budget_penalty": None,
         }
 
-        population_targets = []
-        org_targets = []
-        unavailable_targets = []
+        population_targets: list[dict[str, Any]] = []
+        org_targets: list[dict[str, Any]] = []
+        unavailable_targets: list[dict[str, Any]] = []
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
 
         for tid in territory_ids:
-            if tid in graph.nodes:
-                terr_data = graph.nodes[tid]
-                terr_name = terr_data.get("name", tid)
+            if tid not in graph.nodes:
+                continue
+            terr_data = graph.nodes[tid]
+            terr_name = terr_data.get("name", tid)
 
-                # Mock Population Target
-                population_targets.append(
-                    {
-                        "community_id": f"community-new-afrikan-{tid}",
-                        "community_name": f"New Afrikan Proletariat ({terr_name})",
-                        "population": 45000,
-                        "class_name": "PROLETARIAT",
-                        "material_conditions": {
-                            "v_value_produced": 120.5,
-                            "wage_received": 95.0,
-                            "consumption_gap": 25.5,
-                            "subsistence_level": 100.0,
-                            "agitation_level": 0.45,
-                        },
-                        "edge_status": {
-                            "type": "TRANSACTIONAL",
-                            "solidarity_accumulation": 0.3,
-                            "education_pressure": 0.12,
-                        },
-                        "feedforward": {
-                            "consumption_ratio_delta": 0.1,
-                            "agitation_delta": -0.05,
-                            "solidarity_added": 0.15,
-                            "economism_risk": "WARNING: High agitation relief without sufficient education pressure could trigger right-routing.",
-                        },
-                    }
-                )
+            econ_nodes = _nodes_in_territory(graph, tid)
+            found_any = False
+            for node_id, data in econ_nodes:
+                node_type = data.get("_node_type")
+                if node_type == "social_class":
+                    found_any = True
+                    population_targets.append(
+                        {
+                            "community_id": node_id,
+                            "community_name": data.get("name", node_id),
+                            "population": data.get("population"),
+                            "class_name": str(data.get("role", "UNKNOWN")).upper(),
+                            "material_conditions": {
+                                "v_value_produced": float(data.get("wealth", 0.0)),
+                                "wage_received": None,
+                                "consumption_gap": None,
+                                "subsistence_level": data.get("subsistence_threshold"),
+                                "agitation_level": float(data.get("agitation", 0.0)),
+                            },
+                            "edge_status": _edge_status_between(graph, org_id, node_id),
+                            "feedforward": {
+                                "note": "No per-tick aid-effect projection exists in the engine yet."
+                            },
+                        }
+                    )
+                elif node_type == "organization" and node_id != org_id:
+                    found_any = True
+                    org_targets.append(
+                        {
+                            "org_id": node_id,
+                            "org_name": data.get("name", node_id),
+                            "org_type": str(data.get("org_type", "UNKNOWN")),
+                            "material_stock": float(data.get("budget", 0.0)),
+                            "edge_status": _edge_status_between(graph, org_id, node_id),
+                            "feedforward": {
+                                "note": "No per-tick aid-effect projection exists in the engine yet."
+                            },
+                        }
+                    )
 
-                # Mock Org Target
-                org_targets.append(
-                    {
-                        "org_id": f"org-mutual-aid-{tid}",
-                        "org_name": f"Detroit Mutual Aid ({terr_name})",
-                        "org_type": "CIVIL_SOCIETY",
-                        "material_stock": 450.0,
-                        "edge_status": {
-                            "type": "NONE",
-                            "solidarity_accumulation": 0.0,
-                            "education_pressure": 0.0,
-                        },
-                        "feedforward": {
-                            "consumption_ratio_delta": 0.0,
-                            "agitation_delta": 0.0,
-                            "solidarity_added": 0.15,
-                            "economism_risk": None,
-                        },
-                    }
-                )
-
+            if not found_any:
                 unavailable_targets.append(
                     {
-                        "community_id": f"community-settler-{tid}",
-                        "community_type": "SETTLER",
+                        "community_id": f"community-unknown-{tid}",
+                        "community_type": "UNKNOWN",
                         "territory_name": terr_name,
-                        "reason": "Geographically inaccessible or no material deficit.",
+                        "reason": "No population or organization data present for this territory yet.",
                     }
                 )
-                break
-
-        # Default mock if no matching territory
-        if not population_targets:
-            population_targets.append(
-                {
-                    "community_id": "community-new-afrikan-wayne",
-                    "community_name": "New Afrikan Proletariat (Wayne County)",
-                    "population": 45000,
-                    "class_name": "PROLETARIAT",
-                    "material_conditions": {
-                        "v_value_produced": 120.5,
-                        "wage_received": 95.0,
-                        "consumption_gap": 25.5,
-                        "subsistence_level": 100.0,
-                        "agitation_level": 0.45,
-                    },
-                    "edge_status": {
-                        "type": "TRANSACTIONAL",
-                        "solidarity_accumulation": 0.3,
-                        "education_pressure": 0.12,
-                    },
-                    "feedforward": {
-                        "consumption_ratio_delta": 0.1,
-                        "agitation_delta": -0.05,
-                        "solidarity_added": 0.15,
-                        "economism_risk": "WARNING: High agitation relief without sufficient education pressure could trigger right-routing.",
-                    },
-                }
-            )
-
-            org_targets.append(
-                {
-                    "org_id": "org-mutual-aid-wayne",
-                    "org_name": "Detroit Mutual Aid (Wayne County)",
-                    "org_type": "CIVIL_SOCIETY",
-                    "material_stock": 450.0,
-                    "edge_status": {
-                        "type": "NONE",
-                        "solidarity_accumulation": 0.0,
-                        "education_pressure": 0.0,
-                    },
-                    "feedforward": {
-                        "consumption_ratio_delta": 0.0,
-                        "agitation_delta": 0.0,
-                        "solidarity_added": 0.15,
-                        "economism_risk": None,
-                    },
-                }
-            )
-
-            unavailable_targets.append(
-                {
-                    "community_id": "community-settler-wayne",
-                    "community_type": "SETTLER",
-                    "territory_name": "Wayne County",
-                    "reason": "Geographically inaccessible or no material deficit.",
-                }
-            )
 
         return {
             "status": "ok",
@@ -1225,52 +2452,44 @@ class EngineBridge:
         if not org_status:
             return {"status": "error", "error": "Org not found"}
 
+        org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+
+        targets: list[dict[str, Any]] = []
+        for tid in territory_ids:
+            if tid not in graph.nodes:
+                continue
+            for node_id, data in _nodes_in_territory(graph, tid):
+                if data.get("_node_type") != "organization" or node_id == org_id:
+                    continue
+                if str(data.get("org_type", "")) not in ("business", "civil_society"):
+                    continue
+                allies = [
+                    {"id": ally_id, "name": graph.nodes[ally_id].get("name", ally_id)}
+                    for ally_id, ally_data in _nodes_in_territory(graph, tid)
+                    if ally_data.get("_node_type") == "organization"
+                    and ally_id not in (org_id, node_id)
+                ]
+                targets.append(
+                    {
+                        "id": node_id,
+                        "name": data.get("name", node_id),
+                        "type": str(data.get("org_type", "UNKNOWN")).upper(),
+                        "heat": float(data.get("heat", 0.0)),
+                        "cohesion": float(data.get("cohesion", 0.0)),
+                        "coordination_opportunities": [
+                            {"type": "SOLIDARITY_AMPLIFICATION", "ally": ally} for ally in allies
+                        ],
+                    }
+                )
+
         return {
             "entity_id": org_id,
             "name": org_status.get("name", "Unknown Org"),
-            "available_sl": org_status.get("solidarity", 0.0),
-            "available_cl": org_status.get("consciousness", 0.0),
-            "mobilize_cost_cl": 0.2,  # Hardcoded matching GameDefines for mock
-            "targets": [
-                {
-                    "id": "biz_auto_plant_1",
-                    "name": "Jefferson North Assembly",
-                    "type": "BUSINESS",
-                    "consciousness": 0.55,
-                    "heat": 0.2,
-                    "base_agitation": 0.4,
-                    "coordination_opportunities": [
-                        {
-                            "type": "SOLIDARITY_AMPLIFICATION",
-                            "ally": {"id": "org_uaw_local", "name": "UAW Local"},
-                            "multiplier": 1.15,
-                        }
-                    ],
-                    "sl_options": [
-                        {
-                            "sl_committed": 100.0,
-                            "estimated_effects": {
-                                "solidarity_overview": {
-                                    "base_turnout": 1000,
-                                    "amplified_turnout": 1150,
-                                    "total_multiplier": 1.15,
-                                    "allies_activated": 1,
-                                },
-                                "consciousness": {"agitation_delta": 0.07, "new_agitation": 0.47},
-                                "value": {
-                                    "disrupted_production": 50000.0,
-                                    "surplus_denied": 15000.0,
-                                },
-                                "state_response": {
-                                    "heat_delta": 0.05,
-                                    "new_heat": 0.25,
-                                    "ddos_effect": {"active": False, "attention_diverted": 0},
-                                },
-                            },
-                        }
-                    ],
-                }
-            ],
+            "available_sl": org_status.get("resources", {}).get("sympathizer_labor", 0.0),
+            "available_cl": org_status.get("resources", {}).get("cadre_labor", 0.0),
+            "mobilize_cost_cl": GameDefines().mobilize.mobilize_cl_cost,
+            "targets": targets,
         }
 
     def get_attack_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
@@ -1285,199 +2504,103 @@ class EngineBridge:
         if not org_status:
             return {"status": "error", "error": "Org not found"}
 
-        # Compute cost metrics
+        resources = org_status.get("resources", {})
         cost = {
             "action_points": 3,
             "cadre_labor_if_targeted": 2.5,
             "sympathizer_labor_if_mass": 25.0,
             "material": 100.0,
-            "can_afford_targeted": True,
-            "can_afford_mass": True,
+            "can_afford_targeted": resources.get("cadre_labor", 0) >= 2.5,
+            "can_afford_mass": resources.get("sympathizer_labor", 0) >= 25.0,
             "over_budget_ap": False,
             "cost_explanation": "TARGETED attacks use dense cadre formations. MASS actions use diffused sympathizer labor. Both require AP and initial materials.",
         }
 
-        ultra_left_warning = {
-            "active": True,
-            "trap_score": 0.85,
-            "indicators": [
-                "Premature violence without mass base",
-                "High potential for severe state repression",
-            ],
-            "explanation": "Carrying out armed struggle without sufficient mass support or defensive capacity triggers the ultra-left trap, isolating vanguard elements.",
-        }
+        # Real ultra-left trap status from the last resolved tick, when
+        # available (spec 056 trap detection — see resolve_tick()).
+        trap_state = _session_trap_state.get(session_id)
+        if trap_state is not None:
+            ultra_left_warning = {
+                "active": trap_state.ultra_left.severity != "none",
+                "trap_score": trap_state.ultra_left.score,
+                "indicators": list(trap_state.ultra_left.indicators),
+                "explanation": "Real ultra-left trap detection from this session's action history.",
+            }
+        else:
+            ultra_left_warning = {
+                "active": False,
+                "trap_score": 0.0,
+                "indicators": [],
+                "explanation": "No trap detection has run yet this session (requires a resolved tick).",
+            }
 
+        org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+
+        organizations: list[dict[str, Any]] = []
+        institutions: list[dict[str, Any]] = []
+        unavailable_targets: list[dict[str, Any]] = []
+        p_acquiescence_values: list[float] = []
+
+        for tid in territory_ids:
+            if tid not in graph.nodes:
+                continue
+            terr_data = graph.nodes[tid]
+            terr_name = terr_data.get("name", tid)
+            found_any = False
+
+            for node_id, data in graph.nodes(data=True):
+                node_type = data.get("_node_type")
+                if node_type == "social_class" and tid in data.get("territory_ids", []):
+                    if "p_acquiescence" in data:
+                        p_acquiescence_values.append(float(data["p_acquiescence"]))
+                    continue
+                if (
+                    node_type == "organization"
+                    and node_id != org_id
+                    and tid in data.get("territory_ids", [])
+                ):
+                    found_any = True
+                    extractive_edges = _outgoing_extractive_edges(graph, node_id)
+                    organizations.append(
+                        {
+                            "target_id": node_id,
+                            "target_type": str(data.get("org_type", "UNKNOWN")).upper(),
+                            "name": data.get("name", node_id),
+                            "territory_name": terr_name,
+                            "territory_id": str(tid),
+                            "defensive_capacity": float(data.get("budget", 0.0)),
+                            "extractive_edges": extractive_edges,
+                        }
+                    )
+                elif node_type == "institution" and tid in data.get("territory_ids", []):
+                    found_any = True
+                    institutions.append(
+                        {
+                            "target_id": node_id,
+                            "target_type": "INSTITUTION",
+                            "name": data.get("name", node_id),
+                            "factional_control": dict(data.get("factional_composition", {})),
+                        }
+                    )
+
+            if not found_any:
+                unavailable_targets.append(
+                    {
+                        "target_id": f"unknown-{tid}",
+                        "name": "No hostile organization or institution present",
+                        "territory_name": terr_name,
+                        "reason": "No target data present for this territory yet.",
+                    }
+                )
+
+        min_p_acquiescence = min(p_acquiescence_values) if p_acquiescence_values else None
         warsaw_ghetto_flag = {
-            "active": False,
-            "population_p_acquiescence": 0.45,
+            "active": min_p_acquiescence is not None and min_p_acquiescence <= 0.05,
+            "population_p_acquiescence": min_p_acquiescence,
             "threshold": 0.05,
             "explanation": "If survival probabilities reach near absolute zero, mass base will endorse desperate measures regardless of military feasibility.",
         }
-
-        organizations = [
-            {
-                "target_id": "org-wayne-auto-parts-inc",
-                "target_type": "CAPITAL",
-                "name": "Wayne Auto Parts Inc.",
-                "territory_name": "Wayne County",
-                "territory_id": "wayne",
-                "defensive_capacity": 450.0,
-                "description": "Mid-sized Constant Capital depot relying heavily on extracted labor from the periphery.",
-                "value_tensor_role": {
-                    "department": "Department_I",
-                    "c_stock": 120500.0,
-                    "annual_s_extracted": 45000.0,
-                    "s_v_ratio": 4.5,
-                    "explanation": "High s/v ratio indicates hyper-exploitation. Destroying this stock degrades upstream Imperial Rent.",
-                },
-                "extractive_edges": [
-                    {
-                        "edge_id": "edge-wage-wayne",
-                        "target_name": "New Afrikan Proletariat (Wayne)",
-                        "flow_type": "WAGES",
-                        "s_flow_per_tick": 450.5,
-                        "explanation": "Exploitation channel extracting surplus value.",
-                    }
-                ],
-                "attack_projection": {
-                    "modes": {
-                        "targeted_sabotage": {
-                            "resource_cost": {
-                                "cadre_labor": 3.0,
-                                "action_points": 3,
-                                "material": 150.0,
-                            },
-                            "damage_to_target": {
-                                "c_destroyed": 24000.0,
-                                "c_destruction_pct": 0.20,
-                                "capacity_degradation": 15.0,
-                                "recovery_ticks": 6,
-                                "explanation": "Targeted strikes hit critical infrastructure, bypassing general security.",
-                            },
-                            "value_flow_disruption": {
-                                "s_flow_interrupted": 250.0,
-                                "s_flow_interrupt_duration": 4,
-                                "explanation": "Production halts briefly.",
-                            },
-                            "heat_generated": 0.4,
-                            "opsec_exposure": 0.15,
-                            "detection_probability": 0.35,
-                            "explanation": "Highly effective but risks detection of specialized cadres.",
-                        },
-                        "mass_action": {
-                            "resource_cost": {
-                                "sympathizer_labor": 50.0,
-                                "action_points": 3,
-                                "agitation": 10.0,
-                            },
-                            "damage_to_target": {
-                                "wealth_reduction": 15000.0,
-                                "capacity_degradation": 5.0,
-                                "recovery_ticks": 2,
-                                "explanation": "Mass pickets and property damage.",
-                            },
-                            "value_flow_disruption": {
-                                "s_flow_interrupted": 450.0,
-                                "s_flow_interrupt_duration": 1,
-                                "explanation": "Complete shutdown of site for duration of mass action.",
-                            },
-                            "heat_generated": 0.1,
-                            "detection_probability": 0.05,
-                            "explanation": "Broad action diffuses heat but may lack permanent disruptive power.",
-                        },
-                    },
-                    "collateral_damage": {
-                        "affected_population": "community-new-afrikan-wayne",
-                        "population_name": "New Afrikan Proletariat",
-                        "workers_affected": 450,
-                        "wealth_impact": -15.0,
-                        "wealth_impact_explanation": "Lost wages from temporary shutdown.",
-                        "agitation_effect": 0.05,
-                        "agitation_explanation": "Displays of power increase structural agitation.",
-                    },
-                    "state_ai_response": {
-                        "visibility": "HIGH",
-                        "immediate_response": "Deployment of tactical state security variants.",
-                        "escalation_risk": "High likelihood of activating surveillance grid.",
-                        "repression_backfire": {
-                            "agitation_generated_on_community": 0.15,
-                            "affected_community": "Wayne County",
-                            "routing_analysis": "P(S|A) significantly reduced; routing to revolutionary vector.",
-                        },
-                    },
-                    "coherence_check": {
-                        "current_coherence": 0.85,
-                        "coherence_threshold": 0.50,
-                        "network_collapse_risk": False,
-                        "explanation": "Target organization maintains high redundancy.",
-                    },
-                },
-            }
-        ]
-
-        edges = [
-            {
-                "target_id": "edge-imperial-rent-core",
-                "target_type": "EXTRACTIVE_EDGE",
-                "edge_description": "Financial conduit moving surplus from periphery to core.",
-                "source_name": "Global South Periphery",
-                "sink_name": "Finance Capital",
-                "s_flow_per_tick": 4500.0,
-                "attack_projection": {
-                    "modes": {
-                        "targeted_disruption": {
-                            "resource_cost": {"cadre_labor": 5.0, "action_points": 4},
-                            "heat_generated": 0.7,
-                            "detection_probability": 0.4,
-                            "edge_effect": "SEVERED",
-                            "recovery_duration": 3,
-                            "reconnection_probability": 0.85,
-                            "effect": "Halts S_flow for 3 ticks.",
-                            "explanation": "A high-risk action disrupting global imperial rent algorithms.",
-                        }
-                    },
-                    "state_ai_response": {
-                        "visibility": "CRITICAL",
-                        "immediate_response": "National Security protocols activated.",
-                        "attention_thread_consumed": 2,
-                        "thread_diversion_explanation": "State AI shifts 2 operation threads from counter-insurgency to economic stabilization.",
-                    },
-                },
-            }
-        ]
-
-        institutions = [
-            {
-                "target_id": "inst-dpt-of-defense",
-                "target_type": "INSTITUTION",
-                "name": "State Security Apparatus",
-                "factional_control": {"security_state": 45.0, "finance_capital": 55.0},
-                "attack_projection": {
-                    "modes": {
-                        "targeted_sabotage": {
-                            "resource_cost": {
-                                "cadre_labor": 8.0,
-                                "action_points": 5,
-                                "material": 400.0,
-                            },
-                            "heat_generated": 0.95,
-                            "detection_probability": 0.85,
-                            "legitimacy_note": "Direct assault on state capacity immediately triggers Endgame criteria if unsuccessful.",
-                            "explanation": "Massive capacity degradation but extreme risk.",
-                        }
-                    }
-                },
-            }
-        ]
-
-        unavailable_targets = [
-            {
-                "target_id": "org-oakland-hedge-fund",
-                "name": "Oakland Capital Management",
-                "territory_name": "Oakland County",
-                "reason": "Your organization has no presence in Oakland County. Use MOVE first, or use INVESTIGATE to gather intelligence remotely.",
-            }
-        ]
 
         return {
             "status": "ok",
@@ -1489,7 +2612,7 @@ class EngineBridge:
             "warsaw_ghetto_flag": warsaw_ghetto_flag,
             "targets": {
                 "organizations": organizations,
-                "edges": edges,
+                "edges": [],
                 "institutions": institutions,
             },
             "unavailable_targets": unavailable_targets,
@@ -1515,6 +2638,15 @@ class EngineBridge:
             "over_budget_penalty": None,
         }
 
+        org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+        base_population = sum(
+            int(data.get("population", 0))
+            for tid in territory_ids
+            for node_id, data in _nodes_in_territory(graph, tid)
+            if data.get("_node_type") == "social_class"
+        )
+
         targets = [
             {
                 "target_id": org_id,
@@ -1530,7 +2662,7 @@ class EngineBridge:
                         },
                         "recruitment_pool": {
                             "sympathizers": int(
-                                org_status.get("resources", {}).get("sympathizer_labor", 15)
+                                org_status.get("resources", {}).get("sympathizer_labor", 0)
                             )
                         },
                         "cooldown_applied": 0,
@@ -1543,7 +2675,7 @@ class EngineBridge:
                             "cohesion_delta": -0.05,
                             "agitation_delta": 0.1,
                         },
-                        "recruitment_pool": {"base_population": 45000},
+                        "recruitment_pool": {"base_population": base_population},
                         "cooldown_applied": 1,
                         "explanation": "Spends cadre labor to prospect among the agitated base. Dilutes cohesion but gains sympathizers.",
                     },
@@ -1583,16 +2715,17 @@ class EngineBridge:
 
         observe_capability = {"intel_network_strength": 0.6, "max_scan_depth": "TARGETED"}
 
+        org_data = graph.nodes.get(org_id, {})
         territory_scans = [
             {
-                "target_id": "territory-26163",
-                "name": "Wayne County",
+                "target_id": str(tid),
+                "name": graph.nodes[tid].get("name", tid),
                 "target_type": "TERRITORY",
-                "heat": 0.45,
+                "heat": float(graph.nodes[tid].get("heat", 0.0)),
                 "current_knowledge": {
                     "visibility_level": "SURFACE",
-                    "known_attributes": ["population", "dominant_tendency"],
-                    "last_scanned_tick": state.tick - 5,
+                    "known_attributes": ["population"],
+                    "last_scanned_tick": None,
                 },
                 "resource_cost": {"sympathizer_labor": 5.0},
                 "projected_reveals": {
@@ -1600,6 +2733,8 @@ class EngineBridge:
                     "likely_reveals": ["material_readiness", "hidden_factions", "state_deployment"],
                 },
             }
+            for tid in org_data.get("territory_ids", [])
+            if tid in graph.nodes
         ]
 
         targeted_scans = [
@@ -2054,6 +3189,117 @@ def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
         "severity": _classify_event(event_type_str),
         "title": _humanize_event_type(event_type_str),
         "body": narrative,
+        "data": data,
+    }
+
+
+def _tick_event_row(serialized_event: dict[str, Any]) -> dict[str, Any]:
+    """Convert a :func:`_serialize_event` dict into a ``tick_event`` row.
+
+    Spec 092: the inverse of :func:`_game_event_from_tick_event_row`. Used
+    by :func:`_persist_tick_events_safe` to shape events for
+    ``persist_tick_events`` (``tick_event`` table columns: event_type,
+    severity, source_id, target_id, county_fips, h3_index, summary, detail).
+
+    Args:
+        serialized_event: Output of :func:`_serialize_event`.
+
+    Returns:
+        Dict matching :meth:`PostgresRuntime.persist_tick_events`' row shape.
+    """
+    data = serialized_event.get("data") or {}
+    source_id = data.get("source_id") or data.get("org_id") or data.get("entity_id")
+    target_id = data.get("target_id") or data.get("territory_id")
+    summary = (
+        serialized_event.get("body") or serialized_event.get("title") or serialized_event["type"]
+    )
+    return {
+        "event_type": serialized_event["type"],
+        "severity": serialized_event.get("severity"),
+        "source_id": str(source_id) if source_id is not None else None,
+        "target_id": str(target_id) if target_id is not None else None,
+        "county_fips": data.get("county_fips"),
+        "h3_index": data.get("h3_index"),
+        "summary": summary,
+        "detail": data,
+    }
+
+
+def _persist_tick_events_safe(
+    persistence: RuntimePersistence,
+    session_id: UUID,
+    tick: int,
+    serialized_events: list[dict[str, Any]],
+) -> None:
+    """Best-effort write of a tick's events into the ``tick_event`` table.
+
+    Spec 092 R-CONS: gives ``get_journal_dashboard``/``get_alerts_dashboard``
+    real history to read back. Mirrors :func:`_persist_action_result`'s
+    optional-capability pattern — SQLite-backed ``RuntimeDatabase``
+    (dev/test) has no ``persist_tick_events`` method and this becomes a
+    silent no-op there (matches :meth:`EngineBridge.get_game_timeseries`'s
+    established SQLite fallback). Never raises: a journal-write failure
+    must not fail tick resolution.
+
+    Args:
+        persistence: The RuntimePersistence instance.
+        session_id: The game session UUID.
+        tick: The tick these events belong to.
+        serialized_events: Output of ``_serialize_event`` for each event
+            (i.e. ``snapshot["events"]``).
+    """
+    if not serialized_events:
+        return
+    persist_fn = getattr(persistence, "persist_tick_events", None)
+    if not callable(persist_fn):
+        return
+    rows = [_tick_event_row(e) for e in serialized_events]
+    try:
+        persist_fn(session_id, tick, rows)
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
+
+
+def _game_event_from_tick_event_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Convert a persisted ``tick_event`` row into frontend GameEvent shape.
+
+    Spec 092: the inverse of :func:`_tick_event_row` — used by
+    ``get_journal_dashboard``/``get_alerts_dashboard`` to present persisted
+    history in the same shape the frontend already consumes from
+    ``snapshot.events`` (spec 061 FR-012: id/type/tick/severity/title/body/data).
+
+    Args:
+        row: A ``tick_event`` row dict (from ``query_session_events`` or
+            ``query_tick_events``).
+
+    Returns:
+        Dict matching the frontend ``GameEvent`` TypeScript interface.
+    """
+    event_type = str(row.get("event_type", ""))
+    detail = row.get("detail")
+    data = detail if isinstance(detail, dict) else {}
+    severity = row.get("severity") or _classify_event(event_type)
+    return {
+        # Spec-092 review (cheap minor, documented not aligned): this is
+        # NOT the same id as the deterministic UUID5 :func:`_serialize_event`
+        # computes for the live per-tick snapshot (over session/tick/
+        # event_type/data). The tick_event table has no column to persist
+        # that UUID5 — only the SQL-native `event_id SERIAL` — so the
+        # journal/alerts read path reconstructs a different, but still
+        # stable-per-row, id from the composite PK instead. The two id
+        # schemes never collide in the same render today (EventLogPage only
+        # reads the journal path; TickResolutionPage renders live-snapshot
+        # events and persisted alerts in separate steps keyed by step
+        # label, not event id), so this is a latent inconsistency, not a
+        # live bug. A real fix would add a `uuid5_id` column to tick_event
+        # and thread it through `_tick_event_row`; deferred as a bigger
+        # lift than this pass's scope.
+        "id": f"{row.get('game_id')}-{row.get('tick')}-{row.get('event_id')}",
+        "type": event_type,
+        "tick": int(row.get("tick", 0)),
+        "severity": severity,
+        "title": _humanize_event_type(event_type),
+        "body": row.get("summary") or "",
         "data": data,
     }
 

@@ -1,0 +1,109 @@
+openapi: 3.1.0
+info:
+  title: Babylon County Import Exposure Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/exposure/?county_fips=FIPS` — import-exposure provenance
+    breakdown for Territory Detail. A BabylonScriptValue-style value+breakdown
+    over spec-100 `county_exposure_by_external` weights + live
+    `boundary_flow_register` flows, with a drill-down chain ending at
+    reference-data citations.
+
+    Per Constitution III, this is a READ-ONLY endpoint. Degrades to
+    `has_data: false` with honest zeros when no data is available.
+
+paths:
+  /api/games/{game_id}/exposure/:
+    get:
+      summary: County import-exposure provenance breakdown.
+      operationId: getCountyImportExposure
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: county_fips
+          required: true
+          schema: { type: string }
+          description: "5-digit county FIPS code."
+      responses:
+        "200":
+          description: Exposure envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/ExposurePayload" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    ExposurePayload:
+      type: object
+      required: [county_fips, has_data, total_exposure, breakdown, citations]
+      properties:
+        county_fips: { type: string }
+        has_data: { type: boolean }
+        total_exposure: { type: number, description: "Σ_bloc (weight × flow)." }
+        breakdown: { $ref: "#/components/schemas/Breakdown" }
+        citations:
+          type: array
+          description: "Terminal reference-data provenance citations."
+          items: { $ref: "#/components/schemas/Citation" }
+
+    Breakdown:
+      type: object
+      required: [total, contributors]
+      properties:
+        total: { type: number }
+        contributors:
+          type: array
+          items: { $ref: "#/components/schemas/Contributor" }
+
+    Contributor:
+      type: object
+      required: [label, value, share, source, children]
+      properties:
+        label: { type: string }
+        value: { type: number }
+        share: { type: number, description: "Fraction of parent total." }
+        source: { $ref: "#/components/schemas/SourceRef" }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/Contributor" }
+
+    SourceRef:
+      type: object
+      required: [kind, path]
+      properties:
+        kind:
+          type: string
+          enum: [reference_table, dynamic_table, derived]
+        path: { type: string, description: "Human-readable provenance path." }
+
+    Citation:
+      type: object
+      required: [id, source, table]
+      properties:
+        id: { type: string, description: "Citation identifier." }
+        source: { type: string, description: "Human-readable source name." }
+        table: { type: string, description: "Reference table name." }
+        year:
+          oneOf:
+            - type: integer
+            - type: string
+          description: "Data year (int or year-quarter string)."
+        notes: { type: string }

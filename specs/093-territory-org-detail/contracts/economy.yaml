@@ -1,0 +1,106 @@
+openapi: 3.1.0
+info:
+  title: Babylon Territory Economy Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/economy/?territory_id={tid}` — replaces the `{}`
+    stub (`get_economy_dashboard`). When `territory_id` is omitted, behaves
+    as the existing (still-stub-shaped) dashboard-wide summary. When
+    provided, returns a real per-territory economic summary computed from
+    `SocialClass`/`Organization` node `wealth`/`extraction_intensity` and
+    incident `EXTRACTIVE`/`ANTAGONISTIC` edge `value_flow`/`tension`, per
+    `research.md` Q1. Backs Territory Detail's economic panel.
+
+paths:
+  /api/games/{game_id}/economy/:
+    get:
+      summary: Per-territory (or dashboard-wide) economic summary.
+      operationId: getEconomy
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: territory_id
+          required: false
+          schema: { type: string }
+          description: When present, scopes the response to one territory.
+      responses:
+        "200":
+          description: Economy envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/EconomyPayload" }
+        "404":
+          description: Session (or requested territory) not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    EconomyPayload:
+      type: object
+      required: [has_data]
+      properties:
+        territory_id:
+          type: string
+          nullable: true
+          description: Echoes the requested territory_id, null for dashboard-wide.
+        has_data:
+          type: boolean
+          description: |
+            False when no node/edge in the graph references this territory
+            yet (e.g. tick 0). All numeric fields are honest zeros in that
+            case — never a fabricated nonzero literal.
+        value_produced:
+          type: number
+          description: Sum of real `wealth` deltas on nodes located in the territory.
+        wage_share:
+          type: number
+          nullable: true
+          description: Wage share where derivable; null (not zero) when not computable.
+        rent_extracted:
+          type: number
+          description: Sum of `value_flow` on incident EXTRACTIVE/ANTAGONISTIC edges.
+        exploitation_rate:
+          type: number
+          nullable: true
+          description: |
+            Computed via `calculate_exploitation_rate`
+            (src/babylon/formulas/unequal_exchange.py) from real edge data;
+            null when insufficient data to compute.
+        extraction_intensity:
+          type: number
+          description: Real `extraction_intensity` node attribute, averaged across territory nodes.
+
+  examples:
+    NoDataYet:
+      value:
+        territory_id: "T042"
+        has_data: false
+        value_produced: 0
+        wage_share: null
+        rent_extracted: 0
+        exploitation_rate: null
+        extraction_intensity: 0
+    RealData:
+      value:
+        territory_id: "T042"
+        has_data: true
+        value_produced: 812.4
+        wage_share: 0.62
+        rent_extracted: 118.9
+        exploitation_rate: 0.34
+        extraction_intensity: 0.41

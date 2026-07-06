@@ -11,7 +11,9 @@
 
 import { useNavigate, useParams } from "react-router";
 import { BblBadge, BblData, BblLabel, BblPanel, Sparkline } from "@/components/bbl";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { DeckGLMap } from "@/components/map/DeckGLMap";
 import { HexMapPlaceholder } from "@/components/viz";
 import { useGameState } from "@/hooks/useGameState";
 import { useTimeseries } from "@/hooks/useTimeseries";
@@ -38,7 +40,7 @@ function compactSeries(series: (number | null)[]): number[] {
 export function BriefingPage() {
   const navigate = useNavigate();
   const { id: gameId } = useParams<{ id: string }>();
-  const { snapshot } = useGameState(gameId ?? null);
+  const { snapshot, mapData } = useGameState(gameId ?? null);
   const { data: timeseries } = useTimeseries(gameId ?? null);
 
   const tick = snapshot?.tick ?? 0;
@@ -92,9 +94,24 @@ export function BriefingPage() {
 
       {/* Main content: Map + Dispatch */}
       <div className="grid min-h-0 flex-1 grid-cols-[3fr_2fr] gap-3 p-3">
-        {/* Map placeholder */}
+        {/* First-class situation map (spec-091 US2): live deck.gl map fed by
+            the snapshot; the SVG placeholder is only the pre-snapshot fallback. */}
         <BblPanel title="Situation Map" right={<BblBadge color="#787878">heat layer</BblBadge>}>
-          <HexMapPlaceholder className="h-full min-h-[200px]" />
+          {snapshot ? (
+            <div data-testid="briefing-map" className="h-full min-h-[200px]">
+              {/* deck.gl is WebGL; a GPU/context init failure must NOT
+                  white-screen the in-game index route. Degrade to the static
+                  placeholder on any render crash (spec-091 review fix #1). */}
+              <ErrorBoundary
+                fallbackLabel="Situation map"
+                fallback={<HexMapPlaceholder className="h-full min-h-[200px]" />}
+              >
+                <DeckGLMap snapshot={snapshot} mapData={mapData} />
+              </ErrorBoundary>
+            </div>
+          ) : (
+            <HexMapPlaceholder className="h-full min-h-[200px]" />
+          )}
         </BblPanel>
 
         {/* Dispatch panel */}

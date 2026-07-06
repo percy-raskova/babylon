@@ -1,0 +1,66 @@
+ADR054_spec_103_trade_surfaces:
+  status: "accepted"
+  date: "2026-07-05"
+  title: "Spec 103: Trade surfaces in the product UI — per-bloc lines, import-exposure provenance, trade panel"
+  context: |
+    The ratified trade-UI decision (project/09 lines 403-411) holds that
+    blocs are background noise, there is no interactive world map, and
+    CONUS stays the primary spatial view. Spec-101 (real boundary flows)
+    landed the `boundary_flow_register` per-tick rows; spec-093
+    (Territory Detail) and spec-094 (Wire INDEX) landed the host screens.
+    Spec-100 (county_exposure_by_external weight map) is Lane D, unbuilt.
+    The product DB (5432/babylon) lacks `dynamic_*` tables — those live in
+    the SIM DB (5433/babylon_test, spec-096).
+
+  decision: |
+    Three architectural decisions captured by this spec:
+
+    1. **Three additive surfaces, no new screen.** Per-bloc price/flow
+       lines extend the Wire INDEX tab (BlocFlowLines); import-exposure
+       provenance extends Territory Detail (ImportExposurePanel); an
+       aggregate trade panel extends the Analysis page (TradePanel). No
+       world-map view — blocs surface only as sparklines/bars within
+       CONUS-primary screens.
+
+    2. **BabylonScriptValue provenance is server-computed.** The
+       import-exposure breakdown is computed at the bridge layer
+       (`get_county_import_exposure`), not as a frontend ScriptValue
+       selector. The backend returns `{value, breakdown, citations}`
+       where the breakdown's per-bloc contributors each drill down to
+       (a) a spec-100 weight (source: reference_table) and (b) a live
+       boundary_flow_register flow (source: dynamic_table). The
+       citations array carries the terminal reference-data provenance
+       (BEA I-O, QCEW, Hickel drain). The frontend renders the
+       drill-down tree using the BreakdownTree visual pattern but fed
+       from server data — not the ScriptValue selector registry.
+
+    3. **Graceful degradation is the contract.** All three bridge
+       methods read via the persistence pool SQL (same pattern as
+       `_fetch_contradiction_field_rows`) and degrade to
+       `has_data: False` with honest zeros when: the pool is
+       unavailable (SQLite dev/test), the SIM DB tables are absent
+       (product 5432 lacks dynamic_*), or spec-100's
+       county_exposure_by_external is not yet built. MSW fixtures
+       carry full responses so frontend contract tests + Playwright
+       exercise the complete drill-down chain. Forward-compatible:
+       when spec-100 lands, the weights populate without a frontend
+       change.
+
+  consequences: |
+    + The three surfaces are independently consumable and degrade
+      independently (bloc lines work without exposure weights; exposure
+      works with flows-only when spec-100 is absent).
+    + The provenance chain is testable end-to-end via MSW fixtures
+      without requiring a live SIM DB.
+    + The bridge methods follow the established pool-SQL pattern
+      ( Constitution III: pure reads, zero engine writes).
+    - The product DB cannot serve live trade data until spec-096's
+      two-DB alias map routes boundary_flow_register reads to the SIM
+      DB. Until then, production returns has_data: False (honest).
+    - Spec-100's absence means the exposure weights are zero in
+      production; the drill-down chain renders the live flows but the
+      weight leaf reads "not yet built". This is documented, not a bug.
+
+  scope: "web/game/ + web/frontend/src/ (Lane W ownership)"
+  constitution: "III (AI observes, never controls) — all endpoints GET-only"
+  related: "spec-090 (Cold Collapse tokens), spec-093 (Territory Detail), spec-094 (Wire), spec-095 (095 HEAD), spec-100 (county exposure, unbuilt), spec-101 (real flows), spec-096 (SIM DB alias)"

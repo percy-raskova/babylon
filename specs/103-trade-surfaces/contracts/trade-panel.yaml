@@ -1,0 +1,86 @@
+openapi: 3.1.0
+info:
+  title: Babylon Trade Panel Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/trade-panel/` — aggregate trade panel for the Analysis
+    page. Session-cumulative Φ inflow, per-bloc breakdown, and flow-type
+    summary from `boundary_flow_register` aggregates + external node state.
+
+    Per Constitution III, this is a READ-ONLY endpoint. Degrades to
+    `has_data: false` with honest zeros when no data is available.
+
+paths:
+  /api/games/{game_id}/trade-panel/:
+    get:
+      summary: Aggregate trade panel — the Analysis page trade section.
+      operationId: getTradePanel
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Trade panel envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/TradePanelPayload" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    TradePanelPayload:
+      type: object
+      required: [tick, has_data, total_phi_inflow, total_trade, blocs, flow_types]
+      properties:
+        tick: { type: integer, minimum: 0 }
+        has_data: { type: boolean }
+        total_phi_inflow:
+          type: number
+          description: "Session-cumulative Σ DRAIN_EDGE magnitude across all blocs."
+        total_trade:
+          type: number
+          description: "Session-cumulative Σ TRADE_EDGE magnitude across all blocs."
+        blocs:
+          type: array
+          description: "Per-bloc cumulative breakdown."
+          items: { $ref: "#/components/schemas/BlocTotal" }
+        flow_types:
+          type: array
+          description: "Per-flow-type cumulative summary."
+          items: { $ref: "#/components/schemas/FlowTypeTotal" }
+
+    BlocTotal:
+      type: object
+      required: [node_id, label, phi_inflow, trade, erdi_ratio]
+      properties:
+        node_id: { type: string }
+        label: { type: string }
+        phi_inflow: { type: number, description: "Cumulative DRAIN_EDGE magnitude." }
+        trade: { type: number, description: "Cumulative TRADE_EDGE magnitude." }
+        erdi_ratio: { type: number, exclusiveMinimum: 0 }
+
+    FlowTypeTotal:
+      type: object
+      required: [flow_type, total, tick_count]
+      properties:
+        flow_type:
+          type: string
+          enum: [drain_edge, trade_inbound, trade_outbound, commute_outbound]
+        total: { type: number }
+        tick_count: { type: integer, description: "Distinct ticks with rows." }

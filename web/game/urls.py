@@ -42,6 +42,35 @@ urlpatterns: list[URLPattern] = [
     ),
     path("games/<str:game_id>/journal/", api.game_journal, name="game-journal"),
     path("games/<str:game_id>/alerts/", api.game_alerts, name="game-alerts"),
+    path("games/<str:game_id>/wire/", api.game_wire, name="game-wire"),
+    # API: Spec 095 — Endgame Chronicle + Journal + Dialectic screen
+    path(
+        "games/<str:game_id>/contradiction/",
+        api.game_contradiction,
+        name="game-contradiction",
+    ),
+    path("games/<str:game_id>/endgame/", api.game_endgame, name="game-endgame"),
+    path(
+        "games/<str:game_id>/objectives/",
+        api.game_objectives,
+        name="game-objectives",
+    ),
+    # API: Spec 103 — Trade surfaces
+    path(
+        "games/<str:game_id>/trade-flows/",
+        api.game_trade_flows,
+        name="game-trade-flows",
+    ),
+    path(
+        "games/<str:game_id>/exposure/",
+        api.game_county_exposure,
+        name="game-county-exposure",
+    ),
+    path(
+        "games/<str:game_id>/trade-panel/",
+        api.game_trade_panel,
+        name="game-trade-panel",
+    ),
     # API: Spatial Multi-Scale
     path("games/<str:game_id>/orgs/network/", api.org_network, name="org-network"),
     path(

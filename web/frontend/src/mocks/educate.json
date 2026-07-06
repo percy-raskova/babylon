@@ -41,7 +41,7 @@
       "consciousness": {
         "r": 0.25,
         "l": 0.55,
-        "f": 0.20,
+        "f": 0.2,
         "dominant_tendency": "liberal",
         "collective_identity": 0.25,
         "ideological_contestation": 0.82
@@ -80,7 +80,7 @@
       "credibility_explanation": "41% membership overlap",
       "consciousness": {
         "r": 0.15,
-        "l": 0.70,
+        "l": 0.7,
         "f": 0.15,
         "dominant_tendency": "liberal",
         "collective_identity": 0.15,

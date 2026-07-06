@@ -91,6 +91,28 @@ class TestURLRouting:
         match = resolve("/api/games/")
         assert match.view_name == "game:game-list"
 
+    # Spec 103: Trade surfaces URL routing
+    def test_game_trade_flows_url(self) -> None:
+        url = reverse(
+            "game:game-trade-flows",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/trade-flows/"
+
+    def test_game_county_exposure_url(self) -> None:
+        url = reverse(
+            "game:game-county-exposure",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/exposure/"
+
+    def test_game_trade_panel_url(self) -> None:
+        url = reverse(
+            "game:game-trade-panel",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/trade-panel/"
+
 
 @pytest.mark.unit
 @pytest.mark.django_db

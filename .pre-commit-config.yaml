@@ -132,6 +132,10 @@ repos:
       - id: prettier
         name: prettier (frontend format)
         files: ^web/frontend/src/.*\.(ts|tsx|css)$
+        # mirrors-prettier is archived at v3.1.0; pin the wrapped prettier to
+        # the gate's version (web/frontend/package.json prettier ^3.8.1) so the
+        # hook and `mise run web:check` format identically (spec-090 residual a).
+        additional_dependencies: ["prettier@3.8.1"]
 
   - repo: local
     hooks:

@@ -1,0 +1,132 @@
+openapi: 3.1.0
+info:
+  title: Babylon Map Snapshot — Balkanization Extension
+  version: 1.0.0
+  description: |
+    Extends the existing `get_map_snapshot` / `get_snapshot` payloads with a
+    `balkanization` block sourced from live spec-070 graph data via
+    `GraphProtocol.query_faction_influence_by_territory`,
+    `query_sovereign_claims`, and `query_territory_claims`
+    (src/babylon/engine/graph.py:898-956). Powers the map lens set (User
+    Story 3). Never derives data from `HyperedgeState`/community
+    membership (Constitution VIII.9 — see the Vitest assertion in
+    `mapLensLayers.test.tsx`).
+
+paths:
+  /api/games/{game_id}/map/:
+    get:
+      summary: GeoJSON map snapshot, extended with balkanization state.
+      operationId: getMapSnapshotWithBalkanization
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: FeatureCollection envelope, extended metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type: { type: string, enum: ["FeatureCollection"] }
+                  metadata:
+                    type: object
+                    properties:
+                      balkanization:
+                        $ref: "#/components/schemas/BalkanizationBlock"
+                  features:
+                    type: array
+                    items: { type: object }
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    BalkanizationBlock:
+      type: object
+      required: [factions, sovereigns, territory_influence]
+      properties:
+        factions:
+          type: array
+          items: { $ref: "#/components/schemas/FactionSummary" }
+        sovereigns:
+          type: array
+          items: { $ref: "#/components/schemas/SovereignSummary" }
+        territory_influence:
+          type: array
+          description: One entry per territory that has at least one INFLUENCES edge.
+          items: { $ref: "#/components/schemas/TerritoryInfluence" }
+
+    FactionSummary:
+      type: object
+      required: [id, colonial_stance]
+      properties:
+        id: { type: string }
+        colonial_stance:
+          type: string
+          description: >
+            ColonialStance StrEnum value. Real wire values are lowercase
+            (uphold/ignore/abolish) per src/babylon/models/enums/balkanization.py.
+            Frontend normalizes via normalizeStance() to uppercase display form.
+          enum: [uphold, ignore, abolish]
+        is_settler_formation: { type: boolean }
+
+    SovereignSummary:
+      type: object
+      required: [id, ruling_faction_id, legitimacy, claimed_territory_ids]
+      properties:
+        id: { type: string }
+        ruling_faction_id: { type: string }
+        extraction_policy: { type: string }
+        legitimacy: { type: number }
+        claimed_territory_ids:
+          type: array
+          items: { type: string }
+          description: Sourced from query_sovereign_claims; used to build CLAIMS hulls.
+
+    TerritoryInfluence:
+      type: object
+      required: [territory_id, influences, contested, habitability]
+      properties:
+        territory_id: { type: string }
+        influences:
+          type: array
+          description: Sourced from query_faction_influence_by_territory, influence desc.
+          items:
+            type: object
+            required: [faction_id, influence_level, support_type]
+            properties:
+              faction_id: { type: string }
+              influence_level: { type: number }
+              support_type: { type: string }
+        dominant_faction_id: { type: string, nullable: true }
+        current_sovereign_id:
+          type: string
+          nullable: true
+          description: Sourced from query_territory_claims (top control_level row, if any).
+        contested:
+          type: boolean
+          description: Derived at read time from the influence-share delta (research.md Q4/Q1).
+        habitability:
+          type: number
+          description: Derived at read time as biocapacity / max_biocapacity (no stored field).
+
+  examples:
+    ContestedTerritory:
+      value:
+        territory_id: "T042"
+        influences:
+          - { faction_id: "FAC_A", influence_level: 0.47, support_type: ideological }
+          - { faction_id: "FAC_B", influence_level: 0.41, support_type: material }
+        dominant_faction_id: "FAC_A"
+        current_sovereign_id: null
+        contested: true
+        habitability: 0.58

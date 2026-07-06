@@ -1,0 +1,92 @@
+openapi: 3.1.0
+info:
+  title: Babylon Trade Flows Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/trade-flows/` — per-bloc price/flow lines for the Wire
+    INDEX tab. Reads `boundary_flow_register` rows (per-tick, grouped by
+    source_node_id + flow_type) and `dynamic_external_node_state` rows (latest
+    tick per node).
+
+    Per Constitution III, this is a READ-ONLY endpoint. Degrades to
+    `has_data: false` with an empty `blocs` list when the pool is unavailable
+    or both tables are empty/absent.
+
+paths:
+  /api/games/{game_id}/trade-flows/:
+    get:
+      summary: Per-bloc price/flow lines — the Wire INDEX trade section.
+      operationId: getTradeFlows
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Trade flows envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/TradeFlowsPayload" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    TradeFlowsPayload:
+      type: object
+      required: [tick, has_data, blocs]
+      properties:
+        tick: { type: integer, minimum: 0 }
+        has_data: { type: boolean }
+        blocs:
+          type: array
+          description: One entry per external node, ordered by node_id.
+          items: { $ref: "#/components/schemas/BlocFlowEntry" }
+
+    BlocFlowEntry:
+      type: object
+      required: [node_id, label, kind, latest, phi_series, trade_series]
+      properties:
+        node_id: { type: string, description: "External node id (e.g. canada, china)." }
+        label: { type: string, description: "Human-readable bloc label." }
+        kind:
+          type: string
+          enum: [international, domestic_rest]
+        latest:
+          type: object
+          description: "Latest snapshot values from dynamic_external_node_state."
+          required: [phi_year_inflow, bilateral_trade_value, bilateral_trade_tons, erdi_ratio]
+          properties:
+            phi_year_inflow: { type: number, minimum: 0 }
+            bilateral_trade_value: { type: number, minimum: 0 }
+            bilateral_trade_tons: { type: number, minimum: 0 }
+            erdi_ratio: { type: number, exclusiveMinimum: 0 }
+        phi_series:
+          type: array
+          description: "Per-tick DRAIN_EDGE magnitude (Φ inflow) time series."
+          items: { $ref: "#/components/schemas/FlowPoint" }
+        trade_series:
+          type: array
+          description: "Per-tick TRADE_EDGE magnitude time series."
+          items: { $ref: "#/components/schemas/FlowPoint" }
+
+    FlowPoint:
+      type: object
+      required: [tick, magnitude]
+      properties:
+        tick: { type: integer, minimum: 0 }
+        magnitude: { type: number }

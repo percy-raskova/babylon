@@ -14,6 +14,7 @@
  * - Edge types use the new `mode` enum.
  */
 
+import { rampForLayer } from "@/theme/colors";
 import type {
   GameSnapshot,
   LensDefinition,
@@ -276,6 +277,27 @@ export const INDICATOR_LIST: IndicatorDefinition[] = Object.values(INDICATOR_DEF
 /** Get a lens definition by ID. */
 export function getLensById(id: LensId): LensDefinition {
   return LENS_DEFINITIONS[id];
+}
+
+// ---------------------------------------------------------------------------
+// Cold Collapse data ramps (spec-090)
+//
+// Each lens's map legend renders the SAME canonical luminance-monotonic ramp
+// that the deck.gl fill uses, resolved from the lens's `primaryLayer` — a
+// single source of truth shared with `theme/colors.ts` (`rampForLayer`).
+// ---------------------------------------------------------------------------
+
+/** The canon ramp (hex stops) for each lens, keyed by lens id. */
+export const LENS_RAMP_STOPS: Record<LensId, string[]> = {
+  economic: rampForLayer(LENS_DEFINITIONS.economic.primaryLayer),
+  political: rampForLayer(LENS_DEFINITIONS.political.primaryLayer),
+  social: rampForLayer(LENS_DEFINITIONS.social.primaryLayer),
+  strategic: rampForLayer(LENS_DEFINITIONS.strategic.primaryLayer),
+};
+
+/** Get the canon data ramp (hex stops) for a lens's primary map layer. */
+export function getLensRampStops(id: LensId): string[] {
+  return rampForLayer(LENS_DEFINITIONS[id].primaryLayer);
 }
 
 /** Get an indicator definition by ID. */

@@ -3,13 +3,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
 import { seedGameStore, resetGameStore } from "@/__tests__/helpers/seedSnapshot";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { BriefingPage } from "@/components/pages/BriefingPage";
 import { OrgsPage } from "@/components/pages/OrgsPage";
 import { VerbPage } from "@/components/pages/VerbPage";
 import { ResultsPage } from "@/components/pages/ResultsPage";
+import { server } from "@/test/server";
 
 function renderAtRoute(path: string, element: React.ReactElement) {
   return render(
@@ -45,7 +47,9 @@ describe("BriefingPage", () => {
 
   it("renders sparkline metrics strip", () => {
     renderAtRoute("/games/g1", <BriefingPage />);
-    expect(screen.getByText("HEAT")).toBeInTheDocument();
+    // "HEAT" also appears as the map's lens-mode button (spec-093
+    // MapModeSelector) — no longer a unique text on this page.
+    expect(screen.getAllByText("HEAT").length).toBeGreaterThan(0);
   });
 
   it("renders critical event dispatch", () => {
@@ -77,6 +81,50 @@ describe("OrgsPage", () => {
   it("shows note directing to Intel for enemy orgs", () => {
     renderAtRoute("/games/g1/orgs", <OrgsPage />);
     expect(screen.getByText(/Intel/)).toBeInTheDocument();
+  });
+
+  it("End Turn resolves the tick then navigates to the resolution screen (spec 092)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/games/g1/orgs"]}>
+        <Routes>
+          <Route path="/games/:id/orgs" element={<OrgsPage />} />
+          <Route path="/games/:id/resolution" element={<div>Tick Resolution landing</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText(/End Turn/));
+
+    expect(await screen.findByText("Tick Resolution landing")).toBeInTheDocument();
+  });
+
+  it("End Turn does NOT navigate when resolveTick fails, and surfaces the error (spec 092 review Defect C)", async () => {
+    server.use(
+      http.post("/api/games/:id/resolve/", () =>
+        HttpResponse.json(
+          { status: "error", message: "Simulation crashed mid-tick" },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/games/g1/orgs"]}>
+        <Routes>
+          <Route path="/games/:id/orgs" element={<OrgsPage />} />
+          <Route path="/games/:id/resolution" element={<div>Tick Resolution landing</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText(/End Turn/));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Simulation crashed mid-tick/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Tick Resolution landing")).not.toBeInTheDocument();
+    // Button re-enabled — no longer stuck showing "Resolving…".
+    expect(screen.getByText(/End Turn/)).toBeInTheDocument();
   });
 });
 

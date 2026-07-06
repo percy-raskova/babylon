@@ -1,0 +1,73 @@
+openapi: 3.1.0
+info:
+  title: Babylon Journal (Event Log) Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/journal/` — replaces the `{}` stub. Backs the
+    Event Log page (`/games/:id/log`). Sources `tick_event` rows written
+    by `resolve_tick()` via `PostgresRuntime.query_session_events`, newest
+    tick first, capped at 200 rows. SQLite-backed `RuntimeDatabase`
+    (dev/test) has no `query_session_events` method and degrades to an
+    empty list.
+
+paths:
+  /api/games/{game_id}/journal/:
+    get:
+      summary: Full cross-tick classified event history.
+      operationId: getJournalDashboard
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Journal envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/JournalPayload" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    JournalPayload:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/GameEvent" }
+
+    GameEvent:
+      type: object
+      description: |
+        Spec 061 FR-012 shape — identical to `snapshot.events` entries so
+        the frontend's existing `lib/eventClassifier.ts` and `GameEvent`
+        TypeScript interface apply unmodified.
+      required: [id, type, tick, severity, title, body, data]
+      properties:
+        id:
+          type: string
+          description: Deterministic id (game_id-tick-event_id for persisted rows).
+        type: { type: string }
+        tick: { type: integer, minimum: 0 }
+        severity:
+          type: string
+          enum: [critical, warning, informational]
+        title: { type: string }
+        body: { type: string }
+        data: { type: object }

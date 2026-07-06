@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: Babylon Journal Objectives Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/objectives/` — Vic3-style objectives tracker. Derives
+    objective progress from the current game state, mapping the 5 endgame conditions
+    to trackable objectives. Each objective has a progress bar (0–1), a status
+    (active/complete/failed), and a category.
+
+paths:
+  /api/games/{game_id}/objectives/:
+    get:
+      summary: Vic3-style objectives tracker.
+      operationId: getJournalObjectives
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Objectives envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/ObjectivesTracker" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    ObjectivesTracker:
+      type: object
+      required: [tick, objectives]
+      properties:
+        tick: { type: integer, minimum: 0 }
+        objectives:
+          type: array
+          items: { $ref: "#/components/schemas/Objective" }
+
+    Objective:
+      type: object
+      required: [id, title, description, progress, status, category]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: "0 = just started, 1 = complete."
+        status:
+          type: string
+          enum: [active, complete, failed]
+        category:
+          type: string
+          enum: [revolution, collapse, fascist, red_ogv, fragmented]
+          description: "Maps to the endgame condition family."

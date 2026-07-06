@@ -740,3 +740,32 @@ class StubEngineBridge:
 
         _stub_actions[session_id] = []
         return results
+
+    # ------------------------------------------------------------------ #
+    # Spec 103: Trade surfaces — stub returns honest empty states.
+    # ------------------------------------------------------------------ #
+
+    def get_trade_flows(self, _session_id: UUID) -> dict[str, Any]:
+        """Stub: no boundary_flow_register in stub mode → has_data: False."""
+        return {"tick": 0, "has_data": False, "blocs": []}
+
+    def get_county_import_exposure(self, _session_id: UUID, county_fips: str) -> dict[str, Any]:
+        """Stub: no exposure data in stub mode → has_data: False."""
+        return {
+            "county_fips": county_fips,
+            "has_data": False,
+            "total_exposure": 0.0,
+            "breakdown": {"total": 0.0, "contributors": []},
+            "citations": [],
+        }
+
+    def get_trade_panel(self, _session_id: UUID) -> dict[str, Any]:
+        """Stub: no boundary_flow_register in stub mode → has_data: False."""
+        return {
+            "tick": 0,
+            "has_data": False,
+            "total_phi_inflow": 0.0,
+            "total_trade": 0.0,
+            "blocs": [],
+            "flow_types": [],
+        }

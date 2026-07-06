@@ -1,0 +1,238 @@
+openapi: 3.1.0
+info:
+  title: Babylon Wire Endpoint
+  version: 1.0.0
+  description: |
+    `GET /api/games/{id}/wire/` — The Wire 4-tab presentation window feed.
+    Sources `tick_event` rows via `EngineBridge.get_journal_dashboard`, passes them
+    through a `NarratorProvider` (first implementation: `DeterministicNarrator`), and
+    returns a `WireFeed` dict with triptych story data, story index, euphemism map, and
+    Manufacturing Consent filter analysis.
+
+    Per Constitution III (AI observes, never controls), the narrator consumes events
+    out-of-tick and writes ONLY presentation content — never engine state. Per R-NARR,
+    the narrator is deterministic (template-based, no LLM calls). The
+    `NarratorProvider` interface is designed for future LLM provider drop-in (M8).
+
+paths:
+  /api/games/{game_id}/wire/:
+    get:
+      summary: The Wire feed — triptych story, index, euphemisms, filters.
+      operationId: getWireFeed
+      security:
+        - sessionAuth: []
+      parameters:
+        - in: path
+          name: game_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Wire feed envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data]
+                properties:
+                  status: { type: string, enum: ["ok"] }
+                  data: { $ref: "#/components/schemas/WireFeed" }
+        "404":
+          description: Session not found.
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  schemas:
+    WireFeed:
+      type: object
+      required: [meta, index, euphemisms, story, filters]
+      properties:
+        meta:
+          type: object
+          required: [tick, session, operator, freq, qth, classification, cable_id, page_of, timestamp_utc]
+          properties:
+            tick: { type: integer, minimum: 0 }
+            session: { type: string }
+            operator: { type: string }
+            freq: { type: string }
+            qth: { type: string }
+            classification: { type: string }
+            cable_id: { type: string }
+            page_of: { type: string }
+            timestamp_utc: { type: string, format: date-time }
+        index:
+          type: array
+          items: { $ref: "#/components/schemas/WireStoryIndex" }
+        euphemisms:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EuphemismEntry"
+        story:
+          oneOf:
+            - $ref: "#/components/schemas/WireStory"
+            - type: "null"
+        filters:
+          type: array
+          items: { $ref: "#/components/schemas/ManufacturingConsentFilter" }
+          minItems: 5
+          maxItems: 5
+
+    WireStoryIndex:
+      type: object
+      required: [id, tick, slug, hed, coverage, severity]
+      properties:
+        id: { type: string }
+        tick: { type: integer }
+        slug: { type: string }
+        hed:
+          type: object
+          required: [c, l, i]
+          properties:
+            c: { type: string }
+            l: { type: string }
+            i: { type: string }
+        coverage:
+          type: array
+          items: { type: string, enum: ["c", "l", "i"] }
+        pinned: { type: boolean }
+        severity:
+          type: string
+          enum: [critical, warning, info]
+
+    EuphemismEntry:
+      type: object
+      required: [c, l, filter, note]
+      properties:
+        c: { type: string, description: "Corporate/Continental phrase" }
+        l: { type: string, description: "Liberated/Free Signal phrase" }
+        filter:
+          type: string
+          enum: [ownership, advertising, sourcing, flak, ideology]
+        note: { type: string, description: "Editorial intervention note" }
+
+    WireStory:
+      type: object
+      required: [id, tick, location, time_local, continental, liberated, intel]
+      properties:
+        id: { type: string }
+        tick: { type: integer }
+        location: { type: string }
+        time_local: { type: string }
+        continental: { $ref: "#/components/schemas/ContinentalStory" }
+        liberated: { $ref: "#/components/schemas/LiberatedStory" }
+        intel: { $ref: "#/components/schemas/IntelStory" }
+
+    ContinentalStory:
+      type: object
+      required: [brand, monogram, kicker, hed, dek, byline, paragraphs, bibliography]
+      properties:
+        brand: { type: string }
+        monogram: { type: string }
+        kicker: { type: string }
+        hed: { type: string }
+        dek: { type: string }
+        byline: { type: string }
+        paragraphs:
+          type: array
+          description: |
+            Each paragraph is an array of runs. A run is either a string,
+            an euphemism span {"euph": "term_id", "text": "..."}, or a
+            superscript citation {"sup": int}.
+          items:
+            type: array
+            items:
+              oneOf:
+                - type: string
+                - type: object
+        bibliography:
+          type: array
+          items: { $ref: "#/components/schemas/BibliographyEntry" }
+
+    LiberatedStory:
+      type: object
+      required: [brand, callsign, operator, hed, pre, post, paragraphs]
+      properties:
+        brand: { type: string }
+        callsign: { type: string }
+        operator: { type: string }
+        hed: { type: string }
+        pre: { type: string }
+        post: { type: string }
+        paragraphs:
+          type: array
+          items:
+            type: object
+            required: [body]
+            properties:
+              body:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: object
+              margin:
+                type: object
+
+    IntelStory:
+      type: object
+      required: [classification, cable_id, origin, routing, caveat, subj, fields, assessment, refs, distribution]
+      properties:
+        classification: { type: string }
+        cable_id: { type: string }
+        origin: { type: string }
+        routing:
+          type: array
+          items: { type: string }
+        caveat: { type: string }
+        subj: { type: string }
+        fields:
+          type: array
+          items:
+            type: array
+            items: { type: string }
+            minItems: 2
+            maxItems: 2
+        assessment:
+          type: array
+          items: { type: string }
+        refs:
+          type: array
+          items: { $ref: "#/components/schemas/CorpusRef" }
+        distribution: { type: string }
+
+    BibliographyEntry:
+      type: object
+      required: [n, src, kind, id, chunk, sim]
+      properties:
+        n: { type: integer }
+        src: { type: string }
+        kind: { type: string }
+        id: { type: string }
+        chunk: { type: string }
+        sim: { type: number, minimum: 0, maximum: 1 }
+
+    CorpusRef:
+      type: object
+      required: [tag, id, sim, src]
+      properties:
+        tag: { type: string }
+        id: { type: string }
+        sim: { type: number, minimum: 0, maximum: 1 }
+        src: { type: string }
+
+    ManufacturingConsentFilter:
+      type: object
+      required: [id, label, desc, hits, color]
+      properties:
+        id:
+          type: string
+          enum: [ownership, advertising, sourcing, flak, ideology]
+        label: { type: string }
+        desc: { type: string }
+        hits: { type: integer, minimum: 0 }
+        color: { type: string, description: "CSS custom property reference" }

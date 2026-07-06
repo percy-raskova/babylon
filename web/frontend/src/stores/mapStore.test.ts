@@ -45,4 +45,26 @@ describe("useMapStore", () => {
     useMapStore.getState().toggleEdges();
     expect(useMapStore.getState().showEdges).toBe(false);
   });
+
+  it("defaults lensMode to stance with no faction filter (spec-093)", () => {
+    const state = useMapStore.getState();
+    expect(state.lensMode).toBe("stance");
+    expect(state.factionFilter).toBeNull();
+  });
+
+  it("setLensMode cycles through all 5 political-topology lenses (spec-093)", () => {
+    const lenses = ["stance", "heat", "habitability", "faction", "collapse"] as const;
+    for (const lens of lenses) {
+      useMapStore.getState().setLensMode(lens);
+      expect(useMapStore.getState().lensMode).toBe(lens);
+    }
+  });
+
+  it("setFactionFilter selects and clears a faction (spec-093)", () => {
+    useMapStore.getState().setFactionFilter("FAC_A");
+    expect(useMapStore.getState().factionFilter).toBe("FAC_A");
+
+    useMapStore.getState().setFactionFilter(null);
+    expect(useMapStore.getState().factionFilter).toBeNull();
+  });
 });

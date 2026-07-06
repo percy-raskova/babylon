@@ -55,6 +55,33 @@ _JOURNAL_LIMIT = 200
 # flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
 _ALERT_SEVERITIES = frozenset({"critical", "warning"})
 
+# Spec 095: all 5 terminal GameOutcome event types (FR-095-02). The previous
+# bridge layer only recognized 3 of 5 (the Slice 1.6 set), so RED_OGV and
+# FRAGMENTED_COLLAPSE endgames never surfaced in the snapshot's ``endgame``
+# block. This set is the authoritative source for both ``resolve_tick`` and
+# ``get_endgame_state``. Matches ``babylon.models.enums.GameOutcome`` minus
+# ``IN_PROGRESS`` (the non-terminal sentinel).
+_TERMINAL_OUTCOMES: frozenset[str] = frozenset(
+    {
+        "REVOLUTIONARY_VICTORY",
+        "ECOLOGICAL_COLLAPSE",
+        "FASCIST_CONSOLIDATION",
+        "RED_OGV",
+        "FRAGMENTED_COLLAPSE",
+    }
+)
+
+# Spec 095: canonical headlines for the chronicle end-screen (FR-095-09).
+# REVOLUTIONARY_VICTORY → rupture palette ("BABYLON FALLS"); all others →
+# defeat palette ("THE BUNKER FAILS"). Matches the EndState.jsx mockup.
+_OUTCOME_HEADLINES: dict[str, str] = {
+    "REVOLUTIONARY_VICTORY": "BABYLON FALLS",
+    "ECOLOGICAL_COLLAPSE": "THE BUNKER FAILS",
+    "FASCIST_CONSOLIDATION": "THE BUNKER FAILS",
+    "RED_OGV": "THE BUNKER FAILS",
+    "FRAGMENTED_COLLAPSE": "THE BUNKER FAILS",
+}
+
 # ---------------------------------------------------------------------- #
 # Verb-to-ActionType mapping (9 canonical player verbs → engine ActionType)
 # See: specs/041-mvp-nationwide-sim/research.md §2
@@ -100,6 +127,167 @@ def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
     except Exception:  # noqa: BLE001 — non-fatal; defaults to 0
         logger.exception("Failed to read rng_seed for session %s", session_id)
     return 0
+
+
+# ---------------------------------------------------------------------- #
+# Spec 095: contradiction snapshot + endgame + objectives helpers.
+# Pure reads over persisted state — Constitution III (AI observes).
+# ---------------------------------------------------------------------- #
+
+
+def _fetch_contradiction_field_rows(pool: Any, session_id: UUID) -> list[dict[str, Any]]:
+    """Read ``contradiction_field`` rows for the latest tick (FR-095-01).
+
+    Mirrors :func:`_fetch_session_rng_seed_from_pool`'s SQL-read pattern.
+    Returns one row per opposition key at the latest tick, with
+    ``field_name``, ``value`` (gap), ``dt`` (rate). Degrades to an empty
+    list when the pool is unavailable (SQLite dev/test) or the query fails.
+    """
+    if pool is None:
+        return []
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tick, field_name, value, dt
+                FROM contradiction_field
+                WHERE session_id = %s
+                  AND tick = (
+                      SELECT MAX(tick) FROM contradiction_field WHERE session_id = %s
+                  )
+                """,
+                (session_id, session_id),
+            )
+            rows = cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    result.append(row)
+                elif isinstance(row, (tuple, list)) and len(row) >= 4:
+                    result.append(
+                        {
+                            "tick": row[0],
+                            "field_name": row[1],
+                            "value": row[2],
+                            "dt": row[3],
+                        }
+                    )
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
+        logger.exception("Failed to read contradiction_field rows for session %s", session_id)
+        return []
+
+
+def _aspect_to_frame_entry(aspect: Any) -> dict[str, Any]:
+    """Normalize a contradiction aspect dict for the frame block."""
+    if not isinstance(aspect, dict):
+        return {}
+    return {
+        "id": str(aspect.get("id", "")),
+        "aspect_a": str(aspect.get("aspect_a", "")),
+        "aspect_b": str(aspect.get("aspect_b", "")),
+        "principal_aspect": str(aspect.get("principal_aspect", "")),
+        "intensity": float(aspect.get("intensity", 0.0)),
+        "aspect_balance": float(aspect.get("aspect_balance", 0.0)),
+        "is_antagonistic": bool(aspect.get("is_antagonistic", False)),
+    }
+
+
+def _extract_event_type(event: Any) -> str:
+    """Extract a normalized event_type string from a dict or object event."""
+    if isinstance(event, dict):
+        return str(event.get("event_type", ""))
+    et = getattr(event, "event_type", None)
+    if et is None:
+        return ""
+    if hasattr(et, "value"):
+        return str(et.value)
+    return str(et)
+
+
+def _extract_event_data(event: Any, key: str, default: Any = None) -> Any:
+    """Extract a field from an event's ``data`` block (dict or object)."""
+    data: Any = event.get("data") if isinstance(event, dict) else getattr(event, "data", None)
+    if isinstance(data, dict):
+        return data.get(key, default)
+    return default
+
+
+def _compute_avg_node_attr(graph: Any, attr: str, default: float = 0.0) -> float:
+    """Compute the mean of a numeric node attribute across all graph nodes.
+
+    Constitution III: pure read over already-persisted graph state.
+    """
+    nodes_fn = getattr(graph, "nodes", None)
+    if nodes_fn is None:
+        return default
+    try:
+        total = 0.0
+        count = 0
+        for _node_id, data in nodes_fn(data=True):
+            val = data.get(attr) if isinstance(data, dict) else None
+            if val is not None:
+                try:
+                    total += float(val)
+                    count += 1
+                except (TypeError, ValueError):
+                    continue
+        return total / count if count > 0 else default
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+        return default
+
+
+def _count_edges_by_mode(graph: Any, modes: frozenset[str]) -> int:
+    """Count graph edges whose ``mode`` matches the given set (case-insensitive)."""
+    edges_fn = getattr(graph, "edges", None)
+    if edges_fn is None:
+        return 0
+    try:
+        modes_lower = {m.lower() for m in modes}
+        iterable: Any = edges_fn(data=True) if callable(edges_fn) else []
+        count = 0
+        for entry in iterable:
+            data = entry[2] if isinstance(entry, (tuple, list)) and len(entry) >= 3 else None
+            if isinstance(data, dict):
+                mode = str(data.get("mode", "")).lower()
+                if mode in modes_lower:
+                    count += 1
+        return count
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+        return 0
+
+
+def _detect_terminal_outcome(graph_attrs: dict[str, Any]) -> str | None:
+    """Scan a graph's ``events`` list for a terminal GameOutcome event."""
+    events = graph_attrs.get("events", []) or []
+    for event in events:
+        event_type = _extract_event_type(event)
+        if event_type.upper() in _TERMINAL_OUTCOMES:
+            return event_type.lower()
+    return None
+
+
+def _objective_status(category: str, outcome: str | None) -> str:
+    """Derive an objective's status from the terminal outcome.
+
+    - The objective whose category matches the fired outcome is ``complete``.
+    - All other endgame-aligned objectives are ``failed`` (their path lost).
+    - When no outcome has fired, every objective is ``active``.
+    """
+    if outcome is None:
+        return "active"
+    outcome_upper = outcome.upper()
+    if category == "revolution" and outcome_upper == "REVOLUTIONARY_VICTORY":
+        return "complete"
+    if category == "collapse" and outcome_upper == "ECOLOGICAL_COLLAPSE":
+        return "complete"
+    if category == "fascist" and outcome_upper == "FASCIST_CONSOLIDATION":
+        return "complete"
+    if category == "red_ogv" and outcome_upper == "RED_OGV":
+        return "complete"
+    if category == "fragmented" and outcome_upper == "FRAGMENTED_COLLAPSE":
+        return "complete"
+    return "failed"
 
 
 # ---------------------------------------------------------------------- #
@@ -891,6 +1079,232 @@ class EngineBridge:
         return self._narrator.narrate(events, meta)
 
     # ------------------------------------------------------------------ #
+    # Spec 095: Endgame Chronicle + Journal + Dialectic screen
+    # ------------------------------------------------------------------ #
+
+    def get_contradiction_snapshot(self, session_id: UUID) -> dict[str, Any]:
+        """Return the live contradiction snapshot — the Dialectic screen feed.
+
+        Spec 095 FR-095-01. Reads ``contradiction_field`` rows (the
+        OppositionRegistry's per-tick gap + rate) via the persistence pool's
+        SQL (same pattern as :func:`_fetch_session_rng_seed_from_pool`), and
+        graph attributes (``contradiction_frames``, ``dialectical_regime``)
+        via :meth:`hydrate_graph`. Constitution III: pure read — never
+        computes dialectical state.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``ContradictionSnapshot`` dict matching
+            ``specs/095-endgame-chronicle/contracts/contradiction.yaml``.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+        regime = str(graph_attrs.get("dialectical_regime", "reproduction") or "reproduction")
+
+        frames_raw = graph_attrs.get("contradiction_frames", {}) or {}
+        global_frame = frames_raw.get("global", {}) if isinstance(frames_raw, dict) else {}
+        principal_aspect = (
+            global_frame.get("principal", {}) if isinstance(global_frame, dict) else {}
+        )
+        principal_key = (
+            str(principal_aspect.get("id", "")) if isinstance(principal_aspect, dict) else ""
+        )
+
+        rows = _fetch_contradiction_field_rows(
+            getattr(self._persistence, "_pool", None), session_id
+        )
+
+        oppositions: list[dict[str, Any]] = []
+        for row in rows:
+            key = str(row.get("field_name", ""))
+            gap = float(row.get("value", 0.0))
+            rate = float(row.get("dt") or 0.0)
+            is_principal = bool(key and key == principal_key) if principal_key else False
+            leading_pole = ""
+            if isinstance(principal_aspect, dict) and key == principal_key:
+                leading_pole = str(principal_aspect.get("principal_aspect", ""))
+            oppositions.append(
+                {
+                    "key": key,
+                    "gap": gap,
+                    "rate": rate,
+                    "is_principal": is_principal,
+                    "leading_pole": leading_pole,
+                }
+            )
+
+        if not oppositions and isinstance(principal_aspect, dict) and principal_aspect:
+            oppositions.append(
+                {
+                    "key": principal_key,
+                    "gap": float(principal_aspect.get("intensity", 0.0)),
+                    "rate": float(principal_aspect.get("aspect_balance", 0.0)),
+                    "is_principal": True,
+                    "leading_pole": str(principal_aspect.get("principal_aspect", "")),
+                }
+            )
+
+        for opp in oppositions:
+            opp["is_principal"] = (
+                bool(opp.get("key") and opp["key"] == principal_key)
+                if principal_key
+                else opp.get("is_principal", False)
+            )
+
+        frame_block = {
+            "principal": _aspect_to_frame_entry(global_frame.get("principal", {}))
+            if isinstance(global_frame, dict)
+            else {},
+            "secondary": _aspect_to_frame_entry(global_frame.get("secondary", {}))
+            if isinstance(global_frame, dict)
+            else {},
+        }
+
+        return {
+            "tick": tick,
+            "regime": regime,
+            "oppositions": oppositions,
+            "principal_key": principal_key,
+            "frame": frame_block,
+        }
+
+    def get_endgame_state(self, session_id: UUID) -> dict[str, Any]:
+        """Return the terminal outcome + chronicle stat cards.
+
+        Spec 095 FR-095-02. Reads the latest snapshot's endgame block. All 5
+        GameOutcome terminal types are recognized (FR-095-02 fix). Returns
+        ``outcome: None`` when the game is still in progress.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``EndgameState`` dict matching
+            ``specs/095-endgame-chronicle/contracts/endgame.yaml``.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        outcome: str | None = None
+        summary = ""
+        events_raw = graph_attrs.get("events", []) or []
+        for event in events_raw:
+            event_type = _extract_event_type(event)
+            if event_type.upper() in _TERMINAL_OUTCOMES:
+                outcome = event_type.lower()
+                summary = str(_extract_event_data(event, "summary", ""))
+                break
+
+        headline = _OUTCOME_HEADLINES.get((outcome or "").upper(), "") if outcome else ""
+
+        consciousness_avg = _compute_avg_node_attr(graph, "class_consciousness", 0.0)
+        heat_avg = _compute_avg_node_attr(graph, "heat", 0.0)
+        solidarity_edges = _count_edges_by_mode(graph, frozenset({"solidarity"}))
+
+        return {
+            "tick": tick,
+            "outcome": outcome,
+            "headline": headline,
+            "summary": summary,
+            "stats": {
+                "final_tick": tick,
+                "consciousness": consciousness_avg,
+                "solidarity_edges": solidarity_edges,
+                "heat": heat_avg,
+            },
+        }
+
+    def get_journal_objectives(self, session_id: UUID) -> dict[str, Any]:
+        """Return Vic3-style objectives derived from the current game state.
+
+        Spec 095 FR-095-03. Each objective maps to one of the 5 endgame
+        conditions, with a progress bar (0–1) and status
+        (active/complete/failed). Progress is derived from material state
+        (class consciousness, contradiction gap, regime) — never invented.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``ObjectivesTracker`` dict matching
+            ``specs/095-endgame-chronicle/contracts/objectives.yaml``.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+        regime = str(graph_attrs.get("dialectical_regime", "reproduction") or "reproduction")
+
+        consciousness_avg = _compute_avg_node_attr(graph, "class_consciousness", 0.0)
+        heat_avg = _compute_avg_node_attr(graph, "heat", 0.0)
+
+        frames_raw = graph_attrs.get("contradiction_frames", {}) or {}
+        global_frame = frames_raw.get("global", {}) if isinstance(frames_raw, dict) else {}
+        principal_aspect = (
+            global_frame.get("principal", {}) if isinstance(global_frame, dict) else {}
+        )
+        principal_gap = (
+            float(principal_aspect.get("intensity", 0.0))
+            if isinstance(principal_aspect, dict)
+            else 0.0
+        )
+
+        outcome = _detect_terminal_outcome(graph_attrs)
+
+        objectives: list[dict[str, Any]] = [
+            {
+                "id": "revolution",
+                "title": "Revolutionary Victory",
+                "description": "Build mass class consciousness and solidarity edges to overthrow the empire.",
+                "progress": min(1.0, consciousness_avg),
+                "status": _objective_status("revolution", outcome),
+                "category": "revolution",
+            },
+            {
+                "id": "ecological_collapse",
+                "title": "Ecological Collapse",
+                "description": "Biocapacity depletion forces a terminal retreat from extraction.",
+                "progress": min(1.0, heat_avg),
+                "status": _objective_status("collapse", outcome),
+                "category": "collapse",
+            },
+            {
+                "id": "fascist_consolidation",
+                "title": "Fascist Consolidation",
+                "description": "False-consciousness bloc achieves a sovereign grip on the state.",
+                "progress": min(1.0, principal_gap),
+                "status": _objective_status("fascist", outcome),
+                "category": "fascist",
+            },
+            {
+                "id": "red_ogv",
+                "title": "Red OGV Trap",
+                "description": "Settler-socialist formation captures the movement without abolishing empire.",
+                "progress": min(1.0, principal_gap * 0.5),
+                "status": _objective_status("red_ogv", outcome),
+                "category": "red_ogv",
+            },
+            {
+                "id": "fragmented_collapse",
+                "title": "Fragmented Collapse",
+                "description": "Balkanization — sovereign fragmentation outpaces solidarity.",
+                "progress": min(1.0, principal_gap * 0.7)
+                if regime == "crisis"
+                else min(1.0, heat_avg * 0.5),
+                "status": _objective_status("fragmented", outcome),
+                "category": "fragmented",
+            },
+        ]
+
+        return {
+            "tick": tick,
+            "objectives": objectives,
+        }
+
+    # ------------------------------------------------------------------ #
     # Inspector Views
     # ------------------------------------------------------------------ #
 
@@ -1055,7 +1469,12 @@ class EngineBridge:
         # have real history to read back. Best-effort — a journal-write
         # failure must never fail tick resolution.
         _persist_tick_events_safe(self._persistence, session_id, new_state.tick, snapshot["events"])
-        endgame_types = {"REVOLUTIONARY_VICTORY", "ECOLOGICAL_COLLAPSE", "FASCIST_CONSOLIDATION"}
+        # Spec 095 FR-095-02: recognize ALL 5 terminal GameOutcome event types
+        # (was 3-of-5 — RED_OGV and FRAGMENTED_COLLAPSE were missing, so those
+        # endgames never surfaced in the snapshot's ``endgame`` block). The
+        # _TERMINAL_OUTCOMES constant is the authoritative set, matching
+        # ``babylon.models.enums.GameOutcome`` minus IN_PROGRESS.
+        endgame_types = _TERMINAL_OUTCOMES
         for event in new_state.events:
             event_type = (
                 event.event_type.value

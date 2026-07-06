@@ -580,6 +580,62 @@ def game_wire(request: Request, game_id: str) -> JsonResponse:
 
 
 # ---------------------------------------------------------------------- #
+# Spec 095: Endgame Chronicle + Journal + Dialectic screen
+# ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_contradiction(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/contradiction/ — live contradiction snapshot.
+
+    Spec 095 FR-095-04. The Dialectic screen's feed. Reads
+    ``contradiction_field`` rows and graph attributes (contradiction_frames,
+    dialectical_regime). Constitution III: pure read — surfaces dialectical
+    state the engine already computed, never computes it.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_contradiction_snapshot(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_endgame(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/endgame/ — terminal outcome + chronicle stat cards.
+
+    Spec 095 FR-095-05. Reads the latest snapshot's endgame block. All 5
+    GameOutcome terminal types are recognized (FR-095-02). Returns
+    ``outcome: null`` when the game is still in progress.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_endgame_state(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_objectives(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/objectives/ — Vic3-style objectives tracker.
+
+    Spec 095 FR-095-06. Derives objective progress from the current game
+    state, mapping the 5 endgame conditions to trackable objectives.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_journal_objectives(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+# ---------------------------------------------------------------------- #
 # Spatial Multi-Scale Endpoints
 # ---------------------------------------------------------------------- #
 

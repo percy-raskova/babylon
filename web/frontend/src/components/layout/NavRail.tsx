@@ -48,6 +48,9 @@ export function NavRail({ gameId }: NavRailProps) {
   const postItems: NavItem[] = [
     { to: `${base}/analysis`, label: "Analysis", glyph: "◊" },
     { to: `${base}/wire`, label: "Wire", glyph: "⊛" },
+    { to: `${base}/dialectic`, label: "Dialectic", glyph: "⊛" },
+    { to: `${base}/chronicle`, label: "Chronicle", glyph: "◉" },
+    { to: `${base}/objectives`, label: "Objectives", glyph: "▣" },
   ];
 
   return (

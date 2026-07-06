@@ -20,6 +20,9 @@ import { AnalysisPage } from "@/components/pages/AnalysisPage";
 import { EventLogPage } from "@/components/pages/EventLogPage";
 import { TickResolutionPage } from "@/components/pages/TickResolutionPage";
 import { WirePage } from "@/components/pages/WirePage";
+import { DialecticPage } from "@/components/pages/DialecticPage";
+import { ChroniclePage } from "@/components/pages/ChroniclePage";
+import { ObjectivesPage } from "@/components/pages/ObjectivesPage";
 import type { AuthState } from "@/types/game";
 
 export default function App() {
@@ -129,6 +132,11 @@ export default function App() {
 
         {/* The Wire — 4-tab window (spec 094) */}
         <Route path="wire" element={<WirePage />} />
+
+        {/* Spec 095: Endgame Chronicle + Journal + Dialectic screen */}
+        <Route path="dialectic" element={<DialecticPage />} />
+        <Route path="chronicle" element={<ChroniclePage />} />
+        <Route path="objectives" element={<ObjectivesPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to={isAuthed ? "/games" : "/login"} replace />} />

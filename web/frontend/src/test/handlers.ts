@@ -443,6 +443,127 @@ export const handlers = [
     }),
   ),
 
+  // Spec 095: Contradiction snapshot — the Dialectic screen feed
+  http.get("/api/games/:id/contradiction/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: {
+        tick: 5,
+        regime: "crisis",
+        oppositions: [
+          {
+            key: "capital_labor",
+            gap: 0.71,
+            rate: 0.03,
+            is_principal: true,
+            leading_pole: "b",
+          },
+          {
+            key: "imperial",
+            gap: 0.42,
+            rate: -0.01,
+            is_principal: false,
+            leading_pole: "a",
+          },
+        ],
+        principal_key: "capital_labor",
+        frame: {
+          principal: {
+            id: "capital_labor",
+            aspect_a: "Labor",
+            aspect_b: "Capital",
+            principal_aspect: "b",
+            intensity: 0.71,
+            aspect_balance: 0.03,
+            is_antagonistic: true,
+          },
+          secondary: {
+            id: "imperial",
+            aspect_a: "Core",
+            aspect_b: "Periphery",
+            principal_aspect: "a",
+            intensity: 0.42,
+            aspect_balance: -0.01,
+            is_antagonistic: true,
+          },
+        },
+      },
+    }),
+  ),
+
+  // Spec 095: Endgame state — terminal outcome + chronicle stat cards
+  http.get("/api/games/:id/endgame/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: {
+        tick: 5,
+        outcome: null,
+        headline: "",
+        summary: "",
+        stats: {
+          final_tick: 5,
+          consciousness: 0.42,
+          solidarity_edges: 3,
+          heat: 0.31,
+        },
+      },
+    }),
+  ),
+
+  // Spec 095: Journal objectives — Vic3-style objectives tracker
+  http.get("/api/games/:id/objectives/", () =>
+    HttpResponse.json({
+      status: "ok",
+      data: {
+        tick: 5,
+        objectives: [
+          {
+            id: "revolution",
+            title: "Revolutionary Victory",
+            description:
+              "Build mass class consciousness and solidarity edges to overthrow the empire.",
+            progress: 0.42,
+            status: "active",
+            category: "revolution",
+          },
+          {
+            id: "ecological_collapse",
+            title: "Ecological Collapse",
+            description: "Biocapacity depletion forces a terminal retreat from extraction.",
+            progress: 0.31,
+            status: "active",
+            category: "collapse",
+          },
+          {
+            id: "fascist_consolidation",
+            title: "Fascist Consolidation",
+            description: "False-consciousness bloc achieves a sovereign grip on the state.",
+            progress: 0.71,
+            status: "active",
+            category: "fascist",
+          },
+          {
+            id: "red_ogv",
+            title: "Red OGV Trap",
+            description:
+              "Settler-socialist formation captures the movement without abolishing empire.",
+            progress: 0.36,
+            status: "active",
+            category: "red_ogv",
+          },
+          {
+            id: "fragmented_collapse",
+            title: "Fragmented Collapse",
+            description: "Balkanization — sovereign fragmentation outpaces solidarity.",
+            progress: 0.22,
+            status: "active",
+            category: "fragmented",
+          },
+        ],
+      },
+    }),
+  ),
+
   // Economy — per-territory economic summary (spec 093 US5)
   http.get("/api/games/:id/economy/", ({ request }) => {
     const url = new URL(request.url);

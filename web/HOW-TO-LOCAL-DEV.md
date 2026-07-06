@@ -4,6 +4,45 @@ This guide shows you how to start the Django backend and React frontend on your
 development machine, run the test suites, and expose the app across a local
 network for testing on other devices.
 
+## The Two-Database Split (read this first)
+
+Babylon runs against **two separate Postgres databases**. This is the single
+most confusing fact for an incoming developer, so it is documented up front.
+Django addresses both through database *aliases* (spec-096):
+
+| Alias     | Database (default)                                    | Schema                                                                                                                                     | Written by                         | Read by                             |
+| --------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ----------------------------------- |
+| `default` | `localhost:5432/babylon`                              | spec-037 **product** schema (`game_session`, `hex_latest`, `territory_snapshot`, `tick_summary`, …)                                        | the Django product (game play)     | the whole web product               |
+| `sim`     | `localhost:5433/babylon_test` (from `BABYLON_PG_DSN`) | spec-062 `dynamic_*` + spec-087–089 (`tick_commit`, `v_hex_state_asof`, `v_{county,state,national}_value_aggregate`, session partitioning) | the headless **simulation runner** | **the Observatory only, READ-ONLY** |
+
+Nothing bridges these two except the **Observatory** (`web/observatory/`,
+spec-096, Lane O). The Observatory adds the read-only `sim` alias and the
+`/api/observatory/*` endpoints; it never writes the sim DB and never migrates
+its schema.
+
+**Read-only guarantees** (see `web/observatory/db.py`, `router.py`):
+
+- The `sim` alias opens every connection with
+  `default_transaction_read_only=on` — any write raises
+  `ReadOnlySqlTransaction` at the Postgres level.
+- `SimDatabaseRouter.allow_migrate("sim", …)` is `False` and the `observatory`
+  app declares no models, so `manage.py migrate` never touches the sim schema
+  (the runner's idempotent `src/babylon/persistence/migrations/00*.sql` are its
+  sole owner — Constitution II.11).
+
+**Point the Observatory at a different sim DB** by overriding the DSN (libpq
+keyword or URL form; the `tools/tick_probe.py` default):
+
+```bash
+export BABYLON_PG_DSN="host=localhost port=5433 dbname=babylon_test user=test password=test"
+```
+
+The Observatory is gated by `OBSERVATORY_ENABLED` — **True** in
+`settings/development.py`, **False** in `settings/production.py`. When off,
+every `/api/observatory/*` endpoint returns 404 and the `/observatory` page
+renders a disabled state. See
+`specs/096-observatory-foundation/quickstart.md`.
+
 ## Before You Begin
 
 Ensure you have:

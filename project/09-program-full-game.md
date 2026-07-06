@@ -419,6 +419,20 @@ ______________________________________________________________________
 
 **spec-096 — Observatory foundation** (~1–2 sprints)
 
+**STATUS: DONE on branch `096-observatory-foundation` (2026-07-04, awaiting BD
+merge to dev).** Speckit artifacts in `specs/096-observatory-foundation/`. New
+Django app `web/observatory/` (no models) + read-only `DATABASES["sim"]` alias
+(`BABYLON_PG_DSN`, `default_transaction_read_only=on`) + `SimDatabaseRouter`
+(migration refusal). Read-only endpoints under `/api/observatory/` (status,
+sessions, ticks, series, series.csv, commits, hex) read the declared views +
+`tick_commit` only (never raw
+`dynamic_hex_state`). React `/observatory` lazy route (one line in `App.tsx`),
+gated by `OBSERVATORY_ENABLED`. Tests: 49 backend unit + 16 integration
+(read-only write-rejection proven live) + 17 Vitest/MSW; product suites
+untouched-green (Vitest 327/327). Two-DB alias map documented in
+`web/HOW-TO-LOCAL-DEV.md`. Live-run render gate deferred to the orchestrator
+sync point. Deep panes → spec-099.
+
 The dev-facing GUI over the SIMULATION database. Heritage:
 `specs/007-god-mode-dashboard` (the God-Mode wish, PyQt6 incarnation
 deleted 2026-05-10); this is its web-native successor.

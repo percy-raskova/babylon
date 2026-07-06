@@ -11,6 +11,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
+# spec-096: the Observatory debug dashboard is a development tool — ON here.
+OBSERVATORY_ENABLED = True
+
 # CORS — allow Vite dev server
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",

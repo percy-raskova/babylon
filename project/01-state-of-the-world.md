@@ -98,6 +98,18 @@ consumes both:
     audit). Unblocks
     spec-101 (S1). Reconciliation notes in
     `specs/100-county-exposure/research.md`.
+  - **Lane O spec-096 Observatory foundation — DONE on branch
+    `096-observatory-foundation`** (2026-07-04, awaiting BD merge). Read-only
+    bridge to the SIM Postgres: new Django app `web/observatory/` (no models),
+    a read-only `DATABASES["sim"]` alias (`BABYLON_PG_DSN`,
+    connection-level read-only) + `SimDatabaseRouter` (migration refusal),
+    `/api/observatory/*` endpoints over the declared views + `tick_commit`
+    (never raw
+    `dynamic_hex_state`), React `/observatory` lazy route gated by
+    `OBSERVATORY_ENABLED`. The two-DB split (5432 product vs 5433 sim) is now
+    documented in `web/HOW-TO-LOCAL-DEV.md`. Tests: 49 backend unit + 16
+    integration (live write-rejection proof) + 17 Vitest/MSW; product suites
+    untouched-green (Vitest 327/327). Deep panes → spec-099.
 
 ## What shipped 2026-07-02 (one session), by commit
 

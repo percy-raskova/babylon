@@ -18,6 +18,12 @@ DATABASES = {
     },
 }
 
+# spec-096: this config drops the read-only "sim" alias, so the Observatory
+# has nothing to read — disable it so endpoints 404 (gated) instead of raising
+# ConnectionDoesNotExist. Tests that exercise the Observatory opt in explicitly
+# via the `settings` fixture / integration `sim_alias` fixture.
+OBSERVATORY_ENABLED = False
+
 # Faster password hashing for tests
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",

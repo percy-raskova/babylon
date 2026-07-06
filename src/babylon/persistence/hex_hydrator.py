@@ -280,14 +280,17 @@ def hydrate_hex_state(
 
 
 _HEX_SPATIAL_MAP_INSERT = """
-INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id)
-VALUES (%(h3_index)s, %(county_fips)s, %(state_fips)s, %(region_id)s)
-ON CONFLICT (h3_index) DO NOTHING
+INSERT INTO hex_spatial_map (session_id, h3_index, county_fips, state_fips, region_id)
+VALUES (%(session_id)s, %(h3_index)s, %(county_fips)s, %(state_fips)s, %(region_id)s)
+ON CONFLICT (session_id, h3_index) DO NOTHING
 """
 
 
 def _persist_hex_spatial_map(runtime: Any, hex_rows: list[DynamicHexState]) -> None:
     """Idempotently record each hex's immutable spatial mapping (spec-088 FR-006).
+
+    Session-scoped per migration 0028: each session has its own row set,
+    so concurrent sessions can't wipe each other's spatial map.
 
     Uses ``COPY`` into a temp table + ``INSERT ... ON CONFLICT DO NOTHING``
     for 10-50x speedup over ``executemany`` at national scale (100K+ rows).
@@ -301,6 +304,7 @@ def _persist_hex_spatial_map(runtime: Any, hex_rows: list[DynamicHexState]) -> N
                 _HEX_SPATIAL_MAP_INSERT,
                 [
                     {
+                        "session_id": row.session_id,
                         "h3_index": row.h3_index,
                         "county_fips": row.county_fips,
                         "state_fips": row.state_fips,
@@ -314,20 +318,22 @@ def _persist_hex_spatial_map(runtime: Any, hex_rows: list[DynamicHexState]) -> N
     with pool.connection() as conn, conn.transaction(), conn.cursor() as cur:
         cur.execute(
             "CREATE TEMP TABLE _hex_spatial_map_tmp "
-            "(h3_index TEXT, county_fips TEXT, state_fips TEXT, region_id TEXT) "
+            "(session_id UUID, h3_index TEXT, county_fips TEXT, "
+            "state_fips TEXT, region_id TEXT) "
             "ON COMMIT DROP"
         )
         with cur.copy("COPY _hex_spatial_map_tmp FROM STDIN") as copy:
             for row in hex_rows:
                 copy.write(
-                    f"{row.h3_index}\t{row.county_fips}\t{row.state_fips}\t"
-                    f"{row.region_id}\n".encode()
+                    f"{row.session_id}\t{row.h3_index}\t{row.county_fips}\t"
+                    f"{row.state_fips}\t{row.region_id}\n".encode()
                 )
         cur.execute(
-            "INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id) "
-            "SELECT h3_index, county_fips, state_fips, region_id "
+            "INSERT INTO hex_spatial_map "
+            "(session_id, h3_index, county_fips, state_fips, region_id) "
+            "SELECT session_id, h3_index, county_fips, state_fips, region_id "
             "FROM _hex_spatial_map_tmp "
-            "ON CONFLICT (h3_index) DO NOTHING"
+            "ON CONFLICT (session_id, h3_index) DO NOTHING"
         )
 
 

@@ -114,7 +114,7 @@ SELECT
     h.biocapacity_stock, h.energy_stock, h.raw_material_stock,
     h.internet_access_pct, h.surveillance_coupling
 FROM dynamic_hex_state h
-LEFT JOIN hex_spatial_map m USING (h3_index)
+LEFT JOIN hex_spatial_map m ON m.h3_index = h.h3_index AND m.session_id = h.session_id
 WHERE h.session_id = %s AND h.tick = 0
   AND COALESCE(m.county_fips, h.county_fips) = ANY(%s)
 """

@@ -111,12 +111,12 @@ class TerminalAggregateResolutionError(RunnerError):
     """Spec-102 STEP 0: hex rows exist but county resolution yielded zero.
 
     Guards ``_query_terminal_aggregates`` / ``_county_terminal_snapshot``
-    against the hex_spatial_map contention bug (spec-088 S3): hex rows
-    persist with inline ``county_fips=NULL`` by design — county resolution
-    depends entirely on the GLOBAL ``hex_spatial_map`` table (populated by
-    ``mise run data:tiger-counties``). If a concurrent lane transiently
-    truncates ``hex_spatial_map`` (or the TIGER load never ran) while this
-    session's hex rows already exist, ``COALESCE(m.county_fips,
+    against the hex_spatial_map resolution gap (spec-088 S3, session-scoped
+    by migration 0028): hex rows persist with inline ``county_fips=NULL``
+    by design — county resolution depends on the session-scoped
+    ``hex_spatial_map`` table. If the hydrator didn't populate
+    ``hex_spatial_map`` for this session (or it was truncated),
+    ``COALESCE(m.county_fips,
     h.county_fips)`` resolves to NULL for every hex row, and
     ``view_runtime_trace_emission`` silently reports
     ``counties_alive=0``/``total_v=0`` — a garbage terminal aggregate that
@@ -629,12 +629,10 @@ def _assert_county_resolution_or_raise(
             "row(s) exist in v_hex_state_asof but county resolution "
             "(hex_spatial_map join in view_runtime_trace_emission) yielded "
             "ZERO counties. Refusing to emit a silent counties_alive=0/"
-            "total_v=0 terminal aggregate — this is the known "
-            "hex_spatial_map/TIGER contention bug (spec-088 S3): a "
-            "concurrent lane may have truncated hex_spatial_map during this "
-            "run, or the TIGER county load never ran "
-            "(`mise run data:tiger-counties`). Re-run after confirming "
-            "hex_spatial_map is populated and stable for the run's duration."
+            "total_v=0 terminal aggregate — hex_spatial_map is not "
+            "populated for this session (migration 0028 session-scoping). "
+            "Re-run after confirming hex_spatial_map has rows for "
+            f"session_id={session_id}."
         )
 
 

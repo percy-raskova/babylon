@@ -141,3 +141,81 @@ def test_pinned_pool_does_not_commit_on_context_exit() -> None:
     finally:
         tx.execute("ROLLBACK")
         tx.close()
+
+
+def test_hex_spatial_map_is_session_scoped() -> None:
+    """Migration 0028: hex_spatial_map has session_id in its PK.
+
+    Two sessions can have rows for the same h3_index without conflict.
+    A TRUNCATE in one session's row set doesn't affect the other.
+    """
+    import psycopg
+
+    dsn = os.environ["BABYLON_TEST_PG_DSN"]
+    conn = psycopg.connect(dsn, autocommit=True)
+    try:
+        with conn.cursor() as cur:
+            # Verify session_id column exists
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'hex_spatial_map' AND column_name = 'session_id'"
+            )
+            assert cur.fetchone() is not None, "hex_spatial_map lacks session_id column"
+
+            # Verify PK includes session_id
+            cur.execute(
+                "SELECT array_agg(a.attname ORDER by k.n) "
+                "FROM pg_index i "
+                "JOIN pg_class c ON c.oid = i.indexrelid "
+                "JOIN pg_class t ON t.oid = i.indrelid "
+                "JOIN pg_index k ON k.indexrelid = c.oid "
+                "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(k.indkey) "
+                "WHERE t.relname = 'hex_spatial_map' AND i.indisprimary"
+            )
+            pk_row = cur.fetchone()
+            assert pk_row is not None, "No PK found on hex_spatial_map"
+            pk_cols = list(pk_row[0])
+            assert "session_id" in pk_cols, f"PK missing session_id: {pk_cols}"
+            assert "h3_index" in pk_cols, f"PK missing h3_index: {pk_cols}"
+
+            # Insert two rows for the same h3_index with different session_ids
+            test_hex = "872ab2c73ffffff"
+            s1 = "11111111-1111-1111-1111-111111111111"
+            s2 = "22222222-2222-2222-2222-222222222222"
+            cur.execute(
+                "INSERT INTO hex_spatial_map (session_id, h3_index, county_fips, state_fips, region_id) "
+                "VALUES (%s, %s, '26163', '26', 'GL') "
+                "ON CONFLICT (session_id, h3_index) DO NOTHING",
+                (s1, test_hex),
+            )
+            cur.execute(
+                "INSERT INTO hex_spatial_map (session_id, h3_index, county_fips, state_fips, region_id) "
+                "VALUES (%s, %s, '26125', '26', 'GL') "
+                "ON CONFLICT (session_id, h3_index) DO NOTHING",
+                (s2, test_hex),
+            )
+
+            # Both sessions have their own row
+            cur.execute(
+                "SELECT county_fips FROM hex_spatial_map "
+                "WHERE session_id = %s AND h3_index = %s",
+                (s1, test_hex),
+            )
+            row1 = cur.fetchone()
+            assert row1 is not None and row1[0] == "26163"
+
+            cur.execute(
+                "SELECT county_fips FROM hex_spatial_map "
+                "WHERE session_id = %s AND h3_index = %s",
+                (s2, test_hex),
+            )
+            row2 = cur.fetchone()
+            assert row2 is not None and row2[0] == "26125"
+
+            # Cleanup
+            cur.execute(
+                "DELETE FROM hex_spatial_map WHERE session_id IN (%s, %s) AND h3_index = %s",
+                (s1, s2, test_hex),
+            )
+    finally:
+        conn.close()

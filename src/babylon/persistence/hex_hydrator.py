@@ -280,20 +280,25 @@ def hydrate_hex_state(
 
 
 _HEX_SPATIAL_MAP_INSERT = """
-INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id)
-VALUES (%(h3_index)s, %(county_fips)s, %(state_fips)s, %(region_id)s)
-ON CONFLICT (h3_index) DO NOTHING
+INSERT INTO hex_spatial_map (session_id, h3_index, county_fips, state_fips, region_id)
+VALUES (%(session_id)s, %(h3_index)s, %(county_fips)s, %(state_fips)s, %(region_id)s)
+ON CONFLICT (session_id, h3_index) DO NOTHING
 """
 
 
 def _persist_hex_spatial_map(runtime: Any, hex_rows: list[DynamicHexState]) -> None:
-    """Idempotently record each hex's immutable spatial mapping (spec-088 FR-006)."""
+    """Idempotently record each hex's immutable spatial mapping (spec-088 FR-006).
+
+    Session-scoped per migration 0028: each session has its own row set,
+    so concurrent sessions can't wipe each other's spatial map.
+    """
     pool = runtime._pool  # noqa: SLF001
     with pool.connection() as conn:
         conn.cursor().executemany(
             _HEX_SPATIAL_MAP_INSERT,
             [
                 {
+                    "session_id": row.session_id,
                     "h3_index": row.h3_index,
                     "county_fips": row.county_fips,
                     "state_fips": row.state_fips,

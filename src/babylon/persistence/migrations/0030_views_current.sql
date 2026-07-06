@@ -52,10 +52,10 @@ intervals AS (
                PARTITION BY h.session_id, h.h3_index ORDER BY h.tick
            ) AS next_tick
     FROM dynamic_hex_state h
-    LEFT JOIN hex_spatial_map m USING (h3_index)
+    LEFT JOIN hex_spatial_map m ON m.h3_index = h.h3_index AND m.session_id = h.session_id
 )
 SELECT sp.session_id, sp.tick,
-       hi.h3_index, hi.county_fips, hi.state_fips, hi.region_id,
+        hi.h3_index, hi.county_fips, hi.state_fips, hi.region_id,
        hi.c, hi.v, hi.s, hi.k,
        hi.biocapacity_stock, hi.energy_stock, hi.raw_material_stock,
        hi.internet_access_pct, hi.surveillance_coupling,
@@ -79,7 +79,7 @@ intervals AS (
                PARTITION BY h.session_id, h.h3_index ORDER BY h.tick
            ) AS next_tick
     FROM dynamic_hex_state h
-    LEFT JOIN hex_spatial_map m USING (h3_index)
+    LEFT JOIN hex_spatial_map m ON m.h3_index = h.h3_index AND m.session_id = h.session_id
 ),
 county_events AS (
     SELECT ct.session_id, ct.tick, hi.county_fips,
@@ -130,7 +130,7 @@ intervals AS (
                PARTITION BY h.session_id, h.h3_index ORDER BY h.tick
            ) AS next_tick
     FROM dynamic_hex_state h
-    LEFT JOIN hex_spatial_map m USING (h3_index)
+    LEFT JOIN hex_spatial_map m ON m.h3_index = h.h3_index AND m.session_id = h.session_id
 ),
 state_events AS (
     SELECT ct.session_id, ct.tick, hi.state_fips,
@@ -259,7 +259,7 @@ intervals AS (
                PARTITION BY h.session_id, h.h3_index ORDER BY h.tick
            ) AS next_tick
     FROM dynamic_hex_state h
-    LEFT JOIN hex_spatial_map m USING (h3_index)
+    LEFT JOIN hex_spatial_map m ON m.h3_index = h.h3_index AND m.session_id = h.session_id
 ),
 county_events AS (
     SELECT ct.session_id, ct.tick, hi.county_fips,

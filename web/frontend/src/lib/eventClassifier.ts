@@ -8,40 +8,46 @@
 
 import type { GameEvent, ClassifiedEvent, EventSeverity } from "@/types/game";
 
-/** Static mapping from event type to default severity. */
+/**
+ * Static mapping from event type to default severity.
+ *
+ * Keys are the lowercase StrEnum *values* the engine emits as `event.type`
+ * (see `src/babylon/models/enums/events.py` `EventType`). The previous
+ * UPPERCASE keys never matched and every lookup fell through to
+ * "informational".
+ *
+ * Removed dead keys (not EventType values — the engine never emits them as
+ * `event.type`):
+ *   - REVOLUTIONARY_VICTORY / ECOLOGICAL_COLLAPSE / FASCIST_CONSOLIDATION are
+ *     `GameOutcome` values, surfaced on the snapshot's endgame state, not as
+ *     events.
+ *   - EVICTION is a `DispossessionType` (legal.py); eviction data surfaces via
+ *     `dispossession_event` / `value_transfer` events.
+ *   - HEAT_CHANGE has no EventType counterpart.
+ *
+ * Replaced approximate keys with the real EventType values:
+ *   - BIFURCATION → bifurcation_threshold + bifurcation_tendency_change
+ *   - EXTRACTION → surplus_extraction
+ *   - SOLIDARITY_FORMED / SOLIDARITY_BROKEN → solidarity_awakening +
+ *     solidarity_spike
+ */
 const EVENT_SEVERITY_MAP: Record<string, EventSeverity> = {
-  // Critical — existential state changes and terminal endgame
-  RUPTURE: "critical",
-  REVOLUTIONARY_VICTORY: "critical",
-  ECOLOGICAL_COLLAPSE: "critical",
-  FASCIST_CONSOLIDATION: "critical",
+  // Critical — existential state changes
+  rupture: "critical",
 
   // Important — phase transitions and strategic shifts
-  BIFURCATION: "important",
-  SOLIDARITY_FORMED: "important",
-  SOLIDARITY_BROKEN: "important",
-  EXCESSIVE_FORCE: "important",
-  UPRISING: "important",
+  bifurcation_threshold: "important",
+  bifurcation_tendency_change: "important",
+  solidarity_awakening: "important",
+  solidarity_spike: "important",
+  excessive_force: "important",
+  uprising: "important",
 
   // Informational — gradual changes and background flow
-  EVICTION: "informational",
-  VALUE_TRANSFER: "informational",
-  CONSCIOUSNESS_SHIFT: "informational",
-  HEAT_CHANGE: "informational",
-  EXTRACTION: "informational",
+  value_transfer: "informational",
+  consciousness_shift: "informational",
+  surplus_extraction: "informational",
 };
-
-/**
- * Determine if an eviction affects a player-controlled territory.
- * Evictions in player territories are critical; others are informational.
- */
-function getEvictionSeverity(event: GameEvent, playerOrgIds: ReadonlySet<string>): EventSeverity {
-  const targetOrgId = event.data?.org_id as string | undefined;
-  if (targetOrgId && playerOrgIds.has(targetOrgId)) {
-    return "critical";
-  }
-  return "informational";
-}
 
 /**
  * Extract a linked entity reference from an event for navigation.
@@ -72,21 +78,9 @@ function extractLinkedEntity(event: GameEvent): {
  *
  * @param event - Raw engine event
  * @param index - Index within the tick's event array (for unique ID generation)
- * @param playerOrgIds - Set of organization IDs the player controls (for
- *   context-sensitive severity, e.g. evictions)
  */
-export function classifyEvent(
-  event: GameEvent,
-  index: number,
-  playerOrgIds: ReadonlySet<string> = new Set(),
-): ClassifiedEvent {
-  let severity: EventSeverity;
-
-  if (event.type === "EVICTION") {
-    severity = getEvictionSeverity(event, playerOrgIds);
-  } else {
-    severity = EVENT_SEVERITY_MAP[event.type] ?? "informational";
-  }
+export function classifyEvent(event: GameEvent, index: number): ClassifiedEvent {
+  const severity: EventSeverity = EVENT_SEVERITY_MAP[event.type] ?? "informational";
 
   const { linkedEntityId, linkedEntityType } = extractLinkedEntity(event);
 
@@ -104,9 +98,6 @@ export function classifyEvent(
 /**
  * Classify an array of events from a single tick.
  */
-export function classifyEvents(
-  events: GameEvent[],
-  playerOrgIds: ReadonlySet<string> = new Set(),
-): ClassifiedEvent[] {
-  return events.map((event, index) => classifyEvent(event, index, playerOrgIds));
+export function classifyEvents(events: GameEvent[]): ClassifiedEvent[] {
+  return events.map((event, index) => classifyEvent(event, index));
 }

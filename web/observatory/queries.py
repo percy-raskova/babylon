@@ -335,6 +335,9 @@ def fetch_hex_frame(
 __all__ = [
     "SCOPE_VIEWS",
     "DEFAULT_MAX_TICK_SPAN",
+    "DEFAULT_HEX_LIMIT",
+    "MAX_HEX_LIMIT",
+    "DEFAULT_SESSION_LIMIT",
     "build_series_query",
     "build_hex_query",
     "fetch_sessions",

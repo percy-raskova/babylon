@@ -43,6 +43,28 @@ every `/api/observatory/*` endpoint returns 404 and the `/observatory` page
 renders a disabled state. See
 `specs/096-observatory-foundation/quickstart.md`.
 
+### `source=live | archive` (spec-099 deep panes)
+
+Every Observatory read accepts a `source` selector (a dropdown in the UI):
+
+- **`live`** (default) — reads the runner Postgres via the read-only `sim`
+  alias (above).
+- **`archive`** — reads a session's exported Parquet under
+  `BABYLON_ARCHIVE_ROOT` (default `/media/user/data/babylon-archives`, one
+  directory per session; `mise run sim:archived` shows the root) via an
+  in-memory DuckDB, **read-only** (never writes the Parquet). This is how you
+  browse a run that was archived and purged from Postgres. Archive-source
+  supports the national series, commit chain, hash-chain verification, boundary
+  and conservation panes; state/county series is live-only (archives carry no
+  `hex_spatial_map`).
+
+Deep panes (spec-099): **verify** (`/verify/` — walks the `tick_commit` chain
+and reports contiguity / checkpoint-cadence / hash anomalies), **boundary**
+(`/boundary/` — cross-boundary flows, empty until trade activates in spec-101),
+**conservation** (`/conservation/` — the audit log, warn/alarm filter), and
+**diff** (`/diff/?a=&b=` — two sessions' national series + commit chains).
+See `specs/099-observatory-deep-panes/`.
+
 ## Before You Begin
 
 Ensure you have:

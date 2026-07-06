@@ -143,7 +143,6 @@ export default function App() {
         <Route path="objectives" element={<ObjectivesPage />} />
       </Route>
 
-      <Route path="/dev/hexmap" element={<DevHarness />} />
       <Route
         path="/observatory/*"
         element={

@@ -370,8 +370,11 @@ poetry run python tools/parameter_analysis.py sweep \
 
 [tasks."sim:profile"]
 description = "Profile simulation with cProfile"
-usage = 'arg "[ticks]" help="Number of ticks to profile" default="100"'
-run = "poetry run python tools/profiler.py --ticks ${usage_ticks}"
+usage = '''
+arg "[ticks]" help="Number of ticks to profile" default="100"
+arg "[scope]" help="Predefined scope name (default: detroit-tri-county)" default="detroit-tri-county"
+'''
+run = "poetry run python tools/profiler.py --ticks ${usage_ticks} --scope ${usage_scope}"
 
 [tasks."sim:monte-carlo"]
 description = "Monte Carlo uncertainty quantification"
@@ -783,6 +786,10 @@ poetry run python tools/ingest_tiger_geometry.py --h3-state ${usage_h3_state}
 [tasks."qa:audit-consciousness"]
 description = "AST audit for direct .r/.l/.f mutations bypassing spec-043 routing formula."
 run = "poetry run python tools/audit_simplex_bypasses.py"
+
+[tasks."qa:tick-budget"]
+description = "Spec-104: per-system wallclock budget gate (michigan-statewide 5-tick profile vs ratified budget)"
+run = "BABYLON_PG_DSN=${BABYLON_PG_DSN:-dbname=babylon_test host=localhost port=5433 user=test password=test} poetry run python tools/tick_budget_check.py --ticks 5 --scope michigan-statewide-no-canada"
 
 [tasks."clean:testdb"]
 description = "Recycle the bloated babylon_test DB (test ticks accumulate ~GBs; drop, recreate, re-bootstrap)"

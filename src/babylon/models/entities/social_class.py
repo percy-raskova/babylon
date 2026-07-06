@@ -285,8 +285,8 @@ class SocialClass(BaseModel):
     # Required fields
     id: str = Field(
         ...,
-        pattern=r"^C[0-9]{3}$",
-        description="Unique identifier matching ^C[0-9]{3}$",
+        pattern=r"^C[0-9]{3,}$",
+        description="Unique identifier matching ^C[0-9]{3,}$ (3+ digits for national scale)",
     )
     name: str = Field(
         ...,

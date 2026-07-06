@@ -721,7 +721,11 @@ class WorldStateBridge:
         """Instantiate one labor-aristocracy worker + one bourgeoisie per county.
 
         ID scheme: worker IDs are ``C001..C{N:03d}`` over sorted FIPS;
-        bourgeoisie IDs are offset by 500 (``C501..C{N+500:03d}``).
+        bourgeoisie IDs are offset by ``max(500, N+1)``
+        (``C{offset+1:03d}..C{offset+N:03d}``). The offset is 500 for
+        small scopes (tri-county, Michigan — preserving baseline hashes)
+        and ``N+1`` for scopes where ``N > 499`` (national — preventing
+        worker/bourgeoisie ID collisions).
         Small synthetic populations (worker block 85, bourgeoisie block 15
         per county); the engine evolves these over time.
 
@@ -741,9 +745,11 @@ class WorldStateBridge:
             ``WorldState.entities``.
         """
         entities: dict[str, Any] = {}
+        n_scope = len(scope_fips)
+        bourgeoisie_offset = max(500, n_scope + 1)
         for i, county_fips in enumerate(sorted(scope_fips), start=1):
             worker_id = f"C{i:03d}"
-            bourgeoisie_id = f"C{i + 500:03d}"
+            bourgeoisie_id = f"C{i + bourgeoisie_offset:03d}"
 
             # Spec-066 T050: pass the BASELINE_IDEOLOGY placeholder to
             # both factories so every county starts at (r=0.05, l=0.50,
@@ -801,7 +807,7 @@ class WorldStateBridge:
         For each county ``i`` over sorted FIPS:
 
         - EXPLOITATION: worker (``C{i:03d}``) -> bourgeoisie
-          (``C{i+500:03d}``), tension=0.1 — the path ImperialRentSystem
+          (``C{i+offset:03d}``), tension=0.1 — the path ImperialRentSystem
           walks (Φ extraction -> agitation -> consciousness drift).
         - TENANCY: worker -> territory (``T{i:03d}``) — the path
           ProductionSystem requires to generate production.
@@ -830,9 +836,10 @@ class WorldStateBridge:
             A list of ``Relationship`` instances, two per county.
         """
         relationships: list[Relationship] = []
+        bourgeoisie_offset = max(500, len(scope_fips) + 1)
         for i, _county_fips in enumerate(sorted(scope_fips), start=1):
             proletariat_id = f"C{i:03d}"
-            bourgeoisie_id = f"C{i + 500:03d}"
+            bourgeoisie_id = f"C{i + bourgeoisie_offset:03d}"
             territory_id = f"T{i:03d}"
             if proletariat_id not in entities or bourgeoisie_id not in entities:
                 # _build_per_county_entities is the only producer; this is

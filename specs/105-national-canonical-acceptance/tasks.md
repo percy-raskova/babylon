@@ -2,14 +2,15 @@
 
 ## Part 1: Liveness gate (TDD)
 
-- [ ] T01 — RED: `test_liveness_gate.py` — gate fails when
+- [x] T01 — RED: `test_liveness_gate.py` — gate fails when
       `counties_alive < N_scope`; gate passes when equal; gate is
       no-op when flag is False
-- [ ] T02 — GREEN: `SimulationRunConfig.liveness_gate` field +
+- [x] T02 — GREEN: `SimulationRunConfig.liveness_gate` field +
       `--liveness-gate` CLI flag + runner assertion
       (`_assert_liveness_or_raise` helper)
-- [ ] T03 — REFACTOR: extract assertion logic into testable helper
-- [ ] T04 — Commit: `feat(gate): spec-105 --liveness-gate runtime assertion`
+- [x] T03 — REFACTOR: assertion logic in testable helper, 6 unit tests
+      all passing
+- [x] T04 — Commit: `feat(gate): spec-105 --liveness-gate runtime assertion`
 
 ## Part 2: National validation run
 

@@ -175,11 +175,14 @@ class ContradictionFieldSystem(SystemBase):
         field_min = services.defines.contradiction_field.field_min
         field_max = services.defines.contradiction_field.field_max
         atomization = self._atomization_gap(graph)
+        tension_index = self._build_tension_index(graph)
 
         for node in graph.query_nodes(node_type="social_class"):
             node_id = node.id
+            tensions = tension_index.get(node_id)
+            exploitation = sum(tensions) / len(tensions) if tensions else 0.0
             raw = {
-                "exploitation": self._incident_tension_mean(graph, node_id),
+                "exploitation": exploitation,
                 "atomization": atomization,
             }
             contradiction_fields = {
@@ -193,6 +196,47 @@ class ContradictionFieldSystem(SystemBase):
                 field_history.append(contradiction_fields[field_name])
                 while len(field_history) > _MAX_HISTORY_WINDOW:
                     field_history.pop(0)
+
+    @staticmethod
+    def _build_tension_index(graph: GraphProtocol) -> dict[str, list[float]]:
+        """Build ``{node_id: [tension, ...]}`` in a single pass over field edges.
+
+        Replaces the O(N x M) per-node scan (``_incident_tension_mean`` called
+        once per social_class node, each call rescanning all M field edges of
+        3 types) with an O(N + M) single pass: iterate each field edge type
+        ONCE, appending each edge's fresh ``tension`` to both endpoints' lists.
+        Per-node lookup is then O(1).
+
+        Order preservation (R-PROOF / ADR033 determinism): tensions land in
+        each node's list in the SAME order as ``_incident_tension_mean`` would
+        have produced — outer loop over ``_FIELD_EDGE_TYPES`` (fixed tuple
+        order), inner loop over ``query_edges`` (insertion order) — so
+        ``sum(tensions) / len(tensions)`` is bit-identical to the per-node
+        scan and the tick determinism hash is unchanged. A self-loop
+        (``source_id == target_id``) is counted once, matching the original
+        ``node_id in (source_id, target_id)`` membership semantics.
+
+        Args:
+            graph: Mutable GraphProtocol carrying @18's fresh edge tensions.
+
+        Returns:
+            Dict mapping each incident node id to its ordered tension list.
+            Nodes with no incident field edges are absent; callers treat
+            missing keys as 0.0.
+        """
+        index: dict[str, list[float]] = {}
+        for edge_type in _FIELD_EDGE_TYPES:
+            for edge in graph.query_edges(edge_type=edge_type):
+                raw = edge.attributes.get("tension")
+                if not isinstance(raw, (int, float)):
+                    continue
+                tension = float(raw)
+                source_id = edge.source_id
+                target_id = edge.target_id
+                index.setdefault(source_id, []).append(tension)
+                if target_id != source_id:
+                    index.setdefault(target_id, []).append(tension)
+        return index
 
     @staticmethod
     def _incident_tension_mean(graph: GraphProtocol, node_id: str) -> float:

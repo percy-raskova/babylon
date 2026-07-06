@@ -1015,7 +1015,23 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         # auditor's buffer collects. A fresh SimulationEngine instance (not
         # the module-level _DEFAULT_ENGINE singleton) avoids test-isolation
         # contamination if multiple runs share a process.
-        services = ServiceContainer.create(defines=defines)
+        #
+        # Spec-E101: wire gamma_III + MELT calculators into the
+        # ServiceContainer so TickDynamicsSystem actually computes
+        # reproductive visibility instead of no-opping on the hardcoded
+        # 0.33 default. MELT is required to pass the
+        # ``melt_calculator is not None`` gate at
+        # ``tick/system/__init__.py:136`` before gamma is reached.
+        from babylon.reference.database import get_normalized_session_factory
+
+        calc_session_factory = get_normalized_session_factory()
+        economics_overrides = _build_economics_overrides(
+            session_factory=calc_session_factory,
+        )
+        services = ServiceContainer.create(
+            defines=defines,
+            **economics_overrides,
+        )
         services.event_bus = event_bus
         services.boundary_register = boundary_register
         services.auditor = auditor

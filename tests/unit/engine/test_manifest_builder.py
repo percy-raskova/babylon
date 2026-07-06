@@ -16,7 +16,11 @@ from babylon.engine.headless_runner.manifest import (
     build_manifest,
     input_hash,
 )
-from babylon.engine.headless_runner.models import ExitReason, SimulationRunConfig
+from babylon.engine.headless_runner.models import (
+    ExitReason,
+    ScheduledBlocShock,
+    SimulationRunConfig,
+)
 
 
 def _make_config(tmp_path: Path) -> SimulationRunConfig:
@@ -202,3 +206,48 @@ class TestManifestPayload:
         assert entry["name"] == "trace.csv"
         assert len(entry["sha256"]) == 64
         assert entry["size_bytes"] > 0
+
+
+class TestShockScheduleInInputHash:
+    """shock_schedule is determinism-relevant and must participate in input_hash."""
+
+    def _build(self, tmp_path: Path, shock_schedule: tuple[ScheduledBlocShock, ...] = ()) -> dict:
+        config = SimulationRunConfig(
+            ticks=100,
+            start_year=2010,
+            random_seed=2010,
+            scope_name="detroit-tri-county",
+            scope_fips=frozenset({"26163", "26125", "26099"}),
+            external_node_ids=frozenset({"canada"}),
+            output_dir=tmp_path,
+            shock_schedule=shock_schedule,
+        )
+        _write_artifact(tmp_path, "trace.csv")
+        return build_manifest(
+            config=config,
+            session_id="00000000-0000-0000-0000-000000000000",
+            exit_reason=ExitReason.COMPLETED,
+            wallclock_start=datetime(2026, 7, 4, 12, 0, tzinfo=UTC),
+            wallclock_end=datetime(2026, 7, 4, 12, 5, tzinfo=UTC),
+            artifact_dir=tmp_path,
+            artifact_files=[_write_artifact(tmp_path, "trace.csv")],
+            defines_hash="d" * 64,
+            data_versions={},
+        )
+
+    def test_different_shock_schedules_produce_different_hash(self, tmp_path: Path) -> None:
+        no_shocks = self._build(tmp_path)
+        with_shock = self._build(
+            tmp_path,
+            shock_schedule=(ScheduledBlocShock(tick=52, bloc="china", phi_multiplier=2.0),),
+        )
+        assert (
+            no_shocks["reproducibility"]["input_hash"]
+            != with_shock["reproducibility"]["input_hash"]
+        )
+
+    def test_identical_shock_schedules_produce_same_hash(self, tmp_path: Path) -> None:
+        shock = (ScheduledBlocShock(tick=52, bloc="china", phi_multiplier=2.0),)
+        a = self._build(tmp_path, shock_schedule=shock)
+        b = self._build(tmp_path, shock_schedule=shock)
+        assert a["reproducibility"]["input_hash"] == b["reproducibility"]["input_hash"]

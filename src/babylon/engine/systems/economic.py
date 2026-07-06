@@ -93,14 +93,16 @@ class ImperialRentSystem(SystemBase):
 
         # Spec 063 sub-stage 5b — Imperial Rent inflow (T079 / FR-017..FR-022).
         # Invoked before Vol II Circulation per spec-062 FR-053 sub-stage order.
-        self._invoke_phi_distribution_if_wired(context)
+        self._invoke_phi_distribution_if_wired(context, services)
 
         # Spec 063 sub-stage 5c — Vol II Circulation (FR-015).
         # Guarded by context presence so existing tests without
         # session/register infrastructure remain green (back-compat).
         self._invoke_vol2_circulation_if_wired(graph, context)
 
-    def _invoke_phi_distribution_if_wired(self, context: ContextType) -> None:
+    def _invoke_phi_distribution_if_wired(
+        self, context: ContextType, services: ServiceContainer | None = None
+    ) -> None:
         """Distribute Φ inflow from external nodes to US counties (T079).
 
         Spec 063 T027 — closes the seam left by spec 062 by invoking
@@ -115,6 +117,17 @@ class ImperialRentSystem(SystemBase):
         Silent no-op when any input is missing (back-compat). External
         nodes with phi_year_inflow == 0 contribute zero DRAIN_EDGE rows
         per FR-020 but do NOT fail the tick.
+
+        Args:
+            context: The per-tick context carrying the four keys above.
+            services: Optional :class:`ServiceContainer` (spec-101 review
+                minor). When supplied, ``weeks_per_year`` is sourced from
+                ``services.defines.timescale.weeks_per_year`` instead of an
+                independently-hardcoded ``52`` literal (III.1/DRY). Defaults
+                to ``None`` for back-compat with callers/tests that invoke
+                this seam directly without a service container — the
+                fallback default (52) is byte-identical to the tunable's
+                own default.
         """
         register = context.get("boundary_flow_register")
         session_id = context.get("session_id")
@@ -128,13 +141,20 @@ class ImperialRentSystem(SystemBase):
         ):
             return
         tick = context.get("tick", 0)
+        weeks_per_year = (
+            float(services.defines.timescale.weeks_per_year) if services is not None else 52.0
+        )
 
         # Local import to avoid a top-of-module circular with engine systems.
         from babylon.engine.systems.phi_distribution import (
             distribute_phi_week_to_counties,
         )
 
-        for node_id, phi_year_inflow in external_nodes_phi.items():
+        # Spec-101 review minor: sorted iteration for deterministic
+        # register-write order (Constitution III.7) — the dict's insertion
+        # order otherwise reflects Postgres' unspecified SELECT order.
+        for node_id in sorted(external_nodes_phi):
+            phi_year_inflow = external_nodes_phi[node_id]
             if phi_year_inflow <= 0:
                 continue  # FR-020 — zero-inflow nodes contribute nothing
             county_exposure = county_exposure_by_external.get(node_id)
@@ -147,6 +167,7 @@ class ImperialRentSystem(SystemBase):
                 phi_year_inflow=float(phi_year_inflow),
                 county_exposure=county_exposure,
                 register=register,
+                weeks_per_year=weeks_per_year,
             )
 
     def _invoke_vol2_circulation_if_wired(

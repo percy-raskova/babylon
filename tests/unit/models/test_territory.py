@@ -94,7 +94,7 @@ class TestTerritoryIdValidation:
             ("t001", "lowercase"),
             (PERIPHERY_WORKER_ID, "wrong_prefix"),
             ("T01", "too_short"),
-            ("T0001", "too_long"),
+            ("T001A", "letter_suffix"),
         ],
         ids=["lowercase", "wrong_prefix", "too_short", "too_long"],
     )

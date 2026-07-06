@@ -141,13 +141,18 @@ def test_aggregation_matches_register() -> None:
             pool=pool,
             session_id=str(result.session_id),  # type: ignore[attr-defined]
         )
-        # Direct SQL truth.
+        # Direct SQL truth. Spec-101 review fix #5: the external node ('canada')
+        # is NOT reliably on one fixed side — the injected synthetic row (below)
+        # puts it on dest_node_id, while real DRAIN_EDGE rows from
+        # phi_distribution.py put it on source_node_id (bloc is the SOURCE,
+        # county is the DEST). Match either side, same as the fixed aggregator.
         with pool.connection() as conn:
             sql_row = conn.execute(
                 "SELECT SUM(magnitude) "
                 "FROM boundary_flow_register "
-                "WHERE session_id = %s AND dest_node_id = 'canada' "
-                "AND flow_type = 'drain_edge'",
+                "WHERE session_id = %s AND flow_type = 'drain_edge' "
+                "AND (  (source_kind = 'external' AND source_node_id = 'canada') "
+                "    OR (dest_kind = 'external' AND dest_node_id = 'canada') )",
                 (str(result.session_id),),  # type: ignore[attr-defined]
             ).fetchone()
     finally:

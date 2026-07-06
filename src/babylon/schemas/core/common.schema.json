@@ -31,8 +31,8 @@
 
     "ClassId": {
       "type": "string",
-      "pattern": "^(C[0-9]{3}|[a-z_]+)$",
-      "description": "Class identifier (e.g., C001 or bourgeoisie)"
+      "pattern": "^(C[0-9]{3,}|[a-z_]+)$",
+      "description": "Class identifier (e.g., C001 or bourgeoisie; 3+ digits for national scale)"
     },
 
     "MovementId": {

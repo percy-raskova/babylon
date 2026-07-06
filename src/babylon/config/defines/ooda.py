@@ -303,6 +303,13 @@ class OODADefines(BaseModel):
         default=2, ge=1, description="AP cost: ATTACK_INFRASTRUCTURE"
     )
     base_cost_assimilate: int = Field(default=2, ge=1, description="AP cost: ASSIMILATE")
+    # Spec-071 fascist verbs.
+    base_cost_pogrom: int = Field(default=3, ge=1, description="AP cost: POGROM")
+    base_cost_lockout: int = Field(default=2, ge=1, description="AP cost: LOCKOUT")
+    base_cost_vigilantism: int = Field(default=2, ge=1, description="AP cost: VIGILANTISM")
+    base_cost_red_brown_coup: int = Field(
+        default=1, ge=1, description="AP cost: RED_BROWN_COUP (auto-triggered; nominal)"
+    )
 
     # --- Layer 3 propagation coefficients ---
     repress_heat_delta: float = Field(
@@ -429,6 +436,10 @@ class OODADefines(BaseModel):
             "build_infrastructure": self.base_cost_build_infrastructure,
             "attack_infrastructure": self.base_cost_attack_infrastructure,
             "assimilate": self.base_cost_assimilate,
+            "pogrom": self.base_cost_pogrom,
+            "lockout": self.base_cost_lockout,
+            "vigilantism": self.base_cost_vigilantism,
+            "red_brown_coup": self.base_cost_red_brown_coup,
         }
         if action_type not in cost_map:
             msg = f"Unknown action type: {action_type}"

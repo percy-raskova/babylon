@@ -130,3 +130,23 @@ def test_config_error_yields_exit_2(
     assert code == 2
     err = capsys.readouterr().err
     assert "ERROR CONFIG_ERROR" in err
+
+
+def test_terminal_aggregate_resolution_error_yields_exit_5(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TerminalAggregateResolutionError must map to exit code 5."""
+
+    def _fake_run(config: Any) -> Any:
+        raise runner_mod.TerminalAggregateResolutionError(
+            "hex rows exist but county resolution yielded ZERO counties"
+        )
+
+    monkeypatch.setattr(runner_mod, "run", _fake_run)
+    args = _args(tmp_path)
+    code = runner_mod.main_from_argv(args)
+    assert code == 5
+    err = capsys.readouterr().err
+    assert "ERROR TERMINAL_AGGREGATE_RESOLUTION_FAILURE" in err

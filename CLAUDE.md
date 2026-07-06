@@ -236,7 +236,7 @@ Three-layer local system (no external servers):
 The simulation engine uses modular Systems with dependency injection.
 Per spec-066 ADR044, the bridged headless runner now actually invokes
 `SimulationEngine.run_tick(graph, services, context)` on every tick;
-the engine runs the 25 default systems in this materialist-causality
+the engine runs the 26 default systems in this materialist-causality
 order (source: `simulation_engine._DEFAULT_SYSTEMS`; spec-070 added the
 three x.5 balkanization systems marked below):
 
@@ -266,6 +266,7 @@ Consequences (positions 14.5-21, incl. spec-070 x.5 systems):
   15.  SurvivalSystem              - Risk assessment (P(S|A), P(S|R))
   16.  StruggleSystem              - Agency layer (George Floyd dynamic, EXCESSIVE_FORCE / UPRISING)
   17.  ConsciousnessSystem         - Ideology drift + bifurcation
+  17.4 FascistFactionSystem        - Reactionary drift + fascist capture + chauvinism/defection (spec-071)
   17.5 SovereigntySystem           - Sovereign legitimacy + secession dynamics (spec-070)
   18.  ContradictionSystem         - Systemic tension accounting
   19.  ContradictionFieldSystem    - Field computation (Feature 002)
@@ -291,7 +292,7 @@ here was the early MVP cut from spec-001 (now historical).
 **Key Components**:
 - `src/babylon/engine/simulation_engine.py` - Orchestrates Systems
 - `src/babylon/engine/services.py` - ServiceContainer (DI container)
-- `src/babylon/engine/event_bus.py` - Publish/subscribe event bus (plain-str event types; the EventType enum — 71 values — lives in `src/babylon/models/enums/events.py`)
+- `src/babylon/engine/event_bus.py` - Publish/subscribe event bus (plain-str event types; the EventType enum — 79 values — lives in `src/babylon/models/enums/events.py`)
 - `src/babylon/engine/formula_registry.py` - 12 hot-swappable formulas
 - `src/babylon/engine/simulation.py` - Stateful facade for multi-tick runs
 - `src/babylon/engine/factories.py` - `create_proletariat()`, `create_bourgeoisie()`
@@ -325,7 +326,7 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 
 ## Formula System
 
-55 public formula functions across 17 modules in `src/babylon/formulas/`:
+59 public formula functions across 18 modules in `src/babylon/formulas/`:
 
 | Module | Formulas |
 |--------|----------|
@@ -342,6 +343,7 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 | `class_dynamics` | `calculate_wealth_flow`, `calculate_class_dynamics_derivative`, `calculate_wealth_acceleration`, `calculate_full_dynamics`, `calculate_equilibrium_deviation`, `invert_wealth_to_population` |
 | `lifecycle` | `compute_population_flow`, `compute_dependency_ratio`, `compute_legitimation_index`, `compute_pareto_gini`, `compute_ideology_transmission`, `compute_shadow_subsidy` |
 | `balkanization` (spec-070) | `calculate_metabolic_impact`, `derive_extraction_policy_from_stance`, `derive_default_multipliers_from_stance`, `winning_faction_for_territory`, `detect_red_settler_trap`, `contiguous_influence_majority_subregion`, `extrapolate_habitability` |
+| `reactionary` (spec-071) | `calculate_fascist_pull`, `calculate_defection_probability`, `calculate_spontaneous_riot_risk`, `calculate_entitlement_effective` (+ RLF-simplex helpers `assimilation_ratio`, `ideological_contestation`, `apply_fr_gate` in `consciousness_routing`) |
 | `contradiction` / `vitality` / `curvature` | `calculate_contradiction_intensity`, `calculate_mortality_rate`, `compute_ollivier_ricci` |
 
 Note: imperial-rent math lives in `src/babylon/economics/` (tensor + Leontief pipeline, specs 011/057), not in `formulas/`.

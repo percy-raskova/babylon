@@ -1,0 +1,76 @@
+ADR056_spec102_gamma_hydration_and_shocks:
+  status: "accepted"
+  date: "2026-07-04"
+  spec: "102-gamma-shocks"
+  title: "Gamma hydration (alpha + gamma_import per year) + deterministic scheduled bloc shocks — verified baseline-neutral, no re-baseline"
+  context: |
+    spec-102 was scoped to kill the hardcoded MVP seam in
+    basket_visibility.py (MVP_ALPHA=0.25, MVP_GAMMA_IMPORT=0.35,
+    MVP_GAMMA_BASKET=0.68) by hydrating both coefficients per year from the
+    reference DB, and to add deterministic scheduled bloc shocks to
+    external-node Phi inflow. The task explicitly required determining
+    whether gamma hydration is wired into the canonical headless runner
+    before deciding whether a re-baseline was needed, and running an
+    empirical (not merely inferred) proof either way.
+  decision: |
+    (1) Gamma hydration: SQLiteGammaHydrationSource (SQLAlchemy adapter,
+    matches melt/adapters.py's session-factory pattern) computes alpha =
+    Sigma(fact_bilateral_trade_annual.imports_usd_millions) /
+    Sigma(fact_bea_final_demand_annual.total_final_uses_millions) per
+    annual time_id, and gamma_import = 1/fact_hickel_erdi_annual.erdi
+    (scale_type="Intensive" default). DefaultBasketVisibilityCalculator
+    gained an optional hydration_source constructor param (default None,
+    100% backward-compatible); when injected and alpha/gamma_import are not
+    explicitly passed, it hydrates before falling back to MVP. Hickel's own
+    "alpha" column was deliberately NOT reused (it climbs to 1.000 by 2016
+    in the ingested CSV — a different Hickel-methodology parameter, not
+    plausible as "import share of consumption"; reusing it would be a
+    false-cognate fabrication, III.8). economics/factory.py wires the
+    source into create_economics_services().
+    (2) Verified (not assumed) that gamma hydration requires NO canonical
+    re-baseline: TickDynamicsSystem (the sole caller of get_gamma_basket)
+    writes its output only to territory-node graph attrs + a separate
+    persist_graph_metadata() sink, never to dynamic_hex_state (the sole
+    source of the canonical baseline's gated fields) — AND, decisively,
+    ServiceContainer.create(defines=defines) in runner.py never wires
+    melt_calculator/basket_calculator at all, so TickDynamicsSystem is an
+    unconditional no-op in every headless-runner execution today. Both
+    tests/baselines/michigan-e2e.json and detroit-tri-county-5t.json remain
+    valid, unmodified.
+    (3) Scheduled bloc shocks: ScheduledBlocShock (frozen Pydantic model:
+    tick, bloc, phi_multiplier) + SimulationRunConfig.shock_schedule
+    (default empty tuple). The tick loop applies due shocks via a
+    level-set (not cumulative) per-bloc multiplier map, recomputing the
+    effective external_nodes_phi passed into TickContext each tick. Blocs
+    stay non-agentic (R-AMEND) — shocks are declarative scenario data.
+    (4) Course-corrected the shock-determinism proof method during
+    implementation, empirically: the planned tick_commit.determinism_hash
+    diff across two runs was found to ALWAYS diverge (that hash embeds
+    session_id by construction), and conservation_audit_log's
+    determinism_hash (computed via compute_determinism_hash, whose
+    signature looks state-pure) ALSO diverges — because the DynamicHexState
+    Pydantic rows it hashes carry their own session_id field, which leaks
+    into model_dump(mode="json"). Confirmed this is pre-existing (not
+    spec-102-introduced) by running the unmodified spec-101 baseline twice
+    with an empty shock_schedule — it diverges identically. The shipped
+    determinism test instead compares raw persisted values (hex-level
+    c/v/s/k from v_hex_state_asof; per-bloc DRAIN_EDGE magnitudes from
+    boundary_flow_register) between two runs of the identical shock
+    config — both byte-identical, verified GREEN.
+  rationale:
+    iii_1_no_magic_numbers: "Kills the exact seam III.1 flags; MVP constants remain only as the documented, disclosed degrade path for years outside Hickel/BEA data coverage (1980-2016 Intensive window)."
+    iii_8_data_grounding: "alpha and gamma_import are both grounded in real reference tables (BEA final demand + bilateral trade + Hickel ERDI); the coverage gap for years outside 1980-2016 is disclosed, not silently ignored; Hickel's own alpha column is explicitly not repurposed to avoid a false-cognate fabrication."
+    r_amend: "Shocks are pure exogenous scripted perturbations declared in scenario config; blocs never decide to shock themselves."
+    verification_first: "Both major claims in this spec (baseline-neutrality; determinism-gate mechanics) were established by running real code against a real Postgres test DB, not by static code reading alone — the determinism-gate claim was corrected mid-implementation precisely because the empirical test caught a wrong assumption."
+  consequences:
+    positive:
+      - "Gamma hydration is real (SQLiteGammaHydrationSource) and reachable via create_economics_services(); the canonical headless-runner baseline needed zero changes."
+      - "Scheduled bloc shocks give the Observatory-facing shock scenario a real, deterministic, tested primitive."
+      - "Surfaced and disclosed (not fixed) a genuine latent gap: both on-disk 'determinism hash' tables (tick_commit, conservation_audit_log) embed session_id and are therefore NOT directly comparable across independent runs — a finding useful to whoever eventually revisits cross-run determinism tooling."
+    negative:
+      - "TickDynamicsSystem (and therefore this spec's gamma hydration) remains entirely unreached by the headless runner — a pre-existing gap (melt_calculator/basket_calculator never wired into ServiceContainer.create in runner.py) that spec-102 discovered but did not close, since closing it is out of spec-102's scope and would itself require its own re-baseline/proof cycle."
+      - "trade_multiplier (mentioned in the program brief) was not implemented — bilateral_trade_value has no active per-tick consumer today (vol2_step's TRADE_EDGE stays gated per spec-101 D5, pending 098-LODES), so a trade_multiplier field would be inert; disclosed as FR-102-8 rather than shipped as dead functionality."
+  owner_review:
+    - "Whether TickDynamicsSystem should be wired into the headless runner's ServiceContainer construction (a separate future task) — until then, gamma hydration (and MELT) exist in the codebase but never execute in any headless-runner scope."
+    - "Whether the tick_commit/conservation_audit_log session-id-leak in the determinism-hash instrumentation is worth a dedicated remediation spec (flagged here, not fixed — same class as the STEP-0 guard's deferred session-scoping half)."
+    - "Whether trade_multiplier should be added to ScheduledBlocShock once 098-LODES activates vol2_step's TRADE_EDGE path."

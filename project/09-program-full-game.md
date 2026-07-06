@@ -371,7 +371,29 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**spec-100 — County-exposure loader (BEA I-O imports × QCEW shares)** (~1–2 sprints)
+**spec-100 — County-exposure loader (BEA I-O imports × QCEW shares)** —
+**DONE 2026-07-04** (branch `100-county-exposure`; two repos)
+
+- **Result**: `specs/100-county-exposure/` (speckit specify→plan→tasks→implement).
+  Two NEW SQLite reference tables (additive to `src/babylon/reference/schema.py`):
+  `fact_county_exposure_by_external` (384,200 rows = 8 blocs × ~3204 counties ×
+  15 yrs) + `fact_bilateral_trade_annual` (120 rows). Loader in babylon-data
+  `src/babylon_data/exposure/` (compute/writer/audit/validation/`__main__`) +
+  `src/babylon_data/trade/bilateral.py`; `mise run data:exposure`. All gates
+  green on the real DB: per-(bloc,year) weights sum to 1.0 (120/120),
+  weight-conservation invariant ±2% (internal consistency, NOT external
+  reconciliation — none exists for this measure), `logical_table_hash` reproduces
+  run-to-run (H1==H2), schema-valid audit artifact. Coverage 15–21% (goods-biased
+  `bridge_naics_bea` concordance → tradeable-goods import exposure; documented,
+  not a stub). 38 loader tests + 7 schema tests. Zero engine-dynamics change.
+
+- **Notes for spec-101** (in the spec's research.md): the 8 `dim_country`
+  is_region blocs (EU/ATP/NA/Europe/Africa/Pacific Rim/Asia/Australia) differ
+  from the engine's 8 external node_ids (canada/china/eu/…) — but the exposure
+  distribution is bloc-invariant (no bloc×industry data in the DB), so spec-101
+  may broadcast one map to all nodes. Trade agg is USD → feeds
+  `bilateral_trade_value`, NOT `bilateral_trade_tons` (needs FAF freight, out
+  of scope). `world_system_tier` is NULL for all 8 blocs by loader design.
 
 - **Scope**: build the never-computed `county_exposure_by_external`
   weight map — the exact formula named in
@@ -389,12 +411,20 @@ ______________________________________________________________________
   minerals ("regions with resources" — `fact_state_minerals`,
   `fact_mineral_production`, `dim_import_source` all exist at 0
   rows) is a FLAGGED STRETCH, not folded in (§6).
+
 - **Files**: babylon-data `src/babylon_data/exposure/` (new),
   `src/babylon/reference/schema.py` (additive),
   `.mise.toml` (`data:exposure` task).
+
 - **Deps**: none. Zero engine-dynamics change, zero baseline churn.
+
 - **TDD**: 086's fixture pattern (CSV builders, in-memory ORM
-  seeding); reconciliation gate ±2% against published import totals.
+  seeding); weight-conservation invariant ±2% (Σ raw exposure vs Σ covered
+  BEA import coefficient — an INTERNAL consistency invariant, since no
+  independent published import total exists in the DB for this measure;
+  corrected from the original "reconciliation against published totals"
+  wording per the spec-100 adversarial review).
+
 - **Gate**: `mise run data:exposure` green with audit artifact;
   per-bloc weights sum to 1.0; table hash reproduces run-to-run.
 
@@ -428,15 +458,35 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-**spec-071 — Reactionary Subject** (next; unchanged)
+**spec-071 — Reactionary Subject** — **IMPLEMENTED 2026-07-04 (ADR054), in review**
 
 Per `03-next-spec-071.md`. First in the lane; both foundations
-(ADR051 dialectics, ADR052 substrate) landed 2026-07-03. Its proof
-window closes before 101 opens.
+(ADR051 dialectics, ADR052 substrate) landed 2026-07-03. Branch
+`071-reactionary-subject`. FascistFactionSystem @17.4
+(pipeline 25→26); entitlement/volatility/fascist_alignment/aligned_faction_id
+on SocialClass; chauvinism/defection/RED_BROWN_COUP; L_u SPONTANEOUS_RIOT;
+POGROM/LOCKOUT/VIGILANTISM OODA verbs; carceral create-on-demand; RLF
+simplex helpers; ReactionaryDefines. **Proof window CLOSED byte-identical**
+(tri-county 5-tick gate total_v Δ=0.000%, liveness 3/3 — the always-on
+system is dormant during the pacified decade, agitation crisis-gated), so no
+re-baseline was required. Canonical 520-tick relaunched at close-out.
+101 may open once the BD merges. Awaiting BD merge to dev.
 
 ______________________________________________________________________
 
 **spec-101 — Trade activation: boundary flows live** (~1–2 sprints)
+
+> **STATUS: CODE DONE 2026-07-04** (branch `101-trade-activation`, ADR055,
+> unmerged; opens the shared 101+102 proof window). Boundary flows populate
+> every tick. **Deviation from scope (repo-verified, program §0 "repo wins")**:
+> (a) the hydrated external nodes carried Φ=0 (Hickel is a single national
+> aggregate, no per-bloc resolution), so spec-101 ATTRIBUTES the national Φ to
+> blocs by bilateral-trade share via an injective node→bloc crosswalk — **#1
+> owner-review item**; (b) `vol2_step` TRADE_EDGE is NOT wired — it is
+> inseparable from COMMUTE_OUT and both need LODES (098-LODES), and the program
+> directs COMMUTE_OUT stays gated; (c) `bilateral_trade_value` (not `_tons`)
+> populated per spec-100 R8. Conservation `Σ DRAIN_EDGE ≡ Φ_week` per bloc gated
+> (relative residual; migration 0031). See `specs/101-trade-activation/`.
 
 - **Scope**: populate the dormant TickContext keys in the runner
   tick loop. Verified state 2026-07-03: `runner.py:311` builds
@@ -471,6 +521,27 @@ ______________________________________________________________________
 ______________________________________________________________________
 
 **spec-102 — Gamma hydration + scheduled bloc shocks** (~1–2 sprints, same proof window as 101)
+
+> **STATUS: CODE DONE 2026-07-04** (branch `102-gamma-shocks`, stacked on
+> `101-trade-activation` at `8210db17`; closes the shared 101+102 proof
+> window). Gamma hydration ships (`SQLiteGammaHydrationSource` computing
+> α from BEA final-demand + bilateral trade, γ_import = 1/Hickel-ERDI) and
+> scheduled bloc shocks ship (`ScheduledBlocShock`, deterministic, empty by
+> default). **Key finding (repo-verified, program §0 "repo wins")**: gamma
+> hydration required **no re-baseline** — `ServiceContainer.create(...)` in
+> the headless runner never wires `melt_calculator`/`basket_calculator`, so
+> `TickDynamicsSystem` (the only caller of
+> `get_gamma_basket`) is an unconditional no-op in every headless-runner
+> execution today (canonical included) — exactly the "like MELT/n_calculator"
+> gap the task brief flagged. **Course-correction (empirical, not assumed)**:
+> the planned `tick_commit.determinism_hash` shock-determinism gate does not
+> work as specified — that hash (and `conservation_audit_log`'s) both embed
+> `session_id`, so they can never match across two independent runs
+> regardless of determinism (confirmed by running the UNMODIFIED spec-101
+> baseline twice — it also diverges). The shipped determinism test compares
+> actual persisted values instead (hex state + DRAIN_EDGE magnitudes,
+> byte-identical across two runs) — see `specs/102-gamma-shocks/proof.md`.
+> See `specs/102-gamma-shocks/`.
 
 - **Scope**: kill the hardcoded seam in
   `src/babylon/economics/melt/basket_visibility.py` (lines ~24–26:

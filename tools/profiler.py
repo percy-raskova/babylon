@@ -6,13 +6,15 @@ bottlenecks. Output can be viewed with snakeviz or pstats.
 Spec-064 migration: this tool now profiles the headless Postgres-backed
 runner via :func:`tools.shared.run_simulation` (no in-memory engine
 imports remain — SC-007).
+Spec-104: ``--scope`` arg added for national-scale profiling.
 
 Usage:
-    poetry run python tools/profiler.py [--ticks N] [--output FILE]
+    poetry run python tools/profiler.py [--ticks N] [--scope NAME] [--output FILE]
 
 Examples:
     poetry run python tools/profiler.py --ticks 100
     poetry run python tools/profiler.py --ticks 50 --output results/profile.prof
+    poetry run python tools/profiler.py --scope national --ticks 20
     snakeviz results/profile.prof
 """
 
@@ -33,14 +35,19 @@ from shared import run_simulation  # noqa: E402
 from babylon.config.defines import GameDefines  # noqa: E402
 
 
-def profile_simulation(ticks: int = 100, output: str | None = None) -> None:
+def profile_simulation(
+    ticks: int = 100,
+    output: str | None = None,
+    *,
+    scope_name: str = "detroit-tri-county",
+) -> None:
     """Profile a single headless simulation run for ``ticks`` ticks."""
     defines = GameDefines.load_default()
-    print(f"Profiling {ticks} simulation ticks via headless_runner...")
+    print(f"Profiling {ticks} ticks (scope={scope_name}) via headless_runner...")
 
     profiler = cProfile.Profile()
     profiler.enable()
-    run_simulation(defines, max_ticks=ticks)
+    run_simulation(defines, max_ticks=ticks, scope_name=scope_name)
     profiler.disable()
 
     stats = pstats.Stats(profiler)
@@ -72,12 +79,19 @@ def main() -> None:
         help="Number of simulation ticks to profile (default: 100)",
     )
     parser.add_argument(
+        "--scope",
+        type=str,
+        default="detroit-tri-county",
+        help="Predefined scope name (default: detroit-tri-county). "
+        "Use 'national' for all ~3,156 US counties (spec-104).",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         help="Output .prof file (optional, prints to stdout if not specified)",
     )
     args = parser.parse_args()
-    profile_simulation(args.ticks, args.output)
+    profile_simulation(args.ticks, args.output, scope_name=args.scope)
 
 
 if __name__ == "__main__":

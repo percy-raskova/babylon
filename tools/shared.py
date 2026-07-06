@@ -228,13 +228,15 @@ def inject_parameters(
 def run_simulation(
     defines: GameDefines,
     max_ticks: int = DEFAULT_MAX_TICKS,
+    *,
+    scope_name: str = "detroit-tri-county",
 ) -> dict[str, Any]:
     """Run a single simulation via the headless Postgres-backed runner.
 
     Spec-064 migration: the legacy in-memory imperial-circuit scenario
     has been replaced by a routed call to
     :func:`babylon.engine.headless_runner.run`, which performs a real
-    Postgres-backed Detroit-tri-county simulation. Result keys preserve
+    Postgres-backed simulation. Result keys preserve
     the legacy dict shape so downstream tools (``tools/monte_carlo.py``,
     ``tools/parameter_analysis.py``, etc.) continue to compile, but
     several fields are degraded since the headless MVP runner does not
@@ -248,6 +250,8 @@ def run_simulation(
             runner's per-tick advancement (which is a no-op carry-forward
             in the MVP — see ``runner.py``).
         max_ticks: Maximum number of ticks to run.
+        scope_name: Predefined scope name (default: ``detroit-tri-county``).
+            Spec-104: pass ``"national"`` to profile all ~3,156 US counties.
 
     Returns:
         Dictionary with:
@@ -271,7 +275,8 @@ def run_simulation(
 
     Note:
         Each call opens a Postgres pool and runs a full session_init +
-        hex_hydration cycle (~9 s for the Detroit tri-county scope), so
+        hex_hydration cycle (~9 s for the Detroit tri-county scope; far
+        longer for ``scope_name="national"`` — ~3,156 counties), so
         Monte Carlo / parameter sweeps that previously executed in
         milliseconds now take seconds per sample. Use small ``max_ticks``
         in test contexts.
@@ -286,7 +291,7 @@ def run_simulation(
     )
     from babylon.engine.headless_runner.scopes import resolve_scope
 
-    scope = resolve_scope("detroit-tri-county")
+    scope = resolve_scope(scope_name)
 
     # Ephemeral output dir — caller doesn't see the artifact bundle here;
     # the run is purely for the result projection.
@@ -294,7 +299,7 @@ def run_simulation(
         config = SimulationRunConfig(
             ticks=max_ticks,
             random_seed=getattr(defines, "rng_seed", 2010),
-            scope_name="detroit-tri-county",
+            scope_name=scope_name,
             scope_fips=scope.scope_fips,
             external_node_ids=scope.external_node_ids,
             output_dir=Path(tmpdir),

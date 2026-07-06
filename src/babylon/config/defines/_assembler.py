@@ -52,6 +52,7 @@ from babylon.config.defines.organizations import (
     NegotiateDefines,
     OrganizationDefines,
 )
+from babylon.config.defines.reactionary import ReactionaryDefines
 from babylon.config.defines.state_apparatus import (
     InstitutionDefines,
     StateApparatusAIDefines,
@@ -173,6 +174,8 @@ class GameDefines(BaseModel):
     institution: InstitutionDefines = Field(default_factory=InstitutionDefines)
     move: MoveDefines = Field(default_factory=MoveDefines)
     negotiate: NegotiateDefines = Field(default_factory=NegotiateDefines)
+    # Reactionary Subject (spec-071)
+    reactionary: ReactionaryDefines = Field(default_factory=ReactionaryDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -297,6 +300,7 @@ class GameDefines(BaseModel):
             institution=InstitutionDefines(**data.get("institution", {})),
             move=MoveDefines(**data.get("move", {})),
             negotiate=NegotiateDefines(**data.get("negotiate", {})),
+            reactionary=ReactionaryDefines(**data.get("reactionary", {})),
         )
 
     @classmethod

@@ -41,6 +41,7 @@ except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.economics.county_exposure import load_county_exposure_map
 from babylon.engine.context import TickContext
 from babylon.engine.event_bus import EventBus
 from babylon.engine.headless_runner.argparse_cli import build_parser
@@ -51,6 +52,7 @@ from babylon.engine.headless_runner.models import (
     AuditEntry,
     ExitReason,
     PerformanceBreakdown,
+    ScheduledBlocShock,
     SimulationRunConfig,
     SimulationRunResult,
 )
@@ -105,6 +107,29 @@ class PostgresUnreachableError(RunnerError):
     exit_name = "POSTGRES_UNREACHABLE"
 
 
+class TerminalAggregateResolutionError(RunnerError):
+    """Spec-102 STEP 0: hex rows exist but county resolution yielded zero.
+
+    Guards ``_query_terminal_aggregates`` / ``_county_terminal_snapshot``
+    against the hex_spatial_map contention bug (spec-088 S3): hex rows
+    persist with inline ``county_fips=NULL`` by design — county resolution
+    depends entirely on the GLOBAL ``hex_spatial_map`` table (populated by
+    ``mise run data:tiger-counties``). If a concurrent lane transiently
+    truncates ``hex_spatial_map`` (or the TIGER load never ran) while this
+    session's hex rows already exist, ``COALESCE(m.county_fips,
+    h.county_fips)`` resolves to NULL for every hex row, and
+    ``view_runtime_trace_emission`` silently reports
+    ``counties_alive=0``/``total_v=0`` — a garbage terminal aggregate that
+    looks like a legitimate all-dead-population outcome. This exact bug
+    once nearly shipped as spec-101's auto-refreshed baseline (caught only
+    by manual review). Raising here converts the silent zero into a loud,
+    diagnosable failure instead.
+    """
+
+    exit_code = 5
+    exit_name = "TERMINAL_AGGREGATE_RESOLUTION_FAILURE"
+
+
 class _StrictAbort(RunnerError):
     """Raised by the tick loop when --strict is set and an alarm row appears.
 
@@ -118,6 +143,21 @@ class _StrictAbort(RunnerError):
         super().__init__(f"critical conservation violation at tick {tick}: {invariant_name}")
         self.tick = tick
         self.invariant_name = invariant_name
+
+
+class LivenessGateFailure(RunnerError):
+    """Spec-105: runtime liveness gate assertion failure.
+
+    Raised by ``_assert_liveness_or_raise`` when the terminal aggregate's
+    county count or population liveness fails the generalized gate. Unlike
+    the STEP-0 guard (spec-102's :class:`TerminalAggregateResolutionError`,
+    which catches the hex-rows-exist-but-zero-counties contention bug),
+    this gate catches silent county drops and population death at any scale
+    (tri-county N=3, Michigan N=83, national N=3156).
+    """
+
+    exit_code = 6
+    exit_name = "LIVENESS_GATE_FAILURE"
 
 
 def _install_sigint_handler() -> None:
@@ -186,6 +226,7 @@ def _build_config(args: argparse.Namespace) -> SimulationRunConfig:
         dry_run=args.dry_run,
         verbose=args.verbose,
         strict=getattr(args, "strict", False),
+        liveness_gate=getattr(args, "liveness_gate", False),
         endgame_detector=getattr(args, "endgame_detector", None),
         write_baseline_to=getattr(args, "write_baseline", None),
     )
@@ -283,6 +324,9 @@ def _advance_tick(
     engine: SimulationEngine | None = None,
     services: ServiceContainer | None = None,
     graph: Any = None,
+    session_id: UUID | None = None,
+    county_exposure_by_external: dict[str, dict[str, float]] | None = None,
+    external_nodes_phi: dict[str, float] | None = None,
 ) -> Any:
     """Spec-066 T035: per-tick engine.run_tick() then bridge.persist_tick().
 
@@ -309,6 +353,19 @@ def _advance_tick(
     opposition_states: dict[str, Any] | None = None
     if engine is not None and services is not None and graph is not None:
         context = TickContext(tick=tick)
+        # Spec-101: populate the dormant TickContext keys so
+        # ImperialRentSystem._invoke_phi_distribution_if_wired records DRAIN_EDGE
+        # rows every tick (they were a silent no-op while these were absent). The
+        # register is the same instance the bridge flushes in persist_tick.
+        if (
+            session_id is not None
+            and county_exposure_by_external is not None
+            and external_nodes_phi is not None
+        ):
+            context["session_id"] = session_id
+            context["boundary_flow_register"] = services.boundary_register
+            context["external_nodes_phi"] = external_nodes_phi
+            context["county_exposure_by_external"] = county_exposure_by_external
         engine.run_tick(graph, services, context)
         world = WorldState.from_graph(graph, tick=tick)
         # C1.4: hand ContradictionSystem's per-tick OppositionRegistry snapshot
@@ -349,6 +406,111 @@ def _query_audit_log(*, pool: Any, session_id: UUID) -> list[AuditEntry]:
             )
         )
     return out
+
+
+def _query_external_nodes_phi(*, pool: Any, session_id: UUID) -> dict[str, float]:
+    """Read ``{node_id: phi_year_inflow}`` from the tick-0 external-node rows.
+
+    Spec-101 FR-101-3. The session bootstrap persists one
+    ``dynamic_external_node_state`` row per node at tick 0 carrying the attributed
+    national Φ (spec-101 D3). This is the same Φ map the conservation auditor
+    reads (via the bridge), so the ``Σ DRAIN_EDGE ≡ Φ_week`` identity is
+    self-consistent.
+
+    Args:
+        pool: Postgres connection pool.
+        session_id: Active session UUID.
+
+    Returns:
+        ``{node_id: phi_year_inflow}`` for all external nodes at tick 0.
+    """
+    # Spec-101 review minor (III.7 determinism): ORDER BY node_id — Postgres
+    # SELECT order is otherwise unspecified, and the returned dict's
+    # insertion order drives the boundary-register write order downstream
+    # (economic.py's ``_invoke_phi_distribution_if_wired``).
+    with pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT node_id, phi_year_inflow FROM dynamic_external_node_state "
+            "WHERE session_id = %s AND tick = 0 ORDER BY node_id",
+            (str(session_id),),
+        ).fetchall()
+    return {str(node_id): float(phi) for node_id, phi in rows}
+
+
+def _build_shock_timeline(
+    shock_schedule: tuple[ScheduledBlocShock, ...],
+) -> dict[int, tuple[ScheduledBlocShock, ...]]:
+    """Group a run's scheduled shocks by tick, sorted deterministically.
+
+    Spec-102 SLICE B. Within a tick, shocks are sorted by ``bloc`` so
+    ``_apply_due_shocks`` iterates in a fixed, reproducible order — no
+    dependence on ``shock_schedule``'s (caller-supplied) input order.
+
+    Args:
+        shock_schedule: The run config's declared shocks (any order).
+
+    Returns:
+        ``{tick: (shocks sorted by bloc, ...)}``. Empty dict for an empty
+        schedule (the canonical-scenario default).
+    """
+    by_tick: dict[int, list[ScheduledBlocShock]] = {}
+    for shock in sorted(shock_schedule, key=lambda s: (s.tick, s.bloc)):
+        by_tick.setdefault(shock.tick, []).append(shock)
+    return {tick: tuple(shocks) for tick, shocks in by_tick.items()}
+
+
+def _apply_due_shocks(
+    *,
+    tick: int,
+    shock_timeline: dict[int, tuple[ScheduledBlocShock, ...]],
+    active_multipliers: dict[str, float],
+) -> None:
+    """Update ``active_multipliers`` in-place for shocks scheduled at ``tick``.
+
+    Spec-102 SLICE B. Level-set semantics: a shock REPLACES (not
+    accumulates onto) the bloc's active multiplier, and the new value
+    persists on every subsequent tick until a later shock for the same
+    bloc supersedes it — ``active_multipliers`` is a plain dict threaded
+    through the tick-loop closure across iterations, never reset per tick.
+    Pure and deterministic: no RNG, sorted iteration (via
+    :func:`_build_shock_timeline`).
+
+    Args:
+        tick: Current simulation tick.
+        shock_timeline: Output of :func:`_build_shock_timeline`.
+        active_multipliers: Mutable ``{bloc: multiplier}`` state, updated
+            in-place.
+    """
+    for shock in shock_timeline.get(tick, ()):
+        active_multipliers[shock.bloc] = shock.phi_multiplier
+
+
+def _effective_external_nodes_phi(
+    *,
+    base_external_nodes_phi: dict[str, float],
+    active_multipliers: dict[str, float],
+) -> dict[str, float]:
+    """Recompute the per-tick effective Φ map (base × active multiplier).
+
+    Spec-102 SLICE B. Pure function — does not mutate ``base_external_nodes_phi``.
+    Blocs absent from ``active_multipliers`` pass through unchanged
+    (multiplier defaults to 1.0), so an empty ``active_multipliers`` (the
+    no-shocks-yet or no-shock-schedule-at-all case) returns a map
+    value-equal to the base — byte-identical Φ distribution behavior to
+    pre-spec-102 spec-101.
+
+    Args:
+        base_external_nodes_phi: The static ``{node_id: phi_year_inflow}``
+            map read once at session setup (spec-101 FR-101-3).
+        active_multipliers: Current ``{bloc: multiplier}`` state.
+
+    Returns:
+        A new ``{node_id: phi_year_inflow}`` dict with shocked blocs scaled.
+    """
+    return {
+        node: phi * active_multipliers.get(node, 1.0)
+        for node, phi in base_external_nodes_phi.items()
+    }
 
 
 def _query_trace(
@@ -409,6 +571,140 @@ def _query_max_tension(
     return float(row[0])
 
 
+def _assert_county_resolution_or_raise(
+    *,
+    cur: Any,
+    session_id: UUID,
+    terminal_tick: int,
+    resolved_county_count: int,
+    null_entity_count: int = 0,
+) -> None:
+    """Spec-102 STEP 0: fail loud on hex-rows-exist-but-zero-counties-resolved.
+
+    Also detects PARTIAL resolution gaps: when ``null_entity_count > 0``
+    some hex rows have NULL entity_id (hex_spatial_map partially populated),
+    which would leak bogus NULL-entity rows into downstream aggregates.
+
+    Args:
+        cur: Open cursor on the same connection/transaction.
+        session_id: Session UUID being queried.
+        terminal_tick: The tick being aggregated.
+        resolved_county_count: Distinct non-NULL county count already
+            observed by the caller's own query.
+        null_entity_count: Number of rows with NULL entity_id (0 if
+            the caller hasn't checked).
+
+    Raises:
+        TerminalAggregateResolutionError: If hex rows exist for this
+            session/tick but zero counties resolved, or if any rows have
+            NULL entity_id (partial resolution gap).
+    """
+    if null_entity_count > 0:
+        cur.execute(
+            "SELECT COUNT(*) FROM v_hex_state_asof WHERE session_id = %s AND tick = %s",
+            (str(session_id), terminal_tick),
+        )
+        hex_row = cur.fetchone()
+        hex_row_count = int(hex_row[0] or 0) if hex_row else 0
+        raise TerminalAggregateResolutionError(
+            f"session={session_id} tick={terminal_tick}: partial resolution gap — "
+            f"{null_entity_count} row(s) have NULL entity_id out of "
+            f"{resolved_county_count + null_entity_count} total rows "
+            f"({hex_row_count} hex rows in v_hex_state_asof). "
+            "Refusing to leak NULL-entity rows into downstream aggregates. "
+            "This is the known hex_spatial_map/TIGER contention bug "
+            "(spec-088 S3) in partial form."
+        )
+    if resolved_county_count > 0:
+        return
+    cur.execute(
+        "SELECT COUNT(*) FROM v_hex_state_asof WHERE session_id = %s AND tick = %s",
+        (str(session_id), terminal_tick),
+    )
+    hex_row = cur.fetchone()
+    hex_row_count = int(hex_row[0] or 0) if hex_row else 0
+    if hex_row_count > 0:
+        raise TerminalAggregateResolutionError(
+            f"session={session_id} tick={terminal_tick}: {hex_row_count} hex "
+            "row(s) exist in v_hex_state_asof but county resolution "
+            "(hex_spatial_map join in view_runtime_trace_emission) yielded "
+            "ZERO counties. Refusing to emit a silent counties_alive=0/"
+            "total_v=0 terminal aggregate — this is the known "
+            "hex_spatial_map/TIGER contention bug (spec-088 S3): a "
+            "concurrent lane may have truncated hex_spatial_map during this "
+            "run, or the TIGER county load never ran "
+            "(`mise run data:tiger-counties`). Re-run after confirming "
+            "hex_spatial_map is populated and stable for the run's duration."
+        )
+
+
+def _assert_liveness_or_raise(
+    *,
+    terminal_state: dict[str, Any],
+    n_scope: int,
+) -> None:
+    """Spec-105: generalized liveness gate.
+
+    Asserts that the terminal aggregate is not silently zeroed and that
+    every econ-alive county still holds a living population. Unlike the
+    baseline-dependent regression comparison (which reads expected
+    ``counties_alive`` from a JSON baseline), this gate derives ``n_scope``
+    from ``len(config.scope_fips)`` -- making it scope-agnostic (tri-county
+    N=3, Michigan N=83, national N=3156).
+
+    Raises:
+        LivenessGateFailure: If ``counties_alive == 0`` (silent zero),
+            ``counties_with_population != counties_alive`` (population
+            death), ``total_v == 0`` (value zeroing), or
+            ``counties_alive > n_scope`` (data corruption).
+
+    A ``counties_alive < n_scope`` gap is logged as a WARNING (not a
+    failure) -- some counties may lack hex cells (unhydrated territories
+    with no TIGER data).
+    """
+    alive = int(terminal_state.get("counties_alive", 0))
+    pop = int(terminal_state.get("counties_with_population", 0))
+    total_v = float(terminal_state.get("total_v", 0.0))
+
+    if alive == 0:
+        raise LivenessGateFailure(
+            f"liveness gate: counties_alive=0 (silent zero). "
+            f"N_scope={n_scope}. Expected {n_scope} alive counties but "
+            "got zero -- this indicates either the hex_spatial_map contention "
+            "bug (spec-088 S3) or a total population extinction event."
+        )
+
+    if pop != alive:
+        raise LivenessGateFailure(
+            f"liveness gate: population death -- counties_with_population={pop} "
+            f"!= counties_alive={alive}. {alive - pop} econ-alive "
+            "county(ies) lost their living population at the terminal tick "
+            "(closed-drain extinction class)."
+        )
+
+    if total_v == 0.0:
+        raise LivenessGateFailure(
+            f"liveness gate: total_v=0 with counties_alive={alive}. "
+            "Value zeroing failure -- the engine produced no economic value "
+            "despite alive counties."
+        )
+
+    if alive > n_scope:
+        raise LivenessGateFailure(
+            f"liveness gate: counties_alive={alive} exceeds N_scope={n_scope}. "
+            "Data corruption -- more counties resolved than the scope defines."
+        )
+
+    if alive < n_scope:
+        _LOG.warning(
+            "Spec-105 liveness gate: counties_alive=%d < N_scope=%d "
+            "(%d counties lack hex cells -- likely unhydrated territories)",
+            alive,
+            n_scope,
+            n_scope - alive,
+        )
+
+
 def _query_terminal_aggregates(
     *,
     pool: Any,
@@ -420,22 +716,33 @@ def _query_terminal_aggregates(
     Spec-065 T044: reads the actual terminal tick rather than tick 0.
     The bridge persists per-tick rows so the terminal aggregate
     reflects whatever final state the simulation reached.
+
+    Raises:
+        TerminalAggregateResolutionError: Spec-102 STEP 0 — hex rows exist
+            for this session/tick but county resolution yielded zero
+            counties (see :func:`_assert_county_resolution_or_raise`).
     """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FILTER (WHERE v > 0), "
             "       SUM(v), SUM(c), SUM(s), SUM(k), "
-            # Liveness (ADR044-completion gate, 2026-07-02): the trace view
-            # LEFT JOINs dynamic_consciousness_state, and the bridge only
-            # writes a consciousness row while a county's engine population
-            # is > 0 — so non-NULL ideology at the terminal tick counts
-            # counties whose populations are still alive.
-            "       COUNT(*) FILTER (WHERE ideology_r IS NOT NULL) "
+            "       COUNT(*) FILTER (WHERE ideology_r IS NOT NULL), "
+            "       COUNT(DISTINCT entity_id) FILTER (WHERE entity_id IS NOT NULL), "
+            "       COUNT(*) FILTER (WHERE entity_id IS NULL) "
             "FROM view_runtime_trace_emission "
             "WHERE session_id = %s AND tick = %s",
             (str(session_id), terminal_tick),
         )
         row = cur.fetchone()
+        resolved_county_count = int(row[6] or 0) if row else 0
+        null_entity_count = int(row[7] or 0) if row else 0
+        _assert_county_resolution_or_raise(
+            cur=cur,
+            session_id=session_id,
+            terminal_tick=terminal_tick,
+            resolved_county_count=resolved_county_count,
+            null_entity_count=null_entity_count,
+        )
     counties_alive = int(row[0] or 0) if row else 0
     return {
         "tick": terminal_tick,
@@ -466,6 +773,11 @@ def _county_terminal_snapshot(
     consciousness/demographics/employment columns now flow from the
     bridge-persisted spec-065 subsystem state tables. ``delta_k_vs_initial``
     is computed from the difference between terminal-tick k and tick-0 k.
+
+    Raises:
+        TerminalAggregateResolutionError: Spec-102 STEP 0 — hex rows exist
+            for this session/tick but county resolution yielded zero
+            counties (see :func:`_assert_county_resolution_or_raise`).
     """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
@@ -479,6 +791,15 @@ def _county_terminal_snapshot(
             (str(session_id), terminal_tick),
         )
         terminal = cur.fetchall()
+        resolved_county_count = sum(1 for entity_row in terminal if entity_row[0] is not None)
+        null_entity_count = sum(1 for entity_row in terminal if entity_row[0] is None)
+        _assert_county_resolution_or_raise(
+            cur=cur,
+            session_id=session_id,
+            terminal_tick=terminal_tick,
+            resolved_county_count=resolved_county_count,
+            null_entity_count=null_entity_count,
+        )
         cur.execute(
             "SELECT entity_id, k FROM view_runtime_trace_emission "
             "WHERE session_id = %s AND tick = 0",
@@ -539,6 +860,57 @@ def _sqlite_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _build_economics_overrides(
+    session_factory: Any = None,
+) -> dict[str, Any]:
+    """Construct economics calculator overrides for ``ServiceContainer.create``.
+
+    Spec E101: wires gamma (and melt when a session_factory is provided)
+    into the headless runner so TickDynamicsSystem actually computes
+    gamma instead of no-opping.
+
+    Without these overrides, ``ServiceContainer.create()`` leaves
+    ``gamma_calculator`` and ``melt_calculator`` at their default ``None``.
+    TickDynamicsSystem guards on ``melt_calculator is not None`` (early
+    return at ``tick/system/__init__.py:136``) and then reads
+    ``gamma_calculator.compute(year)`` at line 387 — with both ``None``
+    the entire system no-ops and gamma stays at the hardcoded 0.33 default.
+
+    Args:
+        session_factory: Optional SQLAlchemy session factory for the
+            normalized reference DB. When provided, ``melt_calculator``
+            is wired (required to pass the TickDynamicsSystem gate).
+            When ``None``, only the parameterless ``gamma_calculator``
+            is wired.
+
+    Returns:
+        Dict of service overrides suitable for ``**``-unpacking into
+        :meth:`ServiceContainer.create`.
+    """
+    from babylon.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
+    from babylon.economics.gamma.gamma_iii import DefaultGammaIIICalculator
+
+    unpaid_care = MVPUnpaidCareHoursSource()
+    paid_care = QCEWCareAdapter()
+    gamma = DefaultGammaIIICalculator(unpaid_care, paid_care)
+
+    overrides: dict[str, Any] = {"gamma_calculator": gamma}
+
+    if session_factory is not None:
+        from babylon.economics.melt import DefaultMELTCalculator
+        from babylon.economics.melt.adapters import (
+            SQLiteBEANationalGDPSource,
+            SQLiteQCEWNationalEmploymentSource,
+        )
+
+        bea_national = SQLiteBEANationalGDPSource(session_factory)
+        qcew_national = SQLiteQCEWNationalEmploymentSource(session_factory)
+        melt = DefaultMELTCalculator(bea_national, qcew_national)
+        overrides["melt_calculator"] = melt
+
+    return overrides
+
+
 def run(config: SimulationRunConfig) -> SimulationRunResult:
     """Execute the headless simulation per ``config`` and emit artifacts.
 
@@ -550,8 +922,14 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
 
     from babylon.config.defines import GameDefines
     from babylon.persistence import PostgresRuntime
-    from babylon.persistence.conservation_audit import ConservationAuditor
-    from babylon.persistence.postgres_initialization import initialize_session
+    from babylon.persistence.conservation_audit import (
+        ConservationAuditor,
+        phi_week_conservation_evaluator,
+    )
+    from babylon.persistence.postgres_initialization import (
+        INTERNATIONAL_NODES,
+        initialize_session,
+    )
 
     t_total = time.perf_counter()
     wallclock_start = _dt.datetime.now(_dt.UTC)
@@ -607,12 +985,19 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             epsilon=defines.economy.epsilon_conservation,
             rng_seed=config.random_seed,
         )
+        # Spec-101 FR-101-5: the Σ DRAIN_EDGE ≡ Φ_week per-bloc identity.
+        auditor.register_invariant(
+            "imperial_rent_phi_week_distribution", phi_week_conservation_evaluator
+        )
         bridge = WorldStateBridge(
             runtime=runtime,
             defines=defines,
             boundary_register=boundary_register,
             event_bus=event_bus,
             auditor=auditor,
+            # Spec-101 review fix #3: raw national Φ, independent of the D3
+            # attribution — feeds the auditor's aggregate coverage check.
+            national_phi_reference=report.national_phi_reference,
         )
         world = bridge.hydrate_initial(
             session_id=session_id,
@@ -630,7 +1015,23 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         # auditor's buffer collects. A fresh SimulationEngine instance (not
         # the module-level _DEFAULT_ENGINE singleton) avoids test-isolation
         # contamination if multiple runs share a process.
-        services = ServiceContainer.create(defines=defines)
+        #
+        # Spec-E101: wire gamma_III + MELT calculators into the
+        # ServiceContainer so TickDynamicsSystem actually computes
+        # reproductive visibility instead of no-opping on the hardcoded
+        # 0.33 default. MELT is required to pass the
+        # ``melt_calculator is not None`` gate at
+        # ``tick/system/__init__.py:136`` before gamma is reached.
+        from babylon.reference.database import get_normalized_session_factory
+
+        calc_session_factory = get_normalized_session_factory()
+        economics_overrides = _build_economics_overrides(
+            session_factory=calc_session_factory,
+        )
+        services = ServiceContainer.create(
+            defines=defines,
+            **economics_overrides,
+        )
         services.event_bus = event_bus
         services.boundary_register = boundary_register
         services.auditor = auditor
@@ -641,6 +1042,23 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         # source-of-truth between systems; world is reconstituted from it
         # after each engine.run_tick so persist_tick can read.
         graph = world.to_graph()
+
+        # Spec-101 FR-101-1/2/3: assemble the Φ-distribution inputs once before
+        # the tick loop. The exposure map is bloc-invariant (spec-100 R6), so ONE
+        # scope-renormalised {fips: weight} map is broadcast to every
+        # international node. external_nodes_phi is read from the tick-0
+        # external-node rows the bootstrap persisted (they carry the attributed
+        # national Φ, spec-101 D3). Both are static for the run.
+        exposure_map = load_county_exposure_map(
+            sqlite_path=config.sqlite_reference_path,
+            year=config.start_year,
+            scope_fips=config.scope_fips,
+        )
+        # Bloc-invariant broadcast: every international node shares the one
+        # read-only exposure map (spec-100 R6 — the distribution is identical
+        # across blocs; the map is never mutated downstream).
+        county_exposure_by_external = dict.fromkeys(INTERNATIONAL_NODES, exposure_map)
+        external_nodes_phi = _query_external_nodes_phi(pool=pool, session_id=session_id)
 
         # Spec-065 T064: end-game detector (US4). Optional dotted path
         # resolved + instantiated; bridge.poll_endgame is called per tick.
@@ -664,6 +1082,8 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                     session_id=session_id,
                     config=config,
                     per_tick_durations=per_tick_durations,
+                    county_exposure_by_external=county_exposure_by_external,
+                    external_nodes_phi=external_nodes_phi,
                 )
                 if endgame_event_payload is not None:
                     end_game_event = endgame_event_payload
@@ -692,6 +1112,23 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             pool=pool,
             session_id=session_id,
         )
+        # Spec-105: generalized liveness gate. When config.liveness_gate
+        # is True, assert counties_alive > 0, counties_with_population ==
+        # counties_alive, and total_v > 0. Failure sets exit_reason=ERRORED
+        # with a descriptive error payload (artifacts are still emitted).
+        if config.liveness_gate and exit_reason == ExitReason.COMPLETED:
+            try:
+                _assert_liveness_or_raise(
+                    terminal_state=terminal_state,
+                    n_scope=len(config.scope_fips),
+                )
+            except LivenessGateFailure as exc:
+                exit_reason = ExitReason.ERRORED
+                error_payload = {
+                    "name": exc.exit_name,
+                    "message": str(exc),
+                    "tick": terminal_tick,
+                }
         snapshot = _county_terminal_snapshot(
             pool=pool,
             session_id=session_id,
@@ -811,6 +1248,8 @@ def _tick_loop(
     graph: Any = None,
     engine: SimulationEngine | None = None,
     services: ServiceContainer | None = None,
+    county_exposure_by_external: dict[str, dict[str, float]] | None = None,
+    external_nodes_phi: dict[str, float] | None = None,
 ) -> tuple[int, dict[str, Any] | None]:
     """Drive the tick loop with tqdm + cooperative SIGINT.
 
@@ -822,6 +1261,14 @@ def _tick_loop(
     Spec-065 T064: returns ``(ticks_completed, endgame_event_dict | None)``;
     a non-None endgame event signals early termination via the
     configured detector.
+
+    Spec-102 SLICE B: ``config.shock_schedule`` (empty by default) is
+    compiled once into a tick-indexed timeline; each tick applies any
+    shocks due at that tick to a persistent ``active_multipliers`` map and
+    recomputes the *effective* ``external_nodes_phi`` passed to
+    ``_advance_tick`` for that tick. With an empty schedule this is a
+    value-identical no-op — ``_effective_external_nodes_phi`` returns a map
+    equal to ``external_nodes_phi`` — so canonical runs are unaffected.
 
     Returns:
         ``(ticks_completed, endgame_event)``.
@@ -835,6 +1282,11 @@ def _tick_loop(
         f"{session_id}:0:{config.random_seed}".encode()
     ).hexdigest()
     bridge.persist_tick(world, 0, determinism_hash_t0)
+
+    # Spec-102 SLICE B: shock timeline + persistent per-bloc multiplier
+    # state, threaded across tick-loop iterations (never reset per tick).
+    shock_timeline = _build_shock_timeline(config.shock_schedule)
+    active_shock_multipliers: dict[str, float] = {}
 
     tick_range = range(1, config.ticks)
     iterator: Any = tick_range
@@ -860,6 +1312,22 @@ def _tick_loop(
         # fire events through services.event_bus.publish).
         if bridge.event_capture is not None:
             bridge.event_capture.set_tick(tick)
+        # Spec-102 SLICE B: apply any shocks scheduled at this tick, then
+        # recompute the effective (possibly shocked) external_nodes_phi.
+        # Level-set semantics — active_shock_multipliers persists across
+        # iterations, so a bloc's multiplier stays in effect on every tick
+        # after its scheduled tick.
+        effective_external_nodes_phi = external_nodes_phi
+        if external_nodes_phi is not None:
+            _apply_due_shocks(
+                tick=tick,
+                shock_timeline=shock_timeline,
+                active_multipliers=active_shock_multipliers,
+            )
+            effective_external_nodes_phi = _effective_external_nodes_phi(
+                base_external_nodes_phi=external_nodes_phi,
+                active_multipliers=active_shock_multipliers,
+            )
         # Spec-066 T035: _advance_tick now runs the engine when
         # engine+services+graph are provided. It returns the
         # reconstituted world from the mutated graph for subsequent ticks.
@@ -871,6 +1339,9 @@ def _tick_loop(
             engine=engine,
             services=services,
             graph=graph,
+            session_id=session_id,
+            county_exposure_by_external=county_exposure_by_external,
+            external_nodes_phi=effective_external_nodes_phi,
         )
         per_tick_durations.append(time.perf_counter() - t_tick)
         ticks_completed = tick + 1
@@ -1072,6 +1543,9 @@ def main_from_argv(args: argparse.Namespace) -> int:
         _emit_error(exc.exit_name, str(exc), partial=None)
         return exc.exit_code
     except PostgresUnreachableError as exc:
+        _emit_error(exc.exit_name, str(exc), partial=None)
+        return exc.exit_code
+    except TerminalAggregateResolutionError as exc:
         _emit_error(exc.exit_name, str(exc), partial=None)
         return exc.exit_code
     except Exception as exc:  # pragma: no cover - engine exceptions

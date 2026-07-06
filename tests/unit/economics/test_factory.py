@@ -86,3 +86,17 @@ class TestCreateEconomicsServices:
         result = create_economics_services(mock_session_factory, tensor_registry)
 
         assert len(result) == 7
+
+    def test_basket_calculator_has_hydration_source_wired(self) -> None:
+        """Spec-102: basket_calculator is data-adapter-injected, not registry-parameterless."""
+        from babylon.economics.melt.basket_visibility import DefaultBasketVisibilityCalculator
+        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+
+        mock_session_factory = MagicMock()
+        tensor_registry = TensorRegistry()
+
+        result = create_economics_services(mock_session_factory, tensor_registry)
+
+        basket = result["basket_calculator"]
+        assert isinstance(basket, DefaultBasketVisibilityCalculator)
+        assert isinstance(basket._hydration_source, SQLiteGammaHydrationSource)  # noqa: SLF001

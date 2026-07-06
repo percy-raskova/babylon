@@ -44,6 +44,55 @@ class ExitReason(StrEnum):
     ERRORED = "errored"
 
 
+class ScheduledBlocShock(BaseModel):
+    """Spec-102: exogenous, deterministic scheduled shock to a bloc's Φ inflow.
+
+    Declares a level-set multiplier applied to that bloc's
+    ``external_nodes_phi`` entry starting at ``tick`` (inclusive) and
+    persisting on all subsequent ticks until a later shock for the same
+    bloc supersedes it (see ``_apply_due_shocks`` in ``runner.py``). Pure
+    exogenous scenario-authoring data — blocs never decide to shock
+    themselves (R-AMEND, blocs stay Layer-0 register machinery).
+
+    ``tick`` must be >= 1: the tick loop only visits ticks
+    ``1..(config.ticks - 1)`` (tick 0 is a raw hex-state persist that
+    never reads ``external_nodes_phi``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tick: int = Field(
+        ge=1,
+        description=(
+            "Tick at which the shock fires (1-indexed). Tick 0 is a raw "
+            "hex-state persist that never reads external_nodes_phi, so "
+            "tick=0 shocks would silently never fire."
+        ),
+    )
+    bloc: str = Field(description="One of the 8 canonical INTERNATIONAL_NODES.")
+    phi_multiplier: float = Field(gt=0.0)
+
+    @field_validator("bloc")
+    @classmethod
+    def _validate_bloc(cls, value: str) -> str:
+        from babylon.persistence.postgres_initialization import INTERNATIONAL_NODES
+
+        if value not in INTERNATIONAL_NODES:
+            raise ValueError(f"bloc must be one of {INTERNATIONAL_NODES}, got {value!r}")
+        # india and latin_america have phi_year_inflow=0 at bootstrap (ADR055) —
+        # a shock multiplier on them is a silent no-op. Warn the operator.
+        if value in ("india", "latin_america"):
+            import warnings
+
+            warnings.warn(
+                f"ScheduledBlocShock bloc={value!r} has phi_year_inflow=0 at "
+                "bootstrap (no distinct bilateral-trade bloc per ADR055). "
+                "The shock multiplier will have no effect.",
+                stacklevel=2,
+            )
+        return value
+
+
 class SimulationRunConfig(BaseModel):
     """Frozen, hashable description of a single headless run.
 
@@ -80,6 +129,17 @@ class SimulationRunConfig(BaseModel):
             "default to False (informational audit log only)."
         ),
     )
+    liveness_gate: bool = Field(
+        default=False,
+        description=(
+            "Spec-105: when True, the runner asserts "
+            "counties_alive > 0, counties_with_population == "
+            "counties_alive, and total_v > 0 at the terminal tick. "
+            "Generalizes the Michigan-constant 83 liveness check to "
+            "any scope (N_scope = len(scope_fips)). Failure sets "
+            "exit_reason=ERRORED."
+        ),
+    )
     endgame_detector: str | None = Field(
         default=None,
         description=(
@@ -98,6 +158,15 @@ class SimulationRunConfig(BaseModel):
             "tests/baselines/michigan-e2e.json so a single invocation "
             "both produces the artifacts and refreshes the CI baseline. "
             "Skipped on non-success exit codes."
+        ),
+    )
+    shock_schedule: tuple[ScheduledBlocShock, ...] = Field(
+        default=(),
+        description=(
+            "Spec-102: deterministic exogenous shocks to a bloc's "
+            "external_nodes_phi (no RNG, no OODA involvement — R-AMEND). "
+            "Empty by default so canonical scenarios (michigan-canada, "
+            "detroit-tri-county) are byte-for-byte unaffected."
         ),
     )
 

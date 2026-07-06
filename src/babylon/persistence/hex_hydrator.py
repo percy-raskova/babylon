@@ -54,13 +54,13 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from babylon.economics.substrate.h3_utils import generate_h3_cells
-from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.hex_state import DynamicHexState
 from babylon.persistence.state_fips_to_region import region_for_state_fips
 
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
     from babylon.persistence.protocols import RuntimePersistence
+    from babylon.reference.bea.share_lookup_service import BEAShareLookupService
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,7 @@ def hydrate_hex_state(
     defines: GameDefines,
     tiger_county_shapefile: Path | None = None,
     sqlite_path: Path | None = None,
+    bea_share_service: BEAShareLookupService | None = None,
 ) -> int:
     """Hydrate ``dynamic_hex_state`` for the study area at tick 0.
 
@@ -144,6 +145,12 @@ def hydrate_hex_state(
             per-county apportionment data in the current SQLite snapshot.
         tiger_county_shapefile: Optional override for the TIGER shapefile path.
         sqlite_path: Optional override for the SQLite reference DB path.
+        bea_share_service: Optional ``BEAShareLookupService`` (spec-068 II.11
+            contract). When provided, the per-county intermediate-inputs
+            share is looked up from ``fact_bea_national_industry`` via the
+            QCEW-employment-weighted concordance. When ``None``, falls back
+            to the economy-wide 0.5 constant (FR-010 backward-compat with
+            the spec-066/067 baseline).
 
     Returns:
         Total number of ``dynamic_hex_state`` rows persisted at tick 0.
@@ -172,6 +179,7 @@ def hydrate_hex_state(
             conn=sql_conn,
             counties=counties,
             year=start_year,
+            bea_share_service=bea_share_service,
         )
         # Spec-066 T065/T066/T067: per-county apportionment factors for
         # energy (population-weighted) and raw_material (area-weighted).
@@ -183,9 +191,13 @@ def hydrate_hex_state(
         )
 
     # 3. Build per-hex DynamicHexState rows.
+    # Parallelize the CPU-bound H3 polyfill across counties (spec-105
+    # E:105 perf optimization). Each county's polyfill is independent;
+    # ProcessPoolExecutor parallelizes the h3.geo_to_cells calls.
+    all_cells = _polygons_to_hexes_parallel(polygons)
     hex_rows: list[DynamicHexState] = []
-    for county_fips, polygon in polygons.items():
-        cells = _polygons_to_hexes(polygon)
+    for county_fips in sorted(all_cells):
+        cells = all_cells[county_fips]
         if not cells:
             logger.warning(
                 "hydrate_hex_state: county %s polyfill produced 0 cells",
@@ -246,16 +258,13 @@ def hydrate_hex_state(
     # first so a hydrated session always resolves through it.
     _persist_hex_spatial_map(runtime, hex_rows)
 
-    # 5. Persist atomically at tick 0. No commit marker (spec-089 FR-003):
-    # the placeholder hash below is not part of the III.7 chain — the
-    # bridge's tick-0 re-delivery writes the real tick_commit row.
-    envelope = PerTickTransactionEnvelope(
-        session_id=session_id,
-        tick=0,
-        hex_state_rows=hex_rows,
-        determinism_hash="0" * 64,
-    )
-    runtime.persist_tick_atomic(envelope, write_commit_marker=False)  # type: ignore[attr-defined]
+    # 5. Persist tick-0 hex rows via COPY (spec-105 E:105 perf).
+    # No commit marker (spec-089 FR-003): the placeholder hash is not
+    # part of the III.7 chain — the bridge's tick-0 re-delivery writes
+    # the real tick_commit row. The hydrator only writes hex_state_rows
+    # (no other envelope row types, write_commit_marker=False), so COPY
+    # is a safe drop-in replacement for persist_tick_atomic(executemany).
+    _persist_hex_rows_bulk(runtime, hex_rows, session_id)
     logger.info(
         "hydrate_hex_state: persisted %d hex rows across %d counties for session %s",
         len(hex_rows),
@@ -278,20 +287,109 @@ ON CONFLICT (h3_index) DO NOTHING
 
 
 def _persist_hex_spatial_map(runtime: Any, hex_rows: list[DynamicHexState]) -> None:
-    """Idempotently record each hex's immutable spatial mapping (spec-088 FR-006)."""
+    """Idempotently record each hex's immutable spatial mapping (spec-088 FR-006).
+
+    Uses ``COPY`` into a temp table + ``INSERT ... ON CONFLICT DO NOTHING``
+    for 10-50x speedup over ``executemany`` at national scale (100K+ rows).
+    Falls back to ``executemany`` for small batches (<1000 rows) where the
+    temp-table overhead is not amortized.
+    """
     pool = runtime._pool  # noqa: SLF001
-    with pool.connection() as conn:
-        conn.cursor().executemany(
-            _HEX_SPATIAL_MAP_INSERT,
-            [
-                {
-                    "h3_index": row.h3_index,
-                    "county_fips": row.county_fips,
-                    "state_fips": row.state_fips,
-                    "region_id": row.region_id,
-                }
-                for row in hex_rows
-            ],
+    if len(hex_rows) < 1000:
+        with pool.connection() as conn:
+            conn.cursor().executemany(
+                _HEX_SPATIAL_MAP_INSERT,
+                [
+                    {
+                        "h3_index": row.h3_index,
+                        "county_fips": row.county_fips,
+                        "state_fips": row.state_fips,
+                        "region_id": row.region_id,
+                    }
+                    for row in hex_rows
+                ],
+            )
+        return
+
+    with pool.connection() as conn, conn.transaction(), conn.cursor() as cur:
+        cur.execute(
+            "CREATE TEMP TABLE _hex_spatial_map_tmp "
+            "(h3_index TEXT, county_fips TEXT, state_fips TEXT, region_id TEXT) "
+            "ON COMMIT DROP"
+        )
+        with cur.copy("COPY _hex_spatial_map_tmp FROM STDIN") as copy:
+            for row in hex_rows:
+                copy.write(
+                    f"{row.h3_index}\t{row.county_fips}\t{row.state_fips}\t"
+                    f"{row.region_id}\n".encode()
+                )
+        cur.execute(
+            "INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id) "
+            "SELECT h3_index, county_fips, state_fips, region_id "
+            "FROM _hex_spatial_map_tmp "
+            "ON CONFLICT (h3_index) DO NOTHING"
+        )
+
+
+# Per spec-088 S3 (FR-007): spatial keys (county_fips, state_fips, region_id)
+# write NULL in dynamic_hex_state — the single stored copy lives in
+# hex_spatial_map. The COPY column order is: session_id, tick, h3_index,
+# county_fips, state_fips, region_id, c, v, s, k, biocapacity_stock,
+# energy_stock, raw_material_stock, internet_access_pct, surveillance_coupling.
+
+
+def _persist_hex_rows_bulk(
+    runtime: Any,
+    hex_rows: list[DynamicHexState],
+    session_id: UUID,
+) -> None:
+    """Bulk-insert tick-0 ``dynamic_hex_state`` rows via ``COPY``.
+
+    Replaces ``persist_tick_atomic`` for the hydration path (which only
+    writes hex_state_rows with ``write_commit_marker=False``). Uses
+    ``COPY`` into a temp table + ``INSERT ... ON CONFLICT DO NOTHING``
+    for 10-50x speedup over ``executemany`` at national scale.
+
+    Spatial keys (county_fips, state_fips, region_id) are written as
+    NULL per spec-088 S3 (FR-007) — they resolve via ``hex_spatial_map``.
+    """
+    pool = runtime._pool  # noqa: SLF001
+    with pool.connection() as conn, conn.transaction(), conn.cursor() as cur:
+        cur.execute(
+            "CREATE TEMP TABLE _hex_state_tmp ("
+            "session_id UUID, tick INTEGER, h3_index TEXT, "
+            "county_fips TEXT, state_fips TEXT, region_id TEXT, "
+            "c DOUBLE PRECISION, v DOUBLE PRECISION, s DOUBLE PRECISION, "
+            "k DOUBLE PRECISION, biocapacity_stock DOUBLE PRECISION, "
+            "energy_stock DOUBLE PRECISION, raw_material_stock DOUBLE PRECISION, "
+            "internet_access_pct DOUBLE PRECISION, "
+            "surveillance_coupling DOUBLE PRECISION) ON COMMIT DROP"
+        )
+        with cur.copy("COPY _hex_state_tmp FROM STDIN") as copy:
+            sid_str = str(session_id)
+            _N = "\\N"
+            for row in hex_rows:
+                copy.write(
+                    f"{sid_str}\t{row.tick}\t{row.h3_index}\t{_N}\t{_N}\t{_N}\t"
+                    f"{row.c}\t{row.v}\t{row.s}\t{row.k}\t"
+                    f"{row.biocapacity_stock}\t{row.energy_stock}\t"
+                    f"{row.raw_material_stock}\t"
+                    f"{row.internet_access_pct}\t{row.surveillance_coupling}\n".encode()
+                )
+        cur.execute(
+            "INSERT INTO dynamic_hex_state ("
+            "session_id, tick, h3_index, "
+            "county_fips, state_fips, region_id, "
+            "c, v, s, k, "
+            "biocapacity_stock, energy_stock, raw_material_stock, "
+            "internet_access_pct, surveillance_coupling) "
+            "SELECT session_id, tick, h3_index, "
+            "county_fips, state_fips, region_id, "
+            "c, v, s, k, "
+            "biocapacity_stock, energy_stock, raw_material_stock, "
+            "internet_access_pct, surveillance_coupling "
+            "FROM _hex_state_tmp "
+            "ON CONFLICT (session_id, tick, h3_index) DO NOTHING"
         )
 
 
@@ -457,6 +555,7 @@ def _fetch_per_county_data(
     counties: frozenset[str],
     year: int,
     audit_alarms: list[_CalibrationAlarm] | None = None,
+    bea_share_service: BEAShareLookupService | None = None,
 ) -> dict[str, _CountyRow]:
     """Read per-county economic + infrastructure values for tick-0 seeding.
 
@@ -470,10 +569,13 @@ def _fetch_per_county_data(
       - fact_broadband_coverage: pct_25_3, pct_100_20 → internet/surveillance
       - fact_coercive_infrastructure: SUM(facility_count) → surveillance
 
-    The intermediate-inputs-fraction is a hardcoded national average
-    (0.5) since fact_bea_national_industry is empty in the current
-    SQLite snapshot. Future ingestion of BEA national I-O tables can
-    refine this per-industry (spec-068).
+    Spec-068 T056: when ``bea_share_service`` is provided, the per-county
+    intermediate-inputs share is looked up via the II.11 Protocol
+    (QCEW-employment-weighted concordance → fact_bea_national_industry).
+    When ``None``, the economy-wide 0.5 constant is used (FR-010
+    backward-compat with the spec-066/067 baseline). The service's
+    ``GLOBAL_FALLBACK_SHARE = 0.5`` ensures counties with no BEA data
+    still get 0.5 — the pre-068 behavior is preserved end-to-end.
 
     Spec-066 T020: callers may pass an ``audit_alarms`` list to receive
     structured ``_CalibrationAlarm`` records for any county where the
@@ -560,8 +662,17 @@ def _fetch_per_county_data(
     for fips in counties:
         v_per_week = qcew_wages_by_fips.get(fips, 0.0) / _WEEKS_PER_YEAR
         gdp_usd = bea_gdp_by_fips.get(fips, 0.0)
-        # c = GDP × intermediate-inputs-fraction (weekly).
-        c_per_week = gdp_usd * _INTERMEDIATE_INPUTS_FRACTION / _WEEKS_PER_YEAR
+        # c = GDP × intermediate-inputs-share (weekly). Spec-068 T056:
+        # when a BEAShareLookupService is provided, the per-county share
+        # comes from the QCEW-employment-weighted BEA national I-O
+        # concordance (II.11 Protocol). When None, the economy-wide 0.5
+        # constant is used (FR-010 backward-compat).
+        if bea_share_service is not None:
+            share_result = bea_share_service.lookup_county_share(county_fips=fips, year=year)
+            ii_share = share_result.intermediate_inputs_share
+        else:
+            ii_share = _INTERMEDIATE_INPUTS_FRACTION
+        c_per_week = gdp_usd * ii_share / _WEEKS_PER_YEAR
         # s = max(0, GDP/52 - v). Spec-066 T018: the value-added identity
         # is GDP = v + s (Marx Vol I Ch 9 + BEA accounting). Earlier code
         # subtracted c as well, which double-counts the constant-capital
@@ -687,6 +798,57 @@ def _load_county_polygons(
 def _polygons_to_hexes(polygon: object) -> set[str]:
     """Convert a Shapely (Multi)Polygon to a set of H3 res-7 cells."""
     return generate_h3_cells(polygon, resolution=7)
+
+
+# Below this county count, process-pool startup overhead exceeds the
+# parallel speedup. Serial execution is faster for small scopes (e.g.,
+# tri-county Detroit).
+_PARALLEL_POLYFILL_THRESHOLD = 8
+
+
+def _polyfill_worker(
+    fips_polygon: tuple[str, object],
+) -> tuple[str, set[str]]:
+    """ProcessPoolExecutor worker: H3 polyfill for one county.
+
+    Must be module-level for picklability with ``spawn`` start method.
+    """
+    fips, polygon = fips_polygon
+    return fips, _polygons_to_hexes(polygon)
+
+
+def _polygons_to_hexes_parallel(
+    polygons: dict[str, object],
+    *,
+    max_workers: int | None = None,
+) -> dict[str, set[str]]:
+    """Parallel H3 polyfill across counties via ProcessPoolExecutor.
+
+    Embarrassingly parallel — each county's H3 polyfill is independent
+    (CPU-bound, no shared state). Uses ``ProcessPoolExecutor`` because
+    ``h3.geo_to_cells`` is CPU-bound; threads would not speed it up.
+
+    Determinism: ``executor.map`` preserves input order. Input is
+    sorted by FIPS so output order is deterministic across runs.
+
+    Falls back to serial for small county sets (below
+    ``_PARALLEL_POLYFILL_THRESHOLD``) where process startup overhead
+    dominates.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+
+    if not polygons:
+        return {}
+
+    if len(polygons) < _PARALLEL_POLYFILL_THRESHOLD:
+        return {fips: _polygons_to_hexes(poly) for fips, poly in polygons.items()}
+
+    items = sorted(polygons.items())
+    results: dict[str, set[str]] = {}
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        for fips, cells in executor.map(_polyfill_worker, items):
+            results[fips] = cells
+    return results
 
 
 __all__ = ["hydrate_hex_state"]

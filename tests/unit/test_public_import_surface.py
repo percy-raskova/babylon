@@ -50,6 +50,7 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "OODADefines",
         "OrganizationDefines",
         "PrecisionDefines",
+        "ReactionaryDefines",
         "RentCircuitDefines",
         "ReserveArmyDefines",
         "ServicesDefines",

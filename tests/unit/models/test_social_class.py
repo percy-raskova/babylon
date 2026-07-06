@@ -164,7 +164,7 @@ class TestSocialClassValidation:
         invalid_ids = [
             "c001",  # lowercase
             "C01",  # too short
-            "C0001",  # too long
+            "C001A",  # letter suffix (digits only after C)
             "X001",  # wrong prefix
             "001",  # missing prefix
             "CABC",  # letters instead of digits

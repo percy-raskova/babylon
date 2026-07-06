@@ -125,6 +125,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--liveness-gate",
+        action="store_true",
+        default=False,
+        help=(
+            "Spec-105: assert counties_alive > 0, "
+            "counties_with_population == counties_alive, and total_v > 0 "
+            "at the terminal tick. Generalizes the Michigan-constant 83 "
+            "liveness check to any scope (N_scope = len(scope_fips))."
+        ),
+    )
+    parser.add_argument(
         "--endgame-detector",
         type=str,
         default=None,

@@ -11,9 +11,11 @@ Schemas in ``specs/070-balkanization/contracts/``. Concrete files:
   :class:`~babylon.models.entities.sovereign.Sovereign` records
   (SOV_USA_FED, SOV_CAN_FED, SOV_EXTERIOR_NULL per FR-040 / FR-040a /
   FR-040b).
-- ``seed_influences.json``: optional, produced by the proxy-data
-  pipeline in :mod:`compute_seed_influences` (T112). The loader
-  gracefully returns an empty list when the file is absent.
+- ``seed_influences.json``: computed by the proxy-data pipeline in
+  :mod:`compute_seed_influences` (T112) and checked into the repository
+  per Percy's ruling on spec-070 item #8. The loader reads the
+  ``edges`` array of the schema-conformant payload; it gracefully
+  returns an empty list when the file is absent.
 """
 
 from __future__ import annotations
@@ -112,18 +114,20 @@ def load_seed_influences(
     """Load the proxy-data-derived INFLUENCES edge seeds (FR-039).
 
     Gracefully returns an empty list when ``seed_influences.json`` is
-    absent — the file is produced by the
-    :mod:`compute_seed_influences` pipeline (T112) and is not committed
-    to the repository as a fixture (it depends on external data
-    sources whose vintages vary).
+    absent. The file is produced by the
+    :mod:`compute_seed_influences` pipeline (T112); per Percy's ruling
+    on item #8 the computed artifact IS checked into the repository so
+    the runtime loader finds a concrete edge set rather than the empty
+    fallback.
 
     Args:
         path: Optional override for the JSON file path.
 
     Returns:
-        List of raw seed edge records. Each record has
+        List of raw seed edge records (the ``edges`` array from the
+        schema-conformant payload). Each record has
         ``{faction_id, territory_id, influence_level, support_type,
-        cadre_count?, sympathizer_count?, established_tick?}``.
+        cadre_count, sympathizer_count, established_tick}``.
     """
 
     if path is None:
@@ -131,7 +135,7 @@ def load_seed_influences(
     if not path.exists():
         return []
     payload = json.loads(path.read_text())
-    return list(payload["influences"])
+    return list(payload["edges"])
 
 
 __all__ = [

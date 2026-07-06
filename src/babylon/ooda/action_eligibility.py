@@ -1,6 +1,6 @@
 """Action eligibility checking for organizations (Feature 032).
 
-Provides the 21x4 eligibility matrix mapping (OrgType, ActionType) pairs
+Provides the 25x4 eligibility matrix mapping (OrgType, ActionType) pairs
 to boolean availability, with special-case overrides for REPRESS, SURVEIL,
 and ASSIMILATE.
 
@@ -14,7 +14,7 @@ from typing import Any
 
 from babylon.models.enums import ActionType, ConsciousnessTendency, OrgType
 
-# --- 21x4 eligibility matrix ---
+# --- 25x4 eligibility matrix ---
 # True = org type can perform this action by default.
 # Special cases (REPRESS, SURVEIL, ASSIMILATE) handled in check_eligibility().
 _ELIGIBILITY_MAP: dict[tuple[str, str], bool] = {}
@@ -94,6 +94,30 @@ for _org_type in OrgType:
     _ELIGIBILITY_MAP[(_org_type.value, ActionType.ASSIMILATE.value)] = (
         _org_type == OrgType.STATE_APPARATUS
     )
+
+# --- Spec-071 fascist action verbs ---
+# POGROM: PoliticalFaction (the reactionary formation) can direct communal violence.
+for _org_type in OrgType:
+    _ELIGIBILITY_MAP[(_org_type.value, ActionType.POGROM.value)] = (
+        _org_type == OrgType.POLITICAL_FACTION
+    )
+
+# LOCKOUT: Business only (the employer withdraws wages/employment).
+for _org_type in OrgType:
+    _ELIGIBILITY_MAP[(_org_type.value, ActionType.LOCKOUT.value)] = _org_type == OrgType.BUSINESS
+
+# VIGILANTISM: PoliticalFaction and CivilSociety (extra-state reactionary civil formations).
+for _org_type in OrgType:
+    _ELIGIBILITY_MAP[(_org_type.value, ActionType.VIGILANTISM.value)] = _org_type in {
+        OrgType.POLITICAL_FACTION,
+        OrgType.CIVIL_SOCIETY,
+    }
+
+# RED_BROWN_COUP: never a directly-selectable OODA action — it is auto-triggered
+# by the FascistFactionSystem on majority LA defection. Present in the matrix
+# (all-pairs contract) but False for every org type.
+for _org_type in OrgType:
+    _ELIGIBILITY_MAP[(_org_type.value, ActionType.RED_BROWN_COUP.value)] = False
 
 # Freeze for immutability
 ELIGIBILITY_MAP: dict[tuple[str, str], bool] = dict(_ELIGIBILITY_MAP)

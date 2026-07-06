@@ -41,13 +41,14 @@ def distribute_phi_week_to_counties(
     phi_year_inflow: float,
     county_exposure: Mapping[str, float],
     register: BoundaryFlowRegister,
+    weeks_per_year: float = 52.0,
 ) -> dict[str, float]:
     """Distribute one external node's weekly Φ across US counties.
 
-    The weekly Φ slice is ``phi_year_inflow / 52`` per FR-035. Each county
-    receives a share equal to its exposure weight (the weights MUST sum to
-    1.0; a non-unit sum is treated as a calling-side bug per Constitution
-    III.1 — no silent renormalization).
+    The weekly Φ slice is ``phi_year_inflow / weeks_per_year`` per FR-035.
+    Each county receives a share equal to its exposure weight (the weights
+    MUST sum to 1.0; a non-unit sum is treated as a calling-side bug per
+    Constitution III.1 — no silent renormalization).
 
     Args:
         session_id: Owning session UUID for the boundary register rows.
@@ -56,6 +57,10 @@ def distribute_phi_week_to_counties(
         phi_year_inflow: Annual Φ inflow from this external node.
         county_exposure: ``{county_fips: weight}`` map; weights MUST sum to 1.
         register: BoundaryFlowRegister buffer to receive DRAIN_EDGE rows.
+        weeks_per_year: Ticks per simulation year (default 52, matching
+            ``GameDefines.timescale.weeks_per_year`` — spec-101 review minor:
+            sourced from a single caller-supplied value rather than an
+            independently-hardcoded literal in each consuming module).
 
     Returns:
         ``{county_fips: phi_amount}`` showing the per-county weekly Φ.
@@ -83,7 +88,7 @@ def distribute_phi_week_to_counties(
             f"non-unit sums signal a caller bug — no silent renormalization."
         )
 
-    phi_week = phi_year_inflow / 52.0
+    phi_week = phi_year_inflow / weeks_per_year
     transfers: dict[str, float] = {}
     for county_fips, weight in county_exposure.items():
         amount = phi_week * weight

@@ -149,9 +149,17 @@ class WorldStateBridge:
         boundary_register: BoundaryFlowRegister | None = None,
         event_bus: EventBus | None = None,
         auditor: ConservationAuditor | None = None,
+        national_phi_reference: float = 0.0,
     ) -> None:
         self._runtime = runtime
         self._defines = defines
+        # Spec-101 review fix #3: the RAW, un-attributed national Φ
+        # (InitializationReport.national_phi_reference), independent of the
+        # per-node D3 trade-share attribution. Threaded into the per-tick
+        # audit context so the conservation auditor's aggregate coverage
+        # check can detect an attribution-stage regression that zeroes
+        # every node's Φ even though this value was positive.
+        self._national_phi_reference = national_phi_reference
         self._session_id: UUID | None = None
         self._scope_fips: frozenset[str] | None = None
         self._start_year: int = 2010  # set by hydrate_initial
@@ -497,10 +505,34 @@ class WorldStateBridge:
         # naturally without further wiring.
         audit_rows: list[Any] = []
         if self._auditor is not None:
+            # Spec-101 FR-101-5: hand the tick's flushed DRAIN_EDGE rows + the
+            # external-node Φ map to the auditor so the phi_week conservation
+            # evaluator can check Σ DRAIN_EDGE ≡ Φ_week per bloc. external_nodes_phi
+            # derives from the tick-0 external-node template (attributed Φ, D3) —
+            # the same values the runner threads into the phi-distribution context.
+            # Gated on tick >= 1: the runner persists tick 0 directly WITHOUT an
+            # engine run, so no Φ distribution has occurred and an empty register
+            # at tick 0 would false-alarm the identity. The distribution runs on
+            # every tick >= 1.
+            external_nodes_phi = (
+                {row.node_id: row.phi_year_inflow for row in self._external_template}
+                if tick >= 1
+                else {}
+            )
+            audit_context = {
+                "boundary_rows": boundary_rows,
+                "external_nodes_phi": external_nodes_phi,
+                # Spec-101 review fix #3 — independent ground truth (see
+                # __init__) + review minor (weeks_per_year sourced from
+                # GameDefines rather than hardcoded in conservation_audit.py).
+                "national_phi_reference": self._national_phi_reference if tick >= 1 else 0.0,
+                "weeks_per_year": float(self._defines.timescale.weeks_per_year),
+            }
             audit_rows_typed, _alarms = self._auditor.audit_end_of_tick(
                 session_id=self._session_id,
                 tick=tick,
                 hex_rows=hex_frame,
+                context=audit_context,
             )
             audit_rows = list(audit_rows_typed)
 
@@ -689,7 +721,11 @@ class WorldStateBridge:
         """Instantiate one labor-aristocracy worker + one bourgeoisie per county.
 
         ID scheme: worker IDs are ``C001..C{N:03d}`` over sorted FIPS;
-        bourgeoisie IDs are offset by 500 (``C501..C{N+500:03d}``).
+        bourgeoisie IDs are offset by ``max(500, N+1)``
+        (``C{offset+1:03d}..C{offset+N:03d}``). The offset is 500 for
+        small scopes (tri-county, Michigan — preserving baseline hashes)
+        and ``N+1`` for scopes where ``N > 499`` (national — preventing
+        worker/bourgeoisie ID collisions).
         Small synthetic populations (worker block 85, bourgeoisie block 15
         per county); the engine evolves these over time.
 
@@ -709,9 +745,11 @@ class WorldStateBridge:
             ``WorldState.entities``.
         """
         entities: dict[str, Any] = {}
+        n_scope = len(scope_fips)
+        bourgeoisie_offset = max(500, n_scope + 1)
         for i, county_fips in enumerate(sorted(scope_fips), start=1):
             worker_id = f"C{i:03d}"
-            bourgeoisie_id = f"C{i + 500:03d}"
+            bourgeoisie_id = f"C{i + bourgeoisie_offset:03d}"
 
             # Spec-066 T050: pass the BASELINE_IDEOLOGY placeholder to
             # both factories so every county starts at (r=0.05, l=0.50,
@@ -769,7 +807,7 @@ class WorldStateBridge:
         For each county ``i`` over sorted FIPS:
 
         - EXPLOITATION: worker (``C{i:03d}``) -> bourgeoisie
-          (``C{i+500:03d}``), tension=0.1 — the path ImperialRentSystem
+          (``C{i+offset:03d}``), tension=0.1 — the path ImperialRentSystem
           walks (Φ extraction -> agitation -> consciousness drift).
         - TENANCY: worker -> territory (``T{i:03d}``) — the path
           ProductionSystem requires to generate production.
@@ -798,9 +836,10 @@ class WorldStateBridge:
             A list of ``Relationship`` instances, two per county.
         """
         relationships: list[Relationship] = []
+        bourgeoisie_offset = max(500, len(scope_fips) + 1)
         for i, _county_fips in enumerate(sorted(scope_fips), start=1):
             proletariat_id = f"C{i:03d}"
-            bourgeoisie_id = f"C{i + 500:03d}"
+            bourgeoisie_id = f"C{i + bourgeoisie_offset:03d}"
             territory_id = f"T{i:03d}"
             if proletariat_id not in entities or bourgeoisie_id not in entities:
                 # _build_per_county_entities is the only producer; this is

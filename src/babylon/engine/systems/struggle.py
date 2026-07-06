@@ -35,6 +35,7 @@ import random
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.engine.event_bus import Event
+from babylon.formulas.reactionary import calculate_spontaneous_riot_risk
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
@@ -420,6 +421,72 @@ class StruggleSystem(SystemBase):
         # After processing struggling roles, check for power vacuum and peripheral revolt
         self._check_power_vacuum(graph, services, context)
         self._check_peripheral_revolt(graph, services, context)
+        # Spec-071: lumpenproletariat volatility -> spontaneous (undirected) riot.
+        self._check_spontaneous_riot(graph, services, context)
+
+    def _check_spontaneous_riot(
+        self,
+        graph: GraphProtocol,
+        services: ServiceContainer,
+        context: ContextType,
+    ) -> None:
+        """Spec-071: LUMPENPROLETARIAT undirected disorder gated on volatility.
+
+        ``riot_risk = volatility × (1 − organizational_discipline)``. Fires
+        deterministically when the risk exceeds the configured threshold (a
+        gate, not a stochastic roll — the lumpen erupt when volatility
+        overwhelms discipline; III.7 determinism holds without RNG). Unlike the
+        organized UPRISING, the riot destroys wealth but builds NO solidarity
+        infrastructure (the reactionary inverse of the George Floyd dynamic).
+        The canonical world seeds no lumpen nodes, so this branch is dormant
+        there.
+        """
+        tick = context.get("tick", 0)
+        react = services.defines.reactionary
+        wealth_destruction = services.defines.struggle.wealth_destruction_rate
+
+        for node in sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id):
+            attrs = node.attributes
+            if not attrs.get("active", True):
+                continue
+            role_str = attrs.get("role", "")
+            try:
+                role = SocialRole(role_str) if isinstance(role_str, str) else role_str
+            except ValueError:
+                continue
+            if role is not SocialRole.LUMPENPROLETARIAT:
+                continue
+
+            volatility = float(attrs.get("volatility", 0.0))
+            # organization is the disciplining cohesion proxy (org_discipline).
+            discipline = float(attrs.get("organization", 0.0))
+            riot_risk = calculate_spontaneous_riot_risk(
+                volatility=volatility, discipline=discipline
+            )
+            if riot_risk <= react.spontaneous_riot_threshold:
+                continue
+
+            current_wealth = float(attrs.get("wealth", 0.0))
+            new_wealth = current_wealth * (1.0 - wealth_destruction)
+            graph.update_node(node.id, wealth=new_wealth)
+            services.event_bus.publish(
+                Event(
+                    type=EventType.SPONTANEOUS_RIOT,
+                    tick=tick,
+                    payload={
+                        "node_id": node.id,
+                        "volatility": volatility,
+                        "organizational_discipline": discipline,
+                        "riot_risk": riot_risk,
+                        "wealth_before": current_wealth,
+                        "wealth_after": new_wealth,
+                        "narrative_hint": (
+                            "SPONTANEOUS RIOT: the declassed erupt without direction. "
+                            "Wealth burns; no solidarity is built."
+                        ),
+                    },
+                )
+            )
 
     def _check_power_vacuum(
         self,

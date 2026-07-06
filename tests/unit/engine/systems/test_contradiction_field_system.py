@@ -7,14 +7,17 @@ Reference: specs/002-dialectical-field-topology/contracts/contradiction_field_sy
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+
 import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
 from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
-from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
+from babylon.engine.systems.contradiction_field import _FIELD_EDGE_TYPES, ContradictionFieldSystem
 from babylon.models.enums import EdgeType
+from babylon.models.graph import GraphEdge
 
 
 @pytest.mark.unit
@@ -313,3 +316,109 @@ class TestContradictionFieldNoRegistry:
 
         fields = graph.nodes["C001"]["contradiction_fields"]
         assert fields == {"exploitation": 0.0, "atomization": 0.0}
+
+
+@pytest.mark.unit
+class TestContradictionFieldTensionIndex:
+    """O(N+M) tension-index optimization for the opposition-source path.
+
+    The original ``_step_from_oppositions`` called ``_incident_tension_mean``
+    PER social_class node, each call scanning all M field edges of 3 types —
+    O(N x M) at national scale (>30 min/tick). The refactor builds the
+    per-node tension index in a SINGLE pass over edges (O(N+M)).
+    """
+
+    @staticmethod
+    def _populate_field_graph(graph: BabylonGraph) -> None:
+        """Add 5 social_class nodes + 4 field edges spanning all 3 field types.
+
+        Edge tension means per node (verifies mean-not-max AND cross-type
+        aggregation AND per-node isolation):
+            C000: edges 1,2,4 incident -> mean(0.2, 0.8, 0.4) = 0.4667
+            C001: edges 1,2 incident   -> mean(0.2, 0.8)       = 0.5
+            C002: edges 3,4 incident   -> mean(0.6, 0.4)       = 0.5
+            C003: edge 3 incident      -> mean(0.6)            = 0.6
+            C004: no incident edges    -> 0.0
+        """
+        for i in range(5):
+            graph.add_node(
+                f"C{i:03d}",
+                _node_type="social_class",
+                wealth=10.0,
+                population=1000,
+            )
+        graph.add_edge("C000", "C001", edge_type=EdgeType.EXPLOITATION, tension=0.2)
+        graph.add_edge("C001", "C000", edge_type=EdgeType.WAGES, tension=0.8)
+        graph.add_edge("C002", "C003", edge_type=EdgeType.TENANCY, tension=0.6)
+        graph.add_edge("C000", "C002", edge_type=EdgeType.EXPLOITATION, tension=0.4)
+
+    def test_per_node_exploitation_is_mean_of_incident_tensions(self) -> None:
+        """Each node's exploitation field = mean of its incident tensions."""
+        graph = BabylonGraph()
+        self._populate_field_graph(graph)
+        services = ServiceContainer.create()
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        ContradictionFieldSystem().step(graph, services, context)
+
+        expected = {
+            "C000": pytest.approx(0.4666667, abs=1e-6),
+            "C001": pytest.approx(0.5),
+            "C002": pytest.approx(0.5),
+            "C003": pytest.approx(0.6),
+            "C004": pytest.approx(0.0),
+        }
+        for node_id, want in expected.items():
+            got = graph.nodes[node_id]["contradiction_fields"]["exploitation"]
+            assert got == want, f"{node_id}: expected {want}, got {got}"
+
+    def test_step_scans_edges_once_not_per_node(self) -> None:
+        """O(N+M) contract: query_edges called once per field edge type.
+
+        The O(N x M) per-node scan calls query_edges 3 * N times (3 field
+        edge types, once per node). The single-pass index calls it exactly
+        len(_FIELD_EDGE_TYPES) times regardless of node count. This is the
+        algorithmic-complexity regression gate.
+        """
+        graph = _QueryEdgesCountingGraph()
+        self._populate_field_graph(graph)
+        services = ServiceContainer.create()
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        ContradictionFieldSystem().step(graph, services, context)
+
+        # 5 nodes x 3 edge types = 15 calls under the old O(N x M) scan;
+        # the index build scans each edge type exactly once (3 calls).
+        assert graph.query_edges_calls <= len(_FIELD_EDGE_TYPES), (
+            f"Expected <= {len(_FIELD_EDGE_TYPES)} query_edges calls (single "
+            f"pass), got {graph.query_edges_calls} (per-node scan regression)"
+        )
+
+
+class _QueryEdgesCountingGraph(BabylonGraph):
+    """BabylonGraph subclass counting query_edges calls (complexity test only).
+
+    A subclass (not a wrapper) so it remains a structural
+    :class:`GraphProtocol` and ``SystemBase._wrap_graph`` passes it through
+    unchanged. Only ``query_edges`` is intercepted; all other GraphProtocol
+    methods are inherited verbatim from :class:`BabylonGraph`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.query_edges_calls: int = 0
+
+    def query_edges(
+        self,
+        edge_type: str | None = None,
+        predicate: Callable[[GraphEdge], bool] | None = None,
+        min_weight: float | None = None,
+        max_weight: float | None = None,
+    ) -> Iterator[GraphEdge]:
+        self.query_edges_calls += 1
+        return super().query_edges(
+            edge_type=edge_type,
+            predicate=predicate,
+            min_weight=min_weight,
+            max_weight=max_weight,
+        )

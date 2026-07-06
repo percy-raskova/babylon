@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "run_metadata": {
-    "session_id": "a1b52099-fdc5-4cd1-a6a5-5738ff67ffea",
+    "session_id": "d5cfc5ac-a96d-4112-b012-3095cb3acba5",
     "exit_reason": "completed",
     "ticks_requested": 5,
     "ticks_completed": 5,
@@ -16,15 +16,16 @@
     "external_node_ids": [
       "canada"
     ],
-    "wallclock_start": "2026-07-02T20:13:04.461443Z",
-    "wallclock_end": "2026-07-02T20:13:10.050440Z"
+    "wallclock_start": "2026-07-04T23:09:40.642981Z",
+    "wallclock_end": "2026-07-04T23:10:12.631727Z"
   },
   "terminal_state": {
     "tick": 4,
     "counties_alive": 3,
+    "counties_with_population": 3,
     "total_population": null,
     "total_v": 1496702270.2884655,
-    "total_c": 1759843201.9230785,
+    "total_c": 1947426031.296344,
     "total_s": 2022984133.5576897,
     "total_k": 549071079000.00183,
     "mean_p_acquiescence": null,
@@ -32,18 +33,61 @@
     "mean_ideology_r": null,
     "mean_ideology_l": null,
     "mean_ideology_f": null,
-    "max_tension": 1.0
+    "max_tension": 0.667728
   },
-  "external_node_flows": [],
+  "external_node_flows": [
+    {
+      "node_id": "canada",
+      "total_phi_inflow": 138052212384.74554,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    },
+    {
+      "node_id": "china",
+      "total_phi_inflow": 177485550229.13843,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    },
+    {
+      "node_id": "eu",
+      "total_phi_inflow": 83810425513.52832,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    },
+    {
+      "node_id": "russia_csi",
+      "total_phi_inflow": 100100193911.4864,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    },
+    {
+      "node_id": "southeast_asia",
+      "total_phi_inflow": 147014561301.97943,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    },
+    {
+      "node_id": "sub_saharan_africa",
+      "total_phi_inflow": 16998595120.660324,
+      "total_trade_inbound": 0.0,
+      "total_commute_outbound": 0.0,
+      "tick_count_with_inflow": 4
+    }
+  ],
   "county_terminal_snapshot": [
     {
       "entity_id": "26099",
       "v": 246750326.71153876,
-      "c": 287873538.46153986,
+      "c": 384593436.02921826,
       "s": 328996750.21153903,
       "k": 89816544000.0004,
-      "p_acquiescence": 0.3183124905660377,
-      "p_revolution": 0.42641509433962266,
+      "p_acquiescence": 0.2505638275862069,
+      "p_revolution": 0.31034510344827587,
       "ideology_r": 0.05,
       "ideology_l": 0.5,
       "ideology_f": 0.45,
@@ -53,11 +97,11 @@
     {
       "entity_id": "26125",
       "v": 611029583.9423078,
-      "c": 736126259.6153895,
+      "c": 659049501.8948244,
       "s": 861222935.2884539,
       "k": 229671393000.0022,
-      "p_acquiescence": 0.323413173076923,
-      "p_revolution": 0.43076923076923074,
+      "p_acquiescence": 0.2505638275862069,
+      "p_revolution": 0.31034510344827587,
       "ideology_r": 0.05,
       "ideology_l": 0.5,
       "ideology_f": 0.45,
@@ -67,11 +111,11 @@
     {
       "entity_id": "26163",
       "v": 638922359.634619,
-      "c": 735843403.8461493,
+      "c": 903783093.3723013,
       "s": 832764448.0576967,
       "k": 229583141999.99924,
-      "p_acquiescence": 0.323413173076923,
-      "p_revolution": 0.43076923076923074,
+      "p_acquiescence": 0.2505638275862069,
+      "p_revolution": 0.31034510344827587,
       "ideology_r": 0.05,
       "ideology_l": 0.5,
       "ideology_f": 0.45,
@@ -79,42 +123,352 @@
       "delta_k_vs_initial": 0.0
     }
   ],
-  "conservation_audit": [],
+  "conservation_audit": [
+    {
+      "tick": 1,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:canada"
+      }
+    },
+    {
+      "tick": 1,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:china"
+      }
+    },
+    {
+      "tick": 1,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:eu"
+      }
+    },
+    {
+      "tick": 1,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999999,
+        "expected_value": 1.0,
+        "residual": -1.1102230246251565e-16,
+        "scale": "external:russia_csi"
+      }
+    },
+    {
+      "tick": 1,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:southeast_asia"
+      }
+    },
+    {
+      "tick": 1,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999999,
+        "expected_value": 1.0,
+        "residual": -1.1102230246251565e-16,
+        "scale": "external:sub_saharan_africa"
+      }
+    },
+    {
+      "tick": 1,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 1.0,
+        "expected_value": 1.0,
+        "residual": 0.0,
+        "scale": "external:__national_aggregate__"
+      }
+    },
+    {
+      "tick": 2,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:canada"
+      }
+    },
+    {
+      "tick": 2,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:china"
+      }
+    },
+    {
+      "tick": 2,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:eu"
+      }
+    },
+    {
+      "tick": 2,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999999,
+        "expected_value": 1.0,
+        "residual": -1.1102230246251565e-16,
+        "scale": "external:russia_csi"
+      }
+    },
+    {
+      "tick": 2,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:southeast_asia"
+      }
+    },
+    {
+      "tick": 2,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999999,
+        "expected_value": 1.0,
+        "residual": -1.1102230246251565e-16,
+        "scale": "external:sub_saharan_africa"
+      }
+    },
+    {
+      "tick": 2,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 1.0,
+        "expected_value": 1.0,
+        "residual": 0.0,
+        "scale": "external:__national_aggregate__"
+      }
+    },
+    {
+      "tick": 3,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:canada"
+      }
+    },
+    {
+      "tick": 3,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:china"
+      }
+    },
+    {
+      "tick": 3,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:eu"
+      }
+    },
+    {
+      "tick": 3,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999999,
+        "expected_value": 1.0,
+        "residual": -1.1102230246251565e-16,
+        "scale": "external:russia_csi"
+      }
+    },
+    {
+      "tick": 3,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:southeast_asia"
+      }
+    },
+    {
+      "tick": 3,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999999,
+        "expected_value": 1.0,
+        "residual": -1.1102230246251565e-16,
+        "scale": "external:sub_saharan_africa"
+      }
+    },
+    {
+      "tick": 3,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 1.0,
+        "expected_value": 1.0,
+        "residual": 0.0,
+        "scale": "external:__national_aggregate__"
+      }
+    },
+    {
+      "tick": 4,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:canada"
+      }
+    },
+    {
+      "tick": 4,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:china"
+      }
+    },
+    {
+      "tick": 4,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:eu"
+      }
+    },
+    {
+      "tick": 4,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999999,
+        "expected_value": 1.0,
+        "residual": -1.1102230246251565e-16,
+        "scale": "external:russia_csi"
+      }
+    },
+    {
+      "tick": 4,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999998,
+        "expected_value": 1.0,
+        "residual": -2.220446049250313e-16,
+        "scale": "external:southeast_asia"
+      }
+    },
+    {
+      "tick": 4,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 0.9999999999999999,
+        "expected_value": 1.0,
+        "residual": -1.1102230246251565e-16,
+        "scale": "external:sub_saharan_africa"
+      }
+    },
+    {
+      "tick": 4,
+      "invariant_name": "imperial_rent_phi_week_distribution",
+      "severity": "info",
+      "details": {
+        "computed_value": 1.0,
+        "expected_value": 1.0,
+        "residual": 0.0,
+        "scale": "external:__national_aggregate__"
+      }
+    }
+  ],
   "performance": {
-    "total_wallclock_sec": 5.5890144019995205,
-    "session_init_sec": 4.897989478000454,
-    "hex_hydration_sec": 4.897989478000454,
-    "tick_loop_sec": 0.4249380649998784,
+    "total_wallclock_sec": 31.98877391498536,
+    "session_init_sec": 7.513064144004602,
+    "hex_hydration_sec": 7.513064144004602,
+    "tick_loop_sec": 0.14578121301019564,
     "artifact_emission_sec": 0.0,
-    "per_tick_median_ms": 107.09359999964363,
-    "per_tick_p99_ms": 109.78117000013299,
-    "per_tick_max_ms": 109.78117000013299,
+    "per_tick_median_ms": 34.13947550870944,
+    "per_tick_p99_ms": 46.20219301432371,
+    "per_tick_max_ms": 46.20219301432371,
     "per_system_ms": {
-      "VitalitySystem": 1.0018479988502804,
-      "TerritorySystem": 0.19612799951573834,
-      "SubstrateSystem": 0.3197800015186658,
-      "ProductionSystem": 0.2879610001400579,
-      "TickDynamicsSystem": 0.07313699825317599,
-      "ReserveArmySystem": 0.027592999686021358,
-      "CommunitySystem": 0.0656040010653669,
-      "LifecycleSystem": 0.07666400051675737,
-      "SolidaritySystem": 0.086460999227711,
-      "ImperialRentSystem": 0.6570830009877682,
-      "DispossessionEventSystem": 0.024865998057066463,
-      "DecompositionSystem": 0.22882799930812325,
-      "ControlRatioSystem": 0.07107300007191952,
-      "MetabolismSystem": 0.28039700009685475,
-      "OODASystem": 0.15718600116088055,
-      "FactionInfluenceSystem": 0.34968600084539503,
-      "SurvivalSystem": 0.4307189992687199,
-      "StruggleSystem": 0.507902002937044,
-      "ConsciousnessSystem": 0.5580750002991408,
-      "SovereigntySystem": 0.11741900198103394,
-      "ContradictionSystem": 1.0092419979628175,
-      "ContradictionFieldSystem": 0.07941900003061164,
-      "FieldDerivativeSystem": 0.05847799911862239,
-      "CollapseTransitionSystem": 0.11742800234060269,
-      "EdgeTransitionSystem": 0.060422997194109485
+      "VitalitySystem": 0.6654789613094181,
+      "TerritorySystem": 0.388601009035483,
+      "SubstrateSystem": 0.45397301437333226,
+      "ProductionSystem": 0.7648550090380013,
+      "TickDynamicsSystem": 0.0076039868872612715,
+      "ReserveArmySystem": 0.05786796100437641,
+      "CommunitySystem": 0.009167066309601068,
+      "LifecycleSystem": 1.044242992065847,
+      "SolidaritySystem": 0.06488201324827969,
+      "ImperialRentSystem": 1.3718669943045825,
+      "DispossessionEventSystem": 0.06444103200919926,
+      "DecompositionSystem": 0.08995801908895373,
+      "ControlRatioSystem": 0.010500982170924544,
+      "MetabolismSystem": 0.3185170062351972,
+      "OODASystem": 0.18984597409144044,
+      "FactionInfluenceSystem": 0.44377200538292527,
+      "SurvivalSystem": 0.5010510212741792,
+      "StruggleSystem": 0.7027189712971449,
+      "ConsciousnessSystem": 0.9672459855210036,
+      "FascistFactionSystem": 0.4312999953981489,
+      "SovereigntySystem": 0.13291003415361047,
+      "ContradictionSystem": 3.014240995980799,
+      "ContradictionFieldSystem": 1.389839977491647,
+      "FieldDerivativeSystem": 1.8923239840660244,
+      "CollapseTransitionSystem": 0.10410399409011006,
+      "EdgeTransitionSystem": 0.3121450135949999
     }
   },
   "events": [
@@ -127,110 +481,15 @@
         "type": "population_attrition",
         "payload": {
           "entity_id": "C001",
-          "deaths": 20,
-          "remaining_population": 65,
-          "attrition_rate": 0.2433823529411765
-        },
-        "timestamp": "2026-07-02 16:13:09.600880"
-      }
-    },
-    {
-      "tick": 1,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "population_attrition",
-        "payload": {
-          "entity_id": "C002",
-          "deaths": 20,
-          "remaining_population": 65,
-          "attrition_rate": 0.2433823529411765
-        },
-        "timestamp": "2026-07-02 16:13:09.600958"
-      }
-    },
-    {
-      "tick": 1,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "population_attrition",
-        "payload": {
-          "entity_id": "C003",
-          "deaths": 20,
-          "remaining_population": 65,
-          "attrition_rate": 0.2433823529411765
-        },
-        "timestamp": "2026-07-02 16:13:09.601006"
-      }
-    },
-    {
-      "tick": 1,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "ecological_overshoot",
-        "payload": {
-          "overshoot_ratio": 999.0,
-          "total_consumption": 2.4,
-          "total_biocapacity": 0
-        },
-        "timestamp": "2026-07-02 16:13:09.601776"
-      }
-    },
-    {
-      "tick": 1,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "organizational_action",
-        "payload": {
-          "layer0_count": 0,
-          "action_count": 0,
-          "org_count": 0
-        },
-        "timestamp": "2026-07-02 16:13:09.601822"
-      }
-    },
-    {
-      "tick": 1,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "peripheral_revolt",
-        "payload": {
-          "node_id": "C001",
-          "edges_severed": 1,
-          "p_acquiescence": 0.050507133160036466,
-          "p_revolution": 0.19999999960000003,
-          "narrative_hint": "PERIPHERAL REVOLT: Colonial extraction ends. The periphery refuses to subsidize the empire."
-        },
-        "timestamp": "2026-07-02 16:13:09.602156"
-      }
-    },
-    {
-      "tick": 2,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "population_attrition",
-        "payload": {
-          "entity_id": "C001",
           "deaths": 13,
-          "remaining_population": 52,
-          "attrition_rate": 0.20656720340236684
+          "remaining_population": 72,
+          "attrition_rate": 0.15441176470588236
         },
-        "timestamp": "2026-07-02 16:13:09.707991"
+        "timestamp": "2026-07-04 19:10:12.415468"
       }
     },
     {
-      "tick": 2,
+      "tick": 1,
       "event_type": "Event",
       "entity_ids": [],
       "severity": "info",
@@ -239,14 +498,14 @@
         "payload": {
           "entity_id": "C002",
           "deaths": 13,
-          "remaining_population": 52,
-          "attrition_rate": 0.20656720340236684
+          "remaining_population": 72,
+          "attrition_rate": 0.15441176470588236
         },
-        "timestamp": "2026-07-02 16:13:09.708057"
+        "timestamp": "2026-07-04 19:10:12.415560"
       }
     },
     {
-      "tick": 2,
+      "tick": 1,
       "event_type": "Event",
       "entity_ids": [],
       "severity": "info",
@@ -255,10 +514,76 @@
         "payload": {
           "entity_id": "C003",
           "deaths": 13,
-          "remaining_population": 52,
-          "attrition_rate": 0.20656720340236684
+          "remaining_population": 72,
+          "attrition_rate": 0.15441176470588236
         },
-        "timestamp": "2026-07-02 16:13:09.708101"
+        "timestamp": "2026-07-04 19:10:12.415614"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "lifecycle_transition",
+        "payload": {
+          "territory_id": "T001",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
+        },
+        "timestamp": "2026-07-04 19:10:12.416325"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "lifecycle_transition",
+        "payload": {
+          "territory_id": "T002",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
+        },
+        "timestamp": "2026-07-04 19:10:12.416422"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "lifecycle_transition",
+        "payload": {
+          "territory_id": "T003",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
+        },
+        "timestamp": "2026-07-04 19:10:12.416486"
+      }
+    },
+    {
+      "tick": 1,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "organizational_action",
+        "payload": {
+          "layer0_count": 0,
+          "action_count": 0,
+          "org_count": 0
+        },
+        "timestamp": "2026-07-04 19:10:12.417190"
       }
     },
     {
@@ -267,13 +592,97 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "ecological_overshoot",
+        "type": "lifecycle_transition",
         "payload": {
-          "overshoot_ratio": 999.0,
-          "total_consumption": 2.0100000000000002,
-          "total_biocapacity": 0
+          "territory_id": "T001",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-02 16:13:09.708681"
+        "timestamp": "2026-07-04 19:10:12.464239"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "lifecycle_transition",
+        "payload": {
+          "territory_id": "T002",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
+        },
+        "timestamp": "2026-07-04 19:10:12.464324"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "lifecycle_transition",
+        "payload": {
+          "territory_id": "T003",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
+        },
+        "timestamp": "2026-07-04 19:10:12.464379"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "surplus_extraction",
+        "payload": {
+          "source_id": "C001",
+          "target_id": "C501",
+          "amount": 0.024677924841750177,
+          "mechanism": "imperial_rent"
+        },
+        "timestamp": "2026-07-04 19:10:12.464474"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "surplus_extraction",
+        "payload": {
+          "source_id": "C002",
+          "target_id": "C502",
+          "amount": 0.024677924841750177,
+          "mechanism": "imperial_rent"
+        },
+        "timestamp": "2026-07-04 19:10:12.464505"
+      }
+    },
+    {
+      "tick": 2,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "surplus_extraction",
+        "payload": {
+          "source_id": "C003",
+          "target_id": "C503",
+          "amount": 0.024677924841750177,
+          "mechanism": "imperial_rent"
+        },
+        "timestamp": "2026-07-04 19:10:12.464532"
       }
     },
     {
@@ -288,50 +697,7 @@
           "action_count": 0,
           "org_count": 0
         },
-        "timestamp": "2026-07-02 16:13:09.708724"
-      }
-    },
-    {
-      "tick": 2,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "peripheral_revolt",
-        "payload": {
-          "node_id": "C001",
-          "edges_severed": 0,
-          "p_acquiescence": 0.050852168262910336,
-          "p_revolution": 0.19999999960000003,
-          "narrative_hint": "PERIPHERAL REVOLT: Colonial extraction ends. The periphery refuses to subsidize the empire."
-        },
-        "timestamp": "2026-07-02 16:13:09.709027"
-      }
-    },
-    {
-      "tick": 2,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "rupture",
-        "payload": {
-          "edge": "C002->C502"
-        },
-        "timestamp": "2026-07-02 16:13:09.709242"
-      }
-    },
-    {
-      "tick": 2,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "rupture",
-        "payload": {
-          "edge": "C003->C503"
-        },
-        "timestamp": "2026-07-02 16:13:09.709273"
+        "timestamp": "2026-07-04 19:10:12.464868"
       }
     },
     {
@@ -340,14 +706,15 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "population_attrition",
+        "type": "lifecycle_transition",
         "payload": {
-          "entity_id": "C001",
-          "deaths": 8,
-          "remaining_population": 44,
-          "attrition_rate": 0.17070900425295854
+          "territory_id": "T001",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-02 16:13:09.818370"
+        "timestamp": "2026-07-04 19:10:12.502145"
       }
     },
     {
@@ -356,14 +723,15 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "population_attrition",
+        "type": "lifecycle_transition",
         "payload": {
-          "entity_id": "C002",
-          "deaths": 9,
-          "remaining_population": 43,
-          "attrition_rate": 0.17578257016489957
+          "territory_id": "T002",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-02 16:13:09.818443"
+        "timestamp": "2026-07-04 19:10:12.502258"
       }
     },
     {
@@ -372,14 +740,15 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "population_attrition",
+        "type": "lifecycle_transition",
         "payload": {
-          "entity_id": "C003",
-          "deaths": 9,
-          "remaining_population": 43,
-          "attrition_rate": 0.17578257016489957
+          "territory_id": "T003",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-02 16:13:09.818492"
+        "timestamp": "2026-07-04 19:10:12.502325"
       }
     },
     {
@@ -388,13 +757,46 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "ecological_overshoot",
+        "type": "surplus_extraction",
         "payload": {
-          "overshoot_ratio": 999.0,
-          "total_consumption": 1.75,
-          "total_biocapacity": 0
+          "source_id": "C001",
+          "target_id": "C501",
+          "amount": 0.04066551796970402,
+          "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-02 16:13:09.819077"
+        "timestamp": "2026-07-04 19:10:12.502421"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "surplus_extraction",
+        "payload": {
+          "source_id": "C002",
+          "target_id": "C502",
+          "amount": 0.04066551796970402,
+          "mechanism": "imperial_rent"
+        },
+        "timestamp": "2026-07-04 19:10:12.502454"
+      }
+    },
+    {
+      "tick": 3,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "surplus_extraction",
+        "payload": {
+          "source_id": "C003",
+          "target_id": "C503",
+          "amount": 0.04066551796970402,
+          "mechanism": "imperial_rent"
+        },
+        "timestamp": "2026-07-04 19:10:12.502483"
       }
     },
     {
@@ -409,39 +811,7 @@
           "action_count": 0,
           "org_count": 0
         },
-        "timestamp": "2026-07-02 16:13:09.819118"
-      }
-    },
-    {
-      "tick": 3,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "excessive_force",
-        "payload": {
-          "node_id": "C003",
-          "repression": 0.5,
-          "spark_probability": 0.05
-        },
-        "timestamp": "2026-07-02 16:13:09.819374"
-      }
-    },
-    {
-      "tick": 3,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "peripheral_revolt",
-        "payload": {
-          "node_id": "C001",
-          "edges_severed": 0,
-          "p_acquiescence": 0.0510685563673854,
-          "p_revolution": 0.19999999960000003,
-          "narrative_hint": "PERIPHERAL REVOLT: Colonial extraction ends. The periphery refuses to subsidize the empire."
-        },
-        "timestamp": "2026-07-02 16:13:09.819448"
+        "timestamp": "2026-07-04 19:10:12.502835"
       }
     },
     {
@@ -450,14 +820,15 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "population_attrition",
+        "type": "lifecycle_transition",
         "payload": {
-          "entity_id": "C001",
-          "deaths": 6,
-          "remaining_population": 38,
-          "attrition_rate": 0.14833791411713282
+          "territory_id": "T001",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-02 16:13:09.919846"
+        "timestamp": "2026-07-04 19:10:12.534349"
       }
     },
     {
@@ -466,14 +837,15 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "population_attrition",
+        "type": "lifecycle_transition",
         "payload": {
-          "entity_id": "C002",
-          "deaths": 6,
-          "remaining_population": 37,
-          "attrition_rate": 0.1508437219356239
+          "territory_id": "T002",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-02 16:13:09.919919"
+        "timestamp": "2026-07-04 19:10:12.534440"
       }
     },
     {
@@ -482,14 +854,15 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "population_attrition",
+        "type": "lifecycle_transition",
         "payload": {
-          "entity_id": "C003",
-          "deaths": 6,
-          "remaining_population": 37,
-          "attrition_rate": 0.1508437219356239
+          "territory_id": "T003",
+          "pop_d": 0.0,
+          "pop_p": 0.0,
+          "pop_d_prime": 0.0,
+          "dependency_ratio": Infinity
         },
-        "timestamp": "2026-07-02 16:13:09.919967"
+        "timestamp": "2026-07-04 19:10:12.534498"
       }
     },
     {
@@ -498,13 +871,46 @@
       "entity_ids": [],
       "severity": "info",
       "details": {
-        "type": "ecological_overshoot",
+        "type": "surplus_extraction",
         "payload": {
-          "overshoot_ratio": 999.0,
-          "total_consumption": 1.57,
-          "total_biocapacity": 0
+          "source_id": "C001",
+          "target_id": "C501",
+          "amount": 0.05649620576174376,
+          "mechanism": "imperial_rent"
         },
-        "timestamp": "2026-07-02 16:13:09.920541"
+        "timestamp": "2026-07-04 19:10:12.534589"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "surplus_extraction",
+        "payload": {
+          "source_id": "C002",
+          "target_id": "C502",
+          "amount": 0.05649620576174376,
+          "mechanism": "imperial_rent"
+        },
+        "timestamp": "2026-07-04 19:10:12.534621"
+      }
+    },
+    {
+      "tick": 4,
+      "event_type": "Event",
+      "entity_ids": [],
+      "severity": "info",
+      "details": {
+        "type": "surplus_extraction",
+        "payload": {
+          "source_id": "C003",
+          "target_id": "C503",
+          "amount": 0.05649620576174376,
+          "mechanism": "imperial_rent"
+        },
+        "timestamp": "2026-07-04 19:10:12.534650"
       }
     },
     {
@@ -519,39 +925,7 @@
           "action_count": 0,
           "org_count": 0
         },
-        "timestamp": "2026-07-02 16:13:09.920583"
-      }
-    },
-    {
-      "tick": 4,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "excessive_force",
-        "payload": {
-          "node_id": "C003",
-          "repression": 0.5,
-          "spark_probability": 0.05
-        },
-        "timestamp": "2026-07-02 16:13:09.920837"
-      }
-    },
-    {
-      "tick": 4,
-      "event_type": "Event",
-      "entity_ids": [],
-      "severity": "info",
-      "details": {
-        "type": "peripheral_revolt",
-        "payload": {
-          "node_id": "C001",
-          "edges_severed": 0,
-          "p_acquiescence": 0.051243545446670355,
-          "p_revolution": 0.19999999960000003,
-          "narrative_hint": "PERIPHERAL REVOLT: Colonial extraction ends. The periphery refuses to subsidize the empire."
-        },
-        "timestamp": "2026-07-02 16:13:09.920910"
+        "timestamp": "2026-07-04 19:10:12.534996"
       }
     }
   ]

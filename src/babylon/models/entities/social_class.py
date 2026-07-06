@@ -21,7 +21,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from babylon.models.enums import SocialRole
-from babylon.models.types import Currency, Gini, Probability
+from babylon.models.types import Currency, Gini, Intensity, Probability
 
 # Class-specific subsistence multipliers (social reproduction costs)
 # Higher multipliers = higher cost of living = faster burn in zero-income scenarios
@@ -31,6 +31,21 @@ _SUBSISTENCE_MULTIPLIERS: dict[SocialRole, float] = {
     SocialRole.LABOR_ARISTOCRACY: 5.0,
     SocialRole.COMPRADOR_BOURGEOISIE: 10.0,
     SocialRole.CORE_BOURGEOISIE: 20.0,
+}
+
+# Spec-071 reactionary role defaults. These MUST equal the corresponding
+# ``ReactionaryDefines`` fields (a frozen SocialClass cannot read services at
+# construction, so the maps are module constants; ``tests/unit/models/
+# test_social_class_reactionary.py::TestModelConstantsMatchDefines`` pins the
+# equality so III.1's single-source-of-truth holds).
+_ENTITLEMENT_DEFAULTS: dict[SocialRole, float] = {
+    SocialRole.PERIPHERY_PROLETARIAT: 0.2,
+    SocialRole.LABOR_ARISTOCRACY: 0.8,
+    SocialRole.COMPRADOR_BOURGEOISIE: 0.7,
+    SocialRole.LUMPENPROLETARIAT: 0.0,
+}
+_VOLATILITY_DEFAULTS: dict[SocialRole, float] = {
+    SocialRole.LUMPENPROLETARIAT: 0.8,
 }
 
 
@@ -270,8 +285,8 @@ class SocialClass(BaseModel):
     # Required fields
     id: str = Field(
         ...,
-        pattern=r"^C[0-9]{3}$",
-        description="Unique identifier matching ^C[0-9]{3}$",
+        pattern=r"^C[0-9]{3,}$",
+        description="Unique identifier matching ^C[0-9]{3,}$ (3+ digits for national scale)",
     )
     name: str = Field(
         ...,
@@ -406,6 +421,43 @@ class SocialClass(BaseModel):
         ge=0.0,
         description="Compound reproduction cost modifier from community memberships",
     )
+
+    # Reactionary Subject (spec-071) — the fascism branch of the George Jackson
+    # bifurcation. Role-defaulted via _set_reactionary_defaults_from_role.
+    entitlement: Intensity = Field(
+        default=0.0,
+        description="Stake in the imperial order [0,1]; amplifies crisis agitation into fascist pull. Role-defaulted (P=0.2, C_la=0.8, C_pb=0.7, L_u=0.0).",
+    )
+    volatility: Intensity = Field(
+        default=0.0,
+        description="Disorder propensity [0,1]; gates spontaneous riot for the lumpenproletariat. Role-defaulted (L_u=0.8).",
+    )
+    fascist_alignment: Intensity = Field(
+        default=0.0,
+        description="Drift accumulator [0,1]; at >=1.0 the node is captured by a fascist faction (I.7 quantity->quality).",
+    )
+    aligned_faction_id: str | None = Field(
+        default=None,
+        description="Id of the fascist BalkanizationFaction that has captured this node (spec-071 reassignment); None = uncaptured.",
+    )
+
+    @model_validator(mode="after")
+    def _set_reactionary_defaults_from_role(self) -> "SocialClass":
+        """Fill entitlement/volatility from role defaults when unset (spec-071).
+
+        Mirrors :meth:`_set_subsistence_multiplier_from_role`: only overrides
+        the 0.0 sentinel, so an explicitly-set value survives. Role-default
+        maps MUST equal ReactionaryDefines (pinned by test).
+        """
+        if self.entitlement == 0.0:
+            default_entitlement = _ENTITLEMENT_DEFAULTS.get(self.role, 0.0)
+            if default_entitlement != 0.0:
+                object.__setattr__(self, "entitlement", default_entitlement)
+        if self.volatility == 0.0:
+            default_volatility = _VOLATILITY_DEFAULTS.get(self.role, 0.0)
+            if default_volatility != 0.0:
+                object.__setattr__(self, "volatility", default_volatility)
+        return self
 
     @model_validator(mode="after")
     def _set_subsistence_multiplier_from_role(self) -> "SocialClass":

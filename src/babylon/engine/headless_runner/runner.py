@@ -860,6 +860,57 @@ def _sqlite_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _build_economics_overrides(
+    session_factory: Any = None,
+) -> dict[str, Any]:
+    """Construct economics calculator overrides for ``ServiceContainer.create``.
+
+    Spec E101: wires gamma (and melt when a session_factory is provided)
+    into the headless runner so TickDynamicsSystem actually computes
+    gamma instead of no-opping.
+
+    Without these overrides, ``ServiceContainer.create()`` leaves
+    ``gamma_calculator`` and ``melt_calculator`` at their default ``None``.
+    TickDynamicsSystem guards on ``melt_calculator is not None`` (early
+    return at ``tick/system/__init__.py:136``) and then reads
+    ``gamma_calculator.compute(year)`` at line 387 — with both ``None``
+    the entire system no-ops and gamma stays at the hardcoded 0.33 default.
+
+    Args:
+        session_factory: Optional SQLAlchemy session factory for the
+            normalized reference DB. When provided, ``melt_calculator``
+            is wired (required to pass the TickDynamicsSystem gate).
+            When ``None``, only the parameterless ``gamma_calculator``
+            is wired.
+
+    Returns:
+        Dict of service overrides suitable for ``**``-unpacking into
+        :meth:`ServiceContainer.create`.
+    """
+    from babylon.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
+    from babylon.economics.gamma.gamma_iii import DefaultGammaIIICalculator
+
+    unpaid_care = MVPUnpaidCareHoursSource()
+    paid_care = QCEWCareAdapter()
+    gamma = DefaultGammaIIICalculator(unpaid_care, paid_care)
+
+    overrides: dict[str, Any] = {"gamma_calculator": gamma}
+
+    if session_factory is not None:
+        from babylon.economics.melt import DefaultMELTCalculator
+        from babylon.economics.melt.adapters import (
+            SQLiteBEANationalGDPSource,
+            SQLiteQCEWNationalEmploymentSource,
+        )
+
+        bea_national = SQLiteBEANationalGDPSource(session_factory)
+        qcew_national = SQLiteQCEWNationalEmploymentSource(session_factory)
+        melt = DefaultMELTCalculator(bea_national, qcew_national)
+        overrides["melt_calculator"] = melt
+
+    return overrides
+
+
 def run(config: SimulationRunConfig) -> SimulationRunResult:
     """Execute the headless simulation per ``config`` and emit artifacts.
 

@@ -21,8 +21,10 @@ from babylon.economics.throughput.adapters import (
     NAICS_2DIGIT_SECTORS,
     SQLiteBEACountyGDPSource,
     SQLiteQCEWCountyNAICSSource,
+    _sector_codes_for,
 )
 from babylon.reference.database import get_normalized_session_factory
+from babylon.reference.schema import DimIndustry
 
 # Mark all tests in this module as integration tests (require actual database)
 pytestmark = pytest.mark.integration
@@ -32,6 +34,13 @@ WAYNE_FIPS = "26163"  # Wayne County, MI (Detroit)
 OAKLAND_FIPS = "26125"  # Oakland County, MI (Detroit suburbs)
 MANHATTAN_FIPS = "36061"  # New York County, NY (Manhattan)
 TEST_YEAR = 2022
+
+# Known legitimately-zero (fips, sector, year) combo: a real imputed leaf
+# (is_imputed=1) with SUM(employment)=0 for Bullock County, AL / NAICS 21
+# (Mining) / 2024 — used to guard the 0-vs-None distinction (spec-098 fix).
+ZERO_EMP_FIPS = "01011"
+ZERO_EMP_SECTOR = "21"
+ZERO_EMP_YEAR = 2024
 
 # Expected values (approximate, with tolerance)
 WAYNE_GDP_2022 = 113_826_760_000  # ~$113.8B
@@ -192,6 +201,22 @@ class TestSQLiteQCEWCountyNAICSSource:
         emp = qcew_source.get_county_naics_employment(WAYNE_FIPS, "XX", TEST_YEAR)
         assert emp is None, "Unknown NAICS should return None"
 
+    def test_get_county_naics_employment_real_zero_is_not_none(
+        self, qcew_source: SQLiteQCEWCountyNAICSSource
+    ):
+        """A confirmed SUM(employment)=0 leaf must return 0, not None.
+
+        Regression guard (spec-098 fix): a truthy check (``if total else
+        None``) silently conflated a real zero with "no data". Bullock
+        County, AL (01011) NAICS 21 (Mining) in 2024 has a real imputed
+        leaf with employment=0 — that is DATA, not unavailability, per the
+        ``QCEWCountyNAICSSource`` protocol contract.
+        """
+        emp = qcew_source.get_county_naics_employment(ZERO_EMP_FIPS, ZERO_EMP_SECTOR, ZERO_EMP_YEAR)
+        assert emp == 0, (
+            f"Expected a confirmed zero (0), got {emp!r} — 0-vs-None conflation regression"
+        )
+
     def test_get_county_employment_by_naics_returns_sectors(
         self, qcew_source: SQLiteQCEWCountyNAICSSource
     ):
@@ -215,6 +240,23 @@ class TestSQLiteQCEWCountyNAICSSource:
         for naics, emp in sectors.items():
             assert isinstance(emp, int), f"Employment for {naics} should be int"
             assert emp > 0, f"Employment for {naics} should be positive"
+
+    def test_get_county_employment_by_naics_includes_confirmed_zero_sector(
+        self, qcew_source: SQLiteQCEWCountyNAICSSource
+    ):
+        """A confirmed-zero sector must appear in the dict with value 0.
+
+        Regression guard (spec-098 fix): a truthy check (``if emp:``)
+        silently dropped confirmed-zero sectors from the result, which
+        undercounts ``get_sector_coverage()``'s ``sectors_with_data`` /
+        ``employment_covered`` metrics downstream.
+        """
+        sectors = qcew_source.get_county_employment_by_naics(ZERO_EMP_FIPS, ZERO_EMP_YEAR)
+
+        assert ZERO_EMP_SECTOR in sectors, (
+            f"Confirmed-zero sector {ZERO_EMP_SECTOR!r} was dropped from {sectors!r}"
+        )
+        assert sectors[ZERO_EMP_SECTOR] == 0
 
     def test_get_county_naics_wages_returns_weekly(self, qcew_source: SQLiteQCEWCountyNAICSSource):
         """Test retrieving average weekly wages for a sector."""
@@ -242,6 +284,26 @@ class TestNAICS2DigitSectors:
         expected = ["11", "21", "52", "62", "72", "92"]
         for sector in expected:
             assert sector in NAICS_2DIGIT_SECTORS, f"Missing sector {sector}"
+
+    def test_sector_codes_for_map_to_real_dim_industry_rows(self, session_factory):
+        """Guard ``_sector_codes_for``'s mapping against DB drift.
+
+        The unit tests in ``test_adapters_sector_expansion.py`` only restate
+        the function's own hardcoded ``ranges`` dict. This integration test
+        additionally verifies each expanded sector_code actually exists in
+        ``dim_industry`` for every adapter label, so a future reference-DB
+        rebuild that drops/renames a sector_code would be caught here.
+        """
+        with session_factory() as session:
+            existing_codes = {
+                row[0] for row in session.query(DimIndustry.sector_code).distinct().all()
+            }
+
+        for label in NAICS_2DIGIT_SECTORS:
+            for code in _sector_codes_for(label):
+                assert code in existing_codes, (
+                    f"{label} -> {code} does not exist in dim_industry.sector_code"
+                )
 
 
 class TestThroughputPositionValidation:

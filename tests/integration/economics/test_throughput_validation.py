@@ -40,6 +40,13 @@ WAYNE_FIPS = "26163"  # Wayne County, MI (Detroit)
 OAKLAND_FIPS = "26125"  # Oakland County, MI (Detroit suburbs)
 TEST_YEAR = 2022
 
+# Year-availability boundary (spec-098 slice): QCEW/BEA data covers 2022+, but
+# LODES OD commuter flow data (fact_lodes_commuter_flow) tops out at 2021 — the
+# most recent published LODES8 vintage in the staged trove. Tests that need
+# LODES data (directly or via a commuter_source) must pin to LODES_YEAR, not
+# TEST_YEAR, or they will legitimately find no rows for that year.
+LODES_YEAR = 2021
+
 # Expected throughput intensity ranges ($/hour)
 # Based on data exploration: Wayne ~$76/hr, Oakland ~$85/hr
 TAU_THROUGH_MIN_EXPECTED = 50.0
@@ -704,7 +711,7 @@ class TestLODESAdapterIntegration:
         self, lodes_source: SQLiteLODESCommuterFlowSource
     ):
         """Test get_inbound_commuters returns int or None."""
-        result = lodes_source.get_inbound_commuters(WAYNE_FIPS, TEST_YEAR)
+        result = lodes_source.get_inbound_commuters(WAYNE_FIPS, LODES_YEAR)
 
         # May be None if LODES data not loaded
         if result is None:
@@ -713,13 +720,13 @@ class TestLODESAdapterIntegration:
         assert isinstance(result, int)
         assert result >= 0
 
-        print(f"\nWayne County inbound commuters (2022): {result:,}")
+        print(f"\nWayne County inbound commuters ({LODES_YEAR}): {result:,}")
 
     def test_outbound_commuters_returns_int_or_none(
         self, lodes_source: SQLiteLODESCommuterFlowSource
     ):
         """Test get_outbound_commuters returns int or None."""
-        result = lodes_source.get_outbound_commuters(OAKLAND_FIPS, TEST_YEAR)
+        result = lodes_source.get_outbound_commuters(OAKLAND_FIPS, LODES_YEAR)
 
         if result is None:
             pytest.skip("LODES OD data not loaded")
@@ -727,13 +734,13 @@ class TestLODESAdapterIntegration:
         assert isinstance(result, int)
         assert result >= 0
 
-        print(f"\nOakland County outbound commuters (2022): {result:,}")
+        print(f"\nOakland County outbound commuters ({LODES_YEAR}): {result:,}")
 
     def test_internal_workers_returns_int_or_none(
         self, lodes_source: SQLiteLODESCommuterFlowSource
     ):
         """Test get_internal_workers returns int or None."""
-        result = lodes_source.get_internal_workers(WAYNE_FIPS, TEST_YEAR)
+        result = lodes_source.get_internal_workers(WAYNE_FIPS, LODES_YEAR)
 
         if result is None:
             pytest.skip("LODES OD data not loaded")
@@ -741,11 +748,11 @@ class TestLODESAdapterIntegration:
         assert isinstance(result, int)
         assert result >= 0
 
-        print(f"\nWayne County internal workers (2022): {result:,}")
+        print(f"\nWayne County internal workers ({LODES_YEAR}): {result:,}")
 
     def test_net_commuter_balance(self, lodes_source: SQLiteLODESCommuterFlowSource):
         """Test get_net_commuter_balance returns int (positive or negative)."""
-        balance = lodes_source.get_net_commuter_balance(WAYNE_FIPS, TEST_YEAR)
+        balance = lodes_source.get_net_commuter_balance(WAYNE_FIPS, LODES_YEAR)
 
         if balance is None:
             pytest.skip("LODES OD data not loaded")
@@ -753,11 +760,11 @@ class TestLODESAdapterIntegration:
         assert isinstance(balance, int)
         # Balance can be positive (job importer) or negative (job exporter)
 
-        print(f"\nWayne County net commuter balance (2022): {balance:+,}")
+        print(f"\nWayne County net commuter balance ({LODES_YEAR}): {balance:+,}")
 
     def test_residence_employment(self, lodes_source: SQLiteLODESCommuterFlowSource):
         """Test get_residence_employment returns int or None."""
-        result = lodes_source.get_residence_employment(OAKLAND_FIPS, TEST_YEAR)
+        result = lodes_source.get_residence_employment(OAKLAND_FIPS, LODES_YEAR)
 
         if result is None:
             pytest.skip("LODES OD data not loaded")
@@ -765,11 +772,11 @@ class TestLODESAdapterIntegration:
         assert isinstance(result, int)
         assert result > 0
 
-        print(f"\nOakland County residence employment (2022): {result:,}")
+        print(f"\nOakland County residence employment ({LODES_YEAR}): {result:,}")
 
     def test_commuter_flows_between_counties(self, lodes_source: SQLiteLODESCommuterFlowSource):
         """Test get_commuter_flows for Oakland → Wayne commute."""
-        result = lodes_source.get_commuter_flows(OAKLAND_FIPS, WAYNE_FIPS, TEST_YEAR)
+        result = lodes_source.get_commuter_flows(OAKLAND_FIPS, WAYNE_FIPS, LODES_YEAR)
 
         if result is None:
             pytest.skip("LODES OD data not loaded")
@@ -777,11 +784,11 @@ class TestLODESAdapterIntegration:
         assert isinstance(result, int)
         assert result >= 0
 
-        print(f"\nOakland → Wayne commuter flow (2022): {result:,}")
+        print(f"\nOakland → Wayne commuter flow ({LODES_YEAR}): {result:,}")
 
     def test_unknown_fips_returns_none(self, lodes_source: SQLiteLODESCommuterFlowSource):
         """Test that unknown FIPS returns None, not crash."""
-        result = lodes_source.get_net_commuter_balance("99999", TEST_YEAR)
+        result = lodes_source.get_net_commuter_balance("99999", LODES_YEAR)
         assert result is None
 
     def test_invalid_year_returns_none(self, lodes_source: SQLiteLODESCommuterFlowSource):
@@ -797,11 +804,24 @@ class TestDetroitCommuterPatterns:
     Expected patterns from LODES data:
     - Wayne County (Detroit): Net job IMPORTER (positive balance)
     - Oakland County: Net job EXPORTER (negative balance, bedroom community)
+
+    KNOWN CONFLICT (discovered spec-098 slice, 2026-07-04): un-skipping these
+    tests against real LODES data (see ``LODES_YEAR``) shows Oakland is
+    actually a net job IMPORTER in every available year (2019: +177,740;
+    2020: +169,232; 2021: +166,150) and its LODES residence-based employment
+    is *below* its QCEW workplace-based total in all three years — the
+    opposite of the "bedroom community" premise below. This is stable across
+    years (not a 2021-pandemic artifact) and is NOT a QCEW-adapter or
+    year-hardcode bug: it is a pre-existing incorrect empirical assumption in
+    this Feature-014 test, only now exercised because the year hardcode
+    previously made these tests skip unconditionally. Left failing
+    deliberately, out of scope for the spec-098 QCEW-adapter slice — flagged
+    for owner review rather than silently flipped to match the data.
     """
 
     def test_wayne_is_job_importer(self, lodes_source: SQLiteLODESCommuterFlowSource):
         """Wayne County (Detroit) should be a net job importer."""
-        balance = lodes_source.get_net_commuter_balance(WAYNE_FIPS, TEST_YEAR)
+        balance = lodes_source.get_net_commuter_balance(WAYNE_FIPS, LODES_YEAR)
 
         if balance is None:
             pytest.skip("LODES OD data not loaded")
@@ -812,7 +832,7 @@ class TestDetroitCommuterPatterns:
 
     def test_oakland_is_job_exporter(self, lodes_source: SQLiteLODESCommuterFlowSource):
         """Oakland County should be a net job exporter (bedroom community)."""
-        balance = lodes_source.get_net_commuter_balance(OAKLAND_FIPS, TEST_YEAR)
+        balance = lodes_source.get_net_commuter_balance(OAKLAND_FIPS, LODES_YEAR)
 
         if balance is None:
             pytest.skip("LODES OD data not loaded")
@@ -825,15 +845,15 @@ class TestDetroitCommuterPatterns:
         self, lodes_source: SQLiteLODESCommuterFlowSource, qcew_source: SQLiteQCEWCountyNAICSSource
     ):
         """Oakland residence employment should exceed workplace employment."""
-        residence_emp = lodes_source.get_residence_employment(OAKLAND_FIPS, TEST_YEAR)
-        workplace_emp = qcew_source.get_county_total_employment(OAKLAND_FIPS, TEST_YEAR)
+        residence_emp = lodes_source.get_residence_employment(OAKLAND_FIPS, LODES_YEAR)
+        workplace_emp = qcew_source.get_county_total_employment(OAKLAND_FIPS, LODES_YEAR)
 
         if residence_emp is None:
             pytest.skip("LODES OD data not loaded")
         if workplace_emp is None:
             pytest.skip("QCEW data not loaded")
 
-        print("\nOakland County employment comparison (2022):")
+        print(f"\nOakland County employment comparison ({LODES_YEAR}):")
         print(f"  Residence employment: {residence_emp:,}")
         print(f"  Workplace employment: {workplace_emp:,}")
         print(f"  Ratio: {residence_emp / workplace_emp:.2f}")
@@ -855,12 +875,12 @@ class TestCommuterAdjustedMetricsIntegration:
     ):
         """Test full commuter-adjusted metrics computation."""
         # First check if LODES data is available
-        balance = lodes_source.get_net_commuter_balance(WAYNE_FIPS, TEST_YEAR)
+        balance = lodes_source.get_net_commuter_balance(WAYNE_FIPS, LODES_YEAR)
         if balance is None:
             pytest.skip("LODES OD data not loaded")
 
         result = throughput_calculator_with_commuter.compute_commuter_adjusted_metrics(
-            WAYNE_FIPS, TEST_YEAR
+            WAYNE_FIPS, LODES_YEAR
         )
 
         # Should not be NoDataSentinel for Wayne County
@@ -869,7 +889,7 @@ class TestCommuterAdjustedMetricsIntegration:
 
         assert isinstance(result, CommuterAdjustedMetrics)
         assert result.fips == WAYNE_FIPS
-        assert result.year == TEST_YEAR
+        assert result.year == LODES_YEAR
         assert result.has_commuter_data is True
         assert result.tau_through_workplace > 0
 
@@ -893,13 +913,18 @@ class TestCommuterAdjustedMetricsIntegration:
         throughput_calculator_with_commuter: DefaultThroughputCalculator,
         lodes_source: SQLiteLODESCommuterFlowSource,
     ):
-        """Test Oakland County shows bedroom community characteristics in metrics."""
-        balance = lodes_source.get_net_commuter_balance(OAKLAND_FIPS, TEST_YEAR)
+        """Test Oakland County shows bedroom community characteristics in metrics.
+
+        See the KNOWN CONFLICT note on ``TestDetroitCommuterPatterns``: real
+        LODES data shows Oakland as a net job IMPORTER, not the bedroom
+        community this test assumes. Left failing deliberately.
+        """
+        balance = lodes_source.get_net_commuter_balance(OAKLAND_FIPS, LODES_YEAR)
         if balance is None:
             pytest.skip("LODES OD data not loaded")
 
         result = throughput_calculator_with_commuter.compute_commuter_adjusted_metrics(
-            OAKLAND_FIPS, TEST_YEAR
+            OAKLAND_FIPS, LODES_YEAR
         )
 
         if isinstance(result, NoDataSentinel):

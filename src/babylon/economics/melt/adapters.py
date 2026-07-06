@@ -39,12 +39,11 @@ from sqlalchemy import func
 
 from babylon.reference.schema import (
     DimBEAIndustry,
-    DimIndustry,
     DimOwnership,
     DimTime,
     FactBEACountyGDP,
     FactBEANationalIndustry,
-    FactQcewAnnual,
+    FactQcewCountyRollup,
 )
 
 if TYPE_CHECKING:
@@ -148,13 +147,14 @@ class SQLiteBEANationalGDPSource:
 class SQLiteQCEWNationalEmploymentSource:
     """SQLite adapter implementing QCEWDataSource protocol for national employment.
 
-    Queries FactQcewAnnual with own_code='0' (total all ownerships) and
-    naics_code='10' (total all industries) to retrieve total employment,
-    then SUMs across all counties to produce the national aggregate.
+    Reads the post-spec-086 QCEW layout of ``marxist-data-3NF.sqlite``: the
+    county Total-Covered figure (``own_code='0'``) lives in
+    ``fact_qcew_county_rollup`` (spec-086), NOT in ``fact_qcew_annual`` (which
+    holds 6-digit-leaf-only rows since spec-086). We SUM the rollup's
+    per-county totals across all counties to produce the national aggregate.
 
-    CRITICAL: own_code='0' + naics_code='10' is the QCEW convention for
-    total-of-all employment at the county level. We SUM across counties
-    to produce the national aggregate.
+    CRITICAL: ``fact_qcew_county_rollup`` has no industry dimension (it IS
+    the county total row), so no industry filter is needed or possible.
     """
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
@@ -165,7 +165,6 @@ class SQLiteQCEWNationalEmploymentSource:
         """
         self._session_factory = session_factory
         self._total_ownership_id: int | None = None
-        self._total_industry_id: int | None = None
 
     def _get_total_ownership_id(self, session: Session) -> int | None:
         """Get ownership_id for 'Total All' (own_code='0').
@@ -178,22 +177,11 @@ class SQLiteQCEWNationalEmploymentSource:
                 self._total_ownership_id = total_own.ownership_id
         return self._total_ownership_id
 
-    def _get_total_industry_id(self, session: Session) -> int | None:
-        """Get industry_id for 'Total' industry (naics_code='10').
-
-        Caches the result for efficiency.
-        """
-        if self._total_industry_id is None:
-            total_ind = session.query(DimIndustry).filter(DimIndustry.naics_code == "10").first()
-            if total_ind:
-                self._total_industry_id = total_ind.industry_id
-        return self._total_industry_id
-
     def get_national_employment(self, year: int) -> int | None:
         """Get national employment total for a given year.
 
-        SUMs employment across all counties where own_code='0' and
-        naics_code='10' to produce the national aggregate.
+        SUMs the ``fact_qcew_county_rollup`` Total-Covered (own_code='0')
+        row across all counties to produce the national aggregate.
 
         Args:
             year: Calendar year (typically 2010-2023).
@@ -207,11 +195,6 @@ class SQLiteQCEWNationalEmploymentSource:
                 logger.warning("QCEW 'Total All' ownership (own_code='0') not found")
                 return None
 
-            total_industry_id = self._get_total_industry_id(session)
-            if total_industry_id is None:
-                logger.warning("QCEW 'Total' industry (naics_code='10') not found")
-                return None
-
             time_dim = (
                 session.query(DimTime).filter(DimTime.year == year, DimTime.is_annual == 1).first()
             )
@@ -219,11 +202,10 @@ class SQLiteQCEWNationalEmploymentSource:
                 return None
 
             result = (
-                session.query(func.sum(FactQcewAnnual.employment))
+                session.query(func.sum(FactQcewCountyRollup.employment))
                 .filter(
-                    FactQcewAnnual.ownership_id == total_ownership_id,
-                    FactQcewAnnual.industry_id == total_industry_id,
-                    FactQcewAnnual.time_id == time_dim.time_id,
+                    FactQcewCountyRollup.ownership_id == total_ownership_id,
+                    FactQcewCountyRollup.time_id == time_dim.time_id,
                 )
                 .scalar()
             )

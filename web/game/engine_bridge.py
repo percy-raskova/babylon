@@ -193,6 +193,283 @@ def _aspect_to_frame_entry(aspect: Any) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------- #
+# Spec 103: Trade surfaces — helpers for boundary_flow_register +
+# dynamic_external_node_state + county_exposure_by_external reads.
+# Pure reads over persisted engine state — Constitution III.
+# ---------------------------------------------------------------------- #
+
+_BLOC_LABELS: dict[str, str] = {
+    "canada": "Canada",
+    "china": "China",
+    "eu": "EU",
+    "india": "India",
+    "sub_saharan_africa": "Sub-Saharan Africa",
+    "latin_america": "Latin America",
+    "russia_csi": "Russia/CSI",
+    "southeast_asia": "Southeast Asia",
+    "rest_of_usa": "Rest of USA",
+}
+
+# Canonical citation provenance for the exposure breakdown's terminal leaves.
+# These describe the reference-data lineage the spec-100 weights trace to.
+_EXPOSURE_CITATIONS: list[dict[str, Any]] = [
+    {
+        "id": "bea-io-2023",
+        "source": "BEA I-O imports",
+        "table": "fact_bea_io_coefficient",
+        "year": 2023,
+        "notes": "Import coefficients per industry — the import exposure numerator.",
+    },
+    {
+        "id": "qcew-2023q2",
+        "source": "QCEW county industry shares",
+        "table": "fact_qcew",
+        "year": "2023Q2",
+        "notes": "County-level industry employment shares — the exposure allocation key.",
+    },
+    {
+        "id": "hickel-drain",
+        "source": "Hickel drain",
+        "table": "immutable_reference_hickel_drain",
+        "notes": "Annual Φ (drain) inflow per external bloc.",
+    },
+]
+
+
+def _fetch_boundary_flow_series(pool: Any, session_id: UUID) -> list[dict[str, Any]]:
+    """Read ``boundary_flow_register`` per-tick rows grouped by source + flow_type.
+
+    Returns one dict per ``(tick, source_node_id, flow_type)`` with the summed
+    magnitude. Degrades to an empty list when the pool is unavailable or the
+    query fails (SQLite dev/test, SIM DB absent).
+    """
+    if pool is None:
+        return []
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tick, source_node_id, flow_type, SUM(magnitude) AS magnitude
+                FROM boundary_flow_register
+                WHERE session_id = %s
+                  AND source_kind = 'external'
+                GROUP BY tick, source_node_id, flow_type
+                ORDER BY tick, source_node_id, flow_type
+                """,
+                (session_id,),
+            )
+            rows = cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    result.append(
+                        {
+                            "tick": int(row["tick"]),
+                            "source_node_id": str(row["source_node_id"]),
+                            "flow_type": str(row["flow_type"]),
+                            "magnitude": float(row["magnitude"] or 0.0),
+                        }
+                    )
+                elif isinstance(row, (tuple, list)) and len(row) >= 4:
+                    result.append(
+                        {
+                            "tick": int(row[0]),
+                            "source_node_id": str(row[1]),
+                            "flow_type": str(row[2]),
+                            "magnitude": float(row[3] or 0.0),
+                        }
+                    )
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
+        logger.exception("Failed to read boundary_flow_register for session %s", session_id)
+        return []
+
+
+def _fetch_county_boundary_flows(
+    pool: Any, session_id: UUID, county_fips: str
+) -> list[dict[str, Any]]:
+    """Read ``boundary_flow_register`` rows where ``dest_node_id = county_fips``.
+
+    Returns one dict per ``(tick, source_node_id, flow_type, magnitude)``.
+    Degrades to an empty list when the pool is unavailable or the query fails.
+    """
+    if pool is None:
+        return []
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tick, source_node_id, flow_type, magnitude
+                FROM boundary_flow_register
+                WHERE session_id = %s
+                  AND dest_node_id = %s
+                ORDER BY source_node_id, tick
+                """,
+                (session_id, county_fips),
+            )
+            rows = cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    result.append(
+                        {
+                            "tick": int(row["tick"]),
+                            "source_node_id": str(row["source_node_id"]),
+                            "flow_type": str(row["flow_type"]),
+                            "magnitude": float(row["magnitude"] or 0.0),
+                        }
+                    )
+                elif isinstance(row, (tuple, list)) and len(row) >= 4:
+                    result.append(
+                        {
+                            "tick": int(row[0]),
+                            "source_node_id": str(row[1]),
+                            "flow_type": str(row[2]),
+                            "magnitude": float(row[3] or 0.0),
+                        }
+                    )
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
+        logger.exception("Failed to read county boundary flows for %s/%s", session_id, county_fips)
+        return []
+
+
+def _fetch_external_node_latest(pool: Any, session_id: UUID) -> dict[str, dict[str, Any]]:
+    """Read the latest ``dynamic_external_node_state`` row per node_id.
+
+    Returns ``{node_id: {kind, phi_year_inflow, bilateral_trade_value,
+    bilateral_trade_tons, erdi_ratio, tick}}``. Degrades to an empty dict
+    when the pool is unavailable or the query fails.
+    """
+    if pool is None:
+        return {}
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT node_id, kind, phi_year_inflow, bilateral_trade_value,
+                       bilateral_trade_tons, erdi_ratio, tick
+                FROM dynamic_external_node_state e
+                WHERE session_id = %s
+                  AND tick = (
+                      SELECT MAX(tick) FROM dynamic_external_node_state
+                      WHERE session_id = %s AND node_id = e.node_id
+                  )
+                ORDER BY node_id
+                """,
+                (session_id, session_id),
+            )
+            rows = cur.fetchall()
+            result: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                if isinstance(row, dict):
+                    nid = str(row["node_id"])
+                    result[nid] = {
+                        "kind": str(row.get("kind", "international")),
+                        "phi_year_inflow": float(row.get("phi_year_inflow", 0.0)),
+                        "bilateral_trade_value": float(row.get("bilateral_trade_value", 0.0)),
+                        "bilateral_trade_tons": float(row.get("bilateral_trade_tons", 0.0)),
+                        "erdi_ratio": float(row.get("erdi_ratio", 1.0)),
+                        "tick": int(row.get("tick", 0)),
+                    }
+                elif isinstance(row, (tuple, list)) and len(row) >= 7:
+                    nid = str(row[0])
+                    result[nid] = {
+                        "kind": str(row[1]),
+                        "phi_year_inflow": float(row[2]),
+                        "bilateral_trade_value": float(row[3]),
+                        "bilateral_trade_tons": float(row[4]),
+                        "erdi_ratio": float(row[5]),
+                        "tick": int(row[6]),
+                    }
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty dict
+        logger.exception("Failed to read external_node_state for session %s", session_id)
+        return {}
+
+
+def _fetch_county_exposure_weights(pool: Any, county_fips: str) -> dict[str, float]:
+    """Read spec-100's ``county_exposure_by_external`` weights for a county.
+
+    Returns ``{bloc_node_id: weight}``. The table is not yet built (spec-100
+    is Lane D, unbuilt) — this degrades to an empty dict when the table is
+    absent or the query fails. Forward-compatible: when spec-100 lands, the
+    weights populate without a frontend change.
+    """
+    if pool is None:
+        return {}
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT bloc_node_id, weight
+                FROM county_exposure_by_external
+                WHERE county_fips = %s
+                ORDER BY bloc_node_id
+                """,
+                (county_fips,),
+            )
+            rows = cur.fetchall()
+            result: dict[str, float] = {}
+            for row in rows:
+                if isinstance(row, dict):
+                    result[str(row["bloc_node_id"])] = float(row.get("weight", 0.0))
+                elif isinstance(row, (tuple, list)) and len(row) >= 2:
+                    result[str(row[0])] = float(row[1])
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; spec-100 table may be absent
+        logger.debug("county_exposure_by_external not available for %s", county_fips)
+        return {}
+
+
+def _fetch_flow_type_totals(pool: Any, session_id: UUID) -> list[dict[str, Any]]:
+    """Read session-cumulative ``boundary_flow_register`` totals per flow_type.
+
+    Returns one dict per ``flow_type`` with ``total`` (SUM magnitude) and
+    ``tick_count`` (distinct ticks). Degrades to an empty list.
+    """
+    if pool is None:
+        return []
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT flow_type,
+                       COALESCE(SUM(magnitude), 0) AS total,
+                       COUNT(DISTINCT tick) AS tick_count
+                FROM boundary_flow_register
+                WHERE session_id = %s
+                GROUP BY flow_type
+                ORDER BY flow_type
+                """,
+                (session_id,),
+            )
+            rows = cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    result.append(
+                        {
+                            "flow_type": str(row["flow_type"]),
+                            "total": float(row.get("total", 0.0)),
+                            "tick_count": int(row.get("tick_count", 0)),
+                        }
+                    )
+                elif isinstance(row, (tuple, list)) and len(row) >= 3:
+                    result.append(
+                        {
+                            "flow_type": str(row[0]),
+                            "total": float(row[1]),
+                            "tick_count": int(row[2]),
+                        }
+                    )
+            return result
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
+        logger.exception("Failed to read flow_type totals for session %s", session_id)
+        return []
+
+
 def _extract_event_type(event: Any) -> str:
     """Extract a normalized event_type string from a dict or object event."""
     if isinstance(event, dict):
@@ -1302,6 +1579,285 @@ class EngineBridge:
         return {
             "tick": tick,
             "objectives": objectives,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Spec 103: Trade surfaces — Wire INDEX per-bloc lines, Territory
+    # Detail import-exposure breakdown, Analysis trade panel.
+    # ------------------------------------------------------------------ #
+
+    def get_trade_flows(self, session_id: UUID) -> dict[str, Any]:
+        """Return per-bloc price/flow lines for the Wire INDEX tab.
+
+        Spec 103 FR-103-01. Reads ``boundary_flow_register`` rows (per-tick,
+        grouped by source_node_id + flow_type) and
+        ``dynamic_external_node_state`` rows (latest per node) via the
+        persistence pool's SQL. Constitution III: pure read — never computes
+        trade state.
+
+        Degrades to ``has_data: False`` with an empty ``blocs`` list when the
+        pool is unavailable or both tables are empty/absent.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``TradeFlowsPayload`` dict matching
+            ``specs/103-trade-surfaces/contracts/trade-flows.yaml``.
+        """
+        pool = getattr(self._persistence, "_pool", None)
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        series_rows = _fetch_boundary_flow_series(pool, session_id)
+        node_latest = _fetch_external_node_latest(pool, session_id)
+
+        # Collect all node_ids from both sources (series may have nodes not in
+        # latest, and vice versa).
+        all_node_ids = sorted(set(node_latest.keys()) | {r["source_node_id"] for r in series_rows})
+        if not all_node_ids:
+            return {"tick": tick, "has_data": False, "blocs": []}
+
+        blocs: list[dict[str, Any]] = []
+        for nid in all_node_ids:
+            latest = node_latest.get(
+                nid,
+                {
+                    "kind": "international",
+                    "phi_year_inflow": 0.0,
+                    "bilateral_trade_value": 0.0,
+                    "bilateral_trade_tons": 0.0,
+                    "erdi_ratio": 1.0,
+                    "tick": tick,
+                },
+            )
+            phi_series = [
+                {"tick": r["tick"], "magnitude": r["magnitude"]}
+                for r in series_rows
+                if r["source_node_id"] == nid and r["flow_type"] == "drain_edge"
+            ]
+            trade_series = [
+                {"tick": r["tick"], "magnitude": r["magnitude"]}
+                for r in series_rows
+                if r["source_node_id"] == nid
+                and r["flow_type"] in ("trade_inbound", "trade_outbound")
+            ]
+            blocs.append(
+                {
+                    "node_id": nid,
+                    "label": _BLOC_LABELS.get(nid, nid.replace("_", " ").title()),
+                    "kind": latest["kind"],
+                    "latest": {
+                        "phi_year_inflow": latest["phi_year_inflow"],
+                        "bilateral_trade_value": latest["bilateral_trade_value"],
+                        "bilateral_trade_tons": latest["bilateral_trade_tons"],
+                        "erdi_ratio": latest["erdi_ratio"],
+                    },
+                    "phi_series": phi_series,
+                    "trade_series": trade_series,
+                }
+            )
+
+        return {"tick": tick, "has_data": True, "blocs": blocs}
+
+    def get_county_import_exposure(self, session_id: UUID, county_fips: str) -> dict[str, Any]:
+        """Return an import-exposure provenance breakdown for a county.
+
+        Spec 103 FR-103-02. A BabylonScriptValue-style ``{value, breakdown}``
+        over spec-100 ``county_exposure_by_external`` weights + live
+        ``boundary_flow_register`` flows. The breakdown's per-bloc contributors
+        each drill down to (a) the spec-100 weight (source: reference_table)
+        and (b) the live DRAIN_EDGE/TRADE_EDGE flow (source: dynamic_table).
+        The ``citations`` array carries the terminal reference-data
+        provenance.
+
+        Degrades to ``has_data: False`` with honest zeros when no data is
+        available (spec-100 table absent + boundary_flow_register empty).
+
+        Args:
+            session_id: The game session UUID.
+            county_fips: 5-digit county FIPS code.
+
+        Returns:
+            ``ExposurePayload`` dict matching
+            ``specs/103-trade-surfaces/contracts/county-exposure.yaml``.
+        """
+        pool = getattr(self._persistence, "_pool", None)
+        # hydrate_graph is called for its side-effect of ensuring the session
+        # is bootstrapped; the exposure payload itself carries no tick field.
+        self._persistence.hydrate_graph(tick=None, session_id=session_id)
+
+        weights = _fetch_county_exposure_weights(pool, county_fips)
+        flow_rows = _fetch_county_boundary_flows(pool, session_id, county_fips)
+
+        # Sum flows per bloc (DRAIN_EDGE + TRADE_EDGE).
+        flow_by_bloc: dict[str, float] = {}
+        for r in flow_rows:
+            if r["flow_type"] in ("drain_edge", "trade_inbound", "trade_outbound"):
+                flow_by_bloc[r["source_node_id"]] = (
+                    flow_by_bloc.get(r["source_node_id"], 0.0) + r["magnitude"]
+                )
+
+        all_blocs = sorted(set(weights.keys()) | set(flow_by_bloc.keys()))
+        if not all_blocs:
+            return {
+                "county_fips": county_fips,
+                "has_data": False,
+                "total_exposure": 0.0,
+                "breakdown": {"total": 0.0, "contributors": []},
+                "citations": _EXPOSURE_CITATIONS,
+            }
+
+        contributors: list[dict[str, Any]] = []
+        total = 0.0
+        for nid in all_blocs:
+            weight = weights.get(nid, 0.0)
+            flow = flow_by_bloc.get(nid, 0.0)
+            value = weight * flow
+            total += value
+            contributors.append(
+                {
+                    "label": _BLOC_LABELS.get(nid, nid.replace("_", " ").title()),
+                    "value": round(value, 4),
+                    "share": 0.0,  # filled after total is known
+                    "source": {
+                        "kind": "derived",
+                        "path": f"exposure[{county_fips}][{nid}]",
+                    },
+                    "children": [
+                        {
+                            "label": "spec-100 exposure weight",
+                            "value": weight,
+                            "share": 1.0 if weight > 0 else 0.0,
+                            "source": {
+                                "kind": "reference_table",
+                                "path": f"county_exposure_by_external[{nid}][{county_fips}]",
+                            },
+                            "children": [],
+                        },
+                        {
+                            "label": f"live flow ({'+'.join(sorted({r['flow_type'] for r in flow_rows if r['source_node_id'] == nid}))})"
+                            if any(r["source_node_id"] == nid for r in flow_rows)
+                            else "live flow (none)",
+                            "value": flow,
+                            "share": 1.0 if flow > 0 else 0.0,
+                            "source": {
+                                "kind": "dynamic_table",
+                                "path": f"boundary_flow_register[{nid}→{county_fips}]",
+                            },
+                            "children": [],
+                        },
+                    ],
+                }
+            )
+
+        # Fill shares now that total is known.
+        if total > 0:
+            for c in contributors:
+                c["share"] = round(c["value"] / total, 4)
+        else:
+            # When total is zero but we have data (weights or flows present),
+            # distribute share equally among blocs with any signal.
+            nonzero = [
+                c
+                for c in contributors
+                if c["value"] > 0 or c["children"][0]["value"] > 0 or c["children"][1]["value"] > 0
+            ]
+            share = round(1.0 / len(nonzero), 4) if nonzero else 0.0
+            for c in contributors:
+                c["share"] = share
+
+        return {
+            "county_fips": county_fips,
+            "has_data": True,
+            "total_exposure": round(total, 4),
+            "breakdown": {"total": round(total, 4), "contributors": contributors},
+            "citations": _EXPOSURE_CITATIONS,
+        }
+
+    def get_trade_panel(self, session_id: UUID) -> dict[str, Any]:
+        """Return the aggregate trade panel for the Analysis page.
+
+        Spec 103 FR-103-03. Session-cumulative Φ inflow, per-bloc breakdown,
+        and flow-type summary from ``boundary_flow_register`` aggregates +
+        ``dynamic_external_node_state``. Constitution III: pure read.
+
+        Degrades to ``has_data: False`` with honest zeros when no data is
+        available.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``TradePanelPayload`` dict matching
+            ``specs/103-trade-surfaces/contracts/trade-panel.yaml``.
+        """
+        pool = getattr(self._persistence, "_pool", None)
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        series_rows = _fetch_boundary_flow_series(pool, session_id)
+        node_latest = _fetch_external_node_latest(pool, session_id)
+        flow_type_rows = _fetch_flow_type_totals(pool, session_id)
+
+        if not series_rows and not node_latest:
+            return {
+                "tick": tick,
+                "has_data": False,
+                "total_phi_inflow": 0.0,
+                "total_trade": 0.0,
+                "blocs": [],
+                "flow_types": [],
+            }
+
+        # Per-bloc cumulative totals.
+        all_node_ids = sorted(set(node_latest.keys()) | {r["source_node_id"] for r in series_rows})
+        blocs: list[dict[str, Any]] = []
+        total_phi = 0.0
+        total_trade = 0.0
+        for nid in all_node_ids:
+            phi = sum(
+                r["magnitude"]
+                for r in series_rows
+                if r["source_node_id"] == nid and r["flow_type"] == "drain_edge"
+            )
+            trade = sum(
+                r["magnitude"]
+                for r in series_rows
+                if r["source_node_id"] == nid
+                and r["flow_type"] in ("trade_inbound", "trade_outbound")
+            )
+            total_phi += phi
+            total_trade += trade
+            latest = node_latest.get(nid, {})
+            blocs.append(
+                {
+                    "node_id": nid,
+                    "label": _BLOC_LABELS.get(nid, nid.replace("_", " ").title()),
+                    "phi_inflow": round(phi, 4),
+                    "trade": round(trade, 4),
+                    "erdi_ratio": float(latest.get("erdi_ratio", 1.0)),
+                }
+            )
+
+        flow_types = [
+            {
+                "flow_type": r["flow_type"],
+                "total": round(r["total"], 4),
+                "tick_count": r["tick_count"],
+            }
+            for r in flow_type_rows
+        ]
+
+        return {
+            "tick": tick,
+            "has_data": True,
+            "total_phi_inflow": round(total_phi, 4),
+            "total_trade": round(total_trade, 4),
+            "blocs": blocs,
+            "flow_types": flow_types,
         }
 
     # ------------------------------------------------------------------ #

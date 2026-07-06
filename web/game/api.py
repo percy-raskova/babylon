@@ -636,6 +636,66 @@ def game_objectives(request: Request, game_id: str) -> JsonResponse:
 
 
 # ---------------------------------------------------------------------- #
+# Spec 103: Trade surfaces — Wire INDEX per-bloc lines, Territory Detail
+# import-exposure breakdown, Analysis trade panel.
+# ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_trade_flows(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/trade-flows/ — per-bloc price/flow lines.
+
+    Spec 103 FR-103-04. The Wire INDEX tab's trade section. Reads
+    ``boundary_flow_register`` + ``dynamic_external_node_state`` via the
+    persistence pool. Constitution III: pure read.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_trade_flows(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_county_exposure(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/exposure/?county_fips= — import-exposure breakdown.
+
+    Spec 103 FR-103-05. Territory Detail's import-exposure provenance panel.
+    A BabylonScriptValue-style breakdown over spec-100 weights + live
+    ``boundary_flow_register`` flows, with a drill-down chain ending at
+    reference-data citations.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    county_fips = request.query_params.get("county_fips")
+    if not county_fips:
+        return _error("county_fips query parameter is required", http_status=400)
+    bridge = _get_bridge()
+    data = bridge.get_county_import_exposure(uuid.UUID(str(session.id)), county_fips)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_trade_panel(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/trade-panel/ — aggregate trade panel.
+
+    Spec 103 FR-103-06. The Analysis page's trade panel. Session-cumulative
+    Φ inflow, per-bloc breakdown, and flow-type summary.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_trade_panel(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+# ---------------------------------------------------------------------- #
 # Spatial Multi-Scale Endpoints
 # ---------------------------------------------------------------------- #
 

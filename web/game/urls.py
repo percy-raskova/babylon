@@ -55,6 +55,22 @@ urlpatterns: list[URLPattern] = [
         api.game_objectives,
         name="game-objectives",
     ),
+    # API: Spec 103 — Trade surfaces
+    path(
+        "games/<str:game_id>/trade-flows/",
+        api.game_trade_flows,
+        name="game-trade-flows",
+    ),
+    path(
+        "games/<str:game_id>/exposure/",
+        api.game_county_exposure,
+        name="game-county-exposure",
+    ),
+    path(
+        "games/<str:game_id>/trade-panel/",
+        api.game_trade_panel,
+        name="game-trade-panel",
+    ),
     # API: Spatial Multi-Scale
     path("games/<str:game_id>/orgs/network/", api.org_network, name="org-network"),
     path(

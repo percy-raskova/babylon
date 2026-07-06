@@ -72,12 +72,13 @@ def _mock_pool_with_boundary_flows() -> MagicMock:
 
     def _execute(sql, params=None):
         sql_lower = sql.lower() if isinstance(sql, str) else ""
-        if "boundary_flow_register" in sql_lower and "county" not in sql_lower.replace(
-            "county_exposure", ""
-        ):
-            # Per-bloc series query (no county_fips filter)
-            cursor.fetchall.return_value = _boundary_rows
-        elif "boundary_flow_register" in sql_lower:
+        if "boundary_flow_register" in sql_lower and "group by flow_type" in sql_lower:
+            # Flow-type totals query: (flow_type, total, tick_count)
+            cursor.fetchall.return_value = [
+                ("drain_edge", 715.0, 2),
+                ("trade_inbound", 105.0, 2),
+            ]
+        elif "boundary_flow_register" in sql_lower and "dest_node_id = " in sql_lower:
             # County-filtered boundary flow query
             cursor.fetchall.return_value = [
                 (1, "canada", "drain_edge", 100.0),
@@ -85,6 +86,9 @@ def _mock_pool_with_boundary_flows() -> MagicMock:
                 (1, "china", "drain_edge", 250.0),
                 (2, "china", "drain_edge", 260.0),
             ]
+        elif "boundary_flow_register" in sql_lower:
+            # Per-bloc series query (no county_fips filter)
+            cursor.fetchall.return_value = _boundary_rows
         elif "dynamic_external_node_state" in sql_lower:
             cursor.fetchall.return_value = _external_rows
         elif "county_exposure" in sql_lower:

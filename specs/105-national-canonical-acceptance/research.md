@@ -74,11 +74,90 @@ from the same Postgres tables the runner writes to. It should render
 any session with trace data. No E-lane changes needed — just
 verification.
 
-### Pre-existing LSP errors
+### National run results (2026-07-06)
 
-The worktree has pre-existing LSP errors in `gamma_hydration.py`
-(FactBilateralTradeAnnual import), `manifest.py` (shock_schedule
-attribute), and `test_runner_fail_fast.py` (TerminalAggregateResolutionError).
-These are from other lanes' in-progress work and are NOT related to
-spec-105. Verified: `TerminalAggregateResolutionError` is defined at
-`runner.py:556` — the LSP is confused by the worktree state.
+#### Hex hydration — SUCCESS
+
+The national hex hydration completed successfully:
+- 1,884,456 hex rows persisted across 3,144 counties (of 3,156 scope)
+- 12 counties lack hex cells (unhydrated territories with no TIGER data)
+- Hydration time: ~10 minutes (consistent with spec-104 measurement)
+
+#### Tick 0 persistence — SUCCESS
+
+Tick 0 (initial state) persisted successfully:
+- consciousness = 3,156 (all scope counties)
+- demographics = 3,144 (12 counties without Census data)
+- employment = 3,142 (14 counties without QCEW data)
+- hex = 1,884,347 (full hex grid)
+- external = 9 (international nodes)
+
+#### Tick loop — TOO SLOW FOR COMPLETION
+
+The national tick loop did not complete within the session. After 34+
+minutes, tick 1 had not committed. The process consumed 10GB RAM and
+93% CPU, indicating active computation (not stuck).
+
+**Root cause**: The ContradictionFieldSystem (spec-104's #1 hotspot at
+224.7ms/tick for 83 counties) scales super-linearly with county count.
+At 3,144 counties (38x Michigan), the per-tick time exceeds 30 minutes
+(>900x slower, not the 38x linear projection). This suggests O(N²) or
+worse complexity in the contradiction field computation (inter-county
+field interactions).
+
+**Projected runtime**:
+- 5-tick national: ~2.5 hours (10 min hydration + 5 × 30 min ticks)
+- 200-tick national: ~100 hours (operator-side only)
+- Full 520-tick national: ~260 hours (infeasible without optimization)
+
+**Comparison with spec-087/088/089 storage projection**:
+The storage projection (6.8–22.7 GiB for 520-tick national) was based
+on the delta persistence (spec-089), which only writes changed rows
+per tick. The storage projection is NOT the bottleneck — the tick
+COMPUTE is the bottleneck. The storage would be within budget if the
+tick loop could complete.
+
+### National-scale bug fixes
+
+Two validation bugs were discovered and fixed during the national run:
+
+1. **SocialClass ID pattern overflow** (`^C[0-9]{3}$`): At 3,144
+   counties, worker IDs C1000+ and bourgeoisie IDs C501+ exceeded the
+   3-digit pattern. Fixed: pattern changed to `^C[0-9]{3,}$` (3+
+   digits). Also fixed bourgeoisie offset from hardcoded 500 to
+   `max(500, N+1)` to prevent worker/bourgeoisie ID collisions when
+   N > 500.
+
+2. **Territory ID pattern overflow** (`^T[0-9]{3}$`): Same issue —
+   Territory IDs T1000+ exceeded the 3-digit pattern. Fixed: pattern
+   changed to `^(T[0-9]{3,}|[0-9a-f]{15})$`.
+
+Both fixes preserve existing baselines: for tri-county (N=3) and
+Michigan (N=83), the offset stays at 500 and IDs are 3 digits, so
+determinism hashes are byte-identical (verified: Δ=0.000%).
+
+### Liveness gate verification
+
+The `--liveness-gate` flag was verified end-to-end at Michigan
+statewide scale (83 counties, 5 ticks):
+- counties_alive = 83 == N_scope ✓
+- counties_with_population = 83 == counties_alive ✓
+- total_v = 3.13e9 > 0 ✓
+- No LivenessGateFailure raised → exit code 0 ✓
+
+At national scale, the liveness gate would check:
+- counties_alive > 0 (expected 3,144 from tick 0 data)
+- counties_with_population == counties_alive
+- total_v > 0
+
+But the national tick loop is too slow to reach the terminal tick
+within the session.
+
+### Storage budget baseline update
+
+The storage budget baseline (`tests/baselines/storage-budget-5t.json`)
+was regenerated to include `boundary_flow_register` (14.4 rows/tick)
+and `conservation_audit_log` (5.6 rows/tick), which were 0.0 in the
+old baseline. These tables now have rows due to spec-101/102 (DRAIN_EDGE/
+TRADE_EDGE boundary flows) and the conservation auditor. All other
+tables are unchanged.

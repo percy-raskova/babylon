@@ -129,6 +129,17 @@ class SimulationRunConfig(BaseModel):
             "default to False (informational audit log only)."
         ),
     )
+    liveness_gate: bool = Field(
+        default=False,
+        description=(
+            "Spec-105: when True, the runner asserts "
+            "counties_alive > 0, counties_with_population == "
+            "counties_alive, and total_v > 0 at the terminal tick. "
+            "Generalizes the Michigan-constant 83 liveness check to "
+            "any scope (N_scope = len(scope_fips)). Failure sets "
+            "exit_reason=ERRORED."
+        ),
+    )
     endgame_detector: str | None = Field(
         default=None,
         description=(

@@ -145,6 +145,21 @@ class _StrictAbort(RunnerError):
         self.invariant_name = invariant_name
 
 
+class LivenessGateFailure(RunnerError):
+    """Spec-105: runtime liveness gate assertion failure.
+
+    Raised by ``_assert_liveness_or_raise`` when the terminal aggregate's
+    county count or population liveness fails the generalized gate. Unlike
+    the STEP-0 guard (spec-102's :class:`TerminalAggregateResolutionError`,
+    which catches the hex-rows-exist-but-zero-counties contention bug),
+    this gate catches silent county drops and population death at any scale
+    (tri-county N=3, Michigan N=83, national N=3156).
+    """
+
+    exit_code = 6
+    exit_name = "LIVENESS_GATE_FAILURE"
+
+
 def _install_sigint_handler() -> None:
     """Install a one-shot cooperative SIGINT handler (research R3)."""
     global _interrupt_requested
@@ -211,6 +226,7 @@ def _build_config(args: argparse.Namespace) -> SimulationRunConfig:
         dry_run=args.dry_run,
         verbose=args.verbose,
         strict=getattr(args, "strict", False),
+        liveness_gate=getattr(args, "liveness_gate", False),
         endgame_detector=getattr(args, "endgame_detector", None),
         write_baseline_to=getattr(args, "write_baseline", None),
     )
@@ -622,6 +638,73 @@ def _assert_county_resolution_or_raise(
         )
 
 
+def _assert_liveness_or_raise(
+    *,
+    terminal_state: dict[str, Any],
+    n_scope: int,
+) -> None:
+    """Spec-105: generalized liveness gate.
+
+    Asserts that the terminal aggregate is not silently zeroed and that
+    every econ-alive county still holds a living population. Unlike the
+    baseline-dependent regression comparison (which reads expected
+    ``counties_alive`` from a JSON baseline), this gate derives ``n_scope``
+    from ``len(config.scope_fips)`` -- making it scope-agnostic (tri-county
+    N=3, Michigan N=83, national N=3156).
+
+    Raises:
+        LivenessGateFailure: If ``counties_alive == 0`` (silent zero),
+            ``counties_with_population != counties_alive`` (population
+            death), ``total_v == 0`` (value zeroing), or
+            ``counties_alive > n_scope`` (data corruption).
+
+    A ``counties_alive < n_scope`` gap is logged as a WARNING (not a
+    failure) -- some counties may lack hex cells (unhydrated territories
+    with no TIGER data).
+    """
+    alive = int(terminal_state.get("counties_alive", 0))
+    pop = int(terminal_state.get("counties_with_population", 0))
+    total_v = float(terminal_state.get("total_v", 0.0))
+
+    if alive == 0:
+        raise LivenessGateFailure(
+            f"liveness gate: counties_alive=0 (silent zero). "
+            f"N_scope={n_scope}. Expected {n_scope} alive counties but "
+            "got zero -- this indicates either the hex_spatial_map contention "
+            "bug (spec-088 S3) or a total population extinction event."
+        )
+
+    if pop != alive:
+        raise LivenessGateFailure(
+            f"liveness gate: population death -- counties_with_population={pop} "
+            f"!= counties_alive={alive}. {alive - pop} econ-alive "
+            "county(ies) lost their living population at the terminal tick "
+            "(closed-drain extinction class)."
+        )
+
+    if total_v == 0.0:
+        raise LivenessGateFailure(
+            f"liveness gate: total_v=0 with counties_alive={alive}. "
+            "Value zeroing failure -- the engine produced no economic value "
+            "despite alive counties."
+        )
+
+    if alive > n_scope:
+        raise LivenessGateFailure(
+            f"liveness gate: counties_alive={alive} exceeds N_scope={n_scope}. "
+            "Data corruption -- more counties resolved than the scope defines."
+        )
+
+    if alive < n_scope:
+        _LOG.warning(
+            "Spec-105 liveness gate: counties_alive=%d < N_scope=%d "
+            "(%d counties lack hex cells -- likely unhydrated territories)",
+            alive,
+            n_scope,
+            n_scope - alive,
+        )
+
+
 def _query_terminal_aggregates(
     *,
     pool: Any,
@@ -962,6 +1045,23 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             pool=pool,
             session_id=session_id,
         )
+        # Spec-105: generalized liveness gate. When config.liveness_gate
+        # is True, assert counties_alive > 0, counties_with_population ==
+        # counties_alive, and total_v > 0. Failure sets exit_reason=ERRORED
+        # with a descriptive error payload (artifacts are still emitted).
+        if config.liveness_gate and exit_reason == ExitReason.COMPLETED:
+            try:
+                _assert_liveness_or_raise(
+                    terminal_state=terminal_state,
+                    n_scope=len(config.scope_fips),
+                )
+            except LivenessGateFailure as exc:
+                exit_reason = ExitReason.ERRORED
+                error_payload = {
+                    "name": exc.exit_name,
+                    "message": str(exc),
+                    "tick": terminal_tick,
+                }
         snapshot = _county_terminal_snapshot(
             pool=pool,
             session_id=session_id,

@@ -38,14 +38,54 @@ def pg_pool():  # type: ignore[no-untyped-def]
 
 @pytest.fixture
 def fresh_tiger_table(pg_pool):  # type: ignore[no-untyped-def]
-    """Apply migrations + truncate immutable_reference_tiger_county for a clean test."""
+    """Apply migrations + isolate TIGER truncation from concurrent sessions (#18).
+
+    The TRUNCATE runs inside a pinned transaction (``autocommit=False``)
+    wrapped by :class:`PinnedPool` so that every ``pool.connection()``
+    call -- including those inside production code
+    (``ingest_tiger_counties``, ``hydrate_hex_state``,
+    ``persist_tick_atomic``) -- operates on the SAME transaction-scoped
+    connection. Concurrent sessions on the shared ``babylon_test`` DB
+    never see the empty table (Postgres MVCC). ``ROLLBACK`` on teardown
+    restores all rows.
+
+    Replaces the prior ``conn.autocommit = True; TRUNCATE ...`` pattern
+    which committed the truncation immediately and zeroed TIGER for any
+    concurrent lane -- the root cause of the hex_spatial_map silent-zero
+    bug (spec-088 S3 / spec-102 STEP-0 guard).
+
+    Note: uses ``DELETE`` rather than ``TRUNCATE`` because ``TRUNCATE``
+    acquires an ``ACCESS EXCLUSIVE`` lock that blocks concurrent
+    ``SELECT``s (defeating the isolation goal). ``DELETE`` takes only
+    ``ROW EXCLUSIVE`` which is compatible with the ``ACCESS SHARE`` lock
+    of concurrent readers, so a parallel lane's hex hydrator can still
+    read TIGER geometry while this test runs.
+    """
+    import psycopg
+
+    from tests.integration.conftest import PinnedPool
+
+    dsn = os.environ["BABYLON_TEST_PG_DSN"]
+
+    # Apply migrations (idempotent, autocommit) to ensure schema is fresh.
     migrations_dir = Path("src/babylon/persistence/migrations").resolve()
     with pg_pool.connection() as conn:
         conn.autocommit = True
         for sql_file in sorted(migrations_dir.glob("00*.sql")):
             conn.execute(sql_file.read_text())
-        conn.execute("TRUNCATE immutable_reference_tiger_county")
-    return pg_pool
+
+    # Open an isolated transaction for the delete + all test operations.
+    # autocommit=False + DELETE => the mutation is transactional and
+    # invisible to concurrent sessions (Postgres MVCC). ROLLBACK on
+    # teardown restores all rows. PinnedPool ensures production code
+    # (which calls pool.connection()) operates on this same transaction.
+    tx_conn = psycopg.connect(dsn, autocommit=False)
+    tx_conn.execute("DELETE FROM immutable_reference_tiger_county")
+    try:
+        yield PinnedPool(tx_conn)
+    finally:
+        tx_conn.execute("ROLLBACK")
+        tx_conn.close()
 
 
 def test_ingest_loads_all_us_counties(fresh_tiger_table) -> None:  # type: ignore[no-untyped-def]
@@ -207,10 +247,12 @@ def test_ingest_from_sqlite_geometries_match_shapefile_for_sampled_fips(  # type
     for fips, wkt in sqlite_wkts.items():
         assert wkt is not None, f"SQLite source did not produce WKT for {fips}"
 
-    # Truncate + reload from shapefile
+    # Delete + reload from shapefile (within the pinned transaction; the
+    # fixture's ROLLBACK on teardown restores the SQLite-loaded rows so
+    # no concurrent session ever sees an empty table). Uses DELETE (not
+    # TRUNCATE) to avoid blocking concurrent SELECTs with ACCESS EXCLUSIVE.
     with fresh_tiger_table.connection() as conn:
-        conn.autocommit = True
-        conn.execute("TRUNCATE immutable_reference_tiger_county")
+        conn.execute("DELETE FROM immutable_reference_tiger_county")
     ingest_tiger_counties_from_shapefile(
         fresh_tiger_table, Path("data/tiger/county/tl_2024_us_county.shp")
     )
@@ -223,3 +265,43 @@ def test_ingest_from_sqlite_geometries_match_shapefile_for_sampled_fips(  # type
         assert sqlite_wkts[fips] == shapefile_wkts[fips], (
             f"WKT mismatch for {fips} between SQLite and shapefile sources"
         )
+
+
+def test_fresh_tiger_table_isolates_truncation_from_concurrent_sessions(  # type: ignore[no-untyped-def]
+    fresh_tiger_table,
+) -> None:
+    """#18 regression: fresh_tiger_table must not leak its TRUNCATE to
+    concurrent sessions on the shared ``babylon_test`` database.
+
+    Before the fix, ``fresh_tiger_table`` ran ``TRUNCATE
+    immutable_reference_tiger_county`` with ``conn.autocommit = True``,
+    committing the empty table immediately. Any concurrent lane (E2E
+    regression, sim run, parallel pytest worker) that read TIGER geometry
+    during the test window saw zero counties -- the root cause of the
+    hex_spatial_map silent-zero bug (spec-088 S3).
+
+    The fix wraps the TRUNCATE (and all test operations) in a pinned
+    transaction (``PinnedPool``, ``autocommit=False``) so Postgres MVCC
+    hides the mutation from concurrent sessions. This test opens a
+    SEPARATE connection simulating a concurrent lane and verifies it
+    still sees the TIGER data while the fixture's transaction is open.
+    """
+    import psycopg
+
+    dsn = os.environ["BABYLON_TEST_PG_DSN"]
+    concurrent = psycopg.connect(dsn, autocommit=True)
+    try:
+        with concurrent.cursor() as cur:
+            # The fixture has already TRUNCATED (in its pinned transaction).
+            # A concurrent session must still see the pre-TRUNCATE rows --
+            # MVCC isolates the uncommitted transaction.
+            cur.execute("SELECT COUNT(*) FROM immutable_reference_tiger_county")
+            row = cur.fetchone()
+            count = int(row[0]) if row else 0
+        assert count > 0, (
+            f"Concurrent session sees {count} TIGER rows (expected >0); "
+            "fresh_tiger_table leaked its truncation to concurrent sessions "
+            "-- #18 regression"
+        )
+    finally:
+        concurrent.close()

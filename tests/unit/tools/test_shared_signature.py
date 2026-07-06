@@ -24,7 +24,7 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 import shared  # type: ignore[import-not-found]  # noqa: E402
 
-CANONICAL_SIGNATURE = "(defines: 'GameDefines', max_ticks: 'int' = 5200) -> 'dict[str, Any]'"
+CANONICAL_SIGNATURE = "(defines: 'GameDefines', max_ticks: 'int' = 5200, *, scope_name: 'str' = 'detroit-tri-county') -> 'dict[str, Any]'"
 
 
 def test_run_simulation_signature_is_preserved() -> None:

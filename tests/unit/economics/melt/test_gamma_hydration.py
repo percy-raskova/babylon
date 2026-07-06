@@ -214,14 +214,16 @@ class TestGetAlpha:
     def test_alpha_excludes_overlapping_blocs_and_commodity_categories(
         self, overlapping_bloc_session_factory: sessionmaker[Session]
     ) -> None:
-        """get_alpha must sum only the 5 non-overlapping bloc IDs, not all rows.
+        """get_alpha must sum only the 4 non-overlapping bloc IDs, not all rows.
 
         The fixture seeds 8 trade rows: 6 regional blocs (total imports
-        2_100_000) plus 'Advanced Technology Products' (800_000) plus
-        Europe (300_000, which ⊇ EU). The naive over-sum of all 8 rows
-        is 2_900_000 → alpha=0.29. The correct non-overlapping sum
-        excludes Europe (id=8, ⊇EU) and ATP (id=20, commodity category):
-        {1,7,9,10,12} = 1_800_000 → alpha=0.18.
+        2_100_000) plus 'Advanced Technology Products' (800_000). The naive
+        over-sum of all 8 rows is 2_900_000 → alpha=0.29. The correct
+        non-overlapping sum excludes:
+        - Europe (id=8, ⊇EU): double-counts EU trade
+        - Pacific Rim (id=10, ⊆Asia): double-counts Asian trade
+        - ATP (id=20, commodity category): not a geography
+        Disjoint set {1,7,9,12} = 1_600_000 → alpha=0.16.
         """
         from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
@@ -230,9 +232,10 @@ class TestGetAlpha:
         alpha = source.get_alpha(2012)
 
         assert alpha is not None
-        assert alpha == pytest.approx(0.18)
-        assert alpha != pytest.approx(0.29)
-        assert alpha != pytest.approx(0.21)  # the old 6-bloc over-count
+        assert alpha == pytest.approx(0.16)
+        assert alpha != pytest.approx(0.29)  # naive over-sum
+        assert alpha != pytest.approx(0.21)  # old 6-bloc over-count
+        assert alpha != pytest.approx(0.18)  # old 5-bloc over-count (Pacific Rim+Asia overlap)
 
     def test_year_without_final_demand_data_returns_none(
         self, reference_sqlite_session_factory: sessionmaker[Session]

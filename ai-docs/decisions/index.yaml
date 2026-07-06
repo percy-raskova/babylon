@@ -239,3 +239,8 @@ decisions:
     status: accepted
     date: '2026-07-03'
     file: ADR052_rustworkx_graph_substrate.yaml
+  ADR054_spec_103_trade_surfaces:
+    title: 'Spec 103: Trade surfaces — per-bloc lines, import-exposure provenance, trade panel'
+    status: accepted
+    date: '2026-07-05'
+    file: ADR054_spec_103_trade_surfaces.yaml

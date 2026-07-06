@@ -497,6 +497,35 @@ meta:
   canonical_roadmap: "reports/aidocs-vs-code-audit-2026-05-16.md (living roadmap per owner decision 2026-07-02; ai-docs/epochs/ is historical vision)"
   last_audit: "Documentation Accuracy Audit (2025-12-26)"
   last_calibration: "Marxian Value Tensor BEA/CEX Calibration (2026-01-28)"
+  web_lane_w_spec_103: |
+    spec-103 Trade surfaces in the product UI DONE (branch
+    103-trade-surfaces, stacks on 095's HEAD 13438ac5; specs/103-trade-surfaces/
+    via speckit specify->plan->tasks->implement). The LAST W-lane spec —
+    delivers the ratified trade-UI decision (blocs are background noise; no
+    interactive world map; CONUS stays primary) across three product screens:
+    (1) Wire INDEX gains per-bloc price/flow lines (BlocFlowLines — Φ-inflow
+    + trade-value sparklines + erdi_ratio per external bloc, 9 nodes);
+    (2) Territory Detail gains an import-exposure provenance breakdown
+    (ImportExposurePanel — BabylonScriptValue over spec-100 weights + live
+    boundary_flow_register flows, drill-down chain ending at reference-data
+    citations: BEA I-O, QCEW, Hickel drain); (3) Analysis page gains a trade
+    panel (TradePanel — aggregate Φ inflow, per-bloc bars, flow-type summary).
+    Backend: 3 new EngineBridge methods (get_trade_flows,
+    get_county_import_exposure, get_trade_panel) + 3 Django views + 3 URL
+    routes + 3 stub methods. All read boundary_flow_register +
+    dynamic_external_node_state + county_exposure_by_external via the
+    persistence pool SQL (same pattern as _fetch_contradiction_field_rows).
+    Constitution III: pure reads, zero engine writes, zero babylon.* imports
+    in frontend. Degradation: all 3 methods degrade to has_data: False with
+    honest zeros when the pool is unavailable (SQLite dev/test), the SIM DB
+    tables are absent (5432 product DB lacks dynamic_*), or spec-100's
+    county_exposure_by_external table is not yet built. MSW fixtures carry
+    full responses (with provenance chains + citations) so frontend contract
+    tests + Playwright exercise the complete drill-down chain. TDD:
+    red-first (15 bridge + 3 URL routing + 4 frontend contract tests RED),
+    then GREEN. mise run web:check green (3 pre-existing tick-resolution
+    failures acceptable); PYTHONPATH=src poetry run pytest tests/unit/web/
+    329 passed (+15 new). Frontend: 437 passed (+4 new contract tests).
 
 # =============================================================================
 # EPOCH + SLICE STATUS

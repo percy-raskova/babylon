@@ -14,58 +14,58 @@
 
 ## Phase 1 — RED tests (TDD red phase)
 
-- [ ] T010 Red: `tests/unit/web/test_spec103_bridge.py` — `get_trade_flows`
+- [x] T010 Red: `tests/unit/web/test_spec103_bridge.py` — `get_trade_flows`
       returns per-bloc series from mock pool seeded with boundary_flow_register
-- [ ] T011 Red: `tests/unit/web/test_spec103_bridge.py` —
+- [x] T011 Red: `tests/unit/web/test_spec103_bridge.py` —
       `get_county_import_exposure` returns breakdown with contributors,
       children, source refs, citations
-- [ ] T012 Red: `tests/unit/web/test_spec103_bridge.py` — `get_trade_panel`
+- [x] T012 Red: `tests/unit/web/test_spec103_bridge.py` — `get_trade_panel`
       returns aggregate data from mock pool
-- [ ] T013 Red: `tests/unit/web/test_spec103_bridge.py` — all 3 methods
+- [x] T013 Red: `tests/unit/web/test_spec103_bridge.py` — all 3 methods
       degrade to `has_data: False` when pool is None
-- [ ] T014 Red: `tests/unit/web/test_api.py` — 3 new views return envelopes
-- [ ] T015 Red: `web/frontend/src/__tests__/integration/trade-flows-contract.test.tsx`
-- [ ] T016 Red: `web/frontend/src/__tests__/integration/county-exposure-contract.test.tsx`
-- [ ] T017 Red: `web/frontend/src/__tests__/integration/trade-panel-contract.test.tsx`
+- [x] T014 Red: `tests/unit/web/test_api.py` — 3 new views return envelopes
+- [x] T015 Red: `web/frontend/src/__tests__/integration/trade-flows-contract.test.tsx`
+- [x] T016 Red: `web/frontend/src/__tests__/integration/county-exposure-contract.test.tsx`
+- [x] T017 Red: `web/frontend/src/__tests__/integration/trade-panel-contract.test.tsx`
 
 ## Phase 2 — Backend GREEN
 
-- [ ] T020 Implement `_fetch_boundary_flow_series` helper in `engine_bridge.py`
-- [ ] T021 Implement `_fetch_external_node_latest` helper in `engine_bridge.py`
-- [ ] T022 Implement `_fetch_county_exposure_weights` helper in `engine_bridge.py`
-- [ ] T023 Implement `get_trade_flows` in `engine_bridge.py`
-- [ ] T024 Implement `get_county_import_exposure` in `engine_bridge.py`
-- [ ] T025 Implement `get_trade_panel` in `engine_bridge.py`
-- [ ] T026 Add 3 stub methods to `stub_bridge.py`
-- [ ] T027 Implement `game_trade_flows` view in `api.py`
-- [ ] T028 Implement `game_county_exposure` view in `api.py`
-- [ ] T029 Implement `game_trade_panel` view in `api.py`
-- [ ] T030 Add 3 routes in `urls.py`
-- [ ] T031 Verify backend tests green: `PYTHONPATH=src poetry run pytest tests/unit/web/ -q`
+- [x] T020 Implement `_fetch_boundary_flow_series` helper in `engine_bridge.py`
+- [x] T021 Implement `_fetch_external_node_latest` helper in `engine_bridge.py`
+- [x] T022 Implement `_fetch_county_exposure_weights` helper in `engine_bridge.py`
+- [x] T023 Implement `get_trade_flows` in `engine_bridge.py`
+- [x] T024 Implement `get_county_import_exposure` in `engine_bridge.py`
+- [x] T025 Implement `get_trade_panel` in `engine_bridge.py`
+- [x] T026 Add 3 stub methods to `stub_bridge.py`
+- [x] T027 Implement `game_trade_flows` view in `api.py`
+- [x] T028 Implement `game_county_exposure` view in `api.py`
+- [x] T029 Implement `game_trade_panel` view in `api.py`
+- [x] T030 Add 3 routes in `urls.py`
+- [x] T031 Verify backend tests green: `PYTHONPATH=src poetry run pytest tests/unit/web/ -q`
 
 ## Phase 3 — Frontend GREEN
 
-- [ ] T035 Create `types/trade.ts` (TradeFlowsPayload, ExposurePayload, TradePanelPayload)
-- [ ] T036 Create `hooks/useTradeFlows.ts`, `hooks/useCountyExposure.ts`, `hooks/useTradePanel.ts`
-- [ ] T037 Create `components/wire/BlocFlowLines.tsx` + `bloc-flow.css`
-- [ ] T038 Create `components/intel/ImportExposurePanel.tsx` + `import-exposure.css`
-- [ ] T039 Create `components/pages/TradePanel.tsx` + `trade-panel.css`
-- [ ] T040 Mount `BlocFlowLines` in `IndexPage.tsx`
-- [ ] T041 Mount `ImportExposurePanel` in `TerritoryDetailView.tsx`
-- [ ] T042 Mount `TradePanel` in `AnalysisPage.tsx`
-- [ ] T043 Add 3 MSW handlers in `test/handlers.ts`
-- [ ] T044 Verify frontend tests green: `mise run web:check`
+- [x] T035 Create `types/trade.ts` (TradeFlowsPayload, ExposurePayload, TradePanelPayload)
+- [x] T036 Create `hooks/useTradeFlows.ts`, `hooks/useCountyExposure.ts`, `hooks/useTradePanel.ts`
+- [x] T037 Create `components/wire/BlocFlowLines.tsx` + `bloc-flow.css`
+- [x] T038 Create `components/intel/ImportExposurePanel.tsx` + `import-exposure.css`
+- [x] T039 Create `components/pages/TradePanel.tsx` + `trade-panel.css`
+- [x] T040 Mount `BlocFlowLines` in `IndexPage.tsx`
+- [x] T041 Mount `ImportExposurePanel` in `TerritoryDetailView.tsx`
+- [x] T042 Mount `TradePanel` in `AnalysisPage.tsx`
+- [x] T043 Add 3 MSW handlers in `test/handlers.ts`
+- [x] T044 Verify frontend tests green: `mise run web:check`
 
 ## Phase 4 — Gates
 
-- [ ] T050 `mise run web:check` green (3 pre-existing tick-resolution failures acceptable)
-- [ ] T051 `PYTHONPATH=src poetry run pytest tests/unit/web/ -q` green
+- [x] T050 `mise run web:check` green (3 pre-existing tick-resolution failures acceptable)
+- [x] T051 `PYTHONPATH=src poetry run pytest tests/unit/web/ -q` green
 - [ ] T052 Playwright e2e (owner-run, gated on `SPEC061_TEST_SESSION_ID`)
-- [ ] T053 County-exposure contract test passes — drill-down chain ends at citations
-- [ ] T054 3 MSW contract tests pass
+- [x] T053 County-exposure contract test passes — drill-down chain ends at citations
+- [x] T054 3 MSW contract tests pass
 
 ## Phase 5 — Governance
 
-- [ ] T060 Update `ai-docs/state.yaml`
-- [ ] T061 Create ADR in `ai-docs/decisions.yaml`
-- [ ] T062 Commit all work
+- [x] T060 Update `ai-docs/state.yaml`
+- [x] T061 Create ADR in `ai-docs/decisions.yaml`
+- [x] T062 Commit all work

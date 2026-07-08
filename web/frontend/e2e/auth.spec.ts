@@ -1,7 +1,9 @@
 /**
- * E2E: Authentication flow.
+ * E2E: Authentication flow + games-list rendering.
  *
- * Requires a running backend at http://localhost:8000 and dev server at :5173.
+ * Requires a running backend at http://localhost:8000 and dev server at
+ * :5173, with the seeded admin/admin user (seed_initial_game creates it;
+ * password == username).
  * Run: npm run test:e2e
  */
 
@@ -15,15 +17,20 @@ test.describe("authentication", () => {
     await expect(page.getByRole("button", { name: "Enter" })).toBeVisible();
   });
 
-  test("successful login redirects to game list", async ({ page }) => {
+  test("successful login redirects to the operations list", async ({ page }) => {
     await page.goto("/");
 
-    await page.getByPlaceholder("Username").fill("testuser");
-    await page.getByPlaceholder("Password").fill("testpass");
+    await page.getByPlaceholder("Username").fill("admin");
+    await page.getByPlaceholder("Password").fill("admin");
     await page.getByRole("button", { name: "Enter" }).click();
 
-    // Should see game list after login
-    await expect(page.getByText("Your Games")).toBeVisible({ timeout: 5000 });
+    // Should see the operations list after login (GameList.tsx panel titles).
+    await expect(page.getByText("Your Operations")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("New Operation")).toBeVisible();
+    // The seeded game card renders — the exact regression bug #1
+    // (snapshot_json orphan) caused: GET /api/games/ answered 500 and the
+    // list stayed empty.
+    await expect(page.getByText("wayne_county", { exact: true }).first()).toBeVisible();
   });
 
   test("invalid credentials show error message", async ({ page }) => {
@@ -40,10 +47,10 @@ test.describe("authentication", () => {
   test("logout returns to login page", async ({ page }) => {
     // Login first
     await page.goto("/");
-    await page.getByPlaceholder("Username").fill("testuser");
-    await page.getByPlaceholder("Password").fill("testpass");
+    await page.getByPlaceholder("Username").fill("admin");
+    await page.getByPlaceholder("Password").fill("admin");
     await page.getByRole("button", { name: "Enter" }).click();
-    await expect(page.getByText("Your Games")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("Your Operations")).toBeVisible({ timeout: 5000 });
 
     // Logout
     await page.getByRole("button", { name: "Logout" }).click();

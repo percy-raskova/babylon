@@ -2,8 +2,23 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.16.0"
-  updated: "2026-07-06"
+  version: "2.17.0"
+  updated: "2026-07-08"
+  truth_status: |
+    (2026-07-08) READ THIS FIRST. Program 09 merged to dev on Jul 6, but the
+    first real E2E pass (Jul 7) found the web product UNPLAYABLE at merge —
+    see E2E_SUMMARY.md (repo root) and project/POST_ASSESSMENT.md. A 15-agent
+    whole-repo review the same evening found systemic silent failures beyond
+    the web layer (no-op engine systems, dead collapse layer, unseeded RNG,
+    disarmed test guardrails) — see project/HOLISTIC_REVIEW-2026-07-07.md.
+    A remediation program ("Loud Machine") was ratified by Percy on Jul 7 and
+    is now executing — see project/REMEDIATION_PLAN.md for phases and status.
+    Authority chain: project/09-program-full-game.md (scope) ->
+    project/POST_ASSESSMENT.md -> project/HOLISTIC_REVIEW-2026-07-07.md ->
+    project/REMEDIATION_PLAN.md (execution). Counts and sprint blocks below
+    this line predate the review and are STALE until the Phase 7 regeneration
+    of this file; where they disagree with the documents above, the documents
+    above win.
   active_program: |
     Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
     doc project/09-program-full-game.md). Percy's directive: React/

@@ -65,3 +65,10 @@ antigravity-babylon/
 # specifications
 specs/
 docs/
+
+# Program record — narrative assessment/review/planning documents.
+# Evidence lines and tables are quoted verbatim; mechanical reformatting
+# would corrupt them (Immutability of History). Existing project/ docs
+# never passed these rules; the exclusion makes that explicit.
+project/
+E2E_SUMMARY.md

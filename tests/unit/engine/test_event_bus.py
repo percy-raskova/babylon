@@ -7,8 +7,11 @@ Test Intent:
 - Event is an immutable frozen dataclass
 - EventBus supports publish/subscribe pattern
 - Event history is maintained for replay/debugging
+- Handler fan-out is isolated: one raising handler cannot starve the
+  rest, and failures re-raise loud as an ExceptionGroup (III.7)
 """
 
+import logging
 from datetime import datetime
 
 import pytest
@@ -184,3 +187,80 @@ class TestEventBus:
         bus = EventBus()
 
         assert bus.get_history() == []
+
+
+class TestHandlerIsolation:
+    """One raising handler must not starve the rest (III.7) — and must not be silent."""
+
+    def test_raising_handler_does_not_starve_later_handlers(self) -> None:
+        """Every handler receives the event; failures re-raise as ExceptionGroup."""
+        from babylon.engine.event_bus import Event, EventBus
+
+        bus = EventBus()
+        calls: list[str] = []
+        boom = ValueError("handler exploded")
+
+        def bad_handler(_event: Event) -> None:
+            raise boom
+
+        def good_handler(_event: Event) -> None:
+            calls.append("good")
+
+        bus.subscribe("tick", bad_handler)
+        bus.subscribe("tick", good_handler)
+
+        with pytest.raises(ExceptionGroup) as excinfo:
+            bus.publish(Event(type="tick", tick=1, payload={}))
+
+        assert calls == ["good"], "later handler must still run"
+        assert excinfo.value.exceptions == (boom,), "original exception preserved"
+
+    def test_handler_failure_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Handler failures are logger.exception-logged, never silent."""
+        from babylon.engine.event_bus import Event, EventBus
+
+        bus = EventBus()
+
+        def bad_handler(_event: Event) -> None:
+            raise RuntimeError("kaboom")
+
+        bus.subscribe("tick", bad_handler)
+
+        with (
+            caplog.at_level(logging.ERROR, logger="babylon.engine.event_bus"),
+            pytest.raises(ExceptionGroup),
+        ):
+            bus.publish(Event(type="tick", tick=2, payload={}))
+
+        assert any("failed" in record.message for record in caplog.records)
+
+    def test_all_green_fanout_raises_nothing(self) -> None:
+        """A fan-out with no failures raises nothing."""
+        from babylon.engine.event_bus import Event, EventBus
+
+        bus = EventBus()
+        calls: list[str] = []
+
+        bus.subscribe("tick", lambda _e: calls.append("a"))
+        bus.subscribe("tick", lambda _e: calls.append("b"))
+
+        bus.publish(Event(type="tick", tick=1, payload={}))
+
+        assert calls == ["a", "b"]
+
+    def test_history_retains_event_despite_failing_fanout(self) -> None:
+        """History append precedes fan-out, so the event is never lost."""
+        from babylon.engine.event_bus import Event, EventBus
+
+        bus = EventBus()
+
+        def bad_handler(_event: Event) -> None:
+            raise ValueError("boom")
+
+        bus.subscribe("tick", bad_handler)
+        event = Event(type="tick", tick=3, payload={"k": "v"})
+
+        with pytest.raises(ExceptionGroup):
+            bus.publish(event)
+
+        assert bus.get_history() == [event]

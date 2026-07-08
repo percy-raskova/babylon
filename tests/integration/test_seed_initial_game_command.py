@@ -121,3 +121,26 @@ class TestSeedInitialGameBridgeContract:
 
         after_count = User.objects.filter(username=username).count()
         assert after_count == 1, "seed command must not duplicate existing users"
+
+    def test_raises_on_unknown_scenario_before_user_creation(self, db, monkeypatch) -> None:  # noqa: ARG002
+        """Unknown --scenario fails loud before user creation AND before the bridge check."""
+        from game import api as game_api
+
+        monkeypatch.setattr(game_api, "_bridge_instance", None, raising=False)
+
+        User = get_user_model()
+        username = "scenario-loud-nouser"
+        User.objects.filter(username=username).delete()
+
+        with pytest.raises(CommandError, match="Unknown scenario 'atlantis'"):
+            call_command(
+                "seed_initial_game",
+                "--scenario",
+                "atlantis",
+                "--player",
+                username,
+                stdout=StringIO(),
+                stderr=StringIO(),
+            )
+
+        assert not User.objects.filter(username=username).exists()

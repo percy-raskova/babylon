@@ -17,13 +17,7 @@ from uuid import UUID
 
 from babylon.config.defines import GameDefines
 from babylon.engine.graph import BabylonGraph
-from babylon.engine.scenarios import (
-    create_imperial_circuit_scenario,
-    create_labor_aristocracy_scenario,
-    create_two_node_scenario,
-    create_us_scenario,
-)
-from babylon.engine.scenarios_wayne_county import create_wayne_county_scenario
+from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
 from babylon.formulas.unequal_exchange import calculate_exploitation_rate
@@ -768,7 +762,14 @@ class EngineBridge:
 
         Returns:
             The UUID of the newly created session.
+
+        Raises:
+            ValueError: If ``scenario`` is not a registered scenario or alias.
         """
+        # Fail loud on unknown scenarios BEFORE creating the session row, so a
+        # typo cannot leave an orphaned session silently seeded as 'us'.
+        resolve_scenario(scenario)
+
         # Validate configs via Pydantic (raises on bad input)
         sim_config = SimulationConfig(**(config or {}))
         game_defines = GameDefines(**(defines or {}))
@@ -810,6 +811,11 @@ class EngineBridge:
 
         Returns:
             Tuple of (WorldState, BabylonGraph) at the requested tick.
+
+        Raises:
+            ValueError: If an unseeded legacy session row stores a scenario
+                name that is not a registered scenario or alias (fail loud
+                on corrupt data instead of silently reseeding as ``us``).
         """
         graph = self._persistence.hydrate_graph(tick=tick, session_id=session_id)
 
@@ -3037,6 +3043,38 @@ def _graph_tick(graph: BabylonGraph) -> int:
     return int(graph.graph.get("tick", 0))
 
 
+# Aliases accepted at the API/CLI boundary, mapped to canonical names in the
+# engine scenario registry (babylon.engine.scenarios). "us_nationwide" is the
+# SCENARIO_CATALOG key served by GET /api/scenarios/ (web/game/api.py) and the
+# key the React game-creation UI submits — it MUST stay resolvable.
+_SCENARIO_ALIASES: dict[str, str] = {
+    "default": "us",
+    "us_nationwide": "us",
+    "wayne": "wayne_county",
+    "detroit": "wayne_county",
+}
+
+
+def resolve_scenario(scenario: str) -> str:
+    """Resolve a scenario identifier or alias to a canonical registry name.
+
+    Args:
+        scenario: Scenario name from an API request or management command.
+
+    Returns:
+        The canonical name registered in the engine scenario registry.
+
+    Raises:
+        ValueError: If the identifier matches no registered scenario or alias.
+    """
+    normalized = scenario.strip().lower()
+    canonical = _SCENARIO_ALIASES.get(normalized, normalized)
+    if canonical not in list_scenarios():
+        valid = ", ".join(sorted({*list_scenarios(), *_SCENARIO_ALIASES}))
+        raise ValueError(f"Unknown scenario '{scenario}'. Valid scenarios: {valid}")
+    return canonical
+
+
 def _build_initial_state_for_scenario(scenario: str) -> WorldState:
     """Construct initial WorldState for a supported scenario identifier.
 
@@ -3045,26 +3083,12 @@ def _build_initial_state_for_scenario(scenario: str) -> WorldState:
 
     Returns:
         Seeded WorldState at tick 0.
-    """
-    normalized = scenario.strip().lower()
-    if normalized in {"default", "us"}:
-        state, _config, _defines = create_us_scenario()
-        return state
-    if normalized == "imperial_circuit":
-        state, _config, _defines = create_imperial_circuit_scenario()
-        return state
-    if normalized == "two_node":
-        state, _config, _defines = create_two_node_scenario()
-        return state
-    if normalized == "labor_aristocracy":
-        state, _config, _defines = create_labor_aristocracy_scenario()
-        return state
-    if normalized in {"wayne_county", "wayne", "detroit"}:
-        state, _config, _defines = create_wayne_county_scenario()
-        return state
 
-    logger.warning("Unknown scenario '%s', falling back to us", scenario)
-    state, _config, _defines = create_us_scenario()
+    Raises:
+        ValueError: If ``scenario`` is not a registered scenario or alias.
+    """
+    canonical = resolve_scenario(scenario)
+    state, _config, _defines = get_scenario(canonical)().build()
     return state
 
 

@@ -23,6 +23,21 @@ class CreateGameSerializer(serializers.Serializer[dict[str, Any]]):
     defines = serializers.JSONField(required=False, default=dict)
     rng_seed = serializers.IntegerField(required=False, default=0)
 
+    def validate_scenario(self, value: str) -> str:
+        """Reject scenario names the engine cannot seed (loud 400, not a silent 'us' game).
+
+        Raises:
+            serializers.ValidationError: If ``value`` is not a registered
+                scenario or alias.
+        """
+        from game.engine_bridge import resolve_scenario
+
+        try:
+            resolve_scenario(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return value
+
 
 class SubmitActionSerializer(serializers.Serializer[dict[str, Any]]):
     """Validate POST /api/games/{id}/actions/ request body."""

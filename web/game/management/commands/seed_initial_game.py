@@ -52,6 +52,14 @@ class Command(BaseCommand):
         player_username: str = options["player"]
         rng_seed: int = options["rng_seed"]
 
+        # Validate the scenario before creating any state (user or session).
+        from game.engine_bridge import resolve_scenario
+
+        try:
+            resolve_scenario(scenario)
+        except ValueError as exc:
+            raise CommandError(str(exc)) from exc
+
         user, created = User.objects.get_or_create(
             username=player_username,
             defaults={"is_staff": True, "is_superuser": True},

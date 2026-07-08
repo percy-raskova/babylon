@@ -14,9 +14,11 @@ import uuid
 from typing import Any
 from uuid import UUID
 
+from django.conf import settings as django_settings
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponseBase, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -326,7 +328,7 @@ def game_pause(request: Request, game_id: str) -> JsonResponse:
         return _error("Game not found", http_status=404)
     if session.status != "active":
         return _error(f"Cannot pause game in '{session.status}' status")
-    GameSession.objects.filter(id=session.id).update(status="paused")
+    GameSession.objects.filter(id=session.id).update(status="paused", updated_at=timezone.now())
     return _envelope({"status": "paused"}, session_id=str(session.id))
 
 
@@ -339,7 +341,50 @@ def game_resume(request: Request, game_id: str) -> JsonResponse:
         return _error("Game not found", http_status=404)
     if session.status != "paused":
         return _error(f"Cannot resume game in '{session.status}' status")
-    GameSession.objects.filter(id=session.id).update(status="active")
+    GameSession.objects.filter(id=session.id).update(status="active", updated_at=timezone.now())
+    return _envelope({"status": "active"}, session_id=str(session.id))
+
+
+# C.13: a worker killed mid-resolve leaves status='resolving' with no
+# surviving process to restore it. Sessions resolving longer than this
+# are considered wedged and eligible for recovery.
+RESOLVING_STALE_SECONDS: int = getattr(django_settings, "GAME_RESOLVING_STALE_SECONDS", 120)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def game_recover(request: Request, game_id: str) -> JsonResponse:
+    """POST /api/games/{id}/recover/ — Recover a session wedged in 'resolving'.
+
+    A worker killed mid-resolve (OOM, SIGKILL, deploy restart) commits
+    status='resolving' and never restores it (C.13). Once the staleness
+    threshold passes, the owner can reset the session to 'active' and retry.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    if session.status != "resolving":
+        return _error(f"Cannot recover game in '{session.status}' status")
+    age_seconds = (timezone.now() - session.updated_at).total_seconds()
+    if age_seconds < RESOLVING_STALE_SECONDS:
+        return _error(
+            "Tick resolution appears to be in progress; retry later",
+            http_status=409,
+        )
+    # Conditional filter makes this race-safe: a resolve that completed
+    # concurrently already set 'active', so this update matches 0 rows.
+    GameSession.objects.filter(id=session.id, status="resolving").update(
+        status="active", updated_at=timezone.now()
+    )
+    logger.warning("Recovered wedged session=%s (resolving for %.0fs)", session.id, age_seconds)
+    log_game_event(
+        category="game_recover",
+        message=f"Recovered from wedged 'resolving' after {age_seconds:.0f}s",
+        session_id=session.id,
+        user_id=request.user.id,
+        tick=session.current_tick,
+        correlation_id=getattr(request, "correlation_id", None),
+    )
     return _envelope({"status": "active"}, session_id=str(session.id))
 
 
@@ -1018,7 +1063,9 @@ def resolve_tick(request: Request, game_id: str) -> JsonResponse:
     try:
         with transaction.atomic():
             locked = GameSession.objects.select_for_update().get(id=session.id, status="active")
-            GameSession.objects.filter(id=locked.id).update(status="resolving")
+            GameSession.objects.filter(id=locked.id).update(
+                status="resolving", updated_at=timezone.now()
+            )
     except GameSession.DoesNotExist:
         return _error("Game is already being resolved or is no longer active", http_status=409)
 
@@ -1029,13 +1076,15 @@ def resolve_tick(request: Request, game_id: str) -> JsonResponse:
         snapshot = resolve_game_tick(bridge, uuid.UUID(str(session.id)))
     except Exception:
         # Restore status on failure so the game can be retried
-        GameSession.objects.filter(id=session.id).update(status="active")
+        GameSession.objects.filter(id=session.id).update(status="active", updated_at=timezone.now())
         logger.exception("Tick resolution failed session=%s", session.id)
         return _error("Tick resolution failed", http_status=500)
 
     # Update session tick and restore active status
     new_tick = snapshot.get("tick", session.current_tick + 1)
-    GameSession.objects.filter(id=session.id).update(current_tick=new_tick, status="active")
+    GameSession.objects.filter(id=session.id).update(
+        current_tick=new_tick, status="active", updated_at=timezone.now()
+    )
 
     logger.info("Tick resolved session=%s new_tick=%d", session.id, new_tick)
     log_game_event(

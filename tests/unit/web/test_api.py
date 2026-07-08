@@ -7,6 +7,7 @@ Uses Django's test client with SQLite in-memory.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 from django.test import Client, RequestFactory
@@ -41,6 +42,13 @@ class TestURLRouting:
             kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
         )
         assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resume/"
+
+    def test_game_recover_url(self) -> None:
+        url = reverse(
+            "game:game-recover",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/recover/"
 
     def test_game_state_url(self) -> None:
         url = reverse(
@@ -369,6 +377,166 @@ class TestIdempotencyGuard:
         assert response.status_code in (400, 409)
         data = json.loads(response.content)
         assert data["status"] == "error"
+
+
+def _make_recover_session(status: str = "resolving") -> tuple[Client, Any]:
+    """Create a logged-in client plus a session in the given status."""
+    import uuid as uuid_mod
+
+    from django.contrib.auth.models import User
+
+    from game.models import GameSession
+
+    user = User.objects.create_user(username="recuser", password="recpass")  # type: ignore[no-untyped-call]
+    client = Client()
+    client.login(username="recuser", password="recpass")
+    session = GameSession.objects.create(
+        id=uuid_mod.uuid4(),
+        player_id=user.id,
+        scenario="two_node",
+        current_tick=3,
+        status=status,
+    )
+    return client, session
+
+
+def _backdate_session(session: Any, seconds: int) -> None:
+    """Push a session's updated_at into the past.
+
+    ``QuerySet.update()`` bypasses ``auto_now`` — exactly why this works,
+    and exactly why the resolve transitions must stamp it explicitly.
+    """
+    import datetime as dt
+
+    from django.utils import timezone
+
+    from game.models import GameSession
+
+    GameSession.objects.filter(id=session.id).update(
+        updated_at=timezone.now() - dt.timedelta(seconds=seconds)
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestRecoverEndpoint:
+    """C.13: a session wedged in 'resolving' by a dead worker is recoverable."""
+
+    def test_recover_resets_stale_resolving_session(self) -> None:
+        client, session = _make_recover_session("resolving")
+        _backdate_session(session, 600)
+
+        response = client.post(f"/api/games/{session.id}/recover/")
+
+        assert response.status_code == 200
+        session.refresh_from_db()
+        assert session.status == "active"
+
+    def test_recover_rejects_fresh_resolving_session(self) -> None:
+        """A resolve younger than the threshold may still be in flight."""
+        client, session = _make_recover_session("resolving")  # updated_at = now
+
+        response = client.post(f"/api/games/{session.id}/recover/")
+
+        assert response.status_code == 409
+        session.refresh_from_db()
+        assert session.status == "resolving"
+
+    def test_recover_rejects_active_session(self) -> None:
+        client, session = _make_recover_session("active")
+        _backdate_session(session, 600)
+
+        response = client.post(f"/api/games/{session.id}/recover/")
+
+        assert response.status_code == 400
+
+    def test_recover_logs_recovery_event(self) -> None:
+        from game.models import GameEventLog
+
+        client, session = _make_recover_session("resolving")
+        _backdate_session(session, 600)
+
+        response = client.post(f"/api/games/{session.id}/recover/")
+
+        assert response.status_code == 200
+        assert GameEventLog.objects.filter(
+            session_id=session.id,
+            category="game_recover",
+        ).exists()
+
+    def test_recovered_session_can_resolve_again(self) -> None:
+        """End-to-end wedge escape: recover, then resolve succeeds."""
+        from unittest.mock import MagicMock
+
+        import game.api
+
+        client, session = _make_recover_session("resolving")
+        _backdate_session(session, 600)
+        assert client.post(f"/api/games/{session.id}/recover/").status_code == 200
+
+        mock_bridge = MagicMock()
+        mock_bridge.resolve_tick.return_value = {"tick": 4, "events": []}
+        game.api._bridge_instance = mock_bridge
+        try:
+            response = client.post(f"/api/games/{session.id}/resolve/")
+        finally:
+            game.api._bridge_instance = None
+
+        assert response.status_code == 200
+        session.refresh_from_db()
+        assert session.status == "active"
+        assert session.current_tick == 4
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestResolveStampsUpdatedAt:
+    """The staleness clock: every resolve transition must touch updated_at."""
+
+    def test_successful_resolve_advances_updated_at(self) -> None:
+        from unittest.mock import MagicMock
+
+        import game.api
+
+        client, session = _make_recover_session("active")
+        _backdate_session(session, 600)
+        session.refresh_from_db()
+        before = session.updated_at
+
+        mock_bridge = MagicMock()
+        mock_bridge.resolve_tick.return_value = {"tick": 4, "events": []}
+        game.api._bridge_instance = mock_bridge
+        try:
+            response = client.post(f"/api/games/{session.id}/resolve/")
+        finally:
+            game.api._bridge_instance = None
+
+        assert response.status_code == 200
+        session.refresh_from_db()
+        assert session.updated_at > before
+
+    def test_failed_resolve_advances_updated_at(self) -> None:
+        from unittest.mock import MagicMock
+
+        import game.api
+
+        client, session = _make_recover_session("active")
+        _backdate_session(session, 600)
+        session.refresh_from_db()
+        before = session.updated_at
+
+        mock_bridge = MagicMock()
+        mock_bridge.resolve_tick.side_effect = RuntimeError("boom")
+        game.api._bridge_instance = mock_bridge
+        try:
+            response = client.post(f"/api/games/{session.id}/resolve/")
+        finally:
+            game.api._bridge_instance = None
+
+        assert response.status_code == 500
+        session.refresh_from_db()
+        assert session.status == "active"
+        assert session.updated_at > before
 
 
 @pytest.mark.unit

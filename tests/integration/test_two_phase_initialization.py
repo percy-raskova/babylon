@@ -86,6 +86,42 @@ def test_initialize_session_completes_and_returns_report(  # type: ignore[no-unt
     assert "hickel_drain" in report.copied_series
 
 
+def test_initialize_session_writes_no_commit_marker(  # type: ignore[no-untyped-def]
+    runtime, sqlite_path, pg_pool
+):
+    """Spec-089 FR-003 regression: init must leave ``tick_commit`` empty —
+    the real tick-0 marker (identity hash + checkpoint frame count) belongs
+    to ``bridge.persist_tick``. The external-node bootstrap's placeholder
+    envelope (``determinism_hash="0"*64``) previously claimed the
+    ``(session, 0)`` primary key, and the bridge's real marker was then
+    silently dropped by ``ON CONFLICT (session_id, tick) DO NOTHING``.
+    """
+    from babylon.config.defines import GameDefines
+    from babylon.persistence.partitioning import drop_session_partitions
+    from babylon.persistence.postgres_initialization import initialize_session
+
+    session_id = uuid4()
+    try:
+        initialize_session(
+            session_id=session_id,
+            sqlite_path=sqlite_path,
+            runtime=runtime,
+            defines=GameDefines(),
+            start_year=2010,
+            scenario_length_years=1,
+            counties=DETROIT_TRI_COUNTY,
+            hex_hydration_counties=frozenset(DETROIT_TRI_COUNTY),
+        )
+        with pg_pool.connection() as conn:
+            n = conn.execute(
+                "SELECT count(*) FROM tick_commit WHERE session_id = %s",
+                (str(session_id),),
+            ).fetchone()
+        assert n is not None and int(n[0]) == 0
+    finally:
+        drop_session_partitions(pool=pg_pool, session_id=session_id)
+
+
 def test_alpha_weekly_startup_invariant_enforced(  # type: ignore[no-untyped-def]
     runtime, sqlite_path
 ):

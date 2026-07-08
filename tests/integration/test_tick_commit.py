@@ -129,3 +129,25 @@ class TestTickCommitMarker:
             assert runtime.get_last_committed_tick(session) == 0  # hex fallback
         finally:
             drop_session_partitions(pool=migrated_pool, session_id=session)
+
+    def test_bootstrap_envelope_must_not_claim_tick0_marker(
+        self, migrated_pool: Any, runtime: Any
+    ) -> None:
+        """Spec-089 FR-003: an init-time bootstrap envelope (placeholder
+        hash, zero hex rows) must leave (session, 0) free so the bridge's
+        real tick-0 marker — full checkpoint frame count + identity hash —
+        is not shadowed by ON CONFLICT DO NOTHING."""
+        session = uuid4()
+        ensure_session_partitions(pool=migrated_pool, session_id=session)
+        try:
+            bootstrap = PerTickTransactionEnvelope(
+                session_id=session,
+                tick=0,
+                determinism_hash="0" * 64,
+            )
+            runtime.persist_tick_atomic(bootstrap, write_commit_marker=False)
+            real = _envelope(session, 0, [_hex_row(session, 0)])
+            runtime.persist_tick_atomic(real)
+            assert _commit_rows(migrated_pool, session) == [(0, 1, True)]
+        finally:
+            drop_session_partitions(pool=migrated_pool, session_id=session)

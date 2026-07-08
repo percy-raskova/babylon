@@ -604,7 +604,12 @@ def _bootstrap_external_nodes(
     )
     # persist_tick_atomic is monkey-patched onto PostgresRuntime by
     # _spec_062.py at module load; mypy doesn't see the attachment.
-    runtime.persist_tick_atomic(envelope)  # type: ignore[attr-defined]
+    # Spec-089 FR-003: like the hex hydrator, the init-time bootstrap must
+    # NOT claim the (session, 0) commit marker — its placeholder hash would
+    # shadow the bridge's real tick-0 marker via ON CONFLICT DO NOTHING.
+    runtime.persist_tick_atomic(  # type: ignore[attr-defined]
+        envelope, write_commit_marker=False
+    )
     return len(rows), national_phi
 
 

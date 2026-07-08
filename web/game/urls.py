@@ -25,6 +25,7 @@ urlpatterns: list[URLPattern] = [
     path("games/<str:game_id>/", api.game_detail, name="game-detail"),
     path("games/<str:game_id>/pause/", api.game_pause, name="game-pause"),
     path("games/<str:game_id>/resume/", api.game_resume, name="game-resume"),
+    path("games/<str:game_id>/recover/", api.game_recover, name="game-recover"),
     # API: State
     path("games/<str:game_id>/state/", api.game_state, name="game-state"),
     path("games/<str:game_id>/summary/", api.game_summary, name="game-summary"),

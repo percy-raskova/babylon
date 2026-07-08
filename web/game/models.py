@@ -91,6 +91,7 @@ class GameEventLog(models.Model):
         GAME_CREATE = "game_create", "Game Created"
         GAME_PAUSE = "game_pause", "Game Paused"
         GAME_RESUME = "game_resume", "Game Resumed"
+        GAME_RECOVER = "game_recover", "Game Recovered"
         TICK_RESOLVE = "tick_resolve", "Tick Resolved"
         ACTION_SUBMIT = "action_submit", "Action Submitted"
         ENGINE_ERROR = "engine_error", "Engine Error"

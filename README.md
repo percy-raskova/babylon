@@ -1,69 +1,113 @@
 # Babylon - The Fall of America
 
-A geopolitical simulation engine modeling the collapse of American hegemony through Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory.
+A geopolitical simulation engine — and now a playable web game being hardened —
+modeling the collapse of American hegemony through Marxist-Leninist-Maoist
+Third Worldist (MLM-TW) theory.
 
 **Mantra:** *Graph + Math = History*
 
 ## What Is This?
 
-Babylon models class struggle as a deterministic output of material conditions within a compact topological phase space. It simulates imperial rent extraction, consciousness drift, solidarity transmission, and revolutionary rupture using NetworkX graphs and Pydantic-validated state.
+Babylon models class struggle as a deterministic output of material conditions
+within a compact topological phase space. It simulates imperial rent extraction,
+consciousness drift, solidarity transmission, and revolutionary rupture — from a
+two-node teaching scenario up to county-scale national runs — and exposes it as
+a Django + React web game where the player acts through an organization inside
+the simulation.
 
-The simulation runs locally without external servers, using the **Embedded Trinity** architecture:
+The simulation runs locally without external servers, using the **Embedded
+Trinity** architecture:
 
-- **The Ledger** (PostgreSQL runtime + Pydantic) — Rigid material state. Runtime simulation state lives in PostgreSQL (spec-037); a read-only SQLite reference database (`marxist-data-3NF.sqlite`) supplies QCEW/BEA/Census source data
-- **The Topology** (NetworkX/GraphProtocol) — Fluid relational state; `to_graph()`/`from_graph()` bridge Pydantic ↔ DiGraph
-- **The Archive** (pgvector) — Semantic history for AI narrative; AI observes state, never controls mechanics (ChromaDB was replaced by pgvector in spec-037)
+- **The Ledger** (PostgreSQL runtime + Pydantic) — Rigid material state. Runtime
+  simulation state lives in PostgreSQL (spec-037); a read-only SQLite reference
+  database (`marxist-data-3NF.sqlite`) supplies QCEW/BEA/Census/TIGER source data
+- **The Topology** (rustworkx via `BabylonGraph`) — Fluid relational state;
+  `to_graph()`/`from_graph()` bridge Pydantic ↔ graph (Amendment L, ADR052 —
+  byte-identical determinism; NetworkX was removed)
+- **The Archive** (pgvector) — Semantic history for AI narrative; AI observes
+  state, never controls mechanics
 
-**Architecture Principle:** State is pure data. Engine is pure transformation. They never mix.
+**Architecture Principle:** State is pure data. Engine is pure transformation.
+They never mix.
+
+## Where the project is right now (July 2026)
+
+The full game surface exists: the 26-system engine, a React/Django web app (map,
+verbs, intel, wire, chronicle, objectives), an Observatory debug dashboard, trade
+blocs, and county-scale national runs. **Program 09** (specs 071–105) built that
+surface and merged to `dev` on 2026-07-06.
+
+The first real end-to-end playtest (2026-07-07) then found the core loop broken
+at several junctions, and a whole-repo review found silent failures behind it.
+The active work is the **Loud Machine remediation program**: fix everything
+found, and wire the system so failures are loud instead of silent. Several of
+the blockers are already fixed and merged (map projection, live verb pipeline,
+loud scenario seeding, re-armed test guardrails); the rest is in flight.
+
+**Catch up in five minutes:** [`project/`](project/) is the project-management
+one-stop shop — start at
+[`project/execution/PROGRESS_REPORT-2026-07-08.md`](project/execution/PROGRESS_REPORT-2026-07-08.md)
+(where things stand) and
+[`project/execution/REMEDIATION_PLAN.md`](project/execution/REMEDIATION_PLAN.md)
+(the ratified plan). The authority chain and reading order live in
+[`project/README.md`](project/README.md).
 
 ## Quick Start
 
 ```bash
-# Install the toolchain (Python 3.12 + Poetry) and dependencies
+# One-shot fresh-clone bootstrap: toolchain + deps + hooks + tuned Postgres 16 + schema
 mise trust
-mise install
-mise run install
+mise run setup
 
 # Verify your install with the self-contained smoke test
 mise run sim:run
 
-# Run the full test suite (9,500+ tests)
-mise run test:all
+# Run the fast CI gate (lint + format + typecheck + unit tests)
+mise run check
+
+# Start the web game (Django :8000 + Vite :5173 as background daemons)
+mise run web:dev
 ```
 
 **Requirements:** [mise](https://mise.jdx.dev) (it provisions Python 3.12 and
-Poetry for you). New to the project? See [SETUP_GUIDE.md](SETUP_GUIDE.md) for a
-beginner-friendly, OS-by-OS walkthrough.
+Poetry for you) and Docker (for the tuned Postgres 16 compose stack). New to the
+project? See [SETUP_GUIDE.md](SETUP_GUIDE.md) for a beginner-friendly,
+OS-by-OS walkthrough.
 
 ## Project Structure
 
 ```
 src/babylon/
-├── engine/              # Simulation engine (step function, systems, event bus, observers)
-│   ├── systems/         # 25 modular Systems (economic, ideology, survival, territory, sovereignty, ...)
-│   ├── headless_runner/ # Postgres-backed full-scale run (sim:e2e-michigan)
+├── engine/              # Simulation engine (step function, 26 systems, event bus, observers)
+│   ├── systems/         # Modular Systems (production, ideology, survival, territory, sovereignty, ...)
+│   ├── headless_runner/ # Postgres-backed full-scale runs (Michigan / national)
 │   └── formula_registry.py  # Hot-swappable formula dispatch
-├── formulas/            # Mathematical formulas (18 modules covering all MLM-TW theory)
-├── models/              # Pydantic entities (SocialClass, Territory, WorldState)
-├── persistence/         # PostgreSQL runtime + pgvector store
-├── rag/                 # Retrieval pipeline over pgvector (semantic history)
-├── config/              # GameDefines, logging configuration
+├── formulas/            # 19 formula modules covering the MLM-TW mathematical core
+├── models/              # Pydantic entities (SocialClass, Territory, Sovereign, WorldState)
+├── economics/           # Imperial-rent tensor + Leontief pipeline, gamma visibility, circulation
+├── persistence/         # PostgreSQL runtime, migrations, pgvector store, Parquet archival
+├── dialectics/          # Executable contradiction layer (ADR051: oppositions, levels, regime)
+├── ooda/                # Organization decision layer (actions, costs, effects)
+├── config/              # GameDefines — every tunable coefficient
 └── data/game/           # JSON entity/seed definitions (factions, sovereigns, personas)
 
-tests/
-├── unit/                # Fast deterministic tests
-├── integration/         # Full simulation tests
-└── constants.py         # Centralized test constants (ADR031)
+web/                     # The game itself
+├── game/                # Django app: API, engine bridge, session persistence
+├── frontend/            # React 19 + Zustand + deck.gl map UI (Vite)
+├── observatory/         # Read-only debug/analysis dashboard
+└── babylon_web/         # Django project settings
 
-tools/                   # Simulation lab: traces, sweeps, tuning, QA
-specs/                   # Feature specifications per branch
-ai-docs/                 # Machine-readable YAML specs (architecture, ADRs, state)
+project/                 # Project management one-stop shop (plans, assessments, progress)
+ai-docs/                 # Machine-readable YAML docs for AI agents (architecture, ADRs, state)
+specs/                   # Feature specifications per branch (001-105+)
+tests/                   # unit / integration / scenarios / property / contract
+tools/                   # Simulation lab: traces, sweeps, tuning, QA gates
 docs/                    # Sphinx API documentation
 ```
 
 ## Engine Systems
 
-The simulation engine runs **25 modular Systems** in strict materialist-causality
+The simulation engine runs **26 modular Systems** in strict materialist-causality
 order each tick (source of truth: `_DEFAULT_SYSTEMS` in
 [`simulation_engine.py`](src/babylon/engine/simulation_engine.py)). They fall
 into three phases:
@@ -74,14 +118,16 @@ step(WorldState, SimulationConfig) -> WorldState  ──►  SimulationEngine.ru
 Material Base   Vitality · Territory · Substrate · Production · TickDynamics ·
                 ReserveArmy · Community · Lifecycle · Solidarity · ImperialRent ·
                 Dispossession · Decomposition · ControlRatio · Metabolism
-Action Phase    OODA · FactionInfluence
-Consequences    Survival · Struggle · Consciousness · Sovereignty · Contradiction ·
-                ContradictionField · FieldDerivative · CollapseTransition · EdgeTransition
+Action Phase    OODA
+Consequences    FactionInfluence · Survival · Struggle · Consciousness ·
+                FascistFaction · Sovereignty · Contradiction · ContradictionField ·
+                FieldDerivative · CollapseTransition · EdgeTransition
 ```
 
 The base produces material conditions, organizations observe and act, and the
 consequences (survival calculus, consciousness drift, contradiction fields,
-sovereign collapse) follow. See `CLAUDE.md` for the per-system annotations.
+sovereign collapse) follow. See [`CLAUDE.md`](CLAUDE.md) for per-system
+annotations.
 
 **Key components:**
 
@@ -89,17 +135,18 @@ sovereign collapse) follow. See `CLAUDE.md` for the per-system annotations.
 | ----------------------------------------- | ---------------------------------------------------------- |
 | `src/babylon/engine/simulation_engine.py` | Orchestrates all Systems                                   |
 | `src/babylon/engine/services.py`          | ServiceContainer (dependency injection)                    |
-| `src/babylon/engine/event_bus.py`         | Publish/subscribe events (70 EventTypes)                   |
+| `src/babylon/engine/event_bus.py`         | Publish/subscribe events (79 EventTypes)                   |
 | `src/babylon/engine/formula_registry.py`  | Hot-swappable formula dispatch                             |
 | `src/babylon/engine/topology_monitor.py`  | Phase transition detection via percolation                 |
-| `src/babylon/engine/observer.py`          | `SimulationObserver`, `SessionRecorder`, `EndgameDetector` |
-| `src/babylon/config/defines.py`           | `GameDefines` — all tunable coefficients                   |
+| `src/babylon/engine/observers/`           | `SessionRecorder`, `EndgameDetector` (5 terminal outcomes) |
+| `src/babylon/config/defines/`             | `GameDefines` — all tunable coefficients                   |
+| `web/game/engine_bridge.py`               | The web game's bridge into the engine                      |
 
 ## Formula System
 
-18 formula modules in `src/babylon/formulas/` (selected highlights below; see the
-directory for the full set, including `balkanization.py`, `consciousness_routing.py`,
-and `state_ai.py`):
+19 formula modules in `src/babylon/formulas/` (selected highlights below; see
+the directory for the full set, including `balkanization.py`, `reactionary.py`,
+`consciousness_routing.py`, and `state_ai.py`):
 
 | Module                   | Theory                                                     |
 | ------------------------ | ---------------------------------------------------------- |
@@ -107,15 +154,18 @@ and `state_ai.py`):
 | `survival_calculus.py`   | P(S\|A), P(S\|R), crossover threshold, loss aversion       |
 | `unequal_exchange.py`    | Exchange ratios, exploitation rate, Prebisch-Singer effect |
 | `solidarity.py`          | Solidarity transmission                                    |
-| `ideological_routing.py` | Bifurcation: fascist vs revolutionary routing              |
-| `dynamic_balance.py`     | Bourgeoisie decision dynamics                              |
+| `consciousness.py`       | Ternary consciousness (r/l/f simplex)                      |
+| `balkanization.py`       | Sovereign collapse, secession, red-settler trap            |
+| `reactionary.py`         | Fascist pull, defection, spontaneous riot risk             |
 | `metabolic_rift.py`      | Biocapacity delta (ΔB = R − E×η), overshoot ratio          |
-| `class_dynamics.py`      | Class composition analysis                                 |
-| `community.py`           | Community-level consciousness                              |
-| `curvature.py`           | Topological curvature (Wasserstein-1)                      |
-| `trpf.py`                | Tendency of rate of profit to fall                         |
-| `vitality.py`            | Population dynamics                                        |
-| `lifecycle.py`           | Organization lifecycle                                     |
+| `class_dynamics.py`      | Wealth flow, class-dynamics derivatives                    |
+| `community.py`           | Community-level consciousness and solidarity               |
+| `curvature.py`           | Topological curvature (Ollivier-Ricci / Wasserstein-1)     |
+| `trpf.py`                | Tendency of the rate of profit to fall                     |
+| `lifecycle.py`           | D–P–D′ lifecycle circuit, legitimation index               |
+
+The imperial-rent tensor mathematics (value tensors, Leontief pipeline, gamma
+visibility) lives in `src/babylon/economics/`.
 
 ## Mathematical Core
 
@@ -135,16 +185,17 @@ and `state_ai.py`):
 
 ```bash
 # Setup
-poetry install && poetry run pre-commit install
+mise run setup              # Fresh clone: everything
+poetry install && poetry run pre-commit install   # Piecemeal alternative
 
 # CI gate (lint + format + typecheck + unit tests)
-mise run ci
+mise run check
 
-# Testing
+# Testing (all test:* tasks write machine-readable reports to reports/test-results/)
 mise run test:unit          # Fast unit tests only
 mise run test:int           # Integration tests
 mise run test:scenario      # Full scenario arcs (slow)
-mise run test:all           # All non-AI tests (9,500+)
+mise run test:all           # All non-AI tests (10,700+ collected)
 mise run test:cov           # With coverage report
 
 # Quality
@@ -152,6 +203,17 @@ mise run lint               # Ruff linter
 mise run typecheck          # MyPy strict mode
 mise run qa:audit           # Simulation health check (3 scenarios)
 mise run qa:verify          # Formula correctness verification
+mise run qa:storage-budget  # Storage regression gate (rows/tick vs baseline)
+
+# Web game
+mise run web:dev            # Django + Vite as background daemons
+mise run web:status         # Server status
+mise run web:test           # Frontend tests (Vitest)
+mise run web:check          # Frontend quality gate (tsc + eslint + prettier + vitest)
+
+# Agent/dev ergonomics
+mise run commit -- "type(scope): msg"   # Hook-safe commit
+mise run sim:status                     # Canonical-run status (tick, DB size, liveness)
 ```
 
 For specific tests:
@@ -180,50 +242,33 @@ mise run tune:landscape p1 r1 p2 r2       # 2D grid search
 
 # QA
 mise run qa:regression                    # Baseline comparison (CI)
-mise run qa:regression-generate           # Generate new baselines after intentional changes
+mise run qa:regression-generate           # New baselines after intentional changes
 mise run qa:schemas                       # JSON schema validation
 mise run qa:security                      # Dependency security audit
 
-# UI
-mise run web:dev                          # React + Django map UI (current; needs Node — run web:install first)
-mise run ui                               # DearPyGui Synopticon dashboard (legacy desktop dashboard)
+# Full-scale runs (Postgres-backed)
+mise run sim:e2e-bg                       # Daemonized 520-tick canonical run
+mise run sim:archive -- list              # Parquet archival lifecycle (spec-088)
 ```
 
 ## Testing Standards
 
-Pytest markers:
+Pytest markers (enforced — unknown markers are a collection error):
 
 ```
 @pytest.mark.math        # Deterministic formulas (fast, pure)
 @pytest.mark.ledger      # Economic/political state
 @pytest.mark.topology    # Graph/network operations
-@pytest.mark.integration # Database/pgvector (I/O bound)
-@pytest.mark.ai          # AI/RAG evaluation (slow, non-deterministic)
-@pytest.mark.red_phase   # TDD RED phase (intentionally failing)
+@pytest.mark.integration # Database/Postgres (I/O bound)
+@pytest.mark.ai          # AI/RAG evaluation (slow, non-deterministic; auto-applied to tests/unit/ai/)
+@pytest.mark.contract    # Contract tests pinning cross-boundary interfaces
+@pytest.mark.red_phase   # TDD RED phase (reserved; no active red_phase tests — retired 2026-07-08)
 ```
 
-Test constants are centralized in `tests/constants.py` (see ADR031). All code follows strict TDD: Red → Green → Refactor.
-
-## Current State
-
-**Most recent sprint: spec-070 "Balkanization" (Sovereign Topology + Faction
-Influence) — complete.** For canonical, always-current status (test counts,
-sprint state, per-feature detail) see [`ai-docs/state.yaml`](ai-docs/state.yaml).
-
-Features 001–070 have shipped, including:
-
-- Imperial Rent extraction, unequal exchange, and the D–P–D′ lifecycle circuit
-- Solidarity transmission, consciousness drift, and ternary-consciousness routing
-- Survival calculus (P(S|A), P(S|R)) and the George Floyd Dynamic (EXCESSIVE_FORCE → UPRISING)
-- Territory heat, eviction, and the carceral-geography pipeline
-- Metabolic Rift (biocapacity depletion, ecological overshoot)
-- OODA-loop organizations, the community hyperedge layer (XGI), and state-apparatus AI
-- Dialectical field topology (contradiction fields, curvature, principal-contradiction tracking)
-- Cross-scale integration with a PostgreSQL runtime and county-scale headless runs
-- **Sovereign topology + faction influence + balkanization** (secession, civil war,
-  sovereign collapse, and endgame detection)
-
-Active development happens on the `dev` branch.
+Test constants are centralized in `tests/constants.py` (see ADR031). All code
+follows strict TDD: Red → Green → Refactor. Determinism is constitutional
+(III.7): seeded RNG and tick-derived timestamps, verified by an in-process
+determinism gate.
 
 ## Contributing
 
@@ -243,13 +288,14 @@ git checkout -b feature/your-feature
 
 ## Documentation
 
-| Location                                   | Content                                                         |
-| ------------------------------------------ | --------------------------------------------------------------- |
-| [`ai-docs/`](ai-docs/)                     | Machine-readable YAML specs (architecture, ADRs, current state) |
-| [`ai-docs/state.yaml`](ai-docs/state.yaml) | Canonical project status, test counts, sprint state             |
-| [`ai-docs/decisions/`](ai-docs/decisions/) | Architecture Decision Records (one YAML per ADR)                |
-| [`specs/`](specs/)                         | Per-feature specifications                                      |
-| [`docs/`](docs/)                           | Sphinx API documentation (`mise run docs:live`)                 |
+| Location                                   | Content                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| [`project/`](project/)                     | Project management: plans, progress reports, assessments, owner queue |
+| [`ai-docs/`](ai-docs/)                     | Machine-readable YAML docs for AI agents (architecture, ADRs)         |
+| [`ai-docs/state.yaml`](ai-docs/state.yaml) | Project status — read its `truth_status` banner first                 |
+| [`ai-docs/decisions/`](ai-docs/decisions/) | Architecture Decision Records (one YAML per ADR)                      |
+| [`specs/`](specs/)                         | Per-feature specifications with verified task ledgers                 |
+| [`docs/`](docs/)                           | Sphinx API documentation (`mise run docs:live`)                       |
 
 ## License
 
@@ -260,5 +306,5 @@ ______________________________________________________________________
 **Built With**
 
 ```
-Claude Opus 4.5 🤝 Autistic Trans Woman = Coherent MLM-TW Simulation
+Claude (Opus 4.5 → Fable 5) 🤝 Autistic Trans Woman = Coherent MLM-TW Simulation
 ```

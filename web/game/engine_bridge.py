@@ -788,7 +788,7 @@ class EngineBridge:
         self._persistence.persist_tick(
             tick=initial_state.tick,
             graph=initial_state.to_graph(),
-            events=[event.model_dump() for event in initial_state.events] or None,
+            events=[event.model_dump(mode="json") for event in initial_state.events] or None,
             session_id=session_id,
         )
 
@@ -828,7 +828,7 @@ class EngineBridge:
                 self._persistence.persist_tick(
                     tick=seeded_state.tick,
                     graph=seeded_state.to_graph(),
-                    events=[event.model_dump() for event in seeded_state.events] or None,
+                    events=[event.model_dump(mode="json") for event in seeded_state.events] or None,
                     session_id=session_id,
                 )
                 graph = self._persistence.hydrate_graph(tick=tick, session_id=session_id)
@@ -1979,7 +1979,9 @@ class EngineBridge:
 
         # Persist the new tick
         new_graph = new_state.to_graph()
-        events_as_dicts: list[dict[str, Any]] = [e.model_dump() for e in new_state.events]
+        events_as_dicts: list[dict[str, Any]] = [
+            e.model_dump(mode="json") for e in new_state.events
+        ]
         self._persistence.persist_tick(
             tick=new_state.tick,
             graph=new_graph,

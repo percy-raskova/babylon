@@ -45,3 +45,24 @@
 | D   | National hex hydration optimization approach                                                                         | >10min for 3,156 counties. Batch QCEW/BEA lookups + parallelize. Approve?                                                                                                                 |
 | E   | E:105 scope — given the national run can't complete yet, should E:105 be deferred until the optimization spec lands? | The national canonical acceptance is the program's capstone. Options: (a) defer E:105, (b) run a shorter national run (50 ticks), (c) optimize first then run.                            |
 | F   | DeepSeek max-thinking directive                                                                                      | The "DeepSeek Thinking subagents with max thinking" directive was not honored by any dispatch (the task tool doesn't expose model selection). Is there a different way to configure this? |
+
+## Updates 2026-07-07/08 (remediation program + spectrum)
+
+- **Decisions C, D, E: RESOLVED** by the remediation-plan ratification (2026-07-07):
+  Percy ruled FULL national perf effort — author spec-106 → profile FIRST → optimize
+  → pass the 104 gate → run the 105 capstone. That approves the C investigation, the
+  D optimization, and picks E option (c) optimize-first-then-run.
+- **Item 22 (NEW, PENDING — the only live owner blocker): leaked Cloudflare API token.**
+  `git push origin dev` blocked by GitHub push protection (token in
+  `sessions/session-ses_0d18.md`, commit `c1cba41a`; verified the only secret in the
+  unpushed range). Required: rotate at Cloudflare, then choose [A] unblock-URL push
+  or [B] approved range-constrained filter-repo scrub. Details:
+  `execution/PROGRESS_REPORT-2026-07-08.md` §9.
+- **Item 23 (NEW, ✅ RULED 2026-07-08): the Spectrum of Unequal Exchange** (spec-107,
+  Program 10). Five rulings: (1) ONE global axis, empirically anchored — "should
+  reflect the actual data of the economy"; (2) wages ALIGN to position, don't define
+  it; (3) first slice couples value-transfer-up-gradient + wage gravitation +
+  consciousness; position mobility deferred; (4) spec now, implement as Phase 5.5
+  (after 5.2/5.3), acceptance in the Phase-6 national capstone; (5) I-O grounding via
+  loaded BEA TOTAL_REQ × QCEW (BLS EP optional cross-check). Master record:
+  `programs/10-spectrum-of-unequal-exchange.md`.

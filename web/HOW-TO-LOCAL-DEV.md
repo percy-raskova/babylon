@@ -104,8 +104,10 @@ Bootstrap order on a clean database:
    `document_chunk` pgvector schema)
 1. `poetry run python manage.py createsuperuser` (from `web/`) — create the
    Django user the seed command will own the game as
-1. `poetry run python manage.py seed_initial_game --scenario wayne_county --player admin`
-   — seed the first real-engine game session
+1. `RUN_MAIN=true poetry run python manage.py seed_initial_game --scenario wayne_county --player admin`
+   — seed the first real-engine game session (`RUN_MAIN=true` is required:
+   under the DEBUG development settings `game/apps.py` skips EngineBridge
+   init for management commands otherwise, and the seed refuses the stub)
 1. `mise run web:dev` — start backend + frontend
 
 For first-time database setup and superuser creation, see the detailed steps
@@ -151,8 +153,10 @@ poetry run python manage.py migrate
 # Create a superuser for the admin panel and game access
 poetry run python manage.py createsuperuser
 
-# Seed an initial game session against the real engine
-poetry run python manage.py seed_initial_game --scenario wayne_county --player admin
+# Seed an initial game session against the real engine.
+# RUN_MAIN=true is required: under DEBUG development settings game/apps.py
+# skips EngineBridge init for management commands unless it is set.
+RUN_MAIN=true poetry run python manage.py seed_initial_game --scenario wayne_county --player admin
 
 # Start the development server on port 8000
 poetry run python manage.py runserver 8000

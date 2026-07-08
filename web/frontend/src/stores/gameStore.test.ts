@@ -68,6 +68,26 @@ describe("gameStore", () => {
       expect(state.verbTargets["educate:org-1"]).toEqual(targets);
     });
 
+    it("caches flat responses that lack a status field (mobilize contract)", async () => {
+      // MobilizeAvailableSerializer has NO status field — the targets GET
+      // returns a flat body (entity_id, name, targets, ...). The api client
+      // passes HTTP-200 bodies through untouched, so res.status is
+      // undefined and must NOT be routed to the error branch.
+      server.use(
+        http.get("/api/games/:id/actions/:verb/targets/", () =>
+          HttpResponse.json({ entity_id: "org-1", targets: [{ id: "t-9", name: "Rally" }] }),
+        ),
+      );
+
+      await useGameStore.getState().fetchVerbTargets("game-001", "mobilize", "org-1");
+
+      const state = useGameStore.getState();
+      expect(state.verbTargets["mobilize:org-1"]).toMatchObject({
+        targets: [{ id: "t-9" }],
+      });
+      expect(state.error).toBeNull();
+    });
+
     it("preserves existing cache entries when adding new ones", async () => {
       // Seed an existing entry
       useGameStore.setState({

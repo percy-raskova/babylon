@@ -83,7 +83,7 @@ interface GameState {
   /** Whether playerOrgs have been fetched at least once. */
   playerOrgsLoaded: boolean;
   /** Verb target data cache, keyed by `${verb}:${orgId}`. */
-  verbTargets: Record<string, unknown>;
+  verbTargets: Record<string, Record<string, unknown>>;
 
   setSession: (id: string | null) => void;
   fetchState: (gameId: string) => Promise<void>;
@@ -208,11 +208,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const res = await apiGet<Record<string, unknown>>(
       `/api/games/${gameId}/actions/${verb}/targets/?org_id=${orgId}`,
     );
-    if (res.status === "ok") {
+    if (res.status !== "error") {
       // Verb target endpoints return flat responses (targets, cost, etc.
       // at top level) rather than using the standard {status, data} envelope.
-      // Store res.data if present, otherwise store the full response body.
-      const payload = res.data ?? res;
+      // Some (mobilize) have no status field at all, so res.status is
+      // undefined on success — the client only synthesizes status:"error"
+      // on failures. Store res.data if present, else the full flat body.
+      const payload = (res.data ?? res) as Record<string, unknown>;
       set((s) => ({
         verbTargets: { ...s.verbTargets, [cacheKey]: payload },
       }));

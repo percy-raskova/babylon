@@ -1246,3 +1246,73 @@ class TestDefixturedQueryCorrectness:
 
         target_ids = {t["id"] for t in result["targets"]}
         assert "org-civil-society" in target_ids
+
+
+@pytest.mark.unit
+class TestSessionScopedDefines:
+    """C.13: resolve_tick must read GameDefines from the session's own
+    game_session row, never from the global metadata blob."""
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_uses_session_defines(self, mock_step: MagicMock) -> None:
+        """Defines stored on the session row must reach step()."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_session.return_value = {
+            "scenario": "default",
+            "game_defines_json": {"economy": {"extraction_efficiency": 0.5}},
+        }
+        mock_step.return_value = _make_mock_new_state()
+        bridge = EngineBridge(mock_persistence)
+
+        bridge.resolve_tick(uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+
+        defines = mock_step.call_args.kwargs["defines"]
+        assert defines.economy.extraction_efficiency == 0.5
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_ignores_global_metadata_blob(self, mock_step: MagicMock) -> None:
+        """Another session's defines in the global metadata key must NOT leak in."""
+        import json as json_mod
+
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_metadata.return_value = json_mod.dumps(
+            {"economy": {"extraction_efficiency": 0.1}}
+        )
+        mock_persistence.get_session.return_value = {
+            "scenario": "default",
+            "game_defines_json": {},
+        }
+        mock_step.return_value = _make_mock_new_state()
+        bridge = EngineBridge(mock_persistence)
+
+        bridge.resolve_tick(uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+
+        defines = mock_step.call_args.kwargs["defines"]
+        assert defines.economy.extraction_efficiency == 0.8  # library default, not 0.1
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_parses_string_defines(self, mock_step: MagicMock) -> None:
+        """SQLite TEXT storage returns a JSON string — must still parse."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_session.return_value = {
+            "scenario": "default",
+            "game_defines_json": '{"economy": {"extraction_efficiency": 0.5}}',
+        }
+        mock_step.return_value = _make_mock_new_state()
+        bridge = EngineBridge(mock_persistence)
+
+        bridge.resolve_tick(uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+
+        assert mock_step.call_args.kwargs["defines"].economy.extraction_efficiency == 0.5
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_defaults_when_row_missing(self, mock_step: MagicMock) -> None:
+        """A missing session row degrades to library defaults, not a crash."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_session.return_value = None
+        mock_step.return_value = _make_mock_new_state()
+        bridge = EngineBridge(mock_persistence)
+
+        bridge.resolve_tick(uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+
+        assert mock_step.call_args.kwargs["defines"].economy.extraction_efficiency == 0.8

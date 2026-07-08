@@ -11,6 +11,7 @@ JSON-serializable, suitable for DRF serializer consumption.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -121,6 +122,39 @@ def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
     except Exception:  # noqa: BLE001 — non-fatal; defaults to 0
         logger.exception("Failed to read rng_seed for session %s", session_id)
     return 0
+
+
+def _fetch_session_game_defines(persistence: Any, session_id: UUID) -> GameDefines:
+    """Read this session's GameDefines from its ``game_session`` row (C.13).
+
+    Defines are stored per-session in ``game_session.game_defines_json``
+    at creation (see :meth:`EngineBridge.create_game`). The old code read
+    the GLOBAL ``get_metadata("game_defines_json")`` blob — a key nothing
+    ever wrote, and one shared by every session in the database — so
+    per-session defines were silently ignored. Falls back to library
+    defaults when the persistence layer has no session store
+    (StubEngineBridge / SQLite dev) or the row is missing.
+    """
+    session_getter = getattr(persistence, "get_session", None)
+    if not callable(session_getter):
+        return GameDefines()
+    try:
+        row = session_getter(session_id)
+    except Exception:  # noqa: BLE001 — non-fatal; defaults are safe
+        logger.exception("Failed to read game_defines_json for session %s", session_id)
+        return GameDefines()
+    if not isinstance(row, dict):
+        return GameDefines()
+    raw = row.get("game_defines_json")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.exception("Malformed game_defines_json for session %s", session_id)
+            return GameDefines()
+    if isinstance(raw, dict) and raw:
+        return GameDefines(**raw)
+    return GameDefines()
 
 
 # ---------------------------------------------------------------------- #
@@ -1930,14 +1964,10 @@ class EngineBridge:
         """
         state, graph = self.hydrate_state(session_id)
 
-        # Load defines from the session's stored config
-        metadata_raw = self._persistence.get_metadata("game_defines_json")
-        if metadata_raw is not None:
-            import json
-
-            game_defines = GameDefines(**json.loads(metadata_raw))
-        else:
-            game_defines = GameDefines()
+        # Load defines from the session's own stored config (session-scoped;
+        # the old global metadata key both leaked across sessions and was
+        # never written, so stored defines were silently ignored)
+        game_defines = _fetch_session_game_defines(self._persistence, session_id)
 
         # Spec 061 US5 T080 (FR-024): thread the session's rng_seed
         # into the engine config so action resolution is byte-deterministic

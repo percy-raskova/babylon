@@ -158,12 +158,15 @@ def config() -> SimulationConfig:
 
 @pytest.mark.xfail(
     reason=(
-        "Spec-070 augmented REVOLUTIONARY_VICTORY requires Sovereign/CLAIMS "
-        "graph wiring that the unit-test ``state.to_graph()`` round-trip "
-        "doesn't currently re-emit (Sovereign as a first-class node type is "
-        "still landing). This test documents the contract; the integration "
-        "path goes via FactionInfluenceSystem + SovereigntySystem on the "
-        "live graph (US1 + US2 integration tests cover the happy path)."
+        "Sovereign nodes now round-trip via WorldState.sovereigns "
+        "(fix/from-graph-safety), but the ABOLISH-majority gate resolves "
+        "sovereign stance through a ruling Faction node's colonial_stance "
+        "(EndgameDetector._lookup_sovereign_stance) — Faction nodes have no "
+        "WorldState field and no production writer (spec-070 wiring hazard), "
+        "so the unit-test ``state.to_graph()`` path cannot emit them. This "
+        "test documents the contract; the integration path goes via "
+        "FactionInfluenceSystem + SovereigntySystem on the live graph "
+        "(US1 + US2 integration tests cover the happy path)."
     )
 )
 def test_abolish_majority_extraction_cease_and_solidarity_passes(

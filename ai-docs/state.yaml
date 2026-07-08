@@ -54,6 +54,30 @@ meta:
   previous_sprint_086: "086-qcew-loader-imputation (Implementation complete + LIVE APPLIED 2026-07-02; 37/41 tasks — see specs/086-qcew-loader-imputation/tasks.md and ADR050. T038 michigan-e2e re-baseline DONE by the Lawverian Phase E re-baseline; T039-T041 docs/ledger close-out.)"
   previous_sprint: "070-balkanization (Complete; ~100/118 tasks done — see specs/070-balkanization/tasks.md and ADR048. Phase 1+2 foundational, Phase 3 US1 MVP, Phase 4 US2 faction competition, Phase 5 US3 collapse+endgames, Phase 6 US4 secession+O(K) fracture shipped. Phase 7 polish + Phase 7b post-analyze remediation partially deferred — see ADR048 follow_ups.)"
   previous_sprint_069: "069-sqlite-cache-optimization (Complete; 37/37 tasks done — see specs/069-sqlite-cache-optimization/tasks.md and ADR047. SC-001 absolute 60-min wallclock gate deferred to operator-side canonical run per quickstart.md T036.)"
+  spec_063_circulation_tail_r62: |
+    (2026-07-08 remediation lane 6.2, branch feat/spec-063-tail-r2) spec-063
+    Vol-II circulation tail closed the honest T042/T043 gaps + integration
+    coverage. Landed: T043 PairedCrossBorderEmissionEvaluator (FR-030c,
+    conservation_audit.py, registered in headless_runner/runner.py; aggregates
+    one ALARM per external dest — the (session,tick,scale,invariant) PK cannot
+    hold per-pair rows); T042 border-commute synthesis wired into
+    initialize_session (persist_to_postgres + merge_into_postgres_lodes);
+    T040 completion — the previously-missing in-memory
+    BorderCommuteSynthesisLoader.merge_into_year_matrix + a DRY module-level
+    build_year_matrix() extracted from LODESCommuteMatrixLoader._build_csr_matrix
+    + default_tri_county_aggregate_hex() helper; and the FR-026
+    external_node_overrides / synthetic_lodes_canadian_rows init seams that
+    REVIVED the previously-dead canada-required guard (fail-fast before any I/O
+    for SC-006 <5s). Tests: 4 new merge unit tests, T033
+    test_canada_required_invariant.py (3, Postgres-only), T052
+    test_atomicity_inheritance.py (3, FR-008a rollback), plus 5 wip integration
+    files (T032/T035/T036/T013/T014) that skip cleanly without LODES/TIGER data.
+    Full lane sweep 337 passed / 17 skipped; mypy --strict clean on all 5 touched
+    source files. Baseline-NEUTRAL: Vol2 is dormant in src (vol2_step never set)
+    and enable_border_commute_synthesis defaults False, so the canonical run
+    emits zero cross-border rows. Ledger truth: specs/063/tasks.md T033/T040/
+    T042/T043/T045/T052 [X]; T051 deferred to spec-106 (Phase 6.6 perf).
+    T048 full state.yaml regeneration remains open.
   spec_086_summary: |
     QCEW loader reimplementation + synthetic suppression imputation —
     the #1 data-correctness fix. Implements spec-097 FINAL (strategy 4);

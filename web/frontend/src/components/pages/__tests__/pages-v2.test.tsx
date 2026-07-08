@@ -153,15 +153,29 @@ describe("VerbPage", () => {
     expect(screen.getAllByText(/community/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows eligible community targets for educate", () => {
+  it("shows live endpoint targets for educate (not fixture communities)", async () => {
     renderVerb("educate");
-    expect(screen.getAllByText("Dearborn Proletarian Workers").length).toBeGreaterThanOrEqual(1);
+    // MSW's educate-targets handler serves src/mocks/educate_targets.json.
+    expect((await screen.findAllByText(/Downtown Detroit/)).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Dearborn Proletarian Workers")).not.toBeInTheDocument();
   });
 
-  it("shows verb-specific parameter controls", () => {
-    renderVerb("educate");
-    expect(screen.getAllByText("Method").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Study Circle")).toBeInTheDocument();
+  it("shows verb-specific parameter controls with display labels", async () => {
+    server.use(
+      http.get("/api/games/:id/actions/attack/targets/", () =>
+        HttpResponse.json({
+          targets: {
+            organizations: [{ target_id: "org-dted", name: "DTED" }],
+            institutions: [],
+            edges: [],
+          },
+        }),
+      ),
+    );
+    renderVerb("attack");
+    expect(await screen.findByText("Attack Mode")).toBeInTheDocument();
+    expect(screen.getByText("Targeted Sabotage")).toBeInTheDocument();
+    expect(screen.getByText("Mass Action")).toBeInTheDocument();
   });
 
   it("shows Queue button", () => {

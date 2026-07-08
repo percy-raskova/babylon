@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from babylon.economics.lodes_commute_matrix import LODESYearMatrix
     from babylon.persistence.protocols import RuntimePersistence
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,39 @@ _WEEKDAY_WEDNESDAY = 2  # date.weekday(): Monday=0 ... Sunday=6
 
 # Constant from spec.md FR-035 — 52 weeks divided by 12 months.
 _WEEKS_PER_MONTH = 52 / 12  # ≈ 4.3333
+
+# BTS port-of-entry codes for the Detroit-Windsor crossings:
+# Ambassador Bridge (3801) + Detroit-Windsor Tunnel (3802). FR-032.
+DETROIT_PORT_CODES: frozenset[str] = frozenset({"3801", "3802"})
+
+# FR-032 canonical fixture locations (Constitution III.4.2). The repo has no
+# data-trove/ directory today; with enable_border_commute_synthesis=False
+# (the default) these paths are never touched, and when enabled the FR-036
+# constructor fail-fast names the missing file loudly.
+DEFAULT_BTS_CSV = Path("data-trove/border_crossings/bts_border_crossings.csv")
+DEFAULT_STATCAN_CSV = Path("data-trove/border_crossings/statcan_frontier_counts.csv")
+
+# Detroit metro centroid (~Wayne County center). The H3 res-7 cell at this
+# point is the synthesis aggregate origin — one representative cell standing
+# in for the tri-county workforce (FR-035). Kept identical to the value the
+# test constants module derives (``tests/constants_063.py``) so production and
+# test resolve the same aggregate hex without importing each other.
+_DETROIT_CENTROID_LATLNG: tuple[float, float] = (42.331, -83.046)
+
+
+def default_tri_county_aggregate_hex() -> str:
+    """Return the H3 res-7 cell at the Detroit metro centroid.
+
+    The single representative origin cell used by Option B border-commute
+    synthesis when no explicit aggregate hex is supplied. Computes to
+    ``872ab2c58ffffff`` at h3 res 7.
+
+    Returns:
+        The H3 res-7 cell id (15-char hex string) at the Detroit centroid.
+    """
+    import h3
+
+    return str(h3.latlng_to_cell(*_DETROIT_CENTROID_LATLNG, 7))
 
 
 @dataclass(frozen=True)
@@ -248,6 +282,129 @@ class BorderCommuteSynthesisLoader:
             )
         return len(payload)
 
+    def merge_into_postgres_lodes(
+        self,
+        *,
+        runtime: RuntimePersistence,
+        session_id: UUID,
+        year: int,
+    ) -> int:
+        """Merge the year's us_to_canada synthesis into the LODES OD matrix (FR-035).
+
+        The OD matrix is annual while synthesis is weekly; the 52 weekly
+        magnitudes collapse to their mean — the standing stock of weekly
+        cross-border commuters — as ``s000_workers`` for the single
+        ``(tri_county_aggregate_hex, 'canada')`` sparse entry.
+        ``canada_to_us`` rows have no LODES analog (matrix origins are
+        study-area hexes) and remain in the synthesis table only.
+
+        Args:
+            runtime: Postgres runtime whose pool receives the INSERT.
+            session_id: Owning session UUID.
+            year: Scenario year whose synthesis rows are merged.
+
+        Returns:
+            Number of OD rows inserted (0 or 1).
+        """
+        if not self.is_enabled():
+            return 0
+        weekly = [
+            flow.magnitude_workers
+            for flow in self.synthesize_year(year)
+            if flow.direction == "us_to_canada"
+        ]
+        if not weekly:
+            return 0
+        s000 = int(round(sum(weekly) / len(weekly)))
+        with (
+            runtime._pool.connection() as pg,  # type: ignore[attr-defined]  # noqa: SLF001
+            pg.cursor() as cur,
+        ):
+            cur.execute(
+                """
+                INSERT INTO immutable_reference_lodes_od_matrix
+                    (session_id, year, home_hex, workplace_dest,
+                     workplace_dest_kind, s000_workers)
+                VALUES (%s, %s, %s, 'canada', 'external', %s)
+                ON CONFLICT (session_id, year, home_hex, workplace_dest)
+                DO NOTHING
+                """,
+                (session_id, year, self.tri_county_aggregate_hex, s000),
+            )
+        return 1
+
+    def _annual_us_to_canada_s000(self, year: int) -> int:
+        """Mean-of-52-weeks annualized us_to_canada standing worker count.
+
+        LODES ``S000`` is a standing worker count, not a flow sum: summing 52
+        weekly standing estimates would inflate the commuter population ~52x.
+        The annual OD entry is therefore the MEAN of the weekly
+        ``magnitude_workers`` values, rounded to the nearest integer to match
+        the ``BIGINT s000_workers`` column. Returns 0 when disabled or empty.
+        """
+        weekly = [
+            flow.magnitude_workers
+            for flow in self.synthesize_year(year)
+            if flow.direction == "us_to_canada"
+        ]
+        if not weekly:
+            return 0
+        return int(round(sum(weekly) / len(weekly)))
+
+    def merge_into_year_matrix(self, matrix: LODESYearMatrix, year: int) -> LODESYearMatrix:
+        """Return a NEW matrix with the synthesized canada entry added (FR-035).
+
+        The in-memory half of the T042 merge (mirrors
+        :meth:`merge_into_postgres_lodes`, which lands the same row in
+        Postgres). Only the ``us_to_canada`` direction merges — OD-matrix
+        origins are in-area hexes by schema, so the ``canada_to_us``
+        counterpart stays in ``immutable_reference_border_commute_synthesis``
+        for future household-reproduction specs. The annual entry is the MEAN
+        of the weekly ``magnitude_workers`` values (see
+        :meth:`_annual_us_to_canada_s000`).
+
+        When :meth:`is_enabled` is ``False`` or no rows synthesize (or the
+        annualized count rounds to ``<= 0``), the input matrix is returned
+        unchanged (``is`` identity), never mutated — :class:`LODESYearMatrix`
+        is frozen.
+
+        Args:
+            matrix: The existing year matrix to merge the canada entry into.
+            year: The scenario year whose synthesis rows are merged.
+
+        Returns:
+            A new :class:`LODESYearMatrix` with ``canada`` present as an
+            EXTERNAL destination column, or the input matrix unchanged.
+        """
+        if not self.is_enabled():
+            return matrix
+        annual = self._annual_us_to_canada_s000(year)
+        if annual <= 0:
+            return matrix
+
+        from babylon.economics.lodes_commute_matrix import build_year_matrix
+        from babylon.economics.node_kinds import NodeKind
+
+        # Reconstruct the pair-counts + dest-kind maps from the frozen matrix
+        # (same (row, col, value) iteration as LODESCommuteMatrixLoader.persist_to_postgres).
+        pair_counts: dict[tuple[str, str], int] = {}
+        boundary_dest_kind: dict[str, NodeKind] = {}
+        coo = matrix.matrix.tocoo()
+        row_to_origin = {idx: hex_id for hex_id, idx in matrix.origin_hex_to_row.items()}
+        for r, c, v in zip(coo.row, coo.col, coo.data, strict=True):
+            origin = row_to_origin[int(r)]
+            dest_id = matrix.dest_node_id_by_col[int(c)]
+            pair_counts[(origin, dest_id)] = int(v)
+            boundary_dest_kind[dest_id] = matrix.dest_kind_by_col[int(c)]
+
+        key = (self.tri_county_aggregate_hex, "canada")
+        pair_counts[key] = pair_counts.get(key, 0) + annual
+        boundary_dest_kind["canada"] = NodeKind.EXTERNAL
+
+        return build_year_matrix(
+            pair_counts=pair_counts, boundary_dest_kind=boundary_dest_kind, year=year
+        )
+
     # ── Internal: CSV parsing ───────────────────────────────────────────────
 
     def _load_bts(self) -> dict[tuple[int, int], float]:
@@ -364,6 +521,10 @@ def _parse_date_field(row: dict[str, str]) -> tuple[int | None, int | None]:
 
 
 __all__ = [
+    "DEFAULT_BTS_CSV",
+    "DEFAULT_STATCAN_CSV",
+    "DETROIT_PORT_CODES",
     "BorderCommuteFlow",
     "BorderCommuteSynthesisLoader",
+    "default_tri_county_aggregate_hex",
 ]

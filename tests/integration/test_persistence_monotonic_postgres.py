@@ -11,6 +11,7 @@ Gated behind ``mise run test:integration`` via the
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 import networkx as nx
 import pytest
@@ -133,3 +134,23 @@ class TestPostgresMonotonicIdempotent:
                 f"Tick {N}: failed-rewrite caused spurious side-effect"
             )
             assert actual.get("value") == N * 10
+
+    def test_datetime_event_retry_is_idempotent(
+        self, runtime: PostgresRuntime, session_id: uuid.UUID
+    ) -> None:
+        """P0 #6 regression: datetime-carrying events persist, and a retry
+        differing only in timestamps is idempotent (Predicate B')."""
+        graph = _payload_to_graph("with_events", 1)
+        ev = {
+            "type": "UPRISING",
+            "entity_id": "payload_node",
+            "timestamp": datetime(2026, 7, 8, 1, 0),
+        }
+        runtime.persist_tick(tick=0, graph=graph, events=[ev], session_id=session_id)
+
+        retry = dict(ev, timestamp=datetime(2026, 7, 8, 1, 5))
+        runtime.persist_tick(tick=0, graph=graph, events=[retry], session_id=session_id)
+
+        different = dict(ev, entity_id="other")
+        with pytest.raises(MonotonicityViolationError):
+            runtime.persist_tick(tick=0, graph=graph, events=[different], session_id=session_id)

@@ -37,15 +37,19 @@ def _django_setup() -> None:
 @pytest.fixture
 def bridge(_django_setup: None) -> object:
     """Create an EngineBridge connected to PostgreSQL."""
+    from psycopg_pool import ConnectionPool
+
     from babylon.persistence.postgres_runtime import PostgresRuntime
 
-    persistence = PostgresRuntime(
-        host=os.environ.get("POSTGRES_HOST", "localhost"),
-        port=int(os.environ.get("POSTGRES_PORT", "5432")),
-        database=os.environ.get("POSTGRES_DB", "babylon_test"),
-        user=os.environ.get("POSTGRES_USER", "babylon"),
-        password=os.environ.get("POSTGRES_PASSWORD", "babylon"),
+    conninfo = (
+        f"dbname={os.environ.get('POSTGRES_DB', 'babylon_test')} "
+        f"host={os.environ.get('POSTGRES_HOST', 'localhost')} "
+        f"port={os.environ.get('POSTGRES_PORT', '5432')} "
+        f"user={os.environ.get('POSTGRES_USER', 'babylon')} "
+        f"password={os.environ.get('POSTGRES_PASSWORD', 'babylon')}"
     )
+    pool = ConnectionPool(conninfo=conninfo, min_size=1, max_size=2, open=True)
+    persistence = PostgresRuntime(pool)
 
     from game.engine_bridge import EngineBridge
 
@@ -88,6 +92,26 @@ class TestGameLifecycle:
 
         result = bridge.resolve_tick(session_id)
         assert result["tick"] == initial_tick + 1
+
+    def test_resolve_tick_wayne_county_with_engine_events(self, bridge: object) -> None:
+        """P0 #6 e2e: wayne_county resolve persists datetime-carrying engine
+        events without a 500 (engine_bridge resolve_tick → persist_tick).
+
+        Single resolve only: multi-resolve is blocked by a separate
+        pre-existing defect — ``PostgresRuntime.hydrate_graph`` restores no
+        graph-level metadata, so ``_graph_tick`` reads 0 after hydration and
+        a second resolve re-steps 0→1, colliding with the persisted tick 1
+        (``MonotonicityViolationError``). That bug reproduces with zero
+        events and belongs to the core-loop lane, not this branch.
+        """
+        from game.engine_bridge import EngineBridge
+
+        assert isinstance(bridge, EngineBridge)
+        session_id = bridge.create_game(scenario="wayne_county", rng_seed=42)
+        # The tick-1 wayne_county step emits engine events whose model_dump
+        # carried raw datetimes pre-fix — this resolve 500'd (P0 #6).
+        result = bridge.resolve_tick(session_id)
+        assert result["tick"] == 1
 
     def test_available_actions_returns_dict(self, bridge: object) -> None:
         """Available actions returns a dict with session info and actions."""

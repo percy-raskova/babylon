@@ -36,15 +36,19 @@ def _django_setup() -> None:
 @pytest.fixture
 def bridge(_django_setup: None) -> object:
     """Create an EngineBridge connected to PostgreSQL."""
+    from psycopg_pool import ConnectionPool
+
     from babylon.persistence.postgres_runtime import PostgresRuntime
 
-    persistence = PostgresRuntime(
-        host=os.environ.get("POSTGRES_HOST", "localhost"),
-        port=int(os.environ.get("POSTGRES_PORT", "5432")),
-        database=os.environ.get("POSTGRES_DB", "babylon_test"),
-        user=os.environ.get("POSTGRES_USER", "babylon"),
-        password=os.environ.get("POSTGRES_PASSWORD", "babylon"),
+    conninfo = (
+        f"dbname={os.environ.get('POSTGRES_DB', 'babylon_test')} "
+        f"host={os.environ.get('POSTGRES_HOST', 'localhost')} "
+        f"port={os.environ.get('POSTGRES_PORT', '5432')} "
+        f"user={os.environ.get('POSTGRES_USER', 'babylon')} "
+        f"password={os.environ.get('POSTGRES_PASSWORD', 'babylon')}"
     )
+    pool = ConnectionPool(conninfo=conninfo, min_size=1, max_size=2, open=True)
+    persistence = PostgresRuntime(pool)
 
     from game.engine_bridge import EngineBridge
 

@@ -7,7 +7,9 @@ a real database or simulation engine.
 
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +17,8 @@ import networkx as nx
 import pytest
 
 from babylon.engine.graph import BabylonGraph
+from babylon.models.enums import EventType
+from babylon.models.events import SimulationEvent
 from game.engine_bridge import (
     EngineBridge,
     _build_initial_state_for_scenario,
@@ -260,6 +264,41 @@ class TestEngineBridgeResolveTick:
         assert "organizations" in result
         assert "institutions" in result
         assert "territories" in result
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_events_are_json_safe(self, mock_step: MagicMock) -> None:
+        """P0 #6 defense-in-depth: event dicts passed to persist_tick must be
+        JSON-serializable WITHOUT a fallback encoder (no raw datetimes) —
+        ``model_dump(mode="json")`` renders ``timestamp`` as an ISO string."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        mock_new_state = MagicMock()
+        mock_new_state.tick = 1
+        mock_new_state.entities = {}
+        mock_new_state.territories = {}
+        mock_new_state.organizations = {}
+        mock_new_state.institutions = {}
+        mock_new_state.economy = MagicMock()
+        mock_new_state.economy.model_dump.return_value = {}
+        mock_new_state.relationships = []
+        mock_new_state.events = [
+            SimulationEvent(
+                event_type=EventType.UPRISING,
+                tick=1,
+                timestamp=datetime(2026, 7, 8, 1, 0),
+            ),
+        ]
+        mock_new_state.to_graph.return_value = _make_minimal_graph()
+        mock_step.return_value = mock_new_state
+
+        bridge.resolve_tick(sid)
+
+        events_arg = mock_persistence.persist_tick.call_args.kwargs["events"]
+        assert events_arg is not None
+        json.dumps(events_arg)  # raises TypeError if a datetime leaks through
+        assert events_arg[0]["timestamp"] == "2026-07-08T01:00:00"
 
 
 @pytest.mark.unit

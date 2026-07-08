@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
@@ -289,6 +290,64 @@ class TestPersistTick:
         assert len(rows) == 1
         assert rows[0][2] == "UPRISING"  # event_type
         assert rows[0][3] == "worker_1"  # entity_id
+
+    def test_persists_events_with_datetime_timestamp(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """Bug P0 #6: datetime timestamps must not crash canonicalization.
+
+        ``_canonical_payload`` runs before any DB access (``persist_tick``
+        computes it unconditionally), so the mocked pool is sufficient to
+        reproduce the TypeError.
+        """
+        events = [
+            {"type": "UPRISING", "entity_id": "w1", "timestamp": datetime(2026, 7, 8, 1, 0)},
+        ]
+        graph = _build_graph(nodes={"w1": {"type": "SocialClass"}})
+        runtime.persist_tick(tick=5, graph=graph, events=events, session_id=session_id)
+
+        # Stored details keep the timestamp (isoformat via _json_default)
+        rows = mock_cursor.executemany.call_args_list[-1][0][1]
+        assert json.loads(rows[0][5])["timestamp"] == "2026-07-08T01:00:00"
+
+    def test_retry_with_regenerated_timestamp_is_idempotent(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """Spec-056 B': a retry differing only in event wall-clock timestamps
+        must return silently, not raise MonotonicityViolationError.
+
+        Stored-side exclusion: fetchone → tick exists; fetchall feeds
+        ``_canonical_payload_for_tick`` (nodes, edges, events in that order).
+        """
+        mock_cursor.fetchone.return_value = (1,)
+        mock_cursor.fetchall.side_effect = [
+            [],  # node_state rows
+            [],  # edge_state rows
+            [
+                {
+                    "details": {
+                        "type": "UPRISING",
+                        "entity_id": "w1",
+                        "timestamp": "2026-07-08T01:00:00",
+                    }
+                }
+            ],
+        ]
+        events = [
+            # DIFFERENT wall clock than the stored row above
+            {"type": "UPRISING", "entity_id": "w1", "timestamp": datetime(2026, 7, 8, 1, 5)},
+        ]
+        # Empty graph so the node/edge canonical sides are trivially equal
+        runtime.persist_tick(tick=5, graph=_build_graph(), events=events, session_id=session_id)
+
+        # Idempotent return: no re-persist of nodes/edges/events
+        assert mock_cursor.executemany.call_count == 0
 
     def test_no_events_skips_event_insert(
         self,

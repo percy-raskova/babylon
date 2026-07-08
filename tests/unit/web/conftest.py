@@ -101,7 +101,6 @@ _UNMANAGED_TABLE_SQL = [
         status VARCHAR(16) NOT NULL DEFAULT 'active',
         config_json TEXT NOT NULL DEFAULT '{}',
         game_defines_json TEXT NOT NULL DEFAULT '{}',
-        snapshot_json TEXT NOT NULL DEFAULT '{}',
         trace_level VARCHAR(8) NOT NULL DEFAULT 'NONE',
         rng_seed BIGINT NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

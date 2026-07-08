@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import datetime as _dt
 import logging
 import os
@@ -124,7 +123,6 @@ class GameConfig(AppConfig):
                     status TEXT NOT NULL DEFAULT 'active',
                     config_json TEXT NOT NULL DEFAULT '{}',
                     game_defines_json TEXT NOT NULL DEFAULT '{}',
-                    snapshot_json TEXT NOT NULL DEFAULT '{}',
                     trace_level TEXT NOT NULL DEFAULT 'NONE',
                     rng_seed INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -163,9 +161,4 @@ class GameConfig(AppConfig):
                     details TEXT
                 )
             """)
-            # Ensure snapshot_json column exists on pre-existing tables
-            with contextlib.suppress(Exception):
-                cursor.execute(
-                    "ALTER TABLE game_session ADD COLUMN snapshot_json TEXT NOT NULL DEFAULT '{}'"
-                )
         logger.info("Stub tables created (game_session, game_turn, action_result)")

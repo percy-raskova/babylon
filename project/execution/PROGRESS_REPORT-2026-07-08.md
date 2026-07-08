@@ -151,20 +151,23 @@ section + the now-honest spec-059 ledger are the spec.
    `git-filter-repo` scrub (backup ref `backup/dev-pre-secret-scrub-DO-NOT-PUSH`
    exists; the automation guardrail correctly refused to let an agent rewrite
    history unilaterally). Phase 3.2 adds the secret-scanning pre-commit hook.
-2. **New economics feature discussion queued** — Percy has an important theoretical
-   addition to the game's economy to discuss (scope TBD; raised 2026-07-08 ~4:30pm,
-   deliberately deferred until this preservation pass landed). This is the **first
-   agenda item next session**, before further implementation lanes launch.
+2. **~~New economics feature discussion queued~~ RESOLVED same evening** — the
+   discussion happened and was ratified as **Program 10: the Spectrum of Unequal
+   Exchange** (spec-107). Five rulings captured in
+   `programs/10-spectrum-of-unequal-exchange.md` + `owner/owner-queue.md` item 23.
+   Lands as Phase 5.5; spec-107 authoring is next session's first work item.
 
-## 10. What happens next (unchanged plan order, adjusted for §9.2)
+## 10. What happens next
 
-1. Percy's economy-theory discussion → scope it (likely a new spec; it may reorder
-   Phase 5/6 work — do not pre-empt).
+1. **Author spec-107** (Spectrum of Unequal Exchange) via speckit from
+   `programs/10-spectrum-of-unequal-exchange.md` — next session's first work item
+   (rulings ratified 2026-07-08 evening; see §9.2).
 2. Resume 2.2 from `388cccfa` → merge → **2.R coordinated baseline regen + proof.md**
    (covers 2.2 + 2.3 + 2.1's two-node fix + the earlier gamma wiring `cc4a5303`;
    C.8 wiring audit lands here).
 3. Resume 5.4 (from `7e04b422`) and 6.2 (from `423e055a`) — independent of 2.R.
 4. 2.4 verb-dispatch engine (last P0) — fresh start off dev, brief + §7.1 in hand.
 5. Phase 3 (briefs ready) → Phase 4 (059 splits) → Phase 5 (dormant sim, R-PROOF
-   each) → Phase 6 (tails → spec-106 national perf → 105 capstone) → Phase 7
+   each; **5.5 = spec-107 spectrum, after 5.2/5.3**) → Phase 6 (tails → spec-106
+   national perf → 105 capstone, which must exhibit the spectrum live) → Phase 7
    (record repair; inputs in `execution/phase7-inputs.md`).

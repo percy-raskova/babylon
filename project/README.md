@@ -47,6 +47,7 @@ the newest `execution/PROGRESS_REPORT-*.md`.
 | `07-chat-corpus-alignment.md` | Owner rulings + uncatalogued mechanics (M1–M12) + experience layer (X1–X9) | Before scoping new features or UX |
 | `08-graph-substrate.md` | BabylonGraph/rustworkx record (Amendment L, ADR052), gotchas | Before graph/engine internals |
 | `09-program-full-game.md` | Program 09 full-game build — 4 lanes, spec catalog 090+ | Before any 090+ spec |
+| `10-spectrum-of-unequal-exchange.md` | RATIFIED 2026-07-08: the Amin/Emmanuel spectrum (σ coordinate, apex⊣base opposition, 3 couplings) — spec-107, lands Phase 5.5 | Before spec-107 or any economics/dialectics work touching OCC, wages, or Φ |
 
 **Status note (2026-07-08):** Program 09 merged on Jul 6, but the first real E2E
 (assessments/) found the product unplayable at merge. The active work is the

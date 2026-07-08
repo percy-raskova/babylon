@@ -78,9 +78,12 @@ Loaders live in the **babylon-data repo** per the standing owner ruling.
 
 - **US1 — Corridor mesh (engine-only):** a SPARSE res-8 corridor graph — R8 cells touched
   by NE/HPMS/NTAD features plus junction cells — NEVER a full national res-8 tiling
-  (≈11M cells; violates the spec-087/089 storage regime). Per-edge state:
-  `{edge_type: ROAD|RAIL|AIR_LINK|SHIPPING_LANE, capacity, condition ∈ [0,1],
-  conductivity D}`. Terrain taxonomy extension (mountain/wetland/desert/forest/water
+  (≈11M cells; violates the spec-087/089 storage regime). Slice-1 edge types
+  `ROAD | RAIL | INFORMAL` with per-edge state `{capacity, condition ∈ [0,1],
+  conductivity D}`; `AIR_LINK` + `SHIPPING_LANE` deferred together to slice 2 (R2-4).
+  **All built corridors are state-owned in slice 1 (R2-1)** — no capital ownership, no
+  toll/rent extraction; the spectrum-σ ownership coupling is a recorded follow-up.
+  Terrain taxonomy extension (mountain/wetland/desert/forest/water
   classes from NE physical polygons) + a traversal-cost table in defines; impassability =
   cost → ∞. Aggregates to per-R7-pair connectivity coefficients consumed by the economic
   layer (pattern: existing `r8_aggregation.py`).
@@ -89,6 +92,10 @@ Loaders live in the **babylon-data repo** per the standing owner ruling.
   `vol2_circulation.py`; slime-mold conductivity overlay `D(t+1)=(1−α)D+α|Q|`,
   `effective_capacity = capacity × condition`; unrouted demand emits an
   unrealized-value event → realization-crisis coupling (spec-018/023 machinery).
+  **Informal slime-mold-only routes SHIP IN SLICE 1 (R2-2):** `INFORMAL` edges carry
+  conductivity without built substrate (no NE/HPMS feature, no `condition` variable —
+  pure D dynamics over terrain traversal costs), modeling migration routes and the
+  informal economy; they emerge where flux persists and die back with disuse.
   Deterministic (III.7): no RNG anywhere in the update.
 - **US3 — Degradation:** `condition` decays with flux + time, calibrated against the HPMS
   condition distribution; maintenance spend (state budget, faux frais of circulation)
@@ -96,8 +103,11 @@ Loaders live in the **babylon-data repo** per the standing owner ruling.
   decay term IS the disuse mechanic).
 - **US4 — Construction / repair / destruction:** engine-side resolvers in the 2.4
   `VERB_RESOLVERS` registry: reuse `ATTACK_INFRASTRUCTURE` (player + org attacks lower
-  `condition`/sever edges); add BUILD and REPAIR actions (new `ActionType`s or mapped —
-  spec decision) usable by the state apparatus AI (spec-039) and organizations; riot/
+  `condition`/sever edges). **BUILD/REPAIR mapping RESOLVED (R2-3) — zero new
+  ActionTypes:** `ActionType.BUILD_INFRASTRUCTURE` already exists
+  (`models/enums/actions.py:81`) and carries both construction (new edge) and repair
+  (existing degraded edge), distinguished by action params; usable by the state
+  apparatus AI (spec-039) and organizations. Riot/
   uprising events (StruggleSystem `UPRISING`, `EXCESSIVE_FORCE` aftermath) damage
   condition via the existing `layer3._propagate_infrastructure` delta seam.
 - **Constraints:** defines-gated (`TransportDefines`, default OFF → baselines
@@ -115,16 +125,20 @@ the **Phase 6 feature slice** (after 6.2/6.3, alongside spec-106 perf work so th
 mesh is profiled from birth), exhibited in the 105 national capstone: routed circulation,
 a corridor severed by an uprising stranding value, and a state-AI repair response.
 
-## Open questions for Percy (answer async; none block spec authoring)
+## Rulings, round 2 (2026-07-08 same evening — all four open questions RULED by Percy)
 
-1. **Ownership/class character:** are corridors owned (state vs capital), and do tolls/
-   freight rates extract rent along them (a spectrum-σ coupling)?
-2. **Informal routes:** do slime-mold-only paths (migration, informal economy, smuggling —
-   conductivity without built substrate) ship in slice 1 or as the follow-up?
-3. **BUILD/REPAIR:** new `ActionType`s (cleanest; touches the 25×4 eligibility matrix) or
-   mapped onto existing types?
-4. **Waterways/ports:** NTAD marine data is present — in slice 1 (SHIPPING_LANE edges) or
-   deferred with AIR_LINK to slice 2?
+1. **R2-1 Ownership:** corridors are **state-owned** for programming simplicity — no
+   capital ownership or toll/rent extraction in slice 1; the spectrum-σ ownership/rent
+   coupling is a recorded follow-up, not scoped.
+2. **R2-2 Informal routes:** **YES — ships in slice 1** (slime-mold-only conductivity
+   without built substrate; see US2 `INFORMAL` edges).
+3. **R2-3 BUILD/REPAIR:** map onto existing actions if possible, create new ones only
+   if not — resolved with **zero new ActionTypes**: `BUILD_INFRASTRUCTURE` (exists,
+   `actions.py:81`) carries build AND repair via params; `ATTACK_INFRASTRUCTURE` (:82)
+   carries damage. (Both still need eligibility-matrix rows + OODADefines cost/delta
+   entries checked during spec authoring — `get_action_base` maps only 9/25 types.)
+4. **R2-4 Waterways/ports:** **deferred to the same slice-2 feature as `AIR_LINK`** —
+   `SHIPPING_LANE` edges from the NTAD marine geodatabases land together with aviation.
 
 ## Reading list
 

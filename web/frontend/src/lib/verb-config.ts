@@ -1,22 +1,89 @@
 /**
- * Verb registry — target-type gating, per-verb parameter schemas.
+ * Verb catalog — Constitution Article V metadata and target-type gating.
  *
- * Constitution Article V: nine atomic player verbs with typed target constraints.
- * Per Article IV (dual graph), hyperedges and dyadic nodes are NEVER conflated.
+ * Nine atomic player verbs with typed target constraints. Static
+ * metadata only (labels, glyphs, target types, cost hints) — target
+ * resolution and payload construction live in `@/lib/verbs`
+ * (VERB_REGISTRY), fed by the live per-verb endpoints, never fixtures.
  */
 
-import type { V2VerbKey, V2VerbParam, V2ResolvedTarget } from "@/types/v2-types";
-import {
-  ORGS,
-  TERRITORIES,
-  COMMUNITIES,
-  EDGES,
-  VERBS,
-  CLASS_COLORS,
-  EDGE_COLORS,
-} from "@/fixtures/v2-mock-data";
+import type { V2Verb } from "@/types/v2-types";
 
-export { VERBS };
+/** Constitution Article V — nine atomic player verbs. */
+export const VERBS: V2Verb[] = [
+  {
+    verb: "educate",
+    label: "Educate",
+    glyph: "◐",
+    target_type: "community",
+    cost_label: "3 CL",
+    desc: "Raise consciousness via political education in a target community.",
+  },
+  {
+    verb: "aid",
+    label: "Aid",
+    glyph: "◇",
+    target_type: "org_or_territory",
+    cost_label: "$50",
+    desc: "Transfer material resources to allied org or territory infrastructure.",
+  },
+  {
+    verb: "attack",
+    label: "Attack",
+    glyph: "▲",
+    target_type: "org_or_territory",
+    cost_label: "8 CL",
+    desc: "Targeted sabotage of bourgeois institution. Increases Heat.",
+  },
+  {
+    verb: "mobilize",
+    label: "Mobilize",
+    glyph: "◈",
+    target_type: "community",
+    cost_label: "5 SL",
+    desc: "Convert sympathizer labor into collective action in a community assembly.",
+  },
+  {
+    verb: "campaign",
+    label: "Campaign",
+    glyph: "◢",
+    target_type: "territory_or_community",
+    cost_label: "4 CL",
+    desc: "Sustained organizing campaign in a territory or community.",
+  },
+  {
+    verb: "move",
+    label: "Move",
+    glyph: "→",
+    target_type: "territory",
+    cost_label: "1 CL",
+    desc: "Relocate org HQ or cadre to a new territory.",
+  },
+  {
+    verb: "investigate",
+    label: "Investigate",
+    glyph: "◉",
+    target_type: "any",
+    cost_label: "2 CL",
+    desc: "Reduce opacity on a target — org, edge, territory, or community.",
+  },
+  {
+    verb: "reproduce",
+    label: "Reproduce",
+    glyph: "⬡",
+    target_type: "org",
+    cost_label: "10 CL",
+    desc: "Organizational reproduction — convert sympathizers to cadre, train successors.",
+  },
+  {
+    verb: "negotiate",
+    label: "Negotiate",
+    glyph: "⇄",
+    target_type: "org",
+    cost_label: "1 CL",
+    desc: "Open negotiation channel with another org. Risks legitimacy.",
+  },
+];
 
 /** Spec 061 US5 T081 / FR-025: verbs whose engine handlers don't exist.
  *  Filtered out of the verb picker and rejected at the action-submit
@@ -27,280 +94,6 @@ export const DISABLED_VERBS: ReadonlySet<string> = new Set(["investigate", "move
 
 /** VERBS minus disabled verbs — for the verb picker, NavRail, and grids. */
 export const SUPPORTED_VERBS = VERBS.filter((v) => !DISABLED_VERBS.has(v.verb));
-
-/**
- * Resolve eligible targets for a verb, gated by target_type.
- * CRITICAL: never one big dropdown. Per Constitution Article IV,
- * hyperedges and dyadic nodes are NEVER conflated.
- */
-export function resolveTargets(targetType: string): V2ResolvedTarget[] {
-  if (targetType === "community") {
-    return COMMUNITIES.map((c) => ({
-      id: c.id,
-      type: "community",
-      label: c.name,
-      sub: `${c.composition.join(" · ")} · ${c.members.toLocaleString()} ppl`,
-      color: CLASS_COLORS[c.dominant_class] ?? "#787878",
-      meta: c,
-      telemetry: { CON: c.con, SOL: c.sol },
-    }));
-  }
-  if (targetType === "territory") {
-    return TERRITORIES.map((t) => ({
-      id: t.id,
-      type: "territory",
-      label: t.name,
-      sub: `${t.county} County · pop ${t.pop.toLocaleString()}`,
-      color: "#80b0e0",
-      meta: t,
-      telemetry: { HEAT: t.heat, RENT: t.rent },
-    }));
-  }
-  if (targetType === "org") {
-    return ORGS.map((o) => ({
-      id: o.id,
-      type: "org",
-      label: o.short,
-      sub: `${o.name}${o.player_controlled ? " · ALLIED" : " · ENEMY"}`,
-      color: CLASS_COLORS[o.class_character] ?? "#787878",
-      meta: o,
-      telemetry: { COH: o.cohesion, OPC: o.opacity },
-    }));
-  }
-  if (targetType === "org_or_territory") {
-    return [
-      ...ORGS.filter((o) => !o.player_controlled).map((o) => ({
-        id: o.id,
-        type: "org" as const,
-        label: o.short,
-        sub: `${o.name} · ENEMY`,
-        color: CLASS_COLORS[o.class_character] ?? "#787878",
-        meta: o,
-        telemetry: { COH: o.cohesion, OPC: o.opacity },
-      })),
-      ...TERRITORIES.map((t) => ({
-        id: t.id,
-        type: "territory" as const,
-        label: t.name,
-        sub: `${t.county} County · pop ${t.pop.toLocaleString()}`,
-        color: "#80b0e0",
-        meta: t,
-        telemetry: { HEAT: t.heat, RENT: t.rent },
-      })),
-    ];
-  }
-  if (targetType === "territory_or_community") {
-    return [
-      ...TERRITORIES.map((t) => ({
-        id: t.id,
-        type: "territory" as const,
-        label: t.name,
-        sub: `${t.county} County`,
-        color: "#80b0e0",
-        meta: t,
-        telemetry: { HEAT: t.heat, RENT: t.rent },
-      })),
-      ...COMMUNITIES.map((c) => ({
-        id: c.id,
-        type: "community" as const,
-        label: c.name,
-        sub: c.composition.join(" · "),
-        color: CLASS_COLORS[c.dominant_class] ?? "#787878",
-        meta: c,
-        telemetry: { CON: c.con, SOL: c.sol },
-      })),
-    ];
-  }
-  if (targetType === "any") {
-    return [
-      ...ORGS.filter((o) => !o.player_controlled).map((o) => ({
-        id: o.id,
-        type: "org" as const,
-        label: o.short,
-        sub: `${o.name} · ENEMY`,
-        color: CLASS_COLORS[o.class_character] ?? "#787878",
-        meta: o,
-        telemetry: { OPC: o.opacity },
-      })),
-      ...EDGES.map((e) => ({
-        id: e.id,
-        type: "edge" as const,
-        label: e.type,
-        sub: `${e.source} → ${e.target} · ${(e.intensity * 100).toFixed(0)}%`,
-        color: EDGE_COLORS[e.type] ?? "#787878",
-        meta: e,
-        telemetry: { INT: e.intensity },
-      })),
-      ...TERRITORIES.map((t) => ({
-        id: t.id,
-        type: "territory" as const,
-        label: t.name,
-        sub: `${t.county} County`,
-        color: "#80b0e0",
-        meta: t,
-        telemetry: { HEAT: t.heat },
-      })),
-      ...COMMUNITIES.map((c) => ({
-        id: c.id,
-        type: "community" as const,
-        label: c.name,
-        sub: c.composition.join(" · "),
-        color: CLASS_COLORS[c.dominant_class] ?? "#787878",
-        meta: c,
-        telemetry: { CON: c.con },
-      })),
-    ];
-  }
-  return [];
-}
-
-/**
- * Per-verb form parameter schemas.
- */
-export function getVerbParams(verb: V2VerbKey): V2VerbParam[] {
-  switch (verb) {
-    case "educate":
-      return [
-        {
-          key: "method",
-          label: "Method",
-          kind: "radio",
-          options: ["Study Circle", "Mass Line", "Agitation"],
-        },
-        {
-          key: "intensity",
-          label: "Cadre commitment",
-          kind: "slider",
-          min: 1,
-          max: 8,
-          default: 3,
-          unit: "CL",
-        },
-      ];
-    case "mobilize":
-      return [
-        {
-          key: "vehicle",
-          label: "Vehicle",
-          kind: "radio",
-          options: ["Mass Action", "General Strike", "Block Org"],
-        },
-        {
-          key: "intensity",
-          label: "Sympathizer draw",
-          kind: "slider",
-          min: 1,
-          max: 12,
-          default: 5,
-          unit: "SL",
-        },
-      ];
-    case "aid":
-      return [
-        {
-          key: "kind",
-          label: "Aid kind",
-          kind: "radio",
-          options: ["Material", "Legal", "Medical", "Financial"],
-        },
-        {
-          key: "amount",
-          label: "Amount",
-          kind: "slider",
-          min: 10,
-          max: 200,
-          default: 50,
-          unit: "$",
-        },
-      ];
-    case "attack":
-      return [
-        {
-          key: "method",
-          label: "Method",
-          kind: "radio",
-          options: ["Sabotage", "Disruption", "Direct Action"],
-        },
-        { key: "force", label: "Force", kind: "slider", min: 2, max: 12, default: 6, unit: "CL" },
-        { key: "expose", label: "Accept exposure (+heat)", kind: "toggle", default: false },
-      ];
-    case "campaign":
-      return [
-        {
-          key: "frame",
-          label: "Framing",
-          kind: "radio",
-          options: ["Class", "Anti-Imperialist", "Communal"],
-        },
-        {
-          key: "duration",
-          label: "Sustained ticks",
-          kind: "slider",
-          min: 1,
-          max: 6,
-          default: 2,
-          unit: "ticks",
-        },
-      ];
-    case "move":
-      return [
-        {
-          key: "what",
-          label: "Move",
-          kind: "radio",
-          options: ["HQ", "Cadre Cell", "Sympathizer Network"],
-        },
-      ];
-    case "investigate":
-      return [
-        {
-          key: "depth",
-          label: "Depth",
-          kind: "radio",
-          options: ["Surveil", "Penetrate", "Forensic"],
-        },
-        {
-          key: "intensity",
-          label: "Cadre commitment",
-          kind: "slider",
-          min: 1,
-          max: 6,
-          default: 2,
-          unit: "CL",
-        },
-      ];
-    case "reproduce":
-      return [
-        {
-          key: "track",
-          label: "Track",
-          kind: "radio",
-          options: ["Convert SL→CL", "Train Successor", "Found Cell"],
-        },
-        {
-          key: "intensity",
-          label: "Resources",
-          kind: "slider",
-          min: 5,
-          max: 20,
-          default: 10,
-          unit: "CL",
-        },
-      ];
-    case "negotiate":
-      return [
-        {
-          key: "stance",
-          label: "Stance",
-          kind: "radio",
-          options: ["Coalition", "Cease-Fire", "Tactical Alliance"],
-        },
-        { key: "concede", label: "Willing to concede", kind: "toggle", default: false },
-      ];
-    default:
-      return [];
-  }
-}
 
 /** Helper to build the route key for a verb. */
 export function verbRouteKey(verb: string): string {

@@ -39,4 +39,11 @@ export const aidConfig: VerbConfig = {
       min: 0,
     },
   ],
+  // AidSubmitSerializer: params:{transfer_amount: float} is REQUIRED —
+  // the amount rides nested under params, never flat.
+  buildPayload: (orgId, targetId, params) => ({
+    org_id: orgId,
+    target_id: targetId ?? "",
+    params: { transfer_amount: Number(params.transfer_amount ?? 0) },
+  }),
 };

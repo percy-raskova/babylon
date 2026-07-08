@@ -5,9 +5,15 @@ interface AttackTargetEntry {
   name: string;
 }
 
+interface AttackEdgeEntry {
+  target_id: string;
+  edge_description: string;
+}
+
 interface AttackTargets {
   organizations?: AttackTargetEntry[];
   institutions?: AttackTargetEntry[];
+  edges?: AttackEdgeEntry[];
 }
 
 export const attackConfig: VerbConfig = {
@@ -27,6 +33,11 @@ export const attackConfig: VerbConfig = {
         label: t.name,
         group: "Institutions",
       })),
+      ...(groups.edges ?? []).map((t) => ({
+        id: t.target_id,
+        label: t.edge_description,
+        group: "Edges",
+      })),
     ];
   },
   paramFields: [
@@ -41,4 +52,11 @@ export const attackConfig: VerbConfig = {
       ],
     },
   ],
+  // AttackSubmitSerializer: params:{mode} required; target_id may be null
+  // (mass mode needs no specific target).
+  buildPayload: (orgId, targetId, params) => ({
+    org_id: orgId,
+    target_id: targetId,
+    params: { mode: String(params.mode ?? "targeted") },
+  }),
 };

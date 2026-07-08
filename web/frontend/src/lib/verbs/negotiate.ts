@@ -17,5 +17,26 @@ export const negotiateConfig: VerbConfig = {
       label: t.name ?? t.id ?? t.target_id ?? "Unknown",
     }));
   },
-  paramFields: [],
+  paramFields: [
+    {
+      key: "proposal",
+      label: "Proposal",
+      type: "select" as const,
+      defaultValue: "coordination_pact",
+      options: [
+        { value: "coordination_pact", label: "Coordination Pact" },
+        { value: "resource_sharing", label: "Resource Sharing" },
+        { value: "ceasefire", label: "Ceasefire" },
+        { value: "demand_policy_change", label: "Demand Policy Change" },
+        { value: "reconciliation", label: "Reconciliation" },
+      ],
+    },
+  ],
+  // NegotiateSubmitSerializer: params:{proposal} required. UI-disabled
+  // (FR-025), but the builder ships now.
+  buildPayload: (orgId, targetId, params) => ({
+    org_id: orgId,
+    target_id: targetId ?? "",
+    params: { proposal: String(params.proposal ?? "coordination_pact") },
+  }),
 };

@@ -373,7 +373,9 @@ export interface ActionResultData {
 export interface SubmitActionParams {
   org_id: string;
   verb: PlayerVerb;
-  target_id: string;
+  /** Optional: educate submits ``target_community_id`` instead, and
+   *  reproduce omits the target entirely when self-targeting. */
+  target_id?: string;
   /** Verb-specific parameters (consciousness_strategy, mode, etc.). */
   [key: string]: unknown;
 }

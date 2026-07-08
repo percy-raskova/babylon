@@ -18,5 +18,23 @@ export const moveConfig: VerbConfig = {
       label: t.territory_name ?? t.name ?? t.id ?? "Unknown",
     }));
   },
-  paramFields: [],
+  paramFields: [
+    {
+      key: "mode",
+      label: "Move Mode",
+      type: "select" as const,
+      defaultValue: "expand",
+      options: [
+        { value: "expand", label: "Expand" },
+        { value: "relocate", label: "Relocate" },
+      ],
+    },
+  ],
+  // MoveSubmitSerializer: params:{mode} required. UI-disabled (FR-025),
+  // but the builder ships now so enabling later is a one-line set change.
+  buildPayload: (orgId, targetId, params) => ({
+    org_id: orgId,
+    target_id: targetId ?? "",
+    params: { mode: String(params.mode ?? "expand") },
+  }),
 };

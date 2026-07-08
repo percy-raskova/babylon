@@ -75,6 +75,8 @@
   (verified inventory: spec-036 res-8 substrate BUILT but engine-orphaned; spec-063
   ships the min-cost-flow half; conductivity overlay + condition/degradation +
   BUILD/REPAIR verbs are the gap; HPMS/NTAD/FAF5 data present in trove).
-  **4 open sub-questions for Percy in the master record §Open questions** (corridor
-  ownership/tolls; informal slime-mold-only routes in slice 1?; BUILD/REPAIR as new
-  ActionTypes?; waterways/ports in slice 1?) — none block spec authoring.
+  **All 4 sub-questions RULED same evening (R2-1…R2-4, recorded in the master record):**
+  (1) corridors state-owned for simplicity; (2) informal slime-mold-only routes SHIP in
+  slice 1; (3) BUILD/REPAIR mapped onto existing `BUILD_INFRASTRUCTURE` (exists,
+  `actions.py:81`) — zero new ActionTypes; (4) waterways/ports deferred to the same
+  slice-2 feature as AIR_LINK. Item 24 is fully ruled; spec-108 authoring is unblocked.

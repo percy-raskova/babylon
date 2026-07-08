@@ -161,13 +161,18 @@ section + the now-honest spec-059 ledger are the spec.
 
 1. **Author spec-107** (Spectrum of Unequal Exchange) via speckit from
    `programs/10-spectrum-of-unequal-exchange.md` — next session's first work item
-   (rulings ratified 2026-07-08 evening; see §9.2).
+   (rulings ratified 2026-07-08 evening; see §9.2). **Then author spec-108**
+   (Transport Substrate) from `programs/11-transport-substrate.md` — ratified the
+   same evening (owner-queue item 24, declared the LAST new feature; 4 non-blocking
+   open questions live in that doc's §Open questions).
 2. Resume 2.2 from `388cccfa` → merge → **2.R coordinated baseline regen + proof.md**
    (covers 2.2 + 2.3 + 2.1's two-node fix + the earlier gamma wiring `cc4a5303`;
    C.8 wiring audit lands here).
 3. Resume 5.4 (from `7e04b422`) and 6.2 (from `423e055a`) — independent of 2.R.
 4. 2.4 verb-dispatch engine (last P0) — fresh start off dev, brief + §7.1 in hand.
 5. Phase 3 (briefs ready) → Phase 4 (059 splits) → Phase 5 (dormant sim, R-PROOF
-   each; **5.5 = spec-107 spectrum, after 5.2/5.3**) → Phase 6 (tails → spec-106
-   national perf → 105 capstone, which must exhibit the spectrum live) → Phase 7
-   (record repair; inputs in `execution/phase7-inputs.md`).
+   each; **5.5 = spec-107 spectrum, after 5.2/5.3**) → Phase 6 (tails → **spec-108
+   transport substrate implemented here** → spec-106 national perf → 105 capstone,
+   which must exhibit the spectrum live AND the transport arc: corridor severed by
+   an uprising → value stranded → state-AI repair) → Phase 7 (record repair;
+   inputs in `execution/phase7-inputs.md`).

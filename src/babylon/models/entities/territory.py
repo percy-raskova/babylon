@@ -45,6 +45,14 @@ class Territory(BaseModel):
         rent_level: Economic pressure on occupants [0, inf)
         population: Human shield count (sympathizers)
         under_eviction: Whether eviction pipeline is active
+        median_wage: Median wage paid in this territory (Feature 021)
+        reserve_ratio: Reserve-army fraction of the labor force [0, 1]
+        wealth: Aggregate territory wealth (dispossession transfer source)
+        foreclosure_rate: Foreclosure rate [0, 1] (Feature 021)
+        eviction_rate: Eviction rate [0, 1] (Feature 021)
+        displacement_rate: Displacement rate [0, 1] (Feature 021)
+        concentrated_ownership: Ownership concentration index [0, 1]
+        absentee_landlord_share: Absentee landlord share of rentals [0, 1]
     """
 
     model_config = ConfigDict(
@@ -143,6 +151,56 @@ class Territory(BaseModel):
         ge=0.0,
         le=1.0,
         description="Current extraction pressure applied by economy",
+    )
+
+    # Feature 021 (Capital Volume I) — labor-market and dispossession state.
+    # Inputs are scenario/loader-seeded; ReserveArmySystem (#5) and
+    # DispossessionEventSystem (#10) read and mutate them each tick. Zero
+    # defaults keep both systems inert unless a scenario seeds them (both
+    # early-continue on reserve_ratio <= 0 / all rates <= 0).
+    median_wage: Currency = Field(
+        default=0.0,
+        description="Median wage paid in this territory (reserve-army pressure target)",
+    )
+    reserve_ratio: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of labor force in the reserve army [0, 1]",
+    )
+    wealth: Currency = Field(
+        default=0.0,
+        description="Aggregate territory wealth (dispossession value-transfer source)",
+    )
+    foreclosure_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Foreclosure rate feeding dispossession intensity [0, 1]",
+    )
+    eviction_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Eviction rate feeding dispossession intensity [0, 1]",
+    )
+    displacement_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Displacement rate feeding dispossession intensity [0, 1]",
+    )
+    concentrated_ownership: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Ownership concentration index [0, 1]",
+    )
+    absentee_landlord_share: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Absentee landlord share of rental stock [0, 1]",
     )
 
     @property

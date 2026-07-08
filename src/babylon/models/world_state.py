@@ -95,8 +95,11 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         # habitability onto territory nodes; web derives display
         # habitability from biocapacity — not a Territory model field.
         "habitability",
-        # DispossessionEventSystem per-tick intensity (armed once the
-        # Phase-2.2 node_type case fix lands) — not a Territory field.
+        # Feature 021 per-tick computed outputs (ReserveArmySystem #5,
+        # DispossessionEventSystem #10) — recomputed every tick, never
+        # Territory model fields (extra="forbid" would reject them).
+        # Armed by the Phase-2.2 node_type case fix.
+        "wage_pressure",
         "dispossession_intensity",
     }
 )

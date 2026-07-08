@@ -106,6 +106,15 @@ def territory_strategy() -> SearchStrategy[Territory]:
         extraction_intensity=st.floats(
             min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
         ),
+        # Feature 021 labor-market / dispossession state (territory-case fix).
+        median_wage=_currency(),
+        reserve_ratio=_probability(),
+        wealth=_currency(),
+        foreclosure_rate=_probability(),
+        eviction_rate=_probability(),
+        displacement_rate=_probability(),
+        concentrated_ownership=_probability(),
+        absentee_landlord_share=_probability(),
     )
 
 

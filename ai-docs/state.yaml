@@ -19,6 +19,31 @@ meta:
     this line predate the review and are STALE until the Phase 7 regeneration
     of this file; where they disagree with the documents above, the documents
     above win.
+  remediation_lane_2_2: |
+    (2026-07-08) Loud Machine lane 2.2 (territory-case no-ops) COMPLETE —
+    branch fix/territory-case-noops-r2. ReserveArmySystem (#5) and
+    DispossessionEventSystem (#10) filtered graph nodes by node_type
+    "Territory" (capitalized) while WorldState.to_graph writes "territory"
+    (lowercase), so both were silent no-ops on every real run. Both filters
+    flipped to lowercase; both are now ACTIVATABLE (still inert until a
+    scenario seeds the inputs — zero defaults early-continue, so baselines
+    stay byte-identical). The extra="forbid" from_graph round-trip latch is
+    defused: 8 new Territory model fields (median_wage, reserve_ratio,
+    wealth, foreclosure_rate, eviction_rate, displacement_rate,
+    concentrated_ownership, absentee_landlord_share) + 2 per-tick computed
+    outputs (wage_pressure, dispossession_intensity) added to
+    TERRITORY_EXCLUDED_FIELDS. Masking wrong-case test fixtures rebuilt via
+    WorldState().to_graph(). Lane 2.2 is baseline-neutral: regression
+    output is byte-identical to pristine dev (proven by stash-and-compare;
+    identical defines_hash pairs on both trees). NOTE: tools/regression_test.py
+    compare currently FAILs on a PRE-EXISTING dev-wide defines_hash drift
+    (committed baselines stale vs dev HEAD GameDefines) — unrelated to 2.2;
+    do NOT regenerate here. PARKED
+    (out of 2.2 scope): DecompositionSystem._create_target_entity omits
+    inequality on decomposition-created nodes -> VitalitySystem (#1)
+    KeyErrors on the next tick (required-read attr); one-line fix
+    inequality=la_data.get("inequality", 0.0) belongs to a decomposition/
+    vitality lane.
   active_program: |
     Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
     doc project/programs/09-program-full-game.md). Percy's directive: React/

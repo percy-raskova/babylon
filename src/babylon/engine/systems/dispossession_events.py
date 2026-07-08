@@ -1,4 +1,4 @@
-"""Dispossession Event system (Feature 021, System #18).
+"""Dispossession Event system (Feature 021, System #10).
 
 Computes aggregate dispossession events per territory-tick, tracks
 value transfers between territories, and feeds rates to existing
@@ -30,7 +30,7 @@ class DispossessionEventSystem(SystemBase):
     eviction_rate, displacement_rate, etc.), computes composite intensity,
     and publishes events. Value transfers are clamped to available wealth.
 
-    Position: #18 in _DEFAULT_SYSTEMS (after ImperialRentSystem).
+    Position: #10 in _DEFAULT_SYSTEMS (after ImperialRentSystem).
     """
 
     # Spec 053 INV-001: DispossessionEventSystem mutates territory wealth via
@@ -58,7 +58,9 @@ class DispossessionEventSystem(SystemBase):
         defines = services.defines.dispossession
         calculator = DispossessionIntensityCalculator(defines)
 
-        for node in list(protocol.query_nodes(node_type="Territory")):
+        # Lowercase per WorldState.to_graph (_node_type="territory") — the
+        # capitalized "Territory" filter matched ZERO nodes in production.
+        for node in list(protocol.query_nodes(node_type="territory")):
             node_id = node.id
             data = node.attributes
 

@@ -66,3 +66,15 @@
   (after 5.2/5.3), acceptance in the Phase-6 national capstone; (5) I-O grounding via
   loaded BEA TOTAL_REQ × QCEW (BLS EP optional cross-check). Master record:
   `programs/10-spectrum-of-unequal-exchange.md`.
+- **Item 24 (NEW, ✅ RULED 2026-07-08 evening): the Transport Substrate** (spec-108,
+  Program 11) — declared "the last thing we need" (final NEW feature). Rulings:
+  (1) res-8 hexes are engine-only, NO visualization; (2) AI must construct new roads
+  and repair; (3) primitive degradation mechanic required; (4) repair/reconstruct/
+  rebuild after player attack / protest / riot; (5) slime-mold routing per
+  Constitution II.13 + M1. Master record: `programs/11-transport-substrate.md`
+  (verified inventory: spec-036 res-8 substrate BUILT but engine-orphaned; spec-063
+  ships the min-cost-flow half; conductivity overlay + condition/degradation +
+  BUILD/REPAIR verbs are the gap; HPMS/NTAD/FAF5 data present in trove).
+  **4 open sub-questions for Percy in the master record §Open questions** (corridor
+  ownership/tolls; informal slime-mold-only routes in slice 1?; BUILD/REPAIR as new
+  ActionTypes?; waterways/ports in slice 1?) — none block spec authoring.

@@ -27,7 +27,7 @@ the newest `execution/PROGRESS_REPORT-*.md`.
 
 | Directory | What lives here | Read when |
 | --- | --- | --- |
-| `programs/` | The numbered planning corpus `00`–`09`: mission, state of the world, engine truths, per-program plans (071, 098, catalog waves, dialectics, chat-corpus alignment, graph substrate, full-game build) | Planning any work; `00` + `01` always first |
+| `programs/` | The numbered planning corpus `00`–`11`: mission, state of the world, engine truths, per-program plans (071, 098, catalog waves, dialectics, chat-corpus alignment, graph substrate, full-game build, spectrum, transport substrate) | Planning any work; `00` + `01` always first |
 | `assessments/` | Independent reviews and audits: the Jul-7 browser E2E (`E2E_SUMMARY.md`), the Program-09 post-merge review (`POST_ASSESSMENT.md`), the 15-agent whole-repo sweep (`HOLISTIC_REVIEW-2026-07-07.md`) | Before trusting any status claim made elsewhere |
 | `execution/` | Active execution records: the remediation plan, progress reports, `briefs/` (verified scout implementation briefs, one per remaining branch), `phase7-inputs.md` (accumulated record-repair inputs), the historical `_PROGRESS.md` / `_HANDOFF.md` session records, the frozen `c17-test-migration-ledger.md` | Doing the work; catching up on how it went |
 | `owner/` | `owner-queue.md` — decisions needing/holding Percy's rulings | Before making any call that smells like an owner decision |
@@ -48,6 +48,7 @@ the newest `execution/PROGRESS_REPORT-*.md`.
 | `08-graph-substrate.md` | BabylonGraph/rustworkx record (Amendment L, ADR052), gotchas | Before graph/engine internals |
 | `09-program-full-game.md` | Program 09 full-game build — 4 lanes, spec catalog 090+ | Before any 090+ spec |
 | `10-spectrum-of-unequal-exchange.md` | RATIFIED 2026-07-08: the Amin/Emmanuel spectrum (σ coordinate, apex⊣base opposition, 3 couplings) — spec-107, lands Phase 5.5 | Before spec-107 or any economics/dialectics work touching OCC, wages, or Φ |
+| `11-transport-substrate.md` | RATIFIED 2026-07-08: Constitution II.13 transport substrate — sparse res-8 corridor mesh (engine-only, no viz), min-cost flow + slime-mold conductivity, degradation/build/repair/attack mechanics — spec-108, lands with Phase 6 | Before spec-108 or any circulation/infrastructure/terrain work |
 
 **Status note (2026-07-08):** Program 09 merged on Jul 6, but the first real E2E
 (assessments/) found the product unplayable at merge. The active work is the

@@ -17,8 +17,6 @@ See Also:
 
 from __future__ import annotations
 
-import pytest
-
 from babylon.config.defines import StateApparatusAIDefines
 from babylon.formulas.state_ai import calculate_faction_shift
 from tests.constants import TestConstants
@@ -273,7 +271,6 @@ class TestRepressionFailureShift:
     These tests import from ``babylon.ooda.state_ai.faction_dynamics``.
     """
 
-    @pytest.mark.red_phase
     def test_repression_failure_decreases_ss(self) -> None:
         """When REPRESS fails (target retains >50% membership), SS decreases.
 
@@ -304,7 +301,6 @@ class TestRepressionFailureShift:
             f"initial={initial_ss}, final={shifted.security_state}"
         )
 
-    @pytest.mark.red_phase
     def test_repression_failure_minimum_effect(self) -> None:
         """SS decrease from failed repression meets minimum_effect_floor.
 
@@ -334,7 +330,6 @@ class TestRepressionFailureShift:
             f"({defines.minimum_effect_floor})"
         )
 
-    @pytest.mark.red_phase
     def test_repression_failure_preserves_normalization(self) -> None:
         """Post-failure FactionBalance weights still sum to 1.0."""
         from babylon.ooda.state_ai.faction_dynamics import (  # type: ignore[import-not-found]
@@ -375,7 +370,6 @@ class TestFascistConvergence:
     TDD RED phase: ``is_fascist_convergence`` does not exist yet.
     """
 
-    @pytest.mark.red_phase
     def test_all_three_pillars_triggers_convergence(self) -> None:
         """All three conditions met for confirmation_ticks -> convergence True.
 
@@ -409,7 +403,6 @@ class TestFascistConvergence:
             "All three fascist convergence pillars met for confirmation window — should return True"
         )
 
-    @pytest.mark.red_phase
     def test_missing_ss_pillar_no_convergence(self) -> None:
         """SS below threshold -> no convergence (police state without apparatus).
 
@@ -440,7 +433,6 @@ class TestFascistConvergence:
             "repressive apparatus backing — not fascism"
         )
 
-    @pytest.mark.red_phase
     def test_missing_settler_ci_no_convergence(self) -> None:
         """Settler CI below threshold -> no convergence (no mass base).
 
@@ -469,7 +461,6 @@ class TestFascistConvergence:
             "Settler CI below threshold (0.4 < 0.6): police state without mass base — not fascism"
         )
 
-    @pytest.mark.red_phase
     def test_missing_fc_acquiescence_no_convergence(self) -> None:
         """FC above ceiling -> no convergence (Finance-Capital still resisting).
 
@@ -500,7 +491,6 @@ class TestFascistConvergence:
             "contested state, not fascism"
         )
 
-    @pytest.mark.red_phase
     def test_confirmation_window_required(self) -> None:
         """Single tick meeting conditions is insufficient for convergence.
 
@@ -550,7 +540,6 @@ class TestNearAbsorbingState:
     TDD RED phase: ``check_fascist_reversion`` does not exist yet.
     """
 
-    @pytest.mark.red_phase
     def test_partial_revert_maintains_fascist_mode(self) -> None:
         """SS drops to 0.38 (above reversion threshold) -> fascism persists.
 
@@ -581,7 +570,6 @@ class TestNearAbsorbingState:
             "near-absorbing state resists reversion"
         )
 
-    @pytest.mark.red_phase
     def test_full_revert_exits_fascist_mode(self) -> None:
         """Both SS < 0.25 AND settler CI < 0.30 -> fascist mode exits.
 
@@ -610,7 +598,6 @@ class TestNearAbsorbingState:
             "Full reversion (SS=0.24, CI=0.29) should exit fascist mode — both thresholds breached"
         )
 
-    @pytest.mark.red_phase
     def test_entry_easier_than_exit(self) -> None:
         """Asymmetric thresholds: entry conditions are easier than exit conditions.
 
@@ -653,7 +640,6 @@ class TestNearAbsorbingState:
         assert exit_ss == TC.StateAI.REVERSION_SS_THRESHOLD
         assert exit_ci == TC.StateAI.REVERSION_CI_THRESHOLD
 
-    @pytest.mark.red_phase
     def test_only_ss_below_exit_does_not_revert(self) -> None:
         """SS below exit threshold but CI above exit -> no reversion.
 
@@ -681,7 +667,6 @@ class TestNearAbsorbingState:
             "Only SS below exit threshold (CI=0.45 still above 0.30) — fascism persists"
         )
 
-    @pytest.mark.red_phase
     def test_only_ci_below_exit_does_not_revert(self) -> None:
         """CI below exit threshold but SS above exit -> no reversion.
 

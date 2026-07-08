@@ -201,7 +201,6 @@ class TestCalculateFactionShift:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 class TestPlayerActionShift:
     """Test player action -> faction shift (FR-C04, T051).
 
@@ -352,7 +351,6 @@ class TestPlayerActionShift:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 class TestMaterialConditionShift:
     """Test material condition -> faction shift triggers (FR-C05, T052).
 
@@ -488,7 +486,6 @@ class TestMaterialConditionShift:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 class TestRenormalization:
     """Test per-tick clamping and re-normalization (T053).
 
@@ -631,7 +628,6 @@ class TestRenormalization:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 class TestStabilityComputation:
     """Test stability metric from shift history (T053).
 
@@ -704,7 +700,6 @@ class TestStabilityComputation:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 class TestFascistConvergence:
     """Test fascist convergence detection (F-04, FR-C06, T054).
 
@@ -906,7 +901,6 @@ class TestFascistConvergence:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 class TestFascistReversion:
     """Test asymmetric exit thresholds for fascist mode (F-05, FR-C07, T054).
 
@@ -1048,7 +1042,6 @@ class TestFascistReversion:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 class TestFascistOverrides:
     """Test behavioral overrides in fascist mode (FR-C07, T055).
 

@@ -139,7 +139,7 @@ git status --short | grep -v "^??" || true
 description = "Unit tests (fast) → reports/test-results/unit/"
 run = """
 mkdir -p reports/test-results/unit
-poetry run pytest tests/unit \
+poetry run pytest tests/unit -m 'not red_phase' \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/unit/junit.xml \
   --json-report --json-report-file=reports/test-results/unit/report.json --json-report-indent=2 \
@@ -195,7 +195,7 @@ description = "All non-AI tests → reports/test-results/all/"
 run = """
 mkdir -p reports/test-results/all
 poetry run pytest \
-  --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=tests/integration/ui \
+  --ignore=tests/unit/ai \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/all/junit.xml \
   --json-report --json-report-file=reports/test-results/all/report.json --json-report-indent=2 \
@@ -213,23 +213,12 @@ poetry run pytest tests/unit/ai \
   --html=reports/test-results/ai/report.html --self-contained-html
 """
 
-[tasks."test:ui"]
-description = "UI tests (unit + integration UI suites) → reports/test-results/ui/"
-run = """
-mkdir -p reports/test-results/ui
-QT_QPA_PLATFORM=offscreen poetry run pytest tests/unit/ui tests/integration/ui \
-  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
-  --junit-xml=reports/test-results/ui/junit.xml \
-  --json-report --json-report-file=reports/test-results/ui/report.json --json-report-indent=2 \
-  --html=reports/test-results/ui/report.html --self-contained-html
-"""
-
 [tasks."test:cov"]
 description = "Tests + coverage (XML + JSON + HTML) → reports/test-results/cov/"
 run = """
 mkdir -p reports/test-results/cov
 poetry run pytest \
-  --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=tests/integration/ui \
+  --ignore=tests/unit/ai \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --cov=src/babylon --cov-branch \
   --cov-report=xml:reports/test-results/cov/coverage.xml \

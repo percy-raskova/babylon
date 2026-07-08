@@ -14,8 +14,8 @@ TDD RED Phase: These tests should FAIL until:
 - TickMetrics has ecological fields (overshoot_ratio, total_biocapacity, total_consumption)
 - MetricsCollector extracts ecological data from WorldState
 
-NOTE: Tests marked with @pytest.mark.red_phase are excluded from pre-commit.
-Remove the marker when implementing GREEN phase.
+NOTE: The calibration-blocked case is skip-gated (ADR-037); the rest of
+the suite runs green (red_phase markers retired 2026-07-08).
 """
 
 from __future__ import annotations
@@ -160,7 +160,6 @@ class TestBiocapacityDynamics:
             "Is MetabolismSystem registered in _DEFAULT_SYSTEMS?"
         )
 
-    @pytest.mark.red_phase  # Calibration needed for extraction intensity
     @pytest.mark.skip(
         reason=(
             "Calibration TODO: extraction_intensity (0.8) + regeneration_rate "

@@ -250,6 +250,34 @@ def _reconstruct_sovereign(node_id: str, node_data: dict[str, Any]) -> Sovereign
     return Sovereign(**sov_data)
 
 
+def _assert_no_edge_type_collisions(relationships: list[Relationship]) -> None:
+    """Fail loud on same-pair relationships with differing edge_types.
+
+    BabylonGraph stores ONE edge per (source, target) pair (rustworkx
+    core is multigraph=False; add_edge merges payloads — see
+    engine/graph.py add_edge). Two Relationships on the same pair with
+    different edge_types would collapse last-writer-wins. Raise rather
+    than silently corrupt the round-trip (Design B).
+
+    Args:
+        relationships: WorldState relationship list to pre-scan.
+
+    Raises:
+        ValueError: On the first same-(source, target) pair carrying two
+            differing edge_types, naming the pair and both types.
+    """
+    seen_edge_types: dict[tuple[str, str], EdgeType] = {}
+    for rel in relationships:
+        prior = seen_edge_types.get(rel.edge_tuple)
+        if prior is not None and prior is not rel.edge_type:
+            raise ValueError(
+                f"Relationship edge collision on {rel.edge_tuple}: "
+                f"{prior.value!r} vs {rel.edge_type.value!r} — BabylonGraph "
+                "stores one edge per (source, target) pair"
+            )
+        seen_edge_types[rel.edge_tuple] = rel.edge_type
+
+
 class WorldState(BaseModel):
     """Immutable snapshot of the simulation at a specific tick.
 
@@ -395,6 +423,12 @@ class WorldState(BaseModel):
         Returns:
             BabylonGraph with nodes and edges from this state.
 
+        Raises:
+            ValueError: If two relationships share a (source, target) pair
+                with differing edge_types — BabylonGraph stores one edge per
+                pair, so the collision would silently collapse
+                last-writer-wins (Design B fail-loud).
+
         Example::
 
             G = state.to_graph()
@@ -477,6 +511,10 @@ class WorldState(BaseModel):
         # Add sovereign nodes with _node_type marker (spec-070)
         for sov_id, sov in self.sovereigns.items():
             G.add_node(sov_id, _node_type="sovereign", **sov.model_dump())
+
+        # Design B pre-scan: fail loud on same-pair differing-edge_type
+        # collisions before BabylonGraph's add_edge merge can eat one.
+        _assert_no_edge_type_collisions(self.relationships)
 
         # Add edges with relationship data
         for rel in self.relationships:

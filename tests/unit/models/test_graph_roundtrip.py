@@ -481,6 +481,73 @@ class TestSpec065CountyFipsRoundTrip:
         assert restored.entities[COMPRADOR_ID].county_fips is None
 
 
+class TestEdgeCollisionPreScan:
+    """Design B: to_graph must fail loud on same-pair edge_type collisions.
+
+    BabylonGraph stores ONE edge per (source, target) pair (rustworkx core
+    is multigraph=False; add_edge merges payloads), so two Relationships on
+    the same pair with different edge_types would silently collapse
+    last-writer-wins during the round-trip.
+    """
+
+    @staticmethod
+    def _state_with_two_entities() -> WorldState:
+        from babylon.engine.factories import create_bourgeoisie, create_proletariat
+
+        return WorldState(
+            tick=0,
+            entities={
+                "C000": create_proletariat(id="C000"),
+                "C001": create_bourgeoisie(id="C001"),
+            },
+        )
+
+    def test_to_graph_raises_on_same_pair_edge_type_collision(self) -> None:
+        state = self._state_with_two_entities()
+        state = state.model_copy(
+            update={
+                "relationships": [
+                    Relationship(
+                        source_id="C000", target_id="C001", edge_type=EdgeType.EXPLOITATION
+                    ),
+                    Relationship(source_id="C000", target_id="C001", edge_type=EdgeType.SOLIDARITY),
+                ]
+            }
+        )
+
+        with pytest.raises(ValueError, match="edge collision"):
+            state.to_graph()
+
+    def test_same_pair_same_type_duplicates_still_merge(self) -> None:
+        """Residual contract (documented, unchanged): same-pair SAME-type
+        duplicates merge silently — the pre-scan only rejects differing
+        edge_types."""
+        state = self._state_with_two_entities()
+        state = state.model_copy(
+            update={
+                "relationships": [
+                    Relationship(
+                        source_id="C000",
+                        target_id="C001",
+                        edge_type=EdgeType.EXPLOITATION,
+                        value_flow=1.0,
+                    ),
+                    Relationship(
+                        source_id="C000",
+                        target_id="C001",
+                        edge_type=EdgeType.EXPLOITATION,
+                        value_flow=2.0,
+                    ),
+                ]
+            }
+        )
+
+        graph = state.to_graph()  # must not raise
+
+        restored = WorldState.from_graph(graph, tick=0)
+        assert len(restored.relationships) == 1
+
+
 class TestInstitutionRelationsRoundTrip:
     """Feature 040: institution_relations must survive to_graph/from_graph."""
 

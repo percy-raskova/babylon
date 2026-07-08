@@ -29,6 +29,11 @@ const SNAPSHOT = {
     },
   ],
   hyperedges: [],
+  // GameSnapshot requires `edges` (src/types/game.ts) — gameStore's
+  // extractSummary reads snap.edges.length on every state fetch, so a
+  // fixture without it throws an uncaught TypeError and (race permitting)
+  // fails this spec's no-pageerror assertion.
+  edges: [],
   relationships: [],
 };
 

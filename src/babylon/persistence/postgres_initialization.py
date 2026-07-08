@@ -520,7 +520,12 @@ def _fetch_node_erdi(pg_conn: Any, session_id: UUID, year: int, node_id: str) ->
 
 
 def _bootstrap_external_nodes(
-    *, session_id: UUID, runtime: PostgresRuntime, start_year: int, sqlite_path: Path
+    *,
+    session_id: UUID,
+    runtime: PostgresRuntime,
+    start_year: int,
+    sqlite_path: Path,
+    node_ids: tuple[str, ...] = INTERNATIONAL_NODES,
 ) -> tuple[int, float]:
     """Populate ``dynamic_external_node_state`` at tick 0 from hydrated refs.
 
@@ -535,9 +540,14 @@ def _bootstrap_external_nodes(
     per canonical node id (8 international + 1 domestic_rest) via
     ``persist_tick_atomic()`` under the FR-008a atomic-tick guarantee.
 
+    ``node_ids`` defaults to :data:`INTERNATIONAL_NODES` (the canonical 8);
+    the spec-063 FR-026 ``external_node_overrides`` seam threads a caller-
+    supplied set here so a session can be bootstrapped with a reduced
+    registry (e.g. one that omits canada) to exercise the FR-026 guard.
+
     Returns:
         ``(row_count, national_phi)`` — ``row_count`` is the number of rows
-        written (always 9 for a successful bootstrap); ``national_phi`` is
+        written (``len(node_ids) + 1``; 9 for the default set); ``national_phi`` is
         the RAW, un-attributed national Φ read from
         ``immutable_reference_hickel_drain`` (spec-101 review fix #3 — an
         independent ground-truth signal, distinct from the per-node
@@ -555,7 +565,7 @@ def _bootstrap_external_nodes(
     with runtime._pool.connection() as conn:  # noqa: SLF001
         national_phi = _fetch_national_phi(conn, session_id, start_year)
         attribution = _attribute_phi_and_trade(national_phi=national_phi, bloc_trade=bloc_trade)
-        for node_id in INTERNATIONAL_NODES:
+        for node_id in node_ids:
             # erdi still comes from the per-node reference lookup (neutral default);
             # phi + bilateral_trade_value are the attributed values (D3).
             erdi = _fetch_node_erdi(conn, session_id, start_year, node_id)
@@ -598,6 +608,47 @@ def _bootstrap_external_nodes(
     return len(rows), national_phi
 
 
+def _resolve_effective_international_registry(
+    *,
+    external_node_overrides: frozenset[str] | None,
+    synthetic_lodes_canadian_rows: bool,
+) -> tuple[str, ...]:
+    """Resolve the effective international external-node set + FR-026 fail-fast.
+
+    Spec-063 FR-026 / SC-006. ``external_node_overrides`` (test seam) replaces
+    the canonical :data:`INTERNATIONAL_NODES`; when synthetic Canadian LODES
+    rows are also requested but canada is absent from the resolved set, this
+    raises BEFORE any SQLite/Postgres work so the SC-006 ``< 5s`` fail-fast
+    budget holds regardless of OS page-cache state (the reference-window
+    preflight can cost ~6s cold on the 6 GB SQLite).
+
+    Args:
+        external_node_overrides: Optional replacement international-node set.
+        synthetic_lodes_canadian_rows: Whether a synthetic canada OD row will
+            be injected (which requires canada in the registry).
+
+    Returns:
+        The effective international-node tuple (sorted when overridden).
+
+    Raises:
+        InitializationError: FR-026 — synthetic canada rows requested while
+            canada is absent from the resolved registry.
+    """
+    effective = (
+        tuple(sorted(external_node_overrides))
+        if external_node_overrides is not None
+        else INTERNATIONAL_NODES
+    )
+    if synthetic_lodes_canadian_rows and "canada" not in effective:
+        raise InitializationError(
+            "Spec 063 FR-026 fail-fast: canada destination present in the LODES "
+            "matrix (synthetic injection requested) but canada is not present in "
+            "the external-node registry. Add canada to external_node_overrides "
+            "or disable synthetic_lodes_canadian_rows."
+        )
+    return effective
+
+
 def initialize_session(
     *,
     session_id: UUID,
@@ -613,6 +664,13 @@ def initialize_session(
     lodes_study_area_states: frozenset[str] | None = None,
     hex_hydration_counties: frozenset[str] | None = None,
     tiger_county_shapefile: Path | None = None,
+    border_bts_csv: Path | None = None,
+    border_statcan_csv: Path | None = None,
+    border_port_codes: frozenset[str] | None = None,
+    border_aggregate_hex: str | None = None,
+    # Spec-063 FR-026 / SC-006 test seams (quickstart §5):
+    external_node_overrides: frozenset[str] | None = None,
+    synthetic_lodes_canadian_rows: bool = False,
 ) -> InitializationReport:
     """Single-call session initialization.
 
@@ -628,8 +686,42 @@ def initialize_session(
         scenario_length_years: Override for ``defines.economy.scenario_length_years``.
         counties: Optional 5-digit FIPS list to scope QCEW + rent
             (Detroit tri-county = ``["26163", "26125", "26099"]``).
+        border_bts_csv: Spec 063 T042 — BTS Border Crossing CSV path. Only
+            consulted when ``defines.economy.enable_border_commute_synthesis``
+            is True (falls back to the canonical data-trove location).
+        border_statcan_csv: Optional StatCan Frontier Counts CSV path
+            (same gate; FR-033 tolerates absence with one warning).
+        border_port_codes: Override for the Detroit-Windsor BTS port codes
+            (same gate; defaults to Ambassador Bridge + Tunnel).
+        border_aggregate_hex: Tri-county aggregate H3 cell used as the
+            synthesized flows' origin. REQUIRED when the synthesis gate
+            is enabled; there is no meaningful default (FR-035).
+        external_node_overrides: Spec-063 FR-026 test seam. Replaces the
+            fixed ``INTERNATIONAL_NODES`` enumeration for the external-node
+            registry (bootstrap + ``report.external_node_ids``). Default
+            ``None`` keeps the canonical 8-international set (canada present).
+        synthetic_lodes_canadian_rows: Spec-063 test seam (quickstart §5).
+            When True, injects one synthetic ``canada`` OD row so the FR-026
+            guard + downstream routing can be exercised without operator
+            LODES data. Combined with an ``external_node_overrides`` set that
+            omits canada, this triggers the FR-026 fail-fast (SC-006).
+
+    Raises:
+        InitializationError: On FR-029a alpha violation, reference-window
+            hard-refuse, Hickel coverage gap, or the FR-026 fail-fast
+            (synthetic canada rows requested while canada is absent from the
+            external-node registry).
     """
     _validate_alpha_invariant(defines)
+
+    # Spec-063 FR-026 / SC-006 fail-fast BEFORE any SQLite/Postgres work (the
+    # helper raises when synthetic canada rows are requested without canada in
+    # the registry — see its docstring for the <5s budget rationale).
+    effective_international = _resolve_effective_international_registry(
+        external_node_overrides=external_node_overrides,
+        synthetic_lodes_canadian_rows=synthetic_lodes_canadian_rows,
+    )
+
     scenario_length = (
         scenario_length_years
         if scenario_length_years is not None
@@ -694,10 +786,41 @@ def initialize_session(
     # so downstream code can assume exactly nine boundary nodes per session.
     # The bootstrap function reads the just-hydrated Hickel/Ricci/FAF rows
     # and persists one ExternalNode per canonical node_id at tick 0.
-    report.external_node_ids = set(INTERNATIONAL_NODES) | {DOMESTIC_REST_NODE}
+    # Uses effective_international (FR-026 seam) so an override that omits
+    # canada makes report.external_node_ids lack canada — which revives the
+    # otherwise-dead FR-026 data-driven guard below (it was unreachable while
+    # this was hardcoded to the full 9-node set).
+    report.external_node_ids = set(effective_international) | {DOMESTIC_REST_NODE}
     report.external_node_count, report.national_phi_reference = _bootstrap_external_nodes(
-        session_id=session_id, runtime=runtime, start_year=start_year, sqlite_path=sqlite_path
+        session_id=session_id,
+        runtime=runtime,
+        start_year=start_year,
+        sqlite_path=sqlite_path,
+        node_ids=effective_international,
     )
+
+    # Spec-063 test seam (quickstart §5 / SC-006): inject one synthetic canada
+    # OD row so the FR-026 guard + downstream Detroit-Windsor routing can be
+    # exercised without operator LODES data. Placed OUTSIDE the LODES gate so
+    # the injection is meaningful for sessions that pass no lodes_root.
+    # Idempotent via the OD table's composite PK.
+    if synthetic_lodes_canadian_rows:
+        from babylon.economics.border_commute_synthesis import default_tri_county_aggregate_hex
+
+        with (
+            runtime._pool.connection() as pg,  # noqa: SLF001
+            pg.cursor() as cur,
+        ):
+            cur.execute(
+                """
+                INSERT INTO immutable_reference_lodes_od_matrix
+                    (session_id, year, home_hex, workplace_dest,
+                     workplace_dest_kind, s000_workers)
+                VALUES (%s, %s, %s, 'canada', 'external', 100)
+                ON CONFLICT (session_id, year, home_hex, workplace_dest) DO NOTHING
+                """,
+                (session_id, start_year, default_tri_county_aggregate_hex()),
+            )
 
     # Spec-063 closure (2026-05-14) — hex graph hydration at tick 0.
     # Gated on `hex_hydration_counties` so existing callers that don't
@@ -769,6 +892,45 @@ def initialize_session(
                 continue
         report.lodes_year_count = years_persisted
         report.lodes_row_count = rows_persisted
+
+        # Spec 063 T042 — Option B border-commute synthesis (FR-031..FR-036).
+        # Gated on GameDefines; FR-036 fail-fast fires inside the loader
+        # constructor when the BTS CSV is absent. Nested inside the LODES
+        # gate deliberately: synthesis without LODES hydration would merge
+        # into an OD table the session never reads.
+        if defines.economy.enable_border_commute_synthesis:
+            from babylon.economics.border_commute_synthesis import (
+                DEFAULT_BTS_CSV,
+                DEFAULT_STATCAN_CSV,
+                DETROIT_PORT_CODES,
+                BorderCommuteSynthesisLoader,
+            )
+
+            if border_aggregate_hex is None:
+                raise InitializationError(
+                    "enable_border_commute_synthesis=True requires "
+                    "border_aggregate_hex (the tri-county aggregate H3 cell); "
+                    "spec 063 FR-035 has no meaningful default."
+                )
+            synthesizer = BorderCommuteSynthesisLoader(
+                bts_csv_path=border_bts_csv or DEFAULT_BTS_CSV,
+                statcan_csv_path=border_statcan_csv or DEFAULT_STATCAN_CSV,
+                border_commute_share=defines.economy.border_commute_share,
+                detroit_port_codes=border_port_codes or DETROIT_PORT_CODES,
+                tri_county_aggregate_hex=border_aggregate_hex,
+                enabled=True,
+            )
+            years = tuple(start_year + offset for offset in range(scenario_length))
+            report.border_synthesis_row_count = synthesizer.persist_to_postgres(
+                runtime=runtime, session_id=session_id, years=years
+            )
+            # FR-035: merge us_to_canada rows into the OD matrix so
+            # LODESCommuteMatrixLoader.load_year_from_postgres() reads back
+            # the merged matrix (T042).
+            for year in years:
+                synthesizer.merge_into_postgres_lodes(
+                    runtime=runtime, session_id=session_id, year=year
+                )
 
         # Spec 063 FR-026 fail-fast invariant — if any LODES row has
         # workplace_dest='canada' but the external-node registry omits canada,

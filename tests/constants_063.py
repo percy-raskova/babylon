@@ -27,11 +27,10 @@ from functools import lru_cache
 
 import h3
 
+from babylon.economics.border_commute_synthesis import DETROIT_PORT_CODES
+
 # Canonical Detroit tri-county FIPS codes (Wayne, Oakland, Macomb).
 DETROIT_TRI_COUNTY_FIPS: frozenset[str] = frozenset({"26163", "26125", "26099"})
-
-# BTS port-of-entry codes for the Detroit-Windsor crossings.
-DETROIT_PORT_CODES: frozenset[str] = frozenset({"3801", "3802"})
 
 # Approximate bounding polygon for the Wayne+Oakland+Macomb tri-county region.
 # Coordinates: (lat, lon) pairs traversed clockwise. Loose envelope — h3.polygon_to_cells

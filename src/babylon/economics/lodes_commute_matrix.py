@@ -147,6 +147,79 @@ class LODESYearMatrix(BaseModel):
         return ", ".join(f"{k}={v}" for k, v in items)
 
 
+def build_year_matrix(
+    *,
+    pair_counts: dict[tuple[str, str], int],
+    boundary_dest_kind: dict[str, NodeKind],
+    year: int,
+) -> LODESYearMatrix:
+    """Assemble a :class:`LODESYearMatrix` from aggregated pair counts.
+
+    Module-level so producers without a :class:`LODESCommuteMatrixLoader`
+    instance can build a matrix from the same deterministic sorted-pair CSR
+    assembly. Spec-063 T042 reuses this for the in-memory border-commute
+    merge (:meth:`babylon.economics.border_commute_synthesis.BorderCommuteSynthesisLoader.merge_into_year_matrix`).
+    :meth:`LODESCommuteMatrixLoader._build_csr_matrix` delegates here so the
+    on-disk parse, Postgres read-back, and merge paths stay byte-identical
+    (Constitution III.7 determinism).
+
+    Args:
+        pair_counts: ``(origin_hex, dest_node_id) -> S000 worker count``.
+        boundary_dest_kind: ``dest_node_id -> NodeKind`` (HEX for in-area
+            destinations, EXTERNAL for boundary buckets). Missing entries
+            default to :attr:`NodeKind.HEX`.
+        year: The simulated year this matrix represents.
+
+    Returns:
+        A frozen :class:`LODESYearMatrix` whose CSR entries, column ordering,
+        and cached row-sums are a pure function of the inputs.
+    """
+    if not pair_counts:
+        # Empty matrix is valid — represents a year with no in-area commute (degenerate test case)
+        data = np.zeros(0, dtype=np.float64)
+        indices = np.zeros(0, dtype=np.int32)
+        indptr = np.zeros(1, dtype=np.int32)
+        matrix = sp.csr_matrix((data, indices, indptr), shape=(0, 0), dtype=np.float64)
+        row_sums = np.zeros(0, dtype=np.float64)
+        return LODESYearMatrix(
+            year=year,
+            matrix=matrix,
+            origin_hex_to_row={},
+            dest_to_col={},
+            dest_kind_by_col=(),
+            dest_node_id_by_col=(),
+            row_sums=row_sums,
+        )
+
+    origins = sorted({h for (h, _) in pair_counts})
+    dests = sorted({d for (_, d) in pair_counts})
+    origin_hex_to_row = {h: i for i, h in enumerate(origins)}
+    dest_to_col = {d: i for i, d in enumerate(dests)}
+    dest_kind_by_col = tuple(boundary_dest_kind.get(d, NodeKind.HEX) for d in dests)
+    dest_node_id_by_col = tuple(dests)
+
+    rows = np.empty(len(pair_counts), dtype=np.int32)
+    cols = np.empty(len(pair_counts), dtype=np.int32)
+    vals = np.empty(len(pair_counts), dtype=np.float64)
+    for idx, ((h, d), v) in enumerate(sorted(pair_counts.items())):
+        rows[idx] = origin_hex_to_row[h]
+        cols[idx] = dest_to_col[d]
+        vals[idx] = float(v)
+    coo = sp.coo_matrix((vals, (rows, cols)), shape=(len(origins), len(dests)), dtype=np.float64)
+    matrix = coo.tocsr()
+    row_sums = np.asarray(matrix.sum(axis=1)).ravel().astype(np.float64)
+
+    return LODESYearMatrix(
+        year=year,
+        matrix=matrix,
+        origin_hex_to_row=origin_hex_to_row,
+        dest_to_col=dest_to_col,
+        dest_kind_by_col=dest_kind_by_col,
+        dest_node_id_by_col=dest_node_id_by_col,
+        row_sums=row_sums,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # LODESCommuteMatrixLoader — disk + Postgres I/O for the year-scoped matrix (T016/T017).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -489,54 +562,14 @@ class LODESCommuteMatrixLoader:
         boundary_dest_kind: dict[str, NodeKind],
         year: int,
     ) -> LODESYearMatrix:
-        """Assemble a :class:`LODESYearMatrix` from aggregated pair counts."""
-        if not pair_counts:
-            # Empty matrix is valid — represents a year with no in-area commute (degenerate test case)
-            origin_hex_to_row: dict[str, int] = {}
-            dest_to_col: dict[str, int] = {}
-            data = np.zeros(0, dtype=np.float64)
-            indices = np.zeros(0, dtype=np.int32)
-            indptr = np.zeros(1, dtype=np.int32)
-            matrix = sp.csr_matrix((data, indices, indptr), shape=(0, 0), dtype=np.float64)
-            row_sums = np.zeros(0, dtype=np.float64)
-            return LODESYearMatrix(
-                year=year,
-                matrix=matrix,
-                origin_hex_to_row={},
-                dest_to_col={},
-                dest_kind_by_col=(),
-                dest_node_id_by_col=(),
-                row_sums=row_sums,
-            )
+        """Assemble a :class:`LODESYearMatrix` from aggregated pair counts.
 
-        origins = sorted({h for (h, _) in pair_counts})
-        dests = sorted({d for (_, d) in pair_counts})
-        origin_hex_to_row = {h: i for i, h in enumerate(origins)}
-        dest_to_col = {d: i for i, d in enumerate(dests)}
-        dest_kind_by_col = tuple(boundary_dest_kind.get(d, NodeKind.HEX) for d in dests)
-        dest_node_id_by_col = tuple(dests)
-
-        rows = np.empty(len(pair_counts), dtype=np.int32)
-        cols = np.empty(len(pair_counts), dtype=np.int32)
-        vals = np.empty(len(pair_counts), dtype=np.float64)
-        for idx, ((h, d), v) in enumerate(sorted(pair_counts.items())):
-            rows[idx] = origin_hex_to_row[h]
-            cols[idx] = dest_to_col[d]
-            vals[idx] = float(v)
-        coo = sp.coo_matrix(
-            (vals, (rows, cols)), shape=(len(origins), len(dests)), dtype=np.float64
-        )
-        matrix = coo.tocsr()
-        row_sums = np.asarray(matrix.sum(axis=1)).ravel().astype(np.float64)
-
-        return LODESYearMatrix(
-            year=year,
-            matrix=matrix,
-            origin_hex_to_row=origin_hex_to_row,
-            dest_to_col=dest_to_col,
-            dest_kind_by_col=dest_kind_by_col,
-            dest_node_id_by_col=dest_node_id_by_col,
-            row_sums=row_sums,
+        Thin instance-method delegate to the module-level
+        :func:`build_year_matrix` (extracted for reuse by the spec-063 T042
+        border-commute merge). Uses no instance state.
+        """
+        return build_year_matrix(
+            pair_counts=pair_counts, boundary_dest_kind=boundary_dest_kind, year=year
         )
 
     def _build_block_to_hex_map(self) -> dict[str, str]:
@@ -569,4 +602,5 @@ class LODESCommuteMatrixLoader:
 __all__ = [
     "LODESCommuteMatrixLoader",
     "LODESYearMatrix",
+    "build_year_matrix",
 ]

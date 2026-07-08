@@ -930,6 +930,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.conservation_audit import (
         ConservationAuditor,
+        PairedCrossBorderEmissionEvaluator,
         phi_week_conservation_evaluator,
     )
     from babylon.persistence.postgres_initialization import (
@@ -994,6 +995,11 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         # Spec-101 FR-101-5: the Σ DRAIN_EDGE ≡ Φ_week per-bloc identity.
         auditor.register_invariant(
             "imperial_rent_phi_week_distribution", phi_week_conservation_evaluator
+        )
+        # Spec-063 FR-030c / T043: every COMMUTE_OUT (dest_kind='external')
+        # must carry its same-tick wage-repatriation TRADE_EDGE pair.
+        auditor.register_invariant(
+            "paired_cross_border_emission", PairedCrossBorderEmissionEvaluator()
         )
         bridge = WorldStateBridge(
             runtime=runtime,

@@ -285,3 +285,186 @@ jobs:
 
       - name: Run AI unit tests
         run: poetry run pytest tests/unit/ai --tb=short -q
+
+  # Postgres integration leg (remediation C.4) — runs the web bridge suites
+  # that every other job skips (they gate on POSTGRES_HOST). Uses the
+  # repo-canonical compose service: docker/postgres/Dockerfile is
+  # postgis/postgis:16-3.4 + pgvector. A GitHub services: block cannot build
+  # that Dockerfile, and a stock postgis image lacks pgvector, which aborts
+  # PostgresRuntime.init_schema at `CREATE EXTENSION vector`
+  # (src/babylon/persistence/postgres_schema.py) — so compose is a step here.
+  postgres-integration:
+    name: Postgres Integration (web bridge)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        uses: actions/cache@v5
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Start isolated Postgres (compose, port 5433)
+        run: docker compose up -d --wait babylon-pg
+
+      - name: Run web integration suites (direct-host + testcontainers)
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        run: poetry run pytest tests/integration/web/ --tb=short -q
+
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down -v
+
+  # Playwright E2E leg (remediation C.5) — boots the REAL stack (compose
+  # Postgres → migrate → seed wayne_county → Django dev server) and runs the
+  # browser suite against it. Vite is started by Playwright's own webServer
+  # block (reuseExistingServer is disabled under CI). Scoped to an explicit
+  # spec list: visual.spec.ts (snapshot variance) and the long owner-run
+  # live-data specs stay out even though SPEC061_TEST_SESSION_ID is set.
+  playwright-e2e:
+    name: Playwright E2E (real loop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        uses: actions/cache@v5
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      # GeoDjango: settings/base.py uses the postgis backend, which loads
+      # GEOS/GDAL/PROJ at first connection (Django docs' minimal set).
+      - name: Install GeoDjango system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
+
+      # .mise.toml provisions no node — set it up explicitly. The local
+      # node_modules symlink convention does not exist in CI: npm ci.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: web/frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: web/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start isolated Postgres (compose, port 5433)
+        run: docker compose up -d --wait babylon-pg
+
+      - name: Django migrate
+        working-directory: web
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        run: poetry run python manage.py migrate
+
+      # RUN_MAIN=true is required: game/apps.py skips EngineBridge init for
+      # DEBUG-mode management commands otherwise and the seed refuses the stub.
+      - name: Seed wayne_county session
+        working-directory: web
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          RUN_MAIN: "true"
+        run: |
+          SEED_OUT=$(poetry run python manage.py seed_initial_game --scenario wayne_county --player admin)
+          echo "$SEED_OUT"
+          SESSION_ID=$(echo "$SEED_OUT" | grep -oE 'Game session created: [0-9a-f-]{36}' | awk '{print $4}')
+          test -n "$SESSION_ID"
+          echo "SPEC061_TEST_SESSION_ID=$SESSION_ID" >> "$GITHUB_ENV"
+
+      # --noreload never sets RUN_MAIN itself; without it /api/* silently
+      # serves the StubEngineBridge fallback (game/apps.py + game/api.py).
+      - name: Start Django backend
+        working-directory: web
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          RUN_MAIN: "true"
+        run: |
+          nohup poetry run python manage.py runserver 8000 --noreload > ../django-ci.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health/ && break
+            sleep 1
+          done
+          curl -sf http://localhost:8000/health/
+
+      - name: Run Playwright suite (Vite auto-started by webServer)
+        working-directory: web/frontend
+        env:
+          CI: "true"
+        run: >-
+          npx playwright test
+          e2e/real-loop.spec.ts
+          e2e/end-turn-flow.spec.ts
+          e2e/verb-submit.spec.ts
+          e2e/auth.spec.ts
+          e2e/briefing-map-smoke.spec.ts
+          e2e/map-lens-cycling.spec.ts
+
+      - name: Upload Playwright report + Django log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/frontend/playwright-report/
+            django-ci.log
+
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down -v

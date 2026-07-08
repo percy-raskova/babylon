@@ -8,8 +8,6 @@ Tests that the three Volume I mechanisms produce verified feedback loops:
 
 from __future__ import annotations
 
-import networkx as nx
-
 from babylon.economics.working_day.classifier import DefaultWorkingDayClassifier
 from babylon.economics.working_day.types import WorkingDayState
 from babylon.engine.event_bus import Event
@@ -17,62 +15,68 @@ from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
-from babylon.models.enums import EventType, ExploitationMode
+from babylon.models.entities.territory import Territory
+from babylon.models.enums import EventType, ExploitationMode, SectorType
+from babylon.models.world_state import WorldState
 
 
-def _make_detroit_graph() -> nx.DiGraph[str]:
-    """Build a test graph modeling Wayne/Oakland/Macomb counties."""
-    graph = BabylonGraph()
+def _make_detroit_graph() -> BabylonGraph:
+    """Build a to_graph-shaped graph modeling Wayne/Oakland/Macomb counties.
 
-    # Wayne County — high unemployment, high dispossession
-    graph.add_node(
-        "wayne",
-        _node_type="Territory",
-        fips_code="26163",
-        year=2010,
-        reserve_ratio=0.18,
-        median_wage=45000.0,
-        wealth=500_000_000.0,
-        foreclosure_rate=0.08,
-        eviction_rate=0.05,
-        displacement_rate=0.03,
-        concentrated_ownership=0.15,
-        absentee_landlord_share=0.20,
+    Nodes carry the exact ``_node_type="territory"`` marker production
+    writes (``WorldState.to_graph``) — hand-seeded ``"Territory"``
+    markers previously masked the Feature-021 case bug. Territory ids
+    must match ``^(T[0-9]{3,}|[0-9a-f]{15})$``, so the counties are
+    T001=Wayne, T002=Oakland, T003=Macomb.
+    """
+    state = WorldState(
+        tick=0,
+        territories={
+            # Wayne County — high unemployment, high dispossession
+            "T001": Territory(
+                id="T001",
+                name="Wayne County",
+                sector_type=SectorType.RESIDENTIAL,
+                reserve_ratio=0.18,
+                median_wage=45000.0,
+                wealth=500_000_000.0,
+                foreclosure_rate=0.08,
+                eviction_rate=0.05,
+                displacement_rate=0.03,
+                concentrated_ownership=0.15,
+                absentee_landlord_share=0.20,
+            ),
+            # Oakland County — lower unemployment, lower dispossession
+            "T002": Territory(
+                id="T002",
+                name="Oakland County",
+                sector_type=SectorType.RESIDENTIAL,
+                reserve_ratio=0.08,
+                median_wage=62000.0,
+                wealth=800_000_000.0,
+                foreclosure_rate=0.03,
+                eviction_rate=0.01,
+                displacement_rate=0.01,
+                concentrated_ownership=0.08,
+                absentee_landlord_share=0.10,
+            ),
+            # Macomb County — moderate
+            "T003": Territory(
+                id="T003",
+                name="Macomb County",
+                sector_type=SectorType.RESIDENTIAL,
+                reserve_ratio=0.12,
+                median_wage=50000.0,
+                wealth=300_000_000.0,
+                foreclosure_rate=0.05,
+                eviction_rate=0.03,
+                displacement_rate=0.02,
+                concentrated_ownership=0.10,
+                absentee_landlord_share=0.15,
+            ),
+        },
     )
-
-    # Oakland County — lower unemployment, lower dispossession
-    graph.add_node(
-        "oakland",
-        _node_type="Territory",
-        fips_code="26125",
-        year=2010,
-        reserve_ratio=0.08,
-        median_wage=62000.0,
-        wealth=800_000_000.0,
-        foreclosure_rate=0.03,
-        eviction_rate=0.01,
-        displacement_rate=0.01,
-        concentrated_ownership=0.08,
-        absentee_landlord_share=0.10,
-    )
-
-    # Macomb County — moderate
-    graph.add_node(
-        "macomb",
-        _node_type="Territory",
-        fips_code="26099",
-        year=2010,
-        reserve_ratio=0.12,
-        median_wage=50000.0,
-        wealth=300_000_000.0,
-        foreclosure_rate=0.05,
-        eviction_rate=0.03,
-        displacement_rate=0.02,
-        concentrated_ownership=0.10,
-        absentee_landlord_share=0.15,
-    )
-
-    return graph
+    return state.to_graph()
 
 
 class TestReserveArmyWageFeedback:
@@ -84,13 +88,13 @@ class TestReserveArmyWageFeedback:
         services = ServiceContainer.create()
         system = ReserveArmySystem()
 
-        wayne_wage_before = graph.nodes["wayne"]["median_wage"]
-        oakland_wage_before = graph.nodes["oakland"]["median_wage"]
+        wayne_wage_before = graph.nodes["T001"]["median_wage"]
+        oakland_wage_before = graph.nodes["T002"]["median_wage"]
 
         system.step(graph, services, {"tick": 1})
 
-        wayne_wage_after = graph.nodes["wayne"]["median_wage"]
-        oakland_wage_after = graph.nodes["oakland"]["median_wage"]
+        wayne_wage_after = graph.nodes["T001"]["median_wage"]
+        oakland_wage_after = graph.nodes["T002"]["median_wage"]
 
         # Wayne (18% reserve) should have larger wage reduction than Oakland (8%)
         wayne_reduction = (wayne_wage_before - wayne_wage_after) / wayne_wage_before
@@ -106,13 +110,13 @@ class TestReserveArmyWageFeedback:
         services = ServiceContainer.create()
         system = ReserveArmySystem()
 
-        initial_wage = graph.nodes["wayne"]["median_wage"]
+        initial_wage = graph.nodes["T001"]["median_wage"]
 
         system.step(graph, services, {"tick": 1})
-        after_tick_1 = graph.nodes["wayne"]["median_wage"]
+        after_tick_1 = graph.nodes["T001"]["median_wage"]
 
         system.step(graph, services, {"tick": 2})
-        after_tick_2 = graph.nodes["wayne"]["median_wage"]
+        after_tick_2 = graph.nodes["T001"]["median_wage"]
 
         assert initial_wage > after_tick_1 > after_tick_2
         assert after_tick_2 > 0.0  # Never reaches zero
@@ -125,7 +129,7 @@ class TestReserveArmyWageFeedback:
 
         system.step(graph, services, {"tick": 1})
 
-        for node_id in ["wayne", "oakland", "macomb"]:
+        for node_id in ["T001", "T002", "T003"]:
             assert "wage_pressure" in graph.nodes[node_id]
             assert graph.nodes[node_id]["wage_pressure"] > 0.0
 
@@ -139,13 +143,13 @@ class TestDispossessionValueTransfer:
         services = ServiceContainer.create()
         system = DispossessionEventSystem()
 
-        wayne_wealth_before = graph.nodes["wayne"]["wealth"]
-        oakland_wealth_before = graph.nodes["oakland"]["wealth"]
+        wayne_wealth_before = graph.nodes["T001"]["wealth"]
+        oakland_wealth_before = graph.nodes["T002"]["wealth"]
 
         system.step(graph, services, {"tick": 1})
 
-        wayne_loss = wayne_wealth_before - graph.nodes["wayne"]["wealth"]
-        oakland_loss = oakland_wealth_before - graph.nodes["oakland"]["wealth"]
+        wayne_loss = wayne_wealth_before - graph.nodes["T001"]["wealth"]
+        oakland_loss = oakland_wealth_before - graph.nodes["T002"]["wealth"]
 
         # Wayne has higher dispossession intensity → loses more
         assert wayne_loss > oakland_loss
@@ -160,8 +164,8 @@ class TestDispossessionValueTransfer:
         system.step(graph, services, {"tick": 1})
 
         assert (
-            graph.nodes["wayne"]["dispossession_intensity"]
-            > graph.nodes["oakland"]["dispossession_intensity"]
+            graph.nodes["T001"]["dispossession_intensity"]
+            > graph.nodes["T002"]["dispossession_intensity"]
         )
 
     def test_value_transfer_events_published(self) -> None:
@@ -231,16 +235,16 @@ class TestCombinedFeedbackLoop:
         reserve_system = ReserveArmySystem()
         dispossession_system = DispossessionEventSystem()
 
-        initial_wage = graph.nodes["wayne"]["median_wage"]
-        initial_wealth = graph.nodes["wayne"]["wealth"]
+        initial_wage = graph.nodes["T001"]["median_wage"]
+        initial_wealth = graph.nodes["T001"]["wealth"]
 
         # Reserve army suppresses wages
         reserve_system.step(graph, services, {"tick": 1})
-        assert graph.nodes["wayne"]["median_wage"] < initial_wage
+        assert graph.nodes["T001"]["median_wage"] < initial_wage
 
         # Dispossession transfers wealth
         dispossession_system.step(graph, services, {"tick": 1})
-        assert graph.nodes["wayne"]["wealth"] < initial_wealth
+        assert graph.nodes["T001"]["wealth"] < initial_wealth
 
     def test_five_tick_simulation(self) -> None:
         """Run both systems for 5 ticks — wages and wealth decline."""
@@ -249,15 +253,15 @@ class TestCombinedFeedbackLoop:
         reserve_system = ReserveArmySystem()
         dispossession_system = DispossessionEventSystem()
 
-        initial_wage = graph.nodes["wayne"]["median_wage"]
-        initial_wealth = graph.nodes["wayne"]["wealth"]
+        initial_wage = graph.nodes["T001"]["median_wage"]
+        initial_wealth = graph.nodes["T001"]["wealth"]
 
         for tick in range(5):
             reserve_system.step(graph, services, {"tick": tick})
             dispossession_system.step(graph, services, {"tick": tick})
 
-        assert graph.nodes["wayne"]["median_wage"] < initial_wage
-        assert graph.nodes["wayne"]["wealth"] < initial_wealth
+        assert graph.nodes["T001"]["median_wage"] < initial_wage
+        assert graph.nodes["T001"]["wealth"] < initial_wealth
         # Values should still be positive
-        assert graph.nodes["wayne"]["median_wage"] > 0.0
-        assert graph.nodes["wayne"]["wealth"] > 0.0
+        assert graph.nodes["T001"]["median_wage"] > 0.0
+        assert graph.nodes["T001"]["wealth"] > 0.0

@@ -1,4 +1,4 @@
-"""Reserve Army of Labor system (Feature 021, System #17).
+"""Reserve Army of Labor system (Feature 021, System #5).
 
 Reads unemployment data for each territory, computes reserve army
 composition, and applies wage pressure to territory median_wage.
@@ -30,7 +30,7 @@ class ReserveArmySystem(SystemBase):
     reduces median_wage. Stores the computed values on graph nodes
     and publishes events.
 
-    Position: #17 in _DEFAULT_SYSTEMS (after TickDynamicsSystem).
+    Position: #5 in _DEFAULT_SYSTEMS (after TickDynamicsSystem).
     """
 
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
@@ -56,7 +56,9 @@ class ReserveArmySystem(SystemBase):
         defines = services.defines.reserve_army
         calculator = DefaultWagePressureCalculator(defines)
 
-        for node in list(protocol.query_nodes(node_type="Territory")):
+        # Lowercase per WorldState.to_graph (_node_type="territory") — the
+        # capitalized "Territory" filter matched ZERO nodes in production.
+        for node in list(protocol.query_nodes(node_type="territory")):
             data = node.attributes
 
             # Read reserve_ratio from node (set by data loader or prior system)

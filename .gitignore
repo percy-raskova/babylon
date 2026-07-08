@@ -20,6 +20,13 @@ node_modules
 .env.production
 .envrc
 
+# Session transcripts / agent logs — may contain secrets pasted into context.
+# NEVER commit: a Cloudflare API token leaked via sessions/session-ses_0d18.md
+# on 2026-07-08 (owner-queue #22). The file is now untracked; rotate the token.
+sessions/
+.dev.vars
+.dev.vars.*
+
 # Logs and Databases
 *.log
 logs/

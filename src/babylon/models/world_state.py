@@ -17,6 +17,7 @@ Sprint 3.5.3: Territory integration for Layer 0.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -43,6 +44,8 @@ from babylon.models.types import Currency
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -543,6 +546,22 @@ class WorldState(BaseModel):
                 entity_data = {
                     k: v for k, v in node_data.items() if k not in SOCIAL_CLASS_COMPUTED_FIELDS
                 }
+                # Defensive (Design B): runtime writers key nodes by id — the
+                # node id IS the entity id, so inject it when the payload
+                # omitted it.
+                entity_data.setdefault("id", node_id)
+                if not entity_data.get("name"):
+                    # Fail-soft + loud: SocialClass.name is required
+                    # (min_length=1). A writer omitting it is a bug — warn
+                    # with enough context to find the offending System, then
+                    # fall back to the node id so replay can proceed.
+                    logger.warning(
+                        "social_class node %r missing required 'name' attribute; "
+                        "falling back to the node id (writer bug — the System "
+                        "that add_node()ed this payload must emit a name)",
+                        node_id,
+                    )
+                    entity_data["name"] = node_id
                 entities[node_id] = SocialClass(**entity_data)
 
         # Reconstruct relationships from edges.

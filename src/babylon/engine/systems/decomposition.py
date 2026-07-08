@@ -240,6 +240,12 @@ class DecompositionSystem(SystemBase):
         graph.add_node(
             new_id,
             "social_class",
+            # Model-complete payload (Design B): SocialClass requires id AND
+            # name — from_graph-side id injection alone cannot supply name
+            # (min_length=1), so the writer must. Deterministic (no hash()
+            # — Constitution III.7).
+            id=new_id,
+            name=f"{role.value} (decomposed from {la_id})",
             role=role.value,
             active=False,
             population=0,

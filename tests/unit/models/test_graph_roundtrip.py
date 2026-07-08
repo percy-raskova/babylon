@@ -503,6 +503,38 @@ class TestSovereignRoundTrip:
         assert restored.sovereigns["SOV_TEST"].name == "Successor of SOV_USA_FED"
 
 
+class TestSocialClassDefensiveReconstruction:
+    """Design B: from_graph fail-soft on writer-incomplete social_class nodes."""
+
+    def test_missing_id_and_name_reconstruct_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A social_class node whose writer omitted ``id`` and ``name``
+        reconstructs (id from node id, name fallback) and logs a WARNING
+        naming the node — fail-soft + loud instead of ValidationError."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "C042",
+            _node_type="social_class",
+            role=SocialRole.INTERNAL_PROLETARIAT.value,
+            active=False,
+            population=0,
+            wealth=0.0,
+        )
+
+        with caplog.at_level("WARNING", logger="babylon.models.world_state"):
+            restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        entity = restored.entities["C042"]
+        assert entity.id == "C042"
+        assert entity.name == "C042"  # loud fallback, not silence
+        assert any(
+            "C042" in record.message and "name" in record.message
+            for record in caplog.records
+            if record.levelname == "WARNING"
+        ), "missing-name reconstruction must log a WARNING naming the node"
+
+
 class TestWageAccountingAttrsAreTransient:
     """Phase D4: w_paid/v_produced node attrs must not break from_graph."""
 

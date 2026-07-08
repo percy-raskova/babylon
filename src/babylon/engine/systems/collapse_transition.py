@@ -149,6 +149,7 @@ class CollapseTransitionSystem(SystemBase):
             wrapped.add_node(
                 new_sov_id,
                 "sovereign",
+                id=new_sov_id,
                 name=f"Successor of {sovereign_id}",
                 sovereignty_type="provisional",
                 legitimacy=0.5,
@@ -220,6 +221,7 @@ class CollapseTransitionSystem(SystemBase):
         wrapped.add_node(
             new_sov_id,
             "sovereign",
+            id=new_sov_id,
             name=f"Breakaway from {parent_id}",
             sovereignty_type="secessionist",
             legitimacy=0.5,

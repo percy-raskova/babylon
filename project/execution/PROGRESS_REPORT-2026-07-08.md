@@ -163,8 +163,10 @@ section + the now-honest spec-059 ledger are the spec.
    `programs/10-spectrum-of-unequal-exchange.md` — next session's first work item
    (rulings ratified 2026-07-08 evening; see §9.2). **Then author spec-108**
    (Transport Substrate) from `programs/11-transport-substrate.md` — ratified the
-   same evening (owner-queue item 24, declared the LAST new feature; 4 non-blocking
-   open questions live in that doc's §Open questions).
+   same evening (owner-queue item 24, declared the LAST new feature; ALL rulings
+   complete incl. round 2 — state-owned corridors, INFORMAL edges in slice 1,
+   existing BUILD_INFRASTRUCTURE ActionType, waterways deferred — nothing blocks
+   authoring; implementation prereqs: 6.2, 2.4, 5.2-Batch-C).
 2. Resume 2.2 from `388cccfa` → merge → **2.R coordinated baseline regen + proof.md**
    (covers 2.2 + 2.3 + 2.1's two-node fix + the earlier gamma wiring `cc4a5303`;
    C.8 wiring audit lands here).

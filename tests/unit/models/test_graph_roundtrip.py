@@ -454,6 +454,55 @@ class TestSpec065CountyFipsRoundTrip:
         assert restored.entities[COMPRADOR_ID].county_fips is None
 
 
+class TestSovereignRoundTrip:
+    """Spec-070: Sovereign nodes must survive to_graph/from_graph."""
+
+    def test_sovereign_survives_round_trip(self) -> None:
+        """A WorldState-carried Sovereign round-trips losslessly."""
+        from babylon.models.entities.sovereign import Sovereign
+        from babylon.models.enums import ExtractionPolicy, SovereigntyType
+
+        sovereign = Sovereign(
+            id="SOV_TEST",
+            name="Test Sovereign",
+            sovereignty_type=SovereigntyType.RECOGNIZED_STATE,
+            legitimacy=0.8,
+            color_hex="#112233",
+            ruling_faction_id=None,
+            extraction_policy=ExtractionPolicy.CONTINUE,
+            founded_tick=0,
+        )
+        state = WorldState(tick=0, sovereigns={"SOV_TEST": sovereign})
+
+        graph = state.to_graph()
+        assert graph.nodes["SOV_TEST"]["_node_type"] == "sovereign"
+
+        restored = WorldState.from_graph(graph, tick=0)
+        assert restored.sovereigns["SOV_TEST"].model_dump() == sovereign.model_dump()
+
+    def test_sovereign_node_without_id_attr_reconstructs(self) -> None:
+        """A node written the way CollapseTransitionSystem historically wrote
+        it (no ``id`` attr) reconstructs with ``id == node_id`` instead of
+        crashing (today: ValidationError from SocialClass extra="forbid")."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "SOV_TEST",
+            _node_type="sovereign",
+            name="Successor of SOV_USA_FED",
+            sovereignty_type="provisional",
+            legitimacy=0.5,
+            color_hex="#7f7f7f",
+            ruling_faction_id=None,
+            extraction_policy="continue",
+            founded_tick=0,
+        )
+
+        restored = WorldState.from_graph(graph, tick=0)
+
+        assert restored.sovereigns["SOV_TEST"].id == "SOV_TEST"
+        assert restored.sovereigns["SOV_TEST"].name == "Successor of SOV_USA_FED"
+
+
 class TestWageAccountingAttrsAreTransient:
     """Phase D4: w_paid/v_produced node attrs must not break from_graph."""
 

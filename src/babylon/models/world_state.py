@@ -34,6 +34,7 @@ from babylon.models.entities.organization import (
 )
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entities.sovereign import Sovereign
 from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, OrgType, SectorType
@@ -97,6 +98,14 @@ ORGANIZATION_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "effective_capacity",
         "composition_cache",
+    }
+)
+
+SOVEREIGN_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        # @computed_field — included in model_dump() by to_graph, not a
+        # constructor argument (mirrors SocialClass.consumption_needs).
+        "metabolic_impact",
     }
 )
 
@@ -190,6 +199,25 @@ def _reconstruct_organization(node_data: dict[str, Any]) -> OrganizationType:
     }
     org_cls = subtype_map[org_type_enum]
     return org_cls(**org_data)
+
+
+def _reconstruct_sovereign(node_id: str, node_data: dict[str, Any]) -> Sovereign:
+    """Reconstruct a Sovereign from graph node data (spec-070).
+
+    Runtime writers (CollapseTransitionSystem) historically omitted ``id``
+    from the node payload — the node id IS the sovereign id, so inject it
+    when absent. Computed fields are excluded per SOVEREIGN_COMPUTED_FIELDS.
+
+    Args:
+        node_id: Graph node id (``^SOV_[A-Z][A-Z0-9_]*$``).
+        node_data: Node attribute dict without the ``_node_type`` key.
+
+    Returns:
+        Reconstructed Sovereign instance.
+    """
+    sov_data = {k: v for k, v in node_data.items() if k not in SOVEREIGN_COMPUTED_FIELDS}
+    sov_data.setdefault("id", node_id)
+    return Sovereign(**sov_data)
 
 
 class WorldState(BaseModel):
@@ -305,6 +333,12 @@ class WorldState(BaseModel):
         description="Map of industry ID to IndustryHyperedge (Feature: ECONOMIC_SECTOR)",
     )
 
+    # Sovereign authorities (spec-070 Balkanization)
+    sovereigns: dict[str, Sovereign] = Field(
+        default_factory=dict,
+        description="Map of sovereign ID to Sovereign (spec-070 Balkanization)",
+    )
+
     # =========================================================================
     # NetworkX Conversion
     # =========================================================================
@@ -404,6 +438,10 @@ class WorldState(BaseModel):
         for ind_id, ind in self.industries.items():
             G.add_node(ind_id, _node_type="industry", **ind.model_dump())
 
+        # Add sovereign nodes with _node_type marker (spec-070)
+        for sov_id, sov in self.sovereigns.items():
+            G.add_node(sov_id, _node_type="sovereign", **sov.model_dump())
+
         # Add edges with relationship data
         for rel in self.relationships:
             source, target = rel.edge_tuple
@@ -480,6 +518,7 @@ class WorldState(BaseModel):
         key_figures_dict: dict[str, KeyFigure] = {}
         institutions_dict: dict[str, Institution] = {}
         industries_dict: dict[str, IndustryHyperedge] = {}
+        sovereigns_dict: dict[str, Sovereign] = {}
 
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
@@ -496,6 +535,8 @@ class WorldState(BaseModel):
                 institutions_dict[node_id] = _reconstruct_institution(node_data)
             elif node_type == "industry":
                 industries_dict[node_id] = IndustryHyperedge(**node_data)
+            elif node_type == "sovereign":
+                sovereigns_dict[node_id] = _reconstruct_sovereign(node_id, node_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
                 # Filter out computed fields that shouldn't be passed to constructor
@@ -541,6 +582,7 @@ class WorldState(BaseModel):
             key_figures=key_figures_dict,
             institutions=institutions_dict,
             industries=industries_dict,
+            sovereigns=sovereigns_dict,
         )
 
     # =========================================================================

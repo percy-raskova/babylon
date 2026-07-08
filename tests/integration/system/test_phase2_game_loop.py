@@ -47,12 +47,17 @@ class TestCreateTwoNodeScenario:
         assert COMPRADOR_ID in state.entities  # Owner
 
     def test_state_has_required_relationships(self) -> None:
-        """State has required relationships: exploitation, solidarity, wages, and tenancy.
+        """State has required relationships: exploitation, wages, and tenancy.
 
         Sprint 1.5: TENANCY edge added for Material Reality production mechanics.
+        Design B (fix/from-graph-safety): the SOLIDARITY relationship was
+        removed — it shared the (owner, worker) pair with the WAGES edge and
+        was silently overwritten in every to_graph() merge, so it never
+        existed in graph form. The to_graph pre-scan now rejects such
+        collisions loudly (see create_two_node_scenario).
         """
         state, _, _ = create_two_node_scenario()
-        # 4 relationships: EXPLOITATION, SOLIDARITY, WAGES, TENANCY
+        # 3 relationships: EXPLOITATION, WAGES, TENANCY
         assert len(state.relationships) >= 3, (
             f"Expected at least 3 relationships, got {len(state.relationships)}"
         )
@@ -60,8 +65,12 @@ class TestCreateTwoNodeScenario:
         # Verify required edge types exist (order may vary)
         edge_types = {rel.edge_type for rel in state.relationships}
         assert EdgeType.EXPLOITATION in edge_types, "EXPLOITATION edge required"
-        assert EdgeType.SOLIDARITY in edge_types, "SOLIDARITY edge required"
         assert EdgeType.WAGES in edge_types, "WAGES edge required"
+        assert EdgeType.SOLIDARITY not in edge_types, (
+            "two-node scenario must not carry a SOLIDARITY relationship: with "
+            "only two entities every candidate pair collides with EXPLOITATION "
+            "or WAGES (to_graph pre-scan raises on the collision)"
+        )
         # TENANCY may or may not exist depending on scenario variant
         # assert EdgeType.TENANCY in edge_types, "TENANCY edge required"
 

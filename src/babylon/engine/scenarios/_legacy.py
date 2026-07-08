@@ -100,19 +100,19 @@ def create_two_node_scenario(
         tension=0.0,  # Will accumulate over time
     )
 
-    # Bug Fix: Add SOLIDARITY edge so solidarity_index affects P(S|R)
-    # This represents potential class solidarity infrastructure between workers.
-    # The solidarity_strength will be set by apply_scenario() based on solidarity_index.
-    # Self-solidarity edge: worker supports worker (internal class cohesion)
-    solidarity = Relationship(
-        source_id=COMPRADOR_ID,  # External support flows TO worker
-        target_id=PERIPHERY_WORKER_ID,  # Worker receives solidarity
-        edge_type=EdgeType.SOLIDARITY,
-        description="Class solidarity infrastructure",
-        value_flow=0.0,
-        tension=0.0,
-        solidarity_strength=0.0,  # Will be set by apply_scenario()
-    )
+    # NOTE (Design B, fix/from-graph-safety): this scenario historically
+    # carried a SOLIDARITY relationship on the SAME (owner, worker) pair as
+    # the WAGES edge below ("Bug Fix: Add SOLIDARITY edge so solidarity_index
+    # affects P(S|R)"). BabylonGraph stores one edge per (source, target)
+    # pair; the WAGES payload (added last, identical key set) fully
+    # overwrote the SOLIDARITY payload on every to_graph(), so the
+    # solidarity edge was silently dead in graph form — solidarity_index
+    # never actually reached the dynamics, and the two_node.json baseline
+    # encodes wages-only behaviour. The to_graph pre-scan now rejects such
+    # collisions loudly, so the dead relationship is removed: with only two
+    # entities every candidate pair collides with EXPLOITATION or WAGES.
+    # Re-introducing live two-node solidarity (distinct topology, baseline
+    # regen) is a spec/Phase-2.R decision, not a data patch.
 
     # PPP Model: Add WAGES edge from owner to worker
     # In MLM-TW theory, super-wages flow from the core bourgeoisie to workers.
@@ -151,7 +151,7 @@ def create_two_node_scenario(
         tick=0,
         entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         territories={"T001": territory},
-        relationships=[exploitation, solidarity, wages, tenancy],
+        relationships=[exploitation, wages, tenancy],
         event_log=[],
     )
 

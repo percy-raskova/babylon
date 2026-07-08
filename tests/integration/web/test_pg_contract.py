@@ -69,25 +69,29 @@ class TestGameSessionOnPostgres:
         refreshed = GameSession.objects.using(POSTGRES_ALIAS).get(id=session_id)
         assert refreshed.current_tick == 5
 
-    def test_snapshot_json_is_jsonb(self) -> None:
-        """Verify that JSONB columns work — SQLite can't test this."""
+    def test_config_json_is_jsonb(self) -> None:
+        """Verify that JSONB columns work — SQLite can't test this.
+
+        Exercises ``config_json`` (``snapshot_json`` was dropped by
+        migration 0008 and removed from the model + engine DDL).
+        """
         import json
 
         from game.models import GameSession
 
         session_id = uuid.uuid4()
-        snapshot = {"tick": 3, "orgs": [{"name": "Detroit Workers' Council"}]}
+        config = {"tick_limit": 520, "orgs": [{"name": "Detroit Workers' Council"}]}
         GameSession.objects.using(POSTGRES_ALIAS).create(
             id=session_id,
             scenario="wayne_county",
-            snapshot_json=json.dumps(snapshot),
+            config_json=json.dumps(config),
         )
 
         retrieved = GameSession.objects.using(POSTGRES_ALIAS).get(id=session_id)
-        stored = retrieved.snapshot_json
+        stored = retrieved.config_json
         if isinstance(stored, str):
             stored = json.loads(stored)
-        assert stored["tick"] == 3
+        assert stored["tick_limit"] == 520
         assert stored["orgs"][0]["name"] == "Detroit Workers' Council"
 
 

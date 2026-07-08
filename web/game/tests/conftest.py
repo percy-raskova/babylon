@@ -23,7 +23,6 @@ def _create_unmanaged_tables() -> None:
                 status TEXT NOT NULL DEFAULT 'active',
                 config_json TEXT NOT NULL DEFAULT '{}',
                 game_defines_json TEXT NOT NULL DEFAULT '{}',
-                snapshot_json TEXT NOT NULL DEFAULT '{}',
                 trace_level TEXT NOT NULL DEFAULT 'NONE',
                 rng_seed INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),

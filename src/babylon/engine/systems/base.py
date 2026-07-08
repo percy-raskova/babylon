@@ -15,8 +15,9 @@ Per ADR-003 (Bundle 2 / Spec 059) and research.md D1 (22 Systems, not 23).
 
 from __future__ import annotations
 
+import random
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 if TYPE_CHECKING:
     from babylon.engine.event_bus import Event
@@ -25,6 +26,32 @@ if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
     from babylon.engine.systems.protocol import ContextType
     from babylon.models.graph import GraphNode
+
+#: Seed salt shared by all System-level stochastic rolls (III.7).
+_SYSTEM_RNG_SEED_SALT: Final[int] = 0xBA1AC1A
+
+
+def resolve_rng(services: ServiceContainer, tick: int) -> random.Random:
+    """Seed-deterministic RNG for stochastic System rolls (III.7).
+
+    Prefers ``services.rng`` when a harness injects one; otherwise a
+    fresh ``random.Random(0xBA1AC1A + tick)`` — the spec-070 fallback
+    previously duplicated by
+    :mod:`~babylon.engine.systems.faction_influence` and
+    :mod:`~babylon.engine.systems.reactionary`.
+
+    Args:
+        services: Service container (checked for an injected ``rng``).
+        tick: Current simulation tick, mixed into the fallback seed.
+
+    Returns:
+        A :class:`random.Random` whose stream is a pure function of
+        ``tick`` (fallback path) or the injected harness RNG.
+    """
+    rng = getattr(services, "rng", None)
+    if isinstance(rng, random.Random):
+        return rng
+    return random.Random(_SYSTEM_RNG_SEED_SALT + tick)
 
 
 class SystemBase(ABC):

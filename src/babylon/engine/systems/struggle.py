@@ -31,7 +31,6 @@ creating revolutionary conditions through collective action.
 
 from __future__ import annotations
 
-import random
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.engine.event_bus import Event
@@ -42,7 +41,7 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
-from babylon.engine.systems.base import SystemBase
+from babylon.engine.systems.base import SystemBase, resolve_rng
 from babylon.engine.systems.protocol import ContextType
 
 # Social roles that can participate in struggle/uprising
@@ -276,6 +275,9 @@ class StruggleSystem(SystemBase):
         solidarity_gain = services.defines.struggle.solidarity_gain_per_uprising
 
         tick = context.get("tick", 0)
+        # III.7: spark rolls come from the shared tick-seeded stream,
+        # never the (process-entropy) global RNG.
+        rng = resolve_rng(services, tick)
 
         # Track uprisings for potential multi-node coordination
         uprising_nodes: list[str] = []
@@ -309,7 +311,7 @@ class StruggleSystem(SystemBase):
 
             # Step 1: Calculate and roll for EXCESSIVE_FORCE spark
             spark_probability = repression * spark_scale
-            spark_occurred = random.random() < spark_probability
+            spark_occurred = rng.random() < spark_probability
 
             if spark_occurred:
                 # Emit EXCESSIVE_FORCE event (The Spark)

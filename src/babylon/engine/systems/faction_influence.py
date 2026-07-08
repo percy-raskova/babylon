@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.config.defines.balkanization import BalkanizationDefines
 from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase
+from babylon.engine.systems.base import SystemBase, resolve_rng
 from babylon.formulas.balkanization import (
     contiguous_influence_majority_subregion,
     detect_red_settler_trap,
@@ -61,7 +61,7 @@ class FactionInfluenceSystem(SystemBase):
         tick = _extract_tick(context)
         persistent = _extract_persistent(context)
         defines = _resolve_defines(services)
-        rng = _resolve_rng(services, tick)
+        rng = resolve_rng(services, tick)
 
         winning = self._resolve_winning_factions(wrapped, persistent, rng)
         persistent["balkanization.winning_faction_by_territory"] = winning
@@ -268,18 +268,3 @@ def _extract_persistent(context: ContextType) -> dict[str, Any]:
 def _resolve_defines(services: ServiceContainer) -> BalkanizationDefines:
     bk = getattr(services.defines, "balkanization", None)
     return bk if isinstance(bk, BalkanizationDefines) else BalkanizationDefines()
-
-
-def _resolve_rng(services: ServiceContainer, tick: int) -> random.Random:
-    """Resolve an RNG.
-
-    Prefers ``services.rng`` if present; otherwise derives a
-    seed-deterministic Random instance from the tick number. The
-    fallback path keeps tests + plain harness runs working without
-    requiring the spec-037 RNG infrastructure.
-    """
-
-    rng = getattr(services, "rng", None)
-    if isinstance(rng, random.Random):
-        return rng
-    return random.Random(0xBA1AC1A + tick)

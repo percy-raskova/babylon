@@ -56,16 +56,14 @@ jobs:
         run: poetry run mypy src
 
       - name: Run tests
-        # Fast correctness gate (exclude AI/UI suites and RED-phase tests)
-        run: poetry run pytest --ignore=tests/unit/ai --ignore=tests/unit/ui \
-          --ignore=tests/integration/ui -m "not red_phase" --tb=short -q
+        # Fast correctness gate (exclude AI suite and RED-phase tests)
+        run: poetry run pytest --ignore=tests/unit/ai -m "not red_phase" --tb=short -q
 
       # Coverage gate for simulation-critical code
       # Enforces 80% coverage on engine/systems and formulas modules
       - name: Coverage Gate (Simulation Code)
         run: |
-          poetry run pytest --ignore=tests/unit/ai --ignore=tests/unit/ui \
-            --ignore=tests/integration/ui -m "not red_phase" \
+          poetry run pytest --ignore=tests/unit/ai -m "not red_phase" \
             --cov=src/babylon/engine/systems \
             --cov-fail-under=80 \
             --cov-report=term-missing:skip-covered \
@@ -287,36 +285,3 @@ jobs:
 
       - name: Run AI unit tests
         run: poetry run pytest tests/unit/ai --tb=short -q
-
-  ui-tests:
-    name: UI Tests (Separate Suite)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    env:
-      QT_QPA_PLATFORM: offscreen
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-root
-
-      - name: Run UI unit tests
-        run: poetry run pytest tests/unit/ui --tb=short -q

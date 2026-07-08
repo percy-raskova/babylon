@@ -26,8 +26,7 @@ The EndgameDetector is a SimulationObserver that:
 - Emits ENDGAME_REACHED event when game ends
 - Exposes current GameOutcome via property
 
-NOTE: Tests marked with @pytest.mark.red_phase are excluded from pre-commit.
-Remove the marker when implementing GREEN phase.
+NOTE: red_phase markers retired 2026-07-08 — the suite runs green.
 """
 
 from __future__ import annotations

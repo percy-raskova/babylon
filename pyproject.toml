@@ -118,6 +118,7 @@ djangorestframework-stubs = {version = ">=3.15", extras = ["compatible-mypy"]}
 testcontainers = {extras = ["postgres"], version = "^4.14.2"}
 pytest-json-report = "^1.5.0"
 pytest-html = "^4.1.0"
+pytest-timeout = "^2.4.0"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -153,7 +154,7 @@ markers = [
     "math: Deterministic mathematical formulas (fast, pure functions)",
     "ledger: Economic/Political state tests (fast, deterministic)",
     "topology: Graph/Network operations (fast, deterministic)",
-    "integration: Database/ChromaDB tests (medium, I/O bound)",
+    "integration: Database/Postgres tests (medium, I/O bound)",
     "ai: AI/RAG evaluation tests (slow, non-deterministic)",
     "red_phase: TDD RED phase tests (intentionally failing until GREEN phase)",
     "slow: Long-running scenario tests (2000+ ticks, multi-minute runtime)",
@@ -169,12 +170,17 @@ markers = [
     "postgres: Tests using testcontainers ephemeral PostgreSQL (requires Docker)",
     "invariant: Marx value-form & software metamorphic invariant tests (spec-060)",
     "cross_scale: marks tests for spec 062 cross-scale integration",
+    "contract: Contract tests pinning cross-boundary interfaces (tests/contract/)",
 ]
+# Enforce marker/config strictness via ini options: the --strict-markers /
+# --strict-config addopts entries were a verified NO-OP under pytest 9.0.3
+# (collecting a file with an unknown marker exited 0). The ini options are
+# the working form — verified: unknown marker now fails collection (exit 2).
+strict_markers = true
+strict_config = true
 addopts = [
     "-v",                      # Verbose output (already have)
     "--tb=short",              # Short traceback format (already have)
-    "--strict-markers",        # Enforce marker registration (already have)
-    "--strict-config",         # Enforce config correctness (already have)
     "-ra",                     # Show summary of all test outcomes (already have)
 
     # Performance

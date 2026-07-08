@@ -197,16 +197,14 @@ def test_hex_spatial_map_is_session_scoped() -> None:
 
             # Both sessions have their own row
             cur.execute(
-                "SELECT county_fips FROM hex_spatial_map "
-                "WHERE session_id = %s AND h3_index = %s",
+                "SELECT county_fips FROM hex_spatial_map WHERE session_id = %s AND h3_index = %s",
                 (s1, test_hex),
             )
             row1 = cur.fetchone()
             assert row1 is not None and row1[0] == "26163"
 
             cur.execute(
-                "SELECT county_fips FROM hex_spatial_map "
-                "WHERE session_id = %s AND h3_index = %s",
+                "SELECT county_fips FROM hex_spatial_map WHERE session_id = %s AND h3_index = %s",
                 (s2, test_hex),
             )
             row2 = cur.fetchone()

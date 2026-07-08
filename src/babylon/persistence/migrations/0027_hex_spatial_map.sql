@@ -29,6 +29,11 @@ ALTER TABLE dynamic_hex_state ALTER COLUMN region_id DROP NOT NULL;
 
 -- Backfill the mapping from any legacy rows already present (pre-S3 data
 -- carried the keys inline). Idempotent via ON CONFLICT DO NOTHING.
+-- NO conflict target on purpose: 0028 replaces the single-column PK with
+-- (session_id, h3_index), and the runner re-applies every migration each
+-- start — naming (h3_index) here fails with InvalidColumnReference on any
+-- database where 0028 has already run, and the composite key cannot be
+-- named either (session_id does not exist until 0028 on a fresh database).
 INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id)
 SELECT DISTINCT ON (h3_index) h3_index, county_fips, state_fips, region_id
 FROM dynamic_hex_state
@@ -36,7 +41,7 @@ WHERE county_fips IS NOT NULL
   AND state_fips IS NOT NULL
   AND region_id IS NOT NULL
 ORDER BY h3_index, tick
-ON CONFLICT (h3_index) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- Index diet (S3): the three secondary indexes on dynamic_hex_state are
 -- dead weight post-normalization — (session_id, tick) is a strict prefix

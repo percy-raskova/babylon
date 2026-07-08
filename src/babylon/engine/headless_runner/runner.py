@@ -258,11 +258,19 @@ def _open_postgres_pool() -> Any:
 
 
 def _apply_migrations(pool: Any) -> None:
-    """Apply every migration in src/babylon/persistence/migrations/."""
-    migrations_dir = Path("src/babylon/persistence/migrations").resolve()
+    """Apply every migration in babylon/persistence/migrations/.
+
+    Resolved relative to the installed package, NOT the process CWD — a
+    runner launched outside the repo root used to glob an absent directory
+    and silently apply zero migrations.
+    """
+    migrations_dir = Path(__file__).resolve().parents[2] / "persistence" / "migrations"
+    sql_files = sorted(migrations_dir.glob("00*.sql"))
+    if not sql_files:
+        raise RunnerError(f"No migrations found at {migrations_dir} — refusing to run unmigrated")
     with pool.connection() as conn:
         conn.autocommit = True
-        for sql_file in sorted(migrations_dir.glob("00*.sql")):
+        for sql_file in sql_files:
             conn.execute(sql_file.read_text())
 
 

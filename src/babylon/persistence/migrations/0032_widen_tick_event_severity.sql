@@ -1,4 +1,7 @@
--- 0031_widen_tick_event_severity.sql
+-- 0032_widen_tick_event_severity.sql
+-- (renumbered from 0031 — the prefix collided with
+--  0031_conservation_audit_external_scale.sql; sorted-glob order between
+--  same-prefix files is a lexical accident)
 -- Spec 092 review fix — Defect A (the never-done spec-061 T047).
 --
 -- tick_event.severity was declared VARCHAR(12) in the original spec-037
@@ -28,4 +31,19 @@
 -- existing databases (including the product 5432 DB) created before
 -- that change.
 
-ALTER TABLE tick_event ALTER COLUMN severity TYPE VARCHAR(32);
+-- Guarded: (a) tick_event is created by the spec-037 bootstrap
+-- (postgres_schema.py TICK_EVENT_DDL), not by any migration, so a database
+-- that only ran migrations must not hard-fail here; (b) the runner
+-- re-applies every migration each start, and an unguarded ALTER takes
+-- ACCESS EXCLUSIVE on tick_event every single run — skip once widened.
+DO $widen_severity$
+BEGIN
+    IF to_regclass('tick_event') IS NOT NULL
+       AND (SELECT atttypmod - 4
+            FROM pg_attribute
+            WHERE attrelid = to_regclass('tick_event')
+              AND attname = 'severity') < 32 THEN
+        ALTER TABLE tick_event ALTER COLUMN severity TYPE VARCHAR(32);
+    END IF;
+END
+$widen_severity$;

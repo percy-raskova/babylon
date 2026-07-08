@@ -143,3 +143,102 @@ def test_flow_dataclass_is_frozen() -> None:
     )
     with pytest.raises(FrozenInstanceError):
         flow.magnitude_workers = 0  # type: ignore[misc]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T040 completion — merge_into_year_matrix (in-memory half of the T042 merge).
+# The Postgres half (merge_into_postgres_lodes) is covered at integration level
+# (test_synthesis_enabled_disabled.py); the pure in-memory merge is unit-tested
+# here because it needs no Postgres/data and pins the FR-035 mean-of-weeks math.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _enabled_loader(tmp_path: Path) -> BorderCommuteSynthesisLoader:
+    bts_csv = tmp_path / "bts.csv"
+    _write_minimal_bts_csv(bts_csv, year=2010)
+    return BorderCommuteSynthesisLoader(
+        bts_csv_path=bts_csv,
+        statcan_csv_path=None,
+        border_commute_share=0.50,
+        detroit_port_codes=_DETROIT_PORTS,
+        tri_county_aggregate_hex=_TRI_COUNTY_AGGREGATE_HEX,
+        enabled=True,
+    )
+
+
+def test_default_tri_county_aggregate_hex_pins_detroit_centroid_cell() -> None:
+    """The production centroid helper resolves the canonical res-7 cell."""
+    from babylon.economics.border_commute_synthesis import default_tri_county_aggregate_hex
+
+    assert default_tri_county_aggregate_hex() == _TRI_COUNTY_AGGREGATE_HEX
+
+
+def test_merge_disabled_returns_input_unchanged() -> None:
+    """A disabled loader returns the exact input matrix object (`is` identity)."""
+    from babylon.economics.lodes_commute_matrix import build_year_matrix
+    from babylon.economics.node_kinds import NodeKind
+
+    loader = BorderCommuteSynthesisLoader(
+        bts_csv_path=None,
+        statcan_csv_path=None,
+        border_commute_share=0.50,
+        detroit_port_codes=_DETROIT_PORTS,
+        tri_county_aggregate_hex=_TRI_COUNTY_AGGREGATE_HEX,
+        enabled=False,
+    )
+    base = build_year_matrix(
+        pair_counts={(_TRI_COUNTY_AGGREGATE_HEX, "872ab2c59ffffff"): 10},
+        boundary_dest_kind={"872ab2c59ffffff": NodeKind.HEX},
+        year=2010,
+    )
+    assert loader.merge_into_year_matrix(base, 2010) is base
+
+
+def test_merge_adds_canada_column_with_mean_weekly_magnitude(tmp_path: Path) -> None:
+    """FR-035: canada enters as an EXTERNAL column at the mean weekly count."""
+    from babylon.economics.lodes_commute_matrix import build_year_matrix
+    from babylon.economics.node_kinds import NodeKind
+
+    loader = _enabled_loader(tmp_path)
+    base = build_year_matrix(
+        pair_counts={(_TRI_COUNTY_AGGREGATE_HEX, "872ab2c59ffffff"): 10},
+        boundary_dest_kind={"872ab2c59ffffff": NodeKind.HEX},
+        year=2010,
+    )
+    merged = loader.merge_into_year_matrix(base, 2010)
+
+    assert "canada" in merged.dest_to_col
+    col = merged.dest_to_col["canada"]
+    assert merged.dest_kind_by_col[col] is NodeKind.EXTERNAL
+    # 12 months × 2 ports × 5000 = 10000 vehicles/month → 10000 × 0.5 / (52/12)
+    # ≈ 1153.8 per week; mean of 52 equal weeks rounds to 1154.
+    expected = round(10_000 * 0.5 / (52 / 12))
+    row = merged.origin_hex_to_row[_TRI_COUNTY_AGGREGATE_HEX]
+    assert merged.matrix[row, col] == float(expected)
+    # The original frozen matrix is never mutated.
+    assert "canada" not in base.dest_to_col
+
+
+def test_merge_creates_origin_row_when_aggregate_hex_absent(tmp_path: Path) -> None:
+    """When the aggregate hex is not already an origin, the merge adds its row."""
+    import numpy as np
+
+    from babylon.economics.lodes_commute_matrix import build_year_matrix
+    from babylon.economics.node_kinds import NodeKind
+
+    loader = _enabled_loader(tmp_path)
+    # Base matrix whose only origin is a DIFFERENT hex — the aggregate hex is absent.
+    other_origin = "872ab2c5affffff"
+    base = build_year_matrix(
+        pair_counts={(other_origin, "872ab2c59ffffff"): 7},
+        boundary_dest_kind={"872ab2c59ffffff": NodeKind.HEX},
+        year=2010,
+    )
+    assert _TRI_COUNTY_AGGREGATE_HEX not in base.origin_hex_to_row
+
+    merged = loader.merge_into_year_matrix(base, 2010)
+    assert _TRI_COUNTY_AGGREGATE_HEX in merged.origin_hex_to_row
+    # row_sums stay consistent with matrix.sum(axis=1) (model_validator would
+    # have raised otherwise — assert it directly for a load-bearing pin).
+    computed = np.asarray(merged.matrix.sum(axis=1)).ravel()
+    assert np.allclose(computed, merged.row_sums)

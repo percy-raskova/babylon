@@ -25,4 +25,10 @@ export const mobilizeConfig: VerbConfig = {
       min: 0,
     },
   ],
+  // MobilizeSubmitSerializer: params:{sl_committed: float} is REQUIRED.
+  buildPayload: (orgId, targetId, params) => ({
+    org_id: orgId,
+    target_id: targetId ?? "",
+    params: { sl_committed: Number(params.sl_committed ?? 0) },
+  }),
 };

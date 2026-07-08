@@ -32,6 +32,17 @@ export interface ParamField {
   max?: number;
 }
 
+/**
+ * POST body for ``/api/games/{id}/actions/{verb}/`` (the verb rides in
+ * the URL path, never in the body — Spec 040).
+ */
+export interface VerbSubmitBody {
+  /** Acting organization id — required by every verb serializer. */
+  org_id: string;
+  /** Verb-specific fields: target key, params nesting, enum values. */
+  [key: string]: unknown;
+}
+
 /** Complete configuration for one player verb. */
 export interface VerbConfig {
   /** The verb identifier (matches PlayerVerb). */
@@ -44,6 +55,17 @@ export interface VerbConfig {
   parseTargets: (raw: Record<string, unknown>) => VerbTarget[];
   /** Additional form parameter fields beyond org and target. */
   paramFields: ParamField[];
+  /** Whether a target selection is required before submit (default true). */
+  targetRequired?: boolean;
+  /** Where eligible targets come from: the live per-verb GET endpoint, or the
+   *  snapshot (campaign has no targets endpoint — GET returns 405). */
+  targetsSource?: "endpoint" | "snapshot";
+  /** Build the POST body the verb's submit serializer requires. */
+  buildPayload: (
+    orgId: string,
+    targetId: string | null,
+    params: Record<string, unknown>,
+  ) => VerbSubmitBody;
   /**
    * Key to use for the target in the submit payload.
    * Defaults to "target_id" if not specified.

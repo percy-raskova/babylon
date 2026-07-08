@@ -79,6 +79,41 @@ describe("attack.parseTargets", () => {
     expect(targets[0]!.group).toBe("Organizations");
     expect(targets[1]!.group).toBe("Institutions");
   });
+
+  it("parses the edges group (AttackTargetEdgeModelSerializer)", () => {
+    const config = VERB_REGISTRY.attack!;
+    const targets = config.parseTargets({
+      targets: {
+        organizations: [],
+        institutions: [],
+        edges: [{ target_id: "e-1", edge_description: "WAGES: plant → landlord" }],
+      },
+    });
+
+    expect(targets).toHaveLength(1);
+    expect(targets[0]!.id).toBe("e-1");
+    expect(targets[0]!.label).toBe("WAGES: plant → landlord");
+    expect(targets[0]!.group).toBe("Edges");
+  });
+});
+
+describe("investigate.parseTargets", () => {
+  it("parses grouped territory_scans and targeted_scans (InvestigateAvailableTargetsSerializer)", () => {
+    const config = VERB_REGISTRY.investigate!;
+    const targets = config.parseTargets({
+      targets: {
+        territory_scans: [{ target_id: "terr-1", name: "Hamtramck" }],
+        targeted_scans: [{ target_id: "org-9", name: "DTED" }],
+        counter_intelligence: null,
+      },
+    });
+
+    expect(targets).toHaveLength(2);
+    expect(targets[0]!.id).toBe("terr-1");
+    expect(targets[0]!.group).toBe("Territory Scans");
+    expect(targets[1]!.id).toBe("org-9");
+    expect(targets[1]!.group).toBe("Targeted Scans");
+  });
 });
 
 describe("mobilize.parseTargets", () => {
@@ -97,9 +132,20 @@ describe("mobilize.parseTargets", () => {
 });
 
 describe("reproduce.parseTargets", () => {
-  it("returns empty array (self-targeted)", () => {
+  it("returns empty array when no targets present", () => {
     const config = VERB_REGISTRY.reproduce!;
     expect(config.parseTargets({})).toEqual([]);
+  });
+
+  it("parses the self-target list (ReproduceTargetSerializer)", () => {
+    const config = VERB_REGISTRY.reproduce!;
+    const targets = config.parseTargets({
+      targets: [{ target_id: "org-1", name: "WCLF", type: "organization" }],
+    });
+
+    expect(targets).toHaveLength(1);
+    expect(targets[0]!.id).toBe("org-1");
+    expect(targets[0]!.label).toBe("WCLF");
   });
 });
 

@@ -21,4 +21,11 @@ export const educateConfig: VerbConfig = {
     }));
   },
   paramFields: [],
+  // EducateSubmitSerializer: org_id + target_community_id required;
+  // params is an optional DictField (default {}).
+  buildPayload: (orgId, targetId, params) => ({
+    org_id: orgId,
+    target_community_id: targetId ?? "",
+    params,
+  }),
 };

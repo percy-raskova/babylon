@@ -217,12 +217,12 @@ ______________________________________________________________________
   - **Complete** - Module has comprehensive docstrings with usage example
 - [x] T024 [P] Add type hints and ensure mypy passes
   - **Complete** - `mypy --strict` passes on downloader.py and cli.py
-- [ ] T025 Run full integration test: download → load → query
+- [ ] T025 Run full integration test: download → load → query (unverifiable — ephemeral gate, no durable artifact)
   - Verify SC-007: `SELECT DISTINCT year FROM fact_qcew_annual WHERE fips_code = '26163'`
   - **Deferred** - Requires actual BLS data download (network I/O)
-- [ ] T026 Update project README with QCEW download instructions
+- [ ] T026 Update project README with QCEW download instructions (left unchecked 2026-07-08: README.md has no QCEW download instructions (single passing mention at README.md:13))
   - **Deferred** - Awaiting feature validation
-- [ ] T027 Validate quickstart.md commands work end-to-end
+- [ ] T027 Validate quickstart.md commands work end-to-end (unverifiable — ephemeral gate, no durable artifact)
   - **Deferred** - Requires actual BLS data download (network I/O)
 
 ______________________________________________________________________

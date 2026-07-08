@@ -19,8 +19,8 @@ ______________________________________________________________________
 
 **Purpose**: Create package structure and initialize module
 
-- [ ] T001 Create package directory `src/babylon/economics/dynamics/` and `__init__.py` with grouped `__all__` exports (initially empty, updated as modules are added)
-- [ ] T002 Create test directory `tests/unit/economics/dynamics/` and empty `__init__.py`
+- [x] T001 Create package directory `src/babylon/economics/dynamics/` and `__init__.py` with grouped `__all__` exports (initially empty, updated as modules are added) (verified 2026-07-08: src/babylon/economics/dynamics/__init__.py:71-98 __all__)
+- [x] T002 Create test directory `tests/unit/economics/dynamics/` and empty `__init__.py` (verified 2026-07-08: tests/unit/economics/dynamics/__init__.py)
 
 ______________________________________________________________________
 
@@ -30,17 +30,17 @@ ______________________________________________________________________
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 [P] [Foundation] Write tests for ClassDistribution, EconomicConditions, TransitionRates, AccumulationResult, DispossessionRisk, SavingsRateSchedule frozen models in `tests/unit/economics/dynamics/test_types.py` — cover sum-to-one validation, field constraints, `dynamic_shares()`, `with_updated_dynamics()`, immutability
-- [ ] T004 [P] [Foundation] Write tests for hardcoded national dispossession data (2007-2020 foreclosure, bankruptcy, eviction rates) in `tests/unit/economics/dynamics/test_hardcoded_data.py` — cover year range, rate bounds, crisis-year elevation
-- [ ] T005 [P] [Foundation] Write tests for DefaultSavingsRateSchedule in `tests/unit/economics/dynamics/test_savings_schedule.py` — cover 5 ClassPosition rates, phi_adjustment capping, edge cases (zero wage, zero phi)
-- [ ] T006 [P] [Foundation] Write tests for three-tier validation (Expected/Warning/Fail) in `tests/unit/economics/dynamics/test_validation.py` — cover transition rate ranges and class share ranges from research.md Section 7
-- [ ] T007 [Foundation] Implement all frozen Pydantic types in `src/babylon/economics/dynamics/types.py` — ClassDistribution, EconomicConditions, TransitionRates, AccumulationResult, DispossessionRisk, SavingsRateSchedule per data-model.md entities
-- [ ] T008 [Foundation] Implement all protocols in `src/babylon/economics/dynamics/data_sources.py` — DispossessionDataSource, SavingsRateSource (runtime-checkable Protocol classes per data-model.md), and define AccumulationCalculator, DispossessionCalculator, ClassTransitionEngine, CrisisAmplifier protocol stubs in their respective files (`accumulation.py`, `dispossession.py`, `transition_engine.py`, `crisis.py`) — protocols only, no implementations yet
-- [ ] T009 [Foundation] Implement HardcodedNationalDispossessionSource in `src/babylon/economics/dynamics/hardcoded_data.py` — national averages by year (2007-2020) from research.md Section 3 tables, returns None for out-of-range years
-- [ ] T010 [Foundation] Implement DefaultSavingsRateSchedule in `src/babylon/economics/dynamics/savings_schedule.py` — class-based step function (B=0.38, PB=0.20, LA=0.12, P=0.03, L=0.00) with phi_adjustment = min(phi_hour * 2080 / wage, 0.05) per research.md Section 4
-- [ ] T011 [Foundation] Implement three-tier validation functions in `src/babylon/economics/dynamics/validation.py` — `validate_transition_rates()` and `validate_class_shares()` per research.md Section 7 ranges, following gamma/validation.py pattern
-- [ ] T012 [Foundation] Create test fixtures and mock data sources in `tests/unit/economics/dynamics/conftest.py` — mock DispossessionDataSource, mock SavingsRateSource, fixture ClassDistribution/EconomicConditions instances for stable/crisis scenarios, following gamma/conftest.py pattern
-- [ ] T013 [Foundation] Update `src/babylon/economics/dynamics/__init__.py` with exports for all foundational types and implementations
+- [x] T003 [P] [Foundation] Write tests for ClassDistribution, EconomicConditions, TransitionRates, AccumulationResult, DispossessionRisk, SavingsRateSchedule frozen models in `tests/unit/economics/dynamics/test_types.py` — cover sum-to-one validation, field constraints, `dynamic_shares()`, `with_updated_dynamics()`, immutability (verified 2026-07-08: tests/unit/economics/dynamics/test_types.py:23-310)
+- [x] T004 [P] [Foundation] Write tests for hardcoded national dispossession data (2007-2020 foreclosure, bankruptcy, eviction rates) in `tests/unit/economics/dynamics/test_hardcoded_data.py` — cover year range, rate bounds, crisis-year elevation (verified 2026-07-08: tests/unit/economics/dynamics/test_hardcoded_data.py:19-102)
+- [x] T005 [P] [Foundation] Write tests for DefaultSavingsRateSchedule in `tests/unit/economics/dynamics/test_savings_schedule.py` — cover 5 ClassPosition rates, phi_adjustment capping, edge cases (zero wage, zero phi) (verified 2026-07-08: tests/unit/economics/dynamics/test_savings_schedule.py:18-77)
+- [x] T006 [P] [Foundation] Write tests for three-tier validation (Expected/Warning/Fail) in `tests/unit/economics/dynamics/test_validation.py` — cover transition rate ranges and class share ranges from research.md Section 7 (verified 2026-07-08: tests/unit/economics/dynamics/test_validation.py:21-144)
+- [x] T007 [Foundation] Implement all frozen Pydantic types in `src/babylon/economics/dynamics/types.py` — ClassDistribution, EconomicConditions, TransitionRates, AccumulationResult, DispossessionRisk, SavingsRateSchedule per data-model.md entities (verified 2026-07-08: src/babylon/economics/dynamics/types.py:27-311 (all 6 frozen models))
+- [~] T008 [Foundation] Implement all protocols in `src/babylon/economics/dynamics/data_sources.py` — DispossessionDataSource, SavingsRateSource (runtime-checkable Protocol classes per data-model.md), and define AccumulationCalculator, DispossessionCalculator, ClassTransitionEngine, CrisisAmplifier protocol stubs in their respective files (`accumulation.py`, `dispossession.py`, `transition_engine.py`, `crisis.py`) — protocols only, no implementations yet (partial 2026-07-08: all 6 protocols defined+exported in src/babylon/economics/dynamics/data_sources.py:39-218, but not @runtime_checkable and consolidated there rather than in their respective files)
+- [x] T009 [Foundation] Implement HardcodedNationalDispossessionSource in `src/babylon/economics/dynamics/hardcoded_data.py` — national averages by year (2007-2020) from research.md Section 3 tables, returns None for out-of-range years (verified 2026-07-08: src/babylon/economics/dynamics/hardcoded_data.py:74-122)
+- [x] T010 [Foundation] Implement DefaultSavingsRateSchedule in `src/babylon/economics/dynamics/savings_schedule.py` — class-based step function (B=0.38, PB=0.20, LA=0.12, P=0.03, L=0.00) with phi_adjustment = min(phi_hour * 2080 / wage, 0.05) per research.md Section 4 (verified 2026-07-08: src/babylon/economics/dynamics/savings_schedule.py:23-94)
+- [x] T011 [Foundation] Implement three-tier validation functions in `src/babylon/economics/dynamics/validation.py` — `validate_transition_rates()` and `validate_class_shares()` per research.md Section 7 ranges, following gamma/validation.py pattern (verified 2026-07-08: src/babylon/economics/dynamics/validation.py:120,:236)
+- [x] T012 [Foundation] Create test fixtures and mock data sources in `tests/unit/economics/dynamics/conftest.py` — mock DispossessionDataSource, mock SavingsRateSource, fixture ClassDistribution/EconomicConditions instances for stable/crisis scenarios, following gamma/conftest.py pattern (verified 2026-07-08: tests/unit/economics/dynamics/conftest.py:28-240)
+- [x] T013 [Foundation] Update `src/babylon/economics/dynamics/__init__.py` with exports for all foundational types and implementations (verified 2026-07-08: src/babylon/economics/dynamics/__init__.py:56-69)
 
 **Checkpoint**: All foundational types pass tests. Data sources and validation operational. Test infrastructure ready for user stories.
 
@@ -56,7 +56,7 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T014 [US1] Write tests for AccumulationCalculator protocol compliance and DefaultAccumulationCalculator in `tests/unit/economics/dynamics/test_accumulation.py` — cover:
+- [x] T014 [US1] Write tests for AccumulationCalculator protocol compliance and DefaultAccumulationCalculator in `tests/unit/economics/dynamics/test_accumulation.py` — cover: (verified 2026-07-08: tests/unit/economics/dynamics/test_accumulation.py:19-138)
   - Scenario 1: $60k wage, $50k consumption, 15% savings -> ~$1,500 annual gain (FR-001, SC-006)
   - Scenario 2: $40k wage, $39.5k near-subsistence -> near-zero gain
   - Scenario 3: Imperial rent subsidy comparison (with vs without phi_hour)
@@ -65,8 +65,8 @@ ______________________________________________________________________
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Implement AccumulationCalculator protocol and DefaultAccumulationCalculator in `src/babylon/economics/dynamics/accumulation.py` — constructor takes SavingsRateSchedule; `compute(wage, melt, phi_hour) -> AccumulationResult` per spec FR-001, FR-008
-- [ ] T016 [US1] Update `__init__.py` exports with AccumulationCalculator and DefaultAccumulationCalculator
+- [x] T015 [US1] Implement AccumulationCalculator protocol and DefaultAccumulationCalculator in `src/babylon/economics/dynamics/accumulation.py` — constructor takes SavingsRateSchedule; `compute(wage, melt, phi_hour) -> AccumulationResult` per spec FR-001, FR-008 (verified 2026-07-08: src/babylon/economics/dynamics/accumulation.py:29-103 (signature drift: compute(wage, phi_hour, class_position)))
+- [x] T016 [US1] Update `__init__.py` exports with AccumulationCalculator and DefaultAccumulationCalculator (verified 2026-07-08: src/babylon/economics/dynamics/__init__.py:27,:80,:91)
 
 **Checkpoint**: Accumulation rate computation works independently. All 4 acceptance scenarios from spec US1 pass.
 
@@ -82,7 +82,7 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T017 [US2] Write tests for DispossessionCalculator protocol compliance and DefaultDispossessionCalculator in `tests/unit/economics/dynamics/test_dispossession.py` — cover:
+- [x] T017 [US2] Write tests for DispossessionCalculator protocol compliance and DefaultDispossessionCalculator in `tests/unit/economics/dynamics/test_dispossession.py` — cover: (verified 2026-07-08: tests/unit/economics/dynamics/test_dispossession.py:23-136)
   - Scenario 1: Stable year (2015) -> low composite risk
   - Scenario 2: Crisis year (2010) -> risk at least 2x stable baseline (SC-002)
   - Scenario 3: High eviction + low foreclosure -> eviction affects P->L, foreclosure affects LA->P (FR-006)
@@ -91,8 +91,8 @@ ______________________________________________________________________
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Implement DispossessionCalculator protocol and DefaultDispossessionCalculator in `src/babylon/economics/dynamics/dispossession.py` — constructor takes DispossessionDataSource; `compute(fips, year, conditions) -> DispossessionRisk | NoDataSentinel` per spec FR-003, FR-006, FR-010
-- [ ] T019 [US2] Update `__init__.py` exports with DispossessionCalculator and DefaultDispossessionCalculator
+- [x] T018 [US2] Implement DispossessionCalculator protocol and DefaultDispossessionCalculator in `src/babylon/economics/dynamics/dispossession.py` — constructor takes DispossessionDataSource; `compute(fips, year, conditions) -> DispossessionRisk | NoDataSentinel` per spec FR-003, FR-006, FR-010 (verified 2026-07-08: src/babylon/economics/dynamics/dispossession.py:39-124 (signature drift: compute(fips, year)))
+- [x] T019 [US2] Update `__init__.py` exports with DispossessionCalculator and DefaultDispossessionCalculator (verified 2026-07-08: src/babylon/economics/dynamics/__init__.py:41,:82,:94)
 
 **Checkpoint**: Dispossession risk computation works independently. All 4 acceptance scenarios from spec US2 pass.
 
@@ -108,13 +108,13 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T020a [P] [US3] Write tests for precaritization rate computation (FR-015) and stabilization rate computation (FR-016) in `tests/unit/economics/dynamics/test_transition_engine.py` — cover:
+- [x] T020a [P] [US3] Write tests for precaritization rate computation (FR-015) and stabilization rate computation (FR-016) in `tests/unit/economics/dynamics/test_transition_engine.py` — cover: (verified 2026-07-08: tests/unit/economics/dynamics/test_transition_engine.py:57-176)
   - Precaritization: higher unemployment + higher eviction -> higher precaritization rate
   - Precaritization: zero unemployment + zero eviction -> zero precaritization
   - Stabilization: low unemployment -> high stabilization rate (near base_stabilization)
   - Stabilization: high unemployment -> near-zero stabilization rate
   - Both: output rates within validation Expected/Warning bounds (research.md §7)
-- [ ] T020b [US3] Write tests for ClassTransitionEngine protocol compliance and DefaultClassTransitionEngine in `tests/unit/economics/dynamics/test_transition_engine.py` — cover:
+- [x] T020b [US3] Write tests for ClassTransitionEngine protocol compliance and DefaultClassTransitionEngine in `tests/unit/economics/dynamics/test_transition_engine.py` — cover: (verified 2026-07-08: tests/unit/economics/dynamics/test_transition_engine.py:176-413)
   - Scenario 1: Stable conditions -> small perturbations, sum = 1.0 (SC-001, SC-005)
   - Scenario 2: Crisis conditions -> LA decreases, lumpen increases
   - Scenario 3: Recovery conditions -> lumpen decreases, upward mobility (SC-004)
@@ -124,8 +124,8 @@ ______________________________________________________________________
 
 ### Implementation for User Story 3
 
-- [ ] T021 [US3] Implement ClassTransitionEngine protocol and DefaultClassTransitionEngine in `src/babylon/economics/dynamics/transition_engine.py` — constructor takes AccumulationCalculator, DispossessionCalculator, CrisisAmplifier; `simulate_transitions(dist, conditions) -> ClassDistribution | NoDataSentinel` per spec FR-002, FR-004, FR-005, FR-012, FR-013, FR-014. Apply flows per data-model.md state transition equations, normalize to sum=1.0
-- [ ] T022 [US3] Update `__init__.py` exports with ClassTransitionEngine and DefaultClassTransitionEngine
+- [x] T021 [US3] Implement ClassTransitionEngine protocol and DefaultClassTransitionEngine in `src/babylon/economics/dynamics/transition_engine.py` — constructor takes AccumulationCalculator, DispossessionCalculator, CrisisAmplifier; `simulate_transitions(dist, conditions) -> ClassDistribution | NoDataSentinel` per spec FR-002, FR-004, FR-005, FR-012, FR-013, FR-014. Apply flows per data-model.md state transition equations, normalize to sum=1.0 (verified 2026-07-08: src/babylon/economics/dynamics/transition_engine.py:57-346)
+- [x] T022 [US3] Update `__init__.py` exports with ClassTransitionEngine and DefaultClassTransitionEngine (verified 2026-07-08: src/babylon/economics/dynamics/__init__.py:53,:81,:92)
 
 **Checkpoint**: Full one-period transition simulation works. Sum-to-one invariant always holds. All 4 acceptance scenarios from spec US3 pass.
 
@@ -141,7 +141,7 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T023 [US4] Write tests for CrisisAmplifier protocol compliance and DefaultCrisisAmplifier in `tests/unit/economics/dynamics/test_crisis.py` — cover:
+- [x] T023 [US4] Write tests for CrisisAmplifier protocol compliance and DefaultCrisisAmplifier in `tests/unit/economics/dynamics/test_crisis.py` — cover: (verified 2026-07-08: tests/unit/economics/dynamics/test_crisis.py:18-128)
   - Scenario 1: Crisis flag -> downward rates amplified by 2.5x, upward rates dampened to 0.3x (research.md Section 5)
   - Scenario 2: No crisis flag -> rates unchanged (passthrough)
   - Scenario 3: Multi-period crisis -> accelerating cumulative downward mobility (SC-002)
@@ -149,8 +149,8 @@ ______________________________________________________________________
 
 ### Implementation for User Story 4
 
-- [ ] T024 [US4] Implement CrisisAmplifier protocol and DefaultCrisisAmplifier in `src/babylon/economics/dynamics/crisis.py` — `amplify(rates, crisis) -> TransitionRates` per spec FR-009, research.md Section 5 (crisis_amplifier=2.5, recovery_dampener=0.3)
-- [ ] T025 [US4] Update `__init__.py` exports with CrisisAmplifier and DefaultCrisisAmplifier
+- [x] T024 [US4] Implement CrisisAmplifier protocol and DefaultCrisisAmplifier in `src/babylon/economics/dynamics/crisis.py` — `amplify(rates, crisis) -> TransitionRates` per spec FR-009, research.md Section 5 (crisis_amplifier=2.5, recovery_dampener=0.3) (verified 2026-07-08: src/babylon/economics/dynamics/crisis.py:58-109)
+- [x] T025 [US4] Update `__init__.py` exports with CrisisAmplifier and DefaultCrisisAmplifier (verified 2026-07-08: src/babylon/economics/dynamics/__init__.py:30,:83,:93)
 
 **Checkpoint**: Crisis amplification works independently and integrates with transition engine. SC-002 (2x transition magnitude during crisis) validated.
 
@@ -166,15 +166,15 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T026 [US5] Write multi-period simulation validation tests in `tests/unit/economics/dynamics/test_transition_engine.py` (append to existing) — cover:
+- [x] T026 [US5] Write multi-period simulation validation tests in `tests/unit/economics/dynamics/test_transition_engine.py` (append to existing) — cover: (verified 2026-07-08: tests/unit/economics/dynamics/test_transition_engine.py:482,:514,:543)
   - Scenario 1: 2010-2019 simulation -> final distribution within SC-008 ranges (B 0.5-2%, PB 5-15%, LA 30-50%, P 25-45%, L 10-25%)
   - Scenario 2: 2008-2012 crisis -> LA declines, lumpen increases (directional match to Great Recession)
   - Scenario 3: Recovery years -> gradual upward mobility (SC-004)
 
 ### Implementation for User Story 5
 
-- [ ] T027 [US5] Create multi-period simulation helper or test fixtures in `tests/unit/economics/dynamics/conftest.py` — generate EconomicConditions sequence for 2007-2020 using hardcoded data, enabling multi-year validation runs
-- [ ] T028 [US5] Tune transition parameters if needed to achieve SC-008 plausible ranges — adjust only within validation Warning bounds from research.md Section 7
+- [x] T027 [US5] Create multi-period simulation helper or test fixtures in `tests/unit/economics/dynamics/conftest.py` — generate EconomicConditions sequence for 2007-2020 using hardcoded data, enabling multi-year validation runs (verified 2026-07-08: tests/unit/economics/dynamics/conftest.py:387-411)
+- [ ] T028 [US5] Tune transition parameters if needed to achieve SC-008 plausible ranges — adjust only within validation Warning bounds from research.md Section 7 (unverifiable — parameter-tuning gate with no discrete artifact; SC-008 acceptance test at test_transition_engine.py:482 is the durable check)
 
 **Checkpoint**: Historical validation passes. Multi-period simulation produces plausible class distributions.
 
@@ -184,12 +184,12 @@ ______________________________________________________________________
 
 **Purpose**: Final integration, validation, and cleanup
 
-- [ ] T029 [P] Run `poetry run mypy src/babylon/economics/dynamics/ --strict` and fix all type errors
-- [ ] T030 [P] Run `poetry run ruff check src/babylon/economics/dynamics/` and fix all lint issues
-- [ ] T031 [P] Verify all `__init__.py` exports match quickstart.md usage examples
-- [ ] T032 Run full test suite: `poetry run pytest tests/unit/economics/dynamics/ -v` — all tests pass
-- [ ] T033 Run quickstart.md code example as integration smoke test
-- [ ] T034 Validate FR-011 (transition rate validation logging for anomalous values)
+- [ ] T029 [P] Run `poetry run mypy src/babylon/economics/dynamics/ --strict` and fix all type errors (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T030 [P] Run `poetry run ruff check src/babylon/economics/dynamics/` and fix all lint issues (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T031 [P] Verify all `__init__.py` exports match quickstart.md usage examples (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T032 Run full test suite: `poetry run pytest tests/unit/economics/dynamics/ -v` — all tests pass (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T033 Run quickstart.md code example as integration smoke test (unverifiable — ephemeral gate, no durable artifact)
+- [x] T034 Validate FR-011 (transition rate validation logging for anomalous values) (verified 2026-07-08: src/babylon/economics/dynamics/transition_engine.py:333-343; test tests/unit/economics/dynamics/test_transition_engine.py:630)
 
 ______________________________________________________________________
 

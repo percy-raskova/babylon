@@ -58,7 +58,7 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 - [X] T015 [US3] Per-file LOC cap holds: largest is `organizations.py` at 260 LOC; all others <200 LOC; cap of 600 not approached
 - [X] T016 [US3] Public-import-surface verified: 5/5 import-surface tests pass; flat imports + star imports + module.attr access all work
 - [X] T017 [US3] Full fast-gate: 8995p / 186s / 1xf / 1f (1f is pre-existing flake unchanged). +5 passed from new import-surface tests. mypy on enums/ clean (1 pre-existing error in engine/hydration/reference.py:726 unrelated to this commit). ruff autofixed 11 I001 (import sorting).
-- [ ] T018 [US3] Commit: `refactor(models): split enums.py into enums/ package`
+- [x] T018 [US3] Commit: `refactor(models): split enums.py into enums/ package` (verified 2026-07-08: commit d6f6f934 "refactor(models): split enums.py into enums/ package")
 
 ### Sub-phase US3b — `defines.py` split (commit 3)
 
@@ -72,7 +72,7 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 - [X] T026 [US3] Per-file LOC cap holds: largest is `organizations.py` at 581 LOC (under 600); 12 sub-modules range 98–581 LOC
 - [X] T027 [US3] GameDefines() wiring verified: `gd.economy.extraction_efficiency == 0.8`
 - [X] T028 [US3] Full fast-gate: 9001p / 186s / 1xf / 1f (1f pre-existing flake unchanged); +6 passed from new defines surface tests. Two mid-refactor mypy fixes applied to ooda.py: `import warnings` + `TYPE_CHECKING` import of GameDefines (uses string forward-reference for `validate_derivations(self, game_defines: GameDefines)`). ruff autofixed 49 I001 issues. mypy on defines/: clean.
-- [ ] T029 [US3] Commit: `refactor(config): split defines.py into defines/ package`
+- [x] T029 [US3] Commit: `refactor(config): split defines.py into defines/ package` (verified 2026-07-08: commit 367b07bd "refactor(config): split defines.py into defines/ package")
 
 ---
 
@@ -93,7 +93,7 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 - [X] T034 [US1] SourceRegistry.builtin_economics() stub returns self (no-op) with explicit comment pointing at T053 for commit-6 fill-in
 - [X] T035 [US1] All 20 protocol_kit tests pass (GREEN); 3 factory-shim tests xfail as expected
 - [X] T036 [US1] Full fast-gate: 9021p / 186s / 4xf / 1f. +20 passed from new core/ tests; +3 xfail from factory shims; pre-existing flake unchanged. mypy + ruff clean (1 PEP 695 syntax modernization: Generic[T] → CachedSource[T])
-- [ ] T037 [US1] Commit: `feat(core): add protocol_kit with DataSource, CachedSource, SourceRegistry`
+- [x] T037 [US1] Commit: `feat(core): add protocol_kit with DataSource, CachedSource, SourceRegistry` (verified 2026-07-08: commit db53b832 "feat(core): add protocol_kit with DataSource, CachedSource, SourceRegistry")
 
 ### Sub-phase US1.2 — melt/ + gamma/ Default* migrations (commit 5)
 
@@ -102,7 +102,7 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 - [X] T049 [US1] SC-005 verified: 10/10 classes are CachedSource subclasses (`issubclass(cls, CachedSource)` runtime check)
 - [X] T050 [US1] melt + gamma + core test suites: 340 passed / 6 skipped / 0 failed
 - [X] T051 [US1] Full fast-gate: 9021p / 187s / 4xf / 0f. Pre-existing flake passed on this run (Hypothesis order-dependent — sometimes passes). Mid-refactor fix: lazy import of NoDataSentinel inside CachedSource._resolve to break circular import (protocol_kit → babylon.economics.tensor → babylon.economics.__init__ → migrated Default* → protocol_kit). 4 ruff I001 autofixes.
-- [ ] T052 [US1] Commit: `refactor(economics): migrate melt/ + gamma/ Default* classes to CachedSource[T]`
+- [x] T052 [US1] Commit: `refactor(economics): migrate melt/ + gamma/ Default* classes to CachedSource[T]` (verified 2026-07-08: commit 997fda7f "refactor(economics): migrate melt/ + gamma/ Default* classes to CachedSource[T]")
 
 ### Sub-phase US1.3 — factory.py SourceRegistry migration (commit 6)
 
@@ -112,7 +112,7 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 - [X] T056 [US1] **SC-004 not-met-by-design** documented in plan.md §R5 (corrected) and the xfail reason of `test_factory_loc_under_150`. Cause: factory.py performs topological dependency resolution that SourceRegistry's `Callable[[], object]` model does not replace. The <150 LOC target was based on a misreading of factory.py as boilerplate.
 - [X] T057 [US1] `pytestmark` blanket xfail dropped; tests 11+12 reformulated to test the actually-shippable behavior (`_get_builtin_registry()` is process-wide cached; the 7 parameterless classes are registered). Test 13 (`test_factory_loc_under_150`) keeps a per-test xfail with the not-met-by-design reason.
 - [X] T058 [US1] Full fast-gate: 9022p / 187s / 2xf / 1f. +1 passed (vs commit 5's 9021), -2 xfailed (factory shim tests 11+12 now real GREEN), +1 different pre-existing flake (`test_individual_frame_under_100ms` — UI perf test, env-load-dependent). The wealth_heat_bounds flake passed this run.
-- [ ] T059 [US1] Commit: `refactor(economics): replace factory.py wiring with SourceRegistry.builtin_economics()`
+- [x] T059 [US1] Commit: `refactor(economics): replace factory.py wiring with SourceRegistry.builtin_economics()` (verified 2026-07-08: commit e88beccb "refactor(economics): replace factory.py wiring with SourceRegistry.builtin_economics()")
 
 ---
 
@@ -151,7 +151,7 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 - [X] T082 [US4] All 12 BEAMappings tests GREEN.
 - [X] T083 [US4] `grep -n "tomllib" src/babylon/economics/tensor_hierarchy/inter_industry.py` returns zero matches (the per-call reparse path is gone).
 - [X] T084 [US4] Full fast-gate combined with T077: 9039p / 186s / 2xf / 1f. +17 passed, no regressions.
-- [ ] T085 [US2 / US4] Commit (bundled US2 + US4 per R1): `refactor(economics): relocate tick/system.py into a package + type bea_to_department mapping`
+- [x] T085 [US2 / US4] Commit (bundled US2 + US4 per R1): `refactor(economics): relocate tick/system.py into a package + type bea_to_department mapping` (verified 2026-07-08: commit 0616eea4 "refactor(economics): relocate tick/system.py into a package + type bea_to_department mapping")
 
 ---
 
@@ -161,7 +161,7 @@ This is a TDD-ordered task list (per project CLAUDE.md: "TDD: Red-Green-Refactor
 - [~] T087 / T088 No `ai-docs/roadmap.md` or `ai-docs/decisions.yaml` exist (only `ai-docs/decisions/ADR0XX_*.yaml` per-file). The spec/plan/research/contracts in `specs/058-adr-bundle-1-pre-spec-057/` ARE the authoritative ADR record; no separate file needed.
 - [X] T089 Spec-057 forward-compat smoke test PASSED: `/tmp/spec057_smoke.py` author-budget = ~25 LOC (within SC-007 30-LOC budget), protocol_kit importable, BEA_TO_DEPARTMENT consumable, `_compute_imperial_rent` stub remains.
 - [X] T090 Final bundle verification (T077+T084 fast-gate): 9039p / 186s / 2xf / 1f. +51 new tests vs spec baseline. The 1 failure is the pre-existing wealth_heat_bounds Hypothesis flake (different "9 Systems" value vs prior runs — sometimes passes, sometimes fails; not Bundle 1's responsibility).
-- [ ] T091 Open PR `058-adr-bundle-1-pre-spec-057` → `dev` — pending user approval (a remote `git push` is a shared-state action that warrants explicit user confirmation).
+- [~] T091 Open PR `058-adr-bundle-1-pre-spec-057` → `dev` — pending user approval (a remote `git push` is a shared-state action that warrants explicit user confirmation). (partial 2026-07-08: branch landed on dev via merge commit f9b03b67 "Merge spec 058: ADR Bundle 1"; no PR record verifiable from the repo)
 
 ---
 

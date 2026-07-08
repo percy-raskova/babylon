@@ -279,13 +279,13 @@ ______________________________________________________________________
 
 ### Data Source Integration
 
-- [ ] T035 [P] Create `src/babylon/economics/melt/bea_source.py`:
+- [~] T035 [P] Create `src/babylon/economics/melt/bea_source.py`: (partial 2026-07-08: BEADataSource protocol implemented via SQLite adapter SQLiteBEANationalGDPSource (src/babylon/economics/melt/adapters.py:58), not the specified real-API bea_source.py)
   - Implement BEADataSource protocol with real BEA NIPA API
   - Cache GDP values by year
-- [ ] T036 [P] Create `src/babylon/economics/melt/qcew_source.py`:
+- [~] T036 [P] Create `src/babylon/economics/melt/qcew_source.py`: (partial 2026-07-08: QCEWDataSource protocol implemented via SQLite adapter SQLiteQCEWNationalEmploymentSource (src/babylon/economics/melt/adapters.py:147), not the specified real-API qcew_source.py)
   - Implement QCEWDataSource protocol with BLS QCEW data
   - Cache employment values by year
-- [ ] T037 [P] Create `src/babylon/economics/melt/cpi_source.py`:
+- [ ] T037 [P] Create `src/babylon/economics/melt/cpi_source.py`: (left unchecked 2026-07-08: no production CPIDataSource implementation — protocol at src/babylon/economics/melt/data_sources.py:102, only a test mock (tests/unit/economics/melt/conftest.py:89))
   - Implement CPIDataSource protocol with BLS CPI-U series
   - Cache CPI values by year
 
@@ -315,11 +315,11 @@ ______________________________________________________________________
   - Test τ ≈ $65/hour (2022) within ±10% of BEA/QCEW derived value
   - Test γ_basket ≈ 0.68 within ±10% of Hickel et al. derived value
   - Document literature sources in test docstring
-- [ ] T051 [P] Create `tests/unit/economics/melt/test_sc002_measurability.py` [CHK046]:
+- [x] T051 [P] Create `tests/unit/economics/melt/test_sc002_measurability.py` [CHK046]: (verified 2026-07-08: tests/unit/economics/melt/test_sc002_measurability.py)
   - Test LA share 30-50% against 2022 QCEW national wage distribution
   - Document: τ_effective ≈ $44/hour, QCEW median ≈ $28/hour
   - Assert: workers above $44/hour represent 30-50% of workforce
-- [ ] T052 [P] Add "average wage" definition to spec documentation [CHK048]:
+- [x] T052 [P] Add "average wage" definition to spec documentation [CHK048]: (verified 2026-07-08: "average wage" = arithmetic-mean definition per CHK048 at specs/013-melt-basket-visibility/spec.md:345)
   - Define: "average US worker wage" = median hourly wage from QCEW
   - 2022 median: ~$28/hour (BLS QCEW)
   - Assert: Φ_hour($28, params_2022) > 0 validates SC-004
@@ -330,9 +330,9 @@ ______________________________________________________________________
 
 ### Final Validation
 
-- [ ] T054 Run `quickstart.md` examples and verify output matches expected
-- [ ] T055 Update `checklists/tvt-domain-review.md` to mark resolved gaps
-- [ ] T056 Run full test suite: `mise run test:unit && mise run test:int`
+- [ ] T054 Run `quickstart.md` examples and verify output matches expected (unverifiable — ephemeral gate, no durable artifact)
+- [x] T055 Update `checklists/tvt-domain-review.md` to mark resolved gaps (verified 2026-07-08: specs/013-melt-basket-visibility/checklists/tvt-domain-review.md — items checked + CHK resolution table (:208))
+- [ ] T056 Run full test suite: `mise run test:unit && mise run test:int` (unverifiable — ephemeral gate, no durable artifact)
 
 ______________________________________________________________________
 

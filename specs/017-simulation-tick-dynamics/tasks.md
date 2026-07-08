@@ -19,8 +19,8 @@ ______________________________________________________________________
 
 **Purpose**: Create the `tick/` subpackage within `src/babylon/economics/` and the parallel test structure
 
-- [ ] T001 Create tick package directory and `__init__.py` with public API stubs in `src/babylon/economics/tick/__init__.py`
-- [ ] T002 Create unit test package directory and `__init__.py` in `tests/unit/economics/tick/__init__.py`
+- [x] T001 Create tick package directory and `__init__.py` with public API stubs in `src/babylon/economics/tick/__init__.py` (verified 2026-07-08: src/babylon/economics/tick/__init__.py)
+- [x] T002 Create unit test package directory and `__init__.py` in `tests/unit/economics/tick/__init__.py` (verified 2026-07-08: tests/unit/economics/tick/__init__.py)
 
 ______________________________________________________________________
 
@@ -32,22 +32,22 @@ ______________________________________________________________________
 
 ### Pydantic Type Models
 
-- [ ] T003 [P] Implement `SimulationTickState`, `NationalTickParameters`, `CountyEconomicState`, `SmoothedCoefficients`, `TickSummary`, `DerivedRates` frozen Pydantic models with all field constraints from data-model.md in `src/babylon/economics/tick/types.py`
-- [ ] T004 [P] Write tests for all Pydantic model validation (field constraints, frozen immutability, FIPS format, year bounds, sum-to-one invariant on ClassDistribution, division-by-zero Optional[float] fields in DerivedRates) in `tests/unit/economics/tick/test_types.py`
+- [x] T003 [P] Implement `SimulationTickState`, `NationalTickParameters`, `CountyEconomicState`, `SmoothedCoefficients`, `TickSummary`, `DerivedRates` frozen Pydantic models with all field constraints from data-model.md in `src/babylon/economics/tick/types.py` (verified 2026-07-08: src/babylon/economics/tick/types.py (all 6 models))
+- [x] T004 [P] Write tests for all Pydantic model validation (field constraints, frozen immutability, FIPS format, year bounds, sum-to-one invariant on ClassDistribution, division-by-zero Optional[float] fields in DerivedRates) in `tests/unit/economics/tick/test_types.py` (verified 2026-07-08: tests/unit/economics/tick/test_types.py (43 tests))
 
 ### Engine Integration Points
 
-- [ ] T005 Extend `ServiceContainer` with 7 optional economics calculator fields (`melt_calculator`, `basket_calculator`, `gamma_calculator`, `capital_calculator`, `throughput_calculator`, `transition_engine`, `imperial_rent_calculator`) and update `create()` factory method in `src/babylon/engine/services.py`
-- [ ] T006 Write tests verifying ServiceContainer backward compatibility (existing tests still pass with None defaults) and that calculator fields are accessible when provided, in existing `tests/unit/engine/test_services.py` or new test file as appropriate
+- [~] T005 Extend `ServiceContainer` with 7 optional economics calculator fields (`melt_calculator`, `basket_calculator`, `gamma_calculator`, `capital_calculator`, `throughput_calculator`, `transition_engine`, `imperial_rent_calculator`) and update `create()` factory method in `src/babylon/engine/services.py` (partial 2026-07-08: 6 of 7 fields on ServiceContainer (src/babylon/engine/services.py:87-92); imperial_rent_calculator deliberately removed in Leontief refactor commit a5f73139)
+- [~] T006 Write tests verifying ServiceContainer backward compatibility (existing tests still pass with None defaults) and that calculator fields are accessible when provided, in existing `tests/unit/engine/test_services.py` or new test file as appropriate (partial 2026-07-08: no dedicated ServiceContainer field assertions in test_services.py; behavior covered at system level (tests/unit/economics/tick/test_system.py:232,:383))
 
 ### Graph Bridge
 
-- [ ] T007 [P] Implement `write_tick_state_to_graph()` and `read_tick_state_from_graph()` functions that map between SimulationTickState and NetworkX graph (Territory node attributes with `tick_` prefix, graph metadata at `graph.graph["tick_dynamics"]`) per data-model.md Graph Integration section, in `src/babylon/economics/tick/graph_bridge.py`
-- [ ] T008 [P] Write tests for graph bridge round-trip: write state to graph then read back, verifying Territory node attributes and graph metadata are correct, in `tests/unit/economics/tick/test_graph_bridge.py`
+- [x] T007 [P] Implement `write_tick_state_to_graph()` and `read_tick_state_from_graph()` functions that map between SimulationTickState and NetworkX graph (Territory node attributes with `tick_` prefix, graph metadata at `graph.graph["tick_dynamics"]`) per data-model.md Graph Integration section, in `src/babylon/economics/tick/graph_bridge.py` (verified 2026-07-08: src/babylon/economics/tick/graph_bridge.py:41,:186)
+- [x] T008 [P] Write tests for graph bridge round-trip: write state to graph then read back, verifying Territory node attributes and graph metadata are correct, in `tests/unit/economics/tick/test_graph_bridge.py` (verified 2026-07-08: tests/unit/economics/tick/test_graph_bridge.py:112-152)
 
 ### Test Infrastructure
 
-- [ ] T009 Create shared test fixtures in `tests/unit/economics/tick/conftest.py`: mock calculators (MELTCalculator, BasketVisibilityCalculator, GammaIIICalculator, CapitalStockCalculator, ThroughputCalculator, ClassTransitionEngine, ImperialRentCalculator returning known values), stable-economy fixture, crisis-economy fixture, sample SimulationTickState at year 2015, sample NationalTickParameters, sample CountyEconomicState for Wayne County MI (FIPS 26163), graph builder helper
+- [x] T009 Create shared test fixtures in `tests/unit/economics/tick/conftest.py`: mock calculators (MELTCalculator, BasketVisibilityCalculator, GammaIIICalculator, CapitalStockCalculator, ThroughputCalculator, ClassTransitionEngine, ImperialRentCalculator returning known values), stable-economy fixture, crisis-economy fixture, sample SimulationTickState at year 2015, sample NationalTickParameters, sample CountyEconomicState for Wayne County MI (FIPS 26163), graph builder helper (verified 2026-07-08: tests/unit/economics/tick/conftest.py:37-206)
 
 **Checkpoint**: Foundation ready — all types defined, ServiceContainer extended, graph bridge functional, test fixtures available. User story implementation can now begin.
 
@@ -63,11 +63,11 @@ ______________________________________________________________________
 
 > **Write tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T010 [P] [US1] Write tests for national parameter computation: tau matches MELTCalculator output, gamma_basket matches BasketVisibilityCalculator output, gamma_III matches GammaIIICalculator output, tau_effective = tau x gamma_basket, unavailability indicator when BEA GDP missing, in `tests/unit/economics/tick/test_system.py` (national params section)
+- [x] T010 [P] [US1] Write tests for national parameter computation: tau matches MELTCalculator output, gamma_basket matches BasketVisibilityCalculator output, gamma_III matches GammaIIICalculator output, tau_effective = tau x gamma_basket, unavailability indicator when BEA GDP missing, in `tests/unit/economics/tick/test_system.py` (national params section) (verified 2026-07-08: tests/unit/economics/tick/test_system.py:229-299)
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Implement Step 2 (compute national parameters) in `TickDynamicsSystem` — call `services.melt_calculator.get_melt(year)`, `services.basket_calculator.get_gamma_basket(year)`, `services.gamma_calculator.compute(year)`, assemble `NationalTickParameters`, in `src/babylon/economics/tick/system.py`
+- [x] T011 [US1] Implement Step 2 (compute national parameters) in `TickDynamicsSystem` — call `services.melt_calculator.get_melt(year)`, `services.basket_calculator.get_gamma_basket(year)`, `services.gamma_calculator.compute(year)`, assemble `NationalTickParameters`, in `src/babylon/economics/tick/system.py` (verified 2026-07-08: src/babylon/economics/tick/system/__init__.py:354-418)
 
 **Checkpoint**: National parameter computation works independently. Given known year data, produces correct tau, gamma_basket, gamma_III.
 
@@ -83,11 +83,11 @@ ______________________________________________________________________
 
 > **Write tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T012 [P] [US2] Write tests for county-level state computation: K matches CapitalStockCalculator output, pi matches ThroughputCalculator output, uses current tick's national MELT (not stale), temporal accumulation K[t+1] = K[t] x (1-delta) + investment[t], partial data returns unavailability indicators, in `tests/unit/economics/tick/test_system.py` (county state section)
+- [x] T012 [P] [US2] Write tests for county-level state computation: K matches CapitalStockCalculator output, pi matches ThroughputCalculator output, uses current tick's national MELT (not stale), temporal accumulation K[t+1] = K[t] x (1-delta) + investment[t], partial data returns unavailability indicators, in `tests/unit/economics/tick/test_system.py` (county state section) (verified 2026-07-08: tests/unit/economics/tick/test_system.py:301-331)
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Implement Step 3a (compute county-level state) in `TickDynamicsSystem` — iterate over county FIPS set, call `services.capital_calculator.get_K(fips, year)`, `services.throughput_calculator.compute_metrics(fips, year)`, assemble per-county `CountyEconomicState`, in `src/babylon/economics/tick/system.py`
+- [x] T013 [US2] Implement Step 3a (compute county-level state) in `TickDynamicsSystem` — iterate over county FIPS set, call `services.capital_calculator.get_K(fips, year)`, `services.throughput_calculator.compute_metrics(fips, year)`, assemble per-county `CountyEconomicState`, in `src/babylon/economics/tick/system.py` (verified 2026-07-08: src/babylon/economics/tick/system/__init__.py:420-513)
 
 **Checkpoint**: County state computation works independently. Given known FIPS/year, produces correct K, pi, D per county.
 
@@ -105,17 +105,17 @@ ______________________________________________________________________
 
 > **Write tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T014 [P] [US3] Write tests for crisis detection: unemployment > 8% triggers crisis, profit rate decline > 15% triggers crisis, stable economy does not trigger, configurable thresholds, in `tests/unit/economics/tick/test_crisis.py`
-- [ ] T015 [P] [US3] Write tests for precarity derivation: U-6 formula, PTER formula, NILF formula with configurable coefficients, handoff rule (first sim tick overwrites init values), in `tests/unit/economics/tick/test_precarity.py`
-- [ ] T016 [P] [US3] Write tests for full tick pipeline: output year = input year + 1, class distribution sums to 1.0, step ordering verified (3a/3b parallel after Step 2), stable year produces small changes, crisis year amplifies transitions, calculator exception halts with enhanced context (FR-025), in `tests/unit/economics/tick/test_system.py` (full pipeline section)
+- [x] T014 [P] [US3] Write tests for crisis detection: unemployment > 8% triggers crisis, profit rate decline > 15% triggers crisis, stable economy does not trigger, configurable thresholds, in `tests/unit/economics/tick/test_crisis.py` (verified 2026-07-08: tests/unit/economics/tick/test_crisis.py:20-151)
+- [x] T015 [P] [US3] Write tests for precarity derivation: U-6 formula, PTER formula, NILF formula with configurable coefficients, handoff rule (first sim tick overwrites init values), in `tests/unit/economics/tick/test_precarity.py` (verified 2026-07-08: tests/unit/economics/tick/test_precarity.py:21-91)
+- [x] T016 [P] [US3] Write tests for full tick pipeline: output year = input year + 1, class distribution sums to 1.0, step ordering verified (3a/3b parallel after Step 2), stable year produces small changes, crisis year amplifies transitions, calculator exception halts with enhanced context (FR-025), in `tests/unit/economics/tick/test_system.py` (full pipeline section) (verified 2026-07-08: tests/unit/economics/tick/test_system.py:333-390)
 
 ### Implementation for User Story 3
 
-- [ ] T017 [P] [US3] Implement `ThresholdCrisisDetector` with configurable unemployment_threshold (default 0.08) and profit_rate_decline_threshold (default 0.15), `is_crisis(unemployment_rate, current_profit_rate, previous_profit_rate)` method, in `src/babylon/economics/tick/crisis_detector.py`
-- [ ] T018 [P] [US3] Implement `PrecarityDeriver` with configurable pter_fraction (default 0.4) and nilf_fraction (default 0.6), `derive(class_distribution, precaritization_rate)` method returning u6_rate, pter_rate, nilf_rate, in `src/babylon/economics/tick/precarity.py`
-- [ ] T019 [US3] Implement Steps 4-8 in `TickDynamicsSystem.step()`: Step 4 (call `services.imperial_rent_calculator.compute_phi_hour()` per county), Step 5 (call ThresholdCrisisDetector), Step 6 (synthesize `EconomicConditions` from tick state — unemployment_rate, median_wage, MELT, phi_hour, dispossession rates [MVP: hardcoded national averages per Assumptions], crisis flag — then call `services.transition_engine.simulate_transitions(dist, conditions)`; extract `precaritization_rate` from the engine's internal `TransitionRates.precaritization` for precarity derivation), Step 7 (validate sum-to-one invariant per FR-009), Step 8 (compute DerivedRates per county; TickSummary is assembled in T031). Wire full 8-step pipeline with error context per FR-025, in `src/babylon/economics/tick/system.py`
-- [ ] T020 [US3] Implement `TickDynamicsSystem` as engine System conforming to `step(graph, services, context) -> None` protocol: read state from graph via graph_bridge, gate execution to year boundaries (FR-024), execute 8-step pipeline, write results back to graph via graph_bridge, handle timescale bridging, in `src/babylon/economics/tick/system.py`
-- [ ] T021 [US3] Register `TickDynamicsSystem` in `_DEFAULT_SYSTEMS` after `ProductionSystem` and before `SolidaritySystem` in `src/babylon/engine/simulation_engine.py`
+- [x] T017 [P] [US3] Implement `ThresholdCrisisDetector` with configurable unemployment_threshold (default 0.08) and profit_rate_decline_threshold (default 0.15), `is_crisis(unemployment_rate, current_profit_rate, previous_profit_rate)` method, in `src/babylon/economics/tick/crisis_detector.py` (verified 2026-07-08: src/babylon/economics/tick/crisis_detector.py:23-74)
+- [x] T018 [P] [US3] Implement `PrecarityDeriver` with configurable pter_fraction (default 0.4) and nilf_fraction (default 0.6), `derive(class_distribution, precaritization_rate)` method returning u6_rate, pter_rate, nilf_rate, in `src/babylon/economics/tick/precarity.py` (verified 2026-07-08: src/babylon/economics/tick/precarity.py:16-62)
+- [x] T019 [US3] Implement Steps 4-8 in `TickDynamicsSystem.step()`: Step 4 (call `services.imperial_rent_calculator.compute_phi_hour()` per county), Step 5 (call ThresholdCrisisDetector), Step 6 (synthesize `EconomicConditions` from tick state — unemployment_rate, median_wage, MELT, phi_hour, dispossession rates [MVP: hardcoded national averages per Assumptions], crisis flag — then call `services.transition_engine.simulate_transitions(dist, conditions)`; extract `precaritization_rate` from the engine's internal `TransitionRates.precaritization` for precarity derivation), Step 7 (validate sum-to-one invariant per FR-009), Step 8 (compute DerivedRates per county; TickSummary is assembled in T031). Wire full 8-step pipeline with error context per FR-025, in `src/babylon/economics/tick/system.py` (verified 2026-07-08: src/babylon/economics/tick/system/__init__.py:180-219 (Step 4 delegates to Leontief imperial_rent.compute))
+- [x] T020 [US3] Implement `TickDynamicsSystem` as engine System conforming to `step(graph, services, context) -> None` protocol: read state from graph via graph_bridge, gate execution to year boundaries (FR-024), execute 8-step pipeline, write results back to graph via graph_bridge, handle timescale bridging, in `src/babylon/economics/tick/system.py` (verified 2026-07-08: src/babylon/economics/tick/system/__init__.py:109-235)
+- [x] T021 [US3] Register `TickDynamicsSystem` in `_DEFAULT_SYSTEMS` after `ProductionSystem` and before `SolidaritySystem` in `src/babylon/engine/simulation_engine.py` (verified 2026-07-08: src/babylon/engine/simulation_engine.py:330 (position 4))
 
 **Checkpoint**: Full single-tick pipeline works end-to-end. Given complete state at year t, produces valid state at year t+1 with correct step ordering, class distribution invariants, and derived rates.
 
@@ -131,12 +131,12 @@ ______________________________________________________________________
 
 > **Write tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T022 [P] [US5] Write tests for CoefficientSmoother: alpha=0.3 smoothing formula verified, first tick uses raw values (no smoothing), sequence convergence toward mean, alpha=1 means no smoothing, alpha validation (reject 0, accept (0,1]), in `tests/unit/economics/tick/test_smoothing.py`
+- [x] T022 [P] [US5] Write tests for CoefficientSmoother: alpha=0.3 smoothing formula verified, first tick uses raw values (no smoothing), sequence convergence toward mean, alpha=1 means no smoothing, alpha validation (reject 0, accept (0,1]), in `tests/unit/economics/tick/test_smoothing.py` (verified 2026-07-08: tests/unit/economics/tick/test_smoothing.py:17-86)
 
 ### Implementation for User Story 5
 
-- [ ] T023 [US5] Implement `CoefficientSmoother` with configurable alpha (default 0.3), `smooth(raw, previous, is_initialized)` method, first-tick handling (raw passthrough when `is_initialized=False`), update SmoothedCoefficients container, in `src/babylon/economics/tick/smoothing.py`
-- [ ] T024 [US5] Integrate CoefficientSmoother into TickDynamicsSystem Step 3b: after Step 2, smooth gamma_basket, gamma_III, gamma_import using CoefficientSmoother, update SmoothedCoefficients in state, ensure 3a and 3b are independent (no data dependency between them), in `src/babylon/economics/tick/system.py`
+- [x] T023 [US5] Implement `CoefficientSmoother` with configurable alpha (default 0.3), `smooth(raw, previous, is_initialized)` method, first-tick handling (raw passthrough when `is_initialized=False`), update SmoothedCoefficients container, in `src/babylon/economics/tick/smoothing.py` (verified 2026-07-08: src/babylon/economics/tick/smoothing.py:17-57)
+- [x] T024 [US5] Integrate CoefficientSmoother into TickDynamicsSystem Step 3b: after Step 2, smooth gamma_basket, gamma_III, gamma_import using CoefficientSmoother, update SmoothedCoefficients in state, ensure 3a and 3b are independent (no data dependency between them), in `src/babylon/economics/tick/system.py` (verified 2026-07-08: src/babylon/economics/tick/system/__init__.py:392-406,:541-571)
 
 **Checkpoint**: Coefficient smoothing works. Spike in gamma_basket produces gradual change; quantities (unemployment, K) update immediately.
 
@@ -154,13 +154,13 @@ ______________________________________________________________________
 
 > **Write tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T025 [P] [US4] Write tests for initialization: seed from census data with known county set, partial data availability handled per FR-027 (0% halt, 1-89% warn, >=90% normal), county set immutable after init (FR-026), in `tests/unit/economics/tick/test_initializer.py`
-- [ ] T026 [P] [US4] Write integration tests for multi-tick execution: 14-tick run produces valid intermediate states, final class distributions within SC-002 ranges, crisis years (2008-2012) show amplified transitions per SC-003, Phi_aggregate at Hickel scale per SC-004, coefficient smoothing reduces variance by >= 50% per SC-005, profit rate/OCC trends plausible per SC-007, year 2040 boundary halt per FR-028, convergence detection per FR-029, deterministic output per SC-009, in `tests/integration/economics/test_tick_integration.py`
+- [~] T025 [P] [US4] Write tests for initialization: seed from census data with known county set, partial data availability handled per FR-027 (0% halt, 1-89% warn, >=90% normal), county set immutable after init (FR-026), in `tests/unit/economics/tick/test_initializer.py` (partial 2026-07-08: test_initializer.py covers seeding/multi-county/immutability/sum-to-one; missing FR-027 partial-data halt/warn threshold tests)
+- [~] T026 [P] [US4] Write integration tests for multi-tick execution: 14-tick run produces valid intermediate states, final class distributions within SC-002 ranges, crisis years (2008-2012) show amplified transitions per SC-003, Phi_aggregate at Hickel scale per SC-004, coefficient smoothing reduces variance by >= 50% per SC-005, profit rate/OCC trends plausible per SC-007, year 2040 boundary halt per FR-028, convergence detection per FR-029, deterministic output per SC-009, in `tests/integration/economics/test_tick_integration.py` (partial 2026-07-08: test_tick_integration.py covers multi-year chaining, SC-009 determinism, distribution validity, smoothing; missing SC-002..SC-007 range validations, FR-028 halt, FR-029 convergence)
 
 ### Implementation for User Story 4
 
-- [ ] T027 [US4] Implement `DefaultTickInitializer` with `initialize(year, county_fips, calculators)` method: seed national params from calculators, seed county states from CapitalStockCalculator/ThroughputCalculator, seed precarity from FRED/BLS data, set initial SmoothedCoefficients (is_initialized=False), handle partial failures per FR-027, validate county set per FR-026, in `src/babylon/economics/tick/initializer.py`
-- [ ] T028 [US4] Implement multi-tick execution loop in TickDynamicsSystem or standalone runner: iterate single ticks over year range, chain state (FR-004), detect year 2040 boundary halt (FR-028), detect convergence and annotate TickSummary (FR-029), accumulate tick summaries for historical analysis, in `src/babylon/economics/tick/system.py`
+- [~] T027 [US4] Implement `DefaultTickInitializer` with `initialize(year, county_fips, calculators)` method: seed national params from calculators, seed county states from CapitalStockCalculator/ThroughputCalculator, seed precarity from FRED/BLS data, set initial SmoothedCoefficients (is_initialized=False), handle partial failures per FR-027, validate county set per FR-026, in `src/babylon/economics/tick/initializer.py` (partial 2026-07-08: src/babylon/economics/tick/initializer.py:60-206 seeds with fallbacks, but no FR-027 partial-failure thresholds or explicit FR-026 county-set validation)
+- [~] T028 [US4] Implement multi-tick execution loop in TickDynamicsSystem or standalone runner: iterate single ticks over year range, chain state (FR-004), detect year 2040 boundary halt (FR-028), detect convergence and annotate TickSummary (FR-029), accumulate tick summaries for historical analysis, in `src/babylon/economics/tick/system.py` (partial 2026-07-08: state chaining works (src/babylon/economics/tick/system/__init__.py:141-151) but no dedicated multi-tick runner, FR-028 year-2040 halt, or FR-029 convergence detection)
 
 **Checkpoint**: Multi-tick simulation runs from 2010 initial state through 2024. Intermediate states valid, final distributions plausible, crisis amplification observable.
 
@@ -176,12 +176,12 @@ ______________________________________________________________________
 
 > **Write tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T029 [P] [US6] Write tests for DerivedRateCalculator: profit rate r = s/(K+v), OCC = c/v, exploitation rate e = s/v, division-by-zero handling (K=0 and v=0 -> None, v=0 -> None for OCC and e), Phi_aggregate annualization formula (phi_hour x employment x 2080), unavailability indicators when K missing during init, in `tests/unit/economics/tick/test_derived.py`
+- [x] T029 [P] [US6] Write tests for DerivedRateCalculator: profit rate r = s/(K+v), OCC = c/v, exploitation rate e = s/v, division-by-zero handling (K=0 and v=0 -> None, v=0 -> None for OCC and e), Phi_aggregate annualization formula (phi_hour x employment x 2080), unavailability indicators when K missing during init, in `tests/unit/economics/tick/test_derived.py` (verified 2026-07-08: tests/unit/economics/tick/test_derived.py:69-161)
 
 ### Implementation for User Story 6
 
-- [ ] T030 [US6] Implement `DerivedRateCalculator` with `compute_county_rates(county_state)` returning `DerivedRates` with Optional[float] for division-by-zero, and `compute_phi_aggregate(county_states)` using annualization formula `sum(phi_hour x employment x 2080)`, in `src/babylon/economics/tick/derived_rates.py`
-- [ ] T031 [US6] Integrate DerivedRateCalculator into TickDynamicsSystem Step 8 and assemble final TickSummary: after class distribution committed (Step 7), compute per-county DerivedRates and Phi_aggregate, then assemble TickSummary with year, counties_processed, phi_aggregate, national_melt, mean_profit_rate, mean_occ, mean_exploitation_rate, national_class_distribution. Note: T019 wires Steps 4-7 but defers TickSummary assembly to this task; T031 owns the complete TickSummary construction, in `src/babylon/economics/tick/system.py`
+- [x] T030 [US6] Implement `DerivedRateCalculator` with `compute_county_rates(county_state)` returning `DerivedRates` with Optional[float] for division-by-zero, and `compute_phi_aggregate(county_states)` using annualization formula `sum(phi_hour x employment x 2080)`, in `src/babylon/economics/tick/derived_rates.py` (verified 2026-07-08: src/babylon/economics/tick/derived_rates.py:26-111)
+- [x] T031 [US6] Integrate DerivedRateCalculator into TickDynamicsSystem Step 8 and assemble final TickSummary: after class distribution committed (Step 7), compute per-county DerivedRates and Phi_aggregate, then assemble TickSummary with year, counties_processed, phi_aggregate, national_melt, mean_profit_rate, mean_occ, mean_exploitation_rate, national_class_distribution. Note: T019 wires Steps 4-7 but defers TickSummary assembly to this task; T031 owns the complete TickSummary construction, in `src/babylon/economics/tick/system.py` (verified 2026-07-08: src/babylon/economics/tick/system/__init__.py:1613-1667)
 
 **Checkpoint**: Derived indicators computed correctly. Manual calculation matches formula output. Division-by-zero produces None. TRPF trend observable across multi-tick run.
 
@@ -191,11 +191,11 @@ ______________________________________________________________________
 
 **Purpose**: Final integration, export updates, and validation
 
-- [ ] T032 Update `src/babylon/economics/tick/__init__.py` with complete public API exports: TickDynamicsSystem, SimulationTickState, NationalTickParameters, CountyEconomicState, SmoothedCoefficients, TickSummary, DerivedRates, DefaultTickInitializer, CoefficientSmoother, ThresholdCrisisDetector, DerivedRateCalculator, PrecarityDeriver, write_tick_state_to_graph, read_tick_state_from_graph
-- [ ] T033 Update `src/babylon/economics/__init__.py` to re-export key tick types: TickDynamicsSystem, SimulationTickState, DefaultTickInitializer
-- [ ] T034 Run full test suite (`mise run test:all`) and verify no regressions in existing tests from ServiceContainer extension or _DEFAULT_SYSTEMS modification
-- [ ] T035 Run `mise run typecheck` and resolve any mypy errors across all new and modified files
-- [ ] T036 Run quickstart.md validation: verify code examples in quickstart.md are consistent with implemented API (ServiceContainer.create() kwargs, TickInitializer constructor, graph access patterns)
+- [x] T032 Update `src/babylon/economics/tick/__init__.py` with complete public API exports: TickDynamicsSystem, SimulationTickState, NationalTickParameters, CountyEconomicState, SmoothedCoefficients, TickSummary, DerivedRates, DefaultTickInitializer, CoefficientSmoother, ThresholdCrisisDetector, DerivedRateCalculator, PrecarityDeriver, write_tick_state_to_graph, read_tick_state_from_graph (verified 2026-07-08: src/babylon/economics/tick/__init__.py:44-66)
+- [x] T033 Update `src/babylon/economics/__init__.py` to re-export key tick types: TickDynamicsSystem, SimulationTickState, DefaultTickInitializer (verified 2026-07-08: src/babylon/economics/__init__.py:167-178,:267-275)
+- [ ] T034 Run full test suite (`mise run test:all`) and verify no regressions in existing tests from ServiceContainer extension or _DEFAULT_SYSTEMS modification (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T035 Run `mise run typecheck` and resolve any mypy errors across all new and modified files (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T036 Run quickstart.md validation: verify code examples in quickstart.md are consistent with implemented API (ServiceContainer.create() kwargs, TickInitializer constructor, graph access patterns) (unverifiable — ephemeral gate, no durable artifact)
 
 ______________________________________________________________________
 

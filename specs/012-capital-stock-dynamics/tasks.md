@@ -222,8 +222,8 @@ ______________________________________________________________________
 - [X] T079 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/derived_metrics.py
 - [X] T079a [P] Document profit_rate_flow vs profit_rate_stock distinction in derived_metrics.py docstring: flow-based r = s/(c+v) is per-period turnover; stock-based r = s/(K+v) uses accumulated capital per TVT Section 3.6
 - [X] T080 [P] Add type hints and validate with mypy for all new modules
-- [ ] T081 Run quickstart.md examples manually to verify they work
-- [ ] T082 Update ai-docs/state.yaml with new components (CapitalStockCalculator, DerivedTensorMetrics)
+- [ ] T081 Run quickstart.md examples manually to verify they work (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T082 Update ai-docs/state.yaml with new components (CapitalStockCalculator, DerivedTensorMetrics) (left unchecked 2026-07-08: ai-docs/state.yaml has no CapitalStockCalculator/DerivedTensorMetrics entries; git log -S finds no historical update either)
 - [X] T083 Final commit with all changes
 
 ______________________________________________________________________

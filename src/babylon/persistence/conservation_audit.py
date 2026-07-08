@@ -234,6 +234,80 @@ def phi_week_conservation_evaluator(
     return results
 
 
+class PairedCrossBorderEmissionEvaluator:
+    """FR-030c pairing invariant (spec-063): ``COMMUTE_OUT`` ⇒ paired ``TRADE_EDGE``.
+
+    Scans the tick's flushed boundary rows (``context["boundary_rows"]``,
+    the same feed the phi-week evaluator reads — bridge.py builds it at
+    persist-time from ``BoundaryFlowRegister.flush()``). For every
+    ``COMMUTE_OUT`` row with ``dest_kind='external'`` there MUST exist a
+    same-tick ``TRADE_EDGE`` with swapped source/dest and equal magnitude
+    (the wage-repatriation pairing emitted by
+    :meth:`babylon.engine.systems.vol2_circulation.Vol2CirculationStep.step`,
+    FR-030a). Matching is exact-float and one-to-one: the emitter writes the
+    identical ``magnitude`` value into both rows, so any drift means the
+    pairing contract was broken, not rounding.
+
+    **Aggregation disclosure** (deviation from T043's literal "one alarm row
+    per missing pair"): ``conservation_audit_log``'s primary key is
+    ``(session_id, tick, scale, invariant_name)`` (migration 0014) and the
+    ``scale`` CHECK admits only the enumerated internal scales plus
+    ``'external:%'`` (migration 0031). Per-pair rows would collide on the PK
+    whenever one external dest has two missing pairs in a tick, and a
+    ``pair:<hex>-><ext>`` scale would violate the CHECK. The evaluator
+    therefore emits ONE result per external dest with >= 1 missing pair:
+    ``computed_value`` = missing-pair count, ``expected_value`` = 0.0 —
+    residual >= 1.0 > 1e-6 grades ALARM (FR-046), and the count preserves
+    the information a per-pair emission would have carried.
+    """
+
+    _INVARIANT_NAME = "paired_cross_border_emission"
+
+    def __call__(self, _pre_state: Any, _post_state: Any, context: Any) -> list[_InvariantResult]:
+        """Return one missing-pair-count result per affected external dest."""
+        from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+
+        if context is None:
+            return []
+        boundary_rows = context.get("boundary_rows") or []
+
+        # Multiset of available TRADE_EDGE pairings keyed by (ext, hex).
+        available: dict[tuple[str, str], list[float]] = {}
+        for row in boundary_rows:
+            if (
+                row.flow_type is BoundaryEdgeKind.TRADE_EDGE
+                and row.source_kind is NodeKind.EXTERNAL
+                and row.dest_kind is NodeKind.HEX
+            ):
+                available.setdefault((row.source_node_id, row.dest_node_id), []).append(
+                    row.magnitude
+                )
+
+        missing_by_dest: dict[str, int] = {}
+        for row in boundary_rows:
+            if row.flow_type is not BoundaryEdgeKind.COMMUTE_OUT:
+                continue
+            if row.dest_kind is not NodeKind.EXTERNAL:
+                continue
+            key = (row.dest_node_id, row.source_node_id)
+            candidates = available.get(key, [])
+            try:
+                candidates.remove(row.magnitude)  # exact-float, one-to-one
+            except ValueError:
+                missing_by_dest[row.dest_node_id] = missing_by_dest.get(row.dest_node_id, 0) + 1
+
+        # sorted(...) keeps emission order deterministic (Constitution III.7).
+        return [
+            _InvariantResult(
+                scale=f"external:{dest}"[:32],
+                invariant_name=self._INVARIANT_NAME,
+                computed_value=float(count),
+                expected_value=0.0,
+            )
+            for dest, count in sorted(missing_by_dest.items())
+        ]
+
+
 class ConservationAlarmEvent(BaseModel):
     """Event payload emitted when an audit row has severity=alarm.
 
@@ -291,6 +365,7 @@ class ConservationAuditor:
         "equalization_preserves_within_industry_sum_c",
         "distribution_splits_s_into_pirt",
         "imperial_rent_phi_week_distribution",
+        "paired_cross_border_emission",
     )
 
     def __init__(self, *, epsilon: float, rng_seed: int) -> None:
@@ -430,13 +505,14 @@ class ConservationAuditor:
 
     @classmethod
     def default_invariant_names(cls) -> tuple[str, ...]:
-        """Canonical 21-element invariant enumeration per audit_log.yaml."""
+        """Canonical 22-element invariant enumeration per audit_log.yaml."""
         return cls._DEFAULT_INVARIANTS
 
 
 __all__ = [
     "ConservationAuditor",
     "ConservationAlarmEvent",
+    "PairedCrossBorderEmissionEvaluator",
     "compute_determinism_hash",
     "grade_severity",
     "phi_week_conservation_evaluator",

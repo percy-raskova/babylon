@@ -160,14 +160,15 @@ class TestConservationAuditor:
         assert isinstance(alarms[0], ConservationAlarmEvent)
         assert alarms[0].residual == -1.0
 
-    def test_default_invariant_names_enumerate_21(self) -> None:
-        """audit_log.yaml lists 16 aggregation + 5 per-stage invariants."""
+    def test_default_invariant_names_enumerate_22(self) -> None:
+        """audit_log.yaml 16 aggregation + 5 per-stage + spec-063 pairing."""
         names = ConservationAuditor.default_invariant_names()
-        assert len(names) == 21
+        assert len(names) == 22
         # Sanity: a few canonical names appear.
         assert "hex_to_county_sum_c" in names
         assert "global_phi_balance" in names
         assert "production_grows_v_plus_s_by_labor_increment" in names
+        assert "paired_cross_border_emission" in names
 
     def test_all_rows_in_tick_share_determinism_hash(self) -> None:
         def make_evaluator(name: str, computed: float):  # type: ignore[no-untyped-def]

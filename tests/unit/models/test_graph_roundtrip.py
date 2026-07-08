@@ -22,8 +22,17 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import EventType, OperationalProfile, SectorType
-from babylon.models.events import ExtractionEvent, UprisingEvent
+from babylon.models.events import (
+    EVENT_CLASS_MAP,
+    ExtractionEvent,
+    SimulationEvent,
+    UprisingEvent,
+)
 from babylon.models.world_state import WorldState
+
+# EventType members with no TickEvent leaf class (no ``kind`` literal in the
+# discriminated union). Sorted for deterministic parametrize ids.
+NON_UNION_TYPES = sorted(set(EventType) - set(EVENT_CLASS_MAP), key=str)
 
 
 class TestEventsRoundTrip:
@@ -65,6 +74,24 @@ class TestEventsRoundTrip:
         assert restored.events[1].event_type == EventType.UPRISING
         assert restored.events[1].node_id == PERIPHERY_WORKER_ID
         assert restored.events[1].trigger == "spark"
+
+
+class TestNonUnionEventRoundTrip:
+    """Design B: EventType members outside the 19-leaf TickEvent union must
+    replay as bare SimulationEvent instead of crashing (union_tag_invalid)."""
+
+    def test_non_union_type_count_pin(self) -> None:
+        """Sanity-pin: exactly 19 EventType values are union-dispatchable."""
+        assert len(NON_UNION_TYPES) == len(EventType) - 19
+
+    @pytest.mark.parametrize("event_type", NON_UNION_TYPES, ids=str)
+    def test_non_union_event_types_survive_round_trip(self, event_type: EventType) -> None:
+        state = WorldState(tick=0, events=[SimulationEvent(event_type=event_type, tick=0)])
+
+        restored = WorldState.from_graph(state.to_graph(), tick=0)
+
+        assert len(restored.events) == 1
+        assert restored.events[0].event_type is event_type
 
 
 class TestEventLogRoundTrip:

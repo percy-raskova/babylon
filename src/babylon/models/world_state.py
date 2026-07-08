@@ -131,15 +131,31 @@ def _validate_event(data: dict[str, Any]) -> SimulationEvent:
     shim. For events serialized before US2 (lacking the ``kind`` discriminator
     field), inject ``kind`` from ``event_type`` since both fields use identical
     string values across the EventType enum.
+
+    Design B (from_graph safety): only the TickEvent leaf kinds dispatch via
+    the discriminated adapter. Any other EventType replays as a bare
+    :class:`SimulationEvent` with a WARNING naming the unmatched kind —
+    fail-soft + loud instead of ``union_tag_invalid``.
     """
     if "kind" not in data and "event_type" in data:
         et = data["event_type"]
         # Mutate in place: event_type values map 1:1 to kind values
         data = {**data, "kind": et if isinstance(et, str) else et.value}
     if "kind" in data:
-        return TickEventAdapter.validate_python(data)
-    # Fallback: bare SimulationEvent (no kind, no event_type) — preserve
-    # historical behaviour
+        if data["kind"] in EVENT_CLASS_MAP:
+            return TickEventAdapter.validate_python(data)
+        # Only the TickEvent leaf kinds are dispatchable; feeding any other
+        # EventType to the discriminated adapter raises union_tag_invalid
+        # instead of replaying the event. Fall back to bare SimulationEvent —
+        # loud, so the missing leaf class is visible in the logs.
+        logger.warning(
+            "event kind %r has no TickEvent leaf class; replaying as bare "
+            "SimulationEvent (event_type=%r)",
+            data["kind"],
+            data.get("event_type"),
+        )
+    # Fallback: bare SimulationEvent (kind outside the union, or no
+    # discriminator at all) — preserve replay instead of crashing.
     et = data.get("event_type")
     et_str: str | None = None
     if isinstance(et, str):

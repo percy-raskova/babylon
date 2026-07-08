@@ -9,7 +9,9 @@
  * the assertions test real data flow: store → hook → page.
  */
 
+import { http, HttpResponse } from "msw";
 import { useGameStore } from "@/stores/gameStore";
+import { server } from "@/test/server";
 import type { GameSnapshot, OrgState } from "@/types/game";
 
 const WCLF: OrgState = {
@@ -132,9 +134,19 @@ export const SEEDED_SNAPSHOT: GameSnapshot = {
   },
 };
 
-/** Seed the game store with the canonical test snapshot. */
+/** Seed the game store with the canonical test snapshot.
+ *
+ * Also pins MSW's `/state/` endpoint to the seeded snapshot: pages mount
+ * `useGameState`, which fires `fetchState` immediately — without this
+ * override the default handler's `mockState` clobbers the seed mid-test
+ * and previously-found nodes detach (the tick-resolution failures).
+ * `server.resetHandlers()` in the global `afterEach` unpins it per test.
+ */
 export function seedGameStore(snapshot: GameSnapshot = SEEDED_SNAPSHOT): void {
   useGameStore.setState({ snapshot, loading: false, error: null });
+  server.use(
+    http.get("/api/games/:id/state/", () => HttpResponse.json({ status: "ok", data: snapshot })),
+  );
 }
 
 /** Reset the game store between tests. */

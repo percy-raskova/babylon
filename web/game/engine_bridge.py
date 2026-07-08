@@ -792,6 +792,14 @@ class EngineBridge:
             session_id=session_id,
         )
 
+        # P0 #7: project the tick-0 territories into hex_latest so the map
+        # endpoint has features immediately after game creation.
+        _persist_hex_state_safe(
+            session_id,
+            initial_state.tick,
+            [_serialize_territory(t) for t in initial_state.territories.values()],
+        )
+
         logger.info("Created game session=%s scenario=%s seed=%d", session_id, scenario, rng_seed)
         return session_id
 
@@ -830,6 +838,13 @@ class EngineBridge:
                     graph=seeded_state.to_graph(),
                     events=[event.model_dump() for event in seeded_state.events] or None,
                     session_id=session_id,
+                )
+                # P0 #7: backfill hex_latest for legacy/unseeded sessions so
+                # pre-fix games gain a map on first hydrate.
+                _persist_hex_state_safe(
+                    session_id,
+                    seeded_state.tick,
+                    [_serialize_territory(t) for t in seeded_state.territories.values()],
                 )
                 graph = self._persistence.hydrate_graph(tick=tick, session_id=session_id)
 
@@ -2025,6 +2040,9 @@ class EngineBridge:
         # have real history to read back. Best-effort — a journal-write
         # failure must never fail tick resolution.
         _persist_tick_events_safe(self._persistence, session_id, new_state.tick, snapshot["events"])
+        # P0 #7: refresh the hex_latest map cache from this tick's territories
+        # (sibling of the tick_event write above; best-effort, never raises).
+        _persist_hex_state_safe(session_id, new_state.tick, snapshot["territories"])
         # Spec 095 FR-095-02: recognize ALL 5 terminal GameOutcome event types
         # (was 3-of-5 — RED_OGV and FRAGMENTED_COLLAPSE were missing, so those
         # endgames never surfaced in the snapshot's ``endgame`` block). The
@@ -3258,6 +3276,98 @@ def _persist_tick_events_safe(
         persist_fn(session_id, tick, rows)
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
         logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
+
+
+def _hex_state_row(session_id: UUID, tick: int, territory: dict[str, Any]) -> dict[str, Any] | None:
+    """Project one :func:`_serialize_territory` dict onto ``hex_latest`` columns.
+
+    Returns ``None`` for territories without an ``h3_index`` (abstract
+    scenarios such as ``two_node``) — those cannot be drawn on the map.
+
+    Args:
+        session_id: The game session UUID (``hex_latest.game_id``).
+        tick: The tick this row reflects.
+        territory: One entry of ``snapshot["territories"]``.
+
+    Returns:
+        Kwargs dict for the :class:`game.models.HexState` constructor, or None.
+    """
+    import h3
+
+    h3_index = territory.get("h3_index")
+    if not h3_index:
+        return None
+    try:
+        center_lat, center_lng = h3.cell_to_latlng(str(h3_index))
+    except (ValueError, TypeError) as exc:
+        logger.warning("Skipping territory with invalid h3_index %r: %s", h3_index, exc)
+        return None
+    return {
+        "game_id": session_id,
+        "h3_index": str(h3_index),
+        "tick": tick,
+        "county_fips": str(territory.get("county_fips") or ""),
+        "county_name": str(territory.get("name") or h3_index)[:100],
+        "center_lat": float(center_lat),
+        "center_lng": float(center_lng),
+        "heat": float(territory.get("heat") or 0.0),
+        "pop_total": int(territory.get("population") or 0),
+    }
+
+
+def _persist_hex_state_safe(
+    session_id: UUID,
+    tick: int,
+    serialized_territories: list[dict[str, Any]],
+) -> None:
+    """Best-effort projection of a tick's territories into ``hex_latest``.
+
+    P0 #7: :meth:`EngineBridge.get_map_snapshot` reads ``hex_latest`` but the
+    game loop never wrote it, so the map rendered zero features for every
+    real game (only the ``seed_hex_data`` mock-fixture command wrote rows).
+    Mirrors :func:`_persist_tick_events_safe`'s never-raise contract, and
+    :func:`_persist_action_result`'s Django-ORM write path — Django's
+    ``default`` database is the same Postgres the persistence pool points at
+    (see :func:`init_persistence`), so an ORM UPSERT lands in the exact table
+    the map reader queries. Uses ``bulk_create(update_conflicts=True)`` →
+    ``INSERT ... ON CONFLICT (game_id, h3_index) DO UPDATE`` against the
+    composite PK (``postgres_schema.py`` ``hex_latest`` DDL); ``hex_latest``
+    is a latest-tick cache, so each tick overwrites the previous one in place.
+
+    Args:
+        session_id: The game session UUID.
+        tick: The tick these rows reflect.
+        serialized_territories: ``snapshot["territories"]`` (output of
+            :func:`_serialize_territory` per territory).
+    """
+    if not serialized_territories:
+        return
+    rows = [
+        row
+        for t in serialized_territories
+        if (row := _hex_state_row(session_id, tick, t)) is not None
+    ]
+    if not rows:
+        return
+    try:
+        from game.models import HexState
+
+        HexState.objects.bulk_create(
+            [HexState(**row) for row in rows],
+            update_conflicts=True,
+            unique_fields=["game", "h3_index"],
+            update_fields=[
+                "tick",
+                "county_fips",
+                "county_name",
+                "center_lat",
+                "center_lng",
+                "heat",
+                "pop_total",
+            ],
+        )
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.exception("Failed to persist hex_latest rows session=%s tick=%d", session_id, tick)
 
 
 def _game_event_from_tick_event_row(row: dict[str, Any]) -> dict[str, Any]:

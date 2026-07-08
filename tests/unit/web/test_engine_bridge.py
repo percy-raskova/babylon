@@ -575,6 +575,86 @@ class TestTickEventPersistence:
         assert not mock_persistence.persist_tick_events.called
 
 
+# ---------------------------------------------------------------------- #
+# P0 #7: hex_latest projection at create_game / resolve_tick
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestHexStateProjection:
+    """P0 #7: create_game / resolve_tick project territories into hex_latest.
+
+    Without this projection the map endpoint reads an empty table and
+    renders zero features for every real game (only the ``seed_hex_data``
+    mock-fixture command ever wrote rows).
+    """
+
+    _SID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    def _make_session_row(self) -> None:
+        from game.models import GameSession
+
+        GameSession.objects.create(
+            id=self._SID, scenario="default", current_tick=0, status="active"
+        )
+
+    def test_create_game_writes_hex_latest_tick0(self) -> None:
+        from game.models import HexState
+
+        self._make_session_row()
+        bridge = EngineBridge(_make_mock_persistence())
+
+        bridge.create_game(scenario="wayne_county", rng_seed=42)
+
+        assert HexState.objects.filter(game_id=self._SID, tick=0).count() > 0
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_upserts_hex_latest(self, mock_step: MagicMock) -> None:
+        from babylon.models.entities import Territory
+        from babylon.models.enums import SectorType
+        from game.models import HexState
+
+        self._make_session_row()
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+
+        cell = "862a91a17ffffff"  # 15-char lowercase hex, matches Territory pattern
+        territory = Territory(
+            id=cell, h3_index=cell, name="Test Hex", sector_type=SectorType.INDUSTRIAL
+        )
+        mock_new_state = _make_mock_new_state(tick=7)
+        mock_new_state.territories = {cell: territory}
+        mock_step.return_value = mock_new_state
+
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+        bridge.resolve_tick(self._SID)  # second resolve must UPDATE, not duplicate
+
+        rows = HexState.objects.filter(game_id=self._SID)
+        assert rows.count() == 1
+        assert rows.first().tick == 7
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_skips_territories_without_h3(self, mock_step: MagicMock) -> None:
+        """two_node-style territories (h3_index=None) must be skipped, not crash."""
+        from babylon.models.entities import Territory
+        from babylon.models.enums import SectorType
+        from game.models import HexState
+
+        self._make_session_row()
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        territory = Territory(id="T001", name="Abstract", sector_type=SectorType.INDUSTRIAL)
+        mock_new_state = _make_mock_new_state(tick=1)
+        mock_new_state.territories = {"T001": territory}
+        mock_step.return_value = mock_new_state
+
+        EngineBridge(mock_persistence).resolve_tick(self._SID)
+
+        assert HexState.objects.filter(game_id=self._SID).count() == 0
+
+
 @pytest.mark.unit
 class TestJournalDashboard:
     """Spec 092: get_journal_dashboard reads persisted tick_event history."""

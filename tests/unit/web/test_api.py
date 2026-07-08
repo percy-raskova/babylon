@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from django.test import RequestFactory
+from django.test import Client, RequestFactory
 from django.urls import resolve, reverse
 
 
@@ -176,6 +176,66 @@ class TestResponseEnvelope:
 
         response = _error("Not found", http_status=404)
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------- #
+# fix/seed-scenario-loud: scenario validation on POST /api/games/
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestCreateGameScenarioValidation:
+    """fix/seed-scenario-loud: unknown scenario -> 400, never a silent 'us' game."""
+
+    def _login_client(self) -> Client:
+        from django.contrib.auth.models import User
+
+        User.objects.create_user(username="scenuser", password="scenpass123")  # type: ignore[no-untyped-call]
+        client = Client()
+        client.login(username="scenuser", password="scenpass123")
+        return client
+
+    def test_unknown_scenario_returns_400_and_never_reaches_bridge(self) -> None:
+        from unittest.mock import MagicMock
+
+        import game.api
+
+        client = self._login_client()
+        mock_bridge = MagicMock()
+        game.api._bridge_instance = mock_bridge
+
+        response = client.post(
+            "/api/games/",
+            data=json.dumps({"scenario": "atlantis"}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.content)
+        assert data["status"] == "error"
+        assert "Unknown scenario" in data["message"]
+        mock_bridge.create_game.assert_not_called()
+
+    def test_catalog_scenario_key_returns_201(self) -> None:
+        import uuid as uuid_mod
+        from unittest.mock import MagicMock
+
+        import game.api
+
+        client = self._login_client()
+        mock_bridge = MagicMock()
+        mock_bridge.create_game.return_value = uuid_mod.uuid4()
+        game.api._bridge_instance = mock_bridge
+
+        response = client.post(
+            "/api/games/",
+            data=json.dumps({"scenario": "us_nationwide"}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 201
+        mock_bridge.create_game.assert_called_once()
 
 
 # ---------------------------------------------------------------------- #

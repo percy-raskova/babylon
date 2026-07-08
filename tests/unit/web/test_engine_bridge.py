@@ -15,7 +15,12 @@ import networkx as nx
 import pytest
 
 from babylon.engine.graph import BabylonGraph
-from game.engine_bridge import EngineBridge, _build_initial_state_for_scenario, _state_to_snapshot
+from game.engine_bridge import (
+    EngineBridge,
+    _build_initial_state_for_scenario,
+    _state_to_snapshot,
+    resolve_scenario,
+)
 
 
 def _make_mock_persistence() -> MagicMock:
@@ -51,7 +56,7 @@ class TestEngineBridgeCreateGame:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
 
-        result = bridge.create_game(scenario="detroit_1967", rng_seed=42)
+        result = bridge.create_game(scenario="detroit", rng_seed=42)
 
         assert isinstance(result, uuid.UUID)
         assert result == uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
@@ -60,16 +65,16 @@ class TestEngineBridgeCreateGame:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
 
-        bridge.create_game(scenario="test_scenario")
+        bridge.create_game(scenario="two_node")
 
         call_kwargs = mock_persistence.create_session.call_args
-        assert call_kwargs.kwargs["scenario"] == "test_scenario"
+        assert call_kwargs.kwargs["scenario"] == "two_node"
 
     def test_create_game_passes_player_id(self) -> None:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
 
-        bridge.create_game(scenario="test", player_id=7)
+        bridge.create_game(scenario="two_node", player_id=7)
 
         call_kwargs = mock_persistence.create_session.call_args
         assert call_kwargs.kwargs["player_id"] == 7
@@ -79,14 +84,14 @@ class TestEngineBridgeCreateGame:
         bridge = EngineBridge(mock_persistence)
 
         # Valid config should pass
-        bridge.create_game(scenario="test", config={"extraction_efficiency": 0.5})
+        bridge.create_game(scenario="two_node", config={"extraction_efficiency": 0.5})
         assert mock_persistence.create_session.called
 
     def test_create_game_serializes_defines(self) -> None:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
 
-        bridge.create_game(scenario="test", defines={})
+        bridge.create_game(scenario="two_node", defines={})
 
         call_kwargs = mock_persistence.create_session.call_args
         # game_defines_json should be a dict (serialized GameDefines)
@@ -106,17 +111,43 @@ class TestEngineBridgeCreateGame:
         assert isinstance(persisted_graph, BabylonGraph)
         assert len(persisted_graph.nodes) > 0
 
+    def test_create_game_unknown_scenario_raises_before_session_created(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        with pytest.raises(ValueError, match="Unknown scenario"):
+            bridge.create_game(scenario="atlantis", rng_seed=42)
+
+        mock_persistence.create_session.assert_not_called()
+        mock_persistence.persist_tick.assert_not_called()
+
 
 @pytest.mark.unit
 class TestScenarioBootstrap:
     """Verify scenario bootstrap selection for initial game state."""
 
-    def test_unknown_scenario_falls_back_to_default_state(self) -> None:
-        state = _build_initial_state_for_scenario("not-a-real-scenario")
+    def test_unknown_scenario_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Unknown scenario 'not-a-real-scenario'"):
+            _build_initial_state_for_scenario("not-a-real-scenario")
+
+    def test_aliases_resolve_to_canonical_names(self) -> None:
+        assert resolve_scenario("default") == "us"
+        assert resolve_scenario("us_nationwide") == "us"
+        assert resolve_scenario("wayne") == "wayne_county"
+        assert resolve_scenario("detroit") == "wayne_county"
+
+    def test_known_scenario_builds_tick_zero_state(self) -> None:
+        state = _build_initial_state_for_scenario("two_node")
 
         assert state.tick == 0
-        assert len(state.territories) > 0
         assert len(state.entities) > 0
+
+    def test_every_catalog_key_is_seedable(self) -> None:
+        """Guard against SCENARIO_CATALOG/bridge drift (the us_nationwide bug)."""
+        from game.api import SCENARIO_CATALOG
+
+        for entry in SCENARIO_CATALOG:
+            assert resolve_scenario(entry["key"])
 
 
 @pytest.mark.unit

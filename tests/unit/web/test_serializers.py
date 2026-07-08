@@ -18,19 +18,25 @@ class TestCreateGameSerializer:
     """Validate CreateGameSerializer input validation."""
 
     def test_valid_minimal(self) -> None:
-        s = CreateGameSerializer(data={"scenario": "detroit_1967"})
+        s = CreateGameSerializer(data={"scenario": "detroit"})
         assert s.is_valid(), s.errors
 
     def test_valid_full(self) -> None:
         s = CreateGameSerializer(
             data={
-                "scenario": "test",
+                "scenario": "two_node",
                 "config": {"extraction_efficiency": 0.5},
                 "defines": {},
                 "rng_seed": 42,
             }
         )
         assert s.is_valid(), s.errors
+
+    def test_unknown_scenario_rejected(self) -> None:
+        """fix/seed-scenario-loud: names the engine cannot seed fail validation."""
+        s = CreateGameSerializer(data={"scenario": "atlantis"})
+        assert not s.is_valid()
+        assert "Unknown scenario" in str(s.errors["scenario"])
 
     def test_missing_scenario(self) -> None:
         s = CreateGameSerializer(data={})

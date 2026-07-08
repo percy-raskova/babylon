@@ -71,6 +71,10 @@ SOCIAL_CLASS_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
         # are not SocialClass model fields, so they are dropped on reconstruction.
         "contradiction_fields",
         "field_derivatives",
+        # CommunitySystem per-tick threat assessment (community.py
+        # _compute_threat_scores) — transient graph-only attr, not a
+        # SocialClass model field.
+        "threat_score",
     }
 )
 
@@ -87,6 +91,13 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         "adjusted_p_to_d_prime",
         "transmitted_ideology",
         "differential_p_to_d_prime",
+        # Spec-070 FR-043: MetabolismSystem writes sovereign-driven
+        # habitability onto territory nodes; web derives display
+        # habitability from biocapacity — not a Territory model field.
+        "habitability",
+        # DispossessionEventSystem per-tick intensity (armed once the
+        # Phase-2.2 node_type case fix lands) — not a Territory field.
+        "dispossession_intensity",
     }
 )
 

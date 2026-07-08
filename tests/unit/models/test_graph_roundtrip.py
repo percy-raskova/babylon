@@ -554,3 +554,44 @@ class TestWageAccountingAttrsAreTransient:
         entity = restored.entities["C001"]
         assert not hasattr(entity, "w_paid")
         assert not hasattr(entity, "v_produced")
+
+    def test_from_graph_drops_threat_score_attr(self) -> None:
+        # CommunitySystem._compute_threat_scores writes threat_score onto
+        # social_class nodes (community.py); it is NOT a SocialClass field,
+        # so from_graph must drop it rather than raise extra_forbidden.
+        from babylon.engine.factories import create_proletariat
+
+        state = WorldState(tick=0, entities={"C001": create_proletariat(id="C001")})
+        graph = state.to_graph()
+        graph.nodes["C001"]["threat_score"] = 0.7
+
+        restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        assert not hasattr(restored.entities["C001"], "threat_score")
+
+
+class TestTerritoryTransientAttrsAreDropped:
+    """Design B: system-written territory attrs must not break from_graph."""
+
+    def test_from_graph_drops_habitability_and_dispossession_intensity(self) -> None:
+        # MetabolismSystem writes sovereign-driven habitability
+        # (metabolism.py) and DispossessionEventSystem writes
+        # dispossession_intensity (dispossession_events.py) onto territory
+        # nodes; neither is a Territory model field (extra="forbid"), so
+        # from_graph must drop them rather than raise.
+        territory = Territory(
+            id="T001",
+            name="District",
+            sector_type=SectorType.INDUSTRIAL,
+            profile=OperationalProfile.LOW_PROFILE,
+        )
+        state = WorldState(tick=0, territories={"T001": territory})
+        graph = state.to_graph()
+        graph.nodes["T001"]["habitability"] = 0.4
+        graph.nodes["T001"]["dispossession_intensity"] = 0.2
+
+        restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        restored_territory = restored.territories["T001"]
+        assert not hasattr(restored_territory, "habitability")
+        assert not hasattr(restored_territory, "dispossession_intensity")

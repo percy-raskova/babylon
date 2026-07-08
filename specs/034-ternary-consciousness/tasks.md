@@ -21,7 +21,7 @@ ______________________________________________________________________
 
 **Purpose**: Verify existing tests pass before any modifications, establishing the regression baseline
 
-- [ ] T001 Run existing community and bifurcation tests as baseline: `poetry run pytest tests/unit/models/test_community_models.py tests/unit/engine/systems/test_community_system.py tests/unit/formulas/test_community_formulas.py tests/unit/bifurcation/ -v`
+- [ ] T001 Run existing community and bifurcation tests as baseline: `poetry run pytest tests/unit/models/test_community_models.py tests/unit/engine/systems/test_community_system.py tests/unit/formulas/test_community_formulas.py tests/unit/bifurcation/ -v` (unverifiable — ephemeral gate, no durable artifact)
 
 ______________________________________________________________________
 
@@ -35,17 +35,17 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T002 Write unit tests for TernaryConsciousness model in tests/unit/models/test_ternary_consciousness.py: simplex constraint enforcement (r+l+f=1.0 within 1e-6), rejection of invalid coordinates (negative values, sum != 1.0), frozen model immutability, edge cases (all-revolutionary r=1.0, all-liberal l=1.0, all-fascist f=1.0, equal thirds)
-- [ ] T003 [P] Write unit tests for backward-compat computed properties in tests/unit/models/test_ternary_consciousness.py: collective_identity returns r, dominant_tendency returns argmax mapped to ConsciousnessTendency enum, ideological_contestation returns normalized Shannon entropy of (r,l,f), assimilation_ratio returns f/(l+f) with l+f near-zero edge case returning 0.5
-- [ ] T004 [P] Write unit tests for SubstrateFloor model in tests/unit/models/test_ternary_consciousness.py: construction with all ProvenanceLevel values, SYNTHETIC provenance logs warning, frozen model immutability, default field values
+- [x] T002 Write unit tests for TernaryConsciousness model in tests/unit/models/test_ternary_consciousness.py: simplex constraint enforcement (r+l+f=1.0 within 1e-6), rejection of invalid coordinates (negative values, sum != 1.0), frozen model immutability, edge cases (all-revolutionary r=1.0, all-liberal l=1.0, all-fascist f=1.0, equal thirds) (verified 2026-07-08: tests/unit/models/test_ternary_consciousness.py:19)
+- [x] T003 [P] Write unit tests for backward-compat computed properties in tests/unit/models/test_ternary_consciousness.py: collective_identity returns r, dominant_tendency returns argmax mapped to ConsciousnessTendency enum, ideological_contestation returns normalized Shannon entropy of (r,l,f), assimilation_ratio returns f/(l+f) with l+f near-zero edge case returning 0.5 (verified 2026-07-08: tests/unit/models/test_ternary_consciousness.py:102)
+- [x] T004 [P] Write unit tests for SubstrateFloor model in tests/unit/models/test_ternary_consciousness.py: construction with all ProvenanceLevel values, SYNTHETIC provenance logs warning, frozen model immutability, default field values (verified 2026-07-08: tests/unit/models/test_ternary_consciousness.py:329)
 
 ### Implementation for Foundation
 
-- [ ] T005 Create src/babylon/models/entities/consciousness.py with ProvenanceLevel enum (HIGH, MEDIUM, LOW, SYNTHETIC) following existing enum patterns in src/babylon/models/enums.py
-- [ ] T006 Add TernaryConsciousness frozen Pydantic model to src/babylon/models/entities/consciousness.py with Probability fields r, l, f, model_validator enforcing simplex constraint abs(r+l+f-1.0) < 1e-6, and computed properties: collective_identity (returns r), dominant_tendency (argmax to ConsciousnessTendency), ideological_contestation (normalized Shannon entropy), assimilation_ratio (f/(l+f) with near-zero guard)
-- [ ] T007 Add SubstrateFloor frozen Pydantic model to src/babylon/models/entities/consciousness.py with fields: community_type (CommunityType), floor_value (Probability, default 0.0), confidence (ProvenanceLevel, default SYNTHETIC), data_sources (list[str], default []), computation_method (str, default ""). Log warning on construction when confidence is SYNTHETIC
-- [ ] T008 Export TernaryConsciousness, SubstrateFloor, ProvenanceLevel from src/babylon/models/entities/__init__.py and update src/babylon/models/__init__.py __all__ list
-- [ ] T009 Verify all foundational model tests pass: `poetry run pytest tests/unit/models/test_ternary_consciousness.py -v`
+- [x] T005 Create src/babylon/models/entities/consciousness.py with ProvenanceLevel enum (HIGH, MEDIUM, LOW, SYNTHETIC) following existing enum patterns in src/babylon/models/enums.py (verified 2026-07-08: src/babylon/models/entities/consciousness.py:35)
+- [x] T006 Add TernaryConsciousness frozen Pydantic model to src/babylon/models/entities/consciousness.py with Probability fields r, l, f, model_validator enforcing simplex constraint abs(r+l+f-1.0) < 1e-6, and computed properties: collective_identity (returns r), dominant_tendency (argmax to ConsciousnessTendency), ideological_contestation (normalized Shannon entropy), assimilation_ratio (f/(l+f) with near-zero guard) (verified 2026-07-08: src/babylon/models/entities/consciousness.py:51)
+- [x] T007 Add SubstrateFloor frozen Pydantic model to src/babylon/models/entities/consciousness.py with fields: community_type (CommunityType), floor_value (Probability, default 0.0), confidence (ProvenanceLevel, default SYNTHETIC), data_sources (list[str], default []), computation_method (str, default ""). Log warning on construction when confidence is SYNTHETIC (verified 2026-07-08: src/babylon/models/entities/consciousness.py:294)
+- [x] T008 Export TernaryConsciousness, SubstrateFloor, ProvenanceLevel from src/babylon/models/entities/__init__.py and update src/babylon/models/__init__.py __all__ list (verified 2026-07-08: src/babylon/models/entities/consciousness.py:460)
+- [x] T009 Verify all foundational model tests pass: `poetry run pytest tests/unit/models/test_ternary_consciousness.py -v` (verified 2026-07-08: commit 1674d671)
 
 **Checkpoint**: TernaryConsciousness, SubstrateFloor, and ProvenanceLevel models exist and pass all tests. User story implementation can now begin.
 
@@ -61,16 +61,16 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T010 [US3] Write migration verification tests in tests/unit/models/test_ternary_consciousness.py: for each of 14 CONSCIOUSNESS_DEFAULTS entries, verify r equals old collective_identity, argmax(r,l,f) matches old dominant_tendency, Shannon entropy approximates old ideological_contestation within tolerance, and r+l+f=1.0. Use migration table from data-model.md
+- [x] T010 [US3] Write migration verification tests in tests/unit/models/test_ternary_consciousness.py: for each of 14 CONSCIOUSNESS_DEFAULTS entries, verify r equals old collective_identity, argmax(r,l,f) matches old dominant_tendency, Shannon entropy approximates old ideological_contestation within tolerance, and r+l+f=1.0. Use migration table from data-model.md (verified 2026-07-08: tests/unit/models/test_ternary_consciousness.py:188)
 
 ### Implementation for User Story 3
 
-- [ ] T011 [US3] Create ternary CONSCIOUSNESS_DEFAULTS dict in src/babylon/models/entities/community.py mapping all 14 CommunityType values to TernaryConsciousness instances using migration table from data-model.md (r=old_CI, l and f split to preserve dominant_tendency argmax and approximate ideological_contestation entropy)
-- [ ] T012 [US3] Add backward-compatible constructor support so that existing call sites using `CommunityConsciousness(collective_identity=0.5, dominant_tendency=LIBERAL, ideological_contestation=0.3)` continue to work. Strategy: either (a) keep CommunityConsciousness as a factory/alias that maps old kwargs to TernaryConsciousness(r=collective_identity, l/f derived from dominant_tendency + ideological_contestation), or (b) add a `model_validator(mode="before")` on TernaryConsciousness that accepts old-style kwargs. This is required by SC-005 (18+ test sites construct CommunityConsciousness directly)
-- [ ] T012b [US3] Replace CommunityState.consciousness field type from CommunityConsciousness to TernaryConsciousness in src/babylon/models/entities/community.py. Update the consciousness field default factory to use new ternary defaults. Ensure infiltration_resistance computed field still works (reads consciousness.collective_identity which now returns r)
-- [ ] T013 [US3] Update import-time exhaustiveness check in src/babylon/models/entities/community.py (lines 341-343) to validate all 14 CommunityType values have ternary defaults
-- [ ] T014 [US3] Update build_community_hypergraph() in src/babylon/engine/systems/community.py (lines 82-84) to bridge TernaryConsciousness attributes to XGI hyperedge attributes (consciousness_ci from r, consciousness_tendency from dominant_tendency, consciousness_contestation from ideological_contestation)
-- [ ] T015 [US3] Verify ALL existing tests pass unchanged: `poetry run pytest tests/unit/models/test_community_models.py tests/unit/engine/systems/test_community_system.py tests/unit/formulas/test_community_formulas.py tests/unit/bifurcation/ -v` — zero modifications to existing test files. Verified consumers include bifurcation/bridges.py (line 132), bifurcation/analysis.py (lines 156, 179), and bifurcation/consciousness.py (line 99)
+- [x] T011 [US3] Create ternary CONSCIOUSNESS_DEFAULTS dict in src/babylon/models/entities/community.py mapping all 14 CommunityType values to TernaryConsciousness instances using migration table from data-model.md (r=old_CI, l and f split to preserve dominant_tendency argmax and approximate ideological_contestation entropy) (verified 2026-07-08: src/babylon/models/entities/community.py:160)
+- [x] T012 [US3] Add backward-compatible constructor support so that existing call sites using `CommunityConsciousness(collective_identity=0.5, dominant_tendency=LIBERAL, ideological_contestation=0.3)` continue to work. Strategy: either (a) keep CommunityConsciousness as a factory/alias that maps old kwargs to TernaryConsciousness(r=collective_identity, l/f derived from dominant_tendency + ideological_contestation), or (b) add a `model_validator(mode="before")` on TernaryConsciousness that accepts old-style kwargs. This is required by SC-005 (18+ test sites construct CommunityConsciousness directly) (verified 2026-07-08: src/babylon/models/entities/consciousness.py:85; alias :152)
+- [x] T012b [US3] Replace CommunityState.consciousness field type from CommunityConsciousness to TernaryConsciousness in src/babylon/models/entities/community.py. Update the consciousness field default factory to use new ternary defaults. Ensure infiltration_resistance computed field still works (reads consciousness.collective_identity which now returns r) (verified 2026-07-08: src/babylon/models/entities/community.py:303)
+- [x] T013 [US3] Update import-time exhaustiveness check in src/babylon/models/entities/community.py (lines 341-343) to validate all 14 CommunityType values have ternary defaults (verified 2026-07-08: src/babylon/models/entities/community.py:238)
+- [x] T014 [US3] Update build_community_hypergraph() in src/babylon/engine/systems/community.py (lines 82-84) to bridge TernaryConsciousness attributes to XGI hyperedge attributes (consciousness_ci from r, consciousness_tendency from dominant_tendency, consciousness_contestation from ideological_contestation) (verified 2026-07-08: src/babylon/engine/systems/community.py:98)
+- [x] T015 [US3] Verify ALL existing tests pass unchanged: `poetry run pytest tests/unit/models/test_community_models.py tests/unit/engine/systems/test_community_system.py tests/unit/formulas/test_community_formulas.py tests/unit/bifurcation/ -v` — zero modifications to existing test files. Verified consumers include bifurcation/bridges.py (line 132), bifurcation/analysis.py (lines 156, 179), and bifurcation/consciousness.py (line 99) (verified 2026-07-08: commit 0d2719c8)
 
 **Checkpoint**: TernaryConsciousness replaces CommunityConsciousness. All existing consumers work without modification. SC-001 and SC-005 verified.
 
@@ -86,15 +86,15 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T016 [US1] Write tests for compute_ternary_consciousness() in tests/unit/formulas/test_consciousness_computation.py covering all 6 acceptance scenarios: (AS1) community with rev+liberal orgs produces expected r/l/f, (AS2) no-org community returns substrate_floor/liberal default, (AS3) doubling rev org membership increases r proportionally, (AS4) COINTELPRO scenario — destroy all rev orgs, r drops to substrate_floor not zero, (AS5) identical org landscapes with different substrate floors produce r differing by floor differential, (AS6) backward-compat properties derivable from computed coordinates
-- [ ] T017 [P] [US1] Write edge case tests in tests/unit/formulas/test_consciousness_computation.py: single-tendency dominance (pinned near vertex), zero-population community returns (0,1,0) with warning, substrate floor exceeding org computation (floor dominates), organizations spanning multiple communities (weighted by per-community membership)
+- [x] T016 [US1] Write tests for compute_ternary_consciousness() in tests/unit/formulas/test_consciousness_computation.py covering all 6 acceptance scenarios: (AS1) community with rev+liberal orgs produces expected r/l/f, (AS2) no-org community returns substrate_floor/liberal default, (AS3) doubling rev org membership increases r proportionally, (AS4) COINTELPRO scenario — destroy all rev orgs, r drops to substrate_floor not zero, (AS5) identical org landscapes with different substrate floors produce r differing by floor differential, (AS6) backward-compat properties derivable from computed coordinates (verified 2026-07-08: tests/unit/formulas/test_consciousness_computation.py)
+- [x] T017 [P] [US1] Write edge case tests in tests/unit/formulas/test_consciousness_computation.py: single-tendency dominance (pinned near vertex), zero-population community returns (0,1,0) with warning, substrate floor exceeding org computation (floor dominates), organizations spanning multiple communities (weighted by per-community membership) (verified 2026-07-08: tests/unit/formulas/test_consciousness_computation.py)
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Create compute_ternary_consciousness() pure function in src/babylon/formulas/consciousness.py. Inputs: community_type (CommunityType), org_landscape (list of dicts with tendency, membership_density, cadre_level, cohesion), substrate_floor (float). Algorithm per plan.md Phase 3: sum weighted org contributions per tendency (w_i = membership_density_i * cadre_level_i * cohesion_i), unorganized fraction defaults to liberal, apply substrate floor as r minimum, normalize to simplex. Return TernaryConsciousness
-- [ ] T019 [US1] Wire compute_ternary_consciousness() into CommunitySystem.step() in src/babylon/engine/systems/community.py after building hypergraph. For each community hyperedge: query org-community MEMBERSHIP overlaps (reuse pattern from action_costs.py:85-120), build org_landscape list, call computation, update CommunityState with new TernaryConsciousness
-- [ ] T020 [US1] Remove direct consciousness mutation in src/babylon/ooda/layer3.py (lines 89-91, 263-264). Replace collective_identity_delta writes with org landscape mutations. EDUCATE/AGITATE/ORGANIZE actions modify membership and edge types; ternary computation reads these changes automatically
-- [ ] T021 [US1] Verify computation tests pass and existing system tests still pass: `poetry run pytest tests/unit/formulas/test_consciousness_computation.py tests/unit/engine/systems/test_community_system.py -v`
+- [x] T018 [US1] Create compute_ternary_consciousness() pure function in src/babylon/formulas/consciousness.py. Inputs: community_type (CommunityType), org_landscape (list of dicts with tendency, membership_density, cadre_level, cohesion), substrate_floor (float). Algorithm per plan.md Phase 3: sum weighted org contributions per tendency (w_i = membership_density_i * cadre_level_i * cohesion_i), unorganized fraction defaults to liberal, apply substrate floor as r minimum, normalize to simplex. Return TernaryConsciousness (verified 2026-07-08: src/babylon/formulas/consciousness.py:29)
+- [x] T019 [US1] Wire compute_ternary_consciousness() into CommunitySystem.step() in src/babylon/engine/systems/community.py after building hypergraph. For each community hyperedge: query org-community MEMBERSHIP overlaps (reuse pattern from action_costs.py:85-120), build org_landscape list, call computation, update CommunityState with new TernaryConsciousness (verified 2026-07-08: src/babylon/engine/systems/community.py:445; hypergraph :336)
+- [x] T020 [US1] Remove direct consciousness mutation in src/babylon/ooda/layer3.py (lines 89-91, 263-264). Replace collective_identity_delta writes with org landscape mutations. EDUCATE/AGITATE/ORGANIZE actions modify membership and edge types; ternary computation reads these changes automatically (verified 2026-07-08: src/babylon/ooda/layer3.py:46)
+- [x] T021 [US1] Verify computation tests pass and existing system tests still pass: `poetry run pytest tests/unit/formulas/test_consciousness_computation.py tests/unit/engine/systems/test_community_system.py -v` (verified 2026-07-08: commit 4d617bf9)
 
 **Checkpoint**: Consciousness is now a derived quantity computed from organizational landscape each tick. SC-002, SC-003, SC-004, SC-008 verified.
 
@@ -110,13 +110,13 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T022 [US2] Write tests for SUBSTRATE_FLOOR_DEFAULTS and substrate floor computation in tests/unit/models/test_ternary_consciousness.py: all 14 community types have entries, INCARCERATED and NEW_AFRIKAN have highest floors, SETTLER/PATRIARCHAL/YOUTH/ADULT have floor_value=0.0, all entries have non-SYNTHETIC provenance where proxy data exists, provenance metadata includes named data sources
+- [x] T022 [US2] Write tests for SUBSTRATE_FLOOR_DEFAULTS and substrate floor computation in tests/unit/models/test_ternary_consciousness.py: all 14 community types have entries, INCARCERATED and NEW_AFRIKAN have highest floors, SETTLER/PATRIARCHAL/YOUTH/ADULT have floor_value=0.0, all entries have non-SYNTHETIC provenance where proxy data exists, provenance metadata includes named data sources (verified 2026-07-08: tests/unit/models/test_ternary_consciousness.py:434)
 
 ### Implementation for User Story 2
 
-- [ ] T023 [US2] Create SUBSTRATE_FLOOR_DEFAULTS dict in src/babylon/models/entities/consciousness.py mapping all 14 CommunityType values to SubstrateFloor instances with calibrated floor_value (midpoint values from data-model.md: NEW_AFRIKAN=0.12, FIRST_NATIONS=0.12, INCARCERATED=0.18, CHICANO=0.08, WOMEN=0.04, TRANS=0.06, DISABLED=0.03, QUEER=0.04, UNDOCUMENTED=0.10, SETTLER=0.0, PATRIARCHAL=0.0, YOUTH=0.0, ADULT=0.0, ELDER=0.02), confidence level, data_sources list, and computation_method. Use Vera incarceration + Chetty mobility as primary proxies for MVP
-- [ ] T024 [US2] Wire SUBSTRATE_FLOOR_DEFAULTS into compute_ternary_consciousness() in src/babylon/formulas/consciousness.py so that substrate floor is looked up by community_type and applied as minimum r before simplex normalization
-- [ ] T025 [US2] Verify substrate floor tests pass and COINTELPRO scenario confirmed: `poetry run pytest tests/unit/models/test_ternary_consciousness.py tests/unit/formulas/test_consciousness_computation.py -v`
+- [x] T023 [US2] Create SUBSTRATE_FLOOR_DEFAULTS dict in src/babylon/models/entities/consciousness.py mapping all 14 CommunityType values to SubstrateFloor instances with calibrated floor_value (midpoint values from data-model.md: NEW_AFRIKAN=0.12, FIRST_NATIONS=0.12, INCARCERATED=0.18, CHICANO=0.08, WOMEN=0.04, TRANS=0.06, DISABLED=0.03, QUEER=0.04, UNDOCUMENTED=0.10, SETTLER=0.0, PATRIARCHAL=0.0, YOUTH=0.0, ADULT=0.0, ELDER=0.02), confidence level, data_sources list, and computation_method. Use Vera incarceration + Chetty mobility as primary proxies for MVP (verified 2026-07-08: src/babylon/models/entities/consciousness.py:356)
+- [x] T024 [US2] Wire SUBSTRATE_FLOOR_DEFAULTS into compute_ternary_consciousness() in src/babylon/formulas/consciousness.py so that substrate floor is looked up by community_type and applied as minimum r before simplex normalization (verified 2026-07-08: src/babylon/formulas/consciousness.py:89; community lookup src/babylon/engine/systems/community.py:443)
+- [x] T025 [US2] Verify substrate floor tests pass and COINTELPRO scenario confirmed: `poetry run pytest tests/unit/models/test_ternary_consciousness.py tests/unit/formulas/test_consciousness_computation.py -v` (verified 2026-07-08: commit 14b86abf)
 
 **Checkpoint**: Substrate floors are empirically grounded with provenance metadata. SC-004, SC-007 verified.
 
@@ -132,13 +132,13 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T026 [US5] Write tests for assimilation trap detection in tests/unit/bifurcation/test_assimilation_trap.py: (AS1) high solidarity + high r → revolutionary outcome, (AS2) high solidarity + low r → fascist outcome (assimilation trap), (AS3) existing consciousness_weighted_solidarity produces identical results for same effective r values, (AS5) high assimilation_ratio + low r identified as fascist-vulnerable
+- [x] T026 [US5] Write tests for assimilation trap detection in tests/unit/bifurcation/test_assimilation_trap.py: (AS1) high solidarity + high r → revolutionary outcome, (AS2) high solidarity + low r → fascist outcome (assimilation trap), (AS3) existing consciousness_weighted_solidarity produces identical results for same effective r values, (AS5) high assimilation_ratio + low r identified as fascist-vulnerable (verified 2026-07-08: tests/unit/bifurcation/test_assimilation_trap.py)
 
 ### Implementation for User Story 5
 
-- [ ] T027 [US5] Add crisis-fragile marker logic to consciousness_weighted_solidarity in src/babylon/bifurcation/consciousness.py: solidarity edges between communities where both endpoints have r < 0.3 are marked crisis-fragile regardless of edge density. The 0.3 threshold corresponds to the sigmoid midpoint from spec 033's consciousness_weighted_solidarity formula. The marker is a boolean attribute on the edge weight computation
-- [ ] T028 [US5] Add assimilation_ratio consumption to BifurcationResult in src/babylon/bifurcation/consciousness.py: include mean_assimilation_ratio in results, flag communities with high assimilation_ratio + low r as fascist-vulnerable in the dominant_tendency_distribution
-- [ ] T029 [US5] Verify all bifurcation tests pass including new assimilation trap tests: `poetry run pytest tests/unit/bifurcation/ -v`
+- [x] T027 [US5] Add crisis-fragile marker logic to consciousness_weighted_solidarity in src/babylon/bifurcation/consciousness.py: solidarity edges between communities where both endpoints have r < 0.3 are marked crisis-fragile regardless of edge density. The 0.3 threshold corresponds to the sigmoid midpoint from spec 033's consciousness_weighted_solidarity formula. The marker is a boolean attribute on the edge weight computation (verified 2026-07-08: src/babylon/bifurcation/consciousness.py:163)
+- [x] T028 [US5] Add assimilation_ratio consumption to BifurcationResult in src/babylon/bifurcation/consciousness.py: include mean_assimilation_ratio in results, flag communities with high assimilation_ratio + low r as fascist-vulnerable in the dominant_tendency_distribution (verified 2026-07-08: src/babylon/bifurcation/types.py:160; computed src/babylon/bifurcation/analysis.py:497)
+- [x] T029 [US5] Verify all bifurcation tests pass including new assimilation trap tests: `poetry run pytest tests/unit/bifurcation/ -v` (verified 2026-07-08: commit a86fe6e4)
 
 **Checkpoint**: Bifurcation analysis distinguishes revolutionary from fascist outcomes based on r values. SC-006 verified.
 
@@ -150,17 +150,17 @@ ______________________________________________________________________
 
 ### Persistence Migration
 
-- [ ] T030 [P] Add r, l, f FLOAT columns to community_state table DDL in src/babylon/persistence/postgres_schema.py (lines 149-151). Keep old columns (collective_identity, dominant_tendency, ideological_contestation) as computed/derived for backward-compat window
-- [ ] T031 [P] Update INSERT/UPDATE/SELECT statements in src/babylon/persistence/postgres_runtime.py (lines 317-331) to read/write r, l, f columns. Reconstruct TernaryConsciousness from stored r, l, f on read. Derive old columns from TernaryConsciousness on write
+- [x] T030 [P] Add r, l, f FLOAT columns to community_state table DDL in src/babylon/persistence/postgres_schema.py (lines 149-151). Keep old columns (collective_identity, dominant_tendency, ideological_contestation) as computed/derived for backward-compat window (verified 2026-07-08: src/babylon/persistence/migrations/0020_dynamic_consciousness_state.sql:32 (persistence landed as migration 0020 ideology_r/l/f))
+- [x] T031 [P] Update INSERT/UPDATE/SELECT statements in src/babylon/persistence/postgres_runtime.py (lines 317-331) to read/write r, l, f columns. Reconstruct TernaryConsciousness from stored r, l, f on read. Derive old columns from TernaryConsciousness on write (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_spec_062.py:94)
 
 ### Observation Gap Anisotropy (FR-009)
 
-- [ ] T032 Create anisotropic observation error model in src/babylon/bifurcation/consciousness.py: higher observation error on r component than on l/f ratio for state intelligence estimates. Export as a standalone function that takes TernaryConsciousness and returns observed TernaryConsciousness with anisotropic noise applied. Note: full integration with AttentionThread is deferred to org-topology Phase 3 (AttentionThread does not yet exist); this task implements the error model function only
+- [x] T032 Create anisotropic observation error model in src/babylon/bifurcation/consciousness.py: higher observation error on r component than on l/f ratio for state intelligence estimates. Export as a standalone function that takes TernaryConsciousness and returns observed TernaryConsciousness with anisotropic noise applied. Note: full integration with AttentionThread is deferred to org-topology Phase 3 (AttentionThread does not yet exist); this task implements the error model function only (verified 2026-07-08: src/babylon/bifurcation/consciousness.py:176)
 
 ### Final Verification
 
-- [ ] T033 Run full test suite: `mise run check` (lint + format + typecheck + test:unit). All must pass
-- [ ] T034 Verify all 8 success criteria from spec.md are met: SC-001 (migration correctness), SC-002 (substrate persistence), SC-003 (proportional increase), SC-004 (floor differential), SC-005 (backward compat), SC-006 (assimilation trap), SC-007 (empirical grounding), SC-008 (simplex stability over 100 ticks)
+- [ ] T033 Run full test suite: `mise run check` (lint + format + typecheck + test:unit). All must pass (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T034 Verify all 8 success criteria from spec.md are met: SC-001 (migration correctness), SC-002 (substrate persistence), SC-003 (proportional increase), SC-004 (floor differential), SC-005 (backward compat), SC-006 (assimilation trap), SC-007 (empirical grounding), SC-008 (simplex stability over 100 ticks) (unverifiable — ephemeral gate, no durable artifact)
 
 ______________________________________________________________________
 

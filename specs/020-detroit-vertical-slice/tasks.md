@@ -115,9 +115,9 @@ ______________________________________________________________________
 
 **Purpose**: Integration testing, CI verification, backward compatibility
 
-- [ ] T017 Write end-to-end integration test: from_sqlite() with years → multi-year run (468 ticks) → get_time_series() → verify record count, field presence, value variation across years in tests/integration/economics/test_detroit_wiring.py (new file)
-- [ ] T018 Run full CI gate (mise run check) and verify zero test regressions — all existing unit tests must still pass
-- [ ] T019 Verify quickstart.md scenarios execute successfully: single-year wired simulation, multi-year Detroit time series, time series extraction
+- [~] T017 Write end-to-end integration test: from_sqlite() with years → multi-year run (468 ticks) → get_time_series() → verify record count, field presence, value variation across years in tests/integration/economics/test_detroit_wiring.py (new file) (partial 2026-07-08: tests/integration/economics/test_detroit_wiring.py exists covering from_sqlite wiring + get_time_series, but runs 52-tick arcs (:82,:106,:129), not the specified 468-tick multi-year run)
+- [ ] T018 Run full CI gate (mise run check) and verify zero test regressions — all existing unit tests must still pass (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T019 Verify quickstart.md scenarios execute successfully: single-year wired simulation, multi-year Detroit time series, time series extraction (unverifiable — ephemeral gate, no durable artifact)
 
 ______________________________________________________________________
 

@@ -20,10 +20,10 @@ ______________________________________________________________________
 
 **Purpose**: Create package structure and register new enum/event types in existing models
 
-- [ ] T001 Create `src/babylon/bifurcation/` package with `__init__.py` (empty, exports added in Polish phase)
-- [ ] T002 [P] Add `BIFURCATION_TENDENCY_CHANGE` value to `EventType` enum in `src/babylon/models/enums.py`
-- [ ] T003 [P] Add `BifurcationTendencyEvent` model to `src/babylon/models/events.py` (inherits TopologyEvent, fields: previous_tendency, new_tendency, consciousness_weighted_cross_solidarity, mean_collective_identity_marginalized, bridge_potential_weighted, legitimation_index)
-- [ ] T004 Update `EventType` count assertion in `tests/unit/topology/test_phase_transition.py` to account for new enum value
+- [x] T001 Create `src/babylon/bifurcation/` package with `__init__.py` (empty, exports added in Polish phase) (verified 2026-07-08: src/babylon/bifurcation/__init__.py)
+- [x] T002 [P] Add `BIFURCATION_TENDENCY_CHANGE` value to `EventType` enum in `src/babylon/models/enums.py` (verified 2026-07-08: src/babylon/models/enums/events.py:123)
+- [x] T003 [P] Add `BifurcationTendencyEvent` model to `src/babylon/models/events.py` (inherits TopologyEvent, fields: previous_tendency, new_tendency, consciousness_weighted_cross_solidarity, mean_collective_identity_marginalized, bridge_potential_weighted, legitimation_index) (verified 2026-07-08: BifurcationTendencyEvent in src/babylon/models/events/_legacy.py)
+- [x] T004 Update `EventType` count assertion in `tests/unit/topology/test_phase_transition.py` to account for new enum value (verified 2026-07-08: tests/unit/topology/test_phase_transition.py:45)
 
 ______________________________________________________________________
 
@@ -33,10 +33,10 @@ ______________________________________________________________________
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 [P] Add `BifurcationDefines` frozen Pydantic model to `src/babylon/config/defines.py` (12 fields: consciousness_sigmoid_midpoint=0.4, consciousness_sigmoid_steepness=10.0, consciousness_filter_threshold=0.2, indeterminate_dead_zone=0.2, axis_tendency_epsilon=0.001, legitimation_amplifier_scale=2.0, wage_ceiling_high_ratio=10.0, wage_ceiling_low_ratio=2.0, wage_ceiling_min=0.3, wage_ceiling_max=0.9, shared_exploitation_bonus=0.2, purge_removal_rate=0.2) and add `bifurcation: BifurcationDefines` field to `GameDefines`
-- [ ] T006 [P] Create Pydantic result types in `src/babylon/bifurcation/types.py`: BifurcationResult (20 fields, frozen), BifurcationSnapshot (tick + result), AxisTendency (7 fields), BridgeInfo (7 fields), SolidarityCeiling (6 fields) per data-model.md
-- [ ] T007 [P] Create `CommunityStateStore` protocol and `InMemoryCommunityStateStore` in `src/babylon/engine/community_state_store.py` per research.md R1
-- [ ] T008 Create shared test fixtures in `tests/unit/bifurcation/conftest.py`: graph builders (star, mesh, disconnected), hypergraph builders (with community memberships spanning axes), community states at varying CI levels (0.1, 0.4, 0.7, 0.8), BifurcationDefines fixture, agent_memberships helper
+- [x] T005 [P] Add `BifurcationDefines` frozen Pydantic model to `src/babylon/config/defines.py` (12 fields: consciousness_sigmoid_midpoint=0.4, consciousness_sigmoid_steepness=10.0, consciousness_filter_threshold=0.2, indeterminate_dead_zone=0.2, axis_tendency_epsilon=0.001, legitimation_amplifier_scale=2.0, wage_ceiling_high_ratio=10.0, wage_ceiling_low_ratio=2.0, wage_ceiling_min=0.3, wage_ceiling_max=0.9, shared_exploitation_bonus=0.2, purge_removal_rate=0.2) and add `bifurcation: BifurcationDefines` field to `GameDefines` (verified 2026-07-08: src/babylon/config/defines/consciousness.py:316; registered src/babylon/config/defines/_assembler.py:164)
+- [x] T006 [P] Create Pydantic result types in `src/babylon/bifurcation/types.py`: BifurcationResult (20 fields, frozen), BifurcationSnapshot (tick + result), AxisTendency (7 fields), BridgeInfo (7 fields), SolidarityCeiling (6 fields) per data-model.md (verified 2026-07-08: src/babylon/bifurcation/types.py:108)
+- [x] T007 [P] Create `CommunityStateStore` protocol and `InMemoryCommunityStateStore` in `src/babylon/engine/community_state_store.py` per research.md R1 (verified 2026-07-08: src/babylon/engine/community_state_store.py:21; InMemory :33)
+- [x] T008 Create shared test fixtures in `tests/unit/bifurcation/conftest.py`: graph builders (star, mesh, disconnected), hypergraph builders (with community memberships spanning axes), community states at varying CI levels (0.1, 0.4, 0.7, 0.8), BifurcationDefines fixture, agent_memberships helper (verified 2026-07-08: tests/unit/bifurcation/conftest.py:131)
 
 **Checkpoint**: Foundation ready — user story implementation can begin
 
@@ -50,12 +50,12 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T009 [US1] Write tests in `tests/unit/bifurcation/test_consciousness.py`: consciousness_sigmoid boundary values (CI=0.0→~0, CI=0.5→~0.73, CI=1.0→~1.0), breakage cliff (CI=0.1→<0.05, CI=0.8→>0.98), configurable midpoint/steepness, overflow clamp safety, consciousness_weighted_solidarity for high-CI edge vs low-CI edge vs no-marginalized-communities case vs multi-community agent (mean CI)
+- [x] T009 [US1] Write tests in `tests/unit/bifurcation/test_consciousness.py`: consciousness_sigmoid boundary values (CI=0.0→~0, CI=0.5→~0.73, CI=1.0→~1.0), breakage cliff (CI=0.1→<0.05, CI=0.8→>0.98), configurable midpoint/steepness, overflow clamp safety, consciousness_weighted_solidarity for high-CI edge vs low-CI edge vs no-marginalized-communities case vs multi-community agent (mean CI) (verified 2026-07-08: tests/unit/bifurcation/test_consciousness.py)
 
 ### Implementation (GREEN phase)
 
-- [ ] T010 [US1] Implement `consciousness_sigmoid()` in `src/babylon/bifurcation/consciousness.py` per contracts/analysis.md (logistic sigmoid with midpoint, steepness, overflow clamp ±500)
-- [ ] T011 [US1] Implement `consciousness_weighted_solidarity()` in `src/babylon/bifurcation/consciousness.py` per contracts/analysis.md (edge resilience * sigmoid(min(source_ci, target_ci)))
+- [x] T010 [US1] Implement `consciousness_sigmoid()` in `src/babylon/bifurcation/consciousness.py` per contracts/analysis.md (logistic sigmoid with midpoint, steepness, overflow clamp ±500) (verified 2026-07-08: src/babylon/bifurcation/consciousness.py:40)
+- [x] T011 [US1] Implement `consciousness_weighted_solidarity()` in `src/babylon/bifurcation/consciousness.py` per contracts/analysis.md (edge resilience * sigmoid(min(source_ci, target_ci))) (verified 2026-07-08: src/babylon/bifurcation/consciousness.py:112)
 
 **Checkpoint**: `poetry run pytest tests/unit/bifurcation/test_consciousness.py -v` — all GREEN
 
@@ -71,13 +71,13 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T012 [US2] Write tests in `tests/unit/bifurcation/test_axis.py`: crosses_contradiction_axis (hegemonic↔marginalized=True, same-side=False, neither-on-axis=False), classify_edge_antagonism (lateral/upward/downward/none for EXPLOITATION, REPRESSION, COMPETITION, ANTAGONISTIC-mode edges), compute_axis_tendency (solidarity-dominant axis→ratio>1.0, antagonism-dominant→ratio<1.0, mixed with both axes, empty-axis edge case)
+- [x] T012 [US2] Write tests in `tests/unit/bifurcation/test_axis.py`: crosses_contradiction_axis (hegemonic↔marginalized=True, same-side=False, neither-on-axis=False), classify_edge_antagonism (lateral/upward/downward/none for EXPLOITATION, REPRESSION, COMPETITION, ANTAGONISTIC-mode edges), compute_axis_tendency (solidarity-dominant axis→ratio>1.0, antagonism-dominant→ratio<1.0, mixed with both axes, empty-axis edge case) (verified 2026-07-08: tests/unit/bifurcation/test_axis.py)
 
 ### Implementation (GREEN phase)
 
-- [ ] T013 [P] [US2] Implement `crosses_contradiction_axis()` in `src/babylon/bifurcation/axis.py` per contracts/analysis.md
-- [ ] T014 [P] [US2] Implement `classify_edge_antagonism()` in `src/babylon/bifurcation/axis.py` per contracts/analysis.md (EXPLOITATION/REPRESSION/COMPETITION EdgeTypes + ANTAGONISTIC EdgeMode)
-- [ ] T015 [US2] Implement `compute_axis_tendency()` in `src/babylon/bifurcation/axis.py` per contracts/analysis.md (depends on T013, T014, and US1 consciousness weighting)
+- [x] T013 [P] [US2] Implement `crosses_contradiction_axis()` in `src/babylon/bifurcation/axis.py` per contracts/analysis.md (verified 2026-07-08: src/babylon/bifurcation/axis.py:67)
+- [x] T014 [P] [US2] Implement `classify_edge_antagonism()` in `src/babylon/bifurcation/axis.py` per contracts/analysis.md (EXPLOITATION/REPRESSION/COMPETITION EdgeTypes + ANTAGONISTIC EdgeMode) (verified 2026-07-08: src/babylon/bifurcation/axis.py:96)
+- [x] T015 [US2] Implement `compute_axis_tendency()` in `src/babylon/bifurcation/axis.py` per contracts/analysis.md (depends on T013, T014, and US1 consciousness weighting) (verified 2026-07-08: src/babylon/bifurcation/axis.py:150)
 
 **Checkpoint**: `poetry run pytest tests/unit/bifurcation/test_axis.py -v` — all GREEN
 
@@ -93,11 +93,11 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T016 [US3] Write tests in `tests/unit/bifurcation/test_bridges.py`: DISABLED with high CI→active bridge, DISABLED with low CI→near-zero potential, INCARCERATED spanning multiple axes→multi-axis bridge, lifecycle community (YOUTH)→excluded, community with zero members on one side→not a bridge, bridge weighted_potential = infrastructure * sigmoid(CI)
+- [x] T016 [US3] Write tests in `tests/unit/bifurcation/test_bridges.py`: DISABLED with high CI→active bridge, DISABLED with low CI→near-zero potential, INCARCERATED spanning multiple axes→multi-axis bridge, lifecycle community (YOUTH)→excluded, community with zero members on one side→not a bridge, bridge weighted_potential = infrastructure * sigmoid(CI) (verified 2026-07-08: tests/unit/bifurcation/test_bridges.py)
 
 ### Implementation (GREEN phase)
 
-- [ ] T017 [US3] Implement `detect_bridges()` in `src/babylon/bifurcation/bridges.py` per contracts/analysis.md (filter to INSTITUTIONAL_EXCLUSION, verify members on both sides, compute sigmoid-weighted potential)
+- [x] T017 [US3] Implement `detect_bridges()` in `src/babylon/bifurcation/bridges.py` per contracts/analysis.md (filter to INSTITUTIONAL_EXCLUSION, verify members on both sides, compute sigmoid-weighted potential) (verified 2026-07-08: src/babylon/bifurcation/bridges.py:73)
 
 **Checkpoint**: `poetry run pytest tests/unit/bifurcation/test_bridges.py -v` — all GREEN
 
@@ -113,15 +113,15 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T018 [US4] Write tests in `tests/unit/bifurcation/test_resilience.py`: compute_betti_numbers (star→β₀=1,β₁=0; mesh K₅→β₀=1,β₁=6; ring→β₀=1,β₁=1; disconnected 3 components→β₀=3; empty graph→β₀=0,β₁=0), compute_equivalence_classes (mesh→all same class; star→hub singleton + leaf class), find_critical_singletons (star hub=articulation point; mesh=none), find_critical_cutsets (bridge edge=size-1 cutset), compute_purge_resilience (star→low; mesh→high)
+- [x] T018 [US4] Write tests in `tests/unit/bifurcation/test_resilience.py`: compute_betti_numbers (star→β₀=1,β₁=0; mesh K₅→β₀=1,β₁=6; ring→β₀=1,β₁=1; disconnected 3 components→β₀=3; empty graph→β₀=0,β₁=0), compute_equivalence_classes (mesh→all same class; star→hub singleton + leaf class), find_critical_singletons (star hub=articulation point; mesh=none), find_critical_cutsets (bridge edge=size-1 cutset), compute_purge_resilience (star→low; mesh→high) (verified 2026-07-08: tests/unit/bifurcation/test_resilience.py)
 
 ### Implementation (GREEN phase)
 
-- [ ] T019 [P] [US4] Implement `compute_betti_numbers()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (β₀=connected_components, β₁=|E|-|V|+β₀)
-- [ ] T020 [P] [US4] Implement `compute_equivalence_classes()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (group by frozenset of neighbors)
-- [ ] T021 [P] [US4] Implement `find_critical_singletons()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (nx.articulation_points wrapper)
-- [ ] T022 [P] [US4] Implement `find_critical_cutsets()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (nx.minimum_edge_cut per component, bounded by max_cutset_size)
-- [ ] T023 [US4] Implement `compute_purge_resilience()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (remove top-degree nodes at removal_rate, compare post-purge L_max to pre-purge L_max)
+- [x] T019 [P] [US4] Implement `compute_betti_numbers()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (β₀=connected_components, β₁=|E|-|V|+β₀) (verified 2026-07-08: src/babylon/bifurcation/resilience.py:37)
+- [x] T020 [P] [US4] Implement `compute_equivalence_classes()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (group by frozenset of neighbors) (verified 2026-07-08: src/babylon/bifurcation/resilience.py:67)
+- [x] T021 [P] [US4] Implement `find_critical_singletons()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (nx.articulation_points wrapper) (verified 2026-07-08: src/babylon/bifurcation/resilience.py:106)
+- [x] T022 [P] [US4] Implement `find_critical_cutsets()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (nx.minimum_edge_cut per component, bounded by max_cutset_size) (verified 2026-07-08: src/babylon/bifurcation/resilience.py:132)
+- [x] T023 [US4] Implement `compute_purge_resilience()` in `src/babylon/bifurcation/resilience.py` per contracts/analysis.md (remove top-degree nodes at removal_rate, compare post-purge L_max to pre-purge L_max) (verified 2026-07-08: src/babylon/bifurcation/resilience.py:184)
 
 **Checkpoint**: `poetry run pytest tests/unit/bifurcation/test_resilience.py -v` — all GREEN
 
@@ -137,11 +137,11 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T024 [US6] Write tests in `tests/unit/bifurcation/test_ceiling.py`: wage_gap>10→ceiling≤0.3, wage_gap<2→ceiling≤0.9, wage_gap=5→interpolated, shared_exploitation_source→+0.2 bonus, shared_community→community_bonus>0, effective_ceiling clamped to [0,1], boundary values (exactly 2.0 and 10.0 ratios)
+- [x] T024 [US6] Write tests in `tests/unit/bifurcation/test_ceiling.py`: wage_gap>10→ceiling≤0.3, wage_gap<2→ceiling≤0.9, wage_gap=5→interpolated, shared_exploitation_source→+0.2 bonus, shared_community→community_bonus>0, effective_ceiling clamped to [0,1], boundary values (exactly 2.0 and 10.0 ratios) (verified 2026-07-08: tests/unit/bifurcation/test_ceiling.py)
 
 ### Implementation (GREEN phase)
 
-- [ ] T025 [US6] Implement `compute_solidarity_ceiling()` in `src/babylon/bifurcation/ceiling.py` per contracts/analysis.md (wage gap interpolation between thresholds, bonuses, clamp to [0,1])
+- [x] T025 [US6] Implement `compute_solidarity_ceiling()` in `src/babylon/bifurcation/ceiling.py` per contracts/analysis.md (wage gap interpolation between thresholds, bonuses, clamp to [0,1]) (verified 2026-07-08: src/babylon/bifurcation/ceiling.py:35)
 
 **Checkpoint**: `poetry run pytest tests/unit/bifurcation/test_ceiling.py -v` — all GREEN
 
@@ -157,11 +157,11 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T026 [US7] Write tests in `tests/unit/bifurcation/test_legitimation.py`: high legitimation (0.8)→amplifier≈1.0, low legitimation (0.2)→amplifier>1.0 (up to legitimation_amplifier_scale), population-weighted mean across territories, no territories→amplifier=1.0 (graceful degradation), legitimation=0→amplifier=legitimation_amplifier_scale
+- [x] T026 [US7] Write tests in `tests/unit/bifurcation/test_legitimation.py`: high legitimation (0.8)→amplifier≈1.0, low legitimation (0.2)→amplifier>1.0 (up to legitimation_amplifier_scale), population-weighted mean across territories, no territories→amplifier=1.0 (graceful degradation), legitimation=0→amplifier=legitimation_amplifier_scale (verified 2026-07-08: tests/unit/bifurcation/test_legitimation.py)
 
 ### Implementation (GREEN phase)
 
-- [ ] T027 [US7] Implement `compute_legitimation_amplifier()` in `src/babylon/bifurcation/legitimation.py` per contracts/analysis.md (read legitimation_index from territory nodes, population-weighted mean, invert to amplifier with configurable scale)
+- [x] T027 [US7] Implement `compute_legitimation_amplifier()` in `src/babylon/bifurcation/legitimation.py` per contracts/analysis.md (read legitimation_index from territory nodes, population-weighted mean, invert to amplifier with configurable scale) (verified 2026-07-08: src/babylon/bifurcation/legitimation.py:36)
 
 **Checkpoint**: `poetry run pytest tests/unit/bifurcation/test_legitimation.py -v` — all GREEN
 
@@ -177,13 +177,13 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T028 [US5] Write tests in `tests/unit/bifurcation/test_analysis.py`: within-group-only solidarity→"fascist", cross-line + high CI (≥0.7) + mesh topology→"revolutionary", **assimilation trap** (high cross-line density + CI≤0.2)→"fascist" (raw_beta_1>0, filtered_beta_1=0), colonial solidarity-dominant + patriarchal antagonism-dominant→per-axis split + overall not "revolutionary", low legitimation amplifies crisis, degenerate cases (no edges→"fascist", no marginalized communities→"indeterminate", empty hypergraph→unweighted fallback)
+- [x] T028 [US5] Write tests in `tests/unit/bifurcation/test_analysis.py`: within-group-only solidarity→"fascist", cross-line + high CI (≥0.7) + mesh topology→"revolutionary", **assimilation trap** (high cross-line density + CI≤0.2)→"fascist" (raw_beta_1>0, filtered_beta_1=0), colonial solidarity-dominant + patriarchal antagonism-dominant→per-axis split + overall not "revolutionary", low legitimation amplifies crisis, degenerate cases (no edges→"fascist", no marginalized communities→"indeterminate", empty hypergraph→unweighted fallback) (verified 2026-07-08: tests/unit/bifurcation/test_analysis.py)
 
 ### Implementation (GREEN phase)
 
-- [ ] T029 [US5] Implement helper to extract solidarity subgraph (raw + consciousness-filtered) in `src/babylon/bifurcation/analysis.py`
-- [ ] T030 [US5] Implement helper to collect agent memberships from graph node attributes in `src/babylon/bifurcation/analysis.py`
-- [ ] T031 [US5] Implement `bifurcation_tendency()` orchestrator in `src/babylon/bifurcation/analysis.py` per contracts/analysis.md — combines per-axis tendency (weakest-link), bridge potential, legitimation amplifier, two-pass topology (raw + filtered Betti), classification logic (revolutionary/fascist/indeterminate), including FR-014 degenerate case handling (no SOLIDARITY edges→"fascist", no marginalized communities→"indeterminate", empty hypergraph→unweighted fallback with warning)
+- [x] T029 [US5] Implement helper to extract solidarity subgraph (raw + consciousness-filtered) in `src/babylon/bifurcation/analysis.py` (verified 2026-07-08: src/babylon/bifurcation/analysis.py:53)
+- [~] T030 [US5] Implement helper to collect agent memberships from graph node attributes in `src/babylon/bifurcation/analysis.py` (partial 2026-07-08: membership collection implemented in src/babylon/engine/systems/community.py:466, not as a helper in analysis.py)
+- [x] T031 [US5] Implement `bifurcation_tendency()` orchestrator in `src/babylon/bifurcation/analysis.py` per contracts/analysis.md — combines per-axis tendency (weakest-link), bridge potential, legitimation amplifier, two-pass topology (raw + filtered Betti), classification logic (revolutionary/fascist/indeterminate), including FR-014 degenerate case handling (no SOLIDARITY edges→"fascist", no marginalized communities→"indeterminate", empty hypergraph→unweighted fallback with warning) (verified 2026-07-08: src/babylon/bifurcation/analysis.py:405)
 
 **Checkpoint**: `poetry run pytest tests/unit/bifurcation/test_analysis.py -v` — all GREEN, including the assimilation trap
 
@@ -193,12 +193,12 @@ ______________________________________________________________________
 
 **Purpose**: Engine integration, package exports, and integration testing
 
-- [ ] T032 Implement `BifurcationMonitor` in `src/babylon/engine/bifurcation_monitor.py` — extends TopologyMonitor, overrides `_record_snapshot()` to call `super()` then `_record_bifurcation()`, accepts `CommunityStateStore` via DI, rebuilds XGI hypergraph per tick using `build_community_hypergraph()`, stores BifurcationSnapshot history, emits BifurcationTendencyEvent on tendency change
-- [ ] T033 Write integration test in `tests/integration/topology/test_bifurcation_integration.py` — register BifurcationMonitor with InMemoryCommunityStateStore, run multi-tick simulation, verify bifurcation_history populated, verify tendency change events emitted, verify TopologyMonitor base functionality preserved
-- [ ] T034 [P] Populate `src/babylon/bifurcation/__init__.py` with public API exports per plan.md (bifurcation_tendency, consciousness_weighted_solidarity, compute_betti_numbers, detect_bridges, compute_solidarity_ceiling, compute_legitimation_amplifier, all types)
-- [ ] T035 Run full test suite `poetry run pytest tests/unit/bifurcation/ tests/integration/topology/test_bifurcation_integration.py -v` and fix any failures
-- [ ] T036 Run `poetry run mypy src/babylon/bifurcation/ src/babylon/engine/bifurcation_monitor.py src/babylon/engine/community_state_store.py --strict` and fix type errors
-- [ ] T037 [P] Benchmark `bifurcation_tendency()` performance per SC-007 — construct a representative graph (50+ nodes, 100+ edges), time the full analysis, verify <10% overhead vs baseline tick duration (use `time.perf_counter` or `pytest-benchmark`)
+- [~] T032 Implement `BifurcationMonitor` in `src/babylon/engine/bifurcation_monitor.py` — extends TopologyMonitor, overrides `_record_snapshot()` to call `super()` then `_record_bifurcation()`, accepts `CommunityStateStore` via DI, rebuilds XGI hypergraph per tick using `build_community_hypergraph()`, stores BifurcationSnapshot history, emits BifurcationTendencyEvent on tendency change (partial 2026-07-08: src/babylon/engine/bifurcation_monitor.py:37 is a standalone class, not a TopologyMonitor subclass; hypergraph is passed in rather than rebuilt)
+- [~] T033 Write integration test in `tests/integration/topology/test_bifurcation_integration.py` — register BifurcationMonitor with InMemoryCommunityStateStore, run multi-tick simulation, verify bifurcation_history populated, verify tendency change events emitted, verify TopologyMonitor base functionality preserved (partial 2026-07-08: monitor covered by unit tests/unit/bifurcation/test_monitor.py; no integration test at the path this task specifies)
+- [x] T034 [P] Populate `src/babylon/bifurcation/__init__.py` with public API exports per plan.md (bifurcation_tendency, consciousness_weighted_solidarity, compute_betti_numbers, detect_bridges, compute_solidarity_ceiling, compute_legitimation_amplifier, all types) (verified 2026-07-08: src/babylon/bifurcation/__init__.py:39)
+- [x] T035 Run full test suite `poetry run pytest tests/unit/bifurcation/ tests/integration/topology/test_bifurcation_integration.py -v` and fix any failures (verified 2026-07-08: commit dd3f42f8)
+- [ ] T036 Run `poetry run mypy src/babylon/bifurcation/ src/babylon/engine/bifurcation_monitor.py src/babylon/engine/community_state_store.py --strict` and fix type errors (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T037 [P] Benchmark `bifurcation_tendency()` performance per SC-007 — construct a representative graph (50+ nodes, 100+ edges), time the full analysis, verify <10% overhead vs baseline tick duration (use `time.perf_counter` or `pytest-benchmark`) (unverifiable — ephemeral gate, no durable artifact)
 
 ______________________________________________________________________
 

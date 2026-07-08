@@ -17,9 +17,9 @@
 
 **Purpose**: Add dependencies, create directory structure, configure test infrastructure
 
-- [ ] T001 Add psycopg[binary], psycopg_pool, and pgvector dependencies to pyproject.toml (psycopg already present; verify psycopg_pool, pgvector added)
-- [ ] T002 [P] Create test fixture infrastructure for Postgres tests in tests/conftest.py (connection factory, test database setup/teardown, skip marker for missing Postgres)
-- [ ] T003 [P] Create tests/integration/conftest.py with Postgres integration test fixtures (real psycopg connection pool, schema bootstrap, per-test transaction rollback)
+- [x] T001 Add psycopg[binary], psycopg_pool, and pgvector dependencies to pyproject.toml (psycopg already present; verify psycopg_pool, pgvector added) (verified 2026-07-08: pyproject.toml:68-73)
+- [x] T002 [P] Create test fixture infrastructure for Postgres tests in tests/conftest.py (connection factory, test database setup/teardown, skip marker for missing Postgres) (verified 2026-07-08: tests/conftest.py:304-341)
+- [x] T003 [P] Create tests/integration/conftest.py with Postgres integration test fixtures (real psycopg connection pool, schema bootstrap, per-test transaction rollback) (verified 2026-07-08: tests/integration/conftest.py:57-81)
 
 ______________________________________________________________________
 
@@ -29,13 +29,13 @@ ______________________________________________________________________
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Create RuntimePersistence protocol, PostgresRuntimeExtensions protocol, TraceLevel enum, TraceCollector protocol, and VectorStoreProtocol in src/babylon/persistence/protocols.py (translate from specs/037-postgres-runtime-db/contracts/ to production code)
-- [ ] T005 Write protocol compliance contract tests in tests/contract/test_persistence_contracts.py — verify RuntimeDatabase satisfies RuntimePersistence via isinstance() check (follow existing pattern in tests/contract/test_infrastructure_contracts.py)
-- [ ] T006 [P] Add missing methods to RuntimeDatabase in src/babylon/persistence/runtime_db.py so it satisfies RuntimePersistence protocol (add session_id parameter to persist_tick and hydrate_graph; add log_tick system_timings parameter if missing)
-- [ ] T007 Create Postgres DDL for all 19 tables in src/babylon/persistence/postgres_schema.py — Layer 1 (game_session, game_turn, action_result), Layer 2 (node_state, edge_state, graph_metadata, community_state, community_membership, contradiction_field, edge_curvature, simulation_event, tick_log, tick_summary), Layer 3 (hex_cell, hex_state, hex_terrain_state), Layer 4 (infrastructure_link_state), Layer 5 (trace_log UNLOGGED), Layer 6 (document_chunk with vector(768)) — reference data-model.md for exact schema
-- [ ] T008 [P] Add persistence (RuntimePersistence | None) and tracer (TraceCollector | None) fields to ServiceContainer in src/babylon/engine/services.py — default None, add to create() factory
-- [ ] T009 Create PostgresRuntime base class in src/babylon/persistence/postgres_runtime.py — __init__ with psycopg_pool.ConnectionPool, close(), context manager, _execute_batch() helper for bulk inserts via executemany/COPY
-- [ ] T010 Update src/babylon/persistence/__init__.py — export RuntimePersistence, PostgresRuntimeExtensions, TraceLevel, TraceCollector, VectorStoreProtocol, PostgresRuntime, and existing RuntimeDatabase/RUNTIME_SCHEMA_DDL
+- [x] T004 Create RuntimePersistence protocol, PostgresRuntimeExtensions protocol, TraceLevel enum, TraceCollector protocol, and VectorStoreProtocol in src/babylon/persistence/protocols.py (translate from specs/037-postgres-runtime-db/contracts/ to production code) (verified 2026-07-08: src/babylon/persistence/protocols.py:115,:232,:23,:430,:482)
+- [x] T005 Write protocol compliance contract tests in tests/contract/test_persistence_contracts.py — verify RuntimeDatabase satisfies RuntimePersistence via isinstance() check (follow existing pattern in tests/contract/test_infrastructure_contracts.py) (verified 2026-07-08: tests/contract/test_persistence_contracts.py:29-34)
+- [x] T006 [P] Add missing methods to RuntimeDatabase in src/babylon/persistence/runtime_db.py so it satisfies RuntimePersistence protocol (add session_id parameter to persist_tick and hydrate_graph; add log_tick system_timings parameter if missing) (verified 2026-07-08: src/babylon/persistence/runtime_db.py:121,:298,:453-460)
+- [x] T007 Create Postgres DDL for all 19 tables in src/babylon/persistence/postgres_schema.py — Layer 1 (game_session, game_turn, action_result), Layer 2 (node_state, edge_state, graph_metadata, community_state, community_membership, contradiction_field, edge_curvature, simulation_event, tick_log, tick_summary), Layer 3 (hex_cell, hex_state, hex_terrain_state), Layer 4 (infrastructure_link_state), Layer 5 (trace_log UNLOGGED), Layer 6 (document_chunk with vector(768)) — reference data-model.md for exact schema (verified 2026-07-08: src/babylon/persistence/postgres_schema.py:41-374 (19 tables; trace_log :1061, document_chunk vector(768) :378))
+- [x] T008 [P] Add persistence (RuntimePersistence | None) and tracer (TraceCollector | None) fields to ServiceContainer in src/babylon/engine/services.py — default None, add to create() factory (verified 2026-07-08: src/babylon/engine/services.py:107-108,:150-151,:234-235)
+- [x] T009 Create PostgresRuntime base class in src/babylon/persistence/postgres_runtime.py — __init__ with psycopg_pool.ConnectionPool, close(), context manager, _execute_batch() helper for bulk inserts via executemany/COPY (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:78,:97,:101-112 (bulk inserts inlined via executemany; no named _execute_batch))
+- [x] T010 Update src/babylon/persistence/__init__.py — export RuntimePersistence, PostgresRuntimeExtensions, TraceLevel, TraceCollector, VectorStoreProtocol, PostgresRuntime, and existing RuntimeDatabase/RUNTIME_SCHEMA_DDL (verified 2026-07-08: src/babylon/persistence/__init__.py:20-56)
 
 **Checkpoint**: Foundation ready — protocol defined, schema DDL written, ServiceContainer wired, base class created. User story implementation can now begin.
 
@@ -51,24 +51,24 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T011 [US1] Write unit tests for PostgresRuntime.persist_tick (node_state and edge_state inserts) in tests/unit/persistence/test_postgres_runtime.py — mock psycopg connection, verify SQL and parameter binding for 4 node types and all edge types
-- [ ] T012 [US1] Write unit tests for PostgresRuntime.hydrate_graph (graph reconstruction from node_state, edge_state, graph_metadata) in tests/unit/persistence/test_postgres_runtime.py — verify round-trip fidelity of JSONB attributes
-- [ ] T013 [US1] Write unit tests for persist_graph_metadata, persist_community_state, persist_hex_state, persist_infrastructure_state, persist_contradiction_fields in tests/unit/persistence/test_postgres_runtime.py — mock psycopg, verify bulk insert row counts
-- [ ] T014 [P] [US1] Write integration test for full persist/hydrate round-trip in tests/integration/test_postgres_integration.py — real Postgres, persist tick with all subsystems, hydrate, compare graph node/edge attributes
+- [x] T011 [US1] Write unit tests for PostgresRuntime.persist_tick (node_state and edge_state inserts) in tests/unit/persistence/test_postgres_runtime.py — mock psycopg connection, verify SQL and parameter binding for 4 node types and all edge types (verified 2026-07-08: tests/unit/persistence/test_postgres_runtime.py:99)
+- [x] T012 [US1] Write unit tests for PostgresRuntime.hydrate_graph (graph reconstruction from node_state, edge_state, graph_metadata) in tests/unit/persistence/test_postgres_runtime.py — verify round-trip fidelity of JSONB attributes (verified 2026-07-08: tests/unit/persistence/test_postgres_runtime.py:438 (:555 JSONB round-trip))
+- [x] T013 [US1] Write unit tests for persist_graph_metadata, persist_community_state, persist_hex_state, persist_infrastructure_state, persist_contradiction_fields in tests/unit/persistence/test_postgres_runtime.py — mock psycopg, verify bulk insert row counts (verified 2026-07-08: tests/unit/persistence/test_postgres_runtime.py:598,:652,:711,:758,:812)
+- [x] T014 [P] [US1] Write integration test for full persist/hydrate round-trip in tests/integration/test_postgres_integration.py — real Postgres, persist tick with all subsystems, hydrate, compare graph node/edge attributes (verified 2026-07-08: tests/integration/test_postgres_integration.py:69)
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Implement persist_tick in src/babylon/persistence/postgres_runtime.py — INSERT node_state (with promoted columns), edge_state (with promoted columns), simulation_event rows; use executemany for bulk insert; full model_dump() to JSONB attributes column
-- [ ] T016 [US1] Implement persist_graph_metadata in src/babylon/persistence/postgres_runtime.py — INSERT graph_metadata row with economy, state_finances, tick_dynamics JSONB
-- [ ] T017 [US1] Implement persist_community_state in src/babylon/persistence/postgres_runtime.py — INSERT community_state (14 rows) and community_membership (~200 rows) per tick
-- [ ] T018 [US1] Implement persist_hex_state in src/babylon/persistence/postgres_runtime.py — bulk INSERT ~1,500 hex_state rows via executemany or COPY protocol
-- [ ] T019 [US1] Implement persist_infrastructure_state in src/babylon/persistence/postgres_runtime.py — INSERT hex_terrain_state (~1,500 rows) and infrastructure_link_state (~100 rows) from Feature 036 manager to_dict() output
-- [ ] T020 [US1] Implement persist_contradiction_fields in src/babylon/persistence/postgres_runtime.py — INSERT contradiction_field (4 fields × ~20 nodes) and edge_curvature (~50 edges) per tick
-- [ ] T021 [US1] Implement log_tick and persist_tick_summary in src/babylon/persistence/postgres_runtime.py — INSERT tick_log (RNG state, mutations, timings) and tick_summary (pre-aggregated metrics)
-- [ ] T022 [US1] Implement set_metadata and get_metadata in src/babylon/persistence/postgres_runtime.py — INSERT/UPDATE simulation_metadata or use game_session config_json
-- [ ] T023 [US1] Implement hydrate_graph in src/babylon/persistence/postgres_runtime.py — SELECT from node_state, edge_state, graph_metadata for a given (session_id, tick), reconstruct nx.DiGraph with all attributes from JSONB
-- [ ] T024 [US1] Implement hydrate_community_state in src/babylon/persistence/postgres_runtime.py — SELECT from community_state and community_membership, return (community_states dict, memberships list)
-- [ ] T025 [US1] Wire Simulation class to persist subsystem state after tick via new PersistenceObserver in src/babylon/engine/observers/persistence_observer.py — observer calls persistence.persist_tick, persist_graph_metadata, persist_community_state, persist_hex_state, persist_infrastructure_state, persist_contradiction_fields, log_tick, persist_tick_summary after each tick
+- [x] T015 [US1] Implement persist_tick in src/babylon/persistence/postgres_runtime.py — INSERT node_state (with promoted columns), edge_state (with promoted columns), simulation_event rows; use executemany for bulk insert; full model_dump() to JSONB attributes column (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:114)
+- [x] T016 [US1] Implement persist_graph_metadata in src/babylon/persistence/postgres_runtime.py — INSERT graph_metadata row with economy, state_finances, tick_dynamics JSONB (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:424)
+- [x] T017 [US1] Implement persist_community_state in src/babylon/persistence/postgres_runtime.py — INSERT community_state (14 rows) and community_membership (~200 rows) per tick (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:453)
+- [x] T018 [US1] Implement persist_hex_state in src/babylon/persistence/postgres_runtime.py — bulk INSERT ~1,500 hex_state rows via executemany or COPY protocol (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:566)
+- [x] T019 [US1] Implement persist_infrastructure_state in src/babylon/persistence/postgres_runtime.py — INSERT hex_terrain_state (~1,500 rows) and infrastructure_link_state (~100 rows) from Feature 036 manager to_dict() output (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:611)
+- [x] T020 [US1] Implement persist_contradiction_fields in src/babylon/persistence/postgres_runtime.py — INSERT contradiction_field (4 fields × ~20 nodes) and edge_curvature (~50 edges) per tick (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:685)
+- [x] T021 [US1] Implement log_tick and persist_tick_summary in src/babylon/persistence/postgres_runtime.py — INSERT tick_log (RNG state, mutations, timings) and tick_summary (pre-aggregated metrics) (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:325,:782)
+- [x] T022 [US1] Implement set_metadata and get_metadata in src/babylon/persistence/postgres_runtime.py — INSERT/UPDATE simulation_metadata or use game_session config_json (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:376,:398)
+- [x] T023 [US1] Implement hydrate_graph in src/babylon/persistence/postgres_runtime.py — SELECT from node_state, edge_state, graph_metadata for a given (session_id, tick), reconstruct nx.DiGraph with all attributes from JSONB (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:266)
+- [x] T024 [US1] Implement hydrate_community_state in src/babylon/persistence/postgres_runtime.py — SELECT from community_state and community_membership, return (community_states dict, memberships list) (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:539)
+- [~] T025 [US1] Wire Simulation class to persist subsystem state after tick via new PersistenceObserver in src/babylon/engine/observers/persistence_observer.py — observer calls persistence.persist_tick, persist_graph_metadata, persist_community_state, persist_hex_state, persist_infrastructure_state, persist_contradiction_fields, log_tick, persist_tick_summary after each tick (partial 2026-07-08: src/babylon/persistence/persistence_observer.py:39 calls persist_tick + persist_graph_metadata only; community/hex/infrastructure/contradiction/log_tick/tick_summary not driven from the observer)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional — complete simulation state persists and hydrates with zero data loss.
 
@@ -82,13 +82,13 @@ ______________________________________________________________________
 
 ### Tests for User Story 2
 
-- [ ] T026 [P] [US2] Write unit tests for turn submission (game_turn INSERT with uniqueness constraint) and action result persistence in tests/unit/persistence/test_postgres_runtime.py
+- [x] T026 [P] [US2] Write unit tests for turn submission (game_turn INSERT with uniqueness constraint) and action result persistence in tests/unit/persistence/test_postgres_runtime.py (verified 2026-07-08: tests/unit/persistence/test_postgres_session_turn.py:250,:386)
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Implement submit_turn in src/babylon/persistence/postgres_runtime.py — INSERT game_turn with (session_id, tick, org_id) uniqueness, reject duplicates with constraint violation
-- [ ] T028 [US2] Implement persist_action_results in src/babylon/persistence/postgres_runtime.py — bulk INSERT action_result rows with initiative_score, action_cost, success, consciousness_delta, heat_delta, details JSONB
-- [ ] T029 [US2] Implement get_pending_turns and mark_turns_resolved in src/babylon/persistence/postgres_runtime.py — SELECT unresolved turns for current tick, UPDATE resolved=TRUE after tick execution
+- [x] T027 [US2] Implement submit_turn in src/babylon/persistence/postgres_runtime.py — INSERT game_turn with (session_id, tick, org_id) uniqueness, reject duplicates with constraint violation (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:1056)
+- [x] T028 [US2] Implement persist_action_results in src/babylon/persistence/postgres_runtime.py — bulk INSERT action_result rows with initiative_score, action_cost, success, consciousness_delta, heat_delta, details JSONB (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:743)
+- [x] T029 [US2] Implement get_pending_turns and mark_turns_resolved in src/babylon/persistence/postgres_runtime.py — SELECT unresolved turns for current tick, UPDATE resolved=TRUE after tick execution (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:1103,:1120)
 
 **Checkpoint**: Player actions recorded, resolved, and outcomes persisted. One action per org per tick enforced.
 
@@ -102,13 +102,13 @@ ______________________________________________________________________
 
 ### Tests for User Story 3
 
-- [ ] T030 [P] [US3] Write unit tests for session CRUD (create, get, update status) and isolation verification in tests/unit/persistence/test_postgres_runtime.py
+- [x] T030 [P] [US3] Write unit tests for session CRUD (create, get, update status) and isolation verification in tests/unit/persistence/test_postgres_runtime.py (verified 2026-07-08: tests/unit/persistence/test_postgres_session_turn.py:73,:157,:191,:213)
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Implement create_session in src/babylon/persistence/postgres_runtime.py — INSERT game_session with UUID, scenario, config_json (SimulationConfig.model_dump), game_defines_json (GameDefines.model_dump), rng_seed, trace_level
-- [ ] T032 [US3] Implement get_session, update_session_status, and get_active_sessions in src/babylon/persistence/postgres_runtime.py — lifecycle transitions (active → paused → completed/abandoned/archived)
-- [ ] T033 [US3] Write integration test for session isolation in tests/integration/test_postgres_integration.py — create two sessions, persist state in each, verify queries return only session-scoped data
+- [x] T031 [US3] Implement create_session in src/babylon/persistence/postgres_runtime.py — INSERT game_session with UUID, scenario, config_json (SimulationConfig.model_dump), game_defines_json (GameDefines.model_dump), rng_seed, trace_level (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:956)
+- [x] T032 [US3] Implement get_session, update_session_status, and get_active_sessions in src/babylon/persistence/postgres_runtime.py — lifecycle transitions (active → paused → completed/abandoned/archived) (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:1031,:1038,:1046)
+- [x] T033 [US3] Write integration test for session isolation in tests/integration/test_postgres_integration.py — create two sessions, persist state in each, verify queries return only session-scoped data (verified 2026-07-08: tests/integration/test_postgres_integration.py:95)
 
 **Checkpoint**: Full session lifecycle management. Sessions are isolated — no cross-contamination.
 
@@ -122,14 +122,14 @@ ______________________________________________________________________
 
 ### Tests for User Story 4
 
-- [ ] T034 [P] [US4] Write unit tests for TraceRecorder in tests/unit/persistence/test_trace_recorder.py — verify buffer accumulation during trace(), flush writes to persistence, level filtering, buffer_size property, NONE level is no-op
+- [x] T034 [P] [US4] Write unit tests for TraceRecorder in tests/unit/persistence/test_trace_recorder.py — verify buffer accumulation during trace(), flush writes to persistence, level filtering, buffer_size property, NONE level is no-op (verified 2026-07-08: tests/unit/persistence/test_postgres_trace_spatial.py:76 TestTraceRecorder (location drift from test_trace_recorder.py))
 
 ### Implementation for User Story 4
 
-- [ ] T035 [US4] Implement TraceRecorder in src/babylon/persistence/trace_recorder.py — buffer trace events in memory list, flush() calls persistence.persist_traces(), level-based filtering, buffer_size property
-- [ ] T036 [US4] Implement persist_traces in src/babylon/persistence/postgres_runtime.py — bulk INSERT trace_log rows via executemany (session_id, tick, system_name, level, event, node_id, data JSONB)
-- [ ] T037 [US4] Implement create_session_partition and drop_session_partition in src/babylon/persistence/postgres_runtime.py — CREATE TABLE trace_log_{session_id} PARTITION OF trace_log FOR VALUES IN (session_id), DROP TABLE for instant cleanup
-- [ ] T038 [US4] Wire TraceRecorder into Simulation lifecycle — create TraceRecorder from ServiceContainer.tracer config, add as observer or inject into PersistenceObserver, call flush() after each tick
+- [x] T035 [US4] Implement TraceRecorder in src/babylon/persistence/trace_recorder.py — buffer trace events in memory list, flush() calls persistence.persist_traces(), level-based filtering, buffer_size property (verified 2026-07-08: src/babylon/persistence/trace_recorder.py:61,:94,:114,:119)
+- [x] T036 [US4] Implement persist_traces in src/babylon/persistence/postgres_runtime.py — bulk INSERT trace_log rows via executemany (session_id, tick, system_name, level, event, node_id, data JSONB) (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:873)
+- [x] T037 [US4] Implement create_session_partition and drop_session_partition in src/babylon/persistence/postgres_runtime.py — CREATE TABLE trace_log_{session_id} PARTITION OF trace_log FOR VALUES IN (session_id), DROP TABLE for instant cleanup (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:906,:918)
+- [~] T038 [US4] Wire TraceRecorder into Simulation lifecycle — create TraceRecorder from ServiceContainer.tracer config, add as observer or inject into PersistenceObserver, call flush() after each tick (partial 2026-07-08: PersistenceObserver flushes an injected tracer (persistence_observer.py:158,:128) but nothing constructs a TraceRecorder from ServiceContainer config or attaches it to a Simulation)
 
 **Checkpoint**: Trace debugging functional. Events buffer in memory during tick, flush to partitioned table after. Partition drop is instant cleanup.
 
@@ -143,13 +143,13 @@ ______________________________________________________________________
 
 ### Tests for User Story 5
 
-- [ ] T039 [P] [US5] Write unit tests for hex_cell reference table population and spatial query methods in tests/unit/persistence/test_postgres_runtime.py
+- [x] T039 [P] [US5] Write unit tests for hex_cell reference table population and spatial query methods in tests/unit/persistence/test_postgres_runtime.py (verified 2026-07-08: tests/unit/persistence/test_postgres_trace_spatial.py:276,:315,:353)
 
 ### Implementation for User Story 5
 
-- [ ] T040 [US5] Implement populate_hex_cells in src/babylon/persistence/postgres_runtime.py — bulk INSERT hex_cell reference rows with h3_index, county_fips, parent cells, PostGIS geometry (POLYGON) and centroid (POINT) from H3 cell boundaries
-- [ ] T041 [US5] Implement get_hex_state_for_tick in src/babylon/persistence/postgres_runtime.py — SELECT hex_state JOIN hex_cell for a given (session_id, tick), with optional county_fips filter using GiST spatial index
-- [ ] T042 [US5] Implement get_hex_time_series in src/babylon/persistence/postgres_runtime.py — SELECT hex_state for a given (session_id, h3_index) across tick range, return ordered time-series
+- [x] T040 [US5] Implement populate_hex_cells in src/babylon/persistence/postgres_runtime.py — bulk INSERT hex_cell reference rows with h3_index, county_fips, parent cells, PostGIS geometry (POLYGON) and centroid (POINT) from H3 cell boundaries (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:1139)
+- [x] T041 [US5] Implement get_hex_state_for_tick in src/babylon/persistence/postgres_runtime.py — SELECT hex_state JOIN hex_cell for a given (session_id, tick), with optional county_fips filter using GiST spatial index (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:1177)
+- [x] T042 [US5] Implement get_hex_time_series in src/babylon/persistence/postgres_runtime.py — SELECT hex_state for a given (session_id, h3_index) across tick range, return ordered time-series (verified 2026-07-08: src/babylon/persistence/postgres_runtime/_legacy.py:1202)
 
 **Checkpoint**: Spatial queries operational. Hex map renders efficiently, county-scoped aggregations work.
 
@@ -163,16 +163,16 @@ ______________________________________________________________________
 
 ### Tests for User Story 6
 
-- [ ] T043 [P] [US6] Write unit tests for Parquet export (table-to-Parquet conversion, schema mapping) in tests/unit/persistence/test_archival.py
-- [ ] T044 [P] [US6] Write integration test for full export-upload-query cycle in tests/integration/test_archival_integration.py (use local filesystem instead of R2 for CI)
+- [x] T043 [P] [US6] Write unit tests for Parquet export (table-to-Parquet conversion, schema mapping) in tests/unit/persistence/test_archival.py (verified 2026-07-08: tests/unit/persistence/test_archival.py)
+- [x] T044 [P] [US6] Write integration test for full export-upload-query cycle in tests/integration/test_archival_integration.py (use local filesystem instead of R2 for CI) (verified 2026-07-08: tests/integration/test_archival_integration.py:84,:109,:152 (local-FS; R2 leg retired by spec-088))
 
 ### Implementation for User Story 6
 
-- [ ] T045 [US6] Implement export_session_to_parquet in src/babylon/persistence/archival.py — SELECT all session data from each table, convert to PyArrow Tables, write Parquet files with zstd compression to output directory
-- [ ] T046 [US6] Implement upload_to_r2 in src/babylon/persistence/archival.py — upload Parquet files to R2 bucket via boto3 S3 interface, verify checksums
-- [ ] T047 [US6] Implement purge_session in src/babylon/persistence/archival.py — DELETE session data from all tables after verified export, preserve game_session record with status='archived'
-- [ ] T048 [US6] Implement query_archived_session in src/babylon/persistence/archival.py — use DuckDB to read Parquet files directly from R2 (or local path), return query results
-- [ ] T049 [US6] Create archival CLI script in tools/archive_sessions.py — find completed sessions older than 24h, run export → upload → purge pipeline (follows existing tools/ convention; not a Django management command since persistence/ is not a Django app)
+- [x] T045 [US6] Implement export_session_to_parquet in src/babylon/persistence/archival.py — SELECT all session data from each table, convert to PyArrow Tables, write Parquet files with zstd compression to output directory (verified 2026-07-08: src/babylon/persistence/archival.py:172)
+- [ ] T046 [US6] Implement upload_to_r2 in src/babylon/persistence/archival.py — upload Parquet files to R2 bucket via boto3 S3 interface, verify checksums (left unchecked 2026-07-08: upload_to_r2 raises NotImplementedError (src/babylon/persistence/archival.py:383) — deliberately retired to LOCAL-only archival by spec-088 ruling)
+- [x] T047 [US6] Implement purge_session in src/babylon/persistence/archival.py — DELETE session data from all tables after verified export, preserve game_session record with status='archived' (verified 2026-07-08: src/babylon/persistence/archival.py:272)
+- [x] T048 [US6] Implement query_archived_session in src/babylon/persistence/archival.py — use DuckDB to read Parquet files directly from R2 (or local path), return query results (verified 2026-07-08: src/babylon/persistence/archival.py:343)
+- [~] T049 [US6] Create archival CLI script in tools/archive_sessions.py — find completed sessions older than 24h, run export → upload → purge pipeline (follows existing tools/ convention; not a Django management command since persistence/ is not a Django app) (partial 2026-07-08: tools/archive_sessions.py has export-verify-purge CLI, but discover_sessions (:54) selects by row presence, not completed-sessions-older-than-24h)
 
 **Checkpoint**: Archival pipeline functional. Completed games compressed to Parquet (~8:1 ratio), uploaded to R2, queryable via DuckDB.
 
@@ -186,13 +186,13 @@ ______________________________________________________________________
 
 ### Tests for User Story 7
 
-- [ ] T050 [P] [US7] Write unit tests for PgVectorStore in tests/unit/persistence/test_pgvector_store.py — add_chunks, query_similar, delete_chunks, get_collection_count with mocked psycopg
+- [x] T050 [P] [US7] Write unit tests for PgVectorStore in tests/unit/persistence/test_pgvector_store.py — add_chunks, query_similar, delete_chunks, get_collection_count with mocked psycopg (verified 2026-07-08: tests/unit/persistence/test_pgvector_store.py (18 tests))
 
 ### Implementation for User Story 7
 
-- [ ] T051 [US7] Implement PgVectorStore in src/babylon/persistence/pgvector_store.py — add_chunks (INSERT with vector embedding), query_similar (SELECT ORDER BY embedding <=> query_vec LIMIT k), delete_chunks, get_collection_count; use HNSW index with cosine distance
-- [ ] T052 [US7] Add VectorStoreProtocol support to Retriever in src/babylon/rag/retrieval.py — accept VectorStoreProtocol in __init__ (structural typing, no code change needed if method signatures match), verify Retriever works with PgVectorStore
-- [ ] T053 [US7] Add session-scoped search to PgVectorStore in src/babylon/persistence/pgvector_store.py — WHERE clause on session_id when metadata filter includes session scope, NULL session_id for global theory corpus
+- [x] T051 [US7] Implement PgVectorStore in src/babylon/persistence/pgvector_store.py — add_chunks (INSERT with vector embedding), query_similar (SELECT ORDER BY embedding <=> query_vec LIMIT k), delete_chunks, get_collection_count; use HNSW index with cosine distance (verified 2026-07-08: src/babylon/persistence/pgvector_store.py:44; HNSW index postgres_schema.py:467)
+- [x] T052 [US7] Add VectorStoreProtocol support to Retriever in src/babylon/rag/retrieval.py — accept VectorStoreProtocol in __init__ (structural typing, no code change needed if method signatures match), verify Retriever works with PgVectorStore (verified 2026-07-08: src/babylon/rag/retrieval.py:85-96,:140)
+- [~] T053 [US7] Add session-scoped search to PgVectorStore in src/babylon/persistence/pgvector_store.py — WHERE clause on session_id when metadata filter includes session scope, NULL session_id for global theory corpus (partial 2026-07-08: scoping via generic JSONB metadata @> filter (src/babylon/persistence/pgvector_store.py:181); no dedicated session_id column or NULL-session global-corpus handling)
 
 **Checkpoint**: Semantic search operational via pgvector. ChromaDB replaceable. Session-scoped and global search both work.
 
@@ -202,15 +202,15 @@ ______________________________________________________________________
 
 **Purpose**: Migrate legacy observer, validate performance, update exports
 
-- [ ] T054 Migrate SessionRecorder to use RuntimePersistence protocol in src/babylon/engine/observers/session_recorder.py — replace SimulationDB with RuntimePersistence, remove direct SQL, delegate to protocol methods
-- [ ] T055 [P] Write performance validation test in tests/integration/test_postgres_integration.py — verify persist_tick < 2s, hydrate_graph < 1s for tri-county Detroit (~1,500 hexes, ~35 nodes, ~55 edges)
-- [ ] T056 [P] Verify SQLite RuntimeDatabase still passes all existing tests in tests/unit/persistence/test_runtime_db.py after protocol changes (regression check)
-- [ ] T057 Run protocol compliance contract tests (T005) to confirm both RuntimeDatabase and PostgresRuntime satisfy RuntimePersistence
-- [ ] T058 Update src/babylon/persistence/__init__.py with final exports — all new types, PostgresRuntime, TraceRecorder, PgVectorStore, archival functions
-- [ ] T059 Validate quickstart.md code examples against actual API — run each snippet mentally or as doctest to verify method signatures match implementation
-- [ ] T060 [P] Write SC-004 trace overhead benchmark in tests/integration/test_postgres_integration.py — run 10 ticks with trace_level=NONE, then 10 ticks with trace_level=DEBUG, assert DEBUG wall time < 1.2× NONE wall time (20% overhead budget)
-- [ ] T061 [P] Write SC-009 cross-backend equivalence test in tests/integration/test_postgres_integration.py — run Detroit scenario for 10 ticks with SQLite RuntimeDatabase and PostgresRuntime using same RNG seed, compare final WorldState node/edge attributes for exact match
-- [ ] T062 [P] Write SC-005 concurrent session stress test in tests/integration/test_postgres_integration.py — create 10 sessions, persist 5 ticks each concurrently, verify zero cross-session data leakage and per-session persist time within 10% of single-session baseline
+- [x] T054 Migrate SessionRecorder to use RuntimePersistence protocol in src/babylon/engine/observers/session_recorder.py — replace SimulationDB with RuntimePersistence, remove direct SQL, delegate to protocol methods (verified 2026-07-08: src/babylon/persistence/session_recorder.py:53)
+- [~] T055 [P] Write performance validation test in tests/integration/test_postgres_integration.py — verify persist_tick < 2s, hydrate_graph < 1s for tri-county Detroit (~1,500 hexes, ~35 nodes, ~55 edges) (partial 2026-07-08: tests/integration/test_postgres_integration.py:123 asserts persist_tick <1s on synthetic 2000-node graph; no hydrate_graph assertion, not the tri-county Detroit scenario)
+- [ ] T056 [P] Verify SQLite RuntimeDatabase still passes all existing tests in tests/unit/persistence/test_runtime_db.py after protocol changes (regression check) (unverifiable — ephemeral gate, no durable artifact (tests/unit/persistence/test_runtime_db.py exists))
+- [ ] T057 Run protocol compliance contract tests (T005) to confirm both RuntimeDatabase and PostgresRuntime satisfy RuntimePersistence (unverifiable — ephemeral gate; compliance assertions exist at tests/contract/test_persistence_contracts.py:97-108)
+- [x] T058 Update src/babylon/persistence/__init__.py with final exports — all new types, PostgresRuntime, TraceRecorder, PgVectorStore, archival functions (verified 2026-07-08: src/babylon/persistence/__init__.py:26-38)
+- [ ] T059 Validate quickstart.md code examples against actual API — run each snippet mentally or as doctest to verify method signatures match implementation (unverifiable — ephemeral gate, no durable artifact)
+- [ ] T060 [P] Write SC-004 trace overhead benchmark in tests/integration/test_postgres_integration.py — run 10 ticks with trace_level=NONE, then 10 ticks with trace_level=DEBUG, assert DEBUG wall time < 1.2× NONE wall time (20% overhead budget) (left unchecked 2026-07-08: no NONE-vs-DEBUG trace-overhead benchmark test exists)
+- [ ] T061 [P] Write SC-009 cross-backend equivalence test in tests/integration/test_postgres_integration.py — run Detroit scenario for 10 ticks with SQLite RuntimeDatabase and PostgresRuntime using same RNG seed, compare final WorldState node/edge attributes for exact match (left unchecked 2026-07-08: no SQLite-vs-Postgres cross-backend equivalence test exists)
+- [~] T062 [P] Write SC-005 concurrent session stress test in tests/integration/test_postgres_integration.py — create 10 sessions, persist 5 ticks each concurrently, verify zero cross-session data leakage and per-session persist time within 10% of single-session baseline (partial 2026-07-08: tests/integration/test_postgres_integration.py:141 runs 3 sessions x 3 ticks sequentially with a weak leakage check; not SC-005's 10x5 concurrent with per-session timing bound)
 
 ______________________________________________________________________
 

@@ -256,5 +256,7 @@ repos:
             \.github/project/.*|
             docs/concepts/vibe-coding/.*|
             src/babylon/data/corpus/.*|
+            project/.*|
+            E2E_SUMMARY\.md|
             \.agents/.*
           )$

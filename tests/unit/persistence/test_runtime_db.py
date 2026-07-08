@@ -13,6 +13,7 @@ Tests focus on:
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 
 import networkx as nx
 import pytest
@@ -295,6 +296,39 @@ class TestEventPersistence:
             assert len(loaded_events) == 2
             assert loaded_events[0]["type"] == "UPRISING"
             assert loaded_events[1]["type"] == "REPRESSION"
+
+    def test_persist_events_with_datetime_timestamp(self) -> None:
+        """Bug P0 #6: SimulationEvent.model_dump() carries a datetime timestamp.
+
+        The persist path must serialize it (isoformat) instead of raising
+        ``TypeError: Object of type datetime is not JSON serializable``.
+        """
+        with RuntimeDatabase(in_memory=True) as db:
+            graph: nx.DiGraph = BabylonGraph()
+            graph.add_node("w1", type="SocialClass")
+            events = [
+                {"type": "UPRISING", "entity_id": "w1", "timestamp": datetime(2026, 7, 8, 1, 0)},
+            ]
+            db.persist_tick(tick=0, graph=graph, events=events)
+
+            loaded_events = db.get_events(tick=0)
+            assert len(loaded_events) == 1
+            assert loaded_events[0]["timestamp"] == "2026-07-08T01:00:00"
+
+    def test_retry_with_regenerated_timestamp_is_idempotent(self) -> None:
+        """Spec-056 B': a retry differing only in event wall-clock timestamps
+        must return silently, not raise MonotonicityViolationError."""
+        with RuntimeDatabase(in_memory=True) as db:
+            graph: nx.DiGraph = BabylonGraph()
+            graph.add_node("w1", type="SocialClass")
+            ev = {"type": "UPRISING", "entity_id": "w1", "timestamp": datetime(2026, 7, 8, 1, 0)}
+            db.persist_tick(tick=0, graph=graph, events=[ev])
+
+            retry = dict(ev, timestamp=datetime(2026, 7, 8, 1, 5))
+            db.persist_tick(tick=0, graph=graph, events=[retry])  # must NOT raise
+
+            # ... and must not duplicate the event row
+            assert len(db.get_events(tick=0)) == 1
 
     def test_events_are_per_tick_not_cumulative(self) -> None:
         """Events should be isolated per tick (common gotcha)."""

@@ -32,6 +32,7 @@ from uuid import UUID
 
 from babylon.persistence.protocols import MonotonicityViolationError
 from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
+from babylon.persistence.serialization import canonical_event_json, json_default
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -203,7 +204,7 @@ class RuntimeDatabase:
                             tick,
                             event.get("type", "UNKNOWN"),
                             event.get("entity_id"),
-                            json.dumps(event),
+                            json.dumps(event, default=json_default),
                         ),
                     )
 
@@ -242,7 +243,7 @@ class RuntimeDatabase:
             )
             for source, target, attrs in graph.edges(data=True)
         )
-        events_list = sorted(json.dumps(event, sort_keys=True) for event in (events or []))
+        events_list = sorted(canonical_event_json(event) for event in (events or []))
         return {"nodes": nodes, "edges": edges, "events": events_list}
 
     def _canonical_payload_for_tick(self, tick: int) -> dict[str, Any]:
@@ -282,7 +283,7 @@ class RuntimeDatabase:
             )
         )
         events_list = sorted(
-            _re_canonical(details)
+            canonical_event_json(json.loads(details) if details else {})
             for (details,) in self.con.execute("SELECT details FROM events WHERE tick = ?", (tick,))
         )
         return {"nodes": nodes, "edges": edges, "events": events_list}

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -35,6 +34,12 @@ from babylon.persistence.postgres_schema import (
     TRACE_PARTITION_DROP_TEMPLATE,
 )
 from babylon.persistence.protocols import MonotonicityViolationError, TickAlreadyResolved
+from babylon.persistence.serialization import (
+    canonical_event_json,
+)
+from babylon.persistence.serialization import (
+    json_default as _json_default,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,24 +47,19 @@ logger = logging.getLogger(__name__)
 _BATCH_SIZE = 1000
 
 
-def _json_default(obj: object) -> str:
-    """Fallback serializer for ``json.dumps`` — handles datetime/date/UUID."""
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    if isinstance(obj, date):
-        return obj.isoformat()
-    if isinstance(obj, UUID):
-        return str(obj)
-    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-
-
 def _is_json_serializable(value: Any) -> bool:
-    """Predicate: can ``value`` round-trip through ``json.dumps`` /
-    ``json.loads``? Used by :meth:`PostgresRuntime._canonical_payload`
-    to filter graph-node / edge attributes before canonicalization
-    (Spec 056 monotonic-idempotent comparison)."""
+    """Predicate: can ``value`` round-trip through a plain ``json.dumps``?
+    Used by :meth:`PostgresRuntime._canonical_payload` to filter
+    graph-node / edge attributes before canonicalization (Spec 056
+    monotonic-idempotent comparison).
+
+    Intentionally probes WITHOUT a ``default=`` fallback so it matches
+    :meth:`PostgresRuntime._make_serializable`'s storage filter exactly:
+    values a plain dump drops from storage (datetimes, UUIDs, ...) are
+    likewise excluded from the canonical payload, keeping the new-vs-stored
+    comparison symmetric."""
     try:
-        json.dumps(value, default=_json_default)
+        json.dumps(value)
         return True
     except (TypeError, ValueError):
         return False
@@ -200,7 +200,7 @@ class PostgresRuntime:
             )
             for source, target, attrs in graph.edges(data=True)
         )
-        events_list = sorted(json.dumps(event, sort_keys=True) for event in (events or []))
+        events_list = sorted(canonical_event_json(event) for event in (events or []))
         return {"nodes": nodes, "edges": edges, "events": events_list}
 
     @staticmethod
@@ -254,10 +254,7 @@ class PostgresRuntime:
                 (session_id, tick),
             )
             events_list = sorted(
-                json.dumps(
-                    row["details"] if isinstance(row["details"], dict) else {},
-                    sort_keys=True,
-                )
+                canonical_event_json(row["details"] if isinstance(row["details"], dict) else {})
                 for row in cur.fetchall()
             )
 

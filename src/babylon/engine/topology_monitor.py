@@ -478,7 +478,9 @@ class TopologyMonitor:
         if self._resilience_interval > 0:
             tick = state.tick
             if is_start or (tick > 0 and tick % self._resilience_interval == 0):
-                result = check_resilience(graph, removal_rate=self._removal_rate)
+                # III.7: seed by tick so the purge sample is a pure
+                # function of simulation state, not process entropy.
+                result = check_resilience(graph, removal_rate=self._removal_rate, seed=tick)
                 is_resilient = result.is_resilient
 
         # Create snapshot (now includes cadre_density)

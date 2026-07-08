@@ -13,9 +13,11 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
 
 if TYPE_CHECKING:
     from babylon.engine.interceptor import (
@@ -38,13 +40,19 @@ class Event:
         type: Event type identifier (e.g., "tick", "rupture", "synthesis")
         tick: Simulation tick when the event occurred
         payload: Event-specific data dictionary
-        timestamp: Wall-clock time when event was created
+        timestamp: Deterministic sim-time derived from tick
+            (Constitution III.7)
     """
 
     type: str
     tick: int
     payload: dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = UNSET_TIMESTAMP
+
+    def __post_init__(self) -> None:
+        """Derive the default timestamp from tick (Constitution III.7)."""
+        if self.timestamp is UNSET_TIMESTAMP:
+            object.__setattr__(self, "timestamp", sim_datetime(self.tick))
 
 
 # Type alias for event handlers
@@ -212,12 +220,37 @@ class EventBus:
     def _emit_to_handlers(self, event: Event) -> None:
         """Emit event to all subscribed handlers.
 
+        Handler isolation (Constitution III.7): every subscribed handler
+        receives the event even when an earlier handler raises. Failures
+        are logged via ``logger.exception`` and re-raised together AFTER
+        the fan-out completes — isolation without silent swallowing.
+        Because ``publish`` appends to history before emitting, the event
+        is never lost even when the fan-out fails.
+
         Args:
             event: The event to emit.
+
+        Raises:
+            ExceptionGroup: If one or more handlers raised.
         """
         handlers = self._subscribers.get(event.type, [])
+        failures: list[Exception] = []
         for handler in handlers:
-            handler(event)
+            try:
+                handler(event)
+            except Exception as exc:  # isolate the fan-out; re-raised below
+                logger.exception(
+                    "Event handler %r failed for event type %s (tick %d)",
+                    handler,
+                    event.type,
+                    event.tick,
+                )
+                failures.append(exc)
+        if failures:
+            raise ExceptionGroup(
+                f"{len(failures)} event handler(s) failed for {event.type}",
+                failures,
+            )
 
     def get_history(self) -> list[Event]:
         """Get a copy of all published events.

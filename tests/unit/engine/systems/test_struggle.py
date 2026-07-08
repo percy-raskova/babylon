@@ -311,10 +311,28 @@ class TestStruggleSystemStep:
 
     # ── Spark probability ────────────────────────────────────────────
 
+    def test_spark_roll_ignores_global_random_state(self) -> None:
+        """III.7: spark outcome is a pure function of tick, not global RNG."""
+        import random as global_rng
+
+        from babylon.config.defines import GameDefines, StruggleDefines
+
+        outcomes: list[int] = []
+        for seed in (1, 2):  # global first rolls 0.134 vs 0.956 straddle prob=0.5
+            custom = StruggleDefines(spark_probability_scale=0.5)
+            svc = ServiceContainer.create(defines=GameDefines(struggle=custom))
+            graph = _create_minimal_struggle_graph(repression=1.0, agitation=0.0)
+            captured: list = []
+            svc.event_bus.subscribe(EventType.EXCESSIVE_FORCE, lambda e, c=captured: c.append(e))
+            global_rng.seed(seed)
+            StruggleSystem().step(graph, svc, {"tick": 1})
+            outcomes.append(len(captured))
+            svc.database.close()
+
+        assert outcomes[0] == outcomes[1]
+
     def test_no_spark_when_repression_zero(self, services: ServiceContainer) -> None:
         """repression=0 → spark_prob=0 → no EXCESSIVE_FORCE event."""
-        import random as rng
-
         graph = _create_minimal_struggle_graph(repression=0.0, agitation=1.0)
 
         captured: list = []
@@ -324,7 +342,6 @@ class TestStruggleSystemStep:
         )
 
         system = StruggleSystem()
-        rng.seed(42)
         # Run multiple times to confirm determinism
         for tick in range(20):
             system.step(graph, services, {"tick": tick})
@@ -355,15 +372,15 @@ class TestStruggleSystemStep:
         custom_services.database.close()
 
     def test_spark_probability_is_repression_times_scale(self, services: ServiceContainer) -> None:
-        """spark_prob = repression * spark_scale; seed random to verify threshold."""
-        import random as rng
+        """spark_prob = repression * spark_scale; the tick-seeded roll decides."""
+        from babylon.engine.systems.base import resolve_rng
 
         # Default spark_scale = 0.1, repression = 0.5 → prob = 0.05
         graph = _create_minimal_struggle_graph(repression=0.5, agitation=0.0)
 
-        # Seed 42: first random() call for this node will be deterministic
-        rng.seed(42)
-        first_roll = rng.random()  # 0.6394... → > 0.05 → no spark
+        # III.7: the roll is the first draw of the tick-seeded stream
+        # (0.13636... at tick=1) — above prob 0.05, so no spark.
+        expected_roll = resolve_rng(services, tick=1).random()
 
         captured: list = []
         services.event_bus.subscribe(
@@ -372,19 +389,15 @@ class TestStruggleSystemStep:
         )
 
         system = StruggleSystem()
-        rng.seed(42)
         system.step(graph, services, {"tick": 1})
 
-        # With seed 42, random() = 0.639... which is > 0.05, so no spark
-        assert first_roll > 0.05
+        assert expected_roll > 0.05
         assert len(captured) == 0
 
     # ── Uprising condition ───────────────────────────────────────────
 
     def test_uprising_requires_agitation_above_threshold(self, services: ServiceContainer) -> None:
         """agitation == threshold exactly → NO uprising (strict >)."""
-        import random as rng
-
         # threshold default = 0.1, agitation = 0.1 (exactly at threshold)
         graph = _create_minimal_struggle_graph(repression=1.0, agitation=0.1, p_rev=0.8, p_acq=0.2)
 
@@ -401,7 +414,6 @@ class TestStruggleSystemStep:
         )
 
         system = StruggleSystem()
-        rng.seed(42)
         system.step(graph, svc, {"tick": 1})
 
         # agitation == threshold → strict > means NO uprising
@@ -410,8 +422,6 @@ class TestStruggleSystemStep:
 
     def test_uprising_with_revolutionary_pressure_only(self, services: ServiceContainer) -> None:
         """No spark needed: p_rev > p_acq + agitation > threshold → uprising."""
-        import random as rng
-
         # High agitation above threshold, revolutionary pressure (p_rev > p_acq)
         graph = _create_minimal_struggle_graph(
             repression=0.0,  # No spark possible
@@ -427,7 +437,6 @@ class TestStruggleSystemStep:
         )
 
         system = StruggleSystem()
-        rng.seed(42)
         system.step(graph, services, {"tick": 1})
 
         assert len(captured_uprisings) == 1
@@ -459,8 +468,6 @@ class TestStruggleSystemStep:
 
     def test_no_uprising_when_neither_spark_nor_pressure(self, services: ServiceContainer) -> None:
         """High agitation but no trigger (no spark + p_acq > p_rev) → no uprising."""
-        import random as rng
-
         graph = _create_minimal_struggle_graph(
             repression=0.0,  # No spark
             agitation=1.0,  # High
@@ -472,7 +479,6 @@ class TestStruggleSystemStep:
         services.event_bus.subscribe(EventType.UPRISING, lambda e: captured_uprisings.append(e))
 
         system = StruggleSystem()
-        rng.seed(42)
         system.step(graph, services, {"tick": 1})
 
         assert len(captured_uprisings) == 0

@@ -28,17 +28,16 @@ N-1's regime (empty on tick 1). It is surfaced in the FASCIST_DRIFT event
 payload as observability only — the regime NEVER gates dynamics (the crisis
 gate is agitation, computed same-tick by ConsciousnessSystem @17), so the
 one-tick staleness is immaterial. Determinism (III.7): sorted iteration + the
-seed RNG (:func:`_resolve_rng`).
+seed RNG (:func:`babylon.engine.systems.base.resolve_rng`).
 """
 
 from __future__ import annotations
 
-import random
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.dialectics.core.coupling import StanceIntervention
 from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase
+from babylon.engine.systems.base import SystemBase, resolve_rng
 from babylon.formulas.reactionary import (
     calculate_defection_probability,
     calculate_fascist_pull,
@@ -235,7 +234,7 @@ class FascistFactionSystem(SystemBase):
         defines: Any,
     ) -> None:
         crisis_now = self._crisis_this_tick(services, tick)
-        rng = _resolve_rng(services, tick)
+        rng = resolve_rng(services, tick)
 
         # Group MEMBERSHIP edges (org -> LA class node) by org, deterministically.
         members_by_org: dict[str, list[Any]] = {}
@@ -364,15 +363,3 @@ def _agitation_of(attrs: dict[str, Any]) -> float:
     if isinstance(ideology, dict):
         return float(ideology.get("agitation", 0.0))
     return 0.0
-
-
-def _resolve_rng(services: ServiceContainer, tick: int) -> random.Random:
-    """Seed-deterministic RNG for defection rolls (spec-070 precedent).
-
-    Prefers ``services.rng``; else the ``random.Random(0xBA1AC1A + tick)``
-    fallback used by :mod:`babylon.engine.systems.faction_influence`.
-    """
-    rng = getattr(services, "rng", None)
-    if isinstance(rng, random.Random):
-        return rng
-    return random.Random(0xBA1AC1A + tick)

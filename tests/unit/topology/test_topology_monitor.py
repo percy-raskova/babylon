@@ -333,6 +333,37 @@ class TestPurgeSimulation:
 
         assert monitor._resilience_interval == 0
 
+    def test_monitor_seeds_resilience_purge_by_tick(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """III.7: the monitor passes seed=tick so the purge is deterministic."""
+        import babylon.engine.topology_monitor as tm
+        from babylon.engine.scenarios import create_two_node_scenario
+        from babylon.engine.topology_monitor import TopologyMonitor
+        from babylon.models.topology_metrics import ResilienceResult
+
+        captured_kwargs: list[dict] = []
+
+        def _spy(graph: object, **kwargs: object) -> ResilienceResult:
+            captured_kwargs.append(dict(kwargs))
+            return ResilienceResult(
+                is_resilient=True,
+                original_max_component=0,
+                post_purge_max_component=0,
+                removal_rate=0.2,
+                survival_threshold=0.5,
+                seed=kwargs.get("seed"),  # type: ignore[arg-type]
+            )
+
+        monkeypatch.setattr(tm, "check_resilience", _spy)
+
+        state, _config, _defines = create_two_node_scenario()
+        state = state.model_copy(update={"tick": 4})
+        monitor = TopologyMonitor(resilience_test_interval=1)
+
+        monitor.on_tick(state, state)
+
+        assert len(captured_kwargs) == 1
+        assert captured_kwargs[0].get("seed") == 4
+
 
 # =============================================================================
 # TEST: TOPOLOGY MONITOR PROTOCOL

@@ -3,12 +3,12 @@
 The declassed stratum's undirected disorder is gated by
 ``volatility × (1 − organizational_discipline)`` — distinct from the
 organized, solidarity-building UPRISING (it destroys wealth but builds NO
-solidarity infrastructure).
+solidarity infrastructure). The riot is a deterministic gate (III.7);
+the spark roll in the main loop uses the tick-seeded stream, so no global
+RNG seeding is needed anywhere here.
 """
 
 from __future__ import annotations
-
-import random
 
 import pytest
 
@@ -46,7 +46,6 @@ class TestSpontaneousRiot:
     def test_high_volatility_low_discipline_riots(self, services: ServiceContainer) -> None:
         g = BabylonGraph()
         _add_lumpen(g, volatility=0.8, organization=0.0)  # risk = 0.8 > threshold 0.5
-        random.seed(1)  # first random() = 0.134 < 0.8 -> fires
         StruggleSystem().step(g, services, {"tick": 3})
         riots = _events(services, EventType.SPONTANEOUS_RIOT)
         assert len(riots) == 1
@@ -61,24 +60,21 @@ class TestSpontaneousRiot:
     def test_high_discipline_suppresses_riot(self, services: ServiceContainer) -> None:
         g = BabylonGraph()
         _add_lumpen(g, volatility=0.8, organization=1.0)  # risk = 0.0 -> never fires
-        random.seed(1)
         StruggleSystem().step(g, services, {"tick": 3})
         assert _events(services, EventType.SPONTANEOUS_RIOT) == []
 
     def test_zero_volatility_no_riot(self, services: ServiceContainer) -> None:
         g = BabylonGraph()
         _add_lumpen(g, volatility=0.0, organization=0.0)
-        random.seed(1)
         StruggleSystem().step(g, services, {"tick": 3})
         assert _events(services, EventType.SPONTANEOUS_RIOT) == []
 
-    def test_determinism_same_seed_same_outcome(self, services: ServiceContainer) -> None:
+    def test_determinism_same_tick_same_outcome(self, services: ServiceContainer) -> None:
         outcomes = []
         for _ in range(2):
             svc = ServiceContainer.create()
             g = BabylonGraph()
             _add_lumpen(g, volatility=0.8, organization=0.0)
-            random.seed(7)
             StruggleSystem().step(g, svc, {"tick": 3})
             outcomes.append(len(_events(svc, EventType.SPONTANEOUS_RIOT)))
         assert outcomes[0] == outcomes[1]

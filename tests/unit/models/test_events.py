@@ -75,6 +75,25 @@ class TestSimulationEvent:
         event = SimulationEvent(event_type=EventType.SURPLUS_EXTRACTION, tick=TC.Event.TICK_ZERO)
         assert isinstance(event.timestamp, datetime)
 
+    def test_default_timestamp_is_deterministic_function_of_tick(self) -> None:
+        """III.7: the default timestamp derives from tick, not wall clock."""
+        from babylon.sim_clock import sim_datetime
+
+        event_a = SparkEvent(tick=5, node_id="C001", repression=0.5, spark_probability=0.05)
+        event_b = SparkEvent(tick=5, node_id="C001", repression=0.5, spark_probability=0.05)
+
+        assert event_a.timestamp == event_b.timestamp == sim_datetime(5)
+
+    def test_explicit_timestamp_is_preserved(self) -> None:
+        """An explicitly supplied timestamp is never overwritten."""
+        explicit = datetime(1999, 12, 31)
+        event = SimulationEvent(
+            event_type=EventType.SURPLUS_EXTRACTION,
+            tick=TC.Event.TICK_ZERO,
+            timestamp=explicit,
+        )
+        assert event.timestamp == explicit
+
 
 class TestEconomicEvent:
     """Tests for EconomicEvent base class."""

@@ -29,7 +29,7 @@ the newest `execution/PROGRESS_REPORT-*.md`.
 | --- | --- | --- |
 | `programs/` | The numbered planning corpus `00`–`09`: mission, state of the world, engine truths, per-program plans (071, 098, catalog waves, dialectics, chat-corpus alignment, graph substrate, full-game build) | Planning any work; `00` + `01` always first |
 | `assessments/` | Independent reviews and audits: the Jul-7 browser E2E (`E2E_SUMMARY.md`), the Program-09 post-merge review (`POST_ASSESSMENT.md`), the 15-agent whole-repo sweep (`HOLISTIC_REVIEW-2026-07-07.md`) | Before trusting any status claim made elsewhere |
-| `execution/` | Active execution records: the remediation plan, progress reports, the historical `_PROGRESS.md` / `_HANDOFF.md` session records, the frozen `c17-test-migration-ledger.md` | Doing the work; catching up on how it went |
+| `execution/` | Active execution records: the remediation plan, progress reports, `briefs/` (verified scout implementation briefs, one per remaining branch), `phase7-inputs.md` (accumulated record-repair inputs), the historical `_PROGRESS.md` / `_HANDOFF.md` session records, the frozen `c17-test-migration-ledger.md` | Doing the work; catching up on how it went |
 | `owner/` | `owner-queue.md` — decisions needing/holding Percy's rulings | Before making any call that smells like an owner decision |
 | `reference/` | Source texts kept in-repo for the project record | As needed |
 

@@ -454,6 +454,31 @@ class TestSpec065CountyFipsRoundTrip:
         assert restored.entities[COMPRADOR_ID].county_fips is None
 
 
+class TestInstitutionRelationsRoundTrip:
+    """Feature 040: institution_relations must survive to_graph/from_graph."""
+
+    def test_institution_relations_survive_round_trip(self) -> None:
+        """Relations are richer than the HOUSES edges to_graph derives from
+        housed_org_ids — they must round-trip via graph metadata (today:
+        restored.institution_relations silently resets to [])."""
+        from babylon.models.entities.institution import InstitutionOrgRelation
+
+        relation = InstitutionOrgRelation(
+            institution_id="INST_001",
+            organization_id="ORG_001",
+            resource_provision=0.4,
+            legal_cover=True,
+            legitimacy_transfer=0.6,
+        )
+        state = WorldState(tick=0, institution_relations=[relation])
+
+        graph = state.to_graph()
+        restored = WorldState.from_graph(graph, tick=0)
+
+        assert len(restored.institution_relations) == 1
+        assert restored.institution_relations[0].model_dump() == relation.model_dump()
+
+
 class TestSovereignRoundTrip:
     """Spec-070: Sovereign nodes must survive to_graph/from_graph."""
 

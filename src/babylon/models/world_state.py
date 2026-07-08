@@ -416,6 +416,12 @@ class WorldState(BaseModel):
         G.graph["events"] = [e.model_dump() for e in self.events]
         G.graph["event_log"] = list(self.event_log)
 
+        # Store institution-org housing relations in graph metadata (Feature
+        # 040). Relations are richer than the HOUSES edges to_graph derives
+        # from housed_org_ids, so round-trip them via G.graph like
+        # state_finances (Spec 055 lossless round-trip).
+        G.graph["institution_relations"] = [r.model_dump() for r in self.institution_relations]
+
         # Add entity nodes with _node_type marker
         for entity_id, entity in self.entities.items():
             G.add_node(entity_id, _node_type="social_class", **entity.model_dump())
@@ -504,6 +510,10 @@ class WorldState(BaseModel):
         contradiction_frames = {
             scope: ContradictionFrame(**data) for scope, data in cf_data.items()
         }
+
+        # Reconstruct institution-org relations from graph metadata (Feature 040)
+        ir_data = G.graph.get("institution_relations", [])
+        institution_relations = [InstitutionOrgRelation(**data) for data in ir_data]
 
         # Reconstruct events from graph metadata (Sprint 1.X D2: Lossless Round-Trip)
         # Only use graph metadata if events parameter was not explicitly provided
@@ -611,6 +621,7 @@ class WorldState(BaseModel):
             organizations=organizations,
             key_figures=key_figures_dict,
             institutions=institutions_dict,
+            institution_relations=institution_relations,
             industries=industries_dict,
             sovereigns=sovereigns_dict,
         )

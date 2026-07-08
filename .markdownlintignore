@@ -71,4 +71,3 @@ docs/
 # would corrupt them (Immutability of History). Existing project/ docs
 # never passed these rules; the exclusion makes that explicit.
 project/
-E2E_SUMMARY.md

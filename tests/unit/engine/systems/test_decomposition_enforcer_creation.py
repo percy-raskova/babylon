@@ -83,3 +83,38 @@ class TestEnforcerCreation:
         assert re.fullmatch(r"C[0-9]{3}", enforcer[0])
         assert re.fullmatch(r"C[0-9]{3}", internal[0])
         assert enforcer[0] != internal[0]
+
+    def test_created_targets_survive_from_graph(self, services: ServiceContainer) -> None:
+        """Design B: on-demand targets must be model-complete node payloads.
+
+        ``_create_target_entity`` historically omitted ``id`` AND ``name``
+        (both required on SocialClass — ``id`` pattern ``^C[0-9]{3,}$``,
+        ``name`` min_length=1), so the next ``WorldState.from_graph``
+        raised ValidationError and killed the facade round-trip.
+        """
+        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.world_state import WorldState
+
+        la = SocialClass(
+            id="C001",
+            name="Labor Aristocracy",
+            role=SocialRole.LABOR_ARISTOCRACY,
+            wealth=1.0,
+            subsistence_threshold=5.0,
+            population=500,
+            active=True,
+            county_fips="26163",
+            s_bio=0.01,
+            s_class=0.0,
+        )
+        state = WorldState(tick=5, entities={"C001": la})
+        graph = state.to_graph()
+
+        DecompositionSystem().step(graph, services, {"tick": 5, "persistent_data": {}})
+
+        restored = WorldState.from_graph(graph, tick=6)  # must not raise
+        created = {eid: e for eid, e in restored.entities.items() if eid != "C001"}
+        assert created, "decomposition must create target entities"
+        for node_id, entity in created.items():
+            assert entity.id == node_id
+            assert entity.name, f"created entity {node_id} must carry a non-empty name"

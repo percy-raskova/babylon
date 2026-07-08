@@ -22,8 +22,17 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import EventType, OperationalProfile, SectorType
-from babylon.models.events import ExtractionEvent, UprisingEvent
+from babylon.models.events import (
+    EVENT_CLASS_MAP,
+    ExtractionEvent,
+    SimulationEvent,
+    UprisingEvent,
+)
 from babylon.models.world_state import WorldState
+
+# EventType members with no TickEvent leaf class (no ``kind`` literal in the
+# discriminated union). Sorted for deterministic parametrize ids.
+NON_UNION_TYPES = sorted(set(EventType) - set(EVENT_CLASS_MAP), key=str)
 
 
 class TestEventsRoundTrip:
@@ -65,6 +74,24 @@ class TestEventsRoundTrip:
         assert restored.events[1].event_type == EventType.UPRISING
         assert restored.events[1].node_id == PERIPHERY_WORKER_ID
         assert restored.events[1].trigger == "spark"
+
+
+class TestNonUnionEventRoundTrip:
+    """Design B: EventType members outside the 19-leaf TickEvent union must
+    replay as bare SimulationEvent instead of crashing (union_tag_invalid)."""
+
+    def test_non_union_type_count_pin(self) -> None:
+        """Sanity-pin: exactly 19 EventType values are union-dispatchable."""
+        assert len(NON_UNION_TYPES) == len(EventType) - 19
+
+    @pytest.mark.parametrize("event_type", NON_UNION_TYPES, ids=str)
+    def test_non_union_event_types_survive_round_trip(self, event_type: EventType) -> None:
+        state = WorldState(tick=0, events=[SimulationEvent(event_type=event_type, tick=0)])
+
+        restored = WorldState.from_graph(state.to_graph(), tick=0)
+
+        assert len(restored.events) == 1
+        assert restored.events[0].event_type is event_type
 
 
 class TestEventLogRoundTrip:
@@ -454,6 +481,179 @@ class TestSpec065CountyFipsRoundTrip:
         assert restored.entities[COMPRADOR_ID].county_fips is None
 
 
+class TestEdgeCollisionPreScan:
+    """Design B: to_graph must fail loud on same-pair edge_type collisions.
+
+    BabylonGraph stores ONE edge per (source, target) pair (rustworkx core
+    is multigraph=False; add_edge merges payloads), so two Relationships on
+    the same pair with different edge_types would silently collapse
+    last-writer-wins during the round-trip.
+    """
+
+    @staticmethod
+    def _state_with_two_entities() -> WorldState:
+        from babylon.engine.factories import create_bourgeoisie, create_proletariat
+
+        return WorldState(
+            tick=0,
+            entities={
+                "C000": create_proletariat(id="C000"),
+                "C001": create_bourgeoisie(id="C001"),
+            },
+        )
+
+    def test_to_graph_raises_on_same_pair_edge_type_collision(self) -> None:
+        state = self._state_with_two_entities()
+        state = state.model_copy(
+            update={
+                "relationships": [
+                    Relationship(
+                        source_id="C000", target_id="C001", edge_type=EdgeType.EXPLOITATION
+                    ),
+                    Relationship(source_id="C000", target_id="C001", edge_type=EdgeType.SOLIDARITY),
+                ]
+            }
+        )
+
+        with pytest.raises(ValueError, match="edge collision"):
+            state.to_graph()
+
+    def test_same_pair_same_type_duplicates_still_merge(self) -> None:
+        """Residual contract (documented, unchanged): same-pair SAME-type
+        duplicates merge silently — the pre-scan only rejects differing
+        edge_types."""
+        state = self._state_with_two_entities()
+        state = state.model_copy(
+            update={
+                "relationships": [
+                    Relationship(
+                        source_id="C000",
+                        target_id="C001",
+                        edge_type=EdgeType.EXPLOITATION,
+                        value_flow=1.0,
+                    ),
+                    Relationship(
+                        source_id="C000",
+                        target_id="C001",
+                        edge_type=EdgeType.EXPLOITATION,
+                        value_flow=2.0,
+                    ),
+                ]
+            }
+        )
+
+        graph = state.to_graph()  # must not raise
+
+        restored = WorldState.from_graph(graph, tick=0)
+        assert len(restored.relationships) == 1
+
+
+class TestInstitutionRelationsRoundTrip:
+    """Feature 040: institution_relations must survive to_graph/from_graph."""
+
+    def test_institution_relations_survive_round_trip(self) -> None:
+        """Relations are richer than the HOUSES edges to_graph derives from
+        housed_org_ids — they must round-trip via graph metadata (today:
+        restored.institution_relations silently resets to [])."""
+        from babylon.models.entities.institution import InstitutionOrgRelation
+
+        relation = InstitutionOrgRelation(
+            institution_id="INST_001",
+            organization_id="ORG_001",
+            resource_provision=0.4,
+            legal_cover=True,
+            legitimacy_transfer=0.6,
+        )
+        state = WorldState(tick=0, institution_relations=[relation])
+
+        graph = state.to_graph()
+        restored = WorldState.from_graph(graph, tick=0)
+
+        assert len(restored.institution_relations) == 1
+        assert restored.institution_relations[0].model_dump() == relation.model_dump()
+
+
+class TestSovereignRoundTrip:
+    """Spec-070: Sovereign nodes must survive to_graph/from_graph."""
+
+    def test_sovereign_survives_round_trip(self) -> None:
+        """A WorldState-carried Sovereign round-trips losslessly."""
+        from babylon.models.entities.sovereign import Sovereign
+        from babylon.models.enums import ExtractionPolicy, SovereigntyType
+
+        sovereign = Sovereign(
+            id="SOV_TEST",
+            name="Test Sovereign",
+            sovereignty_type=SovereigntyType.RECOGNIZED_STATE,
+            legitimacy=0.8,
+            color_hex="#112233",
+            ruling_faction_id=None,
+            extraction_policy=ExtractionPolicy.CONTINUE,
+            founded_tick=0,
+        )
+        state = WorldState(tick=0, sovereigns={"SOV_TEST": sovereign})
+
+        graph = state.to_graph()
+        assert graph.nodes["SOV_TEST"]["_node_type"] == "sovereign"
+
+        restored = WorldState.from_graph(graph, tick=0)
+        assert restored.sovereigns["SOV_TEST"].model_dump() == sovereign.model_dump()
+
+    def test_sovereign_node_without_id_attr_reconstructs(self) -> None:
+        """A node written the way CollapseTransitionSystem historically wrote
+        it (no ``id`` attr) reconstructs with ``id == node_id`` instead of
+        crashing (today: ValidationError from SocialClass extra="forbid")."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "SOV_TEST",
+            _node_type="sovereign",
+            name="Successor of SOV_USA_FED",
+            sovereignty_type="provisional",
+            legitimacy=0.5,
+            color_hex="#7f7f7f",
+            ruling_faction_id=None,
+            extraction_policy="continue",
+            founded_tick=0,
+        )
+
+        restored = WorldState.from_graph(graph, tick=0)
+
+        assert restored.sovereigns["SOV_TEST"].id == "SOV_TEST"
+        assert restored.sovereigns["SOV_TEST"].name == "Successor of SOV_USA_FED"
+
+
+class TestSocialClassDefensiveReconstruction:
+    """Design B: from_graph fail-soft on writer-incomplete social_class nodes."""
+
+    def test_missing_id_and_name_reconstruct_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A social_class node whose writer omitted ``id`` and ``name``
+        reconstructs (id from node id, name fallback) and logs a WARNING
+        naming the node — fail-soft + loud instead of ValidationError."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "C042",
+            _node_type="social_class",
+            role=SocialRole.INTERNAL_PROLETARIAT.value,
+            active=False,
+            population=0,
+            wealth=0.0,
+        )
+
+        with caplog.at_level("WARNING", logger="babylon.models.world_state"):
+            restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        entity = restored.entities["C042"]
+        assert entity.id == "C042"
+        assert entity.name == "C042"  # loud fallback, not silence
+        assert any(
+            "C042" in record.message and "name" in record.message
+            for record in caplog.records
+            if record.levelname == "WARNING"
+        ), "missing-name reconstruction must log a WARNING naming the node"
+
+
 class TestWageAccountingAttrsAreTransient:
     """Phase D4: w_paid/v_produced node attrs must not break from_graph."""
 
@@ -473,3 +673,44 @@ class TestWageAccountingAttrsAreTransient:
         entity = restored.entities["C001"]
         assert not hasattr(entity, "w_paid")
         assert not hasattr(entity, "v_produced")
+
+    def test_from_graph_drops_threat_score_attr(self) -> None:
+        # CommunitySystem._compute_threat_scores writes threat_score onto
+        # social_class nodes (community.py); it is NOT a SocialClass field,
+        # so from_graph must drop it rather than raise extra_forbidden.
+        from babylon.engine.factories import create_proletariat
+
+        state = WorldState(tick=0, entities={"C001": create_proletariat(id="C001")})
+        graph = state.to_graph()
+        graph.nodes["C001"]["threat_score"] = 0.7
+
+        restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        assert not hasattr(restored.entities["C001"], "threat_score")
+
+
+class TestTerritoryTransientAttrsAreDropped:
+    """Design B: system-written territory attrs must not break from_graph."""
+
+    def test_from_graph_drops_habitability_and_dispossession_intensity(self) -> None:
+        # MetabolismSystem writes sovereign-driven habitability
+        # (metabolism.py) and DispossessionEventSystem writes
+        # dispossession_intensity (dispossession_events.py) onto territory
+        # nodes; neither is a Territory model field (extra="forbid"), so
+        # from_graph must drop them rather than raise.
+        territory = Territory(
+            id="T001",
+            name="District",
+            sector_type=SectorType.INDUSTRIAL,
+            profile=OperationalProfile.LOW_PROFILE,
+        )
+        state = WorldState(tick=0, territories={"T001": territory})
+        graph = state.to_graph()
+        graph.nodes["T001"]["habitability"] = 0.4
+        graph.nodes["T001"]["dispossession_intensity"] = 0.2
+
+        restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        restored_territory = restored.territories["T001"]
+        assert not hasattr(restored_territory, "habitability")
+        assert not hasattr(restored_territory, "dispossession_intensity")

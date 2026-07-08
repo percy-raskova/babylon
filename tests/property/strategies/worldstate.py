@@ -72,11 +72,12 @@ def worldstate_strategy(
             territories[unique_id] = territory
 
         # Generate relationships between existing entities. Dedupe by
-        # (source, target) because nx.DiGraph (used by
-        # WorldState.to_graph/from_graph) is strictly single-edge-per-pair
-        # — even relationships of *different* edge_type collapse to one
-        # edge during the round-trip. This is the real graph semantics,
-        # not a bug. (Multi-edge support would require nx.MultiDiGraph.)
+        # (source, target) because BabylonGraph (used by
+        # WorldState.to_graph/from_graph) is strictly single-edge-per-pair.
+        # Design B: to_graph now RAISES ValueError on same-pair
+        # differing-edge_type collisions instead of silently collapsing
+        # last-writer-wins; this strategy's pair-dedupe already satisfies
+        # that contract. (Same-pair SAME-type duplicates still merge.)
         relationships = []
         if len(entities) >= 2:
             entity_ids = list(entities.keys())

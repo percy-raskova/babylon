@@ -27,7 +27,6 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from babylon.formulas.balkanization import calculate_metabolic_impact
 from babylon.models.enums import ExtractionPolicy, SovereigntyType
 from babylon.models.types import Probability
 
@@ -84,6 +83,11 @@ class Sovereign(BaseModel):
         path is to construct a custom Sovereign + custom defines in
         higher-level code, not via this property.
         """
+        # Runtime-local import: models MUST NOT import formulas at module
+        # level — formulas.balkanization imports babylon.models.enums back,
+        # so a module-level import here deadlocks any process whose first
+        # babylon import is formulas.balkanization (doctest, tooling).
+        from babylon.formulas.balkanization import calculate_metabolic_impact
 
         return calculate_metabolic_impact(self.extraction_policy)
 

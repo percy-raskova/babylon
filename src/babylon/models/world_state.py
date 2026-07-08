@@ -17,6 +17,7 @@ Sprint 3.5.3: Territory integration for Layer 0.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -34,6 +35,7 @@ from babylon.models.entities.organization import (
 )
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entities.sovereign import Sovereign
 from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, OrgType, SectorType
@@ -42,6 +44,8 @@ from babylon.models.types import Currency
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +71,10 @@ SOCIAL_CLASS_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
         # are not SocialClass model fields, so they are dropped on reconstruction.
         "contradiction_fields",
         "field_derivatives",
+        # CommunitySystem per-tick threat assessment (community.py
+        # _compute_threat_scores) — transient graph-only attr, not a
+        # SocialClass model field.
+        "threat_score",
     }
 )
 
@@ -83,6 +91,13 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         "adjusted_p_to_d_prime",
         "transmitted_ideology",
         "differential_p_to_d_prime",
+        # Spec-070 FR-043: MetabolismSystem writes sovereign-driven
+        # habitability onto territory nodes; web derives display
+        # habitability from biocapacity — not a Territory model field.
+        "habitability",
+        # DispossessionEventSystem per-tick intensity (armed once the
+        # Phase-2.2 node_type case fix lands) — not a Territory field.
+        "dispossession_intensity",
     }
 )
 
@@ -100,6 +115,14 @@ ORGANIZATION_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
     }
 )
 
+SOVEREIGN_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        # @computed_field — included in model_dump() by to_graph, not a
+        # constructor argument (mirrors SocialClass.consumption_needs).
+        "metabolic_impact",
+    }
+)
+
 
 def _validate_event(data: dict[str, Any]) -> SimulationEvent:
     """Deserialize an event dict via TickEventAdapter.
@@ -108,15 +131,31 @@ def _validate_event(data: dict[str, Any]) -> SimulationEvent:
     shim. For events serialized before US2 (lacking the ``kind`` discriminator
     field), inject ``kind`` from ``event_type`` since both fields use identical
     string values across the EventType enum.
+
+    Design B (from_graph safety): only the TickEvent leaf kinds dispatch via
+    the discriminated adapter. Any other EventType replays as a bare
+    :class:`SimulationEvent` with a WARNING naming the unmatched kind —
+    fail-soft + loud instead of ``union_tag_invalid``.
     """
     if "kind" not in data and "event_type" in data:
         et = data["event_type"]
         # Mutate in place: event_type values map 1:1 to kind values
         data = {**data, "kind": et if isinstance(et, str) else et.value}
     if "kind" in data:
-        return TickEventAdapter.validate_python(data)
-    # Fallback: bare SimulationEvent (no kind, no event_type) — preserve
-    # historical behaviour
+        if data["kind"] in EVENT_CLASS_MAP:
+            return TickEventAdapter.validate_python(data)
+        # Only the TickEvent leaf kinds are dispatchable; feeding any other
+        # EventType to the discriminated adapter raises union_tag_invalid
+        # instead of replaying the event. Fall back to bare SimulationEvent —
+        # loud, so the missing leaf class is visible in the logs.
+        logger.warning(
+            "event kind %r has no TickEvent leaf class; replaying as bare "
+            "SimulationEvent (event_type=%r)",
+            data["kind"],
+            data.get("event_type"),
+        )
+    # Fallback: bare SimulationEvent (kind outside the union, or no
+    # discriminator at all) — preserve replay instead of crashing.
     et = data.get("event_type")
     et_str: str | None = None
     if isinstance(et, str):
@@ -190,6 +229,53 @@ def _reconstruct_organization(node_data: dict[str, Any]) -> OrganizationType:
     }
     org_cls = subtype_map[org_type_enum]
     return org_cls(**org_data)
+
+
+def _reconstruct_sovereign(node_id: str, node_data: dict[str, Any]) -> Sovereign:
+    """Reconstruct a Sovereign from graph node data (spec-070).
+
+    Runtime writers (CollapseTransitionSystem) historically omitted ``id``
+    from the node payload — the node id IS the sovereign id, so inject it
+    when absent. Computed fields are excluded per SOVEREIGN_COMPUTED_FIELDS.
+
+    Args:
+        node_id: Graph node id (``^SOV_[A-Z][A-Z0-9_]*$``).
+        node_data: Node attribute dict without the ``_node_type`` key.
+
+    Returns:
+        Reconstructed Sovereign instance.
+    """
+    sov_data = {k: v for k, v in node_data.items() if k not in SOVEREIGN_COMPUTED_FIELDS}
+    sov_data.setdefault("id", node_id)
+    return Sovereign(**sov_data)
+
+
+def _assert_no_edge_type_collisions(relationships: list[Relationship]) -> None:
+    """Fail loud on same-pair relationships with differing edge_types.
+
+    BabylonGraph stores ONE edge per (source, target) pair (rustworkx
+    core is multigraph=False; add_edge merges payloads — see
+    engine/graph.py add_edge). Two Relationships on the same pair with
+    different edge_types would collapse last-writer-wins. Raise rather
+    than silently corrupt the round-trip (Design B).
+
+    Args:
+        relationships: WorldState relationship list to pre-scan.
+
+    Raises:
+        ValueError: On the first same-(source, target) pair carrying two
+            differing edge_types, naming the pair and both types.
+    """
+    seen_edge_types: dict[tuple[str, str], EdgeType] = {}
+    for rel in relationships:
+        prior = seen_edge_types.get(rel.edge_tuple)
+        if prior is not None and prior is not rel.edge_type:
+            raise ValueError(
+                f"Relationship edge collision on {rel.edge_tuple}: "
+                f"{prior.value!r} vs {rel.edge_type.value!r} — BabylonGraph "
+                "stores one edge per (source, target) pair"
+            )
+        seen_edge_types[rel.edge_tuple] = rel.edge_type
 
 
 class WorldState(BaseModel):
@@ -305,6 +391,12 @@ class WorldState(BaseModel):
         description="Map of industry ID to IndustryHyperedge (Feature: ECONOMIC_SECTOR)",
     )
 
+    # Sovereign authorities (spec-070 Balkanization)
+    sovereigns: dict[str, Sovereign] = Field(
+        default_factory=dict,
+        description="Map of sovereign ID to Sovereign (spec-070 Balkanization)",
+    )
+
     # =========================================================================
     # NetworkX Conversion
     # =========================================================================
@@ -330,6 +422,12 @@ class WorldState(BaseModel):
 
         Returns:
             BabylonGraph with nodes and edges from this state.
+
+        Raises:
+            ValueError: If two relationships share a (source, target) pair
+                with differing edge_types — BabylonGraph stores one edge per
+                pair, so the collision would silently collapse
+                last-writer-wins (Design B fail-loud).
 
         Example::
 
@@ -368,6 +466,12 @@ class WorldState(BaseModel):
         G.graph["events"] = [e.model_dump() for e in self.events]
         G.graph["event_log"] = list(self.event_log)
 
+        # Store institution-org housing relations in graph metadata (Feature
+        # 040). Relations are richer than the HOUSES edges to_graph derives
+        # from housed_org_ids, so round-trip them via G.graph like
+        # state_finances (Spec 055 lossless round-trip).
+        G.graph["institution_relations"] = [r.model_dump() for r in self.institution_relations]
+
         # Add entity nodes with _node_type marker
         for entity_id, entity in self.entities.items():
             G.add_node(entity_id, _node_type="social_class", **entity.model_dump())
@@ -403,6 +507,14 @@ class WorldState(BaseModel):
         # Add industry nodes with _node_type marker (Feature: ECONOMIC_SECTOR)
         for ind_id, ind in self.industries.items():
             G.add_node(ind_id, _node_type="industry", **ind.model_dump())
+
+        # Add sovereign nodes with _node_type marker (spec-070)
+        for sov_id, sov in self.sovereigns.items():
+            G.add_node(sov_id, _node_type="sovereign", **sov.model_dump())
+
+        # Design B pre-scan: fail loud on same-pair differing-edge_type
+        # collisions before BabylonGraph's add_edge merge can eat one.
+        _assert_no_edge_type_collisions(self.relationships)
 
         # Add edges with relationship data
         for rel in self.relationships:
@@ -453,6 +565,10 @@ class WorldState(BaseModel):
             scope: ContradictionFrame(**data) for scope, data in cf_data.items()
         }
 
+        # Reconstruct institution-org relations from graph metadata (Feature 040)
+        ir_data = G.graph.get("institution_relations", [])
+        institution_relations = [InstitutionOrgRelation(**data) for data in ir_data]
+
         # Reconstruct events from graph metadata (Sprint 1.X D2: Lossless Round-Trip)
         # Only use graph metadata if events parameter was not explicitly provided
         if events is None:
@@ -480,6 +596,7 @@ class WorldState(BaseModel):
         key_figures_dict: dict[str, KeyFigure] = {}
         institutions_dict: dict[str, Institution] = {}
         industries_dict: dict[str, IndustryHyperedge] = {}
+        sovereigns_dict: dict[str, Sovereign] = {}
 
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
@@ -496,12 +613,30 @@ class WorldState(BaseModel):
                 institutions_dict[node_id] = _reconstruct_institution(node_data)
             elif node_type == "industry":
                 industries_dict[node_id] = IndustryHyperedge(**node_data)
+            elif node_type == "sovereign":
+                sovereigns_dict[node_id] = _reconstruct_sovereign(node_id, node_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
                 # Filter out computed fields that shouldn't be passed to constructor
                 entity_data = {
                     k: v for k, v in node_data.items() if k not in SOCIAL_CLASS_COMPUTED_FIELDS
                 }
+                # Defensive (Design B): runtime writers key nodes by id — the
+                # node id IS the entity id, so inject it when the payload
+                # omitted it.
+                entity_data.setdefault("id", node_id)
+                if not entity_data.get("name"):
+                    # Fail-soft + loud: SocialClass.name is required
+                    # (min_length=1). A writer omitting it is a bug — warn
+                    # with enough context to find the offending System, then
+                    # fall back to the node id so replay can proceed.
+                    logger.warning(
+                        "social_class node %r missing required 'name' attribute; "
+                        "falling back to the node id (writer bug — the System "
+                        "that add_node()ed this payload must emit a name)",
+                        node_id,
+                    )
+                    entity_data["name"] = node_id
                 entities[node_id] = SocialClass(**entity_data)
 
         # Reconstruct relationships from edges.
@@ -540,7 +675,9 @@ class WorldState(BaseModel):
             organizations=organizations,
             key_figures=key_figures_dict,
             institutions=institutions_dict,
+            institution_relations=institution_relations,
             industries=industries_dict,
+            sovereigns=sovereigns_dict,
         )
 
     # =========================================================================

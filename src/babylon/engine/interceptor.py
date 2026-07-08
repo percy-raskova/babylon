@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
+from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
+
 if TYPE_CHECKING:
     from babylon.engine.event_bus import Event
 
@@ -84,12 +86,21 @@ class InterceptResult:
 
 @dataclass(frozen=True)
 class BlockedEvent:
-    """Audit record for blocked events."""
+    """Audit record for blocked events.
+
+    ``blocked_at`` defaults to the deterministic sim-time of the wrapped
+    event's tick (Constitution III.7), never the wall clock.
+    """
 
     event: Event
     interceptor_name: str
     reason: str
-    blocked_at: datetime = field(default_factory=datetime.now)
+    blocked_at: datetime = UNSET_TIMESTAMP
+
+    def __post_init__(self) -> None:
+        """Derive blocked_at from the wrapped event's tick (III.7)."""
+        if self.blocked_at is UNSET_TIMESTAMP:
+            object.__setattr__(self, "blocked_at", sim_datetime(self.event.tick))
 
 
 class EventInterceptor(ABC):

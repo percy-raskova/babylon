@@ -513,3 +513,16 @@ class TestBlockedEvent:
 
         with pytest.raises(FrozenInstanceError):
             blocked.reason = "modified"  # type: ignore[misc]
+
+    def test_blocked_at_is_deterministic_function_of_event_tick(self) -> None:
+        """III.7: blocked_at derives from the wrapped event's tick."""
+        from babylon.sim_clock import sim_datetime
+
+        bus = EventBus()
+        bus.register_interceptor(BlockingInterceptor())
+
+        bus.publish(Event(type="AGITATE", tick=7, payload={}))
+
+        blocked = bus.get_blocked_events()
+        assert len(blocked) == 1
+        assert blocked[0].blocked_at == sim_datetime(7)

@@ -60,12 +60,13 @@ See Also:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from babylon.models.enums import EventType, GameOutcome
 from babylon.models.types import Currency
+from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
 
 
 class SimulationEvent(BaseModel):
@@ -77,7 +78,8 @@ class SimulationEvent(BaseModel):
     Attributes:
         event_type: The type of event (from EventType enum).
         tick: Simulation tick when the event occurred (0-indexed).
-        timestamp: Wall-clock time when event was created.
+        timestamp: Deterministic sim-time derived from tick
+            (Constitution III.7).
 
     Example:
         Subclasses should set a default event_type::
@@ -97,9 +99,20 @@ class SimulationEvent(BaseModel):
         description="Simulation tick when event occurred (0-indexed)",
     )
     timestamp: datetime = Field(
-        default_factory=datetime.now,
-        description="Wall-clock time when event was created",
+        default=UNSET_TIMESTAMP,
+        description="Deterministic sim-time derived from tick (Constitution III.7)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_timestamp_from_tick(cls, data: Any) -> Any:
+        """III.7: default timestamps are a pure function of tick."""
+        if isinstance(data, dict):
+            ts = data.get("timestamp")
+            if ts is None or ts is UNSET_TIMESTAMP:
+                data = dict(data)
+                data["timestamp"] = sim_datetime(int(data.get("tick", 0)))
+        return data
 
 
 class EconomicEvent(SimulationEvent):

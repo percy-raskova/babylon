@@ -13,9 +13,11 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
 
 if TYPE_CHECKING:
     from babylon.engine.interceptor import (
@@ -38,13 +40,19 @@ class Event:
         type: Event type identifier (e.g., "tick", "rupture", "synthesis")
         tick: Simulation tick when the event occurred
         payload: Event-specific data dictionary
-        timestamp: Wall-clock time when event was created
+        timestamp: Deterministic sim-time derived from tick
+            (Constitution III.7)
     """
 
     type: str
     tick: int
     payload: dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = UNSET_TIMESTAMP
+
+    def __post_init__(self) -> None:
+        """Derive the default timestamp from tick (Constitution III.7)."""
+        if self.timestamp is UNSET_TIMESTAMP:
+            object.__setattr__(self, "timestamp", sim_datetime(self.tick))
 
 
 # Type alias for event handlers

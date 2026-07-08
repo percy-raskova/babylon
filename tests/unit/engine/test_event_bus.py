@@ -27,15 +27,15 @@ class TestEvent:
         assert event.tick == 1
         assert event.payload == {"key": "value"}
 
-    def test_event_has_timestamp(self) -> None:
-        """Event automatically gets a timestamp."""
+    def test_event_timestamp_is_deterministic_function_of_tick(self) -> None:
+        """III.7: the default timestamp derives from tick, not wall clock."""
         from babylon.engine.event_bus import Event
+        from babylon.sim_clock import sim_datetime
 
-        before = datetime.now()
-        event = Event(type="test", tick=0, payload={})
-        after = datetime.now()
+        event_a = Event(type="test", tick=3, payload={})
+        event_b = Event(type="test", tick=3, payload={})
 
-        assert before <= event.timestamp <= after
+        assert event_a.timestamp == event_b.timestamp == sim_datetime(3)
 
     def test_event_is_frozen_immutable(self) -> None:
         """Event is immutable (frozen dataclass)."""

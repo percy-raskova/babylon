@@ -156,7 +156,10 @@ export interface OrgState {
   heat: number;
   territory_ids: string[];
   hyperedge_memberships: string[];
-  consciousness: ConsciousnessVector;
+  /** Null until the engine computes an org-level ideology distribution —
+   *  the backend never fabricates thirds (spec-109 A5, Constitution III.11).
+   *  Render a loud "no data" state, not a default. */
+  consciousness: ConsciousnessVector | null;
   ooda: OodaProfile;
   /** Computed vanguard economy resources (player orgs only). */
   vanguard?: VanguardResources | null;

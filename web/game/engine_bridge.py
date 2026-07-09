@@ -29,6 +29,8 @@ from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
 
+from .map_contract import MAP_METRIC_PROPERTIES
+
 if TYPE_CHECKING:
     from game.narrator import NarratorProvider
 
@@ -953,21 +955,7 @@ class EngineBridge:
                     "type": "Feature",
                     "id": state.h3_index,
                     "geometry": {"type": "Polygon", "coordinates": [coordinates]},
-                    "properties": {
-                        "h3_index": state.h3_index,
-                        "county_fips": state.county_fips,
-                        "county_name": state.county_name,
-                        "bea_ea_code": state.bea_ea_code,
-                        "msa_code": state.msa_code,
-                        "profit_rate": state.profit_rate,
-                        "exploitation_rate": state.exploitation_rate,
-                        "occ": state.occ,
-                        "imperial_rent": state.imperial_rent,
-                        "heat": state.heat,
-                        "org_presence": state.org_count,
-                        "dominant_class": state.dominant_class,
-                        "population": state.pop_total,
-                    },
+                    "properties": _hex_feature_properties(state),
                 }
                 features.append(feature)
         else:
@@ -979,14 +967,7 @@ class EngineBridge:
             "scenario": session.scenario,
             "h3_resolution": 7,
             "zoom": zoom,
-            "available_metrics": [
-                "profit_rate",
-                "exploitation_rate",
-                "occ",
-                "imperial_rent",
-                "heat",
-                "org_presence",
-            ],
+            "available_metrics": list(MAP_METRIC_PROPERTIES),
         }
 
         # Spec 093 US3: balkanization block for the map lens set. Reads the
@@ -3553,6 +3534,38 @@ def _persist_tick_events_safe(
         logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
 
 
+def _hex_feature_properties(state: Any) -> dict[str, Any]:
+    """Project one ``hex_latest`` row onto hex-zoom ``/map/`` feature properties.
+
+    Emits every :data:`MAP_METRIC_PROPERTIES` key (the spec-109 A3 contract —
+    ``org_presence`` maps from ``org_count``, ``population`` from
+    ``pop_total``) plus the identity/context columns. Extracted from the
+    ``get_map_snapshot`` loop so the contract is unit-testable without a
+    database.
+
+    Args:
+        state: One ``HexState`` row (or any object carrying its columns).
+
+    Returns:
+        The feature ``properties`` dict.
+    """
+    return {
+        "h3_index": state.h3_index,
+        "county_fips": state.county_fips,
+        "county_name": state.county_name,
+        "bea_ea_code": state.bea_ea_code,
+        "msa_code": state.msa_code,
+        "profit_rate": state.profit_rate,
+        "exploitation_rate": state.exploitation_rate,
+        "occ": state.occ,
+        "imperial_rent": state.imperial_rent,
+        "heat": state.heat,
+        "org_presence": state.org_count,
+        "dominant_class": state.dominant_class,
+        "population": state.pop_total,
+    }
+
+
 def _hex_state_row(session_id: UUID, tick: int, territory: dict[str, Any]) -> dict[str, Any] | None:
     """Project one :func:`_serialize_territory` dict onto ``hex_latest`` columns.
 
@@ -3832,7 +3845,10 @@ def _serialize_organization(o: Any) -> dict[str, Any]:
         # XGI persistence query lands; the frontend treats empty as
         # "no community memberships known" rather than as an error.
         "hyperedge_memberships": [],
-        "consciousness": {"liberal": 0.33, "fascist": 0.33, "revolutionary": 0.34},
+        # Spec-109 A5 (III.11): the engine computes no org-level ideology
+        # simplex — None over fabricated thirds; the UI renders a loud empty.
+        # (The class-level derivation lives in persistence/county_aggregation.)
+        "consciousness": None,
         "ooda": {**ooda_profile, "phase": ooda_phase},
     }
 

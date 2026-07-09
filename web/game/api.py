@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 from game.models import ActionResult, GameSession, PlayerAction
 
 from .log_handler import log_game_event
+from .map_contract import MAP_METRIC_PROPERTIES
 from .serializers import (
     ActionResultSerializer,
     AidAvailableSerializer,
@@ -277,21 +278,11 @@ SCENARIO_CATALOG: list[dict[str, Any]] = [
     },
 ]
 
-VALID_MAP_LAYERS: frozenset[str] = frozenset(
-    {
-        "heat",
-        "consciousness",
-        "wealth",
-        "rent",
-        "biocapacity",
-        "population",
-        "profit_rate",
-        "exploitation_rate",
-        "occ",
-        "imperial_rent",
-        "org_presence",
-    }
-)
+# Spec-109 A3: derived from the one map-metric contract — every accepted
+# lens is actually emitted on /map/ features (see map_contract.py). The old
+# hand-maintained set advertised consciousness/wealth/rent/biocapacity,
+# none of which any feature carried: a silently blank overlay (III.11).
+VALID_MAP_LAYERS: frozenset[str] = frozenset(MAP_METRIC_PROPERTIES)
 
 
 @api_view(["GET"])
@@ -447,6 +438,13 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
             f"Invalid zoom '{zoom}'. Valid levels: {sorted(VALID_ZOOM_LEVELS)}",
             http_status=400,
         )
+    # Spec-109 A3 (III.11): reject unknown lenses loudly — the old behavior
+    # silently returned unfiltered features for a typo'd lens.
+    if lens and lens not in VALID_MAP_LAYERS:
+        return _error(
+            f"Invalid lens '{lens}'. Valid metrics: {sorted(VALID_MAP_LAYERS)}",
+            http_status=400,
+        )
 
     bridge = _get_bridge()
     snapshot = bridge.get_map_snapshot(
@@ -456,7 +454,7 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
         zoom=zoom,
     )
 
-    if lens and lens in VALID_MAP_LAYERS:
+    if lens:
         # Filter properties to only include the requested layer metric plus identifying fields
         keep_keys = {"h3_index", "county_fips", "county_name", lens}
         filtered_features = []

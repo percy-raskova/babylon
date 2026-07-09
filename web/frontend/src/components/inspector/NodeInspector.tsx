@@ -81,12 +81,22 @@ function OrgDetail({ org, snapshot }: { org: OrgState; snapshot: GameSnapshot })
       <Stat label="Class Character" value={org.class_character} />
 
       <SectionHeader label="Consciousness" />
-      <Stat label="Revolutionary" value={org.consciousness.revolutionary} color="text-crimson" />
-      <Bar value={org.consciousness.revolutionary} color="#e63946" />
-      <Stat label="Liberal" value={org.consciousness.liberal} color="text-royal-blue" />
-      <Bar value={org.consciousness.liberal} color="#6a9fdb" />
-      <Stat label="Fascist" value={org.consciousness.fascist} color="text-gold" />
-      <Bar value={org.consciousness.fascist} color="#d4a843" />
+      {org.consciousness ? (
+        <>
+          <Stat
+            label="Revolutionary"
+            value={org.consciousness.revolutionary}
+            color="text-crimson"
+          />
+          <Bar value={org.consciousness.revolutionary} color="#e63946" />
+          <Stat label="Liberal" value={org.consciousness.liberal} color="text-royal-blue" />
+          <Bar value={org.consciousness.liberal} color="#6a9fdb" />
+          <Stat label="Fascist" value={org.consciousness.fascist} color="text-gold" />
+          <Bar value={org.consciousness.fascist} color="#d4a843" />
+        </>
+      ) : (
+        <Stat label="Distribution" value="no data" />
+      )}
 
       <SectionHeader label="Capacity" />
       <Stat label="Budget" value={org.budget} color="text-data-green" />

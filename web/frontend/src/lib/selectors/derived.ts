@@ -176,8 +176,8 @@ const orgConsciousnessGap: ScriptValue = {
         ? orgTerritories.reduce((s, t) => s + t.heat, 0) / orgTerritories.length
         : 0;
 
-    // Actual revolutionary consciousness
-    const revConsciousness = org.consciousness.revolutionary;
+    // Actual revolutionary consciousness (null until the engine computes it)
+    const revConsciousness = org.consciousness?.revolutionary ?? 0;
 
     return avgHeat - revConsciousness;
   },
@@ -194,7 +194,7 @@ const orgConsciousnessGap: ScriptValue = {
       orgTerritories.length > 0
         ? orgTerritories.reduce((s, t) => s + t.heat, 0) / orgTerritories.length
         : 0;
-    const revConsciousness = org.consciousness.revolutionary;
+    const revConsciousness = org.consciousness?.revolutionary ?? 0;
 
     const contributors: Contributor[] = [
       {

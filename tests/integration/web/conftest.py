@@ -245,3 +245,38 @@ def tc_pg_dsn(_pg_django_configured: dict[str, Any]) -> str:
         f"dbname={params['dbname']} user={params['user']} "
         f"password={params['password']}"
     )
+
+
+@pytest.fixture
+def bridge() -> Generator[Any, None, None]:
+    """EngineBridge against the env-configured Postgres (POSTGRES_* vars).
+
+    Shared by the spec-109 contract tests. ``test_game_lifecycle.py`` /
+    ``test_bridge_roundtrip.py`` predate this fixture and shadow it with
+    identical local definitions. Django settings are configured on demand
+    (same contract as those files' ``_django_setup``).
+    """
+    import django
+    from django.conf import settings
+    from psycopg_pool import ConnectionPool
+
+    from babylon.persistence.postgres_runtime import PostgresRuntime
+
+    if not settings.configured:
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "babylon_web.settings.development")
+        django.setup()
+
+    conninfo = (
+        f"dbname={os.environ.get('POSTGRES_DB', 'babylon_test')} "
+        f"host={os.environ.get('POSTGRES_HOST', 'localhost')} "
+        f"port={os.environ.get('POSTGRES_PORT', '5432')} "
+        f"user={os.environ.get('POSTGRES_USER', 'babylon')} "
+        f"password={os.environ.get('POSTGRES_PASSWORD', 'babylon')}"
+    )
+    pool = ConnectionPool(conninfo=conninfo, min_size=1, max_size=2, open=True)
+    try:
+        from game.engine_bridge import EngineBridge
+
+        yield EngineBridge(PostgresRuntime(pool))
+    finally:
+        pool.close()

@@ -138,9 +138,9 @@ class TestSimulationCreation:
         """ServiceContainer config matches the provided config."""
         from babylon.engine.simulation import Simulation
 
-        custom_config = SimulationConfig(extraction_efficiency=0.5)
+        custom_config = SimulationConfig(rng_seed=7)
         sim = Simulation(initial_state, custom_config)
-        assert sim.services.config.extraction_efficiency == pytest.approx(0.5)
+        assert sim.services.config.rng_seed == 7
 
 
 # =============================================================================

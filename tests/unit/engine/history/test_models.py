@@ -121,7 +121,7 @@ class TestCheckpointCreation:
         )
         assert checkpoint.metadata.tick == 0
         assert checkpoint.state.tick == 0
-        assert checkpoint.config.extraction_efficiency == 0.8
+        assert checkpoint.config.rng_seed == 0
 
     def test_checkpoint_requires_metadata(
         self,

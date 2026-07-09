@@ -33,7 +33,7 @@ class TestServiceContainer:
             assert container.config is not None
             assert isinstance(container.config, SimulationConfig)
             # Check a default value
-            assert container.config.extraction_efficiency == 0.8
+            assert container.config.rng_seed == 0
         finally:
             container.database.close()
 
@@ -42,12 +42,12 @@ class TestServiceContainer:
         from babylon.engine.services import ServiceContainer
         from babylon.models.config import SimulationConfig
 
-        custom_config = SimulationConfig(extraction_efficiency=0.5)
+        custom_config = SimulationConfig(rng_seed=42)
         container = ServiceContainer.create(config=custom_config)
 
         try:
             assert container.config is custom_config
-            assert container.config.extraction_efficiency == 0.5
+            assert container.config.rng_seed == 42
         finally:
             container.database.close()
 
@@ -130,15 +130,15 @@ class TestServiceContainer:
         from babylon.engine.services import ServiceContainer
         from babylon.models.config import SimulationConfig
 
-        config1 = SimulationConfig(extraction_efficiency=0.1)
-        config2 = SimulationConfig(extraction_efficiency=0.9)
+        config1 = SimulationConfig(rng_seed=1)
+        config2 = SimulationConfig(rng_seed=2)
 
         container1 = ServiceContainer.create(config=config1)
         container2 = ServiceContainer.create(config=config2)
 
         try:
-            assert container1.config.extraction_efficiency == 0.1
-            assert container2.config.extraction_efficiency == 0.9
+            assert container1.config.rng_seed == 1
+            assert container2.config.rng_seed == 2
 
             # They should have independent event buses
             container1.event_bus.publish(

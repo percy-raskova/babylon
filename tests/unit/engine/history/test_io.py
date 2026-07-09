@@ -295,7 +295,7 @@ class TestLoadCheckpoint:
         assert result.metadata.tick == sample_world_state.tick
         assert result.metadata.description == "Test checkpoint"
         assert result.state.tick == sample_world_state.tick
-        assert result.config.extraction_efficiency == sample_config.extraction_efficiency
+        assert result.config.rng_seed == sample_config.rng_seed
 
     def test_load_checkpoint_file_not_found(self, tmp_path: Path) -> None:
         """load_checkpoint raises CheckpointNotFoundError for missing file."""

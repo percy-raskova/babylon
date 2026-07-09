@@ -120,7 +120,7 @@ class TestOnSimulationStart:
         ]
         assert len(config_calls) == 1
         config_json = config_calls[0][0][1]
-        assert "extraction_efficiency" in config_json
+        assert "rng_seed" in config_json
 
     def test_stores_start_tick_metadata(self) -> None:
         """Should store starting tick as metadata."""

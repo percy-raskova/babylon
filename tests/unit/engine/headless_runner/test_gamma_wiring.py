@@ -115,6 +115,9 @@ def test_run_passes_gamma_calculator_to_service_container(
             return None
 
     class _FakeBridge:
+        # Gate A (runner.py) compares this against report.hex_count (100 here).
+        hex_template_size = 100
+
         def hydrate_initial(self, **kw: Any) -> Any:
             return _FakeWorld()
 

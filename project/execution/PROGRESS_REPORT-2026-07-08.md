@@ -54,8 +54,16 @@ static-economy investigation. `michigan-e2e.json` stays valid on its gated field
 cannot be refreshed to tick 519 until that spec lands. Tracked as owner-queue **item 25**.
 
 **Next:** author spec-107 (spectrum) + spec-108 (transport) as already queued, and the
-new Phase-3 Territory↔FIPS / static-economy spec (item 25). Push to origin remains
-blocked on owner task #22 (token rotation).
+new Phase-3 Territory↔FIPS / static-economy spec (item 25).
+
+**✅ PUSHED TO ORIGIN 2026-07-09.** dev is no longer local-only — `origin/dev == 1c7524b8`.
+The leaked Cloudflare token (task #22) was scrubbed from all history via
+`git filter-repo --replace-text` (0 `cfat_` hits remain, verified on the pushed ref) and
+force-pushed (`--force-with-lease`; origin's 348 stale-SHA July-3 commits proven
+content-identical via `git cherry`, 0 lost). **Caveat:** this was a full-history rewrite,
+so every SHA in this document (the §0 merge table, §1–§10) is PRE-rewrite — find commits
+by message, not SHA (`git show <old-sha>` will fail). Commits are unsigned (no signature
+loss). Token rotation at Cloudflare is still advisable hygiene.
 
 ______________________________________________________________________
 

@@ -12,7 +12,7 @@ from babylon.utils.exceptions import (
     ValidationError,
 )
 from babylon.utils.math import get_precision, quantize, set_precision
-from babylon.utils.recorder import SessionRecorder
+from babylon.utils.recorder import JsonlSessionRecorder
 from babylon.utils.retry import retry_on_exception
 
 __all__ = [
@@ -25,5 +25,5 @@ __all__ = [
     "quantize",
     "get_precision",
     "set_precision",
-    "SessionRecorder",
+    "JsonlSessionRecorder",
 ]

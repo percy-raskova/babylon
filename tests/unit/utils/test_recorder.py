@@ -1,4 +1,4 @@
-"""Tests for SessionRecorder - Black Box recording for DPG Dashboard.
+"""Tests for JsonlSessionRecorder - Black Box recording for DPG Dashboard.
 
 TDD Tests - Written BEFORE implementation (RED phase).
 """
@@ -104,17 +104,17 @@ def mock_config() -> Mock:
 
 @pytest.mark.unit
 class TestObserverProtocol:
-    """Verify SessionRecorder implements SimulationObserver protocol."""
+    """Verify JsonlSessionRecorder implements SimulationObserver protocol."""
 
     def test_recorder_implements_observer_protocol(
         self,
         temp_session_dir: Path,
         mock_metrics_collector: Mock,
     ) -> None:
-        """SessionRecorder should satisfy SimulationObserver protocol."""
-        from babylon.utils.recorder import SessionRecorder
+        """JsonlSessionRecorder should satisfy SimulationObserver protocol."""
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -131,15 +131,15 @@ class TestObserverProtocol:
         temp_session_dir: Path,
         mock_metrics_collector: Mock,
     ) -> None:
-        """SessionRecorder.name should return identifier string."""
-        from babylon.utils.recorder import SessionRecorder
+        """JsonlSessionRecorder.name should return identifier string."""
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
 
-        assert recorder.name == "SessionRecorder"
+        assert recorder.name == "JsonlSessionRecorder"
 
 
 # =============================================================================
@@ -159,9 +159,9 @@ class TestSessionDirectoryCreation:
         mock_config: Mock,
     ) -> None:
         """on_simulation_start should create timestamped session directory."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -188,9 +188,9 @@ class TestSessionDirectoryCreation:
         mock_config: Mock,
     ) -> None:
         """on_simulation_start should create empty JSONL files."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -220,9 +220,9 @@ class TestMetricsLogging:
         mock_config: Mock,
     ) -> None:
         """on_tick should write TickMetrics as JSON line."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -250,9 +250,9 @@ class TestMetricsLogging:
         mock_config: Mock,
     ) -> None:
         """Multiple ticks should append multiple JSON lines."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -298,9 +298,9 @@ class TestEventsLogging:
         mock_config: Mock,
     ) -> None:
         """on_tick should write events as JSON lines."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -329,9 +329,9 @@ class TestEventsLogging:
         mock_config: Mock,
     ) -> None:
         """on_tick should handle ticks with no events gracefully."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -369,9 +369,9 @@ class TestNarrativeLogging:
         mock_config: Mock,
     ) -> None:
         """on_tick should write narratives as JSON lines with tick."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             narrative_director=mock_narrative_director,
             base_dir=temp_session_dir,
@@ -398,10 +398,10 @@ class TestNarrativeLogging:
         mock_world_state: Mock,
         mock_config: Mock,
     ) -> None:
-        """SessionRecorder should work without NarrativeDirector."""
-        from babylon.utils.recorder import SessionRecorder
+        """JsonlSessionRecorder should work without NarrativeDirector."""
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             narrative_director=None,
             base_dir=temp_session_dir,
@@ -427,9 +427,9 @@ class TestNarrativeLogging:
         mock_config: Mock,
     ) -> None:
         """on_tick should not write the same narrative twice."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             narrative_director=mock_narrative_director,
             base_dir=temp_session_dir,
@@ -471,9 +471,9 @@ class TestSimulationEnd:
         mock_config: Mock,
     ) -> None:
         """on_simulation_end should write summary.json."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -509,9 +509,9 @@ class TestExportPackage:
         mock_config: Mock,
     ) -> None:
         """export_package should create a ZIP file."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -534,9 +534,9 @@ class TestExportPackage:
         mock_config: Mock,
     ) -> None:
         """ZIP should contain all session files."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             narrative_director=mock_narrative_director,
             base_dir=temp_session_dir,
@@ -561,9 +561,9 @@ class TestExportPackage:
         mock_metrics_collector: Mock,
     ) -> None:
         """export_package should raise if no session started."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )
@@ -579,9 +579,9 @@ class TestExportPackage:
         mock_config: Mock,
     ) -> None:
         """export_package should return Path to ZIP file."""
-        from babylon.utils.recorder import SessionRecorder
+        from babylon.utils.recorder import JsonlSessionRecorder
 
-        recorder = SessionRecorder(
+        recorder = JsonlSessionRecorder(
             metrics_collector=mock_metrics_collector,
             base_dir=temp_session_dir,
         )

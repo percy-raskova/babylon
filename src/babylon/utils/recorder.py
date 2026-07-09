@@ -3,7 +3,7 @@
 Provides persistent tick-by-tick recording of simulation state
 for debugging, replay, and troubleshooting long-horizon data.
 
-The SessionRecorder implements the SimulationObserver protocol,
+The JsonlSessionRecorder implements the SimulationObserver protocol,
 automatically capturing TickMetrics, Events, and Narratives to
 JSONL files in distinct session directories.
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from babylon.models.world_state import WorldState
 
 
-class SessionRecorder:
+class JsonlSessionRecorder:
     """Black box recorder for simulation forensics.
 
     Implements SimulationObserver protocol to persist tick-by-tick
@@ -45,8 +45,8 @@ class SessionRecorder:
         base_dir: Base directory for sessions (default: logs/sessions).
 
     Example:
-        >>> from babylon.utils.recorder import SessionRecorder
-        >>> recorder = SessionRecorder(metrics_collector=collector)
+        >>> from babylon.utils.recorder import JsonlSessionRecorder
+        >>> recorder = JsonlSessionRecorder(metrics_collector=collector)
         >>> # Recorder is registered as observer with Simulation
         >>> # Files written automatically during simulation
         >>> zip_path = recorder.export_package()  # Create debug archive
@@ -58,7 +58,7 @@ class SessionRecorder:
         narrative_director: NarrativeDirector | None = None,
         base_dir: Path | None = None,
     ) -> None:
-        """Initialize SessionRecorder with observer references."""
+        """Initialize JsonlSessionRecorder with observer references."""
         self._metrics = metrics_collector
         self._narrative = narrative_director
         self._base_dir = base_dir or Path("logs/sessions")
@@ -73,7 +73,7 @@ class SessionRecorder:
     @property
     def name(self) -> str:
         """Observer identifier for logging and debugging."""
-        return "SessionRecorder"
+        return "JsonlSessionRecorder"
 
     def on_simulation_start(
         self,

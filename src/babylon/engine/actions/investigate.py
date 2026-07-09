@@ -1,47 +1,72 @@
-"""INVESTIGATE Verb Resolution Module (Spec 048).
+"""INVESTIGATE verb resolver (verb-dispatch engine).
 
-Implements the backend resolution logic for the INVESTIGATE verb, interfacing
-with the simulation graph and processing intelligence accrual flows.
+Intelligence gathering (``ActionType.MAP_NETWORK``). Investigate is the one
+canonical verb that mutates NO material graph state — it resolves against the
+information/fog-of-war layer. It returns a ``direct_effects`` payload naming
+which attributes of the target were revealed; the bridge/UI consumes it from
+the persisted result. No graph writes (the consciousness simplex is untouched).
 """
 
-from typing import Any
+from __future__ import annotations
 
-# Note: The precise types (VerbResult, PlayerAction, GraphProtocol)
-# are placeholders mapped to the broader spec intent across Django and Python Engine boundaries.
+from typing import TYPE_CHECKING, Any
+
+from babylon.models.enums import EventType
+from babylon.ooda.types import ActionResult
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
+    from babylon.engine.services import ServiceContainer
+    from babylon.ooda.types import Action
+
+#: Attribute names revealed per target node type (the "fog of war" lift).
+_REVEAL_BY_NODE_TYPE: dict[str, list[str]] = {
+    "territory": ["heat", "rent_level", "population", "under_eviction"],
+    "social_class": ["wealth", "organization", "repression_faced"],
+    "organization": ["cohesion", "cadre_level", "heat", "budget"],
+}
+_REVEAL_DEFAULT: list[str] = ["heat"]
 
 
 def resolve_investigate(
-    action: Any,  # Expected: PlayerAction
-    graph: Any,  # Expected: GraphProtocol
-    defines: Any,  # Expected: InvestigateDefines,
-) -> Any:
-    """Implement the core logic for the INVESTIGATE verb.
-
-    Investigate differs from other verbs structurally because it operates almost solely
-    on the information presentation layer rather than strictly modifying the material
-    graph representation. It resolves against the UI's 'fog of war' state representations.
-
-    1. Validate Resources: Ensure acting organization has the required AP/Labor pools.
-    2. Visibility Branching: Territory Scan, Targeted Scan, or Counter Intelligence.
-    3. State Mutations: Update the `known_attributes` of a specific ID in the `intel_graph`
-       or Session State structure.
-    4. OpSec Impacts: Increase organizational Heat on failed checks.
+    action: Action,
+    org_attrs: dict[str, Any],  # noqa: ARG001 — no acting-org state consumed
+    graph: BabylonGraph,
+    services: ServiceContainer,  # noqa: ARG001 — no InvestigateDefines yet
+) -> ActionResult:
+    """Resolve a player INVESTIGATE action (information-layer only).
 
     Args:
-        action: The submitted INVESTIGATE action parameters.
-        graph: The active GraphProtocol representing the simulation state.
-        defines: Configuration settings.
+        action: The INVESTIGATE action (``action_type == ActionType.MAP_NETWORK``).
+        org_attrs: Acting organization's node attributes (unused).
+        graph: World graph (read-only — no mutation).
+        services: ServiceContainer (unused; no InvestigateDefines exist yet).
 
     Returns:
-        VerbResult indicating success/failure and associated SimulationEvents.
+        :class:`~babylon.ooda.types.ActionResult` with ``direct_effects``
+        naming revealed attributes; ``success=False`` if the target is absent.
     """
-    # Pseudo-code logic to be fleshed out by future engine-side refactor
-    #
-    # intel_state = get_intel_layer()
-    #
-    # if action.params.scan_type == "territory_scan":
-    #     target_id = action.target_id
-    #     intel_state[target_id].reveal(["material_readiness"])
-    #
-    # return VerbResult(success=True)
-    pass
+    target_node = graph.nodes.get(action.target_id)
+    if target_node is None:
+        return ActionResult(
+            action=action,
+            success=False,
+            failure_reason="INVESTIGATE target not found in graph",
+        )
+
+    node_type = str(target_node.get("_node_type", ""))
+    revealed = _REVEAL_BY_NODE_TYPE.get(node_type, _REVEAL_DEFAULT)
+    scan_type = str(action.params.get("scan_type", "territory_scan"))
+
+    return ActionResult(
+        action=action,
+        success=True,
+        direct_effects={
+            "scan_type": scan_type,
+            "revealed": {action.target_id: revealed},
+        },
+        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+    )
+
+
+__all__ = ["resolve_investigate"]

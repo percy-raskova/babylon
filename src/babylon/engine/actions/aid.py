@@ -1,55 +1,107 @@
-"""AID Verb Resolution Module (Spec 045).
+"""AID verb resolver (verb-dispatch engine).
 
-Implements the backend resolution logic for the AID verb, interfacing
-with the simulation graph and processing material transfers and
-social reproduction dynamics.
+Direct community service provision (``ActionType.PROVIDE_SERVICE``). Combines
+two effects:
+
+1. A five-factor consciousness delta via the Feature-032 machinery
+   (tendency-split base — revolutionary orgs raise CI, liberal orgs less so).
+2. An optional material transfer: ``params["transfer_amount"]`` moves from the
+   acting org's ``budget`` to the target's ``wealth`` (both round-trip model
+   fields). Insufficient budget fails loud (``success=False``).
+
+See Also:
+    :func:`babylon.ooda.action_effects.compute_consciousness_delta`.
 """
 
-from typing import Any
+from __future__ import annotations
 
-# Note: The precise types (VerbResult, PlayerAction, GraphProtocol)
-# are placeholders mapped to the broader spec intent across Django and Python Engine boundaries.
+from typing import TYPE_CHECKING, Any
+
+from babylon.models.enums import ActionType, EventType
+from babylon.ooda.action_effects import compute_consciousness_delta
+from babylon.ooda.types import ActionResult
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
+    from babylon.engine.services import ServiceContainer
+    from babylon.ooda.types import Action
+
+#: Fraction of a transferred amount that reaches the target (rest is overhead).
+_AID_EFFICIENCY = 1.0
 
 
 def resolve_aid(
-    action: Any,  # Expected: PlayerAction
-    graph: Any,  # Expected: GraphProtocol
-    hypergraph: Any,  # Expected: xgi.Hypergraph,
-    defines: Any,  # Expected: AidDefines,
-) -> Any:
-    """Implement the core logic for the AID verb.
-
-    1. Validate Resources: Ensure acting organization has required material stockpile.
-    2. Determine Target Deficit: Check the `v_value_produced` vs `wage_received` gap.
-    3. Transfer & Relief: Compute `amount_absorbed = min(transfer_amount * aid_efficiency, consumption_gap)`.
-       Decrease target agitation relative to `agitation_relief_per_unit`.
-    4. Edge Construction: Build or reinforce a TRANSACTIONAL edge between org and target
-       by `aid_solidarity_increment`.
-    5. Consciousness Side-Effects: Evaluate if TRANSACTIONAL → SOLIDARISTIC transition
-       threshold is met. Warn/process Economism state if action reduces agitation
-       without adequate `education_pressure`.
+    action: Action,
+    org_attrs: dict[str, Any],
+    graph: BabylonGraph,
+    services: ServiceContainer,
+) -> ActionResult:
+    """Resolve a player AID action: consciousness effect + material transfer.
 
     Args:
-        action: The submitted AID action parameters.
-        graph: The active GraphProtocol representing the simulation state.
-        hypergraph: Additional relational topologies (e.g., industry connections).
-        defines: Configuration settings (AidDefines).
+        action: The AID action (``action_type == ActionType.PROVIDE_SERVICE``).
+        org_attrs: Acting organization's node attributes.
+        graph: World graph (mutated when a transfer occurs).
+        services: ServiceContainer providing defines.
 
     Returns:
-        VerbResult indicating success/failure and associated SimulationEvents.
+        :class:`~babylon.ooda.types.ActionResult` with the consciousness delta
+        and, when a transfer occurs, ``direct_effects`` recording the amounts.
     """
-    # Pseudo-code logic to be fleshed out by future engine-side refactor
-    #
-    # org = graph.get_node(action.org_id)
-    # target = graph.get_node(action.target_id)
-    #
-    # material_stock = org.get("material", 0.0)
-    # if material_stock < action.params.transfer_amount:
-    #     return VerbResult(success=False, error="Insufficient materials")
-    #
-    # actual_transfer = action.params.transfer_amount * defines.aid_efficiency
-    #
-    # ... process consumption gaps ...
-    #
-    # return VerbResult(success=True)
-    pass
+    ci = compute_consciousness_delta(
+        org_attrs,
+        action.target_id,
+        ActionType.PROVIDE_SERVICE,
+        graph,
+        services.defines.ooda,
+        services.defines.organization,
+    )
+
+    transfer = float(action.params.get("transfer_amount", 0.0))
+    if transfer <= 0.0:
+        return ActionResult(
+            action=action,
+            success=True,
+            consciousness_delta=ci,
+            events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+        )
+
+    org_node = graph.nodes.get(action.org_id)
+    target_node = graph.nodes.get(action.target_id)
+    if org_node is None or target_node is None:
+        return ActionResult(
+            action=action,
+            success=False,
+            consciousness_delta=ci,
+            failure_reason="AID org or target node not found in graph",
+        )
+
+    budget = float(org_node.get("budget", 0.0))
+    if budget < transfer:
+        return ActionResult(
+            action=action,
+            success=False,
+            consciousness_delta=ci,
+            direct_effects={"requested_transfer": transfer, "available_budget": budget},
+            failure_reason="insufficient budget for AID transfer",
+        )
+
+    received = transfer * _AID_EFFICIENCY
+    graph.update_node(action.org_id, budget=budget - transfer)
+    current_wealth = float(target_node.get("wealth", 0.0))
+    graph.update_node(action.target_id, wealth=current_wealth + received)
+
+    return ActionResult(
+        action=action,
+        success=True,
+        consciousness_delta=ci,
+        direct_effects={
+            "amount_transferred": transfer,
+            "amount_received": received,
+            "efficiency": _AID_EFFICIENCY,
+        },
+        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+    )
+
+
+__all__ = ["resolve_aid"]

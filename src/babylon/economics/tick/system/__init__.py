@@ -65,6 +65,7 @@ from babylon.economics.tick.types import (
     TickSummary,
 )
 from babylon.engine.systems.base import SystemBase
+from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 
 if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
@@ -72,9 +73,6 @@ if TYPE_CHECKING:
     from babylon.engine.systems.protocol import ContextType
 
 logger = logging.getLogger(__name__)
-
-# Year boundary: 52 weeks per year (FR-024)
-WEEKS_PER_YEAR: int = 52
 
 # Default subsistence cost ($/hour) for MVP
 DEFAULT_V_REPRODUCTION: float = 12.0
@@ -1536,7 +1534,7 @@ class TickDynamicsSystem(SystemBase):
             crisis_phase = county.crisis_state.phase
 
             # FR-017: Halt accumulation when wages below subsistence floor
-            effective_wage = county.median_wage * 2080  # hourly -> annual
+            effective_wage = county.median_wage * HOURS_PER_YEAR  # hourly -> annual
             if should_halt_accumulation(county.median_wage, DEFAULT_V_REPRODUCTION, floor_ratio):
                 effective_wage = 0.0  # Zero wage -> zero accumulation
 

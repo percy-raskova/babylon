@@ -17,12 +17,12 @@ from typing import TYPE_CHECKING, Protocol
 
 from babylon.core.protocol_kit import CachedSource
 from babylon.economics.tensor import NoDataSentinel
+from babylon.formulas.constants import HOURS_PER_YEAR
 
 if TYPE_CHECKING:
     from babylon.economics.melt.data_sources import BEADataSource, QCEWDataSource
 
 # Constants
-HOURS_PER_YEAR: int = 2080  # 40 hours/week × 52 weeks/year
 MIN_YEAR: int = 2010
 MAX_YEAR: int = 2024
 

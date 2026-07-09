@@ -15,9 +15,7 @@ See Also:
 from __future__ import annotations
 
 from babylon.economics.melt.types import ClassPosition
-
-# Hours per year (matches melt/gamma/throughput pattern)
-HOURS_PER_YEAR: int = 2080
+from babylon.formulas.constants import HOURS_PER_YEAR
 
 # Default savings rates per ClassPosition (Fed SCF calibrated)
 _DEFAULT_RATES: dict[ClassPosition, float] = {

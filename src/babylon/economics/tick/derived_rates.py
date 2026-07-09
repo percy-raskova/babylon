@@ -15,12 +15,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from babylon.economics.tick.types import DerivedRates
+from babylon.formulas.constants import HOURS_PER_YEAR as ANNUAL_HOURS_PER_WORKER
 
 if TYPE_CHECKING:
     from babylon.economics.tick.types import CountyEconomicState, NationalTickParameters
-
-# Standard annual work hours (40 hrs/week * 52 weeks)
-ANNUAL_HOURS_PER_WORKER: int = 2080
 
 
 class DerivedRateCalculator:

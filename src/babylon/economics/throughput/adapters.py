@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func
 
+from babylon.formulas.constants import WEEKS_PER_YEAR
 from babylon.reference.schema import (
     DimBEAIndustry,
     DimCounty,
@@ -48,7 +49,6 @@ logger = logging.getLogger(__name__)
 # Constants for GDP conversion
 MILLIONS_TO_DOLLARS = 1_000_000
 # QCEW average weekly wage = annual total wages / employment / 52 weeks.
-WEEKS_PER_YEAR = 52.0
 
 
 def _sector_codes_for(naics_2digit: str) -> list[str]:

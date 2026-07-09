@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from babylon.formulas.constants import HOURS_PER_YEAR
 from babylon.models.snapshots import HexState, TerritoryState
 from babylon.reference.database import get_reference_session
 from babylon.reference.schema import BridgeCountyH3, DimCounty
@@ -299,7 +300,7 @@ def hydrate_class_shares(
 
             # Derive median wage (annual -> hourly approximation)
             annual_median = total_wages / total_emp
-            hourly_median = annual_median / 2080  # Standard work hours
+            hourly_median = annual_median / HOURS_PER_YEAR  # Standard work hours
 
             # Derive class shares from wage distribution
             # Use industry-level wage data to estimate percentile distribution
@@ -325,7 +326,7 @@ def hydrate_class_shares(
                 emp = float(row.employment)
                 cumulative += emp
                 pct = cumulative / total_emp
-                avg_wage = float(row.total_wages_usd) / emp / 2080
+                avg_wage = float(row.total_wages_usd) / emp / HOURS_PER_YEAR
 
                 # Track percentile crossings
                 if "p15" not in percentiles and pct >= 0.15:
@@ -457,7 +458,9 @@ def hydrate_economy_constants(
                         )
                     ).one()
                     if wage_result.wages and wage_result.emp and wage_result.emp > 0:
-                        avg_hourly = float(wage_result.wages) / float(wage_result.emp) / 2080
+                        avg_hourly = (
+                            float(wage_result.wages) / float(wage_result.emp) / HOURS_PER_YEAR
+                        )
                         result["shadow_wage_hourly"] = round(avg_hourly, 2)
 
         logger.info("Hydrated economy constants for %s/%d: %s", fips, year, result)

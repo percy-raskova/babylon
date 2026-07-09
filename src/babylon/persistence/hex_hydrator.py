@@ -54,6 +54,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from babylon.economics.substrate.h3_utils import generate_h3_cells
+from babylon.formulas.constants import WEEKS_PER_YEAR as _WEEKS_PER_YEAR
 from babylon.persistence.hex_state import DynamicHexState
 from babylon.persistence.state_fips_to_region import region_for_state_fips
 
@@ -88,9 +89,6 @@ _DEFAULT_TIGER_PATH = Path("data/tiger/county/tl_2024_us_county.shp")
 
 # Default path to the SQLite reference DB.
 _DEFAULT_SQLITE_PATH = Path("data/sqlite/marxist-data-3NF.sqlite")
-
-# Weeks per year — canonical weekly tick cadence (spec-062 / 063).
-_WEEKS_PER_YEAR = 52
 
 # Intermediate-inputs fraction (constant capital share of GDP).
 # Source: BEA national fixed-asset accounts 2010 baseline (c.f.

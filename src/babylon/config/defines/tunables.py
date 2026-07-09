@@ -79,6 +79,11 @@ class TimescaleDefines(BaseModel):
         ge=1,
         description="Engineering: physical constant. 52 weeks/year for annual-to-tick rate conversion.",
     )
+    hours_per_year: int = Field(
+        default=2080,
+        ge=1,
+        description="Engineering: physical constant. Standard annual full-time work hours (40 h/week x 52 weeks) for hourly<->annual wage conversion.",
+    )
 
     @property
     def ticks_per_year(self) -> int:

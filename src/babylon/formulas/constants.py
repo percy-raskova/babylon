@@ -24,3 +24,14 @@ LOSS_AVERSION_COEFFICIENT: Final[float] = _DEFINES.behavioral.loss_aversion_lamb
 # Small constant to prevent division by zero
 # Source: GameDefines.precision.epsilon
 EPSILON: Final[float] = _DEFINES.precision.epsilon
+
+# Standard annual full-time work hours (40 h/week x 52 weeks)
+# Canonical single source for the ``2080`` constant previously redefined
+# ad hoc across the economics modules (throughput, dynamics, gamma, melt,
+# leontief_rent). Source: GameDefines.timescale.hours_per_year
+HOURS_PER_YEAR: Final[int] = _DEFINES.timescale.hours_per_year
+
+# Weeks per simulation year (weekly tick calendar).
+# Canonical single source for the ``52`` constant.
+# Source: GameDefines.timescale.weeks_per_year
+WEEKS_PER_YEAR: Final[int] = _DEFINES.timescale.weeks_per_year

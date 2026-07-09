@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from babylon.economics.tensor import NoDataSentinel
 from babylon.economics.throughput.types import CommuterAdjustedMetrics, ThroughputMetrics
+from babylon.formulas.constants import HOURS_PER_YEAR
 
 if TYPE_CHECKING:
     from babylon.economics.melt import MELTCalculator
@@ -24,9 +25,6 @@ if TYPE_CHECKING:
     from babylon.economics.throughput.supply_chain import SupplyChainAnalyzer
 
 logger = logging.getLogger(__name__)
-
-# Standard work-year hours (40 hours/week × 52 weeks)
-HOURS_PER_YEAR: int = 2080
 
 # Sanity range thresholds per FR-008
 TAU_THROUGH_EXPECTED_MIN: float = 20.0  # $/hour

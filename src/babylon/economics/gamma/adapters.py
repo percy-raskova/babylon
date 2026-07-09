@@ -27,6 +27,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from babylon.formulas.constants import HOURS_PER_YEAR
+
 if TYPE_CHECKING:
     pass
 
@@ -52,9 +54,6 @@ Sources:
     - Healthcare (62): CMS staffing data
     - Private Households (814): BLS Occupational Employment Statistics
 """
-
-HOURS_PER_YEAR: int = 2080
-"""Standard annual work hours: 40 hours/week * 52 weeks/year."""
 
 # MVP employment estimates by sector (2022, thousands of workers)
 # Used as fallback when QCEW sector data is not available

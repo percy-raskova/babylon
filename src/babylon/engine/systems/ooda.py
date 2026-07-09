@@ -136,6 +136,8 @@ class OODASystem(SystemBase):
                 org_data_lookup=org_data_lookup,
                 player_actions=player_actions,
                 defines=defines,
+                graph=graph,
+                services=services,
             )
             action_phase_results.extend(new_results)
 
@@ -143,14 +145,23 @@ class OODASystem(SystemBase):
         all_results = layer0_results + action_phase_results
         layer3_effects = process_layer3(all_results, graph, defines)
 
-        # Store turn resolution on context for downstream systems
-        _resolution = TurnResolution(
+        # Publish the turn resolution on context so the web bridge (and any
+        # downstream reader) sees the REAL per-action results instead of the
+        # old pre/post diff fakery. mode="json" flattens the StrEnum/nested-
+        # enum payloads the bridge persists; simulation_engine.step() syncs
+        # context.persistent_data back to the caller's persistent_context.
+        resolution = TurnResolution(
             tick=tick,
             layer0_results=layer0_results,
             initiative_order=initiative_order,
             action_phase_results=action_phase_results,
             layer3_effects=layer3_effects,
         )
+        resolution_payload = resolution.model_dump(mode="json")
+        if isinstance(context, dict):
+            context.setdefault("persistent_data", {})["turn_resolution"] = resolution_payload
+        else:
+            context.persistent_data["turn_resolution"] = resolution_payload
 
         # Emit summary event
         if services.event_bus:
@@ -174,6 +185,8 @@ class OODASystem(SystemBase):
         org_data_lookup: dict[str, dict[str, Any]],
         player_actions: dict[str, Any],
         defines: Any,
+        graph: BabylonGraph,
+        services: ServiceContainer,
     ) -> list[ActionResult]:
         """Resolve one organization's action(s) for the current tick.
 
@@ -191,6 +204,9 @@ class OODASystem(SystemBase):
             player_actions: Player-provided actions per org_id from the
                 context's persistent_data.
             defines: OODA defines from services.defines.ooda.
+            graph: Mutable world graph (threaded to the player-verb
+                resolvers so they can apply real effects).
+            services: ServiceContainer (defines) for the resolvers.
 
         Returns:
             List of ``ActionResult`` produced for this organization
@@ -208,15 +224,24 @@ class OODASystem(SystemBase):
         # Check for player-provided actions
         org_player_actions = player_actions.get(score.org_id)
         if org_player_actions:
-            # Player actions are pre-validated Action dicts
+            # Player actions dispatch through the verb-resolver registry for
+            # REAL graph effects. A missing resolver yields a loud failure
+            # ActionResult (never a silent success). Lazy import mirrors the
+            # existing lazy-import style below and avoids any import cycle.
+            from babylon.engine.actions import resolve_player_action
+
             for action_data in org_player_actions:
+                action = (
+                    action_data
+                    if not isinstance(action_data, dict)
+                    else _action_from_dict(action_data, score.org_id)
+                )
                 results.append(
-                    ActionResult(
-                        action=action_data
-                        if not isinstance(action_data, dict)
-                        else _action_from_dict(action_data, score.org_id),
-                        success=True,
-                        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+                    resolve_player_action(
+                        action=action,
+                        org_attrs=org_data,
+                        graph=graph,
+                        services=services,
                     )
                 )
         else:

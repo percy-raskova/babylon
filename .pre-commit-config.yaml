@@ -226,7 +226,8 @@ repos:
           (?x)^(
             \.specify/.*|
             specs/.*|
-            \.agents/.*
+            \.agents/.*|
+            CONSTITUTION\.md
           )$
 
   - repo: https://github.com/hukkin/mdformat
@@ -246,6 +247,7 @@ repos:
             \.specify/.*|
             CHANGELOG\.md|
             CLAUDE\.md|
+            CONSTITUTION\.md|
             CONTRIBUTORS\.md|
             \.venv/.*|
             build/.*|

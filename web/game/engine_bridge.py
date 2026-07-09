@@ -82,12 +82,12 @@ _OUTCOME_HEADLINES: dict[str, str] = {
 # See: specs/041-mvp-nationwide-sim/research.md §2
 # ---------------------------------------------------------------------- #
 
-# Spec 061 US5 (T081, FR-025): Investigate / Move / Negotiate are
-# removed from the canonical verb list because their engine handlers
-# don't exist yet. The map only contains verbs with real handlers;
-# `get_available_actions()` derives its output from this map so the
-# unsupported verbs are filtered out of the UI as well. A follow-up
-# spec is expected to land real handlers and re-add them.
+# Verb-dispatch engine: all 9 canonical player verbs now have a real engine
+# resolver (``babylon.engine.actions.VERB_RESOLVERS``). This map is the sole
+# translation of player verb strings to engine ActionTypes; its values must
+# equal the resolver registry's keys (pinned by
+# ``tests/contract/verbs/test_registry.py``). ``get_available_actions()``
+# derives its output from this map, so every mapped verb is exposed.
 VERB_TO_ACTION_TYPE: dict[str, ActionType] = {
     "educate": ActionType.EDUCATE,
     "reproduce": ActionType.RECRUIT,
@@ -95,11 +95,10 @@ VERB_TO_ACTION_TYPE: dict[str, ActionType] = {
     "mobilize": ActionType.PROTEST,
     "campaign": ActionType.PROPAGANDIZE,
     "aid": ActionType.PROVIDE_SERVICE,
+    "investigate": ActionType.MAP_NETWORK,
+    "move": ActionType.MOVE,
+    "negotiate": ActionType.PROPOSE_ALLIANCE,
 }
-
-# Spec 061 US5 (T081, FR-025): verbs that have stale wiring but no
-# real engine handler. Listed for documentation; not exposed to the API.
-UNSUPPORTED_VERBS: frozenset[str] = frozenset({"investigate", "move", "negotiate"})
 
 CANONICAL_VERBS: frozenset[str] = frozenset(VERB_TO_ACTION_TYPE.keys())
 

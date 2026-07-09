@@ -330,6 +330,18 @@ const LEGEND_LABELS: Record<LensMode, string> = {
 /** Lens modes that render concentric influence rings + sovereign CLAIMS hulls. */
 const RING_AND_HULL_LENSES: ReadonlySet<LensMode> = new Set(["stance", "collapse"]);
 
+/**
+ * Lens modes whose fill derives entirely from the balkanization block.
+ * Heat/habitability are territory-local (heat; biocapacity fallback) and must
+ * NOT be blanked when the faction layer is unseeded — the loud no-data state
+ * (Constitution III.11) stays per-territory for them instead.
+ */
+export const BALKANIZATION_LENSES: ReadonlySet<LensMode> = new Set([
+  "stance",
+  "faction",
+  "collapse",
+]);
+
 function isBalkanizationEmpty(b: BalkanizationBlock): boolean {
   return b.factions.length === 0 && b.sovereigns.length === 0 && b.territory_influence.length === 0;
 }
@@ -337,7 +349,10 @@ function isBalkanizationEmpty(b: BalkanizationBlock): boolean {
 export function buildLensLayers(input: BuildLensLayersInput): LensLayerResult {
   const { territories, balkanization, lensMode, factionFilter } = input;
 
-  if (!balkanization || isBalkanizationEmpty(balkanization)) {
+  if (
+    (!balkanization || isBalkanizationEmpty(balkanization)) &&
+    BALKANIZATION_LENSES.has(lensMode)
+  ) {
     return {
       getFillColor: () => NO_DATA,
       rings: [],

@@ -18,7 +18,12 @@ import { MapLegend } from "@/components/map/MapLegend";
 import { HexTooltip } from "@/components/map/HexTooltip";
 import { FramingSelector } from "@/components/map/FramingSelector";
 import { MapModeSelector } from "@/components/map/MapModeSelector";
-import { buildLensLayers, type RingSpec, type HullSpec } from "@/components/map/mapLensLayers";
+import {
+  BALKANIZATION_LENSES,
+  buildLensLayers,
+  type RingSpec,
+  type HullSpec,
+} from "@/components/map/mapLensLayers";
 import { hullPolygonForTerritories } from "@/components/map/mapLensGeometry";
 import { useNavigate, useParams } from "react-router";
 import type { GameSnapshot, TerritoryState, MapLayer, MapSnapshotMetadata } from "@/types/game";
@@ -153,11 +158,12 @@ export function DeckGLMap({ snapshot, mapData }: DeckGLMapProps) {
 
   // Spec-093 US3: political-topology lens (stance/heat/habitability/faction/
   // collapse) over spec-070 balkanization data. Distinct axis from
-  // `activeLayer`'s single-metric ramp. Degrades to `null` (no lens layer,
-  // falls back to `activeLayer`'s existing fill) when the session has no
-  // balkanization data yet — see `mapLensLayers.ts`'s module docstring.
+  // `activeLayer`'s single-metric ramp. Only the balkanization-derived lenses
+  // degrade to `null` (falling back to `activeLayer`'s fill) when the session
+  // has no balkanization block; heat/habitability are territory-local and
+  // render regardless (A8) — see `mapLensLayers.ts`'s module docstring.
   const lensResult = useMemo(() => {
-    if (!balkanization) return null;
+    if (!balkanization && BALKANIZATION_LENSES.has(lensMode)) return null;
     return buildLensLayers({
       territories: territories.map((t) => ({
         id: t.id,

@@ -236,6 +236,50 @@ describe("buildLensLayers", () => {
     expect(result.legendLabel.toLowerCase()).toContain("no data");
   });
 
+  describe("territory-local lenses render without balkanization data (A8)", () => {
+    const NO_DATA_COLOR = [58, 53, 48, 160];
+
+    it.each(["heat", "habitability"] as const)(
+      "%s lens renders territory-local data when balkanization is null",
+      (lensMode) => {
+        const result = buildLensLayers({
+          territories: TERRITORIES,
+          balkanization: null,
+          lensMode,
+        });
+
+        expect(result.legendLabel.toLowerCase()).not.toContain("no data");
+        expect(result.getFillColor("T2")).not.toEqual(NO_DATA_COLOR);
+        expect(result.getFillColor("T3")).not.toEqual(NO_DATA_COLOR);
+        // The fill must actually vary with the underlying territory value.
+        expect(result.getFillColor("T2")).not.toEqual(result.getFillColor("T3"));
+      },
+    );
+
+    it.each(["heat", "habitability"] as const)(
+      "%s lens renders territory-local data when balkanization is structurally empty",
+      (lensMode) => {
+        const result = buildLensLayers({
+          territories: TERRITORIES,
+          balkanization: { factions: [], sovereigns: [], territory_influence: [] },
+          lensMode,
+        });
+
+        expect(result.legendLabel.toLowerCase()).not.toContain("no data");
+        expect(result.getFillColor("T3")).not.toEqual(NO_DATA_COLOR);
+      },
+    );
+
+    it("unknown territory still fills NO_DATA under the heat lens (III.11 stays per-territory)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES,
+        balkanization: null,
+        lensMode: "heat",
+      });
+      expect(result.getFillColor("T999")).toEqual(NO_DATA_COLOR);
+    });
+  });
+
   it("VIII.9: BalkanizationBlock carries no hyperedge/community field for the hull builder to read", () => {
     // Runtime guarantee: even if a caller attaches extra hyperedge-shaped
     // data onto the object (bypassing the type system, e.g. from an

@@ -2000,15 +2000,14 @@ class EngineBridge:
                 )
             persistent_context["player_actions"] = player_actions
 
-        # T015: Snapshot pre-step state for delta computation
+        # T015: Snapshot pre-step heat for delta computation. (The old
+        # `class_consciousness` read was dead — that attr never exists at the
+        # node top level; CI now comes from the engine's real result below.)
         pre_step: dict[str, dict[str, float]] = {}
         for action in pending:
             tid = action.get("target_id")
             if tid and tid in graph.nodes:
-                pre_step[tid] = {
-                    "consciousness": float(graph.nodes[tid].get("class_consciousness", 0.0)),
-                    "heat": float(graph.nodes[tid].get("heat", 0.0)),
-                }
+                pre_step[tid] = {"heat": float(graph.nodes[tid].get("heat", 0.0))}
 
         # Step the engine
         logger.debug("Stepping engine session=%s tick=%d", session_id, state.tick)
@@ -2039,19 +2038,24 @@ class EngineBridge:
             session_id=session_id,
         )
 
-        # T016: Persist ActionResult records with computed deltas
+        # T016: Persist REAL per-action results from the engine's TurnResolution
+        # (published by OODASystem into persistent_context["turn_resolution"];
+        # replaces the old pre/post-diff fakery that hardcoded success=True and
+        # diffed a never-present class_consciousness attr).
+        results_by_org = _index_engine_action_results(persistent_context)
         for action in pending:
             tid = action.get("target_id")
             pre = pre_step.get(tid or "", {})
-            post_consciousness = 0.0
             post_heat = 0.0
             if tid and tid in new_graph.nodes:
-                post_consciousness = float(new_graph.nodes[tid].get("class_consciousness", 0.0))
                 post_heat = float(new_graph.nodes[tid].get("heat", 0.0))
 
             verb = action.get("verb", "")
             action_type_enum = VERB_TO_ACTION_TYPE.get(verb)
             action_type_val = action_type_enum.value if action_type_enum else verb
+
+            engine_result = _pop_engine_result(results_by_org, action["org_id"])
+            success, failure_reason, ci_delta, direct_effects = _engine_result_fields(engine_result)
 
             result_data = {
                 "session_id": session_id,
@@ -2062,10 +2066,10 @@ class EngineBridge:
                 "target_community": action.get("target_community"),
                 "initiative_score": 0.0,
                 "action_cost": 1.0,
-                "success": True,
-                "consciousness_delta": post_consciousness - pre.get("consciousness", 0.0),
+                "success": success,
+                "consciousness_delta": ci_delta,
                 "heat_delta": post_heat - pre.get("heat", 0.0),
-                "details": None,
+                "details": {"direct_effects": direct_effects, "failure_reason": failure_reason},
             }
             _persist_action_result(self._persistence, result_data)
 
@@ -3022,18 +3026,22 @@ class EngineBridge:
             if target_data.get("under_eviction", False):
                 warnings.append("Target territory is under eviction")
 
-            # Estimate based on verb category
-            if verb in {"educate", "campaign"}:
-                # Consciousness-raising actions
-                estimated_consciousness_delta = 0.05 * org_cohesion
-                estimated_heat_delta = 0.01
-                success_probability = min(0.9, 0.4 + org_cohesion * 0.5)
+            # Estimate based on verb category. Consciousness verbs (educate /
+            # campaign / aid) now source their CI estimate from the SAME pure
+            # helper the resolvers use (compute_consciousness_delta) so preview
+            # == resolution, instead of the old 0.05*cohesion literal.
+            if verb in {"educate", "campaign", "aid"} and action_type_enum is not None:
+                estimated_consciousness_delta = _preview_consciousness_delta(
+                    org_data, resolved_target, action_type_enum, graph
+                )
+                estimated_heat_delta = -0.01 if verb == "aid" else 0.01
+                success_probability = min(0.95, 0.4 + org_cohesion * 0.5)
             elif verb in {"attack", "mobilize"}:
                 # Aggressive actions — high heat, variable consciousness
                 estimated_consciousness_delta = 0.02
                 estimated_heat_delta = 0.08 * org_cohesion
                 success_probability = min(0.8, 0.3 + org_cohesion * 0.4)
-            elif verb in {"aid", "reproduce"}:
+            elif verb == "reproduce":
                 # Organizational building
                 estimated_consciousness_delta = 0.01
                 estimated_heat_delta = -0.01
@@ -3788,6 +3796,97 @@ def _mark_resolved_safe(persistence: RuntimePersistence, session_id: UUID, tick:
     mark_fn = getattr(persistence, "mark_turns_resolved", None)
     if mark_fn is not None:
         mark_fn(session_id=session_id, tick=tick)
+
+
+def _preview_consciousness_delta(
+    org_data: dict[str, Any],
+    target_id: str,
+    action_type: ActionType,
+    graph: BabylonGraph,
+) -> float:
+    """Read-only CI estimate for the preview, via the resolvers' own math.
+
+    Calls :func:`babylon.ooda.action_effects.compute_consciousness_delta` (pure,
+    no mutation) so ``preview_action`` reports the same collective-identity delta
+    the EDUCATE / CAMPAIGN / AID resolvers would produce.
+
+    Args:
+        org_data: Acting org node attributes (live payload; not mutated).
+        target_id: Target community/entity id.
+        action_type: The mapped engine ActionType.
+        graph: World graph (read-only).
+
+    Returns:
+        The estimated collective-identity delta, or 0.0 when the action has no
+        consciousness effect.
+    """
+    from babylon.ooda.action_effects import compute_consciousness_delta
+
+    defines = GameDefines()
+    delta = compute_consciousness_delta(
+        org_data, target_id, action_type, graph, defines.ooda, defines.organization
+    )
+    return float(delta.collective_identity_delta) if delta is not None else 0.0
+
+
+def _index_engine_action_results(
+    persistent_context: dict[str, Any] | None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Group the engine's TurnResolution action results by acting org id.
+
+    Reads ``persistent_context["turn_resolution"]["action_phase_results"]``
+    (published by :class:`~babylon.engine.systems.ooda.OODASystem`) and buckets
+    the per-action result dicts by ``action.org_id`` so ``resolve_tick`` can
+    pair each pending player action with its real engine result.
+
+    Args:
+        persistent_context: The cross-tick context after ``step`` synced the
+            engine's ``context.persistent_data`` back into it.
+
+    Returns:
+        Mapping of org id to its list of engine result dicts (execution order).
+    """
+    resolution = (persistent_context or {}).get("turn_resolution") or {}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for result in resolution.get("action_phase_results", []):
+        org_id = result.get("action", {}).get("org_id")
+        if org_id is not None:
+            grouped.setdefault(org_id, []).append(result)
+    return grouped
+
+
+def _pop_engine_result(
+    results_by_org: dict[str, list[dict[str, Any]]], org_id: str
+) -> dict[str, Any] | None:
+    """Pop the next (FIFO) engine result for ``org_id``, or None if exhausted."""
+    queue = results_by_org.get(org_id)
+    if not queue:
+        return None
+    return queue.pop(0)
+
+
+def _engine_result_fields(
+    engine_result: dict[str, Any] | None,
+) -> tuple[bool, str | None, float, dict[str, Any]]:
+    """Extract (success, failure_reason, ci_delta, direct_effects) from a result.
+
+    Args:
+        engine_result: A single ``action_phase_results`` entry (JSON-dumped
+            :class:`~babylon.ooda.types.ActionResult`), or None when the engine
+            produced no result for the org (a loud, persisted failure).
+
+    Returns:
+        Tuple of success flag, failure reason (or None), the collective-identity
+        delta (0.0 when there is no consciousness effect), and the direct effects.
+    """
+    if engine_result is None:
+        return False, "action not resolved by engine", 0.0, {}
+    success = bool(engine_result.get("success", False))
+    failure_reason = engine_result.get("failure_reason")
+    ci = engine_result.get("consciousness_delta")
+    ci_delta = float(ci["collective_identity_delta"]) if ci else 0.0
+    direct_effects = engine_result.get("direct_effects") or {}
+    return success, failure_reason, ci_delta, direct_effects
 
 
 def _persist_action_result(persistence: RuntimePersistence, result_data: dict[str, Any]) -> None:

@@ -68,7 +68,12 @@ class TestGameLifecycle:
         assert isinstance(session_id, uuid.UUID)
 
     def test_snapshot_after_create(self, bridge: object) -> None:
-        """Snapshot after creation shows tick 0 with initial state."""
+        """Snapshot after creation shows tick 0 with initial state.
+
+        Per Spec 052 §5 there is no top-level ``entities`` key (organizations
+        are the only top-level agents); ``organizations`` is the current
+        equivalent structural-completeness check.
+        """
         from game.engine_bridge import EngineBridge
 
         assert isinstance(bridge, EngineBridge)
@@ -77,7 +82,7 @@ class TestGameLifecycle:
 
         assert snapshot["session_id"] == str(session_id)
         assert isinstance(snapshot["tick"], int)
-        assert "entities" in snapshot
+        assert "organizations" in snapshot
         assert "territories" in snapshot
 
     def test_resolve_tick_advances_state(self, bridge: object) -> None:

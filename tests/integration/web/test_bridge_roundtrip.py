@@ -59,7 +59,14 @@ class TestBridgeRoundTrip:
     """Test that state survives hydrate -> serialize -> hydrate round-trips."""
 
     def test_snapshot_structure_is_complete(self, bridge: object) -> None:
-        """Snapshot dict has all required top-level keys."""
+        """Snapshot dict has all required top-level keys.
+
+        Per Spec 052 (`specs/052-worldstate-snapshot-contract/spec.md`) §5,
+        there is no top-level ``entities`` array (organizations are the only
+        top-level agents; classes/demographics appear only as hyperedge
+        memberships or derived aggregations) and no top-level ``economy``
+        block (its contents live under ``derived``).
+        """
         from game.engine_bridge import EngineBridge
 
         assert isinstance(bridge, EngineBridge)
@@ -69,14 +76,15 @@ class TestBridgeRoundTrip:
         required_keys = {
             "session_id",
             "tick",
-            "entities",
             "territories",
             "organizations",
             "institutions",
-            "economy",
+            "derived",
             "events",
         }
         assert required_keys.issubset(set(snapshot.keys()))
+        assert "entities" not in snapshot, "Spec 052 §5 forbids a top-level 'entities' key"
+        assert "economy" in snapshot["derived"]
 
     def test_snapshot_entities_are_serializable(self, bridge: object) -> None:
         """All entity dicts in snapshot are JSON-serializable."""
@@ -103,7 +111,7 @@ class TestBridgeRoundTrip:
 
         assert snap1["tick"] == snap2["tick"]
         assert snap1["session_id"] == snap2["session_id"]
-        assert len(snap1["entities"]) == len(snap2["entities"])
+        assert len(snap1["organizations"]) == len(snap2["organizations"])
         assert len(snap1["territories"]) == len(snap2["territories"])
 
     def test_resolve_produces_different_tick(self, bridge: object) -> None:

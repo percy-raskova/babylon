@@ -367,10 +367,22 @@ class TickDynamicsSystem(SystemBase):
         Returns:
             NationalTickParameters, or None if critical data unavailable.
         """
+        # C.8 (spec 2.R): loud fallback observability. Snapshot wired-vs-None
+        # status for this observation up front (before any early return) so the
+        # manifest attests calculator wiring even when MELT bails. Pure
+        # instrumentation — the recorded values below are unchanged.
+        fallbacks = services.economics_fallbacks
+        fallbacks.observe_wiring(
+            melt=services.melt_calculator is not None,
+            basket=services.basket_calculator is not None,
+            gamma=services.gamma_calculator is not None,
+        )
+
         # Get tau from MELTCalculator
         tau_result = services.melt_calculator.get_melt(year)
         if not tau_result and not isinstance(tau_result, (int, float)):
             logger.warning("TickDynamics Step 2: MELT unavailable for year %d", year)
+            fallbacks.record_melt_unavailable()
             return None
         tau = float(tau_result)
 
@@ -381,6 +393,14 @@ class TickDynamicsSystem(SystemBase):
             gb_result = services.basket_calculator.get_gamma_basket(year)
             gamma_basket_raw = gb_result[0]
             estimated = gb_result[1]
+        else:
+            logger.warning(
+                "TickDynamics Step 2: basket_calculator not wired; "
+                "using fallback gamma_basket=%.2f for year %d",
+                gamma_basket_raw,
+                year,
+            )
+            fallbacks.record_gamma_basket_calculator_none()
 
         # Get gamma_III from GammaIIICalculator
         gamma_III_raw: float = 0.33
@@ -388,6 +408,22 @@ class TickDynamicsSystem(SystemBase):
             g3_result = services.gamma_calculator.compute(year)
             if g3_result and not isinstance(g3_result, type(None)):
                 gamma_III_raw = g3_result.gamma_iii
+            else:
+                logger.warning(
+                    "TickDynamics Step 2: gamma_III calculator returned no data; "
+                    "using fallback gamma_III=%.2f for year %d",
+                    gamma_III_raw,
+                    year,
+                )
+                fallbacks.record_gamma_iii_returned_none()
+        else:
+            logger.warning(
+                "TickDynamics Step 2: gamma_III calculator not wired; "
+                "using fallback gamma_III=%.2f for year %d",
+                gamma_III_raw,
+                year,
+            )
+            fallbacks.record_gamma_iii_calculator_none()
 
         # Apply smoothing via CoefficientSmoother
         is_init = prev_coefficients is not None and prev_coefficients.is_initialized

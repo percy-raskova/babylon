@@ -1790,6 +1790,124 @@ class TestComputeNationalParams:
 
 
 # =============================================================================
+# C.8 — loud economics-fallback instrumentation (value-neutral)
+# =============================================================================
+
+
+class TestEconomicsFallbackInstrumentation:
+    """C.8: loud fallback counters must be value-NEUTRAL.
+
+    The instrumentation (per-fallback counters + warnings + wired-vs-None
+    status) MUST NOT perturb any computed value. These tests assert that the
+    gamma/tau outputs with instrumentation ON are byte-for-byte the documented
+    fallback constants (0.68, 0.33) or the wired calculator's real output, AND
+    that the tally records the fallbacks that were taken.
+    """
+
+    def test_both_calculators_unwired_records_fallbacks_and_keeps_values(self) -> None:
+        """basket=None + gamma=None → values stay 0.68/0.33; both fallbacks counted."""
+        system = TickDynamicsSystem()
+        services = _make_services(basket_calculator=None, gamma_calculator=None)
+
+        result = system._compute_national_params(2015, services, prev_coefficients=None)
+
+        # Value-neutrality: fallback constants are unchanged by instrumentation.
+        assert result is not None
+        assert result.gamma_basket_raw == pytest.approx(0.68)
+        assert result.gamma_III_raw == pytest.approx(0.33)
+
+        # Loud observation: fallbacks recorded, wired flags reflect None.
+        tally = services.economics_fallbacks
+        assert tally.gamma_basket_calculator_none == 1
+        assert tally.gamma_iii_calculator_none == 1
+        assert tally.gamma_iii_returned_none == 0
+        assert tally.melt_unavailable == 0
+        assert tally.basket_calculator_wired is False
+        assert tally.gamma_calculator_wired is False
+        assert tally.melt_calculator_wired is True
+        assert tally.national_params_observations == 1
+
+    def test_wired_gamma_value_flows_through_without_fallback(self) -> None:
+        """Wired gamma calculator → its real value flows through; no gamma fallback."""
+        system = TickDynamicsSystem()
+        services = _make_services(gamma_calculator=MockGammaIIICalculator(gamma_iii=0.40))
+
+        result = system._compute_national_params(2015, services, prev_coefficients=None)
+
+        assert result is not None
+        assert result.gamma_III_raw == pytest.approx(0.40)  # unchanged by instrumentation
+        tally = services.economics_fallbacks
+        assert tally.gamma_iii_calculator_none == 0
+        assert tally.gamma_iii_returned_none == 0
+        assert tally.gamma_calculator_wired is True
+
+    def test_gamma_calculator_returning_no_data_records_returned_none(self) -> None:
+        """Wired gamma but out-of-range year → NoDataSentinel → returned_none counted."""
+        system = TickDynamicsSystem()
+        # accept_any_year MELT so we survive to the gamma branch at year 2050,
+        # where MockGammaIIICalculator returns a (falsy) NoDataSentinel.
+        melt = MockMELTCalculator(tau=62.0, accept_any_year=True)
+        services = _make_services(melt_calculator=melt)
+
+        result = system._compute_national_params(2050, services, prev_coefficients=None)
+
+        assert result is not None
+        assert result.gamma_III_raw == pytest.approx(0.33)  # fallback value intact
+        tally = services.economics_fallbacks
+        assert tally.gamma_iii_returned_none == 1
+        assert tally.gamma_iii_calculator_none == 0
+        assert tally.gamma_calculator_wired is True
+
+    def test_melt_unavailable_records_counter(self) -> None:
+        """Sentinel MELT → early return None AND melt_unavailable counted."""
+        system = TickDynamicsSystem()
+        sentinel_melt = MockMELTCalculator(tau=62.0, force_sentinel=True)
+        services = _make_services(melt_calculator=sentinel_melt)
+
+        result = system._compute_national_params(2015, services, prev_coefficients=None)
+
+        assert result is None
+        tally = services.economics_fallbacks
+        assert tally.melt_unavailable == 1
+
+    def test_fully_wired_run_records_no_fallbacks(self) -> None:
+        """All three calculators wired → zero fallback counters, all wired flags True."""
+        system = TickDynamicsSystem()
+        services = _make_services()  # all mocks present by default
+
+        result = system._compute_national_params(2015, services, prev_coefficients=None)
+
+        assert result is not None
+        tally = services.economics_fallbacks
+        assert tally.melt_unavailable == 0
+        assert tally.gamma_basket_calculator_none == 0
+        assert tally.gamma_iii_calculator_none == 0
+        assert tally.gamma_iii_returned_none == 0
+        assert tally.melt_calculator_wired is True
+        assert tally.basket_calculator_wired is True
+        assert tally.gamma_calculator_wired is True
+
+    def test_to_dict_shape_is_manifest_ready(self) -> None:
+        """to_dict() exposes the exact keys the manifest economics_fallbacks block needs."""
+        system = TickDynamicsSystem()
+        services = _make_services(basket_calculator=None)
+        system._compute_national_params(2015, services, prev_coefficients=None)
+
+        payload = services.economics_fallbacks.to_dict()
+        assert set(payload) == {
+            "national_params_observations",
+            "melt_calculator_wired",
+            "basket_calculator_wired",
+            "gamma_calculator_wired",
+            "melt_unavailable",
+            "gamma_basket_calculator_none",
+            "gamma_iii_calculator_none",
+            "gamma_iii_returned_none",
+        }
+        assert payload["gamma_basket_calculator_none"] == 1
+
+
+# =============================================================================
 # _compute_county_states (direct) — kills remaining ~57 survivors
 # =============================================================================
 

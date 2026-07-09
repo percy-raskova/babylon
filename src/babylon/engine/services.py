@@ -25,6 +25,85 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class EconomicsFallbackTally:
+    """Loud observability for economics-calculator fallbacks (C.8 / spec 2.R).
+
+    :class:`~babylon.economics.tick.system.TickDynamicsSystem` substitutes a
+    hardcoded coefficient whenever an economics calculator is unwired
+    (``None``) or returns no data. Historically these substitutions were
+    *silent* — a fully-unwired run reported gamma_III = 0.33 forever with no
+    trace of why. This tally records each fallback and the wired-vs-None status
+    of every calculator so the run manifest can attest whether gamma was
+    genuinely computed or merely defaulted.
+
+    Pure instrumentation: recording a fallback NEVER changes a computed value.
+    The caller selects the fallback constant first, then calls ``record_*``.
+
+    A fresh tally is created per :class:`ServiceContainer` (``default_factory``),
+    so counters are scoped to a single run and safe across processes/tests.
+    """
+
+    #: How many times ``_compute_national_params`` ran (year boundaries seen).
+    national_params_observations: int = 0
+    #: Wired-vs-None status of each calculator (snapshot; last observation wins).
+    melt_calculator_wired: bool = False
+    basket_calculator_wired: bool = False
+    gamma_calculator_wired: bool = False
+    #: Per-fallback counters.
+    melt_unavailable: int = 0
+    gamma_basket_calculator_none: int = 0
+    gamma_iii_calculator_none: int = 0
+    gamma_iii_returned_none: int = 0
+
+    def observe_wiring(self, *, melt: bool, basket: bool, gamma: bool) -> None:
+        """Record calculator wired-vs-None status for this observation.
+
+        Args:
+            melt: Whether ``melt_calculator`` is wired (not ``None``).
+            basket: Whether ``basket_calculator`` is wired (not ``None``).
+            gamma: Whether ``gamma_calculator`` is wired (not ``None``).
+        """
+        self.national_params_observations += 1
+        self.melt_calculator_wired = melt
+        self.basket_calculator_wired = basket
+        self.gamma_calculator_wired = gamma
+
+    def record_melt_unavailable(self) -> None:
+        """Count a MELT-unavailable early return (calculator wired but no data)."""
+        self.melt_unavailable += 1
+
+    def record_gamma_basket_calculator_none(self) -> None:
+        """Count a gamma_basket fallback taken because the calculator is ``None``."""
+        self.gamma_basket_calculator_none += 1
+
+    def record_gamma_iii_calculator_none(self) -> None:
+        """Count a gamma_III fallback taken because the calculator is ``None``."""
+        self.gamma_iii_calculator_none += 1
+
+    def record_gamma_iii_returned_none(self) -> None:
+        """Count a gamma_III fallback taken because a wired calculator returned no data."""
+        self.gamma_iii_returned_none += 1
+
+    def to_dict(self) -> dict[str, int | bool]:
+        """Serialize to a manifest-ready dict (stable key order).
+
+        Returns:
+            Dict of counter/status fields for the manifest
+            ``economics_fallbacks`` block.
+        """
+        return {
+            "national_params_observations": self.national_params_observations,
+            "melt_calculator_wired": self.melt_calculator_wired,
+            "basket_calculator_wired": self.basket_calculator_wired,
+            "gamma_calculator_wired": self.gamma_calculator_wired,
+            "melt_unavailable": self.melt_unavailable,
+            "gamma_basket_calculator_none": self.gamma_basket_calculator_none,
+            "gamma_iii_calculator_none": self.gamma_iii_calculator_none,
+            "gamma_iii_returned_none": self.gamma_iii_returned_none,
+        }
+
+
+@dataclass
 class ServiceContainer:
     """Container for all simulation services.
 
@@ -91,6 +170,12 @@ class ServiceContainer:
     throughput_calculator: Any = field(default=None)
     transition_engine: Any = field(default=None)
     tensor_registry: Any = field(default=None)
+
+    # C.8 (spec 2.R): loud economics-fallback observability. A fresh tally per
+    # container; TickDynamicsSystem records fallbacks + wired status into it,
+    # and the headless runner surfaces it as the manifest ``economics_fallbacks``
+    # block. Pure instrumentation — never affects a computed value.
+    economics_fallbacks: EconomicsFallbackTally = field(default_factory=EconomicsFallbackTally)
 
     # Hypergraph community layer (Feature 022 - optional, default None)
     community_hypergraph: Any = field(default=None)

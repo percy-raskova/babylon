@@ -7,6 +7,58 @@
 
 ______________________________________________________________________
 
+## 0. ⭐ SUPERSEDING UPDATE — PHASE 2 COMPLETE (2026-07-08 late evening, Opus 4.8)
+
+> This section supersedes the lane-status content of §1–§10 below (the ~5pm Fable-5
+> snapshot). Those sections are preserved as the historical record of the two-outage
+> day; where they say a Phase-2 lane is "interrupted / snapshotted / pending," read
+> the table here instead.
+
+**All four interrupted lanes + both parked defects + the 2.R capstone are merged.
+Phase 2 is complete. All six P0s are fixed. dev @ `5d954ecb`, full `mise run check`
+green (9421 passed, 17 skipped, 4 xfailed).** No dangling wip branches; all
+remediation worktrees removed.
+
+| Lane | Merge | What landed |
+|---|---|---|
+| chore: secret-leak prevention | `88e34ab5` | `sessions/` + `.dev.vars*` gitignored; `session-ses_0d18.md` untracked (task #22 prevention half — rotation still owner-pending) |
+| **2.2** territory-case no-ops | `1546a330` | `"Territory"`→`"territory"` case fix un-no-ops ReserveArmy + Dispossession; 8 Territory round-trip fields; `wage_pressure` exclusion |
+| **6.2** spec-063 Vol-II circulation tail | `0fae122c` | T040/T042/T043 + FR-026 revival + T033 Canada-required + T052 atomicity-inheritance; 5 integration tests green |
+| **2.4** verb-dispatch engine (**6th/last P0**) | `9f6f244e` | `ActionType.MOVE` + defines + eligibility → `Action.params` → `VERB_RESOLVERS` (9 resolvers) → OODA dispatch → bridge 9-verb map; player verbs now resolve to real deltas; canary retired to `tests/contract/verbs/` |
+| **5.4** storage gates | `ad457f8c` | Gates A/B/C (two-sided storage-budget floors) + session-scoped `sim:status` (kills the false 1,295 MB/tick artifact) + record repair |
+| Gate B runtime guard (cross-lane 5.4 fix) | `ab89d8a6` | 5.4's unconditional tick-0 marker read-back crashed the pure tick-loop (runtime=None) + gamma-wiring fake bridge; guarded behind `runtime is not None` |
+| **Wave 3** parked defects | `276fcb2b` | `decomposition` seeds `inequality` (VitalitySystem KeyError on C700/C800 → fixed; §7.1-adjacent); `hydrate_graph` restores 7 graph-scope metadata keys via `graph_metadata.extra` (fixes §7.1 `MonotonicityViolationError`) |
+| **2.R** baseline capstone + C.8 | `5d954ecb` | R-PROOF: gated-field neutrality **proven** (byte-identical old-vs-new via persisted state — consumption-path isolation holds though gamma-wiring broke spec-102's wiring-path isolation); 2.3 determinism **proven** (0/0 A/B on consciousness + hex to tick 51); Track-A scenario baselines regenerated (defines_hash-only drift); C.8 loud economics-fallback counters + `economics_fallbacks` manifest section |
+
+### ⚠ NEW BLOCKER surfaced by 2.R → ruled to a Phase-3 spec (Percy, 2026-07-08)
+
+The gamma wiring (`cc4a5303`, correctly merged) **exposed a latent core-loop crash**:
+the canonical 520-tick run **cannot complete** — it dies deterministically at **tick 52**
+with `ClassDistribution.fips String should have at least 5 characters [input_value='T001']`.
+Root cause: `WorldStateBridge` mints territory ids `T{i:03d}` (real FIPS only in the
+node's `name`), but `TickDynamicsSystem._get_territory_fips` / `_bootstrap_county_states`
+use `str(node.id)` and feed `T001` into `ClassDistribution(fips=…)`. Dormant the entire
+life of the old baseline (`melt_calculator` was `None`); gamma-wiring satisfied the gate
+and lit it. **This is the same root gap §7.6 flagged** ("zooms degenerate until Territory
+carries `county_fips`") — the `Territory` model has no `county_fips` field at all.
+
+2.R also found a coupled deeper issue: the **bridged hex economy is static** — production
+isn't evolving the material base; gated totals are frozen at tick-0 hydration for the
+whole run (this is *why* neutrality holds, but means a crash-fixed run still wouldn't
+simulate production dynamics).
+
+**`cc4a5303` is therefore ESCALATED, not closed.** Full proof + evidence:
+`specs/102-gamma-shocks/proof-2R-baseline-regen.md`. **Percy's ruling (2026-07-08):
+handle via a dedicated Phase-3 spec** — the Territory↔FIPS contract fix + the
+static-economy investigation. `michigan-e2e.json` stays valid on its gated fields but
+cannot be refreshed to tick 519 until that spec lands. Tracked as owner-queue **item 25**.
+
+**Next:** author spec-107 (spectrum) + spec-108 (transport) as already queued, and the
+new Phase-3 Territory↔FIPS / static-economy spec (item 25). Push to origin remains
+blocked on owner task #22 (token rotation).
+
+______________________________________________________________________
+
 ## 1. Headline
 
 **Fifteen branches are merged to dev and the full gate is green** (`mise run check`
@@ -53,7 +105,7 @@ dev sits at `3371dc8c` + this docs merge, **239 commits ahead of origin, local-o
 | #5 verb targets were fixture IDs | ✅ merged (1.4) |
 | #6 tick-resolve datetime 500 | ✅ merged (1.1) |
 | #7 map renders zero features | ✅ merged (1.3) |
-| #8 (6th, found in planning) verbs are engine-side no-ops | ⏳ 2.4 scoped, brief ready, not started |
+| #8 (6th, found in planning) verbs are engine-side no-ops | ✅ merged (2.4, `9f6f244e`) — see §0 |
 
 **Loud Machine gates:**
 
@@ -115,9 +167,10 @@ section + the now-honest spec-059 ledger are the spec.
 
 ## 7. Parked pre-existing defects (found, not fixed — do not lose)
 
-1. **`hydrate_graph` restores no graph metadata** → the second resolve on a
-   rehydrated session raises `MonotonicityViolationError`. Core-loop severity;
-   schedule with/before 2.4. (Found by the 1.1 lane; pre-existing.)
+1. ✅ **FIXED (Wave 3, `276fcb2b`).** ~~`hydrate_graph` restores no graph metadata~~
+   → `hydrate_graph` now restores the 7 graph-scope keys via `graph_metadata.extra`;
+   rehydrated sessions resolve without `MonotonicityViolationError`. (Found by the
+   1.1 lane; was pre-existing.)
 2. `_persist_events` reads `e.get("type"/"entity_id")` but events emit `event_type`
    → `simulation_event.event_type` = 'UNKNOWN', `entity_id` NULL (Phase 3.1-adjacent).
 3. `StubEngineBridge.create_game` kwargs mismatch → POST /api/games/ under stub

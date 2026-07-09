@@ -80,3 +80,27 @@
   slice 1; (3) BUILD/REPAIR mapped onto existing `BUILD_INFRASTRUCTURE` (exists,
   `actions.py:81`) — zero new ActionTypes; (4) waterways/ports deferred to the same
   slice-2 feature as AIR_LINK. Item 24 is fully ruled; spec-108 authoring is unblocked.
+
+## Updates 2026-07-08 late evening (Phase 2 completion — Opus 4.8)
+
+- **Phase 2 COMPLETE.** All four interrupted lanes (2.2 `1546a330`, 6.2 `0fae122c`,
+  2.4 `9f6f244e`, 5.4 `ad457f8c`) + both parked defects (Wave 3 `276fcb2b`) + the 2.R
+  capstone (`5d954ecb`) merged to dev; full `mise run check` green (9421 passed). All
+  six P0s fixed. Details: `execution/PROGRESS_REPORT-2026-07-08.md` §0.
+- **Item 22 (token) — prevention half DONE, rotation still PENDING.** `sessions/` +
+  `.dev.vars*` are now gitignored and `session-ses_0d18.md` untracked (`88e34ab5`), so
+  the leak cannot recur. STILL REQUIRED (owner): rotate the token at Cloudflare + choose
+  [A] unblock-URL push or [B] the prepared filter-repo scrub. Push to origin remains blocked.
+- **Item 25 (NEW, ✅ RULED 2026-07-08 → Phase-3 spec): Territory↔FIPS contract + static
+  bridged economy.** 2.R found the canonical 520-tick run cannot complete — gamma wiring
+  (`cc4a5303`) exposed a latent crash at **tick 52** (`ClassDistribution.fips='T001'`,
+  needs ≥5 chars): `WorldStateBridge` mints territory ids `T{i:03d}` while
+  `TickDynamicsSystem` assumes `territory.id == county FIPS`; the `Territory` model has no
+  `county_fips` field (same root gap as owner-queue §7.6 / PROGRESS_REPORT §7.6). Coupled
+  finding: the bridged hex economy is **static** (production not evolving the material
+  base). **Percy's ruling: dedicate a Phase-3 spec** — add `county_fips` to `Territory`
+  + round-trip it (through the fragile `TERRITORY_EXCLUDED_FIELDS`/C.1-gate contract) + fix
+  both engine readers, THEN investigate the static-economy production loop, THEN re-run 2.R
+  for a real 520-tick baseline to CLOSE `cc4a5303`. Full evidence:
+  `specs/102-gamma-shocks/proof-2R-baseline-regen.md`. `michigan-e2e.json` stays valid on
+  its gated fields until this lands.

@@ -35,6 +35,9 @@ class Territory(BaseModel):
 
     Attributes:
         id: Unique identifier matching pattern ^T[0-9]{3}$
+        county_fips: Real 5-digit county FIPS when this territory maps to a US
+            county (None for abstract territories); the county identity the
+            TickDynamics economy reads, decoupled from the graph-local node id
         name: Human-readable sector name
         sector_type: Economic/social character of the territory
         territory_type: Classification in settler-colonial hierarchy (Sprint 3.7)
@@ -66,6 +69,17 @@ class Territory(BaseModel):
         ...,
         pattern=r"^(T[0-9]{3,}|[0-9a-f]{15})$",
         description="Unique identifier (T[0-9]{3,} or 15-char H3 hex; 3+ digits for national scale)",
+    )
+    county_fips: str | None = Field(
+        default=None,
+        min_length=5,
+        max_length=5,
+        description=(
+            "Real 5-digit county FIPS when this territory maps to a US county "
+            "(None for abstract territories). The bridge mints graph-local node "
+            "ids (e.g. 'T001'); the engine reads this as the county identity so "
+            "ClassDistribution's 5-char fips is satisfied (owner item 25)."
+        ),
     )
     h3_index: str | None = Field(
         default=None,

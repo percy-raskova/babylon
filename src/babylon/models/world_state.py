@@ -203,7 +203,15 @@ def _reconstruct_institution(node_data: dict[str, Any]) -> Institution:
 
 def _reconstruct_territory(node_data: dict[str, Any]) -> Territory:
     """Reconstruct a Territory from graph node data."""
-    territory_data = {k: v for k, v in node_data.items() if k not in TERRITORY_EXCLUDED_FIELDS}
+    # Drop transient per-tick outputs stamped by graph_bridge.write_tick_state_to_graph
+    # (``tick_``-prefixed) — they are never Territory model fields, and extra="forbid"
+    # would reject them the moment a run gets past the first productive tick (the
+    # owner-item-25 round-trip, same landmine class as the excluded fields above).
+    territory_data = {
+        k: v
+        for k, v in node_data.items()
+        if k not in TERRITORY_EXCLUDED_FIELDS and not k.startswith("tick_")
+    }
     sector_type = territory_data.get("sector_type")
     if isinstance(sector_type, str):
         territory_data["sector_type"] = SectorType(sector_type)

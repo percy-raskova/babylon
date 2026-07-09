@@ -295,7 +295,10 @@ class TickDynamicsSystem(SystemBase):
         fips_list: list[str] = []
         for node in graph.query_nodes():
             if node.node_type == "territory":
-                fips_list.append(str(node.id))
+                # Node id is a graph-local label (e.g. bridge-minted 'T001'); the
+                # real county identity lives in county_fips. Fall back to the id for
+                # abstract territories with no FIPS (byte-identical legacy path).
+                fips_list.append(str(node.attributes.get("county_fips") or node.id))
         return fips_list
 
     def _bootstrap_county_states(
@@ -316,8 +319,10 @@ class TickDynamicsSystem(SystemBase):
         for node in graph.query_nodes():
             if node.node_type != "territory":
                 continue
-            fips = str(node.id)
             data = node.attributes
+            # Prefer the real county FIPS (owner item 25); node id may be a
+            # graph-local label ('T001'). Fall back to id for abstract territories.
+            fips = str(data.get("county_fips") or node.id)
 
             # Read existing tick_ attributes if present
             if "tick_capital_stock" in data:

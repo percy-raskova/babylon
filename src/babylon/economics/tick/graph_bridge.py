@@ -77,9 +77,21 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
             state.national_params,  # pragma: no mutate
         )  # pragma: no mutate
 
+    # county_states are keyed by real 5-digit FIPS, but territory node ids may be
+    # graph-local labels (bridge-minted 'T001', owner item 25). Map FIPS -> node id
+    # so the writeback lands on the right node; abstract territories key by their id.
+    fips_to_node: dict[str, str] = {}  # pragma: no mutate
+    for territory_node in graph.query_nodes():  # pragma: no mutate
+        if territory_node.node_type == "territory":  # pragma: no mutate
+            key = str(  # pragma: no mutate
+                territory_node.attributes.get("county_fips") or territory_node.id
+            )  # pragma: no mutate
+            fips_to_node[key] = str(territory_node.id)  # pragma: no mutate
+
     # Write county-level state to Territory nodes
     for fips, county in state.county_states.items():  # pragma: no mutate
-        node = graph.get_node(fips)  # pragma: no mutate
+        node_id = fips_to_node.get(fips, fips)  # pragma: no mutate
+        node = graph.get_node(node_id)  # pragma: no mutate
         if node is None:  # pragma: no mutate
             continue  # pragma: no mutate
         # Only write to territory nodes
@@ -88,7 +100,7 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
 
         rates = county_rates[fips]  # pragma: no mutate
         graph.update_node(  # pragma: no mutate
-            fips,  # pragma: no mutate
+            node_id,  # pragma: no mutate
             tick_capital_stock=county.capital_stock,  # pragma: no mutate
             tick_throughput_position=county.throughput_position,  # pragma: no mutate
             tick_supply_chain_depth=county.supply_chain_depth,  # pragma: no mutate
@@ -219,7 +231,8 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
         if "tick_capital_stock" not in node_data:  # pragma: no mutate
             continue  # pragma: no mutate
 
-        fips = str(node.id)  # pragma: no mutate
+        # Real county FIPS (owner item 25); node id may be a label ('T001').
+        fips = str(node_data.get("county_fips") or node.id)  # pragma: no mutate
         dist_dict = node_data.get("tick_class_distribution", {})  # pragma: no mutate
         class_dist = ClassDistribution(  # pragma: no mutate
             fips=fips,  # pragma: no mutate

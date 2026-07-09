@@ -803,6 +803,7 @@ class WorldStateBridge:
             territory_id = f"T{i:03d}"
             territories[territory_id] = Territory(
                 id=territory_id,
+                county_fips=county_fips,
                 name=f"County {county_fips}",
                 sector_type=SectorType.INDUSTRIAL,
             )

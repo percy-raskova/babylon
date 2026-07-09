@@ -101,6 +101,15 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         # Armed by the Phase-2.2 node_type case fix.
         "wage_pressure",
         "dispossession_intensity",
+        # Layer-3 consequence propagation writes ``infrastructure`` onto the
+        # ATTACK/BUILD_INFRASTRUCTURE target node (ooda/layer3.py:_propagate_
+        # infrastructure, `graph.nodes[target]["infrastructure"] = ...`).
+        # It is NOT a Territory model field (extra="forbid"), so the very
+        # next from_graph would raise the moment a player ATTACK verb — or an
+        # NPC CIVIL_SOCIETY BUILD_INFRASTRUCTURE — targets a territory. Mark
+        # it transient (like the Feature-021 outputs above) so it is dropped
+        # on reconstruction. (verb-dispatch engine, §8.3 landmine.)
+        "infrastructure",
     }
 )
 

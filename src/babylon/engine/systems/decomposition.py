@@ -254,6 +254,7 @@ class DecompositionSystem(SystemBase):
             subsistence_threshold=la_data.get("subsistence_threshold", 0.0),
             s_bio=la_data.get("s_bio", 0.01),
             s_class=la_data.get("s_class", 0.0),
+            inequality=la_data.get("inequality", 0.0),
         )
         created = graph.get_node(new_id)
         return (new_id, created.attributes if created is not None else {})

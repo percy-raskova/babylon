@@ -163,6 +163,7 @@ class PostgresRuntime:
         with self._pool.connection() as conn, conn.transaction():
             self._persist_nodes(conn, session_id, tick, graph)
             self._persist_edges(conn, session_id, tick, graph)
+            self._persist_graph_attrs(conn, session_id, tick, graph)
             if events:
                 self._persist_events(conn, session_id, tick, events)
 
@@ -316,6 +317,29 @@ class PostgresRuntime:
                 attrs = row["attributes"] if isinstance(row["attributes"], dict) else {}
                 attrs["edge_type"] = row["edge_type"]
                 graph.add_edge(row["source_id"], row["target_id"], **attrs)
+
+            # Restore graph-LEVEL metadata (Design B round-trip). persist_tick
+            # stashes the full ``graph.graph`` dict — institution_relations,
+            # economy, state_finances, contradiction_frames, opposition_states,
+            # events, event_log — into graph_metadata.extra. Without this the
+            # rehydrated graph loses that relational state and from_graph()
+            # reconstructs a divergent WorldState, so a second resolve() persists
+            # a mismatched payload → MonotonicityViolationError.
+            cur.execute(
+                "SELECT extra FROM graph_metadata WHERE session_id = %s AND tick = %s",
+                (session_id, tick),
+            )
+            meta_row = cur.fetchone()
+            extra = meta_row.get("extra") if isinstance(meta_row, dict) else None
+            if isinstance(extra, dict):
+                for meta_key, meta_value in extra.items():
+                    graph.set_graph_attr(meta_key, meta_value)
+
+        # Restore the loaded tick as graph-level metadata so bridge helpers
+        # (engine_bridge._graph_tick reads graph.graph["tick"]) resolve the
+        # correct tick after hydration instead of defaulting to 0 — the 0
+        # default re-steps 0->1 and collides with the persisted tick 1.
+        graph.set_graph_attr("tick", tick)
 
         return graph
 
@@ -2198,6 +2222,49 @@ class PostgresRuntime:
                     """,
                     rows,
                 )
+
+    def _persist_graph_attrs(
+        self,
+        conn: Connection[Any],
+        session_id: UUID,
+        tick: int,
+        graph: BabylonGraph,
+    ) -> None:
+        """Persist graph-LEVEL metadata (``graph.graph``) for a tick.
+
+        ``WorldState.to_graph()`` writes relational state that lives at graph
+        scope rather than on nodes/edges — ``institution_relations``,
+        ``economy``, ``state_finances``, ``contradiction_frames``,
+        ``opposition_states``, ``events`` and ``event_log`` (Design B lossless
+        round-trip). ``hydrate_graph`` rebuilt only from ``node_state`` /
+        ``edge_state`` rows, so without persisting this dict the metadata was
+        silently dropped and ``from_graph()`` reconstructed a divergent state.
+
+        The full JSON-serializable metadata dict is stored in the existing
+        ``graph_metadata.extra`` column (no schema migration required). Only
+        ``extra`` is touched, so the observer-driven
+        :meth:`persist_graph_metadata` (economy / state_finances /
+        tick_dynamics columns) and this writer never clobber one another.
+
+        Args:
+            conn: Open connection (runs inside :meth:`persist_tick`'s
+                transaction, so metadata is committed atomically with
+                nodes/edges).
+            session_id: Session scope.
+            tick: The tick being persisted.
+            graph: Full simulation graph; ``graph.graph`` supplies the
+                graph-level metadata dict.
+        """
+        metadata = self._make_serializable(dict(graph.graph))
+        conn.execute(
+            """
+            INSERT INTO graph_metadata (session_id, tick, extra)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (session_id, tick) DO UPDATE SET
+                extra = EXCLUDED.extra
+            """,
+            (session_id, tick, json.dumps(metadata)),
+        )
 
     def _persist_events(
         self,

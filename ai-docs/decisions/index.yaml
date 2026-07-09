@@ -1,5 +1,5 @@
 meta:
-  version: 1.19.0
+  version: 1.20.0
   updated: '2026-07-09'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -269,3 +269,8 @@ decisions:
     status: accepted
     date: '2026-07-09'
     file: ADR058_src_simplification_sweep.yaml
+  ADR059_fork_reconciliation_ledger:
+    title: 'Fork Reconciliation Ledger (Part 2 of the src/ sweep): rigor+data-accuracy recommendation per successor-fork (delete-orphan/wire-orphan/reconcile/unify), adversarially verified; ledger proposes, owner disposes, Part-2b implements'
+    status: accepted
+    date: '2026-07-09'
+    file: ADR059_fork_reconciliation_ledger.yaml

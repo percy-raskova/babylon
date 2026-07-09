@@ -104,3 +104,40 @@
   for a real 520-tick baseline to CLOSE `cc4a5303`. Full evidence:
   `specs/102-gamma-shocks/proof-2R-baseline-regen.md`. `michigan-e2e.json` stays valid on
   its gated fields until this lands.
+
+## Updates 2026-07-09 (Fork Reconciliation Ledger — Part 2 of the src/ sweep)
+
+**Item 26 (NEW, PENDING — needs Percy's rulings): the Fork Reconciliation Ledger.** Part 2 of the
+ADR058 sweep. Full analysis: `project/execution/FORK_RECONCILIATION_LEDGER.md` (+ ADR059). A
+30-agent workflow (15 rigor analysts + 15 adversarial verifiers, 0 errors, 14/15 CONFIRMED) produced
+one rigor+data-accuracy recommendation per successor-fork. **The ledger proposes; you dispose** — rule
+each fork inline in the ledger's `— Percy's ruling:` slots, then a Part-2b phase implements behind
+`mise run check` + byte-identical `qa:regression`. No `src/` changed to author it.
+
+Two tiers. **Rubber-stampable (byte-identical, rigor-safe):**
+
+| Fork | Recommendation | Note |
+| --- | --- | --- |
+| F2  | delete-orphan (`InterpolatingBEASource`) | salvage the ~60-line interpolation into the live service first (separate change) |
+| F7  | delete-orphan (consciousness trio) | keep `tendency_modifier` |
+| F9  | delete-orphan (`derivations/`) | byte-identical duplicate of `world_state` computed_fields |
+| F10 | delete-orphan (`TraceRecorder`/`trace_log`) | **bundle with F11** — observers are its only callers |
+| F11 | unify (keep canonical `SessionRecorder`, drop `PersistenceObserver`) | JSONL recorder = separate delete-orphan unless you want it wired |
+| F12 | delete-orphan (`calculate_rate_of_profit`/`_organic_composition`) | Epoch-2 intent preserved in `epoch2-trpf.yaml` |
+
+**Genuine rigor rulings (baseline-moving or a value/theory judgment):**
+
+| Fork | Recommendation | Decision you're being asked to make |
+| --- | --- | --- |
+| F1  | wire-orphan/retire-live (Leontief spec-057) | (a) Leontief vs trade-DRAIN as canonical Φ magnitude (double-counting risk); (b) may the Hickel **fixture** be read at runtime (III.4.2)? |
+| F3  | wire-orphan/retire-live (Mobilize/Aid defines) | `turnout_per_sl` model+units (0.01 pop-fraction vs 10.0 demonstrators/SL); confirm `aid_efficiency` 0.85. Ruling must land BEFORE the wire. |
+| F4  | **CONTESTED** (wire, revised by skeptic) | rule the skeptic's 3-part split: wire `compute_action_cost` (moves baseline), DRY-fold the AP loop, hold coordination guards (blocked on a multi-target generator) |
+| F5  | reconcile (institution half-migration) | approve freeze-the-bool + schedule spec-040 wire as the terminal state (an ADR/convention) |
+| F6  | wire-orphan/retire-live (gamma-III) | approve the gamma data program (QCEW care facts 086/097/098 + ATUS catalog add); immediate fixture-cleanup is byte-identical *(re: item 9 "wire gamma now")* |
+| F8  | reconcile (3× Φ) | is the internal-colony wage differential a **4th Φ channel** (I.2 amendment, IX.3) or kept separate? |
+| F13 | reconcile (QCEW dedup) | extract the safe hydrator-build half only; low stakes |
+| F14 | reconcile (inf-vs-0.0) | doc the convention (premise was largely false — legitimate specialization) |
+| F15 | unify (EndgameDetector overshoot) | route through canonical `overshoot_ratio`; fixes a latent bug (zero-biocapacity can't currently fire ECOLOGICAL_COLLAPSE); **run `qa:regression` before merge** |
+
+Cross-cutting: **bundle F10+F11**; **F3 value-ruling before wire**; **F1 needs the DRAIN reconciliation
+decision first**; a recurring **fixture-as-runtime (III.4.2)** theme spans F1/F6/F8 (own remediation pass).

@@ -1,0 +1,82 @@
+ADR059_fork_reconciliation_ledger:
+  status: "accepted"
+  date: "2026-07-09"
+  title: "Fork Reconciliation Ledger (Part 2 of the src/ sweep): a rigor+data-accuracy recommendation per successor-fork, adversarially verified; ledger proposes, owner disposes"
+  supersedes_scope_of: "ADR058 (which deferred these items to 'a Part-2 fork ledger')"
+  context: |
+    ADR058's Part-1 sweep resolved only decision-free wins and deferred, by rule,
+    every candidate requiring a judgment about which of two implementations is
+    "more correct" — the "successor forks" (a richer impl built while the swap
+    into the live path never happened). The owner's governing rule for those:
+    keep the most ideologically/mathematically rigorous, data-accurate impl —
+    even if that means WIRING the orphan and RETIRING the live path. That call is
+    reserved to the Benevolent Dictator, so Part 2 produces the artifact she rules
+    on, not the code changes.
+
+    Method: a 30-agent workflow — 15 fork analysts (one per fork, each handed this
+    session's first-verified wiring facts + a constitutional yardstick) that read
+    the actual competing implementations and returned a structured entry, each
+    piped into an independent adversarial verifier prompted to REFUTE it (are the
+    constitutional cites real and on-point? does wiring preserve the III.7 hash?
+    is a fixture smuggled in as a runtime source, III.4.2?). 0 errors; 14/15
+    CONFIRMED, 1 CHALLENGED (Fork 4, dissent recorded in full). The analysts
+    overturned several of the sweep-plan's own premises (see decision).
+
+  decision: |
+    Authored project/execution/FORK_RECONCILIATION_LEDGER.md: one entry per fork
+    with a divergence table, a rigor analysis citing real Constitution articles
+    (III.8 Aleksandrov as the P0 tie-breaker; III.10 Earn-Its-Keep; II.2
+    derived-never-stored; III.4.2 fixture-vs-runtime; III.1; III.7), a single firm
+    recommendation from a fixed vocabulary, a confidence, a moves-baseline flag, a
+    strongest-counter-case, an implementation cost, key file:line/spec/article
+    citations, the adversarial verdict, and a blank owner-ruling slot.
+
+    NO src/ code was changed to author the ledger; no regression baseline moved.
+    The ledger PROPOSES; the owner DISPOSES (rules each entry inline); a separate
+    Part-2b phase implements the rulings, each behind mise run check + byte-
+    identical qa:regression (or a documented rebaseline where a wire-orphan ruling
+    legitimately moves a number).
+
+    Disposition vocabulary + tally across 15 forks:
+      delete-orphan            (5): forks 2,7,9,10,12 — all byte-identical.
+      wire-orphan/retire-live  (4): forks 1,3,4*,6 — moves the baseline.
+      reconcile                (4): forks 5,8,13,14 — add an invariant/convention.
+      unify                    (2): forks 11,15 — keep the canonical, drop the rest.
+    Only 4 recommendations move the baseline (1,3,6, and per its dissent the
+    compute_action_cost half of 4). Fork 4 is the one CHALLENGED entry; its
+    disposition follows the skeptic's revised three-part split.
+
+    Corrections logged (the ledger fixes these stale plan/brief claims):
+      - II.11 is "Subsystem Table Ownership," NOT a "BEA direct-SQL" rule; both
+        BEA paths use raw SQL (subsystem LOCATION discriminates, fork 2).
+      - The rich Leontief stack is not rivaled by county_exposure (a normalized
+        spatial key); the true "live path" is a stub-zero pass-through (fork 1).
+      - The "SQL trace_log view" does not exist: 0019/0023 create a different
+        VIEW; trace_log is a dead table (fork 10).
+      - validate_schemas.py is NOT obsolete (schemas/ survive) — no action.
+      - Marx formulas were NOT deleted in Phase A (fork 12); AidDefines is not
+        composed into GameDefines at all (fork 3); fork 14's premise (opposite
+        conventions for the same ratio) is largely false.
+
+    Two items are NOT forks: validate_schemas.py (no action) and the
+    SimulationConfig class-shell retirement (Part-3 persistence/frontend track).
+
+  rationale:
+    ledger_proposes_owner_disposes: "These items were deferred precisely because they carry a which-is-more-correct judgment reserved to the BD; auto-reconciling a fork the wrong way is the exact failure the rigor rule exists to prevent, so the deliverable is a recommendation set, not code."
+    adversarial_verification: "Each recommendation was independently refuted-tested; the one CHALLENGED entry (Fork 4) had its central FR-040/determinism claim overturned, which is the mechanism working — its disposition now follows the skeptic."
+    constitutional_grounding: "Rigor verdicts cite real articles (III.8/III.10/II.2/III.4.2/III.7), not invented standards; a prior II.11 mis-citation in the plan was caught and corrected."
+
+  cross_cutting_findings:
+    stub_is_the_live_path: "Forks 1/6/8 — the 'simplified live path' is often a graceful-degradation stub firing because a spec's services were never wired; the rich model is present, tested, and gated off (spec-Implemented-on-paper, never activated)."
+    fixture_as_runtime: "Forks 1 (Hickel), 6 (gamma-2022 dicts), 8 (rent_differential ACS mock) all read a pinned/fixture snapshot where a refreshable runtime source belongs — a III.4.2 data-provenance theme worth its own remediation pass."
+
+  consequences:
+    positive:
+      - "Every deferred fork now has a rigor-grounded, adversarially-verified recommendation and an owner-ruling slot; the 6 byte-identical deletions/unifies (forks 2,7,9,10,11,12) are rubber-stampable, isolating the genuine rigor rulings."
+      - "Several stale premises corrected on the record; a cross-cutting fixture-as-runtime theme surfaced for a dedicated pass."
+    negative:
+      - "No fork is resolved in code yet — implementation is Part-2b, gated on owner rulings; the successor forks remain live until then."
+      - "Baseline-moving rulings (forks 1,3,6, and the compute_action_cost half of 4) will require deliberate qa:regression rebaselines with owner sign-off."
+    deferred:
+      part_2b_implementation: "Implement each owner ruling behind mise run check + byte-identical qa:regression (or a documented rebaseline)."
+      simulationconfig_shell: "Part-3 persistence/frontend track."

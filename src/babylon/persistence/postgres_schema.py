@@ -762,7 +762,7 @@ CREATE TABLE IF NOT EXISTS tick_event (
     -- serialization boundary's default severity string "informational"
     -- is 13 chars and overflowed VARCHAR(12), silently dropping every
     -- tick_event row for any tick containing an unmapped-severity event.
-    -- See migrations/0031_widen_tick_event_severity.sql for the existing-DB
+    -- See migrations/0032_widen_tick_event_severity.sql for the existing-DB
     -- migration path.
     severity      VARCHAR(32),
     source_id     VARCHAR(64),

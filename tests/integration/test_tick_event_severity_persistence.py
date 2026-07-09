@@ -17,7 +17,7 @@ container, because the landmine lives in a table already created there
 via ``CREATE TABLE IF NOT EXISTS`` under the old ``VARCHAR(12)`` DDL — a
 fresh container would just pick up the widened DDL from
 ``postgres_schema.py`` on first ``CREATE TABLE`` and never exercise the
-forward migration. Only ``migrations/0031_widen_tick_event_severity.sql``
+forward migration. Only ``migrations/0032_widen_tick_event_severity.sql``
 fixes an *existing* column.
 
 Confirmed RED against the unmigrated product DB (StringDataRightTruncation

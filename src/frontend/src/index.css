@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Cockpit shell — minimal dark base. Full Cold Collapse token porting is
+   B2 territory (spec-110); this scaffold only needs a full-viewport dark
+   canvas for the five placeholder regions. */
+@layer base {
+  html {
+    @apply bg-[#06070b] text-[#d8dce0] antialiased;
+  }
+
+  body {
+    @apply m-0 min-h-screen;
+  }
+}

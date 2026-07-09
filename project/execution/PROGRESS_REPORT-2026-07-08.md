@@ -32,6 +32,14 @@ remediation worktrees removed.
 
 ### ⚠ NEW BLOCKER surfaced by 2.R → ruled to a Phase-3 spec (Percy, 2026-07-08)
 
+> **✅ SUPERSEDED 2026-07-09:** the tick-52 crash half of this blocker is **FIXED**
+> (`b57faee6`, `Territory.county_fips`; bridged run completes 55 ticks past tick 52,
+> qa:regression 5/5 byte-identical). dev was **pushed** to origin (`origin/dev == 1c7524b8`,
+> token scrubbed). A live **playability walkthrough** the same day confirmed the core loop
+> works end-to-end — see `project/assessments/E2E_WALKTHROUGH-2026-07-09.md`. Only the
+> **static-economy** half below remains open (owner item 25, Phase-3 spec). Read the
+> paragraph below as history.
+
 The gamma wiring (`cc4a5303`, correctly merged) **exposed a latent core-loop crash**:
 the canonical 520-tick run **cannot complete** — it dies deterministically at **tick 52**
 with `ClassDistribution.fips String should have at least 5 characters [input_value='T001']`.

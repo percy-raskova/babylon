@@ -141,3 +141,24 @@ Two tiers. **Rubber-stampable (byte-identical, rigor-safe):**
 
 Cross-cutting: **bundle F10+F11**; **F3 value-ruling before wire**; **F1 needs the DRAIN reconciliation
 decision first**; a recurring **fixture-as-runtime (III.4.2)** theme spans F1/F6/F8 (own remediation pass).
+
+## Updates 2026-07-09 (E2E walkthrough sanity check + status reconciliation)
+
+- **✅ Core loop verified PLAYABLE (no ruling needed — status update).** A live sanity-check
+  walkthrough on `dev @ b57faee6` drove the real UI + API against a live Postgres `EngineBridge`:
+  `real-loop.spec.ts` **7/7** (login → create game → real map → verb submit → **end turn advances the
+  tick** → results/events), and every game surface returns live data when authenticated. The
+  2026-07-07 "unplayable" verdict is **resolved**. Full evidence:
+  `project/assessments/E2E_WALKTHROUGH-2026-07-09.md`.
+- **Item 25 — crash half ✅ FIXED** (`b57faee6`, `Territory.county_fips`); the **static bridged
+  economy** (2nd half) is still open and was **confirmed live** (resolving tick 1→2 advances the tick
+  but org/economy values are identical — `wayne_county` MELT is unavailable pre-tick-52). Still owner
+  item 25's already-scoped Phase-3 spec; nothing new to rule.
+- **Item 22 — push ✅ DONE** (`origin/dev == 1c7524b8`), token scrubbed from history. The only residue
+  is **token rotation at Cloudflare** (hygiene, owner action — no longer blocks anything).
+- **Item 27 (NEW, low-stakes gate fix — no ruling, just a work item): Playwright C.5 auth-harness gap.**
+  `playwright.config.ts` has no `storageState`/setup project, so 9 secondary e2e specs
+  (`briefing-live-data`, `intel-results-analysis`, `orgs-live-data`, `polling-tick-aligned`) navigate
+  without logging in → render `/login` → **false red**. Proven benign (the authenticated API drive
+  returns real data for all those surfaces). Fix = add a login `storageState`. Matters because the CI
+  Playwright leg currently only truly exercises the `real-loop` happy path. See walkthrough **G1**.

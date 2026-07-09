@@ -2,9 +2,25 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.17.0"
-  updated: "2026-07-08"
+  version: "2.18.0"
+  updated: "2026-07-09"
   truth_status: |
+    (2026-07-09) UPDATE — the core loop is now PLAYABLE, verified live. A
+    post-remediation sanity-check walkthrough (project/assessments/E2E_WALKTHROUGH-2026-07-09.md)
+    drove the real UI + API against a live Postgres EngineBridge on dev @ b57faee6:
+    real-loop.spec.ts 7/7 (login -> create game -> real map -> verb submit ->
+    END TURN advances the tick -> results/events), and every game surface returns
+    live data when authenticated. All six 2026-07-07 P0s are fixed AND verified
+    live (not merely by-merge). The tick-52 crash (owner item 25, crash half) is
+    fixed (b57faee6). dev is pushed to origin (origin/dev == 1c7524b8) and the
+    leaked token scrubbed from history (item 22 rotation is now hygiene, not a
+    blocker). Still open (none block the loop): the Playwright C.5 gate has an
+    AUTH-HARNESS gap (9 secondary specs never log in -> render /login -> false red;
+    see walkthrough G1); the early-tick economy is STATIC (owner item 25 second
+    half, wayne_county MELT unavailable pre-tick-52); per-tick history tables
+    (tick_summary/territory_snapshot) stay empty after resolve; objectives/wire are
+    still the DeterministicNarrator placeholder. The (2026-07-08) banner below is
+    the prior-day record; where it says UNPLAYABLE, read this paragraph instead.
     (2026-07-08) READ THIS FIRST. Program 09 merged to dev on Jul 6, but the
     first real E2E pass (Jul 7) found the web product UNPLAYABLE at merge —
     see project/assessments/E2E_SUMMARY.md and project/assessments/POST_ASSESSMENT.md. A 15-agent

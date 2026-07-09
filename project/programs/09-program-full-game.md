@@ -45,7 +45,7 @@ AskUserQuestion, recorded verbatim in intent):
 subagents (Claude Opus or peers) with NO access to the originating
 session. Each spec below is self-contained: scope, files, dependencies,
 gates. The per-spec protocol is §4. If anything here contradicts the
-Constitution (`.specify/memory/constitution.md`, v2.7.0), the
+Constitution (`CONSTITUTION.md`, v2.7.0), the
 Constitution wins; if it contradicts observed code, STOP and re-verify
 before proceeding (this file was accurate 2026-07-03).
 

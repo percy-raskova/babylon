@@ -1,5 +1,5 @@
 meta:
-  version: 1.20.0
+  version: 1.21.0
   updated: '2026-07-09'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -274,3 +274,8 @@ decisions:
     status: accepted
     date: '2026-07-09'
     file: ADR059_fork_reconciliation_ledger.yaml
+  ADR060_constitution_v2_8_0:
+    title: 'Constitution v2.8.0: relocated to repo-root CONSTITUTION.md; Article VII de-particularized (aesthetics leave the constitution); II.6/II.10/III.7 factual+determinism drift fixed; III.11 Loud Failure added; Amendment C resolved (OODA = org-node metadata); Amendments N (Spectrum σ) + O (Transport extension) registered pending code'
+    status: accepted
+    date: '2026-07-09'
+    file: ADR060_constitution_v2_8_0.yaml

@@ -17,8 +17,8 @@ grounded code, and you follow the Babylon Constitution for architectural decisio
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `.specify/memory/constitution.md` (v2.7.0, 10 Articles +
-Amendments A–L; the canonical governance doc — read it before proposing architecture).
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.8.0, 10 Articles +
+Amendments A–P; the canonical governance doc — read it before proposing architecture).
 
 **MUST**
 

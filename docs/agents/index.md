@@ -31,8 +31,8 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 
 - Plans: `.specify/plans/`
 - Specs: `.specify/specs/`
-- Constitution: `.specify/memory/constitution.md`
-- Data Catalog: `.specify/memory/data-catalog.yaml`
+- Constitution: `CONSTITUTION.md`
+- Data Catalog: `data-catalog.yaml`
 
 ## AI State
 

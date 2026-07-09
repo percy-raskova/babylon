@@ -21,7 +21,7 @@ The analysts overturned several of the plan's own premises — flagged inline as
 
 **Governing rule (Percy's):** *keep the most ideologically / mathematically rigorous, data-accurate
 implementation — even if that means WIRING the orphan and RETIRING the live path.* Rigor is judged
-against the Constitution (`.specify/memory/constitution.md` v2.7.0), not invented standards. The
+against the Constitution (`CONSTITUTION.md` v2.7.0), not invented standards. The
 recurring levers: **III.8 Aleksandrov** (a construct must trace to a named material relation — the
 P0 tie-breaker), **III.10 Earn-Its-Keep** (ships only if it yields a LAW / PREDICTION / running
 COMPUTATION — kills built-but-inert code), **II.2** (Φ, c/v/s, r are *derived*; never stored),

@@ -32,7 +32,7 @@ program supplies the CHANNELS it flows through.
 
 ## Constitutional mandate (already ratified — II.13 "Transport Substrate")
 
-Constitution `.specify/memory/constitution.md:194` mandates exactly this, with two
+Constitution `CONSTITUTION.md (II.13)` mandates exactly this, with two
 mechanisms: **min-cost flow** (deterministic routing: roads, rail, shipping lanes) and
 **slime-mold conductivity** (emergent routing: informal supply chains, migration routes).
 Transport edge types: `AIR_LINK`, `SHIPPING_LANE`, `ROAD`, `RAIL`. Declared a Volume II/III
@@ -143,7 +143,7 @@ a corridor severed by an uprising stranding value, and a state-AI repair respons
 ## Reading list
 
 Capital Volume II (`Capital-Volume-II.pdf`, repo root — chs. on circulation time +
-costs of circulation); Constitution II.13 (`.specify/memory/constitution.md:194`); M1
+costs of circulation); Constitution II.13 (`CONSTITUTION.md (II.13)`); M1
 (`07-chat-corpus-alignment.md:121`); spec-036 (`specs/…` infrastructure topology — the
 substrate builder); spec-063 (`specs/063-vol-ii-circulation/` — the min-cost-flow half,
 esp. spec.md:185 deferral); Program 10 (the spectrum — value's direction; this program is

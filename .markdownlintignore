@@ -16,6 +16,9 @@ reports/
 AGENTS.md
 CHANGELOG.md
 CLAUDE.md
+# CONSTITUTION.md — governance prose, one principle per line (long lines by
+# design); its former home .specify/ was already excluded for the same reason.
+CONSTITUTION.md
 CONTRIBUTORS.md
 CONTRIBUTING.md
 COMMERCIAL-LICENSE.md

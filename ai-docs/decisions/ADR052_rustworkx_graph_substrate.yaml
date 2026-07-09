@@ -134,7 +134,7 @@ adr_052_rustworkx_graph_substrate:
       - "Undirected analytics edge iteration is stored-order (not nx's adjacency order) — documented as determinism-safe because analytics graphs are never round-tripped"
 
   cross_references:
-    constitution: ".specify/memory/constitution.md v2.7.0 Amendment L"
+    constitution: "CONSTITUTION.md v2.7.0 Amendment L"
     spike: "tests/unit/engine/test_rustworkx_spike.py (15 pinned 0.17.1 behaviors)"
     conformance: "tests/unit/engine/test_graph_conformance.py (born as the NetworkXAdapter contract suite)"
     order_contract: "tests/unit/engine/test_graph_iteration_order.py"

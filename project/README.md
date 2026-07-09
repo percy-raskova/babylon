@@ -91,7 +91,7 @@ map them as: `project/NN-*.md` → `project/programs/NN-*.md`; `project/POST_ASS
 - Live project state: `ai-docs/state.yaml` (its `truth_status` banner governs),
   `ai-docs/decisions/` (ADR index — ADR051 dialectics + ADR052 graph substrate),
   `ai-docs/tuning-standard.yaml` (20-Year Entropy Standard).
-- Governance: `.specify/memory/constitution.md` **v2.7.0** (Amendment K =
+- Governance: `CONSTITUTION.md` **v2.8.0** (Amendment K =
   dialectics, Amendment L = rustworkx substrate; II.12 authoring-API and
   III.7 determinism-hash gates bind all engine work).
 - Theory library (the economics the game must express): `grundrisse.pdf`,

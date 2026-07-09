@@ -1,0 +1,104 @@
+ADR060_constitution_v2_8_0:
+  status: "accepted"
+  date: "2026-07-09"
+  title: "Constitution v2.8.0: relocated to repo-root CONSTITUTION.md; Article VII de-particularized (aesthetics leave the constitution); factual/determinism drift fixed; Loud-Failure principle added; Amendment C resolved; Spectrum + Transport extensions registered (pending code)"
+  context: |
+    The Babylon Constitution (10 articles + Amendments A–L) still lived under
+    .specify/memory/ — a spec-kit directory slated for teardown — and a
+    codebase-wide accuracy audit found several principles that were false in
+    current code, one owner-approved amendment (Cold Collapse palette) drafted
+    but never ratified while its code shipped, and the biggest lesson of the
+    "Loud Machine" remediation (systemic SILENT failure) with no constitutional
+    home. Owner steer for this pass: keep the constitution HIGH-LEVEL (no color
+    palette / aesthetics — those belong to the design system; frontend framing
+    should be abstract); aspirational but with honest status markers; "just
+    write it, drop the ceremony" (edit the constitution directly, no
+    propose-then-ratify docket).
+
+  decision: |
+    Amended the constitution to v2.8.0 (MINOR) and RELOCATED it, directly (no
+    docket). Changes:
+
+    RELOCATION (governance hygiene):
+      - git mv .specify/memory/constitution.md -> repo-root CONSTITUTION.md;
+        .specify/memory/data-catalog.yaml -> repo-root data-catalog.yaml
+        (III.4.1 "in this directory" stays true). .specify/memory/ is now empty.
+      - Deleted the 10 stale constitution/article-*.md annex fragments (the
+        monolith is the single source of truth).
+      - Repointed the LIVE pointers only (CLAUDE.md, project/README.md, ADR052,
+        project/programs/09 & 11, FORK_RECONCILIATION_LEDGER.md,
+        docs/agents/index.md). Frozen historical records (specs/*, worktrees/*,
+        .opencode/*, .claude/commands/*, dated ADRs/assessments) were left
+        untouched per Immutability of History — they describe what was true when
+        written. Zero src/ import depended on the path.
+      - Added CONSTITUTION.md to .markdownlintignore (governance prose, one
+        principle per line = long lines by design; its old home .specify/ was
+        already excluded for the same reason). data-catalog.yaml is yamllint-clean
+        at the new path.
+
+    ARTICLE VII DE-PARTICULARIZED (owner steer; dissolves the palette violation):
+      - VII.2/VII.9/VII.10 restated as abstract principles (color encodes
+        meaning; luminosity encodes magnitude; typography disciplined by function;
+        no decoration on data surfaces). No specific palette/type/texture is
+        constitutional; the concrete canon lives in the design system.
+      - Consequence: the drafted Amendment M (Cold Collapse palette) is SUPERSEDED
+        — with no constitutional palette, there is nothing to violate. Registered
+        M as superseded, not ratified.
+
+    GOVERNANCE HONESTY & INTEGRITY:
+      - New III.11 Loud Failure / No Silent Degradation + VIII.12 Silent-No-Op
+        anti-pattern (P0). A subsystem that cannot do its job MUST fail loud, never
+        silently no-op; disarmed guards are defects. The Loud Machine lesson.
+      - III.7 reconciled to reality: the per-tick SHA-256 hash is the REPLAY-
+        integrity mechanism; falsifiability is enforced by tolerance-bounded VALUE
+        comparison (qa:regression). Input-hash drift (defines_hash) is benign;
+        behavioral drift is the bug. (Prior text "falsifying observation = hash
+        mismatch" was operational drift.)
+      - Factual drift fixed: II.6/II.10 -> Postgres runtime + pgvector Archive;
+        SQLite = read-only reference fixture (not a runtime ledger); ChromaDB
+        removed (Feature 037). II.13 ROAD -> road tier (HIGHWAY/ARTERIAL/LOCAL_ROAD).
+      - Status markers ([RATIFIED · IMPLEMENTED] / [RATIFIED · PENDING CODE])
+        introduced and applied to ratified-ahead-of-code principles: II.13
+        slime-mold (pending), I.21 Sparrow mode<->verb grammar (pending, vocabulary
+        only). Aspirational framing kept, per owner.
+      - Amendment C RESOLVED: the OODA profile's home is organization graph-node
+        metadata (ooda_profile on the org node, read by OODASystem) — the shipped
+        implementation, a fourth option beyond the three v1 candidates. Removed the
+        I.17 [TRANSITION STATE]; retired the "C blocks v2.8.0" rule.
+
+    OWNER-RATIFIED FEATURE AMENDMENTS (registered, pending implementation):
+      - Amendment N — Spectrum of Unequal Exchange (owner item 23, program 10 /
+        spec-107): new I.2a — the σ spectrum coordinate, a data-computed per-node
+        position on a global unequal-exchange gradient; wages align to ŵ(σ),
+        consciousness anti-correlates. Two calls made inline: (1) σ-notation
+        collision resolved by renaming the I.19 dialectic SUBLATION predicate glyph
+        σ -> s (code identifier `sublation` unaffected), freeing σ for the spectrum;
+        (2) the internal-colony wage gradient is NOT a fourth Φ channel — it refines
+        I.2's "unequal exchange" channel, Φ stays three channels.
+      - Amendment O — Transport Substrate Extension (owner item 24): II.13 gains
+        state-owned corridors, an INFORMAL edge type, edge condition/degradation,
+        and BUILD/REPAIR via the existing BUILD_INFRASTRUCTURE verb. Implementing
+        spec not yet authored (owner-queue called it "spec-108"; it does not exist
+        in-repo yet).
+      - Amendment P — Loud Failure + Determinism Honesty (the III.11/VIII.12/III.7
+        bundle above).
+
+  consequences: |
+    - The governing document is now at a durable, prominent home; the rest of the
+      spec-kit machinery teardown remains deferred (only the two governing docs
+      moved).
+    - The constitution is honest about what is law-in-code vs law-on-paper without
+      losing its forward-looking framing.
+    - Aesthetics are no longer a constitutional matter; the Cold Collapse palette
+      ships without an amendment (its concrete tokens live in design/mockups/).
+    - No src/ change, no regression baseline moved (docs-only). qa:regression not
+      required.
+    - Follow-ups: spec-107 (Spectrum) and the transport-extension spec remain
+      PENDING CODE; wiring the I.21 Sparrow grammar and the II.13 slime-mold
+      overlay remains open. Amendments B and D (partition invariance, hyperedge
+      reconciliation) remain the standing pending transition states.
+  related:
+    - "CONSTITUTION.md v2.8.0 (relocated from .specify/memory/constitution.md)"
+    - "ADR052 (rustworkx substrate; ref repointed)"
+    - "project/owner/owner-queue.md items 23 (Spectrum), 24 (Transport)"
+    - "specs/090-cold-collapse/article-vii-amendment.md (Amendment M, now superseded)"

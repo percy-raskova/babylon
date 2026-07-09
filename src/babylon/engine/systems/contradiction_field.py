@@ -239,33 +239,6 @@ class ContradictionFieldSystem(SystemBase):
         return index
 
     @staticmethod
-    def _incident_tension_mean(graph: GraphProtocol, node_id: str) -> float:
-        """Mean fresh ``tension`` over a node's incident EXPLOITATION/WAGES/TENANCY edges.
-
-        The MEAN, not the max: a node's local exploitation field is the average
-        asymmetry it participates in, so two moderate relations do not read as
-        one extreme one. Empty (no incident tension edges) -> 0.0.
-
-        Args:
-            graph: Mutable GraphProtocol.
-            node_id: The social_class node to aggregate incident tensions for.
-
-        Returns:
-            Mean incident edge ``tension`` (0.0 when the node has none).
-        """
-        tensions: list[float] = []
-        for edge_type in _FIELD_EDGE_TYPES:
-            for edge in graph.query_edges(edge_type=edge_type):
-                if node_id not in (edge.source_id, edge.target_id):
-                    continue
-                raw = edge.attributes.get("tension")
-                if isinstance(raw, (int, float)):
-                    tensions.append(float(raw))
-        if not tensions:
-            return 0.0
-        return sum(tensions) / len(tensions)
-
-    @staticmethod
     def _atomization_gap(graph: GraphProtocol) -> float:
         """Global atomization opposition gap from the @18 snapshot (0.0 if absent).
 

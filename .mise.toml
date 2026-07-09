@@ -1163,3 +1163,34 @@ run = "npm run check"
 description = "Build frontend for production"
 dir = "web/frontend"
 run = "npm run build"
+
+# =============================================================================
+# COCKPIT (spec-110, src/frontend) — clean-room replacement for web/frontend.
+# Dev server on 5174; web/frontend keeps 5173 until cutover.
+# =============================================================================
+
+[tasks."web:cockpit:install"]
+description = "Install cockpit frontend dependencies (src/frontend)"
+dir = "src/frontend"
+run = "npm install"
+
+[tasks."web:cockpit:dev"]
+description = "Start cockpit Vite dev server in foreground (port 5174)"
+dir = "src/frontend"
+raw = true
+run = "npm run dev"
+
+[tasks."web:cockpit:test"]
+description = "Run cockpit frontend tests (Vitest)"
+dir = "src/frontend"
+run = "npm run test"
+
+[tasks."web:cockpit:check"]
+description = "Run cockpit quality checks (tsc + eslint + prettier + vitest)"
+dir = "src/frontend"
+run = "npm run check"
+
+[tasks."web:cockpit:build"]
+description = "Build cockpit frontend for production"
+dir = "src/frontend"
+run = "npm run build"

@@ -127,6 +127,12 @@ web/frontend/dist/assets
 dev_harness.png
 test_hang.py
 
+# Cockpit frontend (spec-110)
+src/frontend/dist/
+src/frontend/coverage/
+src/frontend/playwright-report/
+src/frontend/test-results/
+
 # Deployment secrets (NEVER commit)
 deploy/terraform/terraform.tfvars
 deploy/terraform/.terraform/

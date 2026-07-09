@@ -218,6 +218,7 @@ exclude = [
     "assets/music/",
     "specs/",
     "web/frontend/",
+    "src/frontend/",
 ]
 
 [tool.ruff.lint]
@@ -286,6 +287,7 @@ exclude = [
     "dist/",
     "assets/music/",
     "specs/",
+    "src/frontend/",
     "src/babylon_data/",
 ]
 plugins = [

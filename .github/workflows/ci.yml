@@ -468,3 +468,36 @@ jobs:
       - name: Stop Postgres
         if: always()
         run: docker compose down -v
+
+  # Cockpit scaffold (spec-110, src/frontend) — build/typecheck/test gate.
+  # No backend or e2e leg yet: B1 is scaffold-only (no feature porting), so
+  # there is no real cockpit flow to drive against a live Django server.
+  cockpit-frontend:
+    name: Cockpit Frontend (src/frontend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install cockpit frontend dependencies
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: src/frontend
+        run: npx tsc --noEmit
+
+      - name: Unit tests (Vitest)
+        working-directory: src/frontend
+        run: npx vitest run
+
+      - name: Build
+        working-directory: src/frontend
+        run: npm run build

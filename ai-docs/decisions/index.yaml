@@ -1,6 +1,6 @@
 meta:
-  version: 1.18.0
-  updated: '2026-07-04'
+  version: 1.19.0
+  updated: '2026-07-09'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
@@ -264,3 +264,8 @@ decisions:
     status: accepted
     date: '2026-07-05'
     file: ADR057_spec_103_trade_surfaces.yaml
+  ADR058_src_simplification_sweep:
+    title: 'src/ simplification sweep (Phases A–D): canonical player-editable defines.yaml single source of truth + decision-free dedup/deadcode/naming; not-quite-byte-identical items deferred to a Part-2 fork ledger'
+    status: accepted
+    date: '2026-07-09'
+    file: ADR058_src_simplification_sweep.yaml

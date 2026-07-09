@@ -1,0 +1,72 @@
+ADR058_src_simplification_sweep:
+  status: "accepted"
+  date: "2026-07-09"
+  title: "src/ simplification sweep — canonical config single source of truth + decision-free dedup/deadcode (Phases A–D)"
+  context: |
+    Before resuming the project/ programs, a 46-agent adversarial audit of
+    src/babylon (131k LOC) confirmed substantial debt: 31 findings, >=6,900 LOC.
+    The dominant pattern was "built-but-unwired successor forks" (a richer impl
+    built, the swap into the live path never made), then config sprawl, then one
+    live persistence fork, then classic copy-paste (smallest).
+
+    The owner (Persephone Raskova) authorized a NOW sweep limited to decision-free
+    wins, under a strict rigor rule: an item qualifies only if it is
+    behavior-preserving (or deletes code whose retained live path is verified
+    equal-or-superior in theoretical/mathematical/data rigor) AND carries no
+    judgment about which of two implementations is "more correct." Anything
+    failing that moves to a deferred Fork Reconciliation Ledger (Part 2) or the
+    frontend/persistence track (Part 3). Two owner rulings framed the work:
+    (1) deployment target = Cloudflare/VPS/self-managed-Postgres/many-users;
+    (2) config end-state = ONE documented, player-editable YAML (YAML, not INI).
+
+  decision: |
+    Landed on branch refactor/src-simplification-sweep (12 gated commits). The
+    canonical verification gate is `mise run qa:regression` (5 short scenarios,
+    byte-identical) + `mise run check` (lint/format/mypy/test:unit).
+
+    1. CONFIG = ONE PLAYER-EDITABLE YAML (the headline decision). GameDefines
+       (Pydantic) is the schema; src/babylon/data/defines.yaml is the canonical,
+       player-editable values file, GENERATED from the schema by
+       tools/generate_defines_config.py (header + per-category sections + an
+       inline "# description (range)" comment on every scalar — Paradox-style,
+       one self-documenting file). GameDefines.load_default() reads it. A hard
+       round-trip gate (load_from_yaml == GameDefines(), proven exact across all
+       39 categories) runs before write; a --check mode + unit guards keep it in
+       sync. Behavior-identical: the shipped yaml equals the schema defaults, so
+       load_default() produces bit-identical defines. (B3/B4.)
+
+    2. DELETED the dead parallel config: 36 dead coefficient fields pruned from
+       SimulationConfig (kept rng_seed; the class shell retirement is Part 3).
+       Centralized HOURS_PER_YEAR/WEEKS_PER_YEAR into TimescaleDefines via the
+       formulas/constants.py re-export (was redefined ad hoc in ~10 modules).
+       (B1/B2.)
+
+    3. BEHAVIOR-PRESERVING DRY + NAMING: hoisted the triplicated
+       _get_persistent_data to SystemBase; extracted build_schema_registry to a
+       shared util; renamed the Emmanuel calculate_exploitation_rate ->
+       calculate_unequal_exchange_rate (disambiguating it from the Marx s/v
+       exploitation_rate tensor property, which is a DB/wire/React contract and
+       was left untouched); renamed the legacy utils SessionRecorder ->
+       JsonlSessionRecorder (canonical engine one kept); fixed stale migration
+       0031->0032 comment refs. (C1/C4/D1/D2/D3.)
+
+    4. DEFERRED per the rigor rule (proven NOT byte-identical, or judgment-laden):
+       the QCEW _resolve_county_and_time extraction (short-circuit query-pattern
+       change) was implemented then REVERTED; the substrate s/v-ratio and
+       EndgameDetector consolidations (inf-vs-0.0 and 999.0 sentinel divergences);
+       the mobilize/aid verb-resolver -> defines wiring (semantic/units mismatch,
+       not a stale number); and every "successor fork" delete-vs-wire question.
+
+  rationale:
+    single_source_of_truth: "One generated, round-trip-guarded YAML makes every coefficient player-moddable and eliminates the dead SimulationConfig shadow whose values had drifted (comprador_cut 0.15 vs the live 0.90)."
+    rigor_rule: "Deferring not-quite-byte-identical changes (C2/C3/C5) over marginal DRY payoff keeps the sweep trustworthy; the regression gate + a proven field-by-field diff decide, not intuition."
+    behaviour_identical_hash_drift: "Adding timescale.hours_per_year grew defines_hash but every scenario checkpoint value stayed bit-identical (proven); baselines were regenerated, precedent f55f5e9a."
+
+  consequences:
+    positive:
+      - "defines.yaml is the documented, moddable single source of truth; docs/how-to/modding-defines.rst is the player guide."
+      - "Dead config shadow, ad-hoc constants, and 3 naming footguns removed; ~stronger config guards (test_constants_sync.py)."
+      - "The deferred forks are captured for a rigor-driven Part-2 ledger rather than being reflexively deleted."
+    negative:
+      - "load_default() now performs a file read at import; the shipped yaml is load-bearing (guarded by the round-trip test)."
+      - "SimulationConfig, mobilize/aid resolvers, and the successor forks remain un-reconciled — deferred to Part 2 (fork ledger) and Part 3 (persistence unify, frontend track), not resolved here."

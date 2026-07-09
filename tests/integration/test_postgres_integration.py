@@ -158,3 +158,61 @@ class TestConcurrentSessions:
         for sid in sessions:
             hydrated = runtime.hydrate_graph(session_id=sid)
             assert hydrated.nodes["c_0"]["tick"] == 3
+
+
+class TestGraphMetadataRoundTrip:
+    """Wave 3 fix: ``hydrate_graph`` must restore graph-level metadata.
+
+    Design B round-trips relational state (``institution_relations``,
+    ``economy``, ``state_finances``, ...) via graph-LEVEL metadata
+    (``graph.graph`` / ``BabylonGraph._graph_attrs``). Before the fix,
+    ``hydrate_graph`` rebuilt the graph only from ``node_state`` / ``edge_state``
+    rows and dropped ``graph.graph`` entirely, so ``WorldState.from_graph()``
+    reconstructed a divergent state and a rehydrated session recomputed a
+    different tick payload — raising ``MonotonicityViolationError`` on the next
+    ``resolve()`` (see ``tests/integration/web/test_game_lifecycle.py`` note).
+    """
+
+    def test_hydrate_restores_graph_level_metadata(
+        self, runtime: PostgresRuntime, session_id: uuid.UUID
+    ) -> None:
+        """Graph-level metadata set before persist survives the hydrate round-trip."""
+        graph = build_large_graph(3)
+        # The Design B round-trip surface: keys written to graph.graph by
+        # WorldState.to_graph() (institution_relations, economy, ...).
+        graph.set_graph_attr(
+            "institution_relations",
+            [{"institution_id": "I1", "org_id": "O1", "relation": "HOUSES"}],
+        )
+        graph.set_graph_attr("economy", {"melt": 1.23})
+
+        runtime.persist_tick(tick=1, graph=graph, session_id=session_id)
+        hydrated = runtime.hydrate_graph(tick=1, session_id=session_id)
+
+        assert hydrated.graph.get("institution_relations") == [
+            {"institution_id": "I1", "org_id": "O1", "relation": "HOUSES"}
+        ]
+        assert hydrated.graph.get("economy") == {"melt": 1.23}
+
+    def test_hydrate_sets_tick_graph_attr(
+        self, runtime: PostgresRuntime, session_id: uuid.UUID
+    ) -> None:
+        """The loaded tick is restored as graph-level metadata.
+
+        ``engine_bridge._graph_tick`` reads ``graph.graph["tick"]``; after
+        hydration it must equal the loaded tick (not default 0, which would
+        re-step 0->1 and collide with the persisted tick 1 on the next resolve).
+        """
+        graph = build_large_graph(3)
+        runtime.persist_tick(tick=7, graph=graph, session_id=session_id)
+        hydrated = runtime.hydrate_graph(tick=7, session_id=session_id)
+        assert hydrated.graph.get("tick") == 7
+
+    def test_hydrate_latest_sets_tick_graph_attr(
+        self, runtime: PostgresRuntime, session_id: uuid.UUID
+    ) -> None:
+        """``hydrate_graph(tick=None)`` restores the resolved MAX(tick) as metadata."""
+        graph = build_large_graph(3)
+        runtime.persist_tick(tick=4, graph=graph, session_id=session_id)
+        hydrated = runtime.hydrate_graph(session_id=session_id)
+        assert hydrated.graph.get("tick") == 4

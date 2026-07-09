@@ -25,7 +25,6 @@ Usage Example:
 
 See Also:
     - ``ai-docs/asyncio-patterns.yaml`` for async best practices
-    - ``src/babylon/ui/main.py`` for UI integration patterns
 """
 
 from __future__ import annotations

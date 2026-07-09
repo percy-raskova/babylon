@@ -188,6 +188,72 @@ class TestManifestPayload:
         )
         assert "storage" not in manifest
 
+    def test_economics_fallbacks_block_included_when_provided(self, tmp_path: Path) -> None:
+        """C.8 (spec 2.R): optional ``economics_fallbacks`` block lands top-level."""
+        config = _make_config(tmp_path)
+        fallbacks = {
+            "national_params_observations": 11,
+            "melt_calculator_wired": True,
+            "basket_calculator_wired": False,
+            "gamma_calculator_wired": True,
+            "melt_unavailable": 0,
+            "gamma_basket_calculator_none": 11,
+            "gamma_iii_calculator_none": 0,
+            "gamma_iii_returned_none": 0,
+        }
+        manifest = build_manifest(
+            config=config,
+            session_id="00000000-0000-0000-0000-000000000000",
+            exit_reason=ExitReason.COMPLETED,
+            wallclock_start=datetime(2026, 7, 3, 16, 30, tzinfo=UTC),
+            wallclock_end=datetime(2026, 7, 3, 16, 38, tzinfo=UTC),
+            artifact_dir=tmp_path,
+            artifact_files=[_write_artifact(tmp_path, "trace.csv")],
+            defines_hash="d" * 64,
+            data_versions={},
+            economics_fallbacks=fallbacks,
+        )
+        assert manifest["economics_fallbacks"] == fallbacks
+
+    def test_economics_fallbacks_block_absent_when_not_provided(self, tmp_path: Path) -> None:
+        """None economics_fallbacks must leave no key behind (pre-C.8 / non-bridged)."""
+        config = _make_config(tmp_path)
+        manifest = build_manifest(
+            config=config,
+            session_id="00000000-0000-0000-0000-000000000000",
+            exit_reason=ExitReason.COMPLETED,
+            wallclock_start=datetime(2026, 7, 3, 16, 30, tzinfo=UTC),
+            wallclock_end=datetime(2026, 7, 3, 16, 38, tzinfo=UTC),
+            artifact_dir=tmp_path,
+            artifact_files=[_write_artifact(tmp_path, "trace.csv")],
+            defines_hash="d" * 64,
+            data_versions={},
+        )
+        assert "economics_fallbacks" not in manifest
+
+    def test_economics_fallbacks_excluded_from_input_hash(self, tmp_path: Path) -> None:
+        """Observability block must NOT enter the deterministic input_hash."""
+        config = _make_config(tmp_path)
+        common: dict[str, object] = {
+            "config": config,
+            "session_id": "00000000-0000-0000-0000-000000000000",
+            "exit_reason": ExitReason.COMPLETED,
+            "wallclock_start": datetime(2026, 7, 3, 16, 30, tzinfo=UTC),
+            "wallclock_end": datetime(2026, 7, 3, 16, 38, tzinfo=UTC),
+            "artifact_dir": tmp_path,
+            "artifact_files": [_write_artifact(tmp_path, "trace.csv")],
+            "defines_hash": "d" * 64,
+            "data_versions": {},
+        }
+        without = build_manifest(**common)  # type: ignore[arg-type]
+        with_block = build_manifest(
+            **common,  # type: ignore[arg-type]
+            economics_fallbacks={"gamma_basket_calculator_none": 11},
+        )
+        assert (
+            without["reproducibility"]["input_hash"] == with_block["reproducibility"]["input_hash"]
+        )
+
     def test_file_entry_includes_sha256_and_size(self, tmp_path: Path) -> None:
         config = _make_config(tmp_path)
         trace = _write_artifact(tmp_path, "trace.csv", body="header\n0,2010.0\n")

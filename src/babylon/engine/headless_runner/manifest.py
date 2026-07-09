@@ -229,6 +229,7 @@ def build_manifest(
     engine_systems_invoked: list[str] | None = None,
     bridge_db_reads: dict[str, int] | None = None,
     storage: dict[str, Any] | None = None,
+    economics_fallbacks: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Construct the manifest payload as a plain dict.
 
@@ -255,6 +256,11 @@ def build_manifest(
             :func:`babylon.engine.headless_runner.storage_probe.build_storage_block`).
             Best-effort — ``None`` (collection failed / non-Postgres path)
             omits the key entirely.
+        economics_fallbacks: C.8 (spec 2.R) loud-observability block —
+            :meth:`babylon.engine.services.EconomicsFallbackTally.to_dict`
+            output attesting whether TickDynamicsSystem computed gamma/MELT
+            from wired calculators or fell back to hardcoded coefficients.
+            ``None`` omits the key (non-bridged / pre-C.8 path).
 
     Returns:
         Dict ready to be JSON-encoded as manifest.json.
@@ -318,6 +324,8 @@ def build_manifest(
         payload["bridge_db_reads"] = dict(bridge_db_reads)
     if storage is not None:
         payload["storage"] = dict(storage)
+    if economics_fallbacks is not None:
+        payload["economics_fallbacks"] = dict(economics_fallbacks)
     return payload
 
 

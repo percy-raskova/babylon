@@ -1197,6 +1197,9 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                 "employment_db_reads": bridge.employment_db_reads,
                 "total_db_reads": bridge.total_db_reads,
             },
+            # C.8 (spec 2.R): attest whether TickDynamicsSystem computed gamma/MELT
+            # from wired calculators or fell back to hardcoded coefficients.
+            economics_fallbacks=services.economics_fallbacks.to_dict(),
         )
         artifact_emission_sec = time.perf_counter() - t_artifacts
 
@@ -1503,6 +1506,7 @@ def _emit_artifacts(
     error: dict[str, Any] | None,
     events: tuple[Any, ...] = (),
     bridge_db_reads: dict[str, int] | None = None,
+    economics_fallbacks: dict[str, Any] | None = None,
 ) -> Path:
     """Write trace.csv + summary.json + manifest.json into ``config.output_dir``."""
     _prepare_output_dir(config.output_dir)
@@ -1579,6 +1583,8 @@ def _emit_artifacts(
             session_id=session_id,
             ticks_persisted=ticks_completed,
         ),
+        # C.8 (spec 2.R): loud economics-fallback attestation (None => omitted).
+        economics_fallbacks=economics_fallbacks,
     )
     (artifact_dir / "manifest.json").write_text(json.dumps(manifest_payload, indent=2))
     return artifact_dir

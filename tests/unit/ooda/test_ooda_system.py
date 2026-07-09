@@ -145,3 +145,98 @@ class TestSystemRegistration:
             f"{metabolism_idx}) and Consequences (Survival, idx "
             f"{survival_idx}); got OODA at idx {ooda_idx}"
         )
+
+
+class TestPlayerActionDispatch:
+    """Verb-dispatch engine: player actions route through the resolver registry
+    (real effects + loud failure) instead of the old blind ``success=True`` wrap,
+    and the turn resolution is published to context.persistent_data.
+    """
+
+    @staticmethod
+    def _player_context(action_type: str) -> dict:
+        return {
+            "tick": 1,
+            "persistent_data": {
+                "player_actions": {
+                    "rev_workers": [
+                        {
+                            "action_type": action_type,
+                            "target_id": "detroit",
+                            "org_id": "rev_workers",
+                            "params": {},
+                        }
+                    ]
+                }
+            },
+        }
+
+    def _results_for(self, context: dict) -> list[dict]:
+        resolution = context["persistent_data"]["turn_resolution"]
+        return [
+            r for r in resolution["action_phase_results"] if r["action"]["org_id"] == "rev_workers"
+        ]
+
+    def test_turn_resolution_published(self) -> None:
+        system = OODASystem()
+        graph = _make_graph_with_orgs()
+        services = _make_services()
+        context = self._player_context("educate")
+        system.step(graph, services, context)
+
+        assert "turn_resolution" in context["persistent_data"]
+        resolution = context["persistent_data"]["turn_resolution"]
+        assert resolution["action_phase_results"]
+
+    def test_known_verb_dispatches_to_resolver(self) -> None:
+        """EDUCATE routes through resolve_educate — success with the right action."""
+        system = OODASystem()
+        graph = _make_graph_with_orgs()
+        services = _make_services()
+        context = self._player_context("educate")
+        system.step(graph, services, context)
+
+        results = self._results_for(context)
+        assert len(results) == 1
+        assert results[0]["action"]["action_type"] == "educate"
+        assert results[0]["success"] is True
+
+    def test_unregistered_verb_fails_loud_not_blind(self) -> None:
+        """A verb with no resolver (FUNDRAISE) is a loud failure — the OLD
+        blind wrap would have reported ``success=True``."""
+        system = OODASystem()
+        graph = _make_graph_with_orgs()
+        services = _make_services()
+        context = self._player_context("fundraise")
+        system.step(graph, services, context)
+
+        results = self._results_for(context)
+        assert len(results) == 1
+        assert results[0]["success"] is False
+        assert results[0]["failure_reason"] is not None
+
+    def test_tick_context_variant(self) -> None:
+        """Publication works with a TickContext (not just a dict)."""
+        from babylon.engine.context import TickContext
+
+        system = OODASystem()
+        graph = _make_graph_with_orgs()
+        services = _make_services()
+        context = TickContext(
+            tick=1,
+            persistent_data={
+                "player_actions": {
+                    "rev_workers": [
+                        {
+                            "action_type": "educate",
+                            "target_id": "detroit",
+                            "org_id": "rev_workers",
+                            "params": {},
+                        }
+                    ]
+                }
+            },
+        )
+        system.step(graph, services, context)
+        assert "turn_resolution" in context.persistent_data
+        assert context.persistent_data["turn_resolution"]["action_phase_results"]

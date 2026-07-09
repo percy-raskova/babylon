@@ -303,6 +303,8 @@ class OODADefines(BaseModel):
         default=2, ge=1, description="AP cost: ATTACK_INFRASTRUCTURE"
     )
     base_cost_assimilate: int = Field(default=2, ge=1, description="AP cost: ASSIMILATE")
+    # Player spatial verb (verb-dispatch engine).
+    base_cost_move: int = Field(default=1, ge=1, description="AP cost: MOVE")
     # Spec-071 fascist verbs.
     base_cost_pogrom: int = Field(default=3, ge=1, description="AP cost: POGROM")
     base_cost_lockout: int = Field(default=2, ge=1, description="AP cost: LOCKOUT")
@@ -436,6 +438,7 @@ class OODADefines(BaseModel):
             "build_infrastructure": self.base_cost_build_infrastructure,
             "attack_infrastructure": self.base_cost_attack_infrastructure,
             "assimilate": self.base_cost_assimilate,
+            "move": self.base_cost_move,
             "pogrom": self.base_cost_pogrom,
             "lockout": self.base_cost_lockout,
             "vigilantism": self.base_cost_vigilantism,

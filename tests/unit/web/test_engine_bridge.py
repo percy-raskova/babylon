@@ -1355,3 +1355,68 @@ class TestSessionScopedDefines:
         bridge.resolve_tick(uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
 
         assert mock_step.call_args.kwargs["defines"].economy.extraction_efficiency == 0.8
+
+
+@pytest.mark.unit
+class TestResolveTickConsumesEngineResults:
+    """Verb-dispatch engine: resolve_tick persists the REAL per-action results
+    from the engine's TurnResolution — not the old blind ``success=True`` /
+    ``class_consciousness`` pre/post diff.
+    """
+
+    _SID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    @patch("game.engine_bridge.step")
+    def test_persists_success_and_ci_from_turn_resolution(self, mock_step: MagicMock) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "educate", "target_id": "hex_abc"},
+        ]
+
+        def fake_step(*_args: Any, **kwargs: Any) -> MagicMock:
+            ctx = kwargs.get("persistent_context")
+            assert ctx is not None, "persistent_context must be threaded to step"
+            ctx["turn_resolution"] = {
+                "action_phase_results": [
+                    {
+                        "action": {
+                            "org_id": "pf1",
+                            "action_type": "educate",
+                            "target_id": "hex_abc",
+                        },
+                        "success": True,
+                        "consciousness_delta": {"collective_identity_delta": 0.05},
+                        "direct_effects": {"note": "real"},
+                        "failure_reason": None,
+                    }
+                ]
+            }
+            return _make_mock_new_state()
+
+        mock_step.side_effect = fake_step
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        mock_persistence.persist_action_result.assert_called_once()
+        kwargs = mock_persistence.persist_action_result.call_args.kwargs
+        assert kwargs["success"] is True
+        assert kwargs["consciousness_delta"] == 0.05
+        assert kwargs["details"]["direct_effects"] == {"note": "real"}
+        assert kwargs["details"]["failure_reason"] is None
+
+    @patch("game.engine_bridge.step")
+    def test_missing_engine_result_is_loud_failure(self, mock_step: MagicMock) -> None:
+        """No turn_resolution for the org => success=False persisted (never
+        the old blind ``success=True``)."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "educate", "target_id": "hex_abc"},
+        ]
+        mock_step.return_value = _make_mock_new_state()  # writes no turn_resolution
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        mock_persistence.persist_action_result.assert_called_once()
+        kwargs = mock_persistence.persist_action_result.call_args.kwargs
+        assert kwargs["success"] is False
+        assert kwargs["details"]["failure_reason"] is not None

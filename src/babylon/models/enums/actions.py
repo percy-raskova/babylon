@@ -32,9 +32,10 @@ class DecisionMode(StrEnum):
 class ActionType(StrEnum):
     """Organizational action types for OODA resolution (Feature 032, spec-071).
 
-    25 action types: 21 base (Feature 032) + 4 fascist verbs (spec-071:
-    POGROM, LOCKOUT, VIGILANTISM, RED_BROWN_COUP). Eligibility depends on
-    OrgType and organization attributes.
+    26 action types: 21 base (Feature 032) + MOVE (player spatial verb,
+    verb-dispatch engine) + 4 fascist verbs (spec-071: POGROM, LOCKOUT,
+    VIGILANTISM, RED_BROWN_COUP). Eligibility depends on OrgType and
+    organization attributes.
 
     Values:
         RECRUIT: Recruit new members
@@ -58,6 +59,7 @@ class ActionType(StrEnum):
         BUILD_INFRASTRUCTURE: Build community infrastructure
         ATTACK_INFRASTRUCTURE: Destroy infrastructure
         ASSIMILATE: Absorb into hegemonic norm
+        MOVE: Relocate an organization's spatial presence (player MOVE verb)
     """
 
     RECRUIT = "recruit"
@@ -81,6 +83,8 @@ class ActionType(StrEnum):
     BUILD_INFRASTRUCTURE = "build_infrastructure"
     ATTACK_INFRASTRUCTURE = "attack_infrastructure"
     ASSIMILATE = "assimilate"
+    # Player spatial verb (verb-dispatch engine): relocate org presence.
+    MOVE = "move"
     # Spec-071 Reactionary Subject — fascist action verbs
     POGROM = "pogrom"  # targeted communal violence
     LOCKOUT = "lockout"  # employer withdraws wages/employment (Business)

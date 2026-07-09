@@ -34,6 +34,8 @@ _UNIVERSAL_ACTIONS: frozenset[ActionType] = frozenset(
         ActionType.PROPOSE_ALLIANCE,
         ActionType.DENOUNCE,
         ActionType.BUILD_INFRASTRUCTURE,
+        # Player spatial verb (verb-dispatch engine): any org may relocate.
+        ActionType.MOVE,
     }
 )
 

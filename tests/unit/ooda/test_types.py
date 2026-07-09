@@ -99,6 +99,19 @@ class TestAction:
         assert action.cadre_labor_cost == 0.0
         assert action.sympathizer_labor_cost == 0.0
         assert action.budget_cost == 0.0
+        # Verb-dispatch engine: params defaults to an empty dict.
+        assert action.params == {}
+
+    def test_params_passthrough(self) -> None:
+        """Verb-specific params (bridge params_json) are carried on Action."""
+        action = Action(
+            org_id="o1",
+            action_type=ActionType.RECRUIT,
+            target_id="t1",
+            params={"mode": "cadre_training", "transfer_amount": 5.0},
+        )
+        assert action.params["mode"] == "cadre_training"
+        assert action.params["transfer_amount"] == 5.0
 
     def test_frozen_immutability(self) -> None:
         action = make_action()
@@ -245,9 +258,10 @@ class TestDecisionModeEnum:
 class TestActionTypeEnum:
     """ActionType enum completeness."""
 
-    def test_has_25_values(self) -> None:
-        # 21 base (Feature 032) + 4 fascist verbs (spec-071).
-        assert len(ActionType) == 25
+    def test_has_26_values(self) -> None:
+        # 21 base (Feature 032) + MOVE (verb-dispatch engine) + 4 fascist
+        # verbs (spec-071).
+        assert len(ActionType) == 26
 
     def test_all_categories_present(self) -> None:
         values = {at.value for at in ActionType}

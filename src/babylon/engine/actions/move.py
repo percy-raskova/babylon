@@ -1,43 +1,84 @@
-"""MOVE Verb Resolution Module (Spec 049).
+"""MOVE verb resolver (verb-dispatch engine).
 
-Implements the backend resolution logic for the MOVE verb, interfacing
-with the simulation graph to update spatial presence.
+Relocate an organization's spatial presence (``ActionType.MOVE``). Validates
+the target is an existing ``territory`` node, then rewrites the acting org's
+``territory_ids`` (a round-trip Organization model field):
+
+* ``relocate`` (default): ``territory_ids = [target]`` and ``headquarters_id
+  = target`` (keeps the ``headquarters_id in territory_ids`` invariant).
+* ``expand``: append the target to the existing ``territory_ids``.
+
+An invalid target fails loud (``success=False``).
 """
 
-from typing import Any
+from __future__ import annotations
 
-# Note: The precise types (VerbResult, PlayerAction, GraphProtocol)
-# are placeholders mapped to the broader spec intent across Django and Python Engine boundaries.
+from typing import TYPE_CHECKING, Any
+
+from babylon.models.enums import EventType
+from babylon.ooda.types import ActionResult
+
+if TYPE_CHECKING:
+    from babylon.engine.graph import BabylonGraph
+    from babylon.engine.services import ServiceContainer
+    from babylon.ooda.types import Action
 
 
 def resolve_move(
-    action: Any,  # Expected: PlayerAction
-    graph: Any,  # Expected: GraphProtocol
-    defines: Any,  # Expected: MoveDefines,
-) -> Any:
-    """Implement the core logic for the MOVE verb.
-
-    1. Validate Target: Ensure target territory exists and is contiguous/reachable if required.
-    2. Process spatial logic: Determine spatial transition path or teleport costs.
-    3. Update Organization Presence: Mutate the graph or topology to reflect the new location.
+    action: Action,
+    org_attrs: dict[str, Any],  # noqa: ARG001 — org state read live from graph
+    graph: BabylonGraph,
+    services: ServiceContainer,  # noqa: ARG001 — no MoveDefines yet
+) -> ActionResult:
+    """Resolve a player MOVE action: relocate or expand org presence.
 
     Args:
-        action: The submitted MOVE action parameters.
-        graph: The active GraphProtocol representing the simulation state.
-        defines: Configuration settings (MoveDefines).
+        action: The MOVE action (``action_type == ActionType.MOVE``).
+        org_attrs: Acting organization's node attributes.
+        graph: World graph (mutated in place on the acting org node).
+        services: ServiceContainer (unused; no MoveDefines exist yet).
 
     Returns:
-        VerbResult indicating success/failure and associated SimulationEvents.
+        :class:`~babylon.ooda.types.ActionResult`; ``success=False`` when the
+        target is missing / not a territory, or the acting org node is absent.
     """
-    # Pseudo-code logic to be fleshed out by future engine-side refactor
-    #
-    # org = graph.get_node(action.org_id)
-    #
-    # if not graph.has_node(action.target_id):
-    #     return VerbResult(success=False, error="Invalid target territory")
-    #
-    # ... process spatial transitions ...
-    # ... update org.territory_ids ...
-    #
-    # return VerbResult(success=True)
-    pass
+    target_node = graph.nodes.get(action.target_id)
+    if target_node is None or target_node.get("_node_type") != "territory":
+        return ActionResult(
+            action=action,
+            success=False,
+            failure_reason="MOVE target is not an existing territory node",
+        )
+
+    org_node = graph.nodes.get(action.org_id)
+    if org_node is None:
+        return ActionResult(
+            action=action,
+            success=False,
+            failure_reason="MOVE acting org node not found in graph",
+        )
+
+    mode = str(action.params.get("mode", "relocate"))
+    current: list[str] = list(org_node.get("territory_ids", []))
+
+    if mode == "expand":
+        new_ids = current if action.target_id in current else [*current, action.target_id]
+        graph.update_node(action.org_id, territory_ids=new_ids)
+        effects: dict[str, Any] = {"mode": mode, "territory_ids": new_ids}
+    else:
+        graph.update_node(
+            action.org_id,
+            territory_ids=[action.target_id],
+            headquarters_id=action.target_id,
+        )
+        effects = {"mode": "relocate", "territory_ids": [action.target_id]}
+
+    return ActionResult(
+        action=action,
+        success=True,
+        direct_effects=effects,
+        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+    )
+
+
+__all__ = ["resolve_move"]

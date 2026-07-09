@@ -97,6 +97,7 @@ class TestGetBaseCost:
             (ActionType.BUILD_INFRASTRUCTURE, 3),
             (ActionType.ATTACK_INFRASTRUCTURE, 2),
             (ActionType.ASSIMILATE, 2),
+            (ActionType.MOVE, 1),
         ],
     )
     def test_base_cost(self, action_type: ActionType, expected_cost: int) -> None:

@@ -97,6 +97,10 @@ class Action(BaseModel):
         cadre_labor_cost: Forward-compatible: cadre hours required.
         sympathizer_labor_cost: Forward-compatible: sympathizer hours.
         budget_cost: Forward-compatible: monetary cost.
+        params: Verb-specific parameters carried from the web bridge's
+            ``params_json`` (e.g. ``transfer_amount`` for AID, ``mode``
+            for REPRODUCE/MOVE, ``scan_type`` for INVESTIGATE). Consumed
+            by the verb resolvers; empty for engine-internal NPC actions.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -131,6 +135,10 @@ class Action(BaseModel):
         default=0.0,
         ge=0.0,
         description="Forward-compatible: monetary cost",
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Verb-specific parameters (bridge params_json passthrough)",
     )
 
 

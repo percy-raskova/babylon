@@ -118,6 +118,30 @@ class Relationship(BaseModel):
         description="Built solidarity infrastructure strength for SOLIDARITY edges",
     )
 
+    # Spec-070 balkanization edge payloads (spec-109 A6). Optional-None so
+    # they only appear on INFLUENCES/CLAIMS edges: ``edge_data`` excludes
+    # None, keeping every other edge's graph payload byte-identical.
+    influence_level: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="INFLUENCES edges: faction influence over the target territory",
+    )
+    support_type: str | None = Field(
+        default=None,
+        description="INFLUENCES edges: support channel (e.g. labor/ideological/material)",
+    )
+    control_level: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="CLAIMS edges: sovereign control over the claimed territory",
+    )
+    legal_status: str | None = Field(
+        default=None,
+        description="CLAIMS edges: claim status (e.g. de_jure/de_facto)",
+    )
+
     @model_validator(mode="after")
     def validate_no_self_loop(self) -> "Relationship":
         """Ensure entities cannot have a relationship with themselves."""
@@ -139,13 +163,19 @@ class Relationship(BaseModel):
 
     @property
     def edge_data(self) -> dict[str, object]:
-        """Return edge attributes dict for NetworkX, excluding IDs.
+        """Return edge attributes dict for the graph, excluding IDs.
+
+        ``exclude_none=True`` keeps the optional spec-070 fields
+        (``influence_level``/``support_type``/``control_level``/
+        ``legal_status``) out of every edge that doesn't carry them — no
+        pre-existing field is ever ``None``, so all other payloads are
+        byte-identical to the pre-A6 emission.
 
         Usage::
 
             G.add_edge(*relationship.edge_tuple, **relationship.edge_data)
         """
-        return self.model_dump(exclude={"source_id", "target_id"})
+        return self.model_dump(exclude={"source_id", "target_id"}, exclude_none=True)
 
     @property
     def flow(self) -> FlowComponent:

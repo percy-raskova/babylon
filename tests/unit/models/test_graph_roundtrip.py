@@ -714,3 +714,80 @@ class TestTerritoryTransientAttrsAreDropped:
         restored_territory = restored.territories["T001"]
         assert not hasattr(restored_territory, "habitability")
         assert not hasattr(restored_territory, "dispossession_intensity")
+
+
+class TestFactionRoundTrip:
+    """Spec-109 A6: BalkanizationFaction nodes + INFLUENCES/CLAIMS edge
+    payloads must survive to_graph/from_graph (closes the faction half of
+    owner-queue item 12 — previously a faction node reconstructed as a
+    strict SocialClass and crashed)."""
+
+    def _faction(self) -> object:
+        from babylon.data.game.balkanization import load_seed_factions
+
+        return load_seed_factions()[0]
+
+    def test_faction_survives_round_trip(self) -> None:
+        """A WorldState-carried faction round-trips losslessly."""
+        faction = self._faction()
+        state = WorldState(tick=0, factions={faction.id: faction})
+
+        graph = state.to_graph()
+        assert graph.nodes[faction.id]["_node_type"] == "faction"
+
+        restored = WorldState.from_graph(graph, tick=0)
+        assert restored.factions[faction.id].model_dump() == faction.model_dump()
+
+    def test_influences_edge_payload_survives_round_trip(self) -> None:
+        """influence_level/support_type survive a full state round-trip and
+        remain queryable via BabylonGraph.query_faction_influence_by_territory."""
+        faction = self._faction()
+        territory = Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            profile=OperationalProfile.LOW_PROFILE,
+        )
+        rel = Relationship(
+            source_id=faction.id,
+            target_id="T001",
+            edge_type=EdgeType.INFLUENCES,
+            influence_level=0.42,
+            support_type="labor",
+        )
+        state = WorldState(
+            tick=0,
+            factions={faction.id: faction},
+            territories={"T001": territory},
+            relationships=[rel],
+        )
+
+        graph = state.to_graph()
+        rows = graph.query_faction_influence_by_territory("T001")
+        assert rows == [(faction.id, 0.42, "labor")]
+
+        restored = WorldState.from_graph(graph, tick=0)
+        restored_rel = next(r for r in restored.relationships if r.edge_type == EdgeType.INFLUENCES)
+        assert restored_rel.influence_level == 0.42
+        assert restored_rel.support_type == "labor"
+
+        # And the payload survives a SECOND projection (state -> graph ->
+        # state -> graph), which is what every engine step does.
+        rows2 = restored.to_graph().query_faction_influence_by_territory("T001")
+        assert rows2 == [(faction.id, 0.42, "labor")]
+
+    def test_plain_edges_gain_no_balkanization_keys(self) -> None:
+        """Byte-identity guard: a non-balkanization edge's graph payload must
+        NOT grow influence/claims keys (they are exclude_none'd away)."""
+        worker = SocialClass(
+            id="C001", name="Workers", role=SocialRole.PERIPHERY_PROLETARIAT, population=100
+        )
+        owner = SocialClass(
+            id="C002", name="Owners", role=SocialRole.CORE_BOURGEOISIE, population=10
+        )
+        rel = Relationship(source_id="C001", target_id="C002", edge_type=EdgeType.EXPLOITATION)
+        state = WorldState(tick=0, entities={"C001": worker, "C002": owner}, relationships=[rel])
+
+        payload = state.to_graph().edges[("C001", "C002")]
+        for key in ("influence_level", "support_type", "control_level", "legal_status"):
+            assert key not in payload

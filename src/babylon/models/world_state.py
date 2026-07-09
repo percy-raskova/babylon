@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from babylon.models.entities.balkanization_faction import BalkanizationFaction
 from babylon.models.entities.contradiction import ContradictionFrame
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.industry import IndustryHyperedge
@@ -251,6 +252,25 @@ def _reconstruct_organization(node_data: dict[str, Any]) -> OrganizationType:
     return org_cls(**org_data)
 
 
+def _reconstruct_faction(node_id: str, node_data: dict[str, Any]) -> BalkanizationFaction:
+    """Reconstruct a BalkanizationFaction from graph node data (spec-070).
+
+    Mirrors :func:`_reconstruct_sovereign`: the node id IS the faction id,
+    so inject it when a writer omitted it. The model has no computed
+    fields, so the payload round-trips as-is.
+
+    Args:
+        node_id: Graph node id (``^FAC_[A-Z][A-Z0-9_]*$``).
+        node_data: Node attribute dict without the ``_node_type`` key.
+
+    Returns:
+        Reconstructed BalkanizationFaction instance.
+    """
+    fac_data = dict(node_data)
+    fac_data.setdefault("id", node_id)
+    return BalkanizationFaction(**fac_data)
+
+
 def _reconstruct_sovereign(node_id: str, node_data: dict[str, Any]) -> Sovereign:
     """Reconstruct a Sovereign from graph node data (spec-070).
 
@@ -268,6 +288,45 @@ def _reconstruct_sovereign(node_id: str, node_data: dict[str, Any]) -> Sovereign
     sov_data = {k: v for k, v in node_data.items() if k not in SOVEREIGN_COMPUTED_FIELDS}
     sov_data.setdefault("id", node_id)
     return Sovereign(**sov_data)
+
+
+def _reconstruct_relationships(G: BabylonGraph) -> list[Relationship]:
+    """Rebuild :class:`Relationship` models from graph edges (from_graph tail).
+
+    Only the fields listed here survive the round-trip — any other edge
+    attribute a system writes is dropped on reconstruction (the documented
+    graph-round-trip gotcha). The spec-070 balkanization payloads
+    (``influence_level``/``support_type``/``control_level``/``legal_status``)
+    reconstruct as ``None`` on every edge that doesn't carry them.
+    """
+    relationships: list[Relationship] = []
+    for source_id, target_id, data in G.edges(data=True):
+        # Reconstruct edge_type from stored value
+        edge_type = data.get("edge_type", EdgeType.EXPLOITATION)
+        if isinstance(edge_type, str):
+            edge_type = EdgeType(edge_type)
+
+        relationships.append(
+            Relationship(
+                source_id=source_id,
+                target_id=target_id,
+                edge_type=edge_type,
+                value_flow=data.get("value_flow", 0.0),
+                tension=data.get("tension", 0.0),
+                description=data.get("description", ""),
+                # Imperial Circuit parameters (Sprint 3.4.1)
+                subsidy_cap=data.get("subsidy_cap", 0.0),
+                # Solidarity parameters (Sprint 3.4.2)
+                solidarity_strength=data.get("solidarity_strength", 0.0),
+                # Spec-070 balkanization payloads (spec-109 A6) — absent
+                # (None) on every non-INFLUENCES/CLAIMS edge.
+                influence_level=data.get("influence_level"),
+                support_type=data.get("support_type"),
+                control_level=data.get("control_level"),
+                legal_status=data.get("legal_status"),
+            )
+        )
+    return relationships
 
 
 def _assert_no_edge_type_collisions(relationships: list[Relationship]) -> None:
@@ -417,6 +476,12 @@ class WorldState(BaseModel):
         description="Map of sovereign ID to Sovereign (spec-070 Balkanization)",
     )
 
+    # Political factions (spec-070 Balkanization; spec-109 A6 round-trip)
+    factions: dict[str, BalkanizationFaction] = Field(
+        default_factory=dict,
+        description="Map of faction ID to BalkanizationFaction (spec-070 Balkanization)",
+    )
+
     # =========================================================================
     # NetworkX Conversion
     # =========================================================================
@@ -528,13 +593,24 @@ class WorldState(BaseModel):
         for ind_id, ind in self.industries.items():
             G.add_node(ind_id, _node_type="industry", **ind.model_dump())
 
-        # Add sovereign nodes with _node_type marker (spec-070)
-        for sov_id, sov in self.sovereigns.items():
-            G.add_node(sov_id, _node_type="sovereign", **sov.model_dump())
+        # Add sovereign + faction nodes with _node_type markers (spec-070)
+        self._add_political_nodes(G)
 
         # Design B pre-scan: fail loud on same-pair differing-edge_type
         # collisions before BabylonGraph's add_edge merge can eat one.
         _assert_no_edge_type_collisions(self.relationships)
+
+        return self._add_relationship_edges(G)
+
+    def _add_political_nodes(self, G: BabylonGraph) -> None:
+        """Emit sovereign + faction nodes (spec-070) with ``_node_type`` markers."""
+        for sov_id, sov in self.sovereigns.items():
+            G.add_node(sov_id, _node_type="sovereign", **sov.model_dump())
+        for fac_id, fac in self.factions.items():
+            G.add_node(fac_id, _node_type="faction", **fac.model_dump())
+
+    def _add_relationship_edges(self, G: BabylonGraph) -> BabylonGraph:
+        """Emit relationship edges onto ``G`` and return it (to_graph tail)."""
 
         # Add edges with relationship data
         for rel in self.relationships:
@@ -617,6 +693,7 @@ class WorldState(BaseModel):
         institutions_dict: dict[str, Institution] = {}
         industries_dict: dict[str, IndustryHyperedge] = {}
         sovereigns_dict: dict[str, Sovereign] = {}
+        factions_dict: dict[str, BalkanizationFaction] = {}
 
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
@@ -635,6 +712,8 @@ class WorldState(BaseModel):
                 industries_dict[node_id] = IndustryHyperedge(**node_data)
             elif node_type == "sovereign":
                 sovereigns_dict[node_id] = _reconstruct_sovereign(node_id, node_data)
+            elif node_type == "faction":
+                factions_dict[node_id] = _reconstruct_faction(node_id, node_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
                 # Filter out computed fields that shouldn't be passed to constructor
@@ -660,27 +739,7 @@ class WorldState(BaseModel):
                 entities[node_id] = SocialClass(**entity_data)
 
         # Reconstruct relationships from edges.
-        relationships: list[Relationship] = []
-        for source_id, target_id, data in G.edges(data=True):
-            # Reconstruct edge_type from stored value
-            edge_type = data.get("edge_type", EdgeType.EXPLOITATION)
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            relationships.append(
-                Relationship(
-                    source_id=source_id,
-                    target_id=target_id,
-                    edge_type=edge_type,
-                    value_flow=data.get("value_flow", 0.0),
-                    tension=data.get("tension", 0.0),
-                    description=data.get("description", ""),
-                    # Imperial Circuit parameters (Sprint 3.4.1)
-                    subsidy_cap=data.get("subsidy_cap", 0.0),
-                    # Solidarity parameters (Sprint 3.4.2)
-                    solidarity_strength=data.get("solidarity_strength", 0.0),
-                )
-            )
+        relationships = _reconstruct_relationships(G)
 
         return cls(
             tick=tick,
@@ -698,6 +757,7 @@ class WorldState(BaseModel):
             institution_relations=institution_relations,
             industries=industries_dict,
             sovereigns=sovereigns_dict,
+            factions=factions_dict,
         )
 
     # =========================================================================

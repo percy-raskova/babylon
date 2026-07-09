@@ -3128,14 +3128,115 @@ def _build_initial_state_for_scenario(scenario: str) -> WorldState:
         scenario: Scenario name from API request.
 
     Returns:
-        Seeded WorldState at tick 0.
+        Seeded WorldState at tick 0 (including the spec-070 political layer
+        for web sessions — see :func:`_seed_balkanization_layer`).
 
     Raises:
         ValueError: If ``scenario`` is not a registered scenario or alias.
     """
     canonical = resolve_scenario(scenario)
     state, _config, _defines = get_scenario(canonical)().build()
-    return state
+    return _seed_balkanization_layer(state)
+
+
+def _seed_balkanization_layer(state: WorldState) -> WorldState:
+    """Seed the spec-070 political layer into a web session's initial state.
+
+    Owner item 8 ("balkanization seed gap — no scenario seeds spec-070
+    data") ruled IN SCOPE: every web session seeds the 4 canonical
+    factions, the 3 canonical sovereigns, and the proxy-data INFLUENCES
+    edges (``src/babylon/data/game/balkanization/``), so the spec-093 map
+    lens set has data and ``FactionInfluenceSystem`` has material to act
+    on. **Bridge-layer only** — headless scenarios build without this, so
+    regression baselines are untouched.
+
+    The seed pipeline computed influences at H3 res-7; scenarios may sit
+    at a coarser resolution (wayne_county is res-6). Child edges aggregate
+    onto the scenario's cells via ``h3.cell_to_parent`` with the
+    arithmetic **mean** — the faithful downsample for an intensive [0, 1]
+    quantity (sum would exceed the bound; max overweights outliers). The
+    aggregated edge takes the support_type of its highest-influence child
+    (lexicographic tie-break — deterministic per III.7). Sovereign
+    ``initial_claims`` seed as CLAIMS edges when their territories are
+    present (the shipped seed file has none — claims stay empty until
+    SovereigntySystem writes them, which is honest, not a bug).
+
+    Args:
+        state: The scenario-built tick-0 WorldState.
+
+    Returns:
+        The state with factions/sovereigns/edges merged in; unchanged
+        collections are reused as-is.
+    """
+    import h3
+
+    from babylon.data.game.balkanization import (
+        load_seed_factions,
+        load_seed_influences,
+        load_seed_sovereigns,
+        load_seed_sovereigns_raw,
+    )
+    from babylon.models.entities.relationship import Relationship
+    from babylon.models.enums import EdgeType
+
+    factions = {f.id: f for f in load_seed_factions()}
+    sovereigns = {s.id: s for s in load_seed_sovereigns()}
+
+    hex_territories = {
+        tid: t for tid, t in state.territories.items() if getattr(t, "h3_index", None)
+    }
+    new_relationships: list[Relationship] = []
+
+    if hex_territories:
+        resolution = h3.get_resolution(next(iter(sorted(hex_territories))))
+        # (faction_id, parent_tid) -> list of (influence_level, support_type)
+        buckets: dict[tuple[str, str], list[tuple[float, str]]] = {}
+        for edge in load_seed_influences():
+            try:
+                parent = h3.cell_to_parent(str(edge["territory_id"]), resolution)
+            except (ValueError, TypeError):
+                continue
+            if parent not in hex_territories:
+                continue
+            key = (str(edge["faction_id"]), parent)
+            buckets.setdefault(key, []).append(
+                (float(edge["influence_level"]), str(edge["support_type"]))
+            )
+        for (faction_id, parent), children in sorted(buckets.items()):
+            level = sum(lvl for lvl, _ in children) / len(children)
+            support = max(children, key=lambda c: (c[0], c[1]))[1]
+            new_relationships.append(
+                Relationship(
+                    source_id=faction_id,
+                    target_id=parent,
+                    edge_type=EdgeType.INFLUENCES,
+                    influence_level=round(level, 6),
+                    support_type=support,
+                )
+            )
+
+    for record in load_seed_sovereigns_raw():
+        for claim in record.get("initial_claims", []):
+            territory_id = str(claim.get("territory_id", ""))
+            if territory_id not in state.territories:
+                continue
+            new_relationships.append(
+                Relationship(
+                    source_id=str(record["id"]),
+                    target_id=territory_id,
+                    edge_type=EdgeType.CLAIMS,
+                    control_level=float(claim.get("control_level", 0.0)),
+                    legal_status=str(claim.get("legal_status", "de_jure")),
+                )
+            )
+
+    return state.model_copy(
+        update={
+            "factions": {**state.factions, **factions},
+            "sovereigns": {**state.sovereigns, **sovereigns},
+            "relationships": [*state.relationships, *new_relationships],
+        }
+    )
 
 
 def _is_unseeded_graph(graph: BabylonGraph) -> bool:

@@ -1020,6 +1020,18 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             sqlite_path=config.sqlite_reference_path,
         )
 
+        # Spec-089 loud gate (Gate A): the bridge's resolved template must
+        # match the hydrated frame. A mismatch means spec-088 S3 spatial-map
+        # resolution failed (e.g. empty hex_spatial_map) — delta emission,
+        # checkpoint frames, and the conservation auditor would all run
+        # silently blind (the 2026-07-06 aborted-national-run failure mode).
+        if bridge.hex_template_size != report.hex_count:
+            raise RunnerError(
+                f"Bridge hex template ({bridge.hex_template_size} rows) != "
+                f"hydrated hex frame ({report.hex_count} rows) for session "
+                f"{session_id} — refusing to run blind."
+            )
+
         # Spec-066 T034/T036: construct ServiceContainer + SimulationEngine
         # ONCE before the tick loop. Share the bridge's event_bus / auditor /
         # boundary_register so engine systems can publish events that
@@ -1249,6 +1261,55 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                 pool.close()
 
 
+def _verify_tick0_commit_marker(
+    *,
+    runtime: Any,
+    session_id: UUID,
+    expected_hash: str,
+    expected_hex_rows: int,
+) -> None:
+    """Spec-089 FR-003 loud gate (Gate B): read back the tick-0 marker.
+
+    The committed ``(session, 0)`` ``tick_commit`` row must be the bridge's
+    real marker — the runner's identity hash plus the full checkpoint frame
+    count. This catches marker shadowing (an init-time placeholder claiming
+    the primary key so the bridge's re-delivery is silently dropped by
+    ``ON CONFLICT DO NOTHING``) and empty-frame emission in one read-back.
+    Skipped gracefully on pre-0029 databases (no ``tick_commit`` table),
+    mirroring :func:`get_last_committed_tick`'s ``to_regclass`` guard.
+
+    Args:
+        runtime: PostgresRuntime whose pool committed the tick-0 envelope.
+        session_id: Active session UUID.
+        expected_hash: The runner's tick-0 identity hash.
+        expected_hex_rows: The bridge's resolved checkpoint frame size.
+
+    Raises:
+        RunnerError: Marker missing, hash mismatched, frame count wrong,
+            or checkpoint flag unset.
+    """
+    with runtime._pool.connection() as conn:  # noqa: SLF001
+        has_table = conn.execute("SELECT to_regclass('tick_commit')").fetchone()
+        if has_table is None or has_table[0] is None:
+            return  # pre-0029 database: no chain to verify
+        row = conn.execute(
+            "SELECT determinism_hash, hex_rows_written, is_checkpoint "
+            "FROM tick_commit WHERE session_id = %s AND tick = 0",
+            (str(session_id),),
+        ).fetchone()
+    if row is None:
+        raise RunnerError(f"tick 0 committed no tick_commit marker for {session_id}")
+    # determinism_hash is CHAR-typed in Postgres; strip the pad blanks.
+    digest, hex_rows, is_checkpoint = str(row[0]).strip(), int(row[1]), bool(row[2])
+    if digest != expected_hash or hex_rows != expected_hex_rows or not is_checkpoint:
+        raise RunnerError(
+            "tick-0 commit marker corrupt for "
+            f"{session_id}: hash={digest[:12]}... (expected {expected_hash[:12]}...), "
+            f"hex_rows_written={hex_rows} (expected {expected_hex_rows}), "
+            f"is_checkpoint={is_checkpoint} — spec-089 FR-003 violated."
+        )
+
+
 def _tick_loop(
     *,
     bridge: WorldStateBridge,
@@ -1294,6 +1355,15 @@ def _tick_loop(
         f"{session_id}:0:{config.random_seed}".encode()
     ).hexdigest()
     bridge.persist_tick(world, 0, determinism_hash_t0)
+    # Spec-089 loud gate (Gate B): the committed tick-0 marker must carry
+    # the identity hash + the full checkpoint frame count — refuse to tick
+    # forward on a shadowed/placeholder marker or an empty frame.
+    _verify_tick0_commit_marker(
+        runtime=runtime,
+        session_id=session_id,
+        expected_hash=determinism_hash_t0,
+        expected_hex_rows=bridge.hex_template_size,
+    )
 
     # Spec-102 SLICE B: shock timeline + persistent per-bloc multiplier
     # state, threaded across tick-loop iterations (never reset per tick).

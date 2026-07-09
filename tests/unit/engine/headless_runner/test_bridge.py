@@ -503,3 +503,50 @@ def _build_test_worldstate(scope_fips: set[str]) -> Any:
         entities[f"C{i:03d}"] = p
         entities[f"C{i + 500:03d}"] = b
     return WorldState(tick=1, entities=entities)
+
+
+# ----------------------------------------------------------------------
+# Spec-089 loud gate (Gate A): hex_template_size observability
+# ----------------------------------------------------------------------
+
+
+class TestHexTemplateSize:
+    """``bridge.hex_template_size`` exposes the cached tick-0 frame size.
+
+    The runner compares it against the hydrator's ``report.hex_count``
+    right after ``hydrate_initial`` — a mismatch means spec-088 S3
+    spatial-map resolution filtered the template (e.g. an empty
+    ``hex_spatial_map``) and the run would proceed silently blind.
+    """
+
+    def test_zero_before_hydrate(self, defines: GameDefines) -> None:
+        bridge = WorldStateBridge(runtime=_FakeRuntime(), defines=defines)
+        assert bridge.hex_template_size == 0
+
+    def test_counts_cached_tick0_frame(self, defines: GameDefines) -> None:
+        hex_row = [
+            str(_SESSION_ID),  # session_id
+            0,  # tick
+            "872a91055ffffff",  # h3_index
+            "26163",  # county_fips
+            "26",  # state_fips
+            "midwest",  # region_id
+            1.0,  # c
+            2.0,  # v
+            3.0,  # s
+            4.0,  # k
+            5.0,  # biocapacity_stock
+            6.0,  # energy_stock
+            7.0,  # raw_material_stock
+            0.5,  # internet_access_pct
+            0.25,  # surveillance_coupling
+        ]
+        runtime = _FakeRuntime(scripted_query_rows=[[hex_row], []])
+        bridge = WorldStateBridge(runtime=runtime, defines=defines)
+        bridge.hydrate_initial(
+            session_id=_SESSION_ID,
+            scope_fips=frozenset({"26163"}),
+            sqlite_path=SQLITE_REF,
+            total_ticks=1,
+        )
+        assert bridge.hex_template_size == 1

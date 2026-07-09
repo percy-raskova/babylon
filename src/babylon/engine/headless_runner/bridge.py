@@ -232,6 +232,19 @@ class WorldStateBridge:
         return self._hydrated
 
     @property
+    def hex_template_size(self) -> int:
+        """Row count of the cached tick-0 hex frame (read-only observability).
+
+        Spec-089 loud gate: the runner compares this against the hydrator's
+        ``report.hex_count`` right after :meth:`hydrate_initial` — a mismatch
+        means spec-088 S3 spatial-map resolution filtered the template (e.g.
+        an empty ``hex_spatial_map``), in which case delta emission,
+        checkpoint frames, and the conservation auditor would all run
+        silently blind. Returns 0 before ``hydrate_initial``.
+        """
+        return len(self._hex_template)
+
+    @property
     def population_db_reads(self) -> int:
         """Spec-069 SC-002: count of population reads issued at hydrate time.
 

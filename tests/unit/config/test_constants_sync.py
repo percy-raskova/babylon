@@ -11,12 +11,19 @@ If this test fails, it means:
 
 from __future__ import annotations
 
+import re
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from babylon.config.defines import GameDefines
 from tests.constants import TestConstants
 
 TC = TestConstants
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.mark.unit
@@ -128,6 +135,20 @@ class TestFormulasConstantsSync:
         defines = GameDefines.load_default()
         assert defines.behavioral.loss_aversion_lambda == LOSS_AVERSION_COEFFICIENT
 
+    def test_hours_per_year_matches_game_defines(self) -> None:
+        """HOURS_PER_YEAR re-export should match GameDefines.timescale."""
+        from babylon.formulas.constants import HOURS_PER_YEAR
+
+        defines = GameDefines.load_default()
+        assert defines.timescale.hours_per_year == HOURS_PER_YEAR
+
+    def test_weeks_per_year_matches_game_defines(self) -> None:
+        """WEEKS_PER_YEAR re-export should match GameDefines.timescale."""
+        from babylon.formulas.constants import WEEKS_PER_YEAR
+
+        defines = GameDefines.load_default()
+        assert defines.timescale.weeks_per_year == WEEKS_PER_YEAR
+
     def test_topology_monitor_fields_in_game_defines(self) -> None:
         """New TopologyDefines fields should have expected defaults."""
         defines = GameDefines.load_default()
@@ -137,3 +158,72 @@ class TestFormulasConstantsSync:
         assert topo.solidarity_cadre_threshold == 0.5
         assert topo.resilience_removal_rate == 0.2
         assert topo.resilience_survival_threshold == 0.4
+
+
+@pytest.mark.unit
+class TestDefinesYamlSingleSourceOfTruth:
+    """Guard the canonical player-editable ``defines.yaml`` against silent re-forking.
+
+    Phase B of the src/ simplification sweep made ``src/babylon/data/defines.yaml``
+    the single, documented, player-editable source of truth for every game
+    coefficient (generated from the ``GameDefines`` schema by
+    ``tools/generate_defines_config.py``). These tests ensure the shipped file
+    stays a faithful render of the schema defaults and that timescale constants
+    are not re-declared ad hoc outside the canon.
+    """
+
+    def test_shipped_defines_yaml_roundtrips_to_defaults(self) -> None:
+        """The shipped defines.yaml must reconstruct GameDefines() exactly."""
+        path = GameDefines.default_yaml_path()
+        assert path.exists(), "canonical defines.yaml is missing"
+        assert GameDefines.load_from_yaml(path) == GameDefines()
+
+    def test_load_default_matches_schema_defaults(self) -> None:
+        """load_default() (which now reads the yaml) must equal the schema defaults.
+
+        This is the anti-drift guard: if a schema default changes but the shipped
+        yaml is not regenerated (or vice versa), the two diverge and this fails.
+        """
+        assert GameDefines.load_default() == GameDefines()
+
+    def test_defines_yaml_in_sync_with_schema(self) -> None:
+        """The committed defines.yaml must match a fresh render of the schema.
+
+        Runs the generator's ``--check`` mode; a non-zero exit means the schema
+        changed (new field, changed default, updated description) without
+        regenerating ``defines.yaml``.
+        """
+        tool = _REPO_ROOT / "tools" / "generate_defines_config.py"
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell, trusted path
+            [sys.executable, str(tool), "--check"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            "defines.yaml is stale — regenerate with "
+            "'poetry run python tools/generate_defines_config.py'.\n"
+            f"stderr:\n{result.stderr}"
+        )
+
+    def test_no_readded_timescale_constants(self) -> None:
+        """No module may re-declare HOURS_PER_YEAR / WEEKS_PER_YEAR outside the canon.
+
+        The canonical definitions live in formulas/constants.py (sourced from
+        GameDefines.timescale) plus the documented sim_clock.py leaf-module copy.
+        A re-declaration anywhere else re-forks the constant the sweep centralized.
+        """
+        src_root = _REPO_ROOT / "src" / "babylon"
+        allowed = {"formulas/constants.py", "sim_clock.py"}
+        pattern = re.compile(r"^\s*_?(?:HOURS_PER_YEAR|WEEKS_PER_YEAR)\s*[:=]")
+        offenders: list[str] = []
+        for py in src_root.rglob("*.py"):
+            rel = py.relative_to(src_root).as_posix()
+            if rel in allowed:
+                continue
+            for lineno, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+                if pattern.match(line):
+                    offenders.append(f"{rel}:{lineno}: {line.strip()}")
+        assert not offenders, "Re-declared timescale constant outside the canon:\n" + "\n".join(
+            offenders
+        )

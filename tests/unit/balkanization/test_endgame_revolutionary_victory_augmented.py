@@ -22,14 +22,19 @@ import pytest
 from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.models import WorldState
 from babylon.models.config import SimulationConfig
+from babylon.models.entities.balkanization_faction import BalkanizationFaction
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
+from babylon.models.entities.sovereign import Sovereign
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import (
+    ColonialStance,
     EdgeType,
+    ExtractionPolicy,
     GameOutcome,
     SectorType,
     SocialRole,
+    SovereigntyType,
 )
 
 pytestmark = pytest.mark.unit
@@ -46,8 +51,10 @@ def _make_revolutionary_setup(
     augmentation knobs.
 
     Settler entities (national_identity > class_consciousness) and
-    non-settler entities (the reverse). Plus a Sovereign whose ruling
-    Faction has ``sovereign_stance``.
+    non-settler entities (the reverse). Plus a real Sovereign (CLAIMS
+    T001) whose ruling BalkanizationFaction carries ``sovereign_stance``
+    and whose ``extraction_policy`` is set directly (spec-109 A6 —
+    both round-trip through ``state.to_graph()``/``from_graph()``).
     """
 
     settlers = {
@@ -114,9 +121,10 @@ def _make_revolutionary_setup(
             )
         )
 
-    # Drop spec-070 graph-attribute injection — WorldState doesn't expose
-    # graph_attributes directly; we'd need to round-trip via to_graph().
-    # Use minimal Territory; habitability is consumed via _aggregate_habitability.
+    # Habitability isn't a Territory field (checked defensively below —
+    # _aggregate_habitability falls back to getattr(..., 1.0) when absent),
+    # so the ``habitability`` parameter has no effect on the outcome; it
+    # is retained for call-site documentation of intent only.
     territory_kwargs: dict[str, Any] = {
         "id": "T001",
         "name": "Detroit",
@@ -128,26 +136,61 @@ def _make_revolutionary_setup(
         territory_kwargs["biocapacity"] = 100.0
     territory = Territory(**territory_kwargs)
 
+    # spec-109 A6: BalkanizationFaction now round-trips via
+    # WorldState.factions (_add_political_nodes / _reconstruct_faction),
+    # so the Sovereign + ruling Faction + CLAIMS edge below are real graph
+    # nodes/edges, not documentation-only placeholders.
+    faction = BalkanizationFaction(
+        id="FAC_TEST",
+        name="Test Faction",
+        ideology="test-fixture",
+        colonial_stance=ColonialStance(sovereign_stance),
+        is_settler_formation=False,
+        extraction_modifier=1.0,
+        violence_modifier=1.0,
+        metabolic_reduction=0.0,
+        color_hex="#336699",
+        founded_tick=0,
+    )
+    sovereign = Sovereign(
+        id="SOV_TEST",
+        name="Test Sovereign",
+        sovereignty_type=SovereigntyType.PROVISIONAL,
+        legitimacy=0.8,
+        color_hex="#663399",
+        ruling_faction_id=faction.id,
+        extraction_policy=ExtractionPolicy(extraction_policy),
+        founded_tick=0,
+    )
+    relationships.append(
+        Relationship(
+            source_id=sovereign.id,
+            target_id="T001",
+            edge_type=EdgeType.CLAIMS,
+            control_level=0.9,
+            legal_status="de_facto",
+        )
+    )
+
+    factions = {faction.id: faction}
+    sovereigns = {sovereign.id: sovereign}
+
     initial = WorldState(
         tick=0,
         entities=entities,
         relationships=relationships,
         territories={"T001": territory},
+        sovereigns=sovereigns,
+        factions=factions,
     )
     final = WorldState(
         tick=1,
         entities=entities,
         relationships=relationships,
         territories={"T001": territory},
+        sovereigns=sovereigns,
+        factions=factions,
     )
-    # NOTE: spec-070 Sovereign / Faction wiring is exercised end-to-end in
-    # the live-graph integration tests (US1 + US2 + US3 backbone). The
-    # detector helpers fall back to "no Sovereigns" when the state
-    # carries none, which collapses to "no ABOLISH majority" — that is
-    # the assertion this fallback test verifies (sovereign_stance +
-    # extraction_policy parameters are documentation-only here).
-    _ = sovereign_stance
-    _ = extraction_policy
     return initial, final
 
 
@@ -158,15 +201,31 @@ def config() -> SimulationConfig:
 
 @pytest.mark.xfail(
     reason=(
-        "Sovereign nodes now round-trip via WorldState.sovereigns "
-        "(fix/from-graph-safety), but the ABOLISH-majority gate resolves "
-        "sovereign stance through a ruling Faction node's colonial_stance "
-        "(EndgameDetector._lookup_sovereign_stance) — Faction nodes have no "
-        "WorldState field and no production writer (spec-070 wiring hazard), "
-        "so the unit-test ``state.to_graph()`` path cannot emit them. This "
-        "test documents the contract; the integration path goes via "
-        "FactionInfluenceSystem + SovereigntySystem on the live graph "
-        "(US1 + US2 integration tests cover the happy path)."
+        "STALE CLAIM RETIRED (spec-109 A6, WorldState.factions + "
+        "_add_political_nodes + _reconstruct_faction): faction round-trip "
+        "is now proven to work — with the Sovereign/Faction/CLAIMS wiring "
+        "this fixture builds, every augmented gate individually resolves "
+        "correctly (_has_stance_majority(ABOLISH) is True, "
+        "_aggregate_extraction_policy_is(CEASE) is True, "
+        "_count_cross_divide_solidarity_edges == 6 >= the default "
+        "revolutionary_victory_min_cross_divide_solidarity_edges == 5). "
+        "The test STILL fails, but for a different, unrelated reason: "
+        "FR-033's priority cascade checks FASCIST_CONSOLIDATION before "
+        "REVOLUTIONARY_VICTORY, and _check_fascist_consolidation's "
+        "preserved 'existing false-consciousness route' "
+        "(national_identity > class_consciousness for >= "
+        "fascist_majority_threshold == 3 nodes) fires unconditionally on "
+        "this fixture's 6 settler-aligned entities — which the "
+        "FR-031a cross-divide-solidarity gate itself requires (>= 5 "
+        "settler/non-settler SOLIDARITY edges) — regardless of Sovereign "
+        "state, so the augmented predicate is never reached. This is a "
+        "pre-existing detector-logic / fixture-design tension between the "
+        "legacy fascist route and the spec-070 settler/non-settler split, "
+        "not a graph round-trip gap; it needs its own resolution (e.g. "
+        "scoping the legacy route, raising fascist_majority_threshold to a "
+        "share rather than an absolute count, or restructuring how "
+        "cross-divide solidarity is counted) before this test can go "
+        "green."
     )
 )
 def test_abolish_majority_extraction_cease_and_solidarity_passes(

@@ -50,7 +50,7 @@ def calculate_exchange_ratio(
     return labor_ratio * wage_ratio
 
 
-def calculate_exploitation_rate(exchange_ratio: float) -> float:
+def calculate_unequal_exchange_rate(exchange_ratio: float) -> float:
     """Convert exchange ratio to exploitation rate percentage.
 
     epsilon = 2 means 100% exploitation (double value extracted).

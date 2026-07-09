@@ -101,7 +101,7 @@ class FormulaRegistry:
 
         # Unequal Exchange formulas
         registry.register("exchange_ratio", formulas.calculate_exchange_ratio)
-        registry.register("exploitation_rate", formulas.calculate_exploitation_rate)
+        registry.register("exploitation_rate", formulas.calculate_unequal_exchange_rate)
         registry.register("value_transfer", formulas.calculate_value_transfer)
         registry.register("prebisch_singer", formulas.prebisch_singer_effect)
 

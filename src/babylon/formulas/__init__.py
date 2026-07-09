@@ -136,7 +136,7 @@ from babylon.formulas.trpf import (
 # Re-export Unequal Exchange formulas
 from babylon.formulas.unequal_exchange import (
     calculate_exchange_ratio,
-    calculate_exploitation_rate,
+    calculate_unequal_exchange_rate,
     calculate_value_transfer,
     prebisch_singer_effect,
 )
@@ -164,7 +164,7 @@ __all__ = [
     "apply_loss_aversion",
     # Unequal Exchange
     "calculate_exchange_ratio",
-    "calculate_exploitation_rate",
+    "calculate_unequal_exchange_rate",
     "calculate_value_transfer",
     "prebisch_singer_effect",
     # Solidarity Transmission

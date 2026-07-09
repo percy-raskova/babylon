@@ -21,7 +21,7 @@ import pytest
 
 from babylon.formulas import (
     calculate_exchange_ratio,
-    calculate_exploitation_rate,
+    calculate_unequal_exchange_rate,
     calculate_value_transfer,
     prebisch_singer_effect,
 )
@@ -107,22 +107,22 @@ class TestExploitationRate:
 
     def test_exploitation_rate_from_ratio(self) -> None:
         """ε = 2 → 100% exploitation rate."""
-        rate = calculate_exploitation_rate(exchange_ratio=2.0)
+        rate = calculate_unequal_exchange_rate(exchange_ratio=2.0)
         assert rate == pytest.approx(100.0, abs=0.1)
 
     def test_high_exploitation_rate(self) -> None:
         """ε = 20 → 1900% exploitation rate."""
-        rate = calculate_exploitation_rate(exchange_ratio=20.0)
+        rate = calculate_unequal_exchange_rate(exchange_ratio=20.0)
         assert rate == pytest.approx(1900.0, abs=0.1)
 
     def test_zero_exploitation_when_equal(self) -> None:
         """ε = 1 → 0% exploitation (fair exchange)."""
-        rate = calculate_exploitation_rate(exchange_ratio=1.0)
+        rate = calculate_unequal_exchange_rate(exchange_ratio=1.0)
         assert rate == pytest.approx(0.0, abs=0.001)
 
     def test_negative_exploitation_impossible(self) -> None:
         """ε < 1 would mean core is exploited - we cap at 0%."""
-        rate = calculate_exploitation_rate(exchange_ratio=0.5)
+        rate = calculate_unequal_exchange_rate(exchange_ratio=0.5)
         # When ε < 1, periphery is "exploiting" core - we return negative
         assert rate == pytest.approx(-50.0, abs=0.1)
 

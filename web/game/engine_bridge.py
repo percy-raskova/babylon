@@ -21,7 +21,7 @@ from babylon.engine.graph import BabylonGraph
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
-from babylon.formulas.unequal_exchange import calculate_exploitation_rate
+from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import ActionType
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
@@ -1202,9 +1202,9 @@ class EngineBridge:
             # value was extracted relative to what this territory produced
             # (epsilon > 1 == giving away more than receiving, matching
             # unequal_exchange's semantics), fed through the existing
-            # calculate_exploitation_rate formula rather than a new one.
+            # calculate_unequal_exchange_rate formula rather than a new one.
             exchange_ratio = (value_produced + rent_extracted) / value_produced
-            exploitation_rate = round(calculate_exploitation_rate(exchange_ratio) / 100.0, 4)
+            exploitation_rate = round(calculate_unequal_exchange_rate(exchange_ratio) / 100.0, 4)
 
         return {
             "territory_id": territory_id,

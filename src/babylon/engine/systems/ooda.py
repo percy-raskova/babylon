@@ -278,4 +278,5 @@ def _action_from_dict(data: dict[str, Any], org_id: str) -> Any:
         action_type=data["action_type"],
         target_id=data["target_id"],
         action_point_cost=data.get("action_point_cost", 1),
+        params=data.get("params", {}),
     )

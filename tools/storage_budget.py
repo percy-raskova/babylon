@@ -30,6 +30,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Spec-089 Gate C: the two delta-persistence tables whose rows/tick must
+# never silently collapse to zero. dynamic_hex_state going dark is the §1d
+# silent-no-op (empty hex template ⇒ no checkpoint frames, no audit frame);
+# tick_commit going dark is a broken III.7 hash chain. Both PASS the
+# one-sided ceiling check (under-budget = good), so they get a floor too.
+_FLOOR_TABLES: tuple[str, ...] = ("dynamic_hex_state", "tick_commit")
+
 
 def load_manifest_storage(bundle_dir: Path) -> dict[str, Any]:
     """Load the ``storage`` block from a bundle's manifest.json.
@@ -62,25 +69,37 @@ def generate_baseline(
     scope: str,
     ticks: int,
     tolerance_pct: float = 10.0,
+    floor_pct: float = 50.0,
 ) -> dict[str, Any]:
     """Shape a baseline document from a bundle's storage block.
+
+    The baseline is two-sided (spec-089 Gate C): every table has a ceiling
+    (``rows_per_tick`` + ``tolerance_pct``), and the delta-critical tables
+    in :data:`_FLOOR_TABLES` additionally get a floor (``floors`` +
+    ``floor_pct``) so a silent drop to zero rows/tick fails loud.
 
     Args:
         storage: Manifest ``storage`` block.
         scope: Scenario scope name the baseline was generated from.
         ticks: Tick count of the generating run.
         tolerance_pct: Allowed rows/tick overshoot before ``check`` fails.
+        floor_pct: Allowed rows/tick *undershoot* on floored tables before
+            ``check`` fails (default 50 %: floor_limit = floor × 0.5).
 
     Returns:
         Baseline dict ready to be JSON-encoded.
     """
+    rows_per_tick = {
+        entry["table"]: float(entry["session_rows_per_tick"]) for entry in storage["tables"]
+    }
+    floors = {table: rows_per_tick[table] for table in _FLOOR_TABLES if table in rows_per_tick}
     return {
         "schema_version": "1.0",
         "generated_from": {"scope": scope, "ticks": ticks},
         "tolerance_pct": float(tolerance_pct),
-        "rows_per_tick": {
-            entry["table"]: float(entry["session_rows_per_tick"]) for entry in storage["tables"]
-        },
+        "floor_pct": float(floor_pct),
+        "rows_per_tick": rows_per_tick,
+        "floors": floors,
     }
 
 
@@ -91,10 +110,15 @@ def check_bundle(
     """Compare a storage block against a baseline.
 
     Per baseline table: actual rows/tick must not exceed
-    ``budget * (1 + tolerance_pct/100)``. Under-budget passes (that is the
-    point of the storage program); tables absent from the bundle count as
-    zero rows; bundle tables missing from the baseline are noted but pass
-    (they get budgeted at the next ``generate``).
+    ``budget * (1 + tolerance_pct/100)`` (ceiling). For the delta-critical
+    tables carried in the baseline's ``floors`` (spec-089 Gate C), actual
+    rows/tick must also not fall below ``floor * (1 - floor_pct/100)`` — a
+    silent drop to zero is a delta-persistence regression, not an
+    improvement. Tables absent from the bundle count as zero rows (so a
+    floored table that vanished fails); bundle tables missing from the
+    baseline are noted but pass (they get budgeted at the next
+    ``generate``). Baselines with no ``floors`` key are ceiling-only
+    (backward compatible with pre-Gate-C baselines).
 
     Args:
         storage: Manifest ``storage`` block of the run under test.
@@ -104,7 +128,9 @@ def check_bundle(
         ``(ok, report_lines)``.
     """
     tolerance_pct = float(baseline["tolerance_pct"])
+    floor_pct = float(baseline.get("floor_pct", 0.0))
     budgets: dict[str, float] = {name: float(v) for name, v in baseline["rows_per_tick"].items()}
+    floors: dict[str, float] = {name: float(v) for name, v in baseline.get("floors", {}).items()}
     actuals: dict[str, float] = {
         entry["table"]: float(entry["session_rows_per_tick"]) for entry in storage["tables"]
     }
@@ -114,11 +140,19 @@ def check_bundle(
     for table, budget in sorted(budgets.items()):
         actual = actuals.get(table, 0.0)
         limit = budget * (1.0 + tolerance_pct / 100.0)
+        floor_limit = floors[table] * (1.0 - floor_pct / 100.0) if table in floors else None
         if actual > limit:
             ok = False
             report.append(
                 f"  ✗ {table}: {actual:g} rows/tick exceeds budget "
                 f"{budget:g} (+{tolerance_pct:g}% => limit {limit:g})"
+            )
+        elif floor_limit is not None and actual < floor_limit:
+            ok = False
+            report.append(
+                f"  ✗ {table}: {actual:g} rows/tick below floor "
+                f"{floors[table]:g} (-{floor_pct:g}% => floor {floor_limit:g}) "
+                "— silent-write regression?"
             )
         elif actual < budget:
             report.append(
@@ -147,6 +181,7 @@ def _generate_command(args: argparse.Namespace) -> int:
         scope=scope,
         ticks=int(inputs["ticks"]),
         tolerance_pct=args.tolerance_pct,
+        floor_pct=args.floor_pct,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(baseline, indent=2) + "\n")
@@ -178,8 +213,8 @@ def _check_command(args: argparse.Namespace) -> int:
         print(line)
     print()
     if not ok:
-        print("STORAGE BUDGET EXCEEDED.")
-        print("If the growth is intentional, regenerate the baseline:")
+        print("STORAGE BUDGET CHECK FAILED (ceiling exceeded or floor breached).")
+        print("If the change is intentional, regenerate the baseline:")
         print(f"  python tools/storage_budget.py generate --bundle <dir> --out {args.baseline}")
         return 1
     print("Storage budget check passed.")
@@ -198,6 +233,12 @@ def main() -> int:
     gen.add_argument("--out", type=Path, required=True, help="Baseline JSON destination")
     gen.add_argument("--scope", type=str, default=None, help="Scope label override")
     gen.add_argument("--tolerance-pct", type=float, default=10.0)
+    gen.add_argument(
+        "--floor-pct",
+        type=float,
+        default=50.0,
+        help="Allowed rows/tick undershoot on delta-critical tables (Gate C)",
+    )
     gen.set_defaults(func=_generate_command)
 
     chk = sub.add_parser("check", help="Compare a bundle against a committed baseline")

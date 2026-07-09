@@ -397,30 +397,51 @@ echo "started PID $(cat .sim-pids/e2e.pid) — log .sim-pids/e2e.log"
 '''
 
 [tasks."sim:status"]
-description = "One-shot canonical-run status: process, tick/520, DB size, liveness, dialectics signals"
+description = "One-shot status SCOPED to the most-recently-writing session: tick/520, session bytes/tick, dialectics signals — plus a whole-DB accumulation line (spec-089 5.4: no cross-session avg artifact)"
 run = '''
 if [ -f .sim-pids/e2e.pid ] && kill -0 "$(cat .sim-pids/e2e.pid)" 2>/dev/null; then
   ps -o pid,pcpu,etime -p "$(cat .sim-pids/e2e.pid)" | tail -1
 else
-  echo "(no daemonized run; DB numbers below reflect whatever last wrote)"
+  echo "(no daemonized run; the tick/size numbers below are SCOPED to the most-recently-writing session)"
 fi
+# The one session that most recently committed a tick. All per-session
+# lines key off this UUID so the readout can never divide the whole
+# multi-session DB by one session's tick count (the spec-101 P1 artifact).
+LAST=$(PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tAc \
+  "SELECT session_id FROM tick_commit ORDER BY created_at_utc DESC LIMIT 1;" 2>/dev/null)
+if [ -n "$LAST" ]; then
+  PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
+  SELECT 'session ' || left('$LAST', 8) || ': tick ' || max(tick)
+         || '/520 (' || round(100.0*max(tick)/520, 1) || '%), session '
+         || pg_size_pretty((SELECT COALESCE(sum(pg_total_relation_size(c.oid)), 0)
+              FROM pg_class c WHERE c.relname LIKE '%_p_' || replace('$LAST','-',''))::bigint)
+         || ', ' || pg_size_pretty(((SELECT COALESCE(sum(pg_total_relation_size(c.oid)), 0)
+              FROM pg_class c WHERE c.relname LIKE '%_p_' || replace('$LAST','-',''))
+              / (max(tick)+1))::bigint) || '/tick (this session)'
+  FROM tick_commit WHERE session_id = '$LAST';" 2>/dev/null || true
+  PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
+  SELECT 'live counties: ' ||
+         (SELECT count(*) FROM dynamic_consciousness_state
+          WHERE session_id = '$LAST'
+            AND tick=(SELECT max(tick) FROM dynamic_consciousness_state WHERE session_id = '$LAST')) ||
+         ', contradiction_field rows (this session): ' ||
+         (SELECT count(*) FROM contradiction_field WHERE session_id = '$LAST');" 2>/dev/null || true
+  PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
+  SELECT 'max_tension t' || tick || ': ' || round(max(tension)::numeric, 4)
+  FROM dynamic_relationship_state
+  WHERE session_id = '$LAST'
+    AND tick IN (SELECT DISTINCT tick FROM dynamic_relationship_state
+                 WHERE session_id = '$LAST' ORDER BY tick DESC LIMIT 3)
+  GROUP BY tick ORDER BY tick;" 2>/dev/null || true
+else
+  echo "(no committed sessions in babylon_test)"
+fi
+# Loudness: surface accumulation instead of laundering it into an average.
 PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-SELECT 'tick ' || GREATEST((SELECT max(tick) FROM tick_commit), (SELECT max(tick) FROM dynamic_hex_state))
-       || '/520 (' || round(100.0*GREATEST((SELECT max(tick) FROM tick_commit), (SELECT max(tick) FROM dynamic_hex_state))/520, 1) || '%), db ' ||
-       pg_size_pretty(pg_database_size('babylon_test'));" 2>/dev/null || true
-PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-SELECT 'live counties: ' ||
-       (SELECT count(*) FROM dynamic_consciousness_state
-        WHERE tick=(SELECT max(tick) FROM dynamic_consciousness_state)) ||
-       ', contradiction_field rows: ' || (SELECT count(*) FROM contradiction_field);" 2>/dev/null || true
-PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-SELECT 'max_tension t' || tick || ': ' || round(max(tension)::numeric, 4)
-FROM dynamic_relationship_state
-WHERE tick IN (SELECT DISTINCT tick FROM dynamic_relationship_state ORDER BY tick DESC LIMIT 3)
-GROUP BY tick ORDER BY tick;" 2>/dev/null || true
-PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-SELECT 'avg ' || pg_size_pretty((pg_database_size('babylon_test') /
-       NULLIF(GREATEST((SELECT max(tick) FROM tick_commit), (SELECT max(tick) FROM dynamic_hex_state))+1, 0))::bigint) || '/tick';" 2>/dev/null || true
+SELECT 'sessions holding rows: ' || count(DISTINCT session_id)
+       || ' — db (ALL sessions) ' || pg_size_pretty(pg_database_size('babylon_test'))
+       || ' (run: mise run sim:archive -- list)'
+FROM tick_commit;" 2>/dev/null || true
 PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
 SELECT '  ' || relname || ': ' || pg_size_pretty(pg_total_relation_size(relid)) || ', ' || n_live_tup || ' rows'
 FROM pg_stat_user_tables

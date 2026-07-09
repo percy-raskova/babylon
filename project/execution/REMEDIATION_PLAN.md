@@ -145,7 +145,7 @@ All in `src/babylon/models/world_state.py` + writers:
 | 5.1 `feat/gamma-atus-adapter` | M | Adapter over `fact_atus_reproductive_labor` (data already loaded, zero readers) → gamma_III leaves hardcoded 0.33 for covered years; C.8 manifest proves fallbacks→~0; regen + proof.md |
 | 5.2 `feat/vol2-vol3-service-wiring` | L | Wire remaining ~13 TickDynamics service slots (credit/circulation/distribution/interest/transitions) via runner ServiceContainer; defines-gated; proof window per activation batch |
 | 5.3 `feat/tensor-hierarchy-resolution` | M/L | Default wire-live per ruling; if profiling proves county_exposure supersedes it, present evidence to Percy BEFORE any retirement |
-| 5.4 `fix/storage-contradiction` | M | Adjudicate spec-089 delta persistence vs observed 1,295 MB/tick full-hex writes; `qa:storage-budget` is the acceptance |
+| 5.4 `fix/storage-contradiction` | M | Adjudicate spec-089 delta persistence vs observed 1,295 MB/tick full-hex writes; `qa:storage-budget` is the acceptance — **DONE 2026-07-08 (`fix/storage-contradiction-r2`): NOT a delta regression (metric artifact + per-SESSION partition accumulation, verdict in HOLISTIC_REVIEW §871 ADJUDICATED note); fixed the real spec-101 tick-0 commit-marker collision (`write_commit_marker=False`) + loud Gate A/B in runner + two-sided storage-budget floor; `qa:storage-budget` GREEN** |
 
 ### Phase 6 — Spec tails → national capstone (perf LAST)
 | Branch | Size | Contents |
@@ -177,7 +177,8 @@ README; fix babylon/CLAUDE.md counts (formulas 64/19, registry 21, models re-exp
 - Phase 2 exit: C.1 + C.2(a) green; `mise run test:doctest` collects; determinism A/B twice-identical;
   2.R proof.md committed with regenerated baseline.
 - Phase 5 exit: C.8 manifest shows gamma fallback count ~0 for covered years; each wiring batch has
-  proof.md; storage adjudication documented with qa:storage-budget green.
+  proof.md; storage adjudication documented with qa:storage-budget green. (storage clause MET
+  2026-07-08 — 5.4 landed `qa:storage-budget` GREEN + the HOLISTIC_REVIEW §871 adjudication note.)
 - Phase 6 exit: 104 gate passes on NATIONAL measurements; 105 canonical run completes ≥20 ticks with
   liveness gates; national baseline bundle committed.
 

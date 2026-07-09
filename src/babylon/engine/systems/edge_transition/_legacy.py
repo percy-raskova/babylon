@@ -598,7 +598,7 @@ class EdgeTransitionSystem(SystemBase):
             tick = int(tick_val) if tick_val is not None else 0
 
         # Access persistent_data for latent contradictions
-        persistent_data = _get_persistent_data(context)
+        persistent_data = self._get_persistent_data(context)
         latent: dict[str, dict[str, float]] = persistent_data.setdefault(
             "latent_contradictions", {}
         )
@@ -857,21 +857,3 @@ def _check_aspect_reversal(
                 },
             )
         )
-
-
-def _get_persistent_data(context: ContextType) -> dict[str, Any]:
-    """Extract persistent_data from context (TickContext or dict).
-
-    Args:
-        context: TickContext or dict with persistent_data key.
-
-    Returns:
-        Mutable persistent_data dict.
-    """
-    if hasattr(context, "persistent_data"):
-        result: dict[str, Any] = context.persistent_data
-        return result
-    if isinstance(context, dict):
-        data: dict[str, Any] = context.setdefault("persistent_data", {})
-        return data
-    return {}

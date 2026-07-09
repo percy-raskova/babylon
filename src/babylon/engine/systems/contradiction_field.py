@@ -19,7 +19,7 @@ Reference: R-006 (system ordering — position 19)
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
@@ -89,7 +89,7 @@ class ContradictionFieldSystem(SystemBase):
             return
 
         # Access persistent_data for history and previous values
-        persistent_data = _get_persistent_data(context)
+        persistent_data = self._get_persistent_data(context)
         history: dict[str, dict[str, list[float]]] = persistent_data.setdefault(
             "contradiction_history", {}
         )
@@ -168,7 +168,7 @@ class ContradictionFieldSystem(SystemBase):
             services: ServiceContainer (for field bounds).
             context: TickContext or dict with persistent_data.
         """
-        persistent_data = _get_persistent_data(context)
+        persistent_data = self._get_persistent_data(context)
         history: dict[str, dict[str, list[float]]] = persistent_data.setdefault(
             "contradiction_history", {}
         )
@@ -253,21 +253,3 @@ class ContradictionFieldSystem(SystemBase):
         atomization = states.get("atomization", {})
         raw = atomization.get("gap", 0.0)
         return float(raw) if isinstance(raw, (int, float)) else 0.0
-
-
-def _get_persistent_data(context: ContextType) -> dict[str, Any]:
-    """Extract persistent_data from context (TickContext or dict).
-
-    Args:
-        context: TickContext or dict with persistent_data key.
-
-    Returns:
-        Mutable persistent_data dict.
-    """
-    if hasattr(context, "persistent_data"):
-        result: dict[str, Any] = context.persistent_data
-        return result
-    if isinstance(context, dict):
-        data: dict[str, Any] = context.setdefault("persistent_data", {})
-        return data
-    return {}

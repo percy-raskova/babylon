@@ -71,7 +71,7 @@ class FieldDerivativeSystem(SystemBase):
         if not field_names:
             return
 
-        persistent_data = _get_persistent_data(context)
+        persistent_data = self._get_persistent_data(context)
         history: dict[str, dict[str, list[float]]] = persistent_data.get(
             "contradiction_history", {}
         )
@@ -374,21 +374,3 @@ def _identify_principal_contradiction(
 
     # Store for next tick comparison
     persistent_data["_previous_principal_field"] = principal_field
-
-
-def _get_persistent_data(context: ContextType) -> dict[str, Any]:
-    """Extract persistent_data from context (TickContext or dict).
-
-    Args:
-        context: TickContext or dict with persistent_data key.
-
-    Returns:
-        Mutable persistent_data dict.
-    """
-    if hasattr(context, "persistent_data"):
-        result: dict[str, Any] = context.persistent_data
-        return result
-    if isinstance(context, dict):
-        data: dict[str, Any] = context.setdefault("persistent_data", {})
-        return data
-    return {}

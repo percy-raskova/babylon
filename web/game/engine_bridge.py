@@ -27,7 +27,7 @@ from babylon.models.enums import ActionType
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
-from babylon.persistence.protocols import RuntimePersistence
+from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
 
 if TYPE_CHECKING:
     from game.narrator import NarratorProvider
@@ -833,6 +833,9 @@ class EngineBridge:
             initial_state.tick,
             [_serialize_territory(t) for t in initial_state.territories.values()],
         )
+        # Spec-109 A1: seed the tick-0 snapshot tables + summary row so
+        # timeseries/history surfaces have a baseline point from creation.
+        _persist_snapshots_safe(self._persistence, session_id, initial_state)
 
         logger.info("Created game session=%s scenario=%s seed=%d", session_id, scenario, rng_seed)
         return session_id
@@ -885,6 +888,8 @@ class EngineBridge:
                     seeded_state.tick,
                     [_serialize_territory(t) for t in seeded_state.territories.values()],
                 )
+                # Spec-109 A1: same backfill for the snapshot/summary tables.
+                _persist_snapshots_safe(self._persistence, session_id, seeded_state)
                 graph = self._persistence.hydrate_graph(tick=tick, session_id=session_id)
 
         # Determine the tick from the graph metadata
@@ -2084,6 +2089,9 @@ class EngineBridge:
         # P0 #7: refresh the hex_latest map cache from this tick's territories
         # (sibling of the tick_event write above; best-effort, never raises).
         _persist_hex_state_safe(session_id, new_state.tick, snapshot["territories"])
+        # Spec-109 A1: fill the spec-037 snapshot tables + the tick_summary
+        # aggregates that back get_game_timeseries (spec-061 FR-003 wire-up).
+        _persist_snapshots_safe(self._persistence, session_id, new_state)
         # Spec 095 FR-095-02: recognize ALL 5 terminal GameOutcome event types
         # (was 3-of-5 — RED_OGV and FRAGMENTED_COLLAPSE were missing, so those
         # endgames never surfaced in the snapshot's ``endgame`` block). The
@@ -3304,6 +3312,210 @@ def _tick_event_row(serialized_event: dict[str, Any]) -> dict[str, Any]:
         "summary": summary,
         "detail": data,
     }
+
+
+def _territory_snapshot_rows(territories: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project :func:`_serialize_territory` dicts onto ``territory_snapshot`` keys.
+
+    ``territory_snapshot`` is county-keyed (PK includes ``county_fips``), so
+    territories without county identity — every hex-resolution scenario today —
+    are skipped rather than written under a fabricated key (Constitution
+    III.11: no invented values). ``population`` maps onto the schema's
+    ``pop_total``; ValueTensor/indicator columns stay NULL until the
+    serializer carries them (spec-109 A2).
+
+    Args:
+        territories: One dict per territory, from ``_serialize_territory``.
+
+    Returns:
+        Payload dicts accepted by ``PostgresRuntime.persist_territory_snapshots``.
+    """
+    rows: list[dict[str, Any]] = []
+    for t in territories:
+        fips = t.get("county_fips")
+        if not fips:
+            continue
+        rows.append({**t, "county_fips": str(fips), "pop_total": int(t.get("population") or 0)})
+    return rows
+
+
+def _org_snapshot_rows(organizations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project :func:`_serialize_organization` dicts onto ``org_snapshot`` keys.
+
+    Field mapping (serializer -> schema): ``id -> org_id``, ``cohesion ->
+    coherence``, ``budget -> material_resources`` (the org's money), the
+    vanguard block's ``cadre_labor``/``sympathizer_labor``/``reputation``
+    pass through, and ``player_controlled`` becomes ``owner_type``
+    (``player``/``npc``). Absent engine fields stay NULL.
+
+    Args:
+        organizations: One dict per org, from ``_serialize_organization``.
+
+    Returns:
+        Payload dicts accepted by ``PostgresRuntime.persist_org_snapshots``.
+    """
+    rows: list[dict[str, Any]] = []
+    for o in organizations:
+        org_id = o.get("id")
+        org_type = o.get("org_type")
+        if not org_id or not org_type:
+            continue
+        vanguard = o.get("vanguard") or {}
+        rows.append(
+            {
+                "org_id": str(org_id),
+                "org_type": str(org_type),
+                "cadre_labor": vanguard.get("cadre_labor"),
+                "sympathizer_labor": vanguard.get("sympathizer_labor"),
+                "material_resources": o.get("budget"),
+                "coherence": o.get("cohesion"),
+                "reputation": vanguard.get("reputation"),
+                "owner_type": "player" if o.get("player_controlled") else "npc",
+                "attributes": {
+                    "heat": o.get("heat"),
+                    "cadre_level": o.get("cadre_level"),
+                    "class_character": o.get("class_character"),
+                },
+            }
+        )
+    return rows
+
+
+def _edge_snapshot_rows(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project :func:`_serialize_edge` dicts onto ``edge_snapshot`` keys.
+
+    ``mode`` maps onto the schema's ``edge_type``; the serializer's
+    ``repression_flow`` carries the model's ``solidarity_strength`` (see
+    ``_serialize_edge``'s docstring) and maps onto ``solidarity``.
+
+    Args:
+        edges: One dict per relationship, from ``_serialize_edge``.
+
+    Returns:
+        Payload dicts accepted by ``PostgresRuntime.persist_edge_snapshots``.
+    """
+    rows: list[dict[str, Any]] = []
+    for e in edges:
+        if not (e.get("source_id") and e.get("target_id") and e.get("mode")):
+            continue
+        rows.append(
+            {
+                "source_id": str(e["source_id"]),
+                "target_id": str(e["target_id"]),
+                "edge_type": str(e["mode"]),
+                "value_flow": e.get("value_flow"),
+                "tension": e.get("tension"),
+                "solidarity": e.get("repression_flow"),
+            }
+        )
+    return rows
+
+
+def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate one tick's ``tick_summary`` row from live state.
+
+    Only values the engine actually computes are aggregated; everything else
+    stays ``None`` — NULL columns over invented zeros (Constitution III.11).
+    Sources: ``imperial_rent`` from :class:`GlobalEconomy`'s
+    ``imperial_rent_pool``; ``avg_consciousness`` over
+    ``SocialClass.class_consciousness``; edge counts by ``edge_type``
+    (``co_optive`` has no edge type in the model — NULL); event counts by
+    exact ``EventType`` value; the player flag from the serializer's
+    ``player_controlled`` (the engine model carries no such field).
+
+    Args:
+        state: The freshly stepped (or seeded) WorldState.
+        organizations: ``_serialize_organization`` output for ``state``.
+
+    Returns:
+        Kwargs dict for ``PostgresRuntime.persist_tick_summary``.
+    """
+    consciousness_values = [
+        float(sc.ideology.class_consciousness) for sc in state.entities.values()
+    ]
+    avg_consciousness = (
+        sum(consciousness_values) / len(consciousness_values) if consciousness_values else None
+    )
+
+    edge_types = [_enum_val(rel.edge_type) for rel in state.relationships]
+    event_types = [_enum_val(e.event_type) for e in state.events]
+
+    return {
+        "year": None,
+        "total_c": None,
+        "total_v": None,
+        "total_s": None,
+        "exploitation_rate": None,
+        "profit_rate": None,
+        "imperial_rent": float(state.economy.imperial_rent_pool) if state.economy else None,
+        "avg_consciousness": avg_consciousness,
+        "solidarity_edge_count": sum(1 for t in edge_types if t == "solidarity"),
+        "antagonistic_edge_count": sum(1 for t in edge_types if t == "exploitation"),
+        "co_optive_edge_count": None,
+        "org_count": len(organizations),
+        "player_org_count": sum(1 for o in organizations if o.get("player_controlled")),
+        "uprising_count": sum(1 for t in event_types if t == "uprising"),
+        "repression_count": sum(1 for t in event_types if t == "state_repression"),
+        "conservation_check": None,
+    }
+
+
+def _persist_snapshots_safe(
+    persistence: RuntimePersistence, session_id: UUID, state: WorldState
+) -> None:
+    """Persist the spec-037 read-model snapshot tables for one tick (spec-109 A1).
+
+    The spec-061 FR-003 wire-up that never happened: fills
+    ``territory_snapshot``/``org_snapshot``/``edge_snapshot`` via
+    :meth:`PostgresRuntime.persist_full_tick` and the ``tick_summary``
+    aggregates behind :meth:`EngineBridge.get_game_timeseries` via
+    :meth:`PostgresRuntime.persist_tick_summary`.
+
+    Best-effort like its ``_persist_*_safe`` siblings: a read-model write
+    failure is logged loudly but never fails tick resolution. SQLite-backed
+    ``RuntimeDatabase`` lacks both writers and no-ops here.
+    :exc:`TickAlreadyResolved` is the benign idempotent-retry case — the
+    snapshots for this ``(session, tick)`` already committed.
+
+    Args:
+        persistence: The RuntimePersistence instance.
+        session_id: The game session UUID.
+        state: The freshly stepped (or tick-0 seeded) WorldState.
+    """
+    full_tick_fn = getattr(persistence, "persist_full_tick", None)
+    summary_fn = getattr(persistence, "persist_tick_summary", None)
+    if not callable(full_tick_fn) or not callable(summary_fn):
+        return
+
+    territories = [_serialize_territory(t) for t in state.territories.values()]
+    organizations = [_serialize_organization(o) for o in state.organizations.values()]
+    edges = [_serialize_edge(rel) for rel in state.relationships]
+
+    try:
+        full_tick_fn(
+            session_id,
+            state.tick,
+            territories=_territory_snapshot_rows(territories),
+            orgs=_org_snapshot_rows(organizations),
+            edges=_edge_snapshot_rows(edges),
+        )
+    except TickAlreadyResolved:
+        logger.info(
+            "persist_full_tick: tick %d already resolved for session=%s — retry no-op",
+            state.tick,
+            session_id,
+        )
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.exception(
+            "Failed to persist snapshot tables session=%s tick=%d", session_id, state.tick
+        )
+
+    try:
+        summary_fn(state.tick, _build_tick_summary(state, organizations), session_id=session_id)
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.exception(
+            "Failed to persist tick_summary session=%s tick=%d", session_id, state.tick
+        )
 
 
 def _persist_tick_events_safe(

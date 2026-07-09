@@ -245,9 +245,10 @@ class TestDecisionModeEnum:
 class TestActionTypeEnum:
     """ActionType enum completeness."""
 
-    def test_has_25_values(self) -> None:
-        # 21 base (Feature 032) + 4 fascist verbs (spec-071).
-        assert len(ActionType) == 25
+    def test_has_26_values(self) -> None:
+        # 21 base (Feature 032) + MOVE (verb-dispatch engine) + 4 fascist
+        # verbs (spec-071).
+        assert len(ActionType) == 26
 
     def test_all_categories_present(self) -> None:
         values = {at.value for at in ActionType}

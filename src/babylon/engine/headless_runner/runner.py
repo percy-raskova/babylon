@@ -1357,13 +1357,16 @@ def _tick_loop(
     bridge.persist_tick(world, 0, determinism_hash_t0)
     # Spec-089 loud gate (Gate B): the committed tick-0 marker must carry
     # the identity hash + the full checkpoint frame count — refuse to tick
-    # forward on a shadowed/placeholder marker or an empty frame.
-    _verify_tick0_commit_marker(
-        runtime=runtime,
-        session_id=session_id,
-        expected_hash=determinism_hash_t0,
-        expected_hex_rows=bridge.hex_template_size,
-    )
+    # forward on a shadowed/placeholder marker or an empty frame. The gate is
+    # a Postgres read-back, so it is skipped when there is no runtime (the
+    # pure tick-loop unit tests drive the loop with runtime=None).
+    if runtime is not None:
+        _verify_tick0_commit_marker(
+            runtime=runtime,
+            session_id=session_id,
+            expected_hash=determinism_hash_t0,
+            expected_hex_rows=bridge.hex_template_size,
+        )
 
     # Spec-102 SLICE B: shock timeline + persistent per-bloc multiplier
     # state, threaded across tick-loop iterations (never reset per tick).

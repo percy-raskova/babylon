@@ -122,8 +122,21 @@ class ExternalDataDefines(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    arcgis: ArcGISDefines = Field(default_factory=ArcGISDefines)
-    services: ServicesDefines = Field(default_factory=ServicesDefines)
+    arcgis: ArcGISDefines = Field(
+        default_factory=ArcGISDefines,
+        description=(
+            "ArcGIS organization IDs and host domains (FEMA RAPT, Esri US "
+            "Federal, legacy HIFLD) used to build external FeatureServer URLs."
+        ),
+    )
+    services: ServicesDefines = Field(
+        default_factory=ServicesDefines,
+        description=(
+            "ArcGIS FeatureServer service names and layer numbers for the "
+            "HIFLD/infrastructure data sources (prison boundaries, law "
+            "enforcement, MIRTA, electric transmission)."
+        ),
+    )
 
     def build_service_url(
         self,

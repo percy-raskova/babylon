@@ -46,9 +46,28 @@ class CoefficientLookupPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    series_id: str = Field(min_length=1, max_length=64)
-    policy: LookupPolicy
-    canonical_reference: str = Field(min_length=1)
+    series_id: str = Field(
+        min_length=1,
+        max_length=64,
+        description=(
+            "Stable identifier for a reference coefficient series (e.g. "
+            "'bea_io_imports'); used as the registry key for policy lookup."
+        ),
+    )
+    policy: LookupPolicy = Field(
+        description=(
+            "Interpolation policy applied when reading this series across the "
+            "weeks of a simulated year (SLOWLY_VARYING linear interp vs "
+            "EVENT_DISCRETE step)."
+        ),
+    )
+    canonical_reference: str = Field(
+        min_length=1,
+        description=(
+            "Human-readable provenance string identifying the data source for "
+            "this series (e.g. 'BEA Imports Matrix 2010-2024')."
+        ),
+    )
 
 
 __all__ = ["LookupPolicy", "CoefficientLookupPolicy"]

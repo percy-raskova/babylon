@@ -493,7 +493,18 @@ class LeontiefRentDefines(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    qcew_carry_forward_max_years: Annotated[int, Field(ge=0, le=20)] = 5
+    qcew_carry_forward_max_years: Annotated[
+        int,
+        Field(
+            ge=0,
+            le=20,
+            description=(
+                "Maximum look-back window in years for the QCEW carry-forward "
+                "fallback in the industry-to-county allocator; 0 disables "
+                "carry-forward (strict no-data semantics)."
+            ),
+        ),
+    ] = 5
     """Maximum look-back window (in years) for QCEW carry-forward fallback in
     :class:`babylon.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator.IndustryToCountyAllocator`
     (per Spec 057 / FR-004 + Clarifications 2026-05-08). ``0`` disables

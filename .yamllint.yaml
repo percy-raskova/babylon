@@ -63,3 +63,6 @@ ignore: |
   docs/character_sheets/
   ai-docs/
   deploy/terraform/cloud-init.yaml
+  # Generated from the GameDefines schema (tools/generate_defines_config.py);
+  # inline per-field documentation comments legitimately exceed line-length.
+  src/babylon/data/defines.yaml

@@ -550,24 +550,63 @@ class MobilizeDefines(BaseModel):
 class MoveDefines(BaseModel):
     """MOVE verb coefficients."""
 
-    expand_presence_split: float = Field(default=0.30)
-    minimum_reception: float = Field(default=0.05)
-    relocation_withdrawal_ticks: int = Field(default=3)
-    expansion_edge_strain: float = Field(default=0.1)
-    evasion_base_probability: float = Field(default=0.40)
-    reacquire_ticks: int = Field(default=2)
-    distance_ap_surcharge: int = Field(default=1)
+    expand_presence_split: float = Field(
+        default=0.30,
+        description="Fraction of the org's presence allocated to the new territory when MOVE runs in 'expand' mode (spec-049).",
+    )
+    minimum_reception: float = Field(
+        default=0.05,
+        description="Floor on the community-reception score used to modulate presence establishment in a destination territory (spec-049).",
+    )
+    relocation_withdrawal_ticks: int = Field(
+        default=3,
+        description="Number of ticks over which origin-territory presence phases down to zero during a 'relocate' MOVE (spec-049).",
+    )
+    expansion_edge_strain: float = Field(
+        default=0.1,
+        description="Maintenance strain added to origin-territory edges when MOVE expands into an additional territory (spec-049).",
+    )
+    evasion_base_probability: float = Field(
+        default=0.40,
+        description="Base surveillance-evasion probability before heat scaling (evasion = base * (1 - heat), spec-049).",
+    )
+    reacquire_ticks: int = Field(
+        default=2,
+        description="Ticks of operational freedom before state attention threads reacquire the org after a successful MOVE evasion (spec-049).",
+    )
+    distance_ap_surcharge: int = Field(
+        default=1,
+        description="Action-point surcharge per hex hop beyond an adjacent territory when moving (spec-049).",
+    )
 
 
 class NegotiateDefines(BaseModel):
     """NEGOTIATE verb coefficients."""
 
-    interest_weight: float = Field(default=0.6)
-    leverage_weight: float = Field(default=0.4)
-    institutional_leverage_weight: float = Field(default=0.8)
-    negotiate_solidarity_increment: float = Field(default=0.05)
-    betrayal_base_rate: float = Field(default=0.05)
-    leverage_threshold_for_institutions: float = Field(default=0.50)
+    interest_weight: float = Field(
+        default=0.6,
+        description="Weight on interest alignment in the NEGOTIATE success-probability blend (spec-050).",
+    )
+    leverage_weight: float = Field(
+        default=0.4,
+        description="Weight on org leverage in the NEGOTIATE success-probability blend for non-institutional targets (spec-050).",
+    )
+    institutional_leverage_weight: float = Field(
+        default=0.8,
+        description="Leverage weight substituted for institutional targets, which respond to power over shared values (spec-050).",
+    )
+    negotiate_solidarity_increment: float = Field(
+        default=0.05,
+        description="Amount solidarity accumulation increments when a successful NEGOTIATE strengthens an existing TRANSACTIONAL edge (spec-050).",
+    )
+    betrayal_base_rate: float = Field(
+        default=0.05,
+        description="Base rate at which a formed alliance degrades or is betrayed (spec-050 betrayal-risk baseline).",
+    )
+    leverage_threshold_for_institutions: float = Field(
+        default=0.50,
+        description="Minimum org leverage below which the institutional-target leverage check warns (non-blocking, spec-050 / Constitution I.11).",
+    )
 
 
 __all__ = [

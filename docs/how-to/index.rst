@@ -16,6 +16,7 @@ Extending the Simulation
    :maxdepth: 1
 
    add-custom-system
+   modding-defines
    parameter-tuning
 
 Guides for extending and customizing the simulation mechanics.
@@ -23,6 +24,11 @@ Guides for extending and customizing the simulation mechanics.
 **Add a Custom System**
    Create, register, and test custom simulation systems to model new
    mechanics like propaganda, sanctions, or environmental effects.
+
+**Mod Game Parameters (defines.yaml)**
+   Change the game's balance code-free by editing the canonical, documented,
+   player-editable ``defines.yaml``. Explains the file, the load path, and how
+   to revert or regenerate it.
 
 **Tune Simulation Parameters**
    Load, modify, and analyze ``GameDefines`` parameters. Includes parameter

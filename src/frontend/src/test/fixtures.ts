@@ -20,6 +20,10 @@ import type {
   ConsciousnessVector,
   OodaProfile,
   FactionalComposition,
+  GameSummaryPayload,
+  TimeseriesPayload,
+  CommunityEntry,
+  CommunitiesDashboardPayload,
 } from "@/types/game";
 
 export function makeTerritory(overrides?: Partial<TerritoryState>): TerritoryState {
@@ -334,4 +338,63 @@ export function makeWayneCountySnapshot(overrides?: Partial<GameSnapshot>): Game
     },
     ...overrides,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Spec 110 B3 — cockpit dashboard payload factories (spec-109 A4 endpoints)
+// ---------------------------------------------------------------------------
+
+/** GET /api/games/{id}/summary/ payload — see `EngineBridge.get_game_summary`. */
+export function makeGameSummaryPayload(
+  overrides?: Partial<GameSummaryPayload>,
+): GameSummaryPayload {
+  return {
+    tick: 1,
+    imperial_rent: 12.5,
+    avg_consciousness: 0.4,
+    population_total: 42000,
+    exploitation_rate: 0.3,
+    profit_rate: 0.18,
+    org_count: 1,
+    class_count: 4,
+    event_counts: { critical: 0, warning: 0, informational: 0 },
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/timeseries/ payload — see `EngineBridge.get_game_timeseries`. */
+export function makeTimeseriesPayload(overrides?: Partial<TimeseriesPayload>): TimeseriesPayload {
+  return {
+    ticks: [0, 1],
+    imperial_rent: [10, 12.5],
+    consciousness: [0.3, 0.4],
+    solidarity: [1, 1],
+    heat: [0.2, 0.25],
+    wealth: [100, 105],
+    biocapacity: [0.5, 0.5],
+    ...overrides,
+  };
+}
+
+/** One entry of GET /api/games/{id}/communities/'s `communities` array. */
+export function makeCommunityEntry(overrides?: Partial<CommunityEntry>): CommunityEntry {
+  return {
+    id: "comm-1",
+    member_ids: ["org-workers-union"],
+    member_count: 5,
+    dominant_role: "proletariat",
+    avg_consciousness: 0.4,
+    total_solidarity_strength: 2,
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/communities/ payload. */
+export function makeCommunitiesDashboardPayload(
+  overrides?: Partial<CommunitiesDashboardPayload>,
+): CommunitiesDashboardPayload {
+  return {
+    communities: [makeCommunityEntry()],
+    ...overrides,
+  };
 }

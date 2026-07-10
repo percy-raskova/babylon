@@ -28,12 +28,15 @@ export interface MapSlice {
     framing: AdminLevel;
     viewportBbox: [number, number, number, number] | null;
     selection: Selection | null;
+    /** Selected faction id for the "faction" lens (Outliner + MapModeSelector). */
+    factionFilter: string | null;
 
     setLens: (lens: Lens) => void;
     setFraming: (level: AdminLevel) => void;
     setViewportBbox: (bbox: [number, number, number, number] | null) => void;
     /** Set (or clear, with `null`) the active selection; fans out an inspector fetch. */
     setSelection: (selection: Selection | null) => void;
+    setFactionFilter: (factionId: string | null) => void;
   };
 }
 
@@ -43,10 +46,12 @@ export const createMapSlice: StateCreator<RootState, [], [], MapSlice> = (set, g
     framing: "county",
     viewportBbox: null,
     selection: null,
+    factionFilter: null,
 
     setLens: (lens) => set((s) => ({ map: { ...s.map, lens } })),
     setFraming: (level) => set((s) => ({ map: { ...s.map, framing: level } })),
     setViewportBbox: (bbox) => set((s) => ({ map: { ...s.map, viewportBbox: bbox } })),
+    setFactionFilter: (factionId) => set((s) => ({ map: { ...s.map, factionFilter: factionId } })),
 
     setSelection: (selection) => {
       set((s) => ({ map: { ...s.map, selection } }));

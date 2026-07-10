@@ -192,6 +192,21 @@ export const handlers = [
     });
   }),
 
+  // ---- Action Composer: verb targets + submit --------------------------
+
+  http.get("/api/games/:id/actions/:verb/targets/", ({ params }) => {
+    logRequest(`GET targets:${String(params.verb)}`);
+    // Flat body, no envelope — matches the real per-verb target endpoints'
+    // quirk (see fetchVerbTargets's docstring). Empty by default; tests
+    // that need real targets override with server.use().
+    return HttpResponse.json({ targets: [] });
+  }),
+
+  http.post("/api/games/:id/actions/:verb/", ({ params }) => {
+    logRequest(`POST actions:${String(params.verb)}`);
+    return HttpResponse.json({ status: "ok", data: null });
+  }),
+
   // ---- Inspector drill-downs — GET /api/games/{id}/{kind}/{entityId}/ --
 
   http.get("/api/games/:id/:kind/:entityId/", ({ params }) => {

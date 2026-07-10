@@ -16,12 +16,13 @@ beforeEach(() => {
 });
 
 describe("map slice — view controls", () => {
-  it("defaults to the stance lens, county framing, no selection", () => {
+  it("defaults to the stance lens, county framing, no selection, no faction filter", () => {
     const { map } = useStore.getState();
     expect(map.lens).toEqual({ kind: "stance" });
     expect(map.framing).toBe("county");
     expect(map.viewportBbox).toBeNull();
     expect(map.selection).toBeNull();
+    expect(map.factionFilter).toBeNull();
   });
 
   it("setLens/setFraming/setViewportBbox update independently", () => {
@@ -33,6 +34,13 @@ describe("map slice — view controls", () => {
     expect(map.lens).toEqual({ kind: "heat" });
     expect(map.framing).toBe("hex");
     expect(map.viewportBbox).toEqual([-84, 42, -83, 43]);
+  });
+
+  it("setFactionFilter sets and clears the faction filter", () => {
+    useStore.getState().map.setFactionFilter("FAC_DECOLONIAL");
+    expect(useStore.getState().map.factionFilter).toBe("FAC_DECOLONIAL");
+    useStore.getState().map.setFactionFilter(null);
+    expect(useStore.getState().map.factionFilter).toBeNull();
   });
 });
 

@@ -28,11 +28,24 @@ export interface WorldSlice {
   };
 }
 
-async function onTickAdvanced(get: () => RootState, gameId: string, snap: GameSnapshot) {
+async function onTickAdvanced(
+  get: () => RootState,
+  gameId: string,
+  snap: GameSnapshot,
+  isGenuineAdvance: boolean,
+) {
   const panels = get().panels;
   await Promise.all(
     PANEL_KEYS.filter((key) => panels[key].mounted).map((key) => panels[key].fetch(gameId)),
   );
+
+  // A resolve consumes every action queued against the prior tick — the
+  // Action Composer's pending list no longer describes reality once the
+  // tick it was submitted against is gone. Only a genuine tick change (not
+  // the initial null -> first-snapshot load) means a resolve happened.
+  if (isGenuineAdvance) {
+    get().actions.clearPending();
+  }
 
   const criticalIds = classifyEvents(snap.events)
     .filter((e) => e.severity === "critical")
@@ -67,7 +80,7 @@ export const createWorldSlice: StateCreator<RootState, [], [], WorldSlice> = (se
       }));
 
       if (prevTick === null || snap.tick !== prevTick) {
-        await onTickAdvanced(get, gameId, snap);
+        await onTickAdvanced(get, gameId, snap, prevTick !== null && snap.tick !== prevTick);
       }
     },
   },

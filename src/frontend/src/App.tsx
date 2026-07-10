@@ -1,110 +1,40 @@
 /**
- * Cockpit app shell (spec-110 B1 scaffold, Cold Collapse tokens ported B2).
- *
- * Full-viewport dark layout with five named placeholder regions
- * (StatusBar / Outliner / Map / Dock / BottomStrip) plus a tiny
- * `/health` fetch indicator. Colors are now the ratified Cold Collapse
- * canon tokens (`index.css`, Constitution VIII) rather than B1's
- * placeholder grays — every color here is a named token
- * (`bg-void`/`text-bone`/`border-rebar`/…), never a raw hex literal.
- * No game logic, no map mounted, no store/routing wiring yet — those are
- * B3's (stores + shell layout + routing, orchestrator-supervised).
+ * Root application component — spec-110 B3 stage 2's 3-route cockpit:
+ * /login, /lobby, /game/:id. Unauthenticated requests are redirected to
+ * /login (checked via the session slice's real `/accounts/whoami/` call).
  */
 
-import { useEffect, useState } from "react";
-
-type HealthStatus = "checking" | "ok" | "unreachable";
-
-/** Poll the Django `/health` endpoint once on mount and report status. */
-function useHealthStatus(): HealthStatus {
-  const [status, setStatus] = useState<HealthStatus>("checking");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkHealth(): Promise<void> {
-      try {
-        const response = await fetch("/health");
-        if (!cancelled) {
-          setStatus(response.ok ? "ok" : "unreachable");
-        }
-      } catch {
-        if (!cancelled) {
-          setStatus("unreachable");
-        }
-      }
-    }
-
-    void checkHealth();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return status;
-}
-
-const HEALTH_LABELS: Record<HealthStatus, string> = {
-  checking: "checking…",
-  ok: "online",
-  unreachable: "unreachable",
-};
-
-const HEALTH_DOT_CLASSES: Record<HealthStatus, string> = {
-  checking: "bg-heat",
-  ok: "bg-solidarity",
-  unreachable: "bg-laser",
-};
-
-function HealthIndicator(): React.JSX.Element {
-  const status = useHealthStatus();
-  const label = HEALTH_LABELS[status];
-  const dotClass = HEALTH_DOT_CLASSES[status];
-
-  return (
-    <div data-testid="health-indicator" data-status={status} className="flex items-center gap-2">
-      <span className={`h-2 w-2 rounded-full ${dotClass}`} aria-hidden="true" />
-      <span className="text-xs uppercase tracking-widest text-neutral-400">{label}</span>
-    </div>
-  );
-}
+import { useEffect } from "react";
+import { Routes, Route, Navigate } from "react-router";
+import { useStore } from "@/store";
+import { LoginRoute } from "@/routes/LoginRoute";
+import { LobbyRoute } from "@/routes/LobbyRoute";
+import { GameRoute } from "@/routes/GameRoute";
 
 export default function App(): React.JSX.Element {
+  const authChecking = useStore((s) => s.session.authChecking);
+  const isAuthed = useStore((s) => s.session.auth?.is_authenticated === true);
+  const checkAuth = useStore((s) => s.session.checkAuth);
+
+  useEffect(() => {
+    void checkAuth();
+  }, [checkAuth]);
+
+  if (authChecking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-void text-fog">Loading…</div>
+    );
+  }
+
   return (
-    <div className="grid h-screen w-screen grid-cols-[240px_1fr_320px] grid-rows-[48px_1fr_140px] bg-void text-bone">
-      <header
-        data-testid="region-statusbar"
-        aria-label="StatusBar"
-        className="col-span-3 flex items-center justify-between border-b border-rebar px-4"
-      >
-        <span className="text-sm font-semibold tracking-[4px]">BABYLON COCKPIT</span>
-        <HealthIndicator />
-      </header>
-
-      <nav
-        data-testid="region-outliner"
-        aria-label="Outliner"
-        className="row-start-2 overflow-y-auto border-r border-rebar p-3"
+    <Routes>
+      <Route path="/login" element={isAuthed ? <Navigate to="/lobby" replace /> : <LoginRoute />} />
+      <Route path="/lobby" element={isAuthed ? <LobbyRoute /> : <Navigate to="/login" replace />} />
+      <Route
+        path="/game/:id"
+        element={isAuthed ? <GameRoute /> : <Navigate to="/login" replace />}
       />
-
-      <main
-        data-testid="region-map"
-        aria-label="Map"
-        className="row-start-2 flex items-center justify-center overflow-hidden"
-      />
-
-      <aside
-        data-testid="region-dock"
-        aria-label="Dock"
-        className="row-start-2 overflow-y-auto border-l border-rebar p-3"
-      />
-
-      <footer
-        data-testid="region-bottomstrip"
-        aria-label="BottomStrip"
-        className="col-span-3 row-start-3 border-t border-rebar p-3"
-      />
-    </div>
+      <Route path="*" element={<Navigate to={isAuthed ? "/lobby" : "/login"} replace />} />
+    </Routes>
   );
 }

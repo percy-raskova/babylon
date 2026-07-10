@@ -12,11 +12,19 @@ beforeEach(() => {
 });
 
 describe("ui slice", () => {
-  it("defaults to the timeseries dock tab, expanded bottom strip, no focus", () => {
+  it("defaults to the timeseries dock tab, expanded bottom strip, no focus, actions right-dock tab", () => {
     const { ui } = useStore.getState();
     expect(ui.activeDockTab).toBe("timeseries");
     expect(ui.bottomStripCollapsed).toBe(false);
     expect(ui.focusedPanelId).toBeNull();
+    expect(ui.rightDockTab).toBe("actions");
+  });
+
+  it("setRightDockTab switches between actions and inspector", () => {
+    useStore.getState().ui.setRightDockTab("inspector");
+    expect(useStore.getState().ui.rightDockTab).toBe("inspector");
+    useStore.getState().ui.setRightDockTab("actions");
+    expect(useStore.getState().ui.rightDockTab).toBe("actions");
   });
 
   it("setActiveDockTab switches tabs", () => {

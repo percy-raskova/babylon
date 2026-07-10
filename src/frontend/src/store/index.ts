@@ -13,6 +13,7 @@ import { createTimeSlice } from "./slices/timeSlice";
 import { createMapSlice } from "./slices/mapSlice";
 import { createPanelsSlice } from "./slices/panels";
 import { createUiSlice } from "./slices/uiSlice";
+import { createActionsSlice } from "./slices/actionsSlice";
 
 export const useStore = create<RootState>()((...a) => ({
   ...createSessionSlice(...a),
@@ -21,11 +22,13 @@ export const useStore = create<RootState>()((...a) => ({
   ...createMapSlice(...a),
   ...createPanelsSlice(...a),
   ...createUiSlice(...a),
+  ...createActionsSlice(...a),
 }));
 
 export type { RootState } from "./types";
 export type { Selection } from "./slices/mapSlice";
 export type { TimeStatus } from "./slices/timeSlice";
-export type { DockTab } from "./slices/uiSlice";
+export type { DockTab, RightDockTab } from "./slices/uiSlice";
 export type { PanelKey, InspectorKind } from "./slices/panels";
 export type { Panel, PanelState } from "./slices/panels/panelFactory";
+export type { PendingActionEntry } from "./slices/actionsSlice";

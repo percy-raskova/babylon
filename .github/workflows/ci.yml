@@ -10,6 +10,9 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  # Manual re-runs (repo Actions had been disabled since 2026-05; re-enabled
+  # at the spec-112 cutover — dispatch lets any HEAD be exercised on demand).
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

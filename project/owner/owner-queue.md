@@ -421,3 +421,13 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
 - **Item 41 (NEW — dependency debt): pip-audit finds 73 known vulnerabilities in 15 packages**
   (two months of CVEs accumulated while CI was off; 1 already ignored by the job). Needs a
   dedicated upgrade session — bumping blind would churn poetry.lock across the engine.
+- **CI run #4 final ledger (2026-07-10 evening, `8dafdadb`, four runs total):** GREEN —
+  Frontend, AI Tests, Style, ruff AND mypy in the main job (the isort split + fresh venvs
+  worked). REMAINING RED, all item-40/41 territory, no further fix-forward: (a) main job's
+  pytest leg (needs the reference DB); (b) Postgres Integration — Django schema now migrates
+  in-job, but the direct-host suites also expect the ENGINE runtime tables
+  (`node_state`/`edge_state` — PostgresRuntime `init_schema`, which local 5433 accumulated
+  from months of engine runs; fold into item 40: CI environment parity needs engine schema
+  init + the reference-DB strategy together); (c) playwright-e2e steady at 21/23 (the two
+  resolve-500s = reference DB); (d) Security Audit = item 41. CI is now a working, honest
+  signal again — what it says red IS red for a fresh environment.

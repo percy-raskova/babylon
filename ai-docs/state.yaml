@@ -2,9 +2,25 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.20.0"
-  updated: "2026-07-09"
+  version: "2.21.0"
+  updated: "2026-07-10"
   truth_status: |
+    (2026-07-10 EARLY AM, wave 4) PHASE B COMPLETE — THE PARITY GATE IS GREEN,
+    LIVE: 23/23 cockpit e2e specs pass in a real browser against the real
+    EngineBridge, twice consecutively (f7fff8ab). B6 found the one blocker
+    (CSRF/CORS origins lacked 5174 — every cockpit POST 403'd; fixed d5f270b2
+    + BABYLON_EXTRA_DEV_ORIGINS) and two real UI defects (pause unreachable
+    mid-resolve; events honest-empty missing its testid), both fixed. B5
+    takeovers (Wire/Chronicle/Dialectic + Objectives dock) merged a7b7a9b2.
+    Phase C substantially complete: C1 narrator (flag-gated, parity-tested OFF,
+    async, model-pinned, loud degradation) a0054dc5; C2 dashboards + history
+    endpoints (get_infrastructure had NEVER existed) f9ac774c; C4 observatory
+    ported 30c5faf1. Item 33 closed 2491b9ba. New item 34: StubEngineBridge
+    signature drift + silent stub fallback when RUN_MAIN unset (make it loud).
+    REMAINING (all owner-gated): C3 design session, C5 polish (after C3),
+    Phase D cutover (delete web/frontend — parity evidence exists, needs
+    Percy's go), push to origin (dev is 30+ ahead), owner items 26/28/29/
+    31-rename/32. The autonomous ultracode backlog is exhausted.
     (2026-07-09 NIGHT, wave 3) THE COCKPIT EXISTS + item 30 CLOSED + program 13
     COMPLETE. B3+B4 merged (a8c8a9dd+a1187bca, 307 vitest): one zustand store, ONE
     visibility-gated fetch orchestrator (13 pollers dead in the new app),

@@ -281,6 +281,42 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
   one orchestrator (the 13 pollers are dead in the new app), Pause/Step/Play with 409/5xx/autopause,
   login→lobby→game routes, full five-region shell wired to the real A4 endpoints and the B2 map.
   Remaining Phase-B: B5 takeovers, B6 e2e port + live-browser parity drive (next wave).
+
+## Updates 2026-07-10 early morning (wave 4: PHASE B COMPLETE — parity gate GREEN 23/23 live)
+
+- **THE COCKPIT WORKS IN A REAL BROWSER.** B6 built the storageState harness + six CI-canon specs
+  and drove them live (real Django, real EngineBridge, real Postgres). First run found **the**
+  blocker: `development.py`'s CSRF/CORS origins only trusted `:5173` — every cockpit browser POST
+  (login/create/submit/resolve) 403'd. Fixed (`d5f270b2`: 5174 added + `BABYLON_EXTRA_DEV_ORIGINS`
+  env extension so this class of defect can't recur). Two real UI defects found by the live drive
+  and fixed (`f7fff8ab`): the pause control was unreachable during `resolving` (where Play spends
+  ~all wall time with real multi-second resolves), and EventsFeed's honest-empty copy lacked its
+  testid/container. **Final: 23/23 passed, two consecutive full runs. Phase-B exit gate GREEN.**
+- **B5 ✅** (`a7b7a9b2`): Wire/Chronicle/Dialectic takeovers over the persistent shell + Objectives
+  dock tab. **C4 ✅** (`30c5faf1`): observatory ported (Cold Collapse palette remap) + route
+  registered. **C2 ✅** (`f9ac774c`): edges/state-apparatus/infrastructure dashboards + NEW
+  org/territory history endpoints — `get_infrastructure` had never existed at all (the api view
+  would have `AttributeError`'d on any real request); honest-empty until the transport substrate
+  (Amendment O) writes rows. **C1 ✅** (`a0054dc5`): LLM narrator service at the bridge boundary —
+  `BABYLON_LLM_NARRATOR` flag, default OFF is parity-tested byte-identical, async post-tick, III.6
+  model+prompt pinning, III.11 loud `degraded` marker; provider mocked in tests, key never read.
+- **Item 33 ✅ CLOSED** (`2491b9ba`): polling spec now authenticates its direct resolve POST (real
+  tick advance verified in Postgres); the orgs OODA assertion "bug" had already dissolved with the
+  item-27 harness — verified live against 4 sessions, no stale assertion existed (III.11: no
+  fabricated fix).
+- **Item 34 (NEW, small):** `StubEngineBridge.create_game()` signature drifted from the api view
+  (`config` vs `_config` — TypeError on any create when the stub is active). Found when a Django
+  restart without `RUN_MAIN=true` silently fell back to the stub. Two follow-ups worth a smalls
+  lane: fix the stub signature, and consider a LOUD startup log line when the stub (not the real
+  bridge) is serving (III.11 — a stub silently impersonating the engine is how this hid).
+- **Environment notes:** the orphaned Jul-6 vite squatting the cockpit's canonical port 5174 was
+  killed (pid 2459793); Django restarted with `RUN_MAIN=true` + the new origins (real bridge
+  confirmed: "EngineBridge initialized with PostgresRuntime").
+- **What remains in Program 12:** C3 design session (owner-invited — your call when), C5 polish
+  (deferred until after C3 reshapes visuals), **Phase D cutover** (delete `web/frontend`) — parity
+  evidence now exists; D still needs your explicit go + parity green on ≥2 consecutive dev merges.
+- **The autonomous /goal backlog is exhausted**: every remaining project/ item needs an owner
+  ruling (items 26 fork ledger, 28, 29, 31-rename, 32, C3, Phase D, push-to-origin).
 - **Item 30 (NEW — the web-visibility half of item 25; needs scheduling, not a design ruling):**
   web sessions cannot sustain county-layer state at all, independent of A7. Two structural gaps found
   with source-level verification: (a) `EngineBridge.resolve_tick` passes a FRESH

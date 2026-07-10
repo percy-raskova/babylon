@@ -71,6 +71,18 @@ proof.md (A7 is the one sanctioned rebaseline).
 | item 30 | web sessions sustain + show the county economy: bridge calculator wiring (was NEVER wired — TickDynamics no-op'd on every web session), wayne county-backed (26163 ×81), flow carry across resolve→persist→hydrate→resolve; acceptance: flow_wage_accrued 0→84M→168M through real resolves. Caveats → items 32 (annual continuity) + Leontief phi pipeline (pre-existing, both runners) | ✅ MERGED | 143a3eed |
 | item 27 | old-app Playwright storageState harness — TIER-3 verified live: 8/10 previously-false-red specs now pass authenticated; 2 residual failures are pre-existing spec bugs (item 33) | ✅ MERGED | 1c62fc93 |
 | item 31 | envelope.py determinism_hash docstring now describes reality (rename still an owner decision) | ✅ MERGED (docstring half) | d94c82db |
+| B5 | takeovers: Wire/Chronicle/Dialectic overlays over the persistent shell + Objectives dock tab (322 tests at lane time) | ✅ MERGED | a7b7a9b2 |
+| B6 | **the parity gate, LIVE**: storageState harness + six CI-canon specs driven in a real browser against the real engine. Found THE blocker (CSRF origins missing 5174 — every cockpit POST 403'd) + the 5174 port squatter. After the CSRF fix + two UI fixes: **23/23 PASSED, twice** — Phase-B exit gate GREEN | ✅ MERGED | 0b5fb567 + d5f270b2 + f7fff8ab |
+| C2 | edges/state-apparatus/infrastructure dashboards + org/territory history endpoints (get_infrastructure had NEVER existed — api view would AttributeError; honest-empty until the transport substrate writes) | ✅ MERGED | f9ac774c |
+| C4 | observatory ported to the cockpit (Cold Collapse palette remap, lazy + gated, own route module) + route registered | ✅ MERGED | 30c5faf1 + d5f270b2 |
+| C1 | LLM narrator at the bridge boundary: BABYLON_LLM_NARRATOR flag (default OFF = byte-identical DeterministicNarrator, parity-tested), async fire-and-forget post-tick, III.6 model+prompt pinning, III.11 loud degraded marker, provider mocked in tests | ✅ MERGED | a0054dc5 |
+| item 33 | polling spec authenticated (real tick advance proven in DB); orgs spec bug had already dissolved with the item-27 harness (no stale assertion existed — verified live ×4 sessions) | ✅ MERGED | 2491b9ba |
+
+**PHASE B: COMPLETE (exit gate GREEN — 23/23 live parity, two consecutive runs).**
+**PHASE C: substantially complete** (C1 narrator, C2 dashboards, C4 observatory done; C3 design
+session = owner-invited; C5 polish deferred until after C3 reshapes visuals).
+**PHASE D: gated on Percy** (parity evidence exists; needs green on ≥2 consecutive dev merges +
+the owner's explicit go for deleting `web/frontend`).
 | — | 3 pre-existing `entities`-key integration failures: verdict = retired pre-Spec-052 contract; tests rewritten to current contract | ✅ MERGED | 0613d508 |
 | — | endgame faction xfail: A6 round-trip machinery proven fixed; real blocker re-diagnosed (FASCIST_CONSOLIDATION absolute-count threshold pre-empts REVOLUTIONARY_VICTORY — owner-queue item 28) | ✅ MERGED (accurate xfail) | e0338924 |
 

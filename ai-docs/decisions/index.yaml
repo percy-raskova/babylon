@@ -279,3 +279,13 @@ decisions:
     status: accepted
     date: '2026-07-09'
     file: ADR060_constitution_v2_8_0.yaml
+  ADR061_program12_cockpit:
+    title: 'Program 12 — The Cockpit: clean-room frontend rebuild at src/frontend with a data-spine phase first (spec-109..112); wave-1 executed via parallel sonnet worktree lanes (A8/A1/A3+A5/A6/A2/A4/B1 merged; A7 scouted, awaiting owner design ruling)'
+    status: accepted
+    date: '2026-07-09'
+    file: ADR061_program12_cockpit.yaml
+  ADR062_amendment_q_behavioral_contracts:
+    title: 'Amendment Q (Constitution v2.9.0): Behavioral Contracts / Durable Spec — III.12 rewrite test + canonical hash serialization + float honesty + redundant verification; VIII.13 Spec Trapped in Implementation; program 13 registered (determinism-contract doc + dense goldens)'
+    status: accepted
+    date: '2026-07-09'
+    file: ADR062_amendment_q_behavioral_contracts.yaml

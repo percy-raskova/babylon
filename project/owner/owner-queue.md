@@ -162,3 +162,59 @@ decision first**; a recurring **fixture-as-runtime (III.4.2)** theme spans F1/F6
   without logging in → render `/login` → **false red**. Proven benign (the authenticated API drive
   returns real data for all those surfaces). Fix = add a login `storageState`. Matters because the CI
   Playwright leg currently only truly exercises the `real-loop` happy path. See walkthrough **G1**.
+
+## Updates 2026-07-09 evening (Program 12 wave-1 merged + Amendment Q + A7 ruling request)
+
+- **Program 12 "The Cockpit" ratified + executing** (4 rulings, `programs/12-cockpit.md`, ADR061).
+  Phase A data spine MERGED except A7: A8 `f1a57ff3`, A1 `08e3131a`, A3+A5 `665e0814`, A6 `c5c19e21`,
+  A2 `b0907b97`, A4 `9addfa94`; B1 cockpit scaffold `30f5512e`+`504302bf`. Wave-1 = 6 parallel sonnet
+  worktree lanes (ultracode), 0 errors, rebased + ff-merged linearly.
+- **Item 8 ✅ CLOSED** (A6, `c5c19e21`): every web session seeds the spec-070 political layer at tick 0
+  (4 factions, 3 sovereigns, ~324 INFLUENCES edges, res-7→res-6 H3 aggregation) and it survives a real
+  engine step. Headless baselines untouched (bridge-layer seeding; qa:regression 5/5 proven twice).
+- **Item 12 — faction half ✅ CLOSED** (same commit): `WorldState.factions` + from_graph faction branch
+  + INFLUENCES payload fields on `Relationship` (exclude_none, byte-identical elsewhere). Sovereign
+  half was closed earlier (fix/from-graph-safety). **Community nodes remain the open third** (still no
+  from_graph branch; still latent — no production path adds them).
+- **Item 28 (NEW — needs a ruling eventually, not urgent): endgame detector threshold tension.** The
+  endgame lane proved A6's round-trip machinery fully fixes the old xfail claim (colonial_stance
+  survives; ABOLISH/CEASE/solidarity gates all resolve), but the augmented REVOLUTIONARY_VICTORY test
+  still can't pass because `_check_fascist_consolidation`'s legacy false-consciousness route fires on
+  an ABSOLUTE count (`fascist_majority_threshold=3` nodes with national_identity > class_consciousness)
+  and FR-033 checks it first — any fixture with ≥3 settler-aligned entities (required by the
+  cross-divide-solidarity gate itself) trips it. Ruling options: make the threshold a population
+  share, or scope the legacy route so it doesn't pre-empt the augmented spec-070 gates. Accurate
+  diagnosis now lives in the xfail reason string (`e0338924`).
+- **Item 29 (NEW, low priority — owner awareness):** per-hex class populations
+  (`pop_bourgeoisie`..`dominant_class`) stay honestly None because no shipped scenario sets
+  `SocialClass.county_fips`; deciding per-hex vs county-broadcast aggregation is worth a ruling before
+  anyone wires it (A2 lane finding). Related awareness note: A4's communities dashboard reports REAL
+  SOLIDARITY-edge components; the spec-061 FR-018 XGI `community_memberships` layer is never assigned
+  by production code — if you want that layer, it needs a scenario-builder spec.
+- **Amendment Q ratified** (Constitution v2.9.0): III.12 Behavioral Contracts + VIII.13; program 13
+  (`programs/13-behavioral-contracts.md`) registered — determinism-contract doc + dense goldens. ADR062.
+
+### Item 25 second half — A7 DESIGN RULING NEEDED (scout report delivered)
+
+The scout mapped **three distinct economy layers**: (1) entity wealth ALREADY moves every tick
+(Production/ImperialRent systems, annual÷52 pattern); (2) county TickDynamics state moves ONLY at year
+boundaries (`tick % 52` gate, `economics/tick/system/__init__.py:130`); (3) hex c/v/s/k NEVER moves —
+the bridge re-emits the tick-0 template every tick by documented design, and spec-089's delta-storage
+savings are premised on exactly that. Bonus finding: `base_year` is set once at session init and never
+advances, so tensor lookups are pinned to one year forever (a separate staleness bug worth its own fix).
+
+Four designs on the table (full detail in the wave-1 scout report; Fable's recommendation = **B**):
+
+| Option | Shape | Effort | Notes |
+| --- | --- | --- | --- |
+| A | glide-path interpolation toward year N+1 with boundary true-up | L | uses year-N+1 data mid-year ("sees the future"); restructures the annual pipeline |
+| **B (recommended)** | keep the annual pipeline annual; accrue per-tick FLOWS (annual÷52) at county level, matching the existing ImperialRent pattern | M | conservation exact by construction; annual-resolution facts stay honestly annual; smallest blast radius |
+| C | genuine per-tick hex c/v/s/k mutation | XL | the bridge docstring's own "future spec"; directly invalidates spec-089's ~98% dedup storage premise |
+| D | read-time interpolation in `v_hex_state_asof` | L | presentation-layer motion without engine motion — III.11-adjacent; two read-site drift risk |
+
+**Questions for Percy:** (1) layer scope — county (B), hex (C), or B-now-C-later? (2) confirm the
+annual pipeline STAYS annual (quarterly-crisis/class-transition semantics untouched) with only flows
+accruing per tick; (3) is `tests/baselines/storage-budget-5t.json` part of the ONE sanctioned
+rebaseline, or a separate sign-off? (4) fix the pinned `base_year` staleness in the same spec or
+separately? Rebaseline procedure is fully mapped to the proof-2R precedent (detroit-tri-county-5t +
+storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Postgres EXCEPT diff).

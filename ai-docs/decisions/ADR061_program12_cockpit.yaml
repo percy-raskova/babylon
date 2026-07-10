@@ -1,0 +1,64 @@
+ADR061_program12_cockpit:
+  status: "accepted"
+  date: "2026-07-09"
+  title: "Program 12 — The Cockpit: clean-room frontend rebuild at src/frontend with a data-spine phase first (spec-109..112); wave-1 executed via parallel sonnet worktree lanes"
+  context: |
+    Percy found the shipped web UI "completely unintuitive" and two map lenses
+    permanently "no data", and explicitly opened the door to a top-to-bottom
+    rework ("code is cheap"). Exploration decomposed the problem into three
+    diseases, none of which is React: (1) a starving API — the engine computes
+    per-tick riches that never crossed the bridge (persist_full_tick /
+    persist_tick_summary had ZERO production callers, so /timeseries/ was
+    permanently empty; hex_latest wrote 9 of ~30 columns; /summary/ returned {};
+    the consciousness simplex was a hardcoded 0.33/0.33/0.34 — a live III.11
+    violation); (2) an IA at war with the ratified Paradox-style cockpit canon
+    (design/mockups) — ~16 routes, map as a pane, dead Resolve button, 13
+    independent pollers, ~20% orphaned modules; (3) one literal lens-guard bug
+    blanking heat/habitability whenever the (always-empty, never-seeded)
+    balkanization block was empty. Percy ruled: UI program NOW, cockpit +
+    takeovers shell, Pause/Step/Play time controls, and a clean-room React app
+    at src/frontend/ with web/frontend deleted at cutover.
+  decision: |
+    Program 12, four phases with reserved spec numbers:
+      - Phase A / spec-109 Data Spine: fix the API famine first so the new shell
+        is fed by real data. A8 lens-guard decouple; A1 full persistence into
+        create/resolve; A3 one map-metric contract (web/game/map_contract.py);
+        A5 honest-null consciousness; A6 seed the spec-070 balkanization layer
+        at the BRIDGE layer only (headless baselines untouched); A2 enrich the
+        hex projection (habitability end-to-end via graph threading + the
+        pre-existing attributes JSONB column; III.11-honest Nones documented
+        per column); A4 real summary/economy/communities dashboards; A7 static
+        economy (owner item 25 second half) — the ONE sanctioned rebaseline.
+      - Phase B / spec-110 Cockpit Shell at src/frontend (React 19, Vite,
+        Tailwind 4, zustand 5, deck.gl 9.2, port 5174 during coexistence),
+        single fetch orchestrator replacing 13 pollers, Pause/Step/Play.
+      - Phase C / spec-111 Depth & Narrator (LLM narrator at the bridge
+        boundary, remaining dashboards, design session, Observatory port).
+      - Phase D / spec-112 Cutover & Delete (web/frontend deleted with a
+        test-port ledger).
+    Execution model for wave-1: Fable orchestrates; six parallel Sonnet agents
+    in isolated git worktrees (ultracode), each TDD + own gates, branches
+    rebased + ff-merged linearly by the orchestrator; ~50 min wall, 1.23M
+    subagent tokens, 0 errors.
+  consequences: |
+    - Merged 2026-07-09: A8 f1a57ff3, A1 08e3131a, A3+A5 665e0814, A6 c5c19e21,
+      A2 b0907b97, A4 9addfa94, entities-tests 0613d508 (verdict: retired
+      pre-Spec-052 contract — tests rewritten, production untouched), endgame
+      xfail re-diagnosis e0338924 (real blocker = FASCIST_CONSOLIDATION
+      absolute-count threshold, owner-queue item 28), B1 scaffold 30f5512e +
+      504302bf. Owner items 8 and 12-faction-half CLOSED.
+    - A7 is deliberately NOT implemented: the scout found three distinct economy
+      layers and genuine owner rulings (county vs hex scope; annual-pipeline
+      semantics; spec-089 storage premise; storage-budget baseline scope) —
+      queued in owner-queue item 25 with four costed options (recommendation:
+      Option B, per-tick flow accrual at county level, conservation-exact).
+    - The web session graph now carries faction/sovereign nodes from tick 0 —
+      any future from_graph consumer must handle them (community nodes remain
+      the open third of item 12).
+    - qa:regression stayed 5/5 byte-identical through every merge (bridge-layer
+      seeding + web-only changes); the one sanctioned rebaseline remains A7's.
+  related:
+    - "project/programs/12-cockpit.md (program master + live status)"
+    - "project/owner/owner-queue.md (items 8, 12, 25, 28, 29)"
+    - "ADR062 (Amendment Q, ratified the same evening)"
+    - "design/mockups/README.md (the cockpit canon)"

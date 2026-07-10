@@ -2,9 +2,27 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.18.0"
+  version: "2.19.0"
   updated: "2026-07-09"
   truth_status: |
+    (2026-07-09 EVENING) PROGRAM 12 "The Cockpit" EXECUTING — clean-room frontend
+    rebuild ratified (4 owner rulings; master: project/programs/12-cockpit.md; ADR061).
+    Phase A data spine MERGED except A7: A8 f1a57ff3, A1 08e3131a, A3+A5 665e0814,
+    A6 c5c19e21, A2 b0907b97, A4 9addfa94 — /timeseries/ + snapshots fill every tick,
+    one map-metric contract with habitability end-to-end, the fake consciousness
+    simplex is dead (honest null), the spec-070 balkanization layer seeds every web
+    session (owner item 8 CLOSED; item 12 faction half CLOSED), and /summary/,
+    /economy/, /communities/ return real engine values. B1 cockpit scaffold merged at
+    src/frontend/ (30f5512e + 504302bf; port 5174; old app untouched until Phase D).
+    A7 (static economy, item 25 second half) is SCOUTED, NOT implemented: three
+    economy layers mapped (entity wealth already moves per tick; county TickDynamics
+    gated on tick%52; hex c/v/s/k frozen at tick-0 by design), 4 design options +
+    ruling questions sit with Percy in owner-queue item 25. Per-lane gates were green
+    before each merge (unit/integration/frontend per lane; qa:regression 5/5 where
+    applicable); the integrated post-merge gate verdict is recorded in this docs
+    commit's message. Constitution is v2.9.0 (Amendment Q — Behavioral Contracts,
+    III.12 + VIII.13, ADR062; program 13 behavioral-contracts hardening registered).
+    dev is ahead of origin and push is HELD pending owner say-so.
     (2026-07-09) UPDATE — the core loop is now PLAYABLE, verified live. A
     post-remediation sanity-check walkthrough (project/assessments/E2E_WALKTHROUGH-2026-07-09.md)
     drove the real UI + API against a live Postgres EngineBridge on dev @ b57faee6:

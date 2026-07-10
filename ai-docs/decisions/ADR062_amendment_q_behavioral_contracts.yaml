@@ -1,0 +1,62 @@
+ADR062_amendment_q_behavioral_contracts:
+  status: "accepted"
+  date: "2026-07-09"
+  title: "Amendment Q (Constitution v2.9.0): Behavioral Contracts / Durable Spec — III.12 + VIII.13; program 13 registered (determinism-contract doc + dense goldens)"
+  context: |
+    Percy asked whether the test suite would still "work" if the codebase were
+    hypothetically rewritten in Rust — i.e. is the suite a durable behavioral
+    spec or Python-coupled scaffolding — citing Fowler ("The Generative Stack":
+    evaluations as behavioral contracts that outlive any particular
+    implementation; redundant verification layers) and Majors ("AI demands more
+    engineering discipline": code as a materialized view of understanding,
+    disposable when stale). A direct audit (2026-07-09, dev @ c5c19e21) measured
+    the suite: 8,968 unit test funcs (74% of test LOC, correctly disposable)
+    vs ~1,400 behavior-layer funcs (property/contract/scenarios/integration),
+    plus an unusually strong language-agnostic artifact layer (checkpoint
+    baselines with defines_hash, defines.yaml with TestConstants tracing test
+    expectations to data, seed JSONs, Postgres schema, HTTP contracts, written
+    predicate specs with derived tolerances). Verdict: a rewrite would be
+    recoverable BECAUSE of the determinism constitution — with exactly three
+    gaps: (1) every constitutional hash's byte layout is defined only by the
+    Python that computes it; (2) byte-identical replay silently assumes one
+    libm (transcendentals differ across languages); (3) the five unit-scenario
+    goldens are sparse (~54 numbers for 52 ticks) vs the dense tri-county
+    trace.csv standard. Percy read the assessment and approved constitutional
+    + project registration.
+  decision: |
+    Constitution 2.8.0 -> 2.9.0 (MINOR), owner-ratified 2026-07-09:
+      - III.12 Behavioral Contracts (Durable Spec): observable behavior MUST be
+        pinned in implementation-agnostic artifacts; the acceptance question is
+        the REWRITE TEST (could a reimplementation be validated against the
+        surviving artifacts alone?). Corollaries: (a) canonical serialization —
+        every constitutional hash needs a language-agnostic byte-level spec
+        [PENDING CODE]; (b) float honesty — cross-implementation validation is
+        tolerance-bounded per III.7 with written derivations; (c) redundant
+        verification — replay + property + scenario + contract + mutation.
+        Every new system boundary ships a contract test + behavioral artifact.
+        P1 tier (III.9).
+      - VIII.13 Spec Trapped in Implementation: load-bearing behavioral
+        knowledge whose only home is implementation-coupled dies with the
+        materialization; banned as the sole home.
+      - Program 13 (project/programs/13-behavioral-contracts.md) registered:
+        (1) docs/reference determinism-contract doc (defines_hash byte recipe,
+        tick_commit chain incl. the known session-id embedding, III.7 tick
+        hash, float policy); (2) dense full-trace goldens for the 5 regression
+        scenarios; (3) the contract-per-boundary discipline as standing law.
+    The Fowler/Majors lessons were also added to Percy's user-level
+    ~/.claude/CLAUDE.md (Tests as Behavioral Contracts section) at Percy's
+    request, alongside a light refresh (typos, stale "view tool" reference,
+    Power-of-10 heading) that preserved all original principles.
+  consequences: |
+    - The suite's 74%-disposable ratio is now doctrine, not embarrassment:
+      implementation-coupled tests are legitimate scaffolding, but behavioral
+      knowledge must ALSO live in durable artifacts.
+    - Program 13 is small, unscheduled, independent of A7; corollary (a) stays
+      [PENDING CODE] until its doc lands, at which point CONSTITUTION.md flips
+      the marker.
+    - No code changed in this decision; docs-only. qa:regression untouched.
+  related:
+    - "CONSTITUTION.md v2.9.0 (III.12, VIII.13, Amendment Q registry entry)"
+    - "project/assessments/TEST_SUITE_REWRITE_AUDIT-2026-07-09.md (evidence)"
+    - "project/programs/13-behavioral-contracts.md (work items + gates)"
+    - "ADR060 (v2.8.0 relocation + Loud Failure — the prior amendment cycle)"

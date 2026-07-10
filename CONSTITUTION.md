@@ -2,6 +2,24 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
+Version Change: 2.8.0 → 2.9.0 (2026-07-09)
+Bump Rationale: MINOR — Amendment Q (Behavioral Contracts / Durable Spec).
+  New III.12: the system's observable behavior must be pinned in
+  implementation-agnostic artifacts (checkpoint baselines, full-trace goldens,
+  defines.yaml, seed data, the Postgres schema, observe()/HTTP contracts,
+  written predicate specs) — the durable spec any reimplementation is
+  validated against (the "rewrite test"); constitutional hashes require a
+  language-agnostic canonical-serialization reference [PENDING CODE,
+  program 13]; cross-implementation float validation is tolerance-bounded per
+  III.7; verification stays redundant (replay + property + scenario +
+  contract + mutation). New VIII.13 (Spec Trapped in Implementation). III.9
+  P1 tier gains III.12. Prompted by the 2026-07-09 test-suite rewrite audit
+  (project/assessments/TEST_SUITE_REWRITE_AUDIT-2026-07-09.md); doctrinal
+  sources Fowler ("evaluations as behavioral contracts that outlive any
+  particular implementation") and Majors ("code as a materialized view of
+  understanding"). Owner-ratified 2026-07-09.
+
+--- prior report (v2.7.0 → 2.8.0) ---
 Version Change: 2.7.0 → 2.8.0 (2026-07-09)
 Bump Rationale: MINOR — Amendments M (superseded), N (Spectrum of Unequal
   Exchange → I.2a), O (Transport Substrate extension → II.13), P (Loud Failure
@@ -237,7 +255,7 @@ The distinction is load-bearing for reproducibility: a test using a fixture must
 
 - **P0 (Never Drop)**: I.19 Dialectic Primitive, I.20 Spatial Substrate, II.9 Morphism Dyadic, III.7 Determinism, III.8 Aleksandrov Test, III.11 Loud Failure, V Verb Atomicity. These define the irreducible constraints of the system. An agent operating on any implementation task MUST retain these principles in context.
 
-- **P1 (Load-Bearing)**: I.1 Settler-Colonial Frame, I.2 Imperial Rent, I.2a Spectrum of Unequal Exchange, I.4 Bifurcation, I.6 Solidarity Edge Mode, I.7 Quantitative→Qualitative, I.12 Catastrophe Surface, I.16 Organization vs Institution, I.21 Sparrow, II.1 Partition Emergence, II.2 Primitives vs Derived, II.5 AI Scope, II.6 State is Data, II.11 Subsystem Ownership, II.12 Matrix Layer, II.13 Transport Substrate, III.1 No Magic Constants, III.2 Falsifiability, III.4 Data Catalog, III.6 Model Pinning, III.10 Earn-Its-Keep, IV Michigan Test Case. These constrain specific domains. An agent MUST retain domain-relevant P1 principles for the file(s) it is editing.
+- **P1 (Load-Bearing)**: I.1 Settler-Colonial Frame, I.2 Imperial Rent, I.2a Spectrum of Unequal Exchange, I.4 Bifurcation, I.6 Solidarity Edge Mode, I.7 Quantitative→Qualitative, I.12 Catastrophe Surface, I.16 Organization vs Institution, I.21 Sparrow, II.1 Partition Emergence, II.2 Primitives vs Derived, II.5 AI Scope, II.6 State is Data, II.11 Subsystem Ownership, II.12 Matrix Layer, II.13 Transport Substrate, III.1 No Magic Constants, III.2 Falsifiability, III.4 Data Catalog, III.6 Model Pinning, III.10 Earn-Its-Keep, III.12 Behavioral Contracts, IV Michigan Test Case. These constrain specific domains. An agent MUST retain domain-relevant P1 principles for the file(s) it is editing.
 
 - **P2 (Elaboration)**: I.3 TRPF, I.5 Department III, I.8 Tragedy of Inevitability, I.9 Metabolic Rift, I.10 Terminal Crisis, I.11 Emergent Pedagogy, I.13 Principal Contradiction, I.14 Contradiction Internals, I.15 Edge Mode Transitions, I.17 OODA, I.18 Material-Ideological, II.3 Graph Manifold, II.4 Quantities vs Coefficients, II.7 Edges vs Hyperedges, II.8 Client Layer, II.10 World Runtime, III.3 Physics Cosplay, III.5 Empirical vs Strategic, VI Scope Control, VII Visual Design, VIII Anti-Patterns, X Deployment. These provide context and guardrails but are not load-bearing for implementation. Agents MAY drop P2 principles when context-constrained, provided P0 and relevant P1 are retained.
 
@@ -246,6 +264,8 @@ An agent MUST report which tier it is operating from if it drops context.
 **10. Earn-Its-Keep (Categorical Constructs)** — A categorical construct (adjunction, cylinder, level lattice, functor, operator) ships only if it yields a LAW (a testable invariant), a PREDICTION (a falsifiable claim), or a COMPUTATION that runs in production — never as vocabulary. This is III.3 and III.8 applied to category theory: name the law, the prediction, or the running computation, or the construct is banned regardless of its elegance. (Amendment K; governing rule of the Lawverian dialectics refactor, ADR051.)
 
 **11. Loud Failure (No Silent Degradation)** — A subsystem that cannot do its job MUST fail loud — raise, or emit an alarm-severity signal — never silently no-op, skip, or return a plausible default. Guardrails, gates, test markers, and canaries MUST be armed and enforced; a disarmed guard, an unregistered handler that silently drops work, or a system that early-returns when its required inputs are absent is a constitutional **defect**, not graceful degradation. This is the operational lesson of the "Loud Machine" remediation: systemic *silent* failures (no-op engine systems, disarmed strict-markers, skipped canaries, a case-mismatched node filter) are more dangerous than crashes because they pass every green check while producing wrong or empty results. The good pattern: an unregistered verb resolver raises rather than no-ops. The banned pattern: a system that silently no-ops when a context key is missing. See Also: VIII.12 (Silent No-Op anti-pattern), III.7 (determinism), III.2 (falsifiability).
+
+**12. Behavioral Contracts (Durable Spec)** — The system's observable behavior MUST be pinned in implementation-agnostic artifacts: checkpoint baselines and full-trace goldens (`tests/baselines/`), the `defines.yaml` coefficient space, seed data, the Postgres schema, the `observe()`/HTTP contracts (II.8), and written predicate specs. These artifacts are the durable specification; any particular implementation — and its implementation-coupled tests (model shape, mock choreography) — is a disposable materialization that must be regenerable from them. The acceptance question is the **rewrite test**: could a reimplementation in another language be validated against the surviving artifacts alone? Three corollaries: **(a) Canonical serialization** — every constitutional hash (the III.7 tick hash, `defines_hash`, the `tick_commit` chain) MUST have its byte-level serialization specified in a language-agnostic reference document; a hash whose byte layout is defined only by the code that computes it is implementation-defined behavior. `[RATIFIED · PENDING CODE — determinism-contract reference doc, program 13]` **(b) Float honesty** — byte-identical replay is guaranteed only within a single implementation and libm; cross-implementation validation is tolerance-bounded checkpoint comparison (III.7) with written tolerance derivations. **(c) Redundant verification** — behavior is verified by multiple independent strategies (replay baselines, property laws, scenario emergence, boundary contracts, mutation baselines); a single strategy has blind spots. Every new system boundary ships with a contract test and its behavioral artifact, not only unit tests. Implementation-coupled tests remain legitimate scaffolding but MUST NOT be the only home of load-bearing behavioral knowledge. See Also: III.7 (determinism and tolerance), III.2 (falsifiability), II.8 (client contract), VIII.13.
 
 ## IV. Test Case: Michigan Statewide (2010-2025)
 
@@ -314,6 +334,7 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 1. **Oppressor Hyperedge for Institutional Exclusion** — Category 2 communities (DISABLED, QUEER, UNDOCUMENTED, INCARCERATED) have NO paired oppressor hyperedge. ABLED is absence of disability, not a political community. HETEROSEXUAL is unmarked default, not solidarity community. Contrast with Category 1 where BOTH sides exist (SETTLER has institutions, recruits, defends extraction). See II.7.
 1. **Tension as Accumulator** — Contradiction intensity MUST be a fresh per-tick measured gap (an adjunction defect per I.19), never an add-only `+=` ratchet. Saturating accumulators pin at their bound and carry no information (the pre-Amendment-K inertness bug: edge tension pinned at exactly 1.0 by ~t100). See III.10, Amendment K.
 1. **Silent No-Op / Disarmed Guardrail** — A subsystem that skips its work when inputs are missing, a guardrail present but not enforced (a strict-marker set to no-op, a canary that always skips, an `ai`-marked test that selects zero tests), or a handler that silently drops unrecognized work. The failure passes every green check while producing wrong or empty state. See III.11 (Loud Failure).
+1. **Spec Trapped in Implementation** — Load-bearing behavioral knowledge whose ONLY home is implementation-coupled: a mock call-sequence test, a model-shape assertion, a hash whose byte layout exists only in the code that computes it. The knowledge dies with the materialization it describes. If it matters, it belongs in a durable artifact — a baseline, a golden trace, a schema, a predicate spec, a property law. See III.12 (Behavioral Contracts).
 
 ## IX. Governance
 
@@ -357,6 +378,8 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 **Amendment P — Loud Failure and Determinism Honesty** (ratified v2.8.0): Adds III.11 (Loud Failure / No Silent Degradation) and VIII.12 (Silent No-Op anti-pattern); reconciles III.7 (the hash is replay-integrity; falsifiability is tolerance-bounded value comparison; input-hash drift ≠ behavioral drift). Corrects factual drift in II.6/II.10 (Postgres runtime + pgvector; SQLite = read-only fixture). The operational lesson of the Loud Machine remediation.
 
+**Amendment Q — Behavioral Contracts / Durable Spec** (ratified v2.9.0, corollary (a) `[PENDING CODE]`): Adds III.12 — behavior pinned in implementation-agnostic artifacts (the rewrite test), canonical hash-serialization requirement, float-tolerance honesty, redundant verification, contract-test-per-boundary — and VIII.13 (Spec Trapped in Implementation). Registers program 13 (`project/programs/13-behavioral-contracts.md`): the determinism-contract reference doc + dense full-trace goldens for the five regression scenarios. Doctrinal sources: Fowler (evaluations as behavioral contracts that outlive implementations; redundant verification layers) and Majors (code as a materialized view of understanding; AI demands more discipline). Prompted by the 2026-07-09 test-suite rewrite audit (`project/assessments/TEST_SUITE_REWRITE_AUDIT-2026-07-09.md`). Owner-ratified 2026-07-09.
+
 Additional amendments will be registered as they are identified during downstream translation.
 
 **3. AI Decision Procedure** — When an AI agent encounters ambiguity, it MUST follow this escalation ladder:
@@ -392,4 +415,4 @@ Additional amendments will be registered as they are identified during downstrea
 
 ______________________________________________________________________
 
-**Version**: 2.8.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-09
+**Version**: 2.9.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-09

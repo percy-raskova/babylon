@@ -27,6 +27,11 @@ ENGINE_IMPORT_PREFIXES = (
 # The files allowed to import engine code
 ALLOWED_FILES = {
     "game/engine_bridge.py",
+    # spec-112: 0002 imports the engine-owned game-management DDL
+    # (game_session et al.) so a from-zero migrate works — the same
+    # schema-DDL exception 0003 has always held. Data/logic imports from
+    # migrations remain forbidden.
+    "game/migrations/0002_hex_states_schema.py",
     "game/migrations/0003_spec037_simulation_tables.py",
     # spec-061 FR-009: /health/detail/ is a staff-gated diagnostic that
     # REPORTS engine configuration (babylon.config.llm_config); it never

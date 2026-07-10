@@ -15,8 +15,11 @@ from babylon.persistence.postgres_schema import (
     EDGE_SNAPSHOT_DDL,
     GAME_DEFINES_SNAPSHOT_DDL,
     HEX_ACTIVITY_DDL,
+    HEX_LATEST_DDL,
     HEX_MAP_DDL,
+    HEX_SUBSTRATE_DDL,
     ORG_SNAPSHOT_DDL,
+    SIMULATION_EVENT_DDL,
     SPEC037_INDEXES_DDL,
     TERRITORY_SNAPSHOT_DDL,
     TICK_EVENT_DDL,
@@ -44,6 +47,17 @@ def forwards(apps, schema_editor):  # type: ignore[no-untyped-def]
     schema_editor.execute(HEX_ACTIVITY_DDL)
     schema_editor.execute(ECONOMIC_SUMMARY_DDL)
     schema_editor.execute(TICK_EVENT_DDL)
+
+    # The composition views all read hex_latest — engine-owned (the R7
+    # cache, paired with the R8 hex_substrate it references) and, like
+    # game_session in 0002, never migration-created before spec-112.
+    # Idempotent; existing databases untouched.
+    schema_editor.execute(HEX_SUBSTRATE_DDL)
+    schema_editor.execute(HEX_LATEST_DDL)
+
+    # simulation_event is likewise engine-owned and required by 0009's
+    # unique-index migration on a fresh database.
+    schema_editor.execute(SIMULATION_EVENT_DDL)
 
     # Composition views
     schema_editor.execute(V_HEX_ECONOMIC_DDL)

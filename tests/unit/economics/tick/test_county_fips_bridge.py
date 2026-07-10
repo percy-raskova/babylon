@@ -94,6 +94,24 @@ class TestCountyFipsRoundTrip:
 
         assert recovered.territories[T_LABEL].county_fips == WAYNE_FIPS
 
+    def test_from_graph_drops_transient_flow_attrs(self) -> None:
+        """Spec-109 A7: ``flow_``-prefixed accrual outputs hit the identical
+        extra='forbid' landmine as ``tick_`` attrs and must be dropped too.
+        """
+        terr = Territory(
+            id=T_LABEL,
+            name=f"County {WAYNE_FIPS}",
+            sector_type=SectorType.INDUSTRIAL,
+            county_fips=WAYNE_FIPS,
+        )
+        state = WorldState(tick=0, entities={}, territories={T_LABEL: terr}, relationships=[])
+        graph = state.to_graph()
+        graph.update_node(T_LABEL, flow_phi_accrued=1234.5, flow_wage_accrued=6789.0)
+
+        recovered = WorldState.from_graph(graph, tick=1)
+
+        assert recovered.territories[T_LABEL].county_fips == WAYNE_FIPS
+
 
 class TestWritebackResolvesNodeId:
     """The graph writeback maps real FIPS -> graph node id (T-label)."""

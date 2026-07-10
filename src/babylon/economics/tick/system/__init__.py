@@ -126,9 +126,26 @@ class TickDynamicsSystem(SystemBase):
         else:
             tick = 0
 
-        # Gate: only execute on year boundaries (FR-024)
+        # Gate: the annual pipeline below executes only on year boundaries
+        # (FR-024) — unchanged. Spec-109 A7 (owner item 25 pt. 2): between
+        # boundaries, per-tick FLOW quantities (imperial rent, wages) still
+        # accrue via _accrue_flows(), at annual_value / WEEKS_PER_YEAR,
+        # mirroring ImperialRentSystem's annual-rate/weeks_per_year pattern.
+        # LEVELS/RATES/ENUMS (capital_stock, class_distribution, ...) stay
+        # boundary-authoritative and flat — they are annual-resolution facts
+        # in the underlying data; interpolating them would fabricate
+        # sub-annual observations (Constitution III.11).
         if tick % WEEKS_PER_YEAR != 0:
+            self._accrue_flows(graph)
             return
+
+        # Year-boundary tick: close out the outgoing year's flow accrual
+        # using the still-current (pre-recompute) tick_ state, BEFORE the
+        # annual pipeline below overwrites it with the new year's figures.
+        # A territory with no prior boundary state this session (calculator-
+        # free scenarios, or a session that hasn't bootstrapped yet) is an
+        # empty domain, not a failure (III.11) — _accrue_flows no-ops it.
+        self._accrue_flows(graph)
 
         # Check for required calculators
         if services.melt_calculator is None:
@@ -231,6 +248,71 @@ class TickDynamicsSystem(SystemBase):
         # Step 9: Write hex substrate state to graph (Feature 026)
         # Aggregates R7 economic substrate → R6 territory nodes
         self._write_hex_substrate(graph, services)
+
+        # Spec-109 A7: the annual recompute above just landed fresh tick_
+        # figures for the new year — reset the flow counters so the next
+        # non-boundary tick's _accrue_flows() starts the new year's
+        # cumulative-within-year sum from zero (no double-counting).
+        self._reset_flow_accrual(graph)
+
+    def _accrue_flows(self, graph: GraphProtocol) -> None:
+        """Accrue one tick's flow slice onto every hydrated territory node.
+
+        Spec-109 A7 (owner item 25 pt. 2 — the static economy). Reads the
+        boundary-authoritative ``tick_phi_hour`` / ``tick_median_wage`` /
+        ``tick_employment`` facts already on a territory node (set at the
+        last year boundary, or by session bootstrap) and adds one
+        ``1/WEEKS_PER_YEAR`` slice of their implied annual total to the
+        ``flow_phi_accrued`` / ``flow_wage_accrued`` running counters — a
+        DISTINCT attr namespace from the boundary-authoritative ``tick_``
+        values, which this method never mutates.
+
+        A territory node with no ``tick_phi_hour`` yet — no boundary has
+        ever run for this session (calculator-free scenarios) or the graph
+        has no territory layer at all (abstract scenarios) — has nothing to
+        accrue: an EMPTY DOMAIN, not a Loud Failure (Constitution III.11).
+        The node is skipped, not defaulted to zero.
+
+        Args:
+            graph: Mutable GraphProtocol (territory nodes updated in-place).
+        """
+        for node in graph.query_nodes(node_type="territory"):
+            data = node.attributes
+            phi_hour = data.get("tick_phi_hour")
+            if phi_hour is None:
+                continue  # empty domain: no boundary state yet for this node
+
+            median_wage = data.get("tick_median_wage", 0.0)
+            employment = data.get("tick_employment", 0.0)
+
+            annual_phi = phi_hour * HOURS_PER_YEAR
+            annual_wage = median_wage * HOURS_PER_YEAR * employment
+
+            prior_phi = data.get("flow_phi_accrued", 0.0)
+            prior_wage = data.get("flow_wage_accrued", 0.0)
+
+            graph.update_node(
+                node.id,
+                flow_phi_accrued=prior_phi + annual_phi / WEEKS_PER_YEAR,
+                flow_wage_accrued=prior_wage + annual_wage / WEEKS_PER_YEAR,
+            )
+
+    def _reset_flow_accrual(self, graph: GraphProtocol) -> None:
+        """Zero the flow accrual counters for every hydrated territory node.
+
+        Spec-109 A7. Called immediately after the annual pipeline lands a
+        fresh year's ``tick_`` figures, so the next non-boundary tick's
+        :meth:`_accrue_flows` starts the new year's cumulative-within-year
+        sum from zero — the "true-up" half of the binding design's
+        "resets/true-ups the accrual state with no double-counting".
+
+        Args:
+            graph: Mutable GraphProtocol (territory nodes updated in-place).
+        """
+        for node in graph.query_nodes(node_type="territory"):
+            if node.attributes.get("tick_phi_hour") is None:
+                continue  # empty domain — nothing was accrued, nothing to reset
+            graph.update_node(node.id, flow_phi_accrued=0.0, flow_wage_accrued=0.0)
 
     def _write_hex_substrate(
         self,

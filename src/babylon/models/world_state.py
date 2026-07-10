@@ -208,10 +208,13 @@ def _reconstruct_territory(node_data: dict[str, Any]) -> Territory:
     # (``tick_``-prefixed) — they are never Territory model fields, and extra="forbid"
     # would reject them the moment a run gets past the first productive tick (the
     # owner-item-25 round-trip, same landmine class as the excluded fields above).
+    # ``flow_``-prefixed attrs (spec-109 A7 — TickDynamicsSystem._accrue_flows)
+    # are the same class of transient per-tick output and hit the identical
+    # extra="forbid" landmine, so they're dropped alongside ``tick_``.
     territory_data = {
         k: v
         for k, v in node_data.items()
-        if k not in TERRITORY_EXCLUDED_FIELDS and not k.startswith("tick_")
+        if k not in TERRITORY_EXCLUDED_FIELDS and not k.startswith(("tick_", "flow_"))
     }
     sector_type = territory_data.get("sector_type")
     if isinstance(sector_type, str):

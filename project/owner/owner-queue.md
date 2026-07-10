@@ -407,3 +407,17 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
   consciousness ramp (`regionFill.ts`, pinned by test). Flagging for your eye per the plan.
 - **WATCH:** the next Hetzner deploy — Ansible re-point verified by syntax-check only (no
   staging). `frontend_dir` in `group_vars/production/vars.yml`.
+- **CI RESURRECTED (was disabled at the repo level since 2026-05-12** — every push since ran
+  nothing; re-enabled via API + `workflow_dispatch` added). Three fix-forward rounds landed:
+  from-zero migrate (`25bc0150` — had NEVER worked), GDAL system libs for every pytest job +
+  stale-venv-cache bust (`a976e1b1`), Postgres-job migrate step + an isort classification split.
+  **Frontend + AI Tests jobs GREEN; playwright-e2e runs 21/23 live specs in CI.**
+- **Item 40 (NEW — infra ruling): the reference DB in CI.** `data/sqlite` is an untracked
+  symlink into your 5.7 GB trove — CI has NO reference DB, so (a) the two resolve-driving e2e
+  specs 500 (item-30's county calculators read it during resolve) and (b) the sqlite-dependent
+  unit tests fail in the main CI leg (same class as the known worktree-symlink failures).
+  Options: a small COMMITTED fixture subset DB for CI, a release-asset download step, or
+  loud skip-if-absent guards. Your call — it shapes what CI can honestly gate.
+- **Item 41 (NEW — dependency debt): pip-audit finds 73 known vulnerabilities in 15 packages**
+  (two months of CVEs accumulated while CI was off; 1 already ignored by the job). Needs a
+  dedicated upgrade session — bumping blind would churn poetry.lock across the engine.

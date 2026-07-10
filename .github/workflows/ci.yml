@@ -359,6 +359,19 @@ jobs:
       - name: Start isolated Postgres (compose, port 5433)
         run: docker compose up -d --wait babylon-pg
 
+      # The compose DB is FRESH — the direct-host suites expect the Django
+      # schema (game_session et al.). From-zero migrate works since
+      # 25bc0150 (spec-112).
+      - name: Django migrate (fresh compose DB)
+        working-directory: web
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        run: poetry run python manage.py migrate
+
       - name: Run web integration suites (direct-host + testcontainers)
         env:
           POSTGRES_HOST: localhost

@@ -94,6 +94,10 @@ class TestInterIndustryFlowPipeline:
         from babylon_data.bea.loader_national import (  # type: ignore[import-not-found]
             BEANationalLoader,
         )
+
+        # Separate block: babylon_data's isort classification flips between
+        # environments (the trove package resolves locally, not in CI), and
+        # single-purpose blocks sort identically under either classifier.
         from tests.conftest import create_reference_engine
 
         engine = create_reference_engine()

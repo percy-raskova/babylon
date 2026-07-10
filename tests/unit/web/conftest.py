@@ -170,6 +170,7 @@ _UNMANAGED_TABLE_SQL = [
         terrain_type VARCHAR(16) DEFAULT 'LAND',
         water_coverage REAL DEFAULT 0.0,
         internet_access BOOLEAN DEFAULT 0,
+        attributes TEXT NOT NULL DEFAULT '{}',
         UNIQUE(game_id, h3_index)
     )""",
 ]

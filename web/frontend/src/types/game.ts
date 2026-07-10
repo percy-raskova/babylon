@@ -106,6 +106,18 @@ export interface TerritoryState {
   biocapacity: number;
   host_id: string | null;
   occupant_id: string | null;
+  /**
+   * Metabolic ceiling (Territory model field). Spec-109 A2: was hardcoded
+   * to 100 at the map layer before the serializer carried the real value.
+   */
+  max_biocapacity?: number;
+  /**
+   * Spec-070 FR-043 Sovereign-driven metabolic impact — graph-only (not a
+   * Territory model field), so it is `null`/absent whenever no live graph
+   * was threaded through the bridge or MetabolismSystem never wrote it for
+   * this territory (spec-109 A2). Never a fabricated default.
+   */
+  habitability?: number | null;
 }
 
 /** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */

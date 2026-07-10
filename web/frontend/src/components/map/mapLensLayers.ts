@@ -85,6 +85,13 @@ export interface LensTerritory {
   heat: number;
   biocapacity: number;
   max_biocapacity: number;
+  /**
+   * Real MetabolismSystem habitability (spec-109 A2), when the bridge had a
+   * live graph to read it from. `null`/`undefined` falls through to the
+   * balkanization-row proxy, then the biocapacity ratio (see
+   * `habitabilityFill`) — never fabricated here.
+   */
+  habitability?: number | null;
 }
 
 export interface RingSpec {
@@ -224,8 +231,13 @@ function habitabilityFill(
   balkanization: BalkanizationBlock | null | undefined,
 ): RGBAColor {
   const row = balkanization?.territory_influence.find((t) => t.territory_id === territoryId);
+  // Spec-109 A2: prefer the territory's own real habitability (read live off
+  // the graph by the bridge) over the balkanization row's derived value,
+  // falling back to the biocapacity ratio only when neither is available.
   const habitability =
-    row?.habitability ?? territory.biocapacity / (territory.max_biocapacity || 1);
+    territory.habitability ??
+    row?.habitability ??
+    territory.biocapacity / (territory.max_biocapacity || 1);
   // Diverging: low (crimson) <-> high (green). Reuse the biocapacity ramp.
   return sampleRamp(rampForLayer("biocapacity"), habitability);
 }

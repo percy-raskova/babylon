@@ -30,4 +30,9 @@ MAP_METRIC_PROPERTIES: tuple[str, ...] = (
     "heat",
     "org_presence",
     "population",
+    # Spec-109 A2: MetabolismSystem's Sovereign-driven habitability, read
+    # live off the graph node (Territory model excludes it — see
+    # TERRITORY_EXCLUDED_FIELDS) and projected into hex_latest's JSONB
+    # ``attributes`` column (no dedicated column needed).
+    "habitability",
 )

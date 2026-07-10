@@ -37,6 +37,8 @@ export function makeTerritory(overrides?: Partial<TerritoryState>): TerritorySta
     population: 12000,
     under_eviction: false,
     biocapacity: 0.3,
+    max_biocapacity: 100,
+    habitability: null,
     host_id: null,
     occupant_id: null,
     ...overrides,

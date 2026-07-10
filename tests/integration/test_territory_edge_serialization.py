@@ -2,6 +2,13 @@
 
 Tests the bridge ``_serialize_territory`` + ``_serialize_edge`` helpers
 emit the new spec 061 fields (FR-013 + FR-014).
+
+Spec-109 A2 (Constitution III.11) superseded the original FR-013 contract:
+``consciousness``/``solidarity``/``dominant_community`` were fabricated
+0.0/"" defaults when the engine attr was absent — no wired system computes
+a territory-level aggregate for them, so they are honest ``None`` now,
+never a plausible-looking placeholder. ``wealth`` IS a real Territory
+field (Feature 021) and is read directly rather than defaulted.
 """
 
 from __future__ import annotations
@@ -26,11 +33,21 @@ class _StubTerritory:
         self.population = kw.get("population", 1_000)
         self.under_eviction = kw.get("under_eviction", False)
         self.biocapacity = kw.get("biocapacity", 0.9)
+        # Real Territory fields (spec-109 A2 widened _serialize_territory to
+        # read these directly, matching the pydantic model's own defaults —
+        # see babylon.models.entities.territory.Territory).
+        self.max_biocapacity = kw.get("max_biocapacity", 100.0)
+        self.extraction_intensity = kw.get("extraction_intensity", 0.0)
+        self.wealth = kw.get("wealth", 0.0)
+        self.median_wage = kw.get("median_wage", 0.0)
+        self.reserve_ratio = kw.get("reserve_ratio", 0.0)
+        self.foreclosure_rate = kw.get("foreclosure_rate", 0.0)
+        self.eviction_rate = kw.get("eviction_rate", 0.0)
+        self.displacement_rate = kw.get("displacement_rate", 0.0)
+        self.concentrated_ownership = kw.get("concentrated_ownership", 0.0)
+        self.absentee_landlord_share = kw.get("absentee_landlord_share", 0.0)
         self.host_id = kw.get("host_id")
         self.occupant_id = kw.get("occupant_id")
-        for k in ("consciousness", "solidarity", "wealth", "dominant_community"):
-            if k in kw:
-                setattr(self, k, kw[k])
 
 
 class _StubEdge:
@@ -52,26 +69,24 @@ class TestTerritorySerializationFR013:
         for key in ("consciousness", "solidarity", "wealth", "dominant_community"):
             assert key in out, f"missing {key}"
 
-    def test_extended_fields_default_to_zero_when_attribute_absent(self) -> None:
+    def test_ungrounded_fields_are_honest_none_not_fabricated(self) -> None:
+        """Spec-109 A2: no wired system computes a territory-level
+        consciousness/solidarity/dominant-community aggregate — the honest
+        value is None, never a plausible-looking 0.0/"" placeholder."""
         out = _serialize_territory(_StubTerritory())
-        assert out["consciousness"] == 0.0
-        assert out["solidarity"] == 0.0
-        assert out["wealth"] == 0.0
-        assert out["dominant_community"] == ""
+        assert out["consciousness"] is None
+        assert out["solidarity"] is None
+        assert out["dominant_community"] is None
 
-    def test_extended_fields_pass_through_when_attribute_present(self) -> None:
-        out = _serialize_territory(
-            _StubTerritory(
-                consciousness=0.45,
-                solidarity=0.62,
-                wealth=12_500.0,
-                dominant_community="comm-proletariat-wayne",
-            )
-        )
-        assert out["consciousness"] == 0.45
-        assert out["solidarity"] == 0.62
+    def test_wealth_is_a_real_field_read_directly(self) -> None:
+        """``wealth`` (Feature 021) IS a Territory model field — its default
+        of 0.0 comes from the model, not a getattr fallback."""
+        out = _serialize_territory(_StubTerritory())
+        assert out["wealth"] == 0.0
+
+    def test_wealth_passes_through_when_set(self) -> None:
+        out = _serialize_territory(_StubTerritory(wealth=12_500.0))
         assert out["wealth"] == 12_500.0
-        assert out["dominant_community"] == "comm-proletariat-wayne"
 
 
 class TestEdgeSerializationFR014:

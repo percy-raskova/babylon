@@ -140,6 +140,30 @@ describe("buildLensLayers", () => {
     expect(high[1]).toBeGreaterThan(low[1]);
   });
 
+  it("habitability lens prefers the territory's own real habitability over the balkanization row (spec-109 A2)", () => {
+    // T2's balkanization row says habitability=0.9 (near max_biocapacity ->
+    // green), but the territory itself now carries a real, much lower
+    // MetabolismSystem value (0.05) via the bridge's graph threading — that
+    // must win, not the derived balkanization proxy.
+    const territoriesWithRealHabitability: LensTerritory[] = TERRITORIES.map((t) =>
+      t.id === "T2" ? { ...t, habitability: 0.05 } : t,
+    );
+
+    const result = buildLensLayers({
+      territories: territoriesWithRealHabitability,
+      balkanization: BALKANIZATION,
+      lensMode: "habitability",
+    });
+
+    const t2WithReal = result.getFillColor("T2");
+    const t3Low = result.getFillColor("T3"); // row habitability 0.1, no real value
+
+    // T2 now reads as low-habitability (redder), close to T3, not the
+    // green the stale balkanization-row value (0.9) would have produced.
+    expect(t2WithReal[0]).toBeGreaterThan(150);
+    expect(Math.abs(t2WithReal[0] - t3Low[0])).toBeLessThan(40);
+  });
+
   it("faction lens desaturates territories below the meaningful-influence threshold", () => {
     const result = buildLensLayers({
       territories: TERRITORIES,

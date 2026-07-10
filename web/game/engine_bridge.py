@@ -821,19 +821,28 @@ class EngineBridge:
         # Seed initial world graph for tick 0 so snapshot/state endpoints
         # have material data immediately after game creation.
         initial_state = _build_initial_state_for_scenario(scenario)
+        initial_graph = initial_state.to_graph()
         self._persistence.persist_tick(
             tick=initial_state.tick,
-            graph=initial_state.to_graph(),
+            graph=initial_graph,
             events=[event.model_dump(mode="json") for event in initial_state.events] or None,
             session_id=session_id,
         )
 
         # P0 #7: project the tick-0 territories into hex_latest so the map
-        # endpoint has features immediately after game creation.
+        # endpoint has features immediately after game creation. Spec-109
+        # A2: org_count is real at tick 0 (scenario-seeded orgs); heat_delta
+        # has no prior tick to diff against, so it stays at the column
+        # default (0.0).
+        initial_orgs = [_serialize_organization(o) for o in initial_state.organizations.values()]
         _persist_hex_state_safe(
             session_id,
             initial_state.tick,
-            [_serialize_territory(t) for t in initial_state.territories.values()],
+            [
+                _serialize_territory(t, graph=initial_graph)
+                for t in initial_state.territories.values()
+            ],
+            org_counts=_org_count_by_territory(initial_orgs),
         )
         # Spec-109 A1: seed the tick-0 snapshot tables + summary row so
         # timeseries/history surfaces have a baseline point from creation.
@@ -877,18 +886,27 @@ class EngineBridge:
                     else "default"
                 )
                 seeded_state = _build_initial_state_for_scenario(scenario)
+                seeded_graph = seeded_state.to_graph()
                 self._persistence.persist_tick(
                     tick=seeded_state.tick,
-                    graph=seeded_state.to_graph(),
+                    graph=seeded_graph,
                     events=[event.model_dump(mode="json") for event in seeded_state.events] or None,
                     session_id=session_id,
                 )
                 # P0 #7: backfill hex_latest for legacy/unseeded sessions so
-                # pre-fix games gain a map on first hydrate.
+                # pre-fix games gain a map on first hydrate. Spec-109 A2:
+                # org_count is real; heat_delta has no prior tick.
+                seeded_orgs = [
+                    _serialize_organization(o) for o in seeded_state.organizations.values()
+                ]
                 _persist_hex_state_safe(
                     session_id,
                     seeded_state.tick,
-                    [_serialize_territory(t) for t in seeded_state.territories.values()],
+                    [
+                        _serialize_territory(t, graph=seeded_graph)
+                        for t in seeded_state.territories.values()
+                    ],
+                    org_counts=_org_count_by_territory(seeded_orgs),
                 )
                 # Spec-109 A1: same backfill for the snapshot/summary tables.
                 _persist_snapshots_safe(self._persistence, session_id, seeded_state)
@@ -909,8 +927,8 @@ class EngineBridge:
             Dict with keys: session_id, tick, entities, territories,
             organizations, institutions, economy, events.
         """
-        state, _graph = self.hydrate_state(session_id)
-        return _state_to_snapshot(state, session_id)
+        state, graph = self.hydrate_state(session_id)
+        return _state_to_snapshot(state, session_id, graph=graph)
 
     def get_map_snapshot(
         self,
@@ -1018,6 +1036,13 @@ class EngineBridge:
                 "heat_sum": 0.0,
                 "org_presence_sum": 0,
                 "population_sum": 0,
+                # Spec-109 A2: habitability isn't emitted by every hex (only
+                # territories with a Sovereign metabolic_impact entry — see
+                # MetabolismSystem), so its weighted mean tracks its own
+                # population coverage rather than reusing population_sum
+                # (a partial-coverage group must not silently read as 0.0).
+                "habitability_sum": 0.0,
+                "habitability_pop": 0,
                 "count": 0,
             }
         )
@@ -1038,6 +1063,11 @@ class EngineBridge:
             acc["population_sum"] += pop
             acc["count"] += 1
 
+            habitability = (getattr(state, "attributes", None) or {}).get("habitability")
+            if habitability is not None:
+                acc["habitability_sum"] += float(habitability) * pop
+                acc["habitability_pop"] += pop
+
             # Capture a name for the group
             if key not in group_names:
                 group_names[key] = state.county_name or key
@@ -1045,6 +1075,7 @@ class EngineBridge:
         features: list[dict[str, Any]] = []
         for key, acc in groups.items():
             total_pop = acc["population_sum"] or 1  # avoid div-by-zero
+            habitability_pop = acc["habitability_pop"]
             features.append(
                 {
                     "type": "Feature",
@@ -1062,6 +1093,11 @@ class EngineBridge:
                         "heat": round(acc["heat_sum"] / total_pop, 4),
                         "org_presence": acc["org_presence_sum"],
                         "population": acc["population_sum"],
+                        "habitability": (
+                            round(acc["habitability_sum"] / habitability_pop, 4)
+                            if habitability_pop
+                            else None
+                        ),
                     },
                 }
             )
@@ -1230,8 +1266,8 @@ class EngineBridge:
 
     def inspect_node(self, session_id: UUID, node_id: str) -> dict[str, Any]:
         """Generic node lookup — dispatches by node type (FR-019)."""
-        state, _ = self.hydrate_state(session_id)
-        snap = _state_to_snapshot(state, session_id)
+        state, graph = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id, graph=graph)
         for collection in ("organizations", "institutions", "territories"):
             for entry in snap.get(collection, []):
                 if entry.get("id") == node_id:
@@ -1239,8 +1275,8 @@ class EngineBridge:
         return {"node": None, "collection": None}
 
     def inspect_org(self, session_id: UUID, org_id: str) -> dict[str, Any]:
-        state, _ = self.hydrate_state(session_id)
-        snap = _state_to_snapshot(state, session_id)
+        state, graph = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id, graph=graph)
         org = next((o for o in snap.get("organizations", []) if o.get("id") == org_id), None)
         return {
             "org": org,
@@ -1253,8 +1289,8 @@ class EngineBridge:
     def inspect_edge(
         self, session_id: UUID, source_id: str, target_id: str, edge_type: str
     ) -> dict[str, Any]:
-        state, _ = self.hydrate_state(session_id)
-        snap = _state_to_snapshot(state, session_id)
+        state, graph = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id, graph=graph)
         edge = next(
             (
                 e
@@ -1271,8 +1307,8 @@ class EngineBridge:
         }
 
     def inspect_hex(self, session_id: UUID, h3_index: str) -> dict[str, Any]:
-        state, _ = self.hydrate_state(session_id)
-        snap = _state_to_snapshot(state, session_id)
+        state, graph = self.hydrate_state(session_id)
+        snap = _state_to_snapshot(state, session_id, graph=graph)
         territory = next(
             (t for t in snap.get("territories", []) if t.get("h3_index") == h3_index),
             None,
@@ -2060,7 +2096,7 @@ class EngineBridge:
             _persist_action_result(self._persistence, result_data)
 
         # T019: Check for endgame conditions in events
-        snapshot = _state_to_snapshot(new_state, session_id)
+        snapshot = _state_to_snapshot(new_state, session_id, graph=new_graph)
 
         # Spec 092 R-CONS: persist this tick's events into tick_event so the
         # journal/alerts dashboards (get_journal_dashboard/get_alerts_dashboard)
@@ -2069,7 +2105,17 @@ class EngineBridge:
         _persist_tick_events_safe(self._persistence, session_id, new_state.tick, snapshot["events"])
         # P0 #7: refresh the hex_latest map cache from this tick's territories
         # (sibling of the tick_event write above; best-effort, never raises).
-        _persist_hex_state_safe(session_id, new_state.tick, snapshot["territories"])
+        # Spec-109 A2: org_count from live territory_ids, heat_delta from the
+        # real pre-step (`graph`) -> post-step (`new_graph`) diff.
+        _persist_hex_state_safe(
+            session_id,
+            new_state.tick,
+            snapshot["territories"],
+            org_counts=_org_count_by_territory(snapshot["organizations"]),
+            heat_deltas=_heat_delta_by_territory(
+                graph, new_graph, [t["id"] for t in snapshot["territories"]]
+            ),
+        )
         # Spec-109 A1: fill the spec-037 snapshot tables + the tick_summary
         # aggregates that back get_game_timeseries (spec-061 FR-003 wire-up).
         _persist_snapshots_safe(self._persistence, session_id, new_state)
@@ -3640,7 +3686,8 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
 
     Emits every :data:`MAP_METRIC_PROPERTIES` key (the spec-109 A3 contract —
     ``org_presence`` maps from ``org_count``, ``population`` from
-    ``pop_total``) plus the identity/context columns. Extracted from the
+    ``pop_total``, ``habitability`` from the JSONB ``attributes`` column —
+    Spec-109 A2) plus the identity/context columns. Extracted from the
     ``get_map_snapshot`` loop so the contract is unit-testable without a
     database.
 
@@ -3650,6 +3697,7 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     Returns:
         The feature ``properties`` dict.
     """
+    attributes = getattr(state, "attributes", None) or {}
     return {
         "h3_index": state.h3_index,
         "county_fips": state.county_fips,
@@ -3664,19 +3712,115 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "org_presence": state.org_count,
         "dominant_class": state.dominant_class,
         "population": state.pop_total,
+        "habitability": attributes.get("habitability"),
     }
 
 
-def _hex_state_row(session_id: UUID, tick: int, territory: dict[str, Any]) -> dict[str, Any] | None:
+def _org_count_by_territory(organizations: list[dict[str, Any]]) -> dict[str, int]:
+    """Count organizations present in each territory (spec-109 A2).
+
+    Sourced from each org's real ``territory_ids`` (the Organization
+    model's own field, via :func:`_serialize_organization`) — never
+    fabricated. A territory absent from every org's list simply has no
+    entry here; the caller falls back to hex_latest's ``org_count``
+    column default of 0.
+
+    Args:
+        organizations: ``_serialize_organization`` output, one dict per org.
+
+    Returns:
+        Map of territory id -> count of organizations operating there.
+    """
+    counts: dict[str, int] = {}
+    for org in organizations:
+        for territory_id in org.get("territory_ids") or []:
+            counts[territory_id] = counts.get(territory_id, 0) + 1
+    return counts
+
+
+def _heat_delta_by_territory(
+    pre_graph: Any,
+    post_graph: Any,
+    territory_ids: list[str],
+) -> dict[str, float]:
+    """Per-territory heat change over one tick (spec-109 A2).
+
+    A true ``post - pre`` diff read off the live pre-step and post-step
+    graphs — mirrors the per-action heat-delta already computed for
+    ActionResult rows in :meth:`EngineBridge.resolve_tick`, extended to
+    every territory (not just action targets). A territory absent from
+    either graph is skipped rather than defaulted to 0.0.
+
+    Args:
+        pre_graph: The graph before ``step()`` ran this tick.
+        post_graph: The graph after ``step()`` ran this tick.
+        territory_ids: Territory ids to compute a delta for.
+
+    Returns:
+        Map of territory id -> ``heat`` delta (post minus pre).
+    """
+    deltas: dict[str, float] = {}
+    for territory_id in territory_ids:
+        if territory_id not in pre_graph.nodes or territory_id not in post_graph.nodes:
+            continue
+        pre_heat = float(pre_graph.nodes[territory_id].get("heat", 0.0))
+        post_heat = float(post_graph.nodes[territory_id].get("heat", 0.0))
+        deltas[territory_id] = post_heat - pre_heat
+    return deltas
+
+
+def _hex_state_row(
+    session_id: UUID,
+    tick: int,
+    territory: dict[str, Any],
+    *,
+    org_count: int = 0,
+    heat_delta: float = 0.0,
+) -> dict[str, Any] | None:
     """Project one :func:`_serialize_territory` dict onto ``hex_latest`` columns.
 
     Returns ``None`` for territories without an ``h3_index`` (abstract
     scenarios such as ``two_node``) — those cannot be drawn on the map.
 
+    Spec-109 A2 column-source inventory (columns with no live engine
+    source stay at the model/DB default rather than a fabricated value —
+    Constitution III.11):
+
+    * ``state_fips`` — derived from the (real) ``county_fips``'s first two
+      digits, the standard US Census FIPS structure — set only when a real
+      county_fips is present.
+    * ``org_count``/``heat_delta`` — passed in by the caller (see
+      :func:`_org_count_by_territory` / :func:`_heat_delta_by_territory`);
+      both have real per-tick engine sources.
+    * ``attributes["habitability"]`` — the graph-only Sovereign-driven
+      metabolic impact (Spec-070 FR-043), when present on ``territory``.
+    * ``profit_rate``/``exploitation_rate``/``occ``/``imperial_rent``/
+      ``g33_visibility`` — NO wired system computes these per-territory
+      (only global aggregates, or orphaned economics/tick/ modules) —
+      left at their NULL column default.
+    * ``pop_bourgeoisie``/``pop_petit_bourgeoisie``/``pop_labor_aristocracy``/
+      ``pop_proletariat``/``pop_lumpenproletariat``/``dominant_class`` — no
+      shipped scenario sets ``SocialClass.county_fips``, so there is no
+      live per-territory class-population source — left at defaults.
+    * ``faction_finance_capital``/``faction_security_state``/
+      ``faction_settler_populist`` — the StateApparatusAI FactionBalance
+      module (``babylon.ooda.state_ai.faction_dynamics``) is never called
+      from any of the 26 wired Systems — left at NULL.
+    * ``bea_ea_code``/``msa_code`` — reference-geography columns with no
+      Territory/graph analogue in the web session bridge — left at NULL.
+    * ``terrain_type``/``water_coverage``/``internet_access`` — the R8 hex
+      substrate (spec-036/063) is built but not wired into the 26-system
+      pipeline — left at their structural defaults.
+
     Args:
         session_id: The game session UUID (``hex_latest.game_id``).
         tick: The tick this row reflects.
         territory: One entry of ``snapshot["territories"]``.
+        org_count: Organizations present in this territory this tick
+            (see :func:`_org_count_by_territory`); 0 when unknown.
+        heat_delta: This territory's heat change this tick (see
+            :func:`_heat_delta_by_territory`); 0.0 when unknown (e.g. the
+            tick-0 seed, which has no prior tick to diff against).
 
     Returns:
         Kwargs dict for the :class:`game.models.HexState` constructor, or None.
@@ -3691,23 +3835,39 @@ def _hex_state_row(session_id: UUID, tick: int, territory: dict[str, Any]) -> di
     except (ValueError, TypeError) as exc:
         logger.warning("Skipping territory with invalid h3_index %r: %s", h3_index, exc)
         return None
-    return {
+
+    county_fips = str(territory.get("county_fips") or "")
+    attributes: dict[str, Any] = {}
+    habitability = territory.get("habitability")
+    if habitability is not None:
+        attributes["habitability"] = float(habitability)
+
+    row: dict[str, Any] = {
         "game_id": session_id,
         "h3_index": str(h3_index),
         "tick": tick,
-        "county_fips": str(territory.get("county_fips") or ""),
+        "county_fips": county_fips,
         "county_name": str(territory.get("name") or h3_index)[:100],
         "center_lat": float(center_lat),
         "center_lng": float(center_lng),
         "heat": float(territory.get("heat") or 0.0),
+        "heat_delta": float(heat_delta),
+        "org_count": int(org_count),
         "pop_total": int(territory.get("population") or 0),
+        "attributes": attributes,
     }
+    if len(county_fips) >= 2:
+        row["state_fips"] = county_fips[:2]
+    return row
 
 
 def _persist_hex_state_safe(
     session_id: UUID,
     tick: int,
     serialized_territories: list[dict[str, Any]],
+    *,
+    org_counts: dict[str, int] | None = None,
+    heat_deltas: dict[str, float] | None = None,
 ) -> None:
     """Best-effort projection of a tick's territories into ``hex_latest``.
 
@@ -3728,13 +3888,30 @@ def _persist_hex_state_safe(
         tick: The tick these rows reflect.
         serialized_territories: ``snapshot["territories"]`` (output of
             :func:`_serialize_territory` per territory).
+        org_counts: Optional map of territory id -> organization count
+            (see :func:`_org_count_by_territory`); missing entries default
+            to 0.
+        heat_deltas: Optional map of territory id -> heat delta this tick
+            (see :func:`_heat_delta_by_territory`); missing entries
+            default to 0.0 (e.g. tick-0 seeding has no prior tick).
     """
     if not serialized_territories:
         return
+    org_counts = org_counts or {}
+    heat_deltas = heat_deltas or {}
     rows = [
         row
         for t in serialized_territories
-        if (row := _hex_state_row(session_id, tick, t)) is not None
+        if (
+            row := _hex_state_row(
+                session_id,
+                tick,
+                t,
+                org_count=org_counts.get(str(t.get("id")), 0),
+                heat_delta=heat_deltas.get(str(t.get("id")), 0.0),
+            )
+        )
+        is not None
     ]
     if not rows:
         return
@@ -3749,10 +3926,14 @@ def _persist_hex_state_safe(
                 "tick",
                 "county_fips",
                 "county_name",
+                "state_fips",
                 "center_lat",
                 "center_lng",
                 "heat",
+                "heat_delta",
+                "org_count",
                 "pop_total",
+                "attributes",
             ],
         )
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
@@ -3825,17 +4006,52 @@ def _serialize_entity(e: Any) -> dict[str, Any]:
     }
 
 
-def _serialize_territory(t: Any) -> dict[str, Any]:
+def _territory_graph_attr(graph: Any, territory_id: str, key: str) -> Any:
+    """Read one graph-only attr off a territory node, or ``None`` if absent.
+
+    Spec-109 A2: ``habitability``/``dispossession_intensity``/``wage_pressure``
+    are written onto graph territory nodes by MetabolismSystem /
+    DispossessionEventSystem / ReserveArmySystem but deliberately excluded
+    from the Territory pydantic model (``TERRITORY_EXCLUDED_FIELDS`` in
+    ``babylon.models.world_state`` — they are transient per-tick outputs,
+    not model fields). Reading them requires the live graph, not the
+    reconstructed Territory. Constitution III.11: a missing attr (no
+    ``graph``, territory not in the graph, or the key never written) is
+    ``None``, never a fabricated default.
+
+    Args:
+        graph: A graph exposing ``.nodes`` (mapping of node id -> attrs
+            dict), e.g. :class:`~babylon.engine.graph.BabylonGraph`, or
+            ``None`` when no live graph is available at the call site.
+        territory_id: The territory's node id.
+        key: The graph-only attribute name.
+
+    Returns:
+        The attribute value, or ``None`` if unavailable.
+    """
+    if graph is None or territory_id not in graph.nodes:
+        return None
+    return graph.nodes[territory_id].get(key)
+
+
+def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     """Serialize a Territory with all visualization-relevant fields.
 
-    Spec 061 US6 FR-013 (T095): also emits ``consciousness`` /
-    ``solidarity`` / ``wealth`` / ``dominant_community`` derived
-    aggregates. The engine Territory model does not yet carry these
-    directly; defaults are 0.0 / "" until US6-followup persistence
-    queries (T095 detailed implementation) land. The frontend can
-    distinguish "no data yet" (0.0/"") from "real zero" via the
-    presence/absence of dominant_community.
+    Spec 061 US6 FR-013 (T095) originally stubbed ``consciousness`` /
+    ``solidarity`` / ``dominant_community`` with fabricated 0.0/"" defaults.
+    Spec-109 A2 (Constitution III.11): the engine computes no
+    territory-level consciousness/solidarity/community-dominance aggregate
+    (no wired system writes these onto territory nodes or the Territory
+    model) — they are honest ``None`` now. ``wealth`` IS a real Territory
+    field (Feature 021) and is read directly rather than defaulted.
+
+    ``graph``, when supplied, unlocks graph-only attrs the Territory model
+    excludes (see :func:`_territory_graph_attr`): ``habitability``
+    (Spec-070 FR-043, MetabolismSystem), ``dispossession_intensity``
+    (Feature 021, DispossessionEventSystem), ``wage_pressure`` (Feature 021,
+    ReserveArmySystem). Without a graph these stay ``None``.
     """
+    territory_id = t.id
     return {
         "id": t.id,
         "name": t.name,
@@ -3850,12 +4066,26 @@ def _serialize_territory(t: Any) -> dict[str, Any]:
         "population": t.population,
         "under_eviction": t.under_eviction,
         "biocapacity": float(t.biocapacity),
+        "max_biocapacity": float(t.max_biocapacity),
+        "extraction_intensity": float(t.extraction_intensity),
         "host_id": t.host_id,
         "occupant_id": t.occupant_id,
-        "consciousness": float(getattr(t, "consciousness", 0.0)),
-        "solidarity": float(getattr(t, "solidarity", 0.0)),
-        "wealth": float(getattr(t, "wealth", 0.0)),
-        "dominant_community": str(getattr(t, "dominant_community", "") or ""),
+        "consciousness": None,
+        "solidarity": None,
+        "wealth": float(t.wealth),
+        "dominant_community": None,
+        "median_wage": float(t.median_wage),
+        "reserve_ratio": float(t.reserve_ratio),
+        "foreclosure_rate": float(t.foreclosure_rate),
+        "eviction_rate": float(t.eviction_rate),
+        "displacement_rate": float(t.displacement_rate),
+        "concentrated_ownership": float(t.concentrated_ownership),
+        "absentee_landlord_share": float(t.absentee_landlord_share),
+        "habitability": _territory_graph_attr(graph, territory_id, "habitability"),
+        "dispossession_intensity": _territory_graph_attr(
+            graph, territory_id, "dispossession_intensity"
+        ),
+        "wage_pressure": _territory_graph_attr(graph, territory_id, "wage_pressure"),
     }
 
 
@@ -4014,7 +4244,7 @@ def _serialize_edge(rel: Any) -> dict[str, Any]:
     }
 
 
-def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
+def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None) -> dict[str, Any]:
     """Convert a WorldState to a JSON-serializable dict for API responses.
 
     Includes VanguardResources on player orgs and TrapDetection results.
@@ -4022,11 +4252,16 @@ def _state_to_snapshot(state: WorldState, session_id: UUID) -> dict[str, Any]:
     Args:
         state: The WorldState to serialize.
         session_id: The session UUID to include.
+        graph: Optional live graph (see :func:`_serialize_territory`'s
+            ``graph`` parameter) unlocking graph-only territory attrs like
+            ``habitability`` (spec-109 A2). Callers that already hydrated
+            or stepped a graph for this ``state`` should pass it; without
+            one, those attrs serialize as ``None``.
 
     Returns:
         Flat dict suitable for JSON encoding.
     """
-    territories = [_serialize_territory(t) for t in state.territories.values()]
+    territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]

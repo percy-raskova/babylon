@@ -22,6 +22,11 @@ from babylon.models.events import SimulationEvent
 from game.engine_bridge import (
     EngineBridge,
     _build_initial_state_for_scenario,
+    _heat_delta_by_territory,
+    _hex_feature_properties,
+    _hex_state_row,
+    _org_count_by_territory,
+    _serialize_territory,
     _state_to_snapshot,
     resolve_scenario,
 )
@@ -723,6 +728,241 @@ class TestHexStateProjection:
         EngineBridge(mock_persistence).resolve_tick(self._SID)
 
         assert HexState.objects.filter(game_id=self._SID).count() == 0
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_persists_org_count_heat_delta_and_habitability(
+        self, mock_step: MagicMock
+    ) -> None:
+        """Spec-109 A2: org_count/heat_delta/habitability are real, not defaults."""
+        from babylon.models.entities import Territory
+        from babylon.models.entities.organization import CivilSocietyOrg
+        from babylon.models.enums import ClassCharacter, SectorType, ServiceType
+        from game.models import HexState
+
+        self._make_session_row()
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+
+        cell = "862a91a17ffffff"  # 15-char lowercase hex, matches Territory pattern
+
+        # Pre-step graph: territory node at heat=0.2 (what hydrate_state loads).
+        # Needs every Territory-required field since hydrate_state round-trips
+        # it through WorldState.from_graph().
+        pre_graph = BabylonGraph()
+        pre_graph.add_node(
+            cell,
+            node_type="territory",
+            id=cell,
+            h3_index=cell,
+            name="Test Hex",
+            sector_type="industrial",
+            heat=0.2,
+        )
+        mock_persistence.hydrate_graph.return_value = pre_graph
+
+        territory = Territory(
+            id=cell, h3_index=cell, name="Test Hex", sector_type=SectorType.INDUSTRIAL, heat=0.7
+        )
+        org = CivilSocietyOrg(
+            id="O001",
+            name="Test Org",
+            class_character=ClassCharacter.PROLETARIAN,
+            service_type=ServiceType.MUTUAL_AID,
+            territory_ids=[cell],
+        )
+        mock_new_state = _make_mock_new_state(tick=7)
+        mock_new_state.territories = {cell: territory}
+        mock_new_state.organizations = {"O001": org}
+
+        # Post-step graph: same territory at heat=0.7 (matches Territory.heat
+        # above) plus the graph-only habitability attr MetabolismSystem writes.
+        post_graph = BabylonGraph()
+        post_graph.add_node(cell, node_type="territory", heat=0.7, habitability=0.42)
+        mock_new_state.to_graph.return_value = post_graph
+        mock_step.return_value = mock_new_state
+
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        row = HexState.objects.get(game_id=self._SID, h3_index=cell)
+        assert row.org_count == 1
+        assert row.heat_delta == pytest.approx(0.5)
+        assert row.attributes.get("habitability") == pytest.approx(0.42)
+        # No county_fips on this territory -> state_fips falls to the model
+        # default rather than a fabricated derivation.
+        assert row.state_fips == "26"
+
+
+@pytest.mark.unit
+class TestSerializeTerritoryGraphThreading:
+    """Spec-109 A2: _serialize_territory reads graph-only attrs, never fakes them."""
+
+    def _make_territory(self) -> Any:
+        from babylon.models.entities import Territory
+        from babylon.models.enums import SectorType
+
+        return Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            wealth=12.5,
+            median_wage=3.0,
+            max_biocapacity=88.0,
+        )
+
+    def test_no_graph_yields_none_for_graph_only_attrs(self) -> None:
+        territory = self._make_territory()
+
+        result = _serialize_territory(territory)
+
+        assert result["habitability"] is None
+        assert result["dispossession_intensity"] is None
+        assert result["wage_pressure"] is None
+        assert result["consciousness"] is None
+        assert result["solidarity"] is None
+        assert result["dominant_community"] is None
+
+    def test_graph_present_but_node_missing_yields_none(self) -> None:
+        territory = self._make_territory()
+        graph = BabylonGraph()  # T001 not in this graph
+
+        result = _serialize_territory(territory, graph=graph)
+
+        assert result["habitability"] is None
+
+    def test_graph_supplies_habitability_when_written(self) -> None:
+        territory = self._make_territory()
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory", habitability=0.61)
+
+        result = _serialize_territory(territory, graph=graph)
+
+        assert result["habitability"] == pytest.approx(0.61)
+
+    def test_real_territory_fields_are_never_fabricated(self) -> None:
+        """wealth/median_wage/max_biocapacity are real Territory fields."""
+        territory = self._make_territory()
+
+        result = _serialize_territory(territory)
+
+        assert result["wealth"] == pytest.approx(12.5)
+        assert result["median_wage"] == pytest.approx(3.0)
+        assert result["max_biocapacity"] == pytest.approx(88.0)
+
+
+@pytest.mark.unit
+class TestOrgCountByTerritory:
+    def test_counts_orgs_per_territory(self) -> None:
+        orgs = [
+            {"id": "O1", "territory_ids": ["T001", "T002"]},
+            {"id": "O2", "territory_ids": ["T001"]},
+            {"id": "O3", "territory_ids": []},
+        ]
+
+        counts = _org_count_by_territory(orgs)
+
+        assert counts == {"T001": 2, "T002": 1}
+
+    def test_empty_orgs_yields_empty_map(self) -> None:
+        assert _org_count_by_territory([]) == {}
+
+
+@pytest.mark.unit
+class TestHeatDeltaByTerritory:
+    def test_computes_real_post_minus_pre_diff(self) -> None:
+        pre = BabylonGraph()
+        pre.add_node("T001", node_type="territory", heat=0.2)
+        post = BabylonGraph()
+        post.add_node("T001", node_type="territory", heat=0.5)
+
+        deltas = _heat_delta_by_territory(pre, post, ["T001"])
+
+        assert deltas["T001"] == pytest.approx(0.3)
+
+    def test_territory_absent_from_either_graph_is_skipped(self) -> None:
+        pre = BabylonGraph()
+        pre.add_node("T001", node_type="territory", heat=0.2)
+        post = BabylonGraph()  # T001 never made it to the post-step graph
+
+        deltas = _heat_delta_by_territory(pre, post, ["T001"])
+
+        assert "T001" not in deltas
+
+
+@pytest.mark.unit
+class TestHexFeaturePropertiesHabitability:
+    def test_habitability_read_from_attributes_json(self) -> None:
+        from types import SimpleNamespace
+
+        row = SimpleNamespace(
+            h3_index="h1",
+            county_fips="26163",
+            county_name="Wayne",
+            bea_ea_code=None,
+            msa_code=None,
+            profit_rate=None,
+            exploitation_rate=None,
+            occ=None,
+            imperial_rent=None,
+            heat=0.1,
+            org_count=0,
+            dominant_class=None,
+            pop_total=0,
+            attributes={"habitability": 0.77},
+        )
+
+        props = _hex_feature_properties(row)
+
+        assert props["habitability"] == pytest.approx(0.77)
+
+    def test_missing_attributes_yields_none_not_zero(self) -> None:
+        from types import SimpleNamespace
+
+        row = SimpleNamespace(
+            h3_index="h1",
+            county_fips="26163",
+            county_name="Wayne",
+            bea_ea_code=None,
+            msa_code=None,
+            profit_rate=None,
+            exploitation_rate=None,
+            occ=None,
+            imperial_rent=None,
+            heat=0.1,
+            org_count=0,
+            dominant_class=None,
+            pop_total=0,
+            attributes={},
+        )
+
+        props = _hex_feature_properties(row)
+
+        assert props["habitability"] is None
+
+
+@pytest.mark.unit
+class TestHexStateRowStateFips:
+    _SID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    def test_state_fips_derived_from_county_fips(self) -> None:
+        row = _hex_state_row(
+            self._SID,
+            3,
+            {"h3_index": "862a91a17ffffff", "county_fips": "26163", "name": "Wayne"},
+        )
+
+        assert row is not None
+        assert row["state_fips"] == "26"
+
+    def test_state_fips_absent_when_no_county_fips(self) -> None:
+        row = _hex_state_row(
+            self._SID,
+            3,
+            {"h3_index": "862a91a17ffffff", "county_fips": None, "name": "Abstract"},
+        )
+
+        assert row is not None
+        assert "state_fips" not in row
 
 
 @pytest.mark.unit

@@ -211,6 +211,13 @@ class HexState(models.Model):
     water_coverage = models.FloatField(default=0.0)
     internet_access = models.BooleanField(default=False)
 
+    # Forward-compat JSONB (already present in postgres_schema.py's
+    # HEX_LATEST_DDL). Spec-109 A2: carries graph-only per-territory
+    # attrs that have no dedicated column yet — currently just
+    # ``habitability`` (Territory model excludes it; see
+    # TERRITORY_EXCLUDED_FIELDS in babylon.models.world_state).
+    attributes = models.JSONField(default=dict)
+
     class Meta:
         managed = False
         db_table = "hex_latest"

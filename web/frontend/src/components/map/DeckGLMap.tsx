@@ -170,7 +170,9 @@ export function DeckGLMap({ snapshot, mapData }: DeckGLMapProps) {
         h3_index: t.h3_index,
         heat: t.heat,
         biocapacity: t.biocapacity,
-        max_biocapacity: 100,
+        // Spec-109 A2: real Territory field, was hardcoded to 100.
+        max_biocapacity: t.max_biocapacity ?? 100,
+        habitability: t.habitability ?? null,
       })),
       balkanization,
       lensMode,

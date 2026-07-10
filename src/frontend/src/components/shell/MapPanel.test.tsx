@@ -35,7 +35,9 @@ describe("MapPanel", () => {
     await waitFor(() => expect(useStore.getState().panels.map.data).not.toBeNull());
     const fetchesBefore = requestLog.filter((r) => r === "GET map").length;
 
-    useStore.getState().map.setFraming("hex");
+    // "hex" is the default framing (spec-112 C5) — transition to a
+    // different value so this actually exercises a change.
+    useStore.getState().map.setFraming("county");
 
     await waitFor(() =>
       expect(requestLog.filter((r) => r === "GET map")).toHaveLength(fetchesBefore + 1),

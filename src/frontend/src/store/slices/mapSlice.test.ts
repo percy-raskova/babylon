@@ -16,10 +16,14 @@ beforeEach(() => {
 });
 
 describe("map slice — view controls", () => {
-  it("defaults to the stance lens, county framing, no selection, no faction filter", () => {
+  it("defaults to the stance lens, hex framing, no selection, no faction filter", () => {
+    // The rendered default stays identical to today (spec-112 C5): county
+    // framing used to BE the default, but nothing ever drew aggregated
+    // regions, so the map always rendered hex tiles regardless. Now that
+    // county framing actually renders, "hex" is the explicit default.
     const { map } = useStore.getState();
     expect(map.lens).toEqual({ kind: "stance" });
-    expect(map.framing).toBe("county");
+    expect(map.framing).toBe("hex");
     expect(map.viewportBbox).toBeNull();
     expect(map.selection).toBeNull();
     expect(map.factionFilter).toBeNull();
@@ -27,12 +31,12 @@ describe("map slice — view controls", () => {
 
   it("setLens/setFraming/setViewportBbox update independently", () => {
     useStore.getState().map.setLens({ kind: "heat" });
-    useStore.getState().map.setFraming("hex");
+    useStore.getState().map.setFraming("county");
     useStore.getState().map.setViewportBbox([-84, 42, -83, 43]);
 
     const { map } = useStore.getState();
     expect(map.lens).toEqual({ kind: "heat" });
-    expect(map.framing).toBe("hex");
+    expect(map.framing).toBe("county");
     expect(map.viewportBbox).toEqual([-84, 42, -83, 43]);
   });
 
@@ -41,6 +45,38 @@ describe("map slice — view controls", () => {
     expect(useStore.getState().map.factionFilter).toBe("FAC_DECOLONIAL");
     useStore.getState().map.setFactionFilter(null);
     expect(useStore.getState().map.factionFilter).toBeNull();
+  });
+});
+
+describe("map slice — setFraming fans out a map fetch", () => {
+  it("updates framing but fetches nothing when no active game is set", async () => {
+    useStore.getState().map.setFraming("county");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useStore.getState().map.framing).toBe("county");
+    expect(requestLog.filter((r) => r === "GET map")).toHaveLength(0);
+  });
+
+  it("fans out exactly one panels.map fetch whose URL carries the new zoom once a game is active", async () => {
+    let capturedUrl = "";
+    server.use(
+      http.get("/api/games/:id/map/", ({ request }) => {
+        requestLog.push("GET map");
+        capturedUrl = request.url;
+        return HttpResponse.json({
+          status: "ok",
+          data: { type: "FeatureCollection", features: [] },
+        });
+      }),
+    );
+    useStore.getState().session.setActiveGame(DEFAULT_GAME_ID);
+
+    useStore.getState().map.setFraming("county");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useStore.getState().map.framing).toBe("county");
+    expect(requestLog.filter((r) => r === "GET map")).toHaveLength(1);
+    expect(capturedUrl).toContain("zoom=county");
   });
 });
 

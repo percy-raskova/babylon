@@ -43,13 +43,24 @@ export interface MapSlice {
 export const createMapSlice: StateCreator<RootState, [], [], MapSlice> = (set, get) => ({
   map: {
     lens: DEFAULT_LENS,
-    framing: "county",
+    framing: "hex",
     viewportBbox: null,
     selection: null,
     factionFilter: null,
 
     setLens: (lens) => set((s) => ({ map: { ...s.map, lens } })),
-    setFraming: (level) => set((s) => ({ map: { ...s.map, framing: level } })),
+
+    // A framing change means the `/map/?zoom=` fetch's response shape
+    // changes (hex vs. aggregated-region features) — refetch, mirroring
+    // setSelection's fan-out below (fire-and-forget; no active game means
+    // no fetch, but framing still updates).
+    setFraming: (level) => {
+      set((s) => ({ map: { ...s.map, framing: level } }));
+      const gameId = get().session.activeGameId;
+      if (gameId) {
+        get().panels.map.fetch(gameId);
+      }
+    },
     setViewportBbox: (bbox) => set((s) => ({ map: { ...s.map, viewportBbox: bbox } })),
     setFactionFilter: (factionId) => set((s) => ({ map: { ...s.map, factionFilter: factionId } })),
 

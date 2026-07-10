@@ -31,7 +31,7 @@ export const test = base;
 export { expect };
 
 export const BASE =
-  process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${process.env.COCKPIT_E2E_PORT ?? "5174"}`;
+  process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${process.env.COCKPIT_E2E_PORT ?? "5173"}`;
 
 /** Drive the real login form and wait for the lobby to render. */
 export async function login(page: Page, username = "admin", password = "admin"): Promise<void> {

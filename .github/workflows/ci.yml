@@ -42,7 +42,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          # v2 (spec-112): cache-hit skips poetry install, so a stale save
+          # pins old tool versions (CI ruff drifted from the lock) — bump
+          # the key to force one fresh install fleet-wide.
+          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
@@ -51,9 +54,17 @@ jobs:
       - name: Install project
         run: poetry install --no-interaction
 
+      # GeoDjango: settings/base.py uses the postgis backend, which loads
+      # GEOS/GDAL/PROJ at import — any pytest touching Django settings dies
+      # with ImproperlyConfigured without these (spec-112 CI re-enable).
+      - name: Install GeoDjango system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
+
       # Correctness checks - these block merges
+      # (--version printed while diagnosing CI-vs-local ruff drift: the venv
+      # cache skips reinstall on hit, so a stale cache can pin an old ruff.)
       - name: Lint with Ruff
-        run: poetry run ruff check .
+        run: poetry run ruff --version && poetry run ruff check .
 
       - name: Type check with MyPy
         run: poetry run mypy src
@@ -105,7 +116,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          # v2 (spec-112): cache-hit skips poetry install, so a stale save
+          # pins old tool versions (CI ruff drifted from the lock) — bump
+          # the key to force one fresh install fleet-wide.
+          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
@@ -180,7 +194,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          # v2 (spec-112): cache-hit skips poetry install, so a stale save
+          # pins old tool versions (CI ruff drifted from the lock) — bump
+          # the key to force one fresh install fleet-wide.
+          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
@@ -215,7 +232,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          # v2 (spec-112): cache-hit skips poetry install, so a stale save
+          # pins old tool versions (CI ruff drifted from the lock) — bump
+          # the key to force one fresh install fleet-wide.
+          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -281,10 +301,16 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          # v2 (spec-112): cache-hit skips poetry install, so a stale save
+          # pins old tool versions (CI ruff drifted from the lock) — bump
+          # the key to force one fresh install fleet-wide.
+          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
+
+      - name: Install GeoDjango system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
 
       - name: Run AI unit tests
         run: poetry run pytest tests/unit/ai --tb=short -q
@@ -319,10 +345,16 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          # v2 (spec-112): cache-hit skips poetry install, so a stale save
+          # pins old tool versions (CI ruff drifted from the lock) — bump
+          # the key to force one fresh install fleet-wide.
+          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --no-interaction
+
+      - name: Install GeoDjango system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
 
       - name: Start isolated Postgres (compose, port 5433)
         run: docker compose up -d --wait babylon-pg
@@ -369,7 +401,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          # v2 (spec-112): cache-hit skips poetry install, so a stale save
+          # pins old tool versions (CI ruff drifted from the lock) — bump
+          # the key to force one fresh install fleet-wide.
+          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --no-interaction

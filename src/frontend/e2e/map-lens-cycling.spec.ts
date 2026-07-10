@@ -251,4 +251,19 @@ test.describe("Map lens cycling (backend-free, spec-110 B6)", () => {
     await page.getByTestId("lens-mode-faction").click();
     await expect(page.getByTestId("lens-legend-label")).toContainText(/faction/i);
   });
+
+  test("pressing 'e' cycles the lens via the Q/E keyboard shortcut (spec-112 C5-1)", async ({
+    page,
+  }) => {
+    await mockRoutes(page, MAP_DATA);
+
+    await page.goto("/game/lens-smoke");
+    await expect(page.getByTestId("region-map")).toBeVisible({ timeout: 10000 });
+
+    // Default lens is "stance" (LENS_MODES[0]) — one KeyE press advances
+    // to "heat" (LENS_MODES[1]).
+    await page.keyboard.press("e");
+
+    await expect(page.getByTestId("lens-mode-heat")).toHaveAttribute("aria-pressed", "true");
+  });
 });

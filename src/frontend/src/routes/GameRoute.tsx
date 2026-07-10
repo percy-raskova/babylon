@@ -7,7 +7,7 @@
 import { useEffect } from "react";
 import { useParams } from "react-router";
 import { useStore } from "@/store";
-import { useHeartbeat, useSpacebarShortcut } from "@/store/orchestrator";
+import { useHeartbeat, useSpacebarShortcut, useLensCycleShortcut } from "@/store/orchestrator";
 import { AppShell } from "@/components/shell/AppShell";
 
 export function GameRoute(): React.JSX.Element {
@@ -24,6 +24,7 @@ export function GameRoute(): React.JSX.Element {
 
   useHeartbeat(gameId ?? null);
   useSpacebarShortcut(gameId ?? null);
+  useLensCycleShortcut(gameId ?? null);
 
   if (!gameId) {
     return <div className="flex h-screen items-center justify-center text-laser">No game id.</div>;

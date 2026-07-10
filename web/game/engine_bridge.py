@@ -838,6 +838,173 @@ def _wealth_by_class_role(state: WorldState) -> dict[str, float]:
     return {role: round(total, 4) for role, total in totals.items()}
 
 
+# Spec 111 C2: edges dashboard. Cap on the two "top-N" lists so a dense
+# graph doesn't blow up the payload; the frontend renders a scrollable
+# top-10, not the full edge set (already available via /orgs/network/).
+_EDGES_TOP_N: Final[int] = 10
+
+
+def _edge_row(source: str, target: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Project one graph edge onto the edges-dashboard row shape.
+
+    ``edge_type`` is the mechanical :class:`EdgeType` (WAGES/EXPLOITATION/
+    SOLIDARITY/…); ``edge_mode`` is the dialectical EdgeMode classification
+    (``None`` until :class:`~babylon.engine.systems.edge_transition.EdgeTransitionSystem`
+    has run at least one tick — a fresh tick-0 graph legitimately has no
+    edge_mode yet, Constitution III.11).
+    """
+    edge_mode = data.get("edge_mode")
+    return {
+        "source_id": source,
+        "target_id": target,
+        "edge_type": str(data.get("edge_type", data.get("_edge_type", ""))).lower(),
+        "edge_mode": str(edge_mode).lower() if edge_mode is not None else None,
+        "value_flow": float(data.get("value_flow", 0.0)),
+        "tension": float(data.get("tension", 0.0)),
+    }
+
+
+def _infrastructure_edge_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Project an ``infrastructure_link_state`` row onto the frontend
+    ``InfrastructureEdge`` shape (spec 111 C2).
+
+    ``geometry`` stays ``None`` — the table carries endpoint hex ids
+    (``source_h3``/``target_h3``), not a stored line geometry; deriving one
+    is Amendment O's corridor-mesh territory (PENDING CODE), not this
+    endpoint's to invent.
+
+    Args:
+        row: One ``infrastructure_link_state`` row (from
+            ``query_infrastructure_link_state``).
+
+    Returns:
+        Dict with ``id``/``geometry``/``conductance``/``type``.
+    """
+    condition = row.get("condition")
+    return {
+        "id": str(row["link_id"]),
+        "geometry": None,
+        "conductance": float(condition) if condition is not None else None,
+        "type": str(row.get("infra_type", "")),
+    }
+
+
+def _build_edges_dashboard(graph: BabylonGraph) -> dict[str, Any]:
+    """Aggregate real edge stats across the whole graph (spec 111 C2).
+
+    Reads every live graph edge directly (no fabricated aggregates):
+    counts grouped by mechanical ``edge_type`` and by dialectical
+    ``edge_mode`` (the latter empty until EdgeTransitionSystem runs), the
+    top-:data:`_EDGES_TOP_N` edges by absolute ``value_flow`` and by
+    ``tension`` (deterministically tie-broken by ``(source_id,
+    target_id)`` for replay-stable ordering — Constitution III.7), and
+    summary stats over SOLIDARITY edges' ``solidarity_strength``.
+
+    Args:
+        graph: The hydrated session graph.
+
+    Returns:
+        Dict with ``total_edges``/``counts_by_type``/``counts_by_mode``/
+        ``top_by_value_flow``/``top_by_tension``/
+        ``solidarity_strength_stats``.
+    """
+    counts_by_type: dict[str, int] = {}
+    counts_by_mode: dict[str, int] = {}
+    solidarity_strengths: list[float] = []
+    rows: list[dict[str, Any]] = []
+
+    for source, target in graph.edges:
+        data = graph.edges[(source, target)]
+        row = _edge_row(source, target, data)
+        rows.append(row)
+        counts_by_type[row["edge_type"]] = counts_by_type.get(row["edge_type"], 0) + 1
+        if row["edge_mode"] is not None:
+            counts_by_mode[row["edge_mode"]] = counts_by_mode.get(row["edge_mode"], 0) + 1
+        if row["edge_type"] == "solidarity":
+            solidarity_strengths.append(float(data.get("solidarity_strength", 0.0)))
+
+    top_by_value_flow = sorted(
+        rows, key=lambda r: (-abs(r["value_flow"]), r["source_id"], r["target_id"])
+    )[:_EDGES_TOP_N]
+    top_by_tension = sorted(rows, key=lambda r: (-r["tension"], r["source_id"], r["target_id"]))[
+        :_EDGES_TOP_N
+    ]
+
+    solidarity_strength_stats: dict[str, float | int | None] = {
+        "count": len(solidarity_strengths),
+        "avg": (
+            round(sum(solidarity_strengths) / len(solidarity_strengths), 4)
+            if solidarity_strengths
+            else None
+        ),
+        "min": round(min(solidarity_strengths), 4) if solidarity_strengths else None,
+        "max": round(max(solidarity_strengths), 4) if solidarity_strengths else None,
+    }
+
+    return {
+        "total_edges": len(rows),
+        "counts_by_type": counts_by_type,
+        "counts_by_mode": counts_by_mode,
+        "top_by_value_flow": top_by_value_flow,
+        "top_by_tension": top_by_tension,
+        "solidarity_strength_stats": solidarity_strength_stats,
+    }
+
+
+# Spec 111 C2: state-apparatus dashboard. STATE_REPRESSION/STATE_SURVEILLANCE
+# are the two REPRESS/SURVEIL-verb event types; STATE_ACTION_EXECUTED is the
+# catch-all "any state AI verb executed" event (models/enums/events.py).
+_STATE_ACTION_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {"state_repression", "state_surveillance", "state_action_executed"}
+)
+_STATE_APPARATUS_ACTIONS_LIMIT: Final[int] = 20
+
+
+def _build_state_apparatus_dashboard(
+    state: WorldState,
+    organizations: list[dict[str, Any]],
+    recent_actions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Aggregate real state-apparatus data (spec 111 C2).
+
+    Filters ``organizations`` (already-serialized :func:`_serialize_organization`
+    dicts) to ``org_type == "state_apparatus"`` — no scenario currently seeds
+    one (wayne_county's sole org is CIVIL_SOCIETY), so this is an honest
+    empty list for every session today, not a fabricated placeholder
+    (Constitution III.11). ``total_repression_budget``/``total_heat`` sum
+    the real ``budget``/``heat`` fields of whatever state orgs do exist.
+    ``state_finances`` surfaces :class:`StateFinance` (police_budget is the
+    literal repression-budget field) when the engine has seeded any — also
+    honestly empty today (no scenario seeds ``WorldState.state_finances``).
+
+    Args:
+        state: The hydrated WorldState.
+        organizations: :func:`_serialize_organization` output for every org.
+        recent_actions: Pre-filtered/converted state-action GameEvent dicts.
+
+    Returns:
+        Dict with ``tick``/``organizations``/``org_count``/
+        ``total_repression_budget``/``total_heat``/``state_finances``/
+        ``recent_actions``.
+    """
+    state_orgs = [o for o in organizations if o.get("org_type") == "state_apparatus"]
+    total_repression_budget = round(sum(float(o.get("budget", 0.0)) for o in state_orgs), 4)
+    total_heat = round(sum(float(o.get("heat", 0.0)) for o in state_orgs), 4)
+    state_finances = {
+        state_id: finance.model_dump(mode="json")
+        for state_id, finance in state.state_finances.items()
+    }
+    return {
+        "tick": state.tick,
+        "organizations": state_orgs,
+        "org_count": len(state_orgs),
+        "total_repression_budget": total_repression_budget,
+        "total_heat": total_heat,
+        "state_finances": state_finances,
+        "recent_actions": recent_actions,
+    }
+
+
 def _collect_solidarity_edges(graph: BabylonGraph) -> list[tuple[str, str, float]]:
     """Return ``(source, target, solidarity_strength)`` for every live
     SOLIDARITY edge in ``graph``."""
@@ -1579,6 +1746,69 @@ class EngineBridge:
         _state, graph = self.hydrate_state(session_id)
         return {"communities": _build_solidarity_communities(graph)}
 
+    def get_org_history(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return one organization's per-tick history (spec 111 C2).
+
+        Post-A1, ``org_snapshot`` carries one real row per ``(session, tick,
+        org_id)`` — see :func:`_org_snapshot_rows` for the exact field
+        mapping written each resolve. Reads it via the persistence layer's
+        optional ``query_org_snapshot_history(session_id, org_id, limit=...)``
+        capability (SQLite-backed ``RuntimeDatabase`` has no such table and
+        degrades to an empty list, same optional-capability pattern as
+        :meth:`get_journal_dashboard`).
+
+        Args:
+            session_id: The game session UUID.
+            org_id: The organization id.
+
+        Returns:
+            ``{"org_id": org_id, "history": [{"tick": ..., ...}, ...]}``
+            ordered oldest-tick-first; empty history when the org has never
+            been persisted (unknown id or a session predating org_snapshot
+            wiring — honest empty, Constitution III.11).
+        """
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_org_snapshot_history", None)
+        if callable(query):
+            try:
+                rows = query(session_id, org_id)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_org_history: query_org_snapshot_history failed")
+                rows = []
+        return {"org_id": org_id, "history": rows}
+
+    def get_territory_history(self, session_id: UUID, county_fips: str) -> dict[str, Any]:
+        """Return one county's per-tick territory history (spec 111 C2).
+
+        Post-A1, ``territory_snapshot`` carries one real row per ``(session,
+        tick, county_fips)`` — see :func:`_territory_snapshot_rows`. The
+        grain is per-COUNTY, not per-hex-territory: every ``wayne_county``
+        web session stamps all 81 hex territories with the same real FIPS
+        (see :func:`_seed_wayne_county_fips`), so this is the finest history
+        the schema's composite PK can honestly serve today. Reads via the
+        persistence layer's optional
+        ``query_territory_snapshot_history(session_id, county_fips,
+        limit=...)`` capability.
+
+        Args:
+            session_id: The game session UUID.
+            county_fips: 5-digit county FIPS code.
+
+        Returns:
+            ``{"county_fips": county_fips, "history": [{"tick": ..., ...},
+            ...]}`` ordered oldest-tick-first; empty when no row exists for
+            this FIPS yet.
+        """
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_territory_snapshot_history", None)
+        if callable(query):
+            try:
+                rows = query(session_id, county_fips)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_territory_history: query_territory_snapshot_history failed")
+                rows = []
+        return {"county_fips": county_fips, "history": rows}
+
     # ------------------------------------------------------------------ #
     # Spec 061 US6 T091: inspector endpoints (FR-019)
     #
@@ -1652,13 +1882,94 @@ class EngineBridge:
             orgs = [o for o in orgs if o.get("vanguard") is not None]
         return {"organizations": orgs}
 
-    def get_edges_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the edges/relations left-panel dashboard data."""
-        return {}
+    def get_edges_dashboard(self, session_id: UUID) -> dict[str, Any]:
+        """Return the edges/relations left-panel dashboard data.
 
-    def get_state_apparatus_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the state-apparatus intelligence screen data."""
-        return {}
+        Spec 111 C2. Real aggregate stats over every live graph edge —
+        see :func:`_build_edges_dashboard`.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            Dict with ``tick`` plus :func:`_build_edges_dashboard`'s fields.
+        """
+        state, graph = self.hydrate_state(session_id)
+        return {"tick": state.tick, **_build_edges_dashboard(graph)}
+
+    def get_state_apparatus_dashboard(self, session_id: UUID) -> dict[str, Any]:
+        """Return the state-apparatus intelligence screen data.
+
+        Spec 111 C2. Real ``state_apparatus``-typed organizations, their
+        aggregate budget/heat, any seeded :class:`StateFinance` records, and
+        recent STATE_REPRESSION/STATE_SURVEILLANCE/STATE_ACTION_EXECUTED
+        events from the persisted journal — see
+        :func:`_build_state_apparatus_dashboard`.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            Dict per :func:`_build_state_apparatus_dashboard`.
+        """
+        state, _graph = self.hydrate_state(session_id)
+        organizations = [_serialize_organization(o) for o in state.organizations.values()]
+
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_session_events", None)
+        if callable(query):
+            try:
+                rows = query(session_id, limit=_JOURNAL_LIMIT)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_state_apparatus_dashboard: query_session_events failed")
+                rows = []
+        recent_actions = [
+            _game_event_from_tick_event_row(row)
+            for row in rows
+            if row.get("event_type") in _STATE_ACTION_EVENT_TYPES
+        ][:_STATE_APPARATUS_ACTIONS_LIMIT]
+
+        return _build_state_apparatus_dashboard(state, organizations, recent_actions)
+
+    def get_infrastructure(self, session_id: UUID) -> dict[str, Any]:
+        """Return the infrastructure network overlay (transport substrate).
+
+        Spec 111 C2. Constitution II.13's transport substrate (min-cost-flow
+        routing) is ``[RATIFIED · IMPLEMENTED]`` but Amendment O's corridor
+        build/degrade extension and the write path that would populate
+        ``infrastructure_link_state`` are ``[RATIFIED · PENDING CODE]`` — no
+        production caller ever invokes ``persist_infrastructure_state``
+        (spec-036 built the table, spec-108 is the still-unauthored spec that
+        would wire it — see ``project/programs/12-cockpit.md``). This reads
+        the real table via the persistence layer's optional
+        ``query_infrastructure_link_state(session_id, tick)`` capability
+        rather than fabricating hub/corridor data: today every session
+        legitimately gets ``edges: []`` (Constitution III.11 — an honest
+        empty beats an invented network). ``nodes`` stays ``[]`` for the same
+        reason — no engine layer yet designates hub nodes (ports, rail
+        junctions) distinct from ordinary territories.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            Dict with ``tick``/``nodes``/``edges`` (``InfrastructurePayload``
+            shape: ``nodes: [{id,type,coordinates,attributes}]``,
+            ``edges: [{id,geometry,conductance,type}]``).
+        """
+        state, _graph = self.hydrate_state(session_id)
+
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_infrastructure_link_state", None)
+        if callable(query):
+            try:
+                rows = query(session_id, state.tick)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_infrastructure: query_infrastructure_link_state failed")
+                rows = []
+
+        edges = [_infrastructure_edge_row(row) for row in rows]
+        return {"tick": state.tick, "nodes": [], "edges": edges}
 
     def get_journal_dashboard(self, session_id: UUID) -> dict[str, Any]:
         """Return the historical event log data (spec 092 — Event Log page).

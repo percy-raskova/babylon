@@ -703,6 +703,42 @@ class PostgresRuntime:
                     ],
                 )
 
+    def query_infrastructure_link_state(
+        self,
+        session_id: UUID,
+        tick: int,
+    ) -> list[dict[str, Any]]:
+        """Return ``infrastructure_link_state`` rows for one session/tick.
+
+        Spec 111 C2. Powers ``EngineBridge.get_infrastructure``. No
+        production caller writes ``infrastructure_link_state`` yet (Amendment
+        O's corridor-mesh write path is ``[RATIFIED · PENDING CODE]``), so
+        this legitimately returns ``[]`` for every session today — an honest
+        empty result over a fabricated one (Constitution III.11), wired now
+        so the endpoint activates automatically once a future spec starts
+        calling :meth:`persist_infrastructure_state`.
+
+        Args:
+            session_id: Game session UUID.
+            tick: Tick number.
+
+        Returns:
+            List of dicts with the ``infrastructure_link_state`` column
+            names as keys, ordered by ``link_id`` for deterministic output.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT source_h3, target_h3, link_id, infra_type,
+                       capacity, condition, owner_org_id
+                FROM infrastructure_link_state
+                WHERE session_id = %s AND tick = %s
+                ORDER BY link_id
+                """,
+                (session_id, tick),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def persist_contradiction_fields(
         self,
         tick: int,
@@ -1477,6 +1513,95 @@ class PostgresRuntime:
             return
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.executemany(sql, rows)
+
+    def query_org_snapshot_history(
+        self,
+        game_id: UUID,
+        org_id: str,
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Return ordered ``org_snapshot`` rows for one org (spec 111 C2).
+
+        Powers the org inspector's history tab via
+        ``EngineBridge.get_org_history``. Oldest-tick-first, capped at
+        ``limit`` rows (default comfortably above any single session's
+        resolved-tick count).
+
+        Args:
+            game_id: Game session UUID.
+            org_id: The organization id.
+            limit: Maximum rows to return.
+
+        Returns:
+            List of dicts with the ``org_snapshot`` column names as keys
+            (``attributes`` already parsed from JSONB by psycopg).
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, org_type, home_county, home_hex,
+                       ooda_phase, action_points, action_points_max,
+                       cadre_count, sympathizer_count,
+                       cadre_labor, sympathizer_labor, material_resources,
+                       coherence, reputation, opsec,
+                       owner_type, owner_id, attributes
+                FROM org_snapshot
+                WHERE game_id = %s AND org_id = %s
+                ORDER BY tick
+                LIMIT %s
+                """,
+                (game_id, org_id, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def query_territory_snapshot_history(
+        self,
+        game_id: UUID,
+        county_fips: str,
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Return ordered ``territory_snapshot`` rows for one county (spec 111 C2).
+
+        Powers the territory inspector's history tab via
+        ``EngineBridge.get_territory_history``. The grain is per-county (the
+        schema's composite PK), not per-hex-territory — see
+        ``EngineBridge._seed_wayne_county_fips`` for why every web
+        ``wayne_county`` session's 81 hex territories currently collapse
+        onto one ``county_fips``. Oldest-tick-first, capped at ``limit``.
+
+        Args:
+            game_id: Game session UUID.
+            county_fips: 5-digit county FIPS code.
+            limit: Maximum rows to return.
+
+        Returns:
+            List of dicts with the ``territory_snapshot`` column names as keys.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick,
+                       c_dept_i, v_dept_i, s_dept_i,
+                       c_dept_iia, v_dept_iia, s_dept_iia,
+                       c_dept_iib, v_dept_iib, s_dept_iib,
+                       c_dept_iii, v_dept_iii, s_dept_iii,
+                       profit_rate, exploitation_rate, occ,
+                       imperial_rent, g33_visibility,
+                       pop_bourgeoisie, pop_petit_bourgeoisie,
+                       pop_labor_aristocracy, pop_proletariat,
+                       pop_lumpenproletariat, pop_total,
+                       faction_finance_capital, faction_security_state,
+                       faction_settler_populist, heat, attributes
+                FROM territory_snapshot
+                WHERE game_id = %s AND county_fips = %s
+                ORDER BY tick
+                LIMIT %s
+                """,
+                (game_id, county_fips, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
 
     def persist_edge_snapshots(
         self,

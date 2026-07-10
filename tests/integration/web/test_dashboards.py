@@ -130,6 +130,89 @@ class TestEconomyDashboard:
         assert isinstance(economy["rent_extracted"], float)
 
 
+class TestEdgesDashboard:
+    """get_edges_dashboard: real edge aggregates (spec 111 C2)."""
+
+    def test_edges_dashboard_after_create_has_real_counts(self, bridge: object) -> None:
+        """wayne_county's own scenario seeds 85 relationships (81 tenancy, 2
+        exploitation, 1 wages, 1 solidarity); the bridge's spec-070
+        balkanization seed layer (_seed_balkanization_layer) adds more
+        (INFLUENCES/PRESENCE) on top — all real graph edges at tick 0,
+        before any resolve."""
+        session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)  # type: ignore[attr-defined]
+
+        edges = bridge.get_edges_dashboard(session_id)  # type: ignore[attr-defined]
+
+        assert edges["tick"] == 0
+        assert edges["total_edges"] >= 85
+        assert sum(edges["counts_by_type"].values()) == edges["total_edges"]
+        assert edges["counts_by_type"]["tenancy"] == 81
+        assert edges["counts_by_type"]["exploitation"] == 2
+        assert edges["counts_by_type"]["wages"] == 1
+        assert edges["counts_by_type"]["solidarity"] == 1
+        # edge_mode is only populated once EdgeTransitionSystem has run.
+        assert edges["counts_by_mode"] == {}
+        assert isinstance(edges["top_by_value_flow"], list)
+        assert isinstance(edges["top_by_tension"], list)
+        assert len(edges["top_by_value_flow"]) <= 10
+        stats = edges["solidarity_strength_stats"]
+        assert stats["count"] == 1
+        assert stats["avg"] is not None
+
+    def test_edges_dashboard_after_resolves_stable(self, bridge: object) -> None:
+        session_id = _resolved_session(bridge)
+
+        edges = bridge.get_edges_dashboard(session_id)  # type: ignore[attr-defined]
+
+        assert edges["tick"] == 2
+        assert edges["total_edges"] >= 85
+        assert sum(edges["counts_by_type"].values()) == edges["total_edges"]
+
+
+class TestStateApparatusDashboard:
+    """get_state_apparatus_dashboard: real state-org data (spec 111 C2)."""
+
+    def test_state_apparatus_dashboard_honest_empty_for_wayne_county(self, bridge: object) -> None:
+        """wayne_county's sole seeded org is CIVIL_SOCIETY (the player org) —
+        no scenario seeds a STATE_APPARATUS org or StateFinance record, so
+        this is an honest empty, not a fabricated placeholder (III.11)."""
+        session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)  # type: ignore[attr-defined]
+
+        result = bridge.get_state_apparatus_dashboard(session_id)  # type: ignore[attr-defined]
+
+        assert result["tick"] == 0
+        assert result["organizations"] == []
+        assert result["org_count"] == 0
+        assert result["total_repression_budget"] == 0.0
+        assert result["total_heat"] == 0.0
+        assert result["state_finances"] == {}
+        assert result["recent_actions"] == []
+
+    def test_state_apparatus_dashboard_after_resolves(self, bridge: object) -> None:
+        session_id = _resolved_session(bridge)
+
+        result = bridge.get_state_apparatus_dashboard(session_id)  # type: ignore[attr-defined]
+
+        assert result["tick"] == 2
+        assert isinstance(result["recent_actions"], list)
+
+
+class TestInfrastructure:
+    """get_infrastructure: honest transport-substrate contract (spec 111 C2)."""
+
+    def test_infrastructure_honest_empty(self, bridge: object) -> None:
+        """No production caller writes infrastructure_link_state yet
+        (Amendment O is PENDING CODE) — an honest empty edges list beats a
+        fabricated corridor network (III.11)."""
+        session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)  # type: ignore[attr-defined]
+
+        result = bridge.get_infrastructure(session_id)  # type: ignore[attr-defined]
+
+        assert result["tick"] == 0
+        assert result["nodes"] == []
+        assert result["edges"] == []
+
+
 class TestCommunitiesDashboard:
     """get_communities_dashboard: SOLIDARITY-edge connected components."""
 

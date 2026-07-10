@@ -870,6 +870,31 @@ def inspector_hex(request: Request, game_id: str, h3_index: str) -> JsonResponse
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_org_history(request: Request, game_id: str, org_id: str) -> JsonResponse:
+    """GET /api/games/{id}/org/{org_id}/history/ - Org per-tick history (spec 111 C2)."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_org_history(uuid.UUID(str(session.id)), org_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_territory_history(request: Request, game_id: str, county_fips: str) -> JsonResponse:
+    """GET /api/games/{id}/territory/{county_fips}/history/ - Territory per-tick
+    history (spec 111 C2)."""
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_territory_history(uuid.UUID(str(session.id)), county_fips)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
 # ---------------------------------------------------------------------- #
 # Action endpoints
 # ---------------------------------------------------------------------- #

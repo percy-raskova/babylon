@@ -94,6 +94,17 @@ urlpatterns: list[URLPattern] = [
     ),
     path("games/<str:game_id>/edge/<str:edge_id>/", api.inspector_edge, name="inspector-edge"),
     path("games/<str:game_id>/hex/<str:h3_index>/", api.inspector_hex, name="inspector-hex"),
+    # API: Spec 111 C2 — inspector per-tick history (post-A1 snapshot tables)
+    path(
+        "games/<str:game_id>/org/<str:org_id>/history/",
+        api.inspector_org_history,
+        name="inspector-org-history",
+    ),
+    path(
+        "games/<str:game_id>/territory/<str:county_fips>/history/",
+        api.inspector_territory_history,
+        name="inspector-territory-history",
+    ),
     # API: Actions — utility endpoints (available, preview, pending list, cancel)
     path(
         "games/<str:game_id>/actions/available/",

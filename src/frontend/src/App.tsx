@@ -10,6 +10,7 @@ import { useStore } from "@/store";
 import { LoginRoute } from "@/routes/LoginRoute";
 import { LobbyRoute } from "@/routes/LobbyRoute";
 import { GameRoute } from "@/routes/GameRoute";
+import { ObservatoryRoute } from "@/observatory/ObservatoryRoute";
 
 export default function App(): React.JSX.Element {
   const authChecking = useStore((s) => s.session.authChecking);
@@ -33,6 +34,10 @@ export default function App(): React.JSX.Element {
       <Route
         path="/game/:id"
         element={isAuthed ? <GameRoute /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/observatory/*"
+        element={isAuthed ? <ObservatoryRoute /> : <Navigate to="/login" replace />}
       />
       <Route path="*" element={<Navigate to={isAuthed ? "/lobby" : "/login"} replace />} />
     </Routes>

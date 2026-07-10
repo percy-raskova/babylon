@@ -32,11 +32,22 @@ export function EventsFeed(): React.JSX.Element {
 
   const classified = classifyEvents(events ?? []);
 
+  // The honest empty states carry the same testid as the populated feed —
+  // "renders classified events OR the honest empty copy" is one surface
+  // (Constitution III.11), and e2e asserts on the container either way.
   if (!events) {
-    return <p className="p-3 text-[11px] italic text-shroud">No world state loaded yet.</p>;
+    return (
+      <div className="flex flex-col gap-1 p-2" data-testid="events-feed">
+        <p className="p-3 text-[11px] italic text-shroud">No world state loaded yet.</p>
+      </div>
+    );
   }
   if (classified.length === 0) {
-    return <p className="p-3 text-[11px] italic text-shroud">No events this tick.</p>;
+    return (
+      <div className="flex flex-col gap-1 p-2" data-testid="events-feed">
+        <p className="p-3 text-[11px] italic text-shroud">No events this tick.</p>
+      </div>
+    );
   }
 
   function handleClick(event: ClassifiedEvent): void {

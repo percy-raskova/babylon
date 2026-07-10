@@ -20,7 +20,7 @@ import { expect, test, createWayneCountyGame } from "./fixtures";
 
 let gameId = "";
 
-test.describe.fixme("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
+test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
   test.describe.configure({ mode: "serial" });
 
   test("provisions a fresh wayne_county session", async ({ page }) => {

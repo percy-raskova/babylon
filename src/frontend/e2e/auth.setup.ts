@@ -44,7 +44,7 @@ import { test as setup, login } from "./fixtures";
 /** Where the authenticated storage state is written; consumed via `use.storageState`. */
 export const AUTH_FILE = "playwright/.auth/user.json";
 
-setup.fixme("authenticate", async ({ page }) => {
+setup("authenticate", async ({ page }) => {
   await login(page);
   await page.context().storageState({ path: AUTH_FILE });
 });

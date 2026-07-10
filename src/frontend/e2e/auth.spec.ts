@@ -31,7 +31,7 @@ test.describe("cockpit authentication", () => {
     await expect(page.getByPlaceholder("Username")).toBeVisible();
   });
 
-  test.fixme("successful login redirects to the lobby", async ({ page }) => {
+  test("successful login redirects to the lobby", async ({ page }) => {
     await page.goto("/login");
     await page.getByPlaceholder("Username").fill("admin");
     await page.getByPlaceholder("Password").fill("admin");
@@ -41,7 +41,7 @@ test.describe("cockpit authentication", () => {
     await expect(page.getByText("New Operation")).toBeVisible();
   });
 
-  test.fixme("invalid credentials show an inline error, no redirect", async ({ page }) => {
+  test("invalid credentials show an inline error, no redirect", async ({ page }) => {
     await page.goto("/login");
     await page.getByPlaceholder("Username").fill("baduser");
     await page.getByPlaceholder("Password").fill("badpass");
@@ -51,7 +51,7 @@ test.describe("cockpit authentication", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test.fixme("logout returns to the login page", async ({ page }) => {
+  test("logout returns to the login page", async ({ page }) => {
     await page.goto("/login");
     await page.getByPlaceholder("Username").fill("admin");
     await page.getByPlaceholder("Password").fill("admin");

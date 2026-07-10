@@ -28,7 +28,7 @@ import { expect, test } from "./fixtures";
 /** Session id created by the "creating a wayne_county operation" test. */
 let gameId = "";
 
-test.describe.fixme("real core loop (cockpit, spec-110 B6)", () => {
+test.describe("real core loop (cockpit, spec-110 B6)", () => {
   test.describe.configure({ mode: "serial" });
 
   test("lobby renders for the pre-authenticated session", async ({ page }) => {

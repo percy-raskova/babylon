@@ -39,8 +39,14 @@ export function TimeControls({ gameId }: TimeControlsProps): React.JSX.Element {
   const pause = useStore((s) => s.time.pause);
   const resume = useStore((s) => s.time.resume);
 
+  const playIntent = useStore((s) => s.time.playIntent);
+
   const isPaused = status === "paused";
-  const isPlaying = status === "playing";
+  // Under Play with real multi-second resolves the machine spends almost all
+  // wall time in `resolving`; the pause control must stay reachable there —
+  // pause() registers a stop-request the serialized loop honors after the
+  // in-flight resolve settles (timeSlice.pause docstring).
+  const isPlayingIntent = status === "playing" || (status === "resolving" && playIntent);
   const needsResume = status === "autopaused" || status === "error";
 
   return (
@@ -54,14 +60,16 @@ export function TimeControls({ gameId }: TimeControlsProps): React.JSX.Element {
         Step
       </button>
       <button
-        onClick={() => (isPlaying ? pause() : void play(gameId))}
-        disabled={!isPaused && !isPlaying}
+        onClick={() => (isPlayingIntent ? pause() : void play(gameId))}
+        disabled={!isPaused && !isPlayingIntent}
         title="Play/Pause (spacebar)"
         className={`${BUTTON_BASE} ${
-          isPlaying ? "border-spire text-spire" : "border-wet-steel text-fog hover:border-spire"
+          isPlayingIntent
+            ? "border-spire text-spire"
+            : "border-wet-steel text-fog hover:border-spire"
         }`}
       >
-        {isPlaying ? "Pause" : "Play"}
+        {isPlayingIntent ? "Pause" : "Play"}
       </button>
       {needsResume && (
         <button

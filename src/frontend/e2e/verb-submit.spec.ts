@@ -21,7 +21,7 @@ import { expect, test, createWayneCountyGame } from "./fixtures";
 
 let gameId = "";
 
-test.describe.fixme("Verb submit — live engine (cockpit, spec-110 B6)", () => {
+test.describe("Verb submit — live engine (cockpit, spec-110 B6)", () => {
   test.describe.configure({ mode: "serial" });
 
   test("provisions a fresh wayne_county session", async ({ page }) => {

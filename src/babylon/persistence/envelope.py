@@ -38,8 +38,32 @@ class PerTickTransactionEnvelope(BaseModel):
     Holds every row produced during one tick that must commit together:
     hex states, external-node states, boundary-register rows, audit-log
     rows, and (spec-065) the three per-tick county-resolution
-    subsystem state row lists. A single ``determinism_hash`` is shared
-    across all rows in the tick (GATE-1 / Constitution III.7).
+    subsystem state row lists.
+
+    .. note::
+       The envelope's own ``determinism_hash`` field (below) and each
+       :class:`~babylon.persistence.audit_models.ConservationAuditRow` inside
+       ``audit_log_rows`` also carry a field named ``determinism_hash`` — but
+       in the live wiring (``bridge.py``) these are **two independently
+       computed, unrelated SHA-256 values that happen to share a field
+       name**, not one hash shared across the tick's rows:
+
+       - This envelope's ``determinism_hash`` is a **replay-identity
+         stamp** — ``sha256(f"{session_id}:{tick}:{random_seed}")``,
+         computed in
+         :func:`babylon.engine.headless_runner.runner.run_scenario`
+         (``runner.py:1395-1397``) and persisted to ``tick_commit``. It
+         depends only on session/tick/seed, not on any engine output.
+       - Each ``ConservationAuditRow.determinism_hash`` is a **content
+         hash** over the tick's actual hex-state/action data, computed by
+         :func:`babylon.persistence.conservation_audit.compute_determinism_hash`
+         (``conservation_audit.py:70-110``, "GATE-1 / Constitution III.7" per
+         its own docstring) and persisted to ``conservation_audit_log``.
+
+       This naming tension is tracked as owner-queue item 31; see
+       ``docs/reference/determinism-contract.rst`` (*Known Discrepancies* §1)
+       for the full analysis. Any rename to disambiguate the two fields is a
+       future schema decision, not made here.
 
     The envelope is frozen — once handed to
     :meth:`PostgresRuntime.persist_tick_atomic` it cannot be mutated.

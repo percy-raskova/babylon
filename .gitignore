@@ -121,13 +121,9 @@ node_modules
 .pre-commit-cache/
 .playwright-mcp/
 
-# Frontend
-web/frontend/dist/
-web/frontend/dist/assets
+# Frontend (src/frontend — the cockpit, spec-110/112)
 dev_harness.png
 test_hang.py
-
-# Cockpit frontend (spec-110)
 src/frontend/dist/
 src/frontend/coverage/
 src/frontend/playwright-report/

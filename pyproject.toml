@@ -217,7 +217,6 @@ src = [
 exclude = [
     "assets/music/",
     "specs/",
-    "web/frontend/",
     "src/frontend/",
 ]
 

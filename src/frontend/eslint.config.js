@@ -59,6 +59,18 @@ export default tseslint.config(
       "sonarjs/cognitive-complexity": ["error", 25],
       "@typescript-eslint/no-empty-function": "off",
       "sonarjs/no-hardcoded-passwords": "off",
+      // `array[0]!`/`.find(...)!` on known-populated test fixtures is the
+      // standard idiom across this suite's ported tests (spec-110 B2) —
+      // web/frontend's own eslint config downgrades this rule to "warn"
+      // globally for the same reason. Off (not "warn") here since test
+      // files are the only place it appears; production code stays strict.
+      "@typescript-eslint/no-non-null-assertion": "off",
+      // Ported test assertions like `expect(x).toBe(0.42)` read back a
+      // literal that was just assigned two lines above — not a genuine
+      // float-drift risk, but sonarjs's static rule can't tell the
+      // difference from real computed-float comparisons. Off for tests
+      // only; production code (formulas, ramps) stays strict.
+      "sonarjs/no-floating-point-equality": "off",
     },
   },
 

@@ -1,10 +1,14 @@
 /**
- * Cockpit app shell (spec-110 B1) — scaffold only.
+ * Cockpit app shell (spec-110 B1 scaffold, Cold Collapse tokens ported B2).
  *
  * Full-viewport dark layout with five named placeholder regions
  * (StatusBar / Outliner / Map / Dock / BottomStrip) plus a tiny
- * `/health` fetch indicator. No game logic, no map rendering yet —
- * that lands in B2.
+ * `/health` fetch indicator. Colors are now the ratified Cold Collapse
+ * canon tokens (`index.css`, Constitution VIII) rather than B1's
+ * placeholder grays — every color here is a named token
+ * (`bg-void`/`text-bone`/`border-rebar`/…), never a raw hex literal.
+ * No game logic, no map mounted, no store/routing wiring yet — those are
+ * B3's (stores + shell layout + routing, orchestrator-supervised).
  */
 
 import { useEffect, useState } from "react";
@@ -48,9 +52,9 @@ const HEALTH_LABELS: Record<HealthStatus, string> = {
 };
 
 const HEALTH_DOT_CLASSES: Record<HealthStatus, string> = {
-  checking: "bg-amber-400",
-  ok: "bg-emerald-400",
-  unreachable: "bg-red-500",
+  checking: "bg-heat",
+  ok: "bg-solidarity",
+  unreachable: "bg-laser",
 };
 
 function HealthIndicator(): React.JSX.Element {
@@ -68,11 +72,11 @@ function HealthIndicator(): React.JSX.Element {
 
 export default function App(): React.JSX.Element {
   return (
-    <div className="grid h-screen w-screen grid-cols-[240px_1fr_320px] grid-rows-[48px_1fr_140px] bg-[#06070b] text-[#d8dce0]">
+    <div className="grid h-screen w-screen grid-cols-[240px_1fr_320px] grid-rows-[48px_1fr_140px] bg-void text-bone">
       <header
         data-testid="region-statusbar"
         aria-label="StatusBar"
-        className="col-span-3 flex items-center justify-between border-b border-neutral-800 px-4"
+        className="col-span-3 flex items-center justify-between border-b border-rebar px-4"
       >
         <span className="text-sm font-semibold tracking-[4px]">BABYLON COCKPIT</span>
         <HealthIndicator />
@@ -81,7 +85,7 @@ export default function App(): React.JSX.Element {
       <nav
         data-testid="region-outliner"
         aria-label="Outliner"
-        className="row-start-2 overflow-y-auto border-r border-neutral-800 p-3"
+        className="row-start-2 overflow-y-auto border-r border-rebar p-3"
       />
 
       <main
@@ -93,13 +97,13 @@ export default function App(): React.JSX.Element {
       <aside
         data-testid="region-dock"
         aria-label="Dock"
-        className="row-start-2 overflow-y-auto border-l border-neutral-800 p-3"
+        className="row-start-2 overflow-y-auto border-l border-rebar p-3"
       />
 
       <footer
         data-testid="region-bottomstrip"
         aria-label="BottomStrip"
-        className="col-span-3 row-start-3 border-t border-neutral-800 p-3"
+        className="col-span-3 row-start-3 border-t border-rebar p-3"
       />
     </div>
   );

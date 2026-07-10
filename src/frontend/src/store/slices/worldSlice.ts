@@ -78,9 +78,25 @@ export const createWorldSlice: StateCreator<RootState, [], [], WorldSlice> = (se
 
       const snap = res.data;
       const prevTick = get().world.lastTick;
-      set((s) => ({
-        world: { ...s.world, snapshot: snap, lastTick: snap.tick, loading: false },
-      }));
+      const prevSnapshot = get().world.snapshot;
+
+      // Same tick, byte-identical payload (JSON.stringify — cheap enough
+      // once per HEARTBEAT_MS): keep the previous snapshot object so
+      // referentially-memoized consumers (DeckGLMap's `layers`) don't
+      // rebuild on an unchanged beat. Any actual content difference must
+      // still replace the reference — this is NOT a same-tick skip.
+      const isDuplicateBeat =
+        prevSnapshot !== null &&
+        snap.tick === prevTick &&
+        JSON.stringify(snap) === JSON.stringify(prevSnapshot);
+
+      if (isDuplicateBeat) {
+        set((s) => ({ world: { ...s.world, loading: false } }));
+      } else {
+        set((s) => ({
+          world: { ...s.world, snapshot: snap, lastTick: snap.tick, loading: false },
+        }));
+      }
 
       if (prevTick === null || snap.tick !== prevTick) {
         await onTickAdvanced(get, gameId, snap, prevTick !== null && snap.tick !== prevTick);

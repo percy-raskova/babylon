@@ -9,9 +9,10 @@ import { http, HttpResponse } from "msw";
 import { server } from "@/test/server";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
-import { resetMockGameState, requestLog, DEFAULT_GAME_ID } from "@/test/handlers";
+import { resetMockGameState, requestLog, DEFAULT_GAME_ID, setMockSnapshot } from "@/test/handlers";
 import { makeEvent } from "@/test/fixtures";
 import { PANEL_KEYS } from "@/store/slices/panels";
+import type { GameSnapshot } from "@/types/game";
 
 beforeEach(() => {
   resetStore();
@@ -54,6 +55,54 @@ describe("world slice — fetchState", () => {
 
     expect(requestLog.filter((r) => r === "GET summary")).toHaveLength(afterFirst);
     expect(requestLog.filter((r) => r === "GET state")).toHaveLength(2);
+  });
+
+  it("keeps the same snapshot object reference across two fetches of an identical same-tick payload", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const first = useStore.getState().world.snapshot;
+    expect(first).not.toBeNull();
+
+    // Same tick, byte-identical content — heartbeat-style refetch with no
+    // engine-side change. `world` itself is a new object every fetch
+    // (loading toggles legitimately churn it) — only `snapshot` must stay
+    // referentially stable so DeckGLMap's memoized layers don't rebuild.
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const second = useStore.getState().world.snapshot;
+
+    expect(Object.is(first, second)).toBe(true);
+  });
+
+  it("takes a new snapshot reference when a same-tick payload actually changed", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const first = useStore.getState().world.snapshot!;
+
+    const changedHeat = first.territories[0]!.heat + 0.5;
+    const changed: GameSnapshot = {
+      ...first,
+      territories: first.territories.map((t, i) => (i === 0 ? { ...t, heat: changedHeat } : t)),
+    };
+    setMockSnapshot(changed);
+
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const second = useStore.getState().world.snapshot;
+
+    // The guard against swallowing same-tick server-side changes: an
+    // actual content change must NEVER be mistaken for a duplicate beat.
+    expect(Object.is(first, second)).toBe(false);
+    expect(second!.territories[0]!.heat).toBe(changedHeat);
+  });
+
+  it("takes a new snapshot reference when the tick has advanced", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const first = useStore.getState().world.snapshot!;
+
+    setMockSnapshot({ ...first, tick: first.tick + 1 });
+
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const second = useStore.getState().world.snapshot;
+
+    expect(Object.is(first, second)).toBe(false);
+    expect(second!.tick).toBe(first.tick + 1);
   });
 
   it("fans out to every mounted panel again once the tick advances", async () => {

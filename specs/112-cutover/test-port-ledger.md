@@ -139,9 +139,13 @@ pre-condition, pragmatic reading ratified in the approved 2026-07-10 plan).
 
 ### Run 1 — pre-cutover dev HEAD
 
-- Date/HEAD: _pending (Wave 2)_
-- Command: _pending_
-- Result: _pending_
+- Date/HEAD: 2026-07-10, dev @ `28683951` (all four Wave-1 lanes merged)
+- Command: `cd src/frontend && npx playwright test` — webServer auto-boot
+  :5174, live Django :8000 (real EngineBridge, seeded `wayne_county`),
+  fresh storageState
+- Result: **25 passed** (29.4s) — the 23-spec parity baseline + the two
+  new C5 specs (Q/E lens-cycling, framing-county smoke); setup +
+  chromium + chromium-authenticated projects
 
 ### Run 2 — post-cutover dev HEAD
 

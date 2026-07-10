@@ -25,6 +25,15 @@ import type {
   CommunityEntry,
   CommunitiesDashboardPayload,
 } from "@/types/game";
+import type { WireFeed, WireStoryIndex } from "@/types/wire";
+import { EMPTY_WIRE_FEED } from "@/types/wire";
+import type {
+  ContradictionSnapshot,
+  EndgameState,
+  Objective,
+  ObjectivesTracker,
+} from "@/types/dialectic";
+import type { BlocFlowEntry, TradeFlowsPayload } from "@/types/trade";
 
 export function makeTerritory(overrides?: Partial<TerritoryState>): TerritoryState {
   return {
@@ -395,6 +404,208 @@ export function makeCommunitiesDashboardPayload(
 ): CommunitiesDashboardPayload {
   return {
     communities: [makeCommunityEntry()],
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Spec 110 B5 — takeover-surface payload factories (Wire/Dialectic/Chronicle
+// /Objectives + the Wire Index tab's trade-flows lines).
+// ---------------------------------------------------------------------------
+
+/** One entry of GET /api/games/{id}/wire/'s `index` array. */
+export function makeWireStoryIndex(overrides?: Partial<WireStoryIndex>): WireStoryIndex {
+  return {
+    id: "journal-1",
+    tick: 5,
+    slug: "UPRISING · HAMTRAMCK",
+    hed: {
+      c: "Authorities Report Civil Disturbance in Hamtramck",
+      l: "WORKERS ROSE UP IN HAMTRAMCK",
+      i: "CIVIL DISTURBANCE // HAMTRAMCK",
+    },
+    coverage: ["c", "l", "i"],
+    severity: "critical",
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/wire/ payload — see `useWire`. */
+export function makeWireFeed(overrides?: Partial<WireFeed>): WireFeed {
+  return {
+    ...EMPTY_WIRE_FEED,
+    meta: { ...EMPTY_WIRE_FEED.meta, tick: 5, session: "wayne-county-001" },
+    index: [makeWireStoryIndex()],
+    euphemisms: {
+      disturbance: {
+        c: "civil disturbance",
+        l: "UPRISING",
+        filter: "ideology",
+        note: "Framing a political act as a public-order issue erases the grievance.",
+      },
+    },
+    story: {
+      id: "journal-1",
+      tick: 5,
+      location: "Hamtramck",
+      time_local: "",
+      continental: {
+        brand: "CONTINENTAL",
+        monogram: "C•N",
+        kicker: "NATIONAL",
+        hed: "Authorities Report Civil Disturbance in Hamtramck",
+        dek: "Law enforcement officials say a civil disturbance was brought under control.",
+        byline: "By Continental Staff",
+        paragraphs: [
+          ["Hamtramck — ", { euph: "disturbance", text: "civil disturbance" }, { sup: 1 }],
+        ],
+        bibliography: [
+          {
+            n: 1,
+            src: "DHS Office of Public Affairs",
+            kind: "press release",
+            id: "DHS-OPA-001",
+            chunk: "chunk_001",
+            sim: 0.91,
+          },
+        ],
+      },
+      liberated: {
+        brand: "FREE SIGNAL",
+        callsign: "WCLF-PIRATE-887",
+        operator: "RASKOVA-2",
+        hed: "WORKERS ROSE UP IN HAMTRAMCK",
+        pre: "[ BEGIN TRANSMISSION ]",
+        post: "[ END TRANSMISSION ]",
+        paragraphs: [
+          {
+            body: ["THE STREET HELD IN HAMTRAMCK."],
+            margin: {
+              ref: "WITNESS-001",
+              chunk: "chunk_wit_001",
+              note: "front-line timestamp confirmed",
+            },
+          },
+        ],
+      },
+      intel: {
+        classification: "TS//SI//NOFORN",
+        cable_id: "0005-A",
+        origin: "FBI/HSI JOINT TASKFORCE",
+        routing: ["DHS/I&A"],
+        caveat: "HANDLE VIA COMINT CHANNELS ONLY",
+        subj: "CIVIL DISTURBANCE",
+        fields: [["EVENT", "DISTURBANCE / DETAIN"]],
+        assessment: ["Action timed to suppress labor coordination."],
+        refs: [{ tag: "CHUNK", id: "chunk_sigint_001", sim: 0.95, src: "SIGINT capture" }],
+        distribution: "NOFORN · 30D RETAIN",
+      },
+    },
+    filters: EMPTY_WIRE_FEED.filters.map((f, i) => (i === 4 ? { ...f, hits: 2 } : f)),
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/contradiction/ payload — see `useContradiction`. */
+export function makeContradictionSnapshot(
+  overrides?: Partial<ContradictionSnapshot>,
+): ContradictionSnapshot {
+  return {
+    tick: 5,
+    regime: "crisis",
+    oppositions: [
+      { key: "capital_labor", gap: 0.71, rate: 0.03, is_principal: true, leading_pole: "b" },
+      { key: "imperial", gap: 0.42, rate: -0.01, is_principal: false, leading_pole: "a" },
+    ],
+    principal_key: "capital_labor",
+    frame: {
+      principal: {
+        id: "capital_labor",
+        aspect_a: "Labor",
+        aspect_b: "Capital",
+        principal_aspect: "b",
+        intensity: 0.71,
+        aspect_balance: 0.03,
+        is_antagonistic: true,
+      },
+      secondary: {
+        id: "imperial",
+        aspect_a: "Core",
+        aspect_b: "Periphery",
+        principal_aspect: "a",
+        intensity: 0.42,
+        aspect_balance: -0.01,
+        is_antagonistic: true,
+      },
+    },
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/endgame/ payload — see `useEndgame`. */
+export function makeEndgameState(overrides?: Partial<EndgameState>): EndgameState {
+  return {
+    tick: 5,
+    outcome: null,
+    headline: "",
+    summary: "",
+    stats: { final_tick: 5, consciousness: 0.42, solidarity_edges: 3, heat: 0.31 },
+    ...overrides,
+  };
+}
+
+/** One entry of GET /api/games/{id}/objectives/'s `objectives` array. */
+export function makeObjective(overrides?: Partial<Objective>): Objective {
+  return {
+    id: "revolution",
+    title: "Revolutionary Victory",
+    description: "Build mass class consciousness and solidarity edges to overthrow the empire.",
+    progress: 0.42,
+    status: "active",
+    category: "revolution",
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/objectives/ payload — see `useObjectives`. */
+export function makeObjectivesTracker(overrides?: Partial<ObjectivesTracker>): ObjectivesTracker {
+  return {
+    tick: 5,
+    objectives: [makeObjective()],
+    ...overrides,
+  };
+}
+
+/** One entry of GET /api/games/{id}/trade-flows/'s `blocs` array. */
+export function makeBlocFlowEntry(overrides?: Partial<BlocFlowEntry>): BlocFlowEntry {
+  return {
+    node_id: "bloc-eu",
+    label: "European Union",
+    kind: "international",
+    latest: {
+      phi_year_inflow: 12.4,
+      bilateral_trade_value: 340.2,
+      bilateral_trade_tons: 1200,
+      erdi_ratio: 1.1,
+    },
+    phi_series: [
+      { tick: 4, magnitude: 11.8 },
+      { tick: 5, magnitude: 12.4 },
+    ],
+    trade_series: [
+      { tick: 4, magnitude: 330.0 },
+      { tick: 5, magnitude: 340.2 },
+    ],
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/trade-flows/ payload — see `useTradeFlows`. */
+export function makeTradeFlowsPayload(overrides?: Partial<TradeFlowsPayload>): TradeFlowsPayload {
+  return {
+    tick: 5,
+    has_data: true,
+    blocs: [makeBlocFlowEntry()],
     ...overrides,
   };
 }

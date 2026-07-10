@@ -64,3 +64,19 @@ export function createPanel<T>(
 /** The 5 tick-driven docked panels the fetch orchestrator fans out to. */
 export const PANEL_KEYS = ["summary", "timeseries", "economy", "communities", "map"] as const;
 export type PanelKey = (typeof PANEL_KEYS)[number];
+
+/**
+ * The 5 tick-driven takeover/dock panels (spec-110 B5) — Wire, Dialectic,
+ * Chronicle, Objectives, and the Wire Index tab's bloc-flow lines. Same
+ * "only fetch what's mounted" contract as `PANEL_KEYS`, kept as a separate
+ * list rather than merged into it since these mount on takeover-open /
+ * dock-tab-select, not on shell mount.
+ */
+export const TAKEOVER_PANEL_KEYS = [
+  "wire",
+  "contradiction",
+  "endgame",
+  "objectives",
+  "tradeFlows",
+] as const;
+export type TakeoverPanelKey = (typeof TAKEOVER_PANEL_KEYS)[number];

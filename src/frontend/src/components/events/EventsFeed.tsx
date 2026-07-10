@@ -5,6 +5,12 @@
  * linked entity — the "autopause deep-link": when the time slice
  * autopauses on a critical event, clicking that event in the feed drives
  * the Inspector + map highlight straight to what triggered it.
+ *
+ * A critical event with no linked entity (e.g. `rupture` — an
+ * existential state change, not a territory/org action) has nothing for
+ * the Inspector to show; clicking it opens the Chronicle takeover instead
+ * (spec-110 B5) — the closest read of "where the old app did" deep-link
+ * for a critical event this feed can't otherwise resolve.
  */
 
 import { useStore } from "@/store";
@@ -22,6 +28,7 @@ export function EventsFeed(): React.JSX.Element {
   const events = useStore((s) => s.world.snapshot?.events);
   const autopauseEventIds = useStore((s) => s.time.autopauseEventIds);
   const setSelection = useStore((s) => s.map.setSelection);
+  const openTakeover = useStore((s) => s.ui.openTakeover);
 
   const classified = classifyEvents(events ?? []);
 
@@ -36,6 +43,10 @@ export function EventsFeed(): React.JSX.Element {
     const kind = inspectorKindForEvent(event);
     if (kind && event.linkedEntityId) {
       setSelection({ kind, id: event.linkedEntityId });
+      return;
+    }
+    if (event.severity === "critical") {
+      openTakeover("chronicle");
     }
   }
 
@@ -45,7 +56,7 @@ export function EventsFeed(): React.JSX.Element {
         <button
           key={e.id}
           onClick={() => handleClick(e)}
-          disabled={!e.linkedEntityId}
+          disabled={!e.linkedEntityId && e.severity !== "critical"}
           data-testid={`event-${e.id}`}
           data-autopause={autopauseEventIds.includes(e.id) || undefined}
           className="flex items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-rebar disabled:cursor-default disabled:hover:bg-transparent"

@@ -28,7 +28,7 @@ export const useStore = create<RootState>()((...a) => ({
 export type { RootState } from "./types";
 export type { Selection } from "./slices/mapSlice";
 export type { TimeStatus } from "./slices/timeSlice";
-export type { DockTab, RightDockTab } from "./slices/uiSlice";
-export type { PanelKey, InspectorKind } from "./slices/panels";
+export type { DockTab, RightDockTab, TakeoverKind } from "./slices/uiSlice";
+export type { PanelKey, TakeoverPanelKey, InspectorKind } from "./slices/panels";
 export type { Panel, PanelState } from "./slices/panels/panelFactory";
 export type { PendingActionEntry } from "./slices/actionsSlice";

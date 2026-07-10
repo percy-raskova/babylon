@@ -1,12 +1,14 @@
 /**
  * Top StatusBar — real `/summary/` fields (tick, profit rate, imperial
- * rent Φ, population, alert counts) plus the B4 transport controls.
+ * rent Φ, population, alert counts), the B4 transport controls, and the
+ * B5 takeover-open buttons (Wire / Dialectic / Chronicle).
  */
 
 import { useEffect } from "react";
 import { useStore } from "@/store";
 import { StatChip } from "./StatChip";
 import { TimeControls } from "./TimeControls";
+import type { TakeoverKind } from "@/store";
 
 interface StatusBarProps {
   gameId: string;
@@ -26,6 +28,7 @@ export function StatusBar({ gameId }: StatusBarProps): React.JSX.Element {
 
   const eventCounts = summaryData?.event_counts;
   const hasAlerts = eventCounts !== undefined && eventCounts.critical + eventCounts.warning > 0;
+  const openTakeover = useStore((s) => s.ui.openTakeover);
 
   return (
     <header
@@ -84,7 +87,37 @@ export function StatusBar({ gameId }: StatusBarProps): React.JSX.Element {
         )}
       </div>
 
+      <div
+        className="flex items-center gap-1 border-l border-rebar pl-3"
+        role="group"
+        aria-label="Takeovers"
+      >
+        <TakeoverButton kind="wire" label="Wire" onOpen={openTakeover} />
+        <TakeoverButton kind="dialectic" label="Dialectic" onOpen={openTakeover} />
+        <TakeoverButton kind="chronicle" label="Chronicle" onOpen={openTakeover} />
+      </div>
+
       <TimeControls gameId={gameId} />
     </header>
+  );
+}
+
+function TakeoverButton({
+  kind,
+  label,
+  onOpen,
+}: {
+  kind: TakeoverKind;
+  label: string;
+  onOpen: (kind: TakeoverKind) => void;
+}): React.JSX.Element {
+  return (
+    <button
+      onClick={() => onOpen(kind)}
+      data-testid={`open-${kind}`}
+      className="rounded border border-rebar px-2 py-1 text-[9px] uppercase tracking-widest text-fog hover:border-spire hover:text-spire"
+    >
+      {label}
+    </button>
   );
 }

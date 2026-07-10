@@ -4,6 +4,10 @@
  * (col-span-3), Outliner, Map, Dock, BottomStrip (col-span-3). The
  * bottom-strip row collapses to a thin strip via `ui.bottomStripCollapsed`
  * — its content stays mounted (see `BottomStrip.tsx`).
+ *
+ * `TakeoverOverlay` (spec-110 B5) renders last, fixed-positioned, so it
+ * escapes the grid and covers the whole viewport when a takeover is open —
+ * the five regions above (map included) stay mounted underneath it.
  */
 
 import { useStore } from "@/store";
@@ -12,6 +16,7 @@ import { Outliner } from "./Outliner";
 import { MapPanel } from "./MapPanel";
 import { RightDock } from "./RightDock";
 import { BottomStrip } from "./BottomStrip";
+import { TakeoverOverlay } from "@/components/takeovers/TakeoverOverlay";
 
 interface AppShellProps {
   gameId: string;
@@ -30,6 +35,7 @@ export function AppShell({ gameId }: AppShellProps): React.JSX.Element {
       <MapPanel gameId={gameId} />
       <RightDock gameId={gameId} />
       <BottomStrip gameId={gameId} />
+      <TakeoverOverlay gameId={gameId} />
     </div>
   );
 }

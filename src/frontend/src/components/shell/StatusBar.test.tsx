@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { StatusBar } from "./StatusBar";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
@@ -59,5 +60,18 @@ describe("StatusBar", () => {
     await waitFor(() => expect(useStore.getState().panels.summary.mounted).toBe(true));
     unmount();
     expect(useStore.getState().panels.summary.mounted).toBe(false);
+  });
+
+  it("opens each takeover from its StatusBar button (spec-110 B5)", async () => {
+    render(<StatusBar gameId={DEFAULT_GAME_ID} />);
+
+    await userEvent.click(screen.getByTestId("open-wire"));
+    expect(useStore.getState().ui.takeover.active).toBe("wire");
+
+    await userEvent.click(screen.getByTestId("open-dialectic"));
+    expect(useStore.getState().ui.takeover.active).toBe("dialectic");
+
+    await userEvent.click(screen.getByTestId("open-chronicle"));
+    expect(useStore.getState().ui.takeover.active).toBe("chronicle");
   });
 });

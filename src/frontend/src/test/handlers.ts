@@ -11,7 +11,15 @@
  */
 
 import { http, HttpResponse } from "msw";
-import { makeSnapshot, makeGameSummary } from "./fixtures";
+import {
+  makeSnapshot,
+  makeGameSummary,
+  makeWireFeed,
+  makeContradictionSnapshot,
+  makeEndgameState,
+  makeObjectivesTracker,
+  makeTradeFlowsPayload,
+} from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
 export const DEFAULT_GAME_ID = "game-001";
@@ -190,6 +198,33 @@ export const handlers = [
       status: "ok",
       data: { type: "FeatureCollection", features: [] },
     });
+  }),
+
+  // ---- Takeover surfaces + Objectives dock tab (spec-110 B5) -----------
+
+  http.get("/api/games/:id/wire/", () => {
+    logRequest("GET wire");
+    return HttpResponse.json({ status: "ok", data: makeWireFeed() });
+  }),
+
+  http.get("/api/games/:id/contradiction/", () => {
+    logRequest("GET contradiction");
+    return HttpResponse.json({ status: "ok", data: makeContradictionSnapshot() });
+  }),
+
+  http.get("/api/games/:id/endgame/", () => {
+    logRequest("GET endgame");
+    return HttpResponse.json({ status: "ok", data: makeEndgameState() });
+  }),
+
+  http.get("/api/games/:id/objectives/", () => {
+    logRequest("GET objectives");
+    return HttpResponse.json({ status: "ok", data: makeObjectivesTracker() });
+  }),
+
+  http.get("/api/games/:id/trade-flows/", () => {
+    logRequest("GET trade-flows");
+    return HttpResponse.json({ status: "ok", data: makeTradeFlowsPayload() });
   }),
 
   // ---- Action Composer: verb targets + submit --------------------------

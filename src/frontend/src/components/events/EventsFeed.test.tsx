@@ -79,4 +79,22 @@ describe("EventsFeed", () => {
     render(<EventsFeed />);
     expect(screen.getByText("VT").closest("button")).toBeDisabled();
   });
+
+  it("clicking a critical event with no linked entity opens the Chronicle takeover", async () => {
+    useStore.setState((s) => ({
+      world: {
+        ...s.world,
+        snapshot: makeSnapshot({
+          events: [makeEvent({ id: "e1", type: "rupture", title: "Rupture", tick: 3, data: {} })],
+        }),
+      },
+      time: { ...s.time, autopauseEventIds: ["3-0"] },
+    }));
+    render(<EventsFeed />);
+
+    const button = screen.getByText("Rupture").closest("button");
+    expect(button).not.toBeDisabled();
+    await userEvent.click(screen.getByText("Rupture"));
+    expect(useStore.getState().ui.takeover.active).toBe("chronicle");
+  });
 });

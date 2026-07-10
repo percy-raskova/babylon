@@ -12,12 +12,13 @@ beforeEach(() => {
 });
 
 describe("ui slice", () => {
-  it("defaults to the timeseries dock tab, expanded bottom strip, no focus, actions right-dock tab", () => {
+  it("defaults to the timeseries dock tab, expanded bottom strip, no focus, actions right-dock tab, no takeover", () => {
     const { ui } = useStore.getState();
     expect(ui.activeDockTab).toBe("timeseries");
     expect(ui.bottomStripCollapsed).toBe(false);
     expect(ui.focusedPanelId).toBeNull();
     expect(ui.rightDockTab).toBe("actions");
+    expect(ui.takeover.active).toBeNull();
   });
 
   it("setRightDockTab switches between actions and inspector", () => {
@@ -44,5 +45,21 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.focusedPanelId).toBe("panel-economy");
     useStore.getState().ui.setFocusedPanel(null);
     expect(useStore.getState().ui.focusedPanelId).toBeNull();
+  });
+
+  it("setRightDockTab switches to objectives", () => {
+    useStore.getState().ui.setRightDockTab("objectives");
+    expect(useStore.getState().ui.rightDockTab).toBe("objectives");
+  });
+
+  it("openTakeover/closeTakeover set and clear the active takeover", () => {
+    useStore.getState().ui.openTakeover("wire");
+    expect(useStore.getState().ui.takeover.active).toBe("wire");
+    useStore.getState().ui.openTakeover("chronicle");
+    expect(useStore.getState().ui.takeover.active).toBe("chronicle");
+    useStore.getState().ui.openTakeover("dialectic");
+    expect(useStore.getState().ui.takeover.active).toBe("dialectic");
+    useStore.getState().ui.closeTakeover();
+    expect(useStore.getState().ui.takeover.active).toBeNull();
   });
 });

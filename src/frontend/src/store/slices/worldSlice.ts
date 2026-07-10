@@ -15,7 +15,7 @@ import { get as apiGet } from "@/api/client";
 import { classifyEvents } from "@/lib/eventClassifier";
 import type { GameSnapshot } from "@/types/game";
 import type { RootState } from "../types";
-import { PANEL_KEYS } from "./panels";
+import { PANEL_KEYS, TAKEOVER_PANEL_KEYS } from "./panels";
 
 export interface WorldSlice {
   world: {
@@ -35,9 +35,12 @@ async function onTickAdvanced(
   isGenuineAdvance: boolean,
 ) {
   const panels = get().panels;
-  await Promise.all(
-    PANEL_KEYS.filter((key) => panels[key].mounted).map((key) => panels[key].fetch(gameId)),
-  );
+  await Promise.all([
+    ...PANEL_KEYS.filter((key) => panels[key].mounted).map((key) => panels[key].fetch(gameId)),
+    ...TAKEOVER_PANEL_KEYS.filter((key) => panels[key].mounted).map((key) =>
+      panels[key].fetch(gameId),
+    ),
+  ]);
 
   // A resolve consumes every action queued against the prior tick — the
   // Action Composer's pending list no longer describes reality once the

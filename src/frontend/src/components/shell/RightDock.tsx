@@ -1,10 +1,12 @@
 /**
- * Right Dock — two tabs: Action Composer / Inspector.
+ * Right Dock — three tabs: Action Composer / Inspector / Objectives
+ * (spec-110 B5 adds the third tab).
  */
 
 import { useStore } from "@/store";
 import { ActionComposer } from "@/components/action/ActionComposer";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
+import { ObjectivesTracker } from "@/components/objectives/ObjectivesTracker";
 
 interface RightDockProps {
   gameId: string;
@@ -27,9 +29,14 @@ export function RightDock({ gameId }: RightDockProps): React.JSX.Element {
         <TabButton active={activeTab === "inspector"} onClick={() => setActiveTab("inspector")}>
           Inspector
         </TabButton>
+        <TabButton active={activeTab === "objectives"} onClick={() => setActiveTab("objectives")}>
+          Objectives
+        </TabButton>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {activeTab === "actions" ? <ActionComposer gameId={gameId} /> : <InspectorPanel />}
+        {activeTab === "actions" && <ActionComposer gameId={gameId} />}
+        {activeTab === "inspector" && <InspectorPanel />}
+        {activeTab === "objectives" && <ObjectivesTracker gameId={gameId} />}
       </div>
     </aside>
   );

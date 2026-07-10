@@ -234,6 +234,11 @@
 .col-wrap {
   display: flex;
   flex-direction: column;
+  /* Equal thirds of the triptych row — without an explicit basis each
+     column claims only its natural content width, squeezing IntelColumn
+     into mid-word wraps (populated) or collapsing the row to bare void
+     (story=null). Inert outside flex containers (standalone previews). */
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   height: 100%;

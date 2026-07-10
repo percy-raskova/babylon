@@ -152,10 +152,16 @@ export const EMPTY_WIRE_FEED: WireFeed = {
   euphemisms: {},
   story: null,
   filters: [
-    { id: "ownership", label: "Ownership", desc: "", hits: 0, color: "var(--rent)" },
-    { id: "advertising", label: "Advertising", desc: "", hits: 0, color: "var(--heat)" },
-    { id: "sourcing", label: "Sourcing", desc: "", hits: 0, color: "var(--cadre)" },
-    { id: "flak", label: "Flak", desc: "", hits: 0, color: "var(--thermal)" },
-    { id: "ideology", label: "Anti-radical ideology", desc: "", hits: 0, color: "var(--laser)" },
+    { id: "ownership", label: "Ownership", desc: "", hits: 0, color: "var(--babylon-rent)" },
+    { id: "advertising", label: "Advertising", desc: "", hits: 0, color: "var(--babylon-heat)" },
+    { id: "sourcing", label: "Sourcing", desc: "", hits: 0, color: "var(--babylon-cadre)" },
+    { id: "flak", label: "Flak", desc: "", hits: 0, color: "var(--babylon-thermal)" },
+    {
+      id: "ideology",
+      label: "Anti-radical ideology",
+      desc: "",
+      hits: 0,
+      color: "var(--babylon-laser)",
+    },
   ],
 };

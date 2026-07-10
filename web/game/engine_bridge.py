@@ -1402,6 +1402,13 @@ class EngineBridge:
         Groups hex states by the dimension column matching the zoom level,
         then computes weighted averages (by population) for numeric metrics
         and sums for additive metrics.
+
+        Spec-112 C5: each aggregated feature also carries
+        ``properties.member_h3`` — the sorted list of H3 indexes rolled into
+        that group. The backend ships ``geometry: None`` for aggregated
+        features (real polygons are deferred to the frontend, which derives
+        them from ``member_h3`` via ``H3ClusterLayer``/``h3-js``), so this is
+        the only way a region's shape can be reconstructed at all.
         """
         from collections import defaultdict
 
@@ -1435,6 +1442,9 @@ class EngineBridge:
             }
         )
         group_names: dict[str, str] = {}
+        # Spec-112 C5: member h3 indexes per group, kept separate from the
+        # numeric accumulator dict above (distinct value type).
+        member_h3: dict[str, list[str]] = defaultdict(list)
 
         for state in hex_states:
             key = getattr(state, group_attr, None)
@@ -1450,6 +1460,7 @@ class EngineBridge:
             acc["org_presence_sum"] += state.org_count or 0
             acc["population_sum"] += pop
             acc["count"] += 1
+            member_h3[key].append(state.h3_index)
 
             habitability = (getattr(state, "attributes", None) or {}).get("habitability")
             if habitability is not None:
@@ -1474,6 +1485,7 @@ class EngineBridge:
                         "group_name": group_names.get(key, key),
                         "zoom": zoom,
                         "hex_count": acc["count"],
+                        "member_h3": sorted(member_h3[key]),
                         "profit_rate": round(acc["profit_rate_sum"] / total_pop, 6),
                         "exploitation_rate": round(acc["exploitation_rate_sum"] / total_pop, 4),
                         "occ": round(acc["occ_sum"] / total_pop, 4),

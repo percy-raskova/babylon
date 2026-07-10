@@ -22,6 +22,14 @@ Spec-070 FR-043) is graph-only — excluded from the Territory pydantic model
 ``hex_latest``'s JSONB ``attributes`` column, flattened to a top-level
 ``habitability`` property at both zooms.
 
+Spec-112 C5 — aggregated (non-hex) ``/map/`` features ship ``geometry: None``
+(the frontend derives region polygons from H3 cells at render time, see
+``@deck.gl/geo-layers``'s ``H3ClusterLayer``), so each aggregated feature now
+carries ``properties.member_h3``: the sorted list of H3 indexes rolled into
+that group. Also pins a pre-existing quirk: ``zoom="cz"`` has no backing
+column on ``HexState`` and no ``group_key_map`` entry, so it silently falls
+through to county grouping — documented here, not fixed (owner queue).
+
 Requires a running PostgreSQL instance. Skip with:
 ``pytest -m "not requires_postgres"``.
 """
@@ -272,3 +280,220 @@ class TestHexRowBuilderRoundTrip:
 
         assert checked > 0, "expected at least one non-excluded non-null column"
         assert props["habitability"] == pytest.approx(0.55)
+
+
+@pytest.mark.usefixtures("_django_configured")
+class TestMemberH3Aggregation:
+    """Spec-112 C5 gate: aggregated features carry ``properties.member_h3``
+    (the sorted H3 indexes rolled into that group) so the frontend can build
+    region polygons via ``H3ClusterLayer`` — the backend ships
+    ``geometry: None`` for aggregated features and always has.
+
+    Stub-row based (like :class:`TestMapMetricContract`) so grouping
+    correctness across *multiple* county groups is directly controllable —
+    the live ``wayne_county`` scenario used by
+    :class:`TestCountyFramingSeededSession` seeds every hex with the same
+    (empty) ``county_fips``, so it cannot exercise cross-group isolation.
+    """
+
+    def test_county_zoom_features_carry_sorted_member_h3_per_group(self) -> None:
+        from game.engine_bridge import EngineBridge
+
+        rows = [_hex_row_stub("872a3072cffffff"), _hex_row_stub("872a3072dffffff")]
+        rows[1].county_fips = "26099"
+
+        features = EngineBridge._aggregate_hex_features(rows, "county")
+
+        by_key = {f["properties"]["group_key"]: f for f in features}
+        assert by_key["26163"]["properties"]["member_h3"] == ["872a3072cffffff"]
+        assert by_key["26099"]["properties"]["member_h3"] == ["872a3072dffffff"]
+
+    def test_member_h3_is_sorted_within_a_group(self) -> None:
+        from game.engine_bridge import EngineBridge
+
+        # Deliberately out-of-lexical-order h3 indexes within one group.
+        rows = [_hex_row_stub("872a3072dffffff"), _hex_row_stub("872a3072cffffff")]
+
+        features = EngineBridge._aggregate_hex_features(rows, "county")
+
+        assert len(features) == 1
+        assert features[0]["properties"]["member_h3"] == sorted(
+            ["872a3072dffffff", "872a3072cffffff"]
+        )
+
+    def test_member_h3_union_covers_every_input_hex_with_no_duplicates(self) -> None:
+        from game.engine_bridge import EngineBridge
+
+        rows = [
+            _hex_row_stub("872a3072cffffff"),
+            _hex_row_stub("872a3072dffffff"),
+            _hex_row_stub("872a30728ffffff"),
+        ]
+        rows[2].county_fips = "26099"
+
+        features = EngineBridge._aggregate_hex_features(rows, "county")
+
+        all_members = [h for f in features for h in f["properties"]["member_h3"]]
+        assert sorted(all_members) == sorted(r.h3_index for r in rows)
+        assert len(all_members) == len(set(all_members)), "no duplicate h3 across groups"
+
+    def test_hex_zoom_features_have_no_member_h3(self) -> None:
+        """Hex-zoom features are already 1:1 with a single H3 cell (the
+        feature's own ``id``) — ``member_h3`` is an aggregation-only concept
+        and stays absent at native hex resolution (Constitution III.11: no
+        redundant properties)."""
+        from game.engine_bridge import _hex_feature_properties
+
+        props = _hex_feature_properties(_hex_row_stub())
+        assert "member_h3" not in props
+
+
+@pytest.mark.usefixtures("_django_configured")
+class TestZoomCzFallsThroughToCounty:
+    """Pins current (pre-existing, NOT fixed here) behavior: ``HexState``
+    has no commuting-zone column at all, and ``_aggregate_hex_features``'s
+    ``group_key_map`` has no ``"cz"`` entry, so ``zoom="cz"`` silently falls
+    through ``group_key_map.get(zoom, "county_fips")`` and groups by
+    ``county_fips`` instead of a real CZ dimension. Flagged for the owner
+    queue: fixing this needs a schema addition (a CZ column + loader), not
+    just a ``group_key_map`` entry — out of scope for this lane.
+    """
+
+    def test_cz_zoom_groups_by_county_fips_not_a_cz_dimension(self) -> None:
+        from game.engine_bridge import EngineBridge
+
+        rows = [_hex_row_stub("872a3072cffffff"), _hex_row_stub("872a3072dffffff")]
+        rows[1].county_fips = "26099"
+
+        cz_features = EngineBridge._aggregate_hex_features(rows, "cz")
+        county_features = EngineBridge._aggregate_hex_features(rows, "county")
+
+        cz_keys = {f["properties"]["group_key"] for f in cz_features}
+        county_keys = {f["properties"]["group_key"] for f in county_features}
+        assert cz_keys == county_keys == {"26163", "26099"}
+        # The only difference is the literal "zoom" property value echoed
+        # back — the grouping dimension itself is identical to "county".
+        assert {f["properties"]["zoom"] for f in cz_features} == {"cz"}
+
+
+def _seeded_wayne_state_and_graph() -> tuple[Any, Any]:
+    """Build the real ``wayne_county`` tick-0 ``WorldState``/graph via the
+    exact scenario-seeding pipeline ``EngineBridge.create_game`` calls
+    (``_build_initial_state_for_scenario`` — includes owner item 8's
+    ``_seed_balkanization_layer`` and owner item 30's
+    ``_seed_wayne_county_fips``), entirely in-memory.
+
+    Deliberately does NOT go through ``bridge.create_game`` +
+    ``get_map_snapshot``/``hex_latest``: both the write side
+    (``_persist_hex_state_safe``) and the read side
+    (``EngineBridge.get_map_snapshot``) go through Django's ORM
+    (``game.models.HexState``/``GameSession``), which in this integration
+    suite's ``testing`` settings module points ``DATABASES["default"]`` at
+    an in-memory SQLite with no unmanaged-table DDL applied — not the
+    database the raw-psycopg ``bridge`` fixture (``POSTGRES_HOST`` et al.)
+    ever writes to. Concretely: a real ``bridge.create_game(...)`` call's
+    ``_persist_hex_state_safe`` step silently swallows a ``RuntimeError:
+    Database access not allowed`` (pytest-django's DB blocker; verified
+    empirically while authoring this test), so a bridge-created session's
+    ``hex_latest`` stays permanently empty in this harness — the same
+    Django-ORM wall ``TestBalkanizationSeed``'s ``_balkanization()`` helper
+    in ``test_balkanization_seed.py`` documents and routes around. (In
+    production/dev this is a non-issue — see ``_persist_hex_state_safe``'s
+    own docstring: Django's ``default`` alias IS the same Postgres the
+    persistence pool points at there.) Flagged for the owner queue: no
+    lane-owned file can fix this without touching shared `conftest.py`
+    DB-routing.
+
+    So this helper drives the same scenario-seeding functions
+    ``create_game`` calls and skips the DB round-trip, returning genuine
+    engine-derived state (81 real H3 cells, each stamped with the real
+    Wayne County FIPS ``26163``).
+    """
+    from game.engine_bridge import _build_initial_state_for_scenario
+
+    state = _build_initial_state_for_scenario("wayne_county")
+    return state, state.to_graph()
+
+
+def _seeded_hex_rows(state: Any, graph: Any) -> list[object]:
+    """Project a seeded ``WorldState``'s territories into
+    ``hex_latest``-row-shaped objects via the real
+    ``_serialize_territory``/``_hex_state_row`` pipeline (same as
+    :func:`_seeded_wayne_state_and_graph`, one level down).
+
+    Columns ``_hex_state_row`` never sets (no live per-territory source —
+    see its docstring) still exist on a real ``HexState`` row, defaulted to
+    the model/DB default — same ``db_defaults`` fixture as
+    ``TestHexRowBuilderRoundTrip`` above.
+    """
+    from game.engine_bridge import _hex_state_row, _serialize_territory
+
+    db_defaults: dict[str, Any] = {
+        "bea_ea_code": None,
+        "msa_code": None,
+        "state_fips": "26",
+        "profit_rate": None,
+        "exploitation_rate": None,
+        "occ": None,
+        "imperial_rent": None,
+        "dominant_class": None,
+    }
+    rows: list[object] = []
+    for territory in state.territories.values():
+        row = _hex_state_row(uuid.uuid4(), state.tick, _serialize_territory(territory, graph=graph))
+        if row is not None:
+            rows.append(SimpleNamespace(**{**db_defaults, **row}))
+    return rows
+
+
+@pytest.mark.usefixtures("_django_configured")
+class TestCountyFramingSeededSession:
+    """Spec-112 C5 RED gate: ``_aggregate_hex_features``/``_hex_feature_properties``
+    (the parts of ``get_map_snapshot`` reachable without a live database —
+    see :func:`_seeded_wayne_state_and_graph`) against a real seeded
+    ``wayne_county`` session's territories, rather than hand-built stubs.
+    """
+
+    def test_county_zoom_features_carry_member_h3_covering_the_full_hex_set(self) -> None:
+        from game.engine_bridge import EngineBridge
+
+        state, graph = _seeded_wayne_state_and_graph()
+        rows = _seeded_hex_rows(state, graph)
+        assert rows, "expected wayne_county to seed at least one hex"
+
+        features = EngineBridge._aggregate_hex_features(rows, "county")
+        assert features, "expected at least one county-aggregated feature"
+
+        all_members: list[str] = []
+        for feature in features:
+            member_h3 = feature["properties"]["member_h3"]
+            assert member_h3 == sorted(member_h3), "member_h3 must be sorted"
+            all_members.extend(member_h3)
+
+        assert len(all_members) == len(set(all_members)), "no duplicate h3 across groups"
+        assert set(all_members) == {r.h3_index for r in rows}
+
+    def test_hex_zoom_features_have_no_member_h3(self) -> None:
+        from game.engine_bridge import _hex_feature_properties
+
+        state, graph = _seeded_wayne_state_and_graph()
+        rows = _seeded_hex_rows(state, graph)
+        assert rows
+
+        for row in rows:
+            assert "member_h3" not in _hex_feature_properties(row)
+
+    def test_balkanization_present_at_hex_zoom(self) -> None:
+        """Same code path ``get_map_snapshot`` uses for ``metadata.balkanization``
+        (hydrate the raw graph -> ``_build_balkanization_block``) — this part
+        needs no Django ORM, so it's safe to call directly (see
+        ``test_balkanization_seed.py``). Zoom-independent in the real
+        endpoint (always attempted regardless of the zoom branch), pinned
+        here specifically for the hex-zoom case this lane's RED gate covers.
+        """
+        from game.engine_bridge import _build_balkanization_block
+
+        _state, graph = _seeded_wayne_state_and_graph()
+        block = _build_balkanization_block(graph)
+
+        assert block["factions"]

@@ -133,6 +133,15 @@ src/frontend/coverage/
 src/frontend/playwright-report/
 src/frontend/test-results/
 
+# design-sync (claude.ai/design converter) — staged scripts, build output,
+# machine state. The durable set (.design-sync/{config.json,NOTES.md,
+# conventions.md,fonts.css,previews/,overrides/}) IS committed.
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+
 # Deployment secrets (NEVER commit)
 deploy/terraform/terraform.tfvars
 deploy/terraform/.terraform/

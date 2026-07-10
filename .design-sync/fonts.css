@@ -1,0 +1,77 @@
+/* design-sync font bridge — the app's @font-face rules use absolute
+   /fonts/... URLs (served from src/frontend/public/ by vite), which the
+   bundle scrape cannot resolve. This file redeclares them with paths
+   relative to THIS file so the converter copies the woff2 binaries into
+   the bundle's fonts/. Families + weights mirror src/frontend/src/index.css
+   exactly (self-hosted, OFL-licensed — licenses ship next to the binaries). */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/jetbrains-mono/JetBrainsMono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/jetbrains-mono/JetBrainsMono-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/jetbrains-mono/JetBrainsMono-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/jetbrains-mono/JetBrainsMono-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/space-grotesk/SpaceGrotesk-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/space-grotesk/SpaceGrotesk-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/space-grotesk/SpaceGrotesk-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/space-grotesk/SpaceGrotesk-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Redaction 35";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/redaction-35/Redaction35-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Departure Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../src/frontend/public/fonts/departure-mono/DepartureMono-400.woff2") format("woff2");
+}

@@ -1,0 +1,55 @@
+/* design-sync Tailwind entry — the DS bundle's stylesheet source.
+   The app's own build JIT-generates only the utilities components currently
+   use; the claude.ai/design agent composes NEW layouts, so this entry
+   force-generates the full Cold Collapse token vocabulary via @source
+   inline() safelists on top of everything the cockpit sources use.
+   Compiled by buildCmd (npx @tailwindcss/cli@4.3.2) into
+   src/frontend/.ds-css/compiled.css — never part of the app build. */
+
+@import "../src/frontend/src/index.css";
+
+/* Everything the components themselves use. */
+@source "../src/frontend/src";
+
+/* Classes the authored preview compositions use (frames, arbitrary widths). */
+@source "./previews";
+
+/* Full Cold Collapse palette × the surfaces the design agent styles. */
+@source inline("{bg,text,border}-{void,tar,concrete,rebar,wet-steel,rust,bone,fog,ash,shroud,spire,spire-dim,laser,thermal,rupture,cadre,solidarity,rent,heat,population}");
+
+/* Typography vocabulary: families, the DS's pixel-size idiom (the :root
+   --text-* scale is vars-only, NOT @theme, so text-xs/text-md utilities
+   would be Tailwind's default rem scale — deliberately not safelisted;
+   the components' real idiom is arbitrary pixel values), tracking, weights. */
+@source inline("font-{mono,sans,display,pixel,system}");
+/* One inline() per arbitrary-value candidate — brace expansion cannot
+   carry bracketed values (verified: the braced form generates nothing). */
+@source inline("text-[8px]");
+@source inline("text-[9px]");
+@source inline("text-[10px]");
+@source inline("text-[11px]");
+@source inline("text-[12px]");
+@source inline("text-[13px]");
+@source inline("text-[14px]");
+@source inline("text-[16px]");
+@source inline("text-[18px]");
+@source inline("text-[20px]");
+@source inline("text-[24px]");
+@source inline("text-[32px]");
+@source inline("text-[48px]");
+@source inline("tracking-widest");
+@source inline("tracking-[0.08em]");
+@source inline("tracking-[0.25em]");
+@source inline("font-{normal,medium,semibold,bold}");
+@source inline("{uppercase,italic,truncate,antialiased}");
+
+/* Layout glue sweep — flexbox/grid/spacing the agent's compositions need. */
+@source inline("{flex,inline-flex,grid,flex-col,flex-row,flex-wrap,flex-1,grow,shrink-0}");
+@source inline("{items,justify}-{start,center,end,between,stretch}");
+@source inline("{p,px,py,pt,pb,pl,pr,m,mx,my,mt,mb,gap,gap-x,gap-y}-{0,0.5,1,1.5,2,2.5,3,4,5,6,8,10,12,16}");
+@source inline("{w,h}-{full,screen,auto,fit}");
+@source inline("{min-w-0,min-h-0,max-w-full,overflow-hidden,overflow-auto,overflow-y-auto,overflow-x-auto}");
+@source inline("rounded{,-sm,-md,-lg,-xl,-full}");
+@source inline("border{,-t,-b,-l,-r,-2}");
+@source inline("{relative,absolute,fixed,sticky,inset-0,z-10,z-50}");
+@source inline("{block,inline-block,hidden,text-left,text-center,text-right,select-none,pointer-events-none,cursor-pointer}");

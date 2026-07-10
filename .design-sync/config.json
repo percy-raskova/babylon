@@ -1,0 +1,221 @@
+{
+  "projectId": "9ccdf916-1447-4c12-92a3-dfc2a0939a4c",
+  "shape": "package",
+  "pkg": "babylon-cockpit",
+  "globalName": "BabylonCockpit",
+  "entry": "src/frontend/design-sync.entry.tsx",
+  "tsconfig": "../../.design-sync/tsconfig.esbuild.json",
+  "cssEntry": ".ds-css/compiled.css",
+  "buildCmd": "cd src/frontend && npx -y @tailwindcss/cli@4.3.2 -i ../../.design-sync/ds-tailwind-entry.css -o .ds-css/compiled.css --minify",
+  "readmeHeader": ".design-sync/conventions.md",
+  "extraFonts": [
+    "../../.design-sync/fonts.css"
+  ],
+  "overrides": {
+    "EventsFeed": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "TimeControls": {
+      "cardMode": "single",
+      "primaryStory": "Paused"
+    },
+    "AppShell": {
+      "viewport": "1280x800",
+      "cardMode": "column"
+    },
+    "StatusBar": {
+      "cardMode": "single",
+      "primaryStory": "Populated",
+      "viewport": "1220x200"
+    },
+    "BottomStrip": {
+      "cardMode": "single",
+      "primaryStory": "TimeseriesActive"
+    },
+    "MapPanel": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "Outliner": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "RightDock": {
+      "cardMode": "single",
+      "primaryStory": "ActionsPopulated"
+    },
+    "ActionComposer": {
+      "cardMode": "single",
+      "primaryStory": "FullFormComposed"
+    },
+    "WireTakeover": {
+      "cardMode": "single",
+      "primaryStory": "Populated",
+      "viewport": "1150x820"
+    },
+    "WireApp": {
+      "cardMode": "single",
+      "primaryStory": "Populated",
+      "viewport": "1150x820"
+    },
+    "WireWindow": {
+      "cardMode": "column",
+      "viewport": "1150x820"
+    },
+    "IndexPage": {
+      "cardMode": "column",
+      "viewport": "1100x820"
+    },
+    "CorpusPage": {
+      "cardMode": "column",
+      "viewport": "1100x780"
+    },
+    "PatternsPage": {
+      "cardMode": "column",
+      "viewport": "1100x780"
+    },
+    "BlocFlowLines": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "TranslationFooter": {
+      "cardMode": "column",
+      "viewport": "1100x300"
+    },
+    "TakeoverOverlay": {
+      "cardMode": "single",
+      "primaryStory": "DialecticOpen"
+    },
+    "ChronicleTakeover": {
+      "cardMode": "single",
+      "primaryStory": "Victory"
+    },
+    "EndStateScreen": {
+      "cardMode": "single",
+      "primaryStory": "RevolutionaryVictory"
+    },
+    "DialecticSpread": {
+      "cardMode": "single",
+      "primaryStory": "ActiveContradictions"
+    },
+    "DialecticTakeover": {
+      "cardMode": "single",
+      "primaryStory": "ActiveContradictions"
+    },
+    "TimeseriesChart": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "InspectorPanel": {
+      "cardMode": "single",
+      "primaryStory": "OrgWithConsciousness"
+    },
+    "ObjectivesTracker": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "ParamFields": {
+      "cardMode": "column"
+    },
+    "TargetPicker": {
+      "cardMode": "column"
+    },
+    "VerbForm": {
+      "cardMode": "column"
+    },
+    "VerbGrid": {
+      "cardMode": "column"
+    },
+    "DeckGLMap": {
+      "cardMode": "column"
+    },
+    "HexTooltip": {
+      "cardMode": "column"
+    },
+    "MapLegend": {
+      "cardMode": "column"
+    },
+    "MapModeSelector": {
+      "cardMode": "column"
+    },
+    "DeepPanes": {
+      "cardMode": "column"
+    },
+    "ObservatoryChart": {
+      "cardMode": "column"
+    },
+    "ObservatoryPage": {
+      "cardMode": "column"
+    },
+    "SeriesBrowser": {
+      "cardMode": "column"
+    },
+    "SessionPicker": {
+      "cardMode": "column"
+    },
+    "StatChip": {
+      "cardMode": "column"
+    },
+    "ContinentalColumn": {
+      "cardMode": "column"
+    },
+    "IntelColumn": {
+      "cardMode": "column"
+    },
+    "LiberatedColumn": {
+      "cardMode": "column"
+    }
+  },
+  "componentSrcMap": {
+    "ActionComposer": "src/components/action/ActionComposer.tsx",
+    "ParamFields": "src/components/action/ParamFields.tsx",
+    "TargetPicker": "src/components/action/TargetPicker.tsx",
+    "VerbForm": "src/components/action/VerbForm.tsx",
+    "VerbGrid": "src/components/action/VerbGrid.tsx",
+    "BblData": "src/components/bbl/BblData.tsx",
+    "BblLabel": "src/components/bbl/BblLabel.tsx",
+    "Sparkline": "src/components/bbl/Sparkline.tsx",
+    "EventsFeed": "src/components/events/EventsFeed.tsx",
+    "ConsciousnessBreakdown": "src/components/inspector/ConsciousnessBreakdown.tsx",
+    "InspectorPanel": "src/components/inspector/InspectorPanel.tsx",
+    "Stat": "src/components/inspector/Stat.tsx",
+    "DeckGLMap": "src/components/map/DeckGLMap.tsx",
+    "HexTooltip": "src/components/map/HexTooltip.tsx",
+    "MapLegend": "src/components/map/MapLegend.tsx",
+    "MapModeSelector": "src/components/map/MapModeSelector.tsx",
+    "ObjectivesTracker": "src/components/objectives/ObjectivesTracker.tsx",
+    "AppShell": "src/components/shell/AppShell.tsx",
+    "BottomStrip": "src/components/shell/BottomStrip.tsx",
+    "MapPanel": "src/components/shell/MapPanel.tsx",
+    "Outliner": "src/components/shell/Outliner.tsx",
+    "OutlinerRow": "src/components/shell/OutlinerRow.tsx",
+    "OutlinerSection": "src/components/shell/OutlinerSection.tsx",
+    "RightDock": "src/components/shell/RightDock.tsx",
+    "StatChip": "src/components/shell/StatChip.tsx",
+    "StatusBar": "src/components/shell/StatusBar.tsx",
+    "TimeControls": "src/components/shell/TimeControls.tsx",
+    "TakeoverOverlay": "src/components/takeovers/TakeoverOverlay.tsx",
+    "ChronicleTakeover": "src/components/takeovers/chronicle/ChronicleTakeover.tsx",
+    "EndStateScreen": "src/components/takeovers/chronicle/EndStateScreen.tsx",
+    "DialecticSpread": "src/components/takeovers/dialectic/DialecticSpread.tsx",
+    "DialecticTakeover": "src/components/takeovers/dialectic/DialecticTakeover.tsx",
+    "BlocFlowLines": "src/components/takeovers/wire/BlocFlowLines.tsx",
+    "ContinentalColumn": "src/components/takeovers/wire/ContinentalColumn.tsx",
+    "CorpusPage": "src/components/takeovers/wire/CorpusPage.tsx",
+    "IndexPage": "src/components/takeovers/wire/IndexPage.tsx",
+    "IntelColumn": "src/components/takeovers/wire/IntelColumn.tsx",
+    "LiberatedColumn": "src/components/takeovers/wire/LiberatedColumn.tsx",
+    "PatternsPage": "src/components/takeovers/wire/PatternsPage.tsx",
+    "TranslationFooter": "src/components/takeovers/wire/TranslationFooter.tsx",
+    "WireApp": "src/components/takeovers/wire/WireApp.tsx",
+    "WireTakeover": "src/components/takeovers/wire/WireTakeover.tsx",
+    "WireWindow": "src/components/takeovers/wire/WireWindow.tsx",
+    "TimeseriesChart": "src/components/timeseries/TimeseriesChart.tsx",
+    "DeepPanes": "src/observatory/DeepPanes.tsx",
+    "ObservatoryChart": "src/observatory/ObservatoryChart.tsx",
+    "ObservatoryPage": "src/observatory/ObservatoryPage.tsx",
+    "SeriesBrowser": "src/observatory/SeriesBrowser.tsx",
+    "SessionPicker": "src/observatory/SessionPicker.tsx"
+  }
+}

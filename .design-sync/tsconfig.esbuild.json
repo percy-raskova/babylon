@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "baseUrl": "../src/frontend",
+    "paths": {
+      "@/store": ["src/store/index.ts"],
+      "@/store/slices/panels": ["src/store/slices/panels/index.ts"],
+      "@/components/bbl": ["src/components/bbl/index.ts"],
+      "@/lib/selectors": ["src/lib/selectors/index.ts"],
+      "@/lib/verbs": ["src/lib/verbs/index.ts"],
+      "@/*": ["src/*"]
+    }
+  }
+}

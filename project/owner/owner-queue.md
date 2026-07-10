@@ -230,9 +230,19 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
   byte-identical (no defines_hash movement — no new coefficients needed), and qa:e2e-regression +
   qa:storage-budget PASS unchanged — root-caused (proof-A7 Part 1c/5): those gates compare
   `view_runtime_trace_emission`, sourced entirely from `dynamic_hex_state`, which Option B leaves
-  frozen by design. **The "one sanctioned rebaseline" turned out to be zero rebaselines.** Remaining:
-  the 520-tick canonical run + A/B determinism (proof-A7 Parts 2/3/4/6) to CLOSE `cc4a5303` — being
-  run by the orchestrator now.
+  frozen by design. **The "one sanctioned rebaseline" turned out to be zero rebaselines** at 5-tick
+  scale — the ONE real regeneration is `michigan-e2e.json` (below).
+- **Item 25 ✅ CLOSED (engine layer) + `cc4a5303` R-PROOF ✅ CLOSED — same evening, later.** The
+  520-tick canonical COMPLETED (twice — first completions since gamma exposed the tick-52 crash):
+  sessions `a8cbf1ab` (baseline writer) + `970951e3` (A/B partner), ~45 min each.
+  `tests/baselines/michigan-e2e.json` regenerated: gated terminal fields **byte-identical** to the
+  old baseline (the frozen-hex-layer signature — honest caveat in proof Part 3), real movement = +9
+  year-boundary events + conservation-audit content. **A/B determinism: 0 divergent rows in both
+  directions** across dynamic_consciousness/demographics/employment/hex (585,760 rows per direction) —
+  even the delta-emission pattern is identical. Full proof: `specs/109-data-spine/proof-A7.md`
+  (Parts 0–6 complete, verdict CLOSED). Remediation 2.R row closed. What remains of item 25's spirit
+  is item 30 (web visibility, lane in flight) and the deliberately-deferred hex-layer Option C
+  (future owner-ruled spec).
 - **Item 30 (NEW — the web-visibility half of item 25; needs scheduling, not a design ruling):**
   web sessions cannot sustain county-layer state at all, independent of A7. Two structural gaps found
   with source-level verification: (a) `EngineBridge.resolve_tick` passes a FRESH

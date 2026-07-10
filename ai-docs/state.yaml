@@ -18,9 +18,14 @@ meta:
     (742e7163 Option-B flow accrual with conservation property tests + e75464fe
     base_year advances with tick) with ZERO baseline drift — root-caused: the 5-tick
     compare surface (view_runtime_trace_emission) reads only the hex layer, which
-    Option B leaves frozen by design; the sanctioned rebaseline turned out to be no
-    rebaseline. Remaining for item 25: the 520-tick canonical + A/B determinism
-    (specs/109-data-spine/proof-A7.md Parts 2/3/4/6). Web sessions still cannot SHOW
+    Option B leaves frozen by design. ITEM 25 IS NOW CLOSED at the engine layer +
+    cc4a5303 R-PROOF CLOSED: the 520-tick canonical COMPLETED twice (sessions
+    a8cbf1ab/970951e3, ~45 min each — first completions since gamma exposed the
+    tick-52 crash), michigan-e2e.json regenerated (gated fields byte-identical by
+    frozen-hex design; +9 year-boundary events = the real movement), A/B determinism
+    0-row EXCEPT diffs across all 4 dynamic tables (585,760 rows/direction) —
+    specs/109-data-spine/proof-A7.md Parts 0-6 COMPLETE, verdict CLOSED; remediation
+    2.R row closed. Web sessions still cannot SHOW
     county flows (owner item 30: fresh persistent_context per resolve + wayne is
     hex-only) — engine truth proven by test_static_economy_flow.py. Program 13 item 1
     is DONE (66125a22, docs/reference/determinism-contract.rst; three integrity

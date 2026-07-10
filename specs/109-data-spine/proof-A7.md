@@ -4,11 +4,11 @@
 **Worktree/branch:** `feature/109-static-economy`, off `dev@5cfcd46b`.
 **Postgres:** shared `babylon_test` @ localhost:5433.
 
-This is a partial proof authored by the implementing agent. Parts 0, 1, 5 are
-complete (empirically verified in this worktree). Parts 2, 3, 4, 6 are the
-orchestrator's responsibility (520-tick canonical run + A/B determinism) and
-are left as explicit TODO sections below — **not run here**, per the lane
-brief ("Do NOT run the 520-tick canonical yourself").
+Parts 0, 1, 5 were authored by the implementing agent (empirically verified
+in its worktree). Parts 2, 3, 4 and the Part-6 verdict were completed by the
+orchestrator on 2026-07-09 late evening against integrated `dev@373a6e7c`
+(two 520-tick canonical runs + A/B determinism diff). **This proof is
+COMPLETE; verdict in Part 6.**
 
 ---
 
@@ -123,43 +123,106 @@ of tick count).
 
 ## Part 2 — Empirical canonical result (520-tick)
 
-**TODO — orchestrator.** Not run by this agent per the lane brief. Expected,
-based on Part 1(c): the 520-tick `michigan-canada`/canonical run's
-`terminal_state` gated fields (`total_v/total_c/total_s/total_k/
-counties_alive`) should be **unaffected** by A7 (consumption-path
-isolation), but `TickDynamicsSystem`'s territory-node `tick_`/`flow_` attrs
-(not gated) WILL differ — specifically `flow_phi_accrued`/`flow_wage_accrued`
-should be nonzero and monotonically increasing within each year, resetting
-to `0.0` at every year boundary. If the canonical run reaches a second year
-boundary (tick 104), the conservation invariant
-(`tests/unit/economics/tick/test_flow_accrual.py::TestConservation`) predicts
-`flow_phi_accrued` at tick 103 (last non-boundary tick of year 2) equals the
-year-2 `tick_phi_hour * HOURS_PER_YEAR` to float tolerance — this is
-NOT verified against the live canonical run by this agent.
+**COMPLETE — orchestrator, 2026-07-09 late evening (run A).** Executed on
+integrated `dev@373a6e7c` (A7 merged, plus the full spec-109/110 wave-1/2
+surface):
+
+```
+poetry run python -m babylon.engine.headless_runner --scope michigan-canada \
+  --ticks 520 --write-baseline tests/baselines/michigan-e2e.json
+```
+
+- **Session:** `a8cbf1ab-c714-4052-a39c-67f6f9d6d150`; artifact dir
+  `reports/sim-runs/2026-07-10T01-57-28Z`; exit 0; ~45 min wall.
+- **COMPLETED all 520 ticks** (tick 519 persisted, baseline refreshed) —
+  the first canonical completion since the gamma wiring (`cc4a5303`) exposed
+  the tick-52 crash. `b57faee6` (crash fix) + this run close the loop that
+  `proof-2R-baseline-regen.md` Part 2 could not.
+- Hydration: 45,572 hex rows across all 83 counties (10 MB tick-0 frame);
+  per-tick persistence log shows `consciousness=83 demographics=83
+  employment=83 hex=0 external=9` — **`hex=0` between checkpoints is the
+  spec-089 delta persistence working as designed** (the 07-07 "1295 MB/tick"
+  concern does not reproduce; whole DB across 97 sessions: 577 MB).
+- **Baseline regenerated:** `tests/baselines/michigan-e2e.json` rewrote
+  (91,662 insertions / 91,482 deletions). Sections that MOVED vs the old
+  committed baseline: `events` (86,882 → 86,891: **+9**, consistent with the
+  year-boundary economy actually firing at the nine post-tick-0 boundaries
+  instead of crashing at the first), `conservation_audit` (same row count,
+  3,633, content moved), `external_node_flows` (values), `performance` +
+  `run_metadata` (run-identity noise). Sections IDENTICAL: `terminal_state`,
+  `county_terminal_snapshot`, `schema_version` (see Part 3).
+- The lane's flow-attr prediction (`flow_phi_accrued` nonzero, monotone
+  within year, reset at boundaries) is not directly observable post-hoc in
+  the canonical artifacts — territory-node graph attrs are in-memory runner
+  state, not persisted tables (the same gap recorded in Part 6 / owner item
+  30). The mechanism is proven through the identical full-pipeline path by
+  `tests/integration/web/test_static_economy_flow.py::
+  TestFlowAccrualAcrossConsecutiveTicks` and the conservation property tests;
+  the canonical-run-level observable signature is the +9 boundary events
+  above.
 
 ---
 
 ## Part 3 — Gated-field neutrality re-verification
 
-**TODO — orchestrator.** This agent verified gated-field neutrality only at
-5-tick scale (`qa:e2e-regression` bundle compare, Part 5) — not at
-520-tick / `v_hex_state_asof` scale. Recommend the same method as
-`proof-2R-baseline-regen.md` Part 3: query `v_hex_state_asof` at tick 0 and
-the canonical run's terminal tick, pre- vs. post-A7, and diff
-`total_v/total_c/total_s/total_k/counties_alive`.
+**COMPLETE — orchestrator.** Old committed baseline (`git show
+HEAD:tests/baselines/michigan-e2e.json`, spec-064/065 era, pre-gamma) vs the
+run-A regeneration:
+
+| Gated field | Old | New | |
+|---|---|---|---|
+| `tick` | 519 | 519 | identical |
+| `counties_alive` | 83 | 83 | identical |
+| `counties_with_population` | 83 | 83 | identical |
+| `total_v` | 3126580386.69231 | 3126580386.69231 | **byte-identical** |
+| `total_c` | 4107365647.6468215 | 4107365647.6468215 | **byte-identical** |
+| `total_s` | 4434566613.30769 | 4434566613.30769 | **byte-identical** |
+| `total_k` | 1179538932000.0024 | 1179538932000.0024 | **byte-identical** |
+| `max_tension` | 0.667305 | 0.667305 | identical |
+
+`county_terminal_snapshot` (83 per-county rows: c/v/s/k, p_acquiescence,
+p_revolution, ideology triple, population, `delta_k_vs_initial`) is
+IDENTICAL in full — every county's `delta_k_vs_initial` is `0.0`.
+
+**Honesty note (do not over-read this identity):** these fields are sourced
+from `dynamic_hex_state` aggregates, and the hex frame is re-emitted from
+the tick-0 template by documented design (Part 1(c); bridge docstring). The
+identity is therefore the **frozen-hex-layer signature** — it demonstrates
+(a) A7/gamma/base_year changes did not leak into the hex substrate, exactly
+as Option B's design required, and (b) the gated comparison is structurally
+incapable of detecting county-layer movement until hex-layer work (the
+deferred Option C / owner item 25's eventual successor) lands. The REAL
+behavioral movement of this era lives in `events` (+9) and
+`conservation_audit` content (Part 2), and in territory-node county state
+that these artifacts do not capture (owner item 30).
 
 ---
 
 ## Part 4 — A/B determinism
 
-**TODO — orchestrator.** Not run by this agent. A7's new code paths
-(`_accrue_flows`/`_reset_flow_accrual`) contain no RNG, no wall-clock, and
-iterate `graph.query_nodes(node_type="territory")` — confirm this iteration
-order is deterministic (insertion-ordered per Constitution III.7; BabylonGraph
-is rustworkx-backed, and `query_nodes` is used identically by the pre-existing
-`_get_territory_fips`/`_bootstrap_county_states`, which are already exercised
-by `b57faee6`'s A/B-adjacent proof work) before re-running the two-session
-`EXCEPT`-diff method.
+**COMPLETE — orchestrator.** Two independent same-seed 520-tick
+`michigan-canada` runs on `dev@373a6e7c`:
+
+- **Run A:** `a8cbf1ab-c714-4052-a39c-67f6f9d6d150`
+  (`reports/sim-runs/2026-07-10T01-57-28Z`, the baseline writer)
+- **Run B:** `970951e3-185d-4142-a004-1a227e33efcc`
+  (`reports/sim-runs/2026-07-10T02-22-34Z`, no baseline write)
+
+Two-directional, session-id-free `EXCEPT` diff (the proof-2R Part-4 method)
+over every value column of the four dynamic tables:
+
+| Table | Rows (A) | Rows (B) | A∖B | B∖A |
+|---|---|---|---|---|
+| `dynamic_consciousness_state` | 43,160 | 43,160 | **0** | **0** |
+| `dynamic_demographics_state` | 43,160 | 43,160 | **0** | **0** |
+| `dynamic_employment_state` | 43,160 | 43,160 | **0** | **0** |
+| `dynamic_hex_state` | 455,720 | 455,720 | **0** | **0** |
+
+Zero divergent rows in either direction — including `dynamic_hex_state`,
+meaning even the spec-089 **delta-emission pattern** (which rows get emitted
+on which ticks) is row-for-row identical across runs. Constitution III.7
+holds at canonical scale with A7's flow accrual and the base_year
+advancement aboard.
 
 ---
 
@@ -298,6 +361,24 @@ output, not just this lane's flow accrual — the annual `tick_` state itself
 already can't survive a web resolve today either) before attempting to
 satisfy a literal cross-resolve web-session acceptance target for any
 `TickDynamicsSystem` output.
+*(Orchestrator note: opened as owner-queue item 30 the same evening; a
+dedicated lane is implementing it.)*
+
+### VERDICT (orchestrator, 2026-07-09 late evening)
+
+**CLOSED — `cc4a5303` R-PROOF resolved; owner item 25 complete at the
+engine layer.** The chain: `b57faee6` fixed the tick-52 crash (item 25 pt.
+1); `742e7163` + `e75464fe` made the county material base move every tick
+under Option B with proven conservation (pt. 2, engine half); this proof's
+Parts 2–4 supply what `proof-2R-baseline-regen.md` could not — a COMPLETED
+520-tick canonical (all 520 ticks, twice), a regenerated
+`tests/baselines/michigan-e2e.json` whose movement is characterized and
+cause-attributed (+9 boundary events; conservation-audit content;
+gated fields byte-identical by frozen-hex design), and a perfect A/B
+determinism result (0 divergent rows across 585,760 compared rows per
+direction). Remaining, deliberately out of scope here: web-session
+visibility of county state (owner item 30, in flight) and hex-layer
+per-tick movement (the deferred Option C — a future owner-ruled spec).
 
 ---
 
@@ -315,4 +396,6 @@ satisfy a literal cross-resolve web-session acceptance target for any
 - `qa:e2e-regression`: PASS, zero drift, not regenerated (Part 5 — contradicts
   the lane brief's expectation; root-caused).
 - `qa:storage-budget`: PASS, unchanged, not regenerated (Part 5).
-- 520-tick canonical + A/B determinism: **TODO, orchestrator** (Parts 2/3/4).
+- 520-tick canonical + A/B determinism: **COMPLETE** (Parts 2/3/4 — runs
+  `a8cbf1ab` + `970951e3`, 2026-07-09/10 UTC; baseline regenerated; 0-row
+  EXCEPT diffs).

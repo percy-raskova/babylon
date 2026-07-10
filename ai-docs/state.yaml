@@ -2,9 +2,33 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.21.0"
+  version: "2.22.0"
   updated: "2026-07-10"
   truth_status: |
+    (2026-07-10 EVENING) PROGRAM 12 COMPLETE — THE CUTOVER IS DONE. The cockpit
+    (src/frontend) is THE frontend on canonical :5173 under the game title;
+    web/frontend is DELETED (2c7cc159, 269 files / -39,818 lines) with every
+    behavior guard dispositioned in specs/112-cutover/test-port-ledger.md
+    (68 vitest + 12 e2e + setup: 19 ported / 28 rewritten / 2 constitution
+    contracts RE-GUARDED d845c368 / 19+4 retired with authority). Parity
+    25/25 live at BOTH bracketing HEADs (28683951 pre / de50eba4 post).
+    C5 landed the same day: Q/E lens cycling, heartbeat referential
+    stability (the per-beat deck.gl rebuild killed at worldSlice), and
+    county/region framing (net-new rendering: member_h3 aggregates +
+    FramingSelector + regionFill + H3ClusterLayer; default framing honest
+    "hex"). Tooling re-pointed end to end: mise web:* (cockpit aliases
+    retired), pre-commit (old hook set deleted), CI playwright-e2e +
+    Frontend jobs, Ansible frontend_dir (syntax-checked only — WATCH the
+    next Hetzner deploy). Deletion gates caught 3 live deps hiding in the
+    retired tree (seed fixture x2 consumers, e2e BASE port) — fixed
+    daaa4a9f/3187d7d3/de50eba4. Insurance: mise check TRUE-exit 0 (9,457),
+    qa:regression 5/5 byte-identical. Earlier same day: C3 substrate — all
+    49 components synced to claude.ai/design "Babylon Cockpit" (121 cells
+    graded good) + wire triptych flex + EMPTY_WIRE_FEED token fixes
+    (23016c79). Dev pushed to origin at a682b63a (wave 0 anchor +
+    pre-112-final-arc tag); final push follows the records commit. New
+    owner items: 38 (bea_ea zoom falls through to county grouping like cz),
+    39 (stance->consciousness region-fill mapping wants an eye).
     (2026-07-10 EARLY AM, wave 4) PHASE B COMPLETE — THE PARITY GATE IS GREEN,
     LIVE: 23/23 cockpit e2e specs pass in a real browser against the real
     EngineBridge, twice consecutively (f7fff8ab). B6 found the one blocker

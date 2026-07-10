@@ -149,6 +149,25 @@ pre-condition, pragmatic reading ratified in the approved 2026-07-10 plan).
 
 ### Run 2 — post-cutover dev HEAD
 
-- Date/HEAD: _pending (Wave 5)_
-- Command: _pending_
-- Result: _pending_
+- Date/HEAD: 2026-07-10, dev @ `de50eba4` (deletion `2c7cc159` + the three
+  found-by-gate fixes merged)
+- Command: `cd src/frontend && npx playwright test` — cockpit on its
+  canonical 5173, live Django :8000 (real EngineBridge, seeded
+  `wayne_county`), fresh storageState, `web/frontend` deleted
+- Result: **25 passed** (31.0s) — same suite as run 1
+
+### Found by the deletion gates (fixed before run 2)
+
+The deletion's own gates caught three live dependencies hiding in the
+retired tree — exactly what this ledger discipline exists for:
+
+1. `seed_hex_data`'s mock GeoJSON fixture lived at
+   `web/frontend/src/fixtures/mock_map_data.json` → relocated to
+   `web/game/fixtures/` (`daaa4a9f`).
+2. `tests/unit/web/test_contract_parity.py` builds the same fixture path
+   segment-wise (invisible to literal greps) → re-pointed (`3187d7d3`).
+3. `e2e/fixtures.ts` carried its own port default (5174) beside
+   playwright.config.ts's → follows canonical 5173 (`de50eba4`).
+
+Insurance at close: `mise run check` TRUE-exit 0 (9,457 passed);
+`qa:regression` 5/5 byte-identical (the engine untouched by the arc).

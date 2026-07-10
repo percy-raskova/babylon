@@ -81,12 +81,15 @@ proof.md (A7 is the one sanctioned rebaseline).
 | C3 (substrate) | **Claude Design sync (2026-07-10, Percy-invoked `/design-sync`)**: all 49 cockpit components → claude.ai/design project "Babylon Cockpit" (`9ccdf916-…`), 121 authored preview cells graded good, render check 49/49, conventions header (Cold Collapse contract for the design agent) vocabulary-verified; full-token safelist stylesheet ships (`ds-tailwind-entry.css` — app JIT css only carries used utilities). Durable inputs committed under `.design-sync/` + `src/frontend/design-sync.entry.tsx`. Visual iteration itself remains owner-driven in the Design pane. | ✅ SYNCED | ccf8994c |
 | — | **Two production defects found by the preview campaign, fixed TDD**: `wire.css` `.col-wrap` had no flex-basis (triptych collapsed at story=null; IntelColumn mid-word wraps when populated) → `flex: 1 1 0`; `EMPTY_WIRE_FEED` filter colors used unprefixed `var(--rent)`-style tokens that nothing defines → `--babylon-*`. Pinned by `wire.contracts.test.ts`. | ✅ MERGED | 23016c79 |
 
+| C5 | polish: Q/E lens cycling (`useLensCycleShortcut`), heartbeat referential stability (worldSlice dedup — the per-beat deck.gl rebuild killed), county/region framing (net-new: backend `member_h3` on aggregates + `FramingSelector` + `regionFill` + `H3ClusterLayer` rendering; default framing flipped to honest `hex`), constitution guards re-homed | ✅ MERGED (2026-07-10, Percy's "finish it all") | d845c368, 29d804aa, 6b9e0422, e16f5863..0cf400d8 |
+| D | **CUTOVER + DELETION**: cockpit takes 5173 + game title; mise/pre-commit/CI/Ansible re-pointed (`frontend_dir`); `web/frontend` DELETED (269 files, −39,818 lines) with `specs/112-cutover/test-port-ledger.md` (81 dispositions + both parity runs); 3 hidden live deps found by the gates and fixed (seed fixture ×2 consumers, e2e BASE port) | ✅ MERGED | 2e6fb8ea, 798166be, 5fe09846, 53f6386f, 2c7cc159, daaa4a9f, 3187d7d3, de50eba4 |
+
 **PHASE B: COMPLETE (exit gate GREEN — 23/23 live parity, two consecutive runs).**
-**PHASE C: substantially complete** (C1 narrator, C2 dashboards, C4 observatory done; **C3 substrate
-delivered 2026-07-10** — the component library lives in claude.ai/design; the iteration sessions are
-owner-driven; C5 polish deferred until after C3 reshapes visuals).
-**PHASE D: gated on Percy** (parity evidence exists; needs green on ≥2 consecutive dev merges +
-the owner's explicit go for deleting `web/frontend`).
+**PHASE C: COMPLETE** (C1 narrator, C2 dashboards, C4 observatory, C3 substrate in claude.ai/design,
+C5 polish landed 2026-07-10; the C3 visual-iteration sessions remain owner-driven, additive).
+**PHASE D: COMPLETE (2026-07-10)** — parity 25/25 at BOTH bracketing HEADs (`28683951` pre,
+`de50eba4` post); `web/frontend` is gone; the cockpit is THE frontend on :5173.
+**PROGRAM 12: COMPLETE.**
 | — | 3 pre-existing `entities`-key integration failures: verdict = retired pre-Spec-052 contract; tests rewritten to current contract | ✅ MERGED | 0613d508 |
 | — | endgame faction xfail: A6 round-trip machinery proven fixed; real blocker re-diagnosed (FASCIST_CONSOLIDATION absolute-count threshold pre-empts REVOLUTIONARY_VICTORY — owner-queue item 28) | ✅ MERGED (accurate xfail) | e0338924 |
 

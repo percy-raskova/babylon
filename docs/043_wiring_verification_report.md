@@ -1,5 +1,8 @@
 # 043 Consciousness-Value Integration: Wiring Verification Report
 
+> **HISTORICAL (2026-07-10)**: verifies the deleted `web/frontend` app (spec-112
+> cutover). Kept as history; do not update.
+
 ## 1. Simplex Integrity
 
 All constraints are fully respected. The `test_simplex_invariants.py` test suite covers invariant conditions for `TernaryConsciousness`:

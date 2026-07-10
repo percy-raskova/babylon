@@ -383,3 +383,27 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
 - **Item 37 (NEW — dead field):** `GameSnapshot.endgame` (`types/game.ts`, 3-outcome `EndgameData`)
   has ZERO readers — the real endgame path is `panels.endgame` reading `EndgameState`/
   `TerminalOutcome` from `types/dialectic.ts` (the 5 real outcomes). Delete the orphan or wire it.
+
+## 2026-07-10 evening — PROGRAM 12 COMPLETE: Phase D cutover + C5 + push (your "finish it all")
+
+- **Phase D ✅ EXECUTED**: `web/frontend` DELETED (`2c7cc159`, −39,818 lines) under the full ledger
+  (`specs/112-cutover/test-port-ledger.md` — 81 dispositions, both parity runs recorded). Parity
+  **25/25 live at both bracketing HEADs**; `mise run check` TRUE-exit 0 (9,457); `qa:regression`
+  5/5 byte-identical. The cockpit is THE frontend on **:5173** under "Babylon - The Fall of
+  America". Tooling re-pointed end-to-end (mise `web:*` canonical, cockpit aliases retired;
+  pre-commit old set deleted; CI e2e job → src/frontend; Ansible `frontend_dir`).
+- **C5 ✅ LANDED**: Q/E lens cycling; heartbeat referential stability (the map no longer rebuilds
+  every deck.gl layer on each 2s beat — worldSlice keeps the snapshot reference when a same-tick
+  payload is deep-equal); **county framing is real** — FramingSelector + region rendering via
+  `member_h3` H3ClusterLayer aggregates, default framing honest `hex`.
+- **Deletion gates caught 3 live deps** hiding in the retired tree (the ledger's whole point):
+  `seed_hex_data`'s fixture (now `web/game/fixtures/`), a segment-wise path in
+  `test_contract_parity`, and the e2e helper's own port default. All fixed, all green.
+- **Item 38 (NEW — backend quirk, pinned not fixed):** `zoom="bea_ea"` falls through
+  `group_key_map` to county grouping exactly like the pinned `cz` quirk (and `cz` needs a schema
+  addition — no commuting-zone column on `hex_latest`). Both accepted by `VALID_ZOOM_LEVELS`;
+  both silently county-group. Rule: schema work, doc it, or narrow the accepted zooms.
+- **Item 39 (NEW — design mapping):** region fill for the `stance` lens aggregates onto the
+  consciousness ramp (`regionFill.ts`, pinned by test). Flagging for your eye per the plan.
+- **WATCH:** the next Hetzner deploy — Ansible re-point verified by syntax-check only (no
+  staging). `frontend_dir` in `group_vars/production/vars.yml`.

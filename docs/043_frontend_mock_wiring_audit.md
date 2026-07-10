@@ -1,5 +1,9 @@
 # Frontend Mock Wiring Audit
 
+> **HISTORICAL (2026-07-10)**: this audit describes `web/frontend`, deleted at the
+> spec-112 cutover — the frontend is now `src/frontend` (the cockpit). Kept as
+> history per the immutability-of-history principle; do not update.
+
 Scope: this report traces the actual data circulation used by the current frontend entrypoints in [../web/frontend/src/App.tsx](../web/frontend/src/App.tsx), [../web/frontend/src/main.tsx](../web/frontend/src/main.tsx), and [../web/frontend/src/components/layout/GameShell.tsx](../web/frontend/src/components/layout/GameShell.tsx). It also includes the sibling legacy path in [../web/frontend/src/components/GameView.tsx](../web/frontend/src/components/GameView.tsx), the dev-only harness in [../web/frontend/src/DevHarness.tsx](../web/frontend/src/DevHarness.tsx), component test files under [../web/frontend/src/components](../web/frontend/src/components), and the Django contract surface under [../web](../web).
 
 ## 1. Mock Endpoints & Payloads

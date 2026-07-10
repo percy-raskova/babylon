@@ -215,7 +215,7 @@ degraded backend.
 In a separate terminal:
 
 ```bash
-cd web/frontend/
+cd src/frontend/
 
 # Install Node dependencies
 npm install
@@ -240,7 +240,7 @@ Log in with the superuser credentials you created above.
 ### Frontend Unit and Integration Tests (Vitest)
 
 ```bash
-cd web/frontend/
+cd src/frontend/
 npm run test              # Run all 210 tests
 npm run test:watch        # Watch mode for development
 npm run test:coverage     # With coverage report (thresholds: 80/75/80)
@@ -255,7 +255,7 @@ E2E tests require both the Django backend and Vite dev server running:
 # Terminal 2: Start the Vite dev server (Playwright's webServer config does this
 #             automatically, but you need the backend running separately)
 
-cd web/frontend/
+cd src/frontend/
 npm run test:e2e          # Headless Chromium
 npm run test:e2e:ui       # Interactive UI mode
 ```
@@ -263,7 +263,7 @@ npm run test:e2e:ui       # Interactive UI mode
 ### Frontend Quality Checks
 
 ```bash
-cd web/frontend/
+cd src/frontend/
 npm run check             # TypeScript + ESLint + Prettier (no tests)
 npm run typecheck         # TypeScript only
 npm run lint              # ESLint only
@@ -284,7 +284,7 @@ backend tests.
 ## Build the Frontend for Production
 
 ```bash
-cd web/frontend/
+cd src/frontend/
 npm run build
 ```
 
@@ -345,7 +345,7 @@ CORS_ALLOWED_ORIGINS = [
 ### Step 3: Start Vite on 0.0.0.0
 
 ```bash
-cd web/frontend/
+cd src/frontend/
 npx vite --host 0.0.0.0
 ```
 

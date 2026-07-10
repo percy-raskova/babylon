@@ -61,6 +61,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<ApiRe
       status: "error",
       data: null as T,
       message: !response.ok ? `HTTP ${response.status}` : "Invalid server response",
+      http_status: response.status,
     };
   }
 
@@ -70,11 +71,20 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<ApiRe
       status: "error",
       data: body.data,
       message: `HTTP ${response.status}`,
+      http_status: response.status,
     };
   }
 
   if (body.status === "error") {
     log.warn("API error", { url, message: body.message });
+    // Only enrich the already-error-shaped envelope with the raw HTTP
+    // status (needed to distinguish e.g. 409 from 5xx — Django's `_error()`
+    // envelope carries no status code of its own). Deliberately NOT done
+    // for "ok" bodies: some endpoints return a flat, unenveloped body on
+    // success (no `status` field at all — see `fetchVerbTargets`'s
+    // `res.data ?? res` fallback), and splicing an extra key onto that
+    // flat body would corrupt it.
+    return { ...body, http_status: response.status };
   }
 
   return body;

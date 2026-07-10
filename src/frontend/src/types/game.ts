@@ -7,6 +7,14 @@ export interface ApiResponse<T> {
   tick?: number;
   session_id?: string;
   message?: string;
+  /**
+   * Raw HTTP status code of the underlying response (spec-110 B3). The
+   * Django error envelope (`{status:"error", message}`) carries no status
+   * code of its own, so callers that must distinguish e.g. 409 (external
+   * resolve in flight) from 5xx (loud failure) need this. `undefined` when
+   * the request never reached the server (network error).
+   */
+  http_status?: number;
 }
 
 /** Game session summary (from GET /api/games/). */
@@ -614,6 +622,99 @@ export interface InfrastructureEdge {
   geometry: unknown;
   conductance: number;
   type: string;
+}
+
+// ---------------------------------------------------------------------------
+// Spec 110 B3 — cockpit dashboard payload shapes (spec-109 A4 endpoints)
+// ---------------------------------------------------------------------------
+
+/** Scenario metadata from GET /api/scenarios/. */
+export interface ScenarioInfo {
+  key: string;
+  name: string;
+  description: string;
+  territory_count: number;
+}
+
+/** Per-severity event counts (spec 092). */
+export interface EventCounts {
+  critical: number;
+  warning: number;
+  informational: number;
+}
+
+/**
+ * GET /api/games/{id}/summary/ — top-bar aggregate.
+ * See `EngineBridge.get_game_summary`. Fields the engine cannot honestly
+ * compute yet (`profit_rate`, or any average over an empty collection)
+ * are `null` — never a fabricated zero (Constitution III.11).
+ */
+export interface GameSummaryPayload {
+  tick: number;
+  imperial_rent: number | null;
+  avg_consciousness: number | null;
+  population_total: number | null;
+  exploitation_rate: number | null;
+  profit_rate: number | null;
+  org_count: number;
+  class_count: number;
+  event_counts: EventCounts;
+}
+
+/**
+ * GET /api/games/{id}/timeseries/ — per-tick history for charts.
+ * See `EngineBridge.get_game_timeseries`. Every array is parallel-indexed
+ * with `ticks`; individual entries are `null` when that tick has no value.
+ */
+export interface TimeseriesPayload {
+  ticks: number[];
+  imperial_rent: (number | null)[];
+  consciousness: (number | null)[];
+  solidarity: (number | null)[];
+  heat: (number | null)[];
+  wealth: (number | null)[];
+  biocapacity: (number | null)[];
+}
+
+/**
+ * GET /api/games/{id}/economy/ (no `territory_id`) — graph-wide economy
+ * dashboard. See `EngineBridge.get_economy_dashboard`. Distinct from
+ * `EconomyPayload`, which is the per-territory shape returned when
+ * `?territory_id=` is supplied.
+ */
+export interface EconomyDashboardPayload {
+  tick: number;
+  has_data: boolean;
+  value_produced: number;
+  rent_extracted: number;
+  exploitation_rate: number | null;
+  profit_rate: number | null;
+  occ: number | null;
+  imperial_rent_pool: number | null;
+  current_super_wage_rate: number | null;
+  wage_flow_total: number;
+  tribute_flow_total: number;
+  /** Wealth summed by `SocialRole`, keyed by role name. */
+  wealth_by_class_role: Record<string, number>;
+}
+
+/**
+ * One connected SOLIDARITY-edge community (see
+ * `_build_solidarity_communities`). Not the XGI hyperedge layer —
+ * see the backend docstring for why.
+ */
+export interface CommunityEntry {
+  id: string;
+  member_ids: string[];
+  member_count: number;
+  dominant_role: string | null;
+  avg_consciousness: number | null;
+  total_solidarity_strength: number;
+}
+
+/** GET /api/games/{id}/communities/ — communities left-panel dashboard. */
+export interface CommunitiesDashboardPayload {
+  communities: CommunityEntry[];
 }
 
 /** Aggregated admin-level feature from map snapshot. */

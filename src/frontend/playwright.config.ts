@@ -1,15 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Cockpit E2E config (spec-110 B6 — the Phase-B exit gate). Port 5174 is
-// the cockpit's canonical dev port (ADR061 / state.yaml / vite.config.ts),
-// mirroring web/frontend's playwright.config.ts shape. Overridable via
-// COCKPIT_E2E_PORT: during the 2026-07-09 B6 live run, port 5174 was
-// squatted by an orphaned (PPID 1) leftover `vite` process from an
-// unrelated web/frontend instance that this lane has no permission to
-// kill (auto-mode classifier denied it) — the run used
-// COCKPIT_E2E_PORT=5180 instead. Once that stray process is cleaned up,
-// omitting the env var reverts to the canonical 5174 with no code change.
-const PORT = process.env.COCKPIT_E2E_PORT ?? "5174";
+// Cockpit E2E config (spec-110 B6 — the Phase-B exit gate). Port 5173 is
+// the frontend's canonical dev port since the spec-112 cutover
+// (vite.config.ts). Overridable via COCKPIT_E2E_PORT when the canonical
+// port is squatted by a stray dev server (the B6 precedent used 5180);
+// the webServer's --strictPort makes a squatter loud, never silent.
+const PORT = process.env.COCKPIT_E2E_PORT ?? "5173";
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
 
 // Storage state written by e2e/auth.setup.ts. Keep this literal in sync

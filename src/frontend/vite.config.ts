@@ -3,8 +3,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
-// Cockpit dev server runs on 5174 — the legacy app (web/frontend) keeps
-// 5173 until cutover (spec-110 B1).
+// THE frontend since the spec-112 cutover — the cockpit owns the canonical
+// dev port 5173 (the legacy web/frontend app was deleted at cutover).
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -13,7 +13,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5174,
+    port: 5173,
     proxy: {
       "/api": {
         target: "http://localhost:8000",

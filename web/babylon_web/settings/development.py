@@ -16,16 +16,14 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 # spec-096: the Observatory debug dashboard is a development tool — ON here.
 OBSERVATORY_ENABLED = True
 
-# CORS/CSRF — allow both Vite dev servers: the legacy app (5173) and the
-# spec-110 cockpit (5174). Missing 5174 made Django 403 EVERY cockpit browser
-# POST (login/create/submit/resolve) — found live by the B6 parity gate.
+# CORS/CSRF — the cockpit is THE frontend on 5173 since the spec-112
+# cutover. A missing origin makes Django 403 EVERY browser POST
+# (login/create/submit/resolve) — found live by the B6 parity gate.
 # BABYLON_EXTRA_DEV_ORIGINS (comma-separated) extends the list without
 # repeating this class of defect for future ports.
 _DEV_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
 ]
 _DEV_ORIGINS += [
     origin.strip()

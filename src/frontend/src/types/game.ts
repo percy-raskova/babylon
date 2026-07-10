@@ -723,6 +723,13 @@ export interface AdminFeatureProperties {
   group_name: string;
   group_level: AdminLevel;
   hex_count: number;
+  /**
+   * Sorted H3 index strings rolled into this group (spec-112 C5) — the
+   * frontend derives the region's real polygon from these at render time
+   * (`H3ClusterLayer`/`h3-js`), since the backend ships `geometry: null`
+   * for aggregated features.
+   */
+  member_h3: string[];
   county_fips: string;
   state_fips: string;
   state_name: string;

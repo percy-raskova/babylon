@@ -1,10 +1,19 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MapPanel } from "./MapPanel";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
 import { resetMockGameState, requestLog, DEFAULT_GAME_ID } from "@/test/handlers";
 import { makeSnapshot } from "@/test/fixtures";
+
+// MapPanel now threads mapSlice.framing into DeckGLMap (spec-112 C5), whose
+// "county" (or other non-hex) framing constructs an H3ClusterLayer —
+// setup.ts's global @deck.gl/geo-layers mock only stubs H3HexagonLayer, so
+// this file-local override (takes precedence for this file) supplements it.
+vi.mock("@deck.gl/geo-layers", () => ({
+  H3HexagonLayer: vi.fn(),
+  H3ClusterLayer: vi.fn(),
+}));
 
 beforeEach(() => {
   resetStore();

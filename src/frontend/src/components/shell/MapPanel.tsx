@@ -20,6 +20,7 @@ export function MapPanel({ gameId }: MapPanelProps): React.JSX.Element {
   const fetchMap = useStore((s) => s.panels.map.fetch);
   const setMapMounted = useStore((s) => s.panels.map.setMounted);
   const framing = useStore((s) => s.map.framing);
+  const setFraming = useStore((s) => s.map.setFraming);
   const lens = useStore((s) => s.map.lens);
   const setLens = useStore((s) => s.map.setLens);
   const factionFilter = useStore((s) => s.map.factionFilter);
@@ -57,6 +58,8 @@ export function MapPanel({ gameId }: MapPanelProps): React.JSX.Element {
           factionFilter={factionFilter}
           onFactionFilterChange={setFactionFilter}
           onTerritoryClick={(territoryId) => setSelection({ kind: "hex", id: territoryId })}
+          framing={framing}
+          onFramingChange={setFraming}
         />
       )}
     </main>

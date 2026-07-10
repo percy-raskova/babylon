@@ -103,4 +103,45 @@ test.describe("Cockpit map shell smoke (backend-free)", () => {
     // software-rendered) WebGL context.
     expect(pageErrors, `uncaught page errors: ${pageErrors.join(" | ")}`).toEqual([]);
   });
+
+  test("clicking framing-county requests zoom=county and marks the button pressed (spec-112 C5)", async ({
+    page,
+  }) => {
+    await page.route("**/accounts/whoami/", (r) =>
+      r.fulfill(ok({ is_authenticated: true, username: "smoke" })),
+    );
+    await page.route("**/api/games/*/state/", (r) => r.fulfill(ok(SNAPSHOT)));
+    await page.route("**/api/games/*/summary/", (r) => r.fulfill(ok(SUMMARY)));
+    await page.route("**/api/games/*/communities/", (r) => r.fulfill(ok(COMMUNITIES)));
+    await page.route("**/api/games/*/map/**", (r) =>
+      r.fulfill(ok({ type: "FeatureCollection", features: [] })),
+    );
+    await page.route("**/api/games/*/timeseries/", (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(TIMESERIES),
+      }),
+    );
+
+    await page.goto("/game/smoke");
+    await page.evaluate(() => document.fonts.ready);
+    await expect(page.getByTestId("region-map")).toBeVisible({ timeout: 10000 });
+
+    const framingCounty = page.getByTestId("framing-county");
+    await expect(framingCounty).toBeVisible({ timeout: 10000 });
+
+    // setFraming fans out a fresh panels.map fetch (mapSlice.ts) — the
+    // default framing is "hex", so this click is a real LOD transition and
+    // must re-request /map/ with the new zoom. No canvas-pixel assertions;
+    // the region layer's actual rendering is covered by the DeckGLMap
+    // unit tests (deck.gl mocked there for layer-construction assertions).
+    const zoomCountyRequest = page.waitForRequest(
+      (req) => req.url().includes("/map/") && req.url().includes("zoom=county"),
+    );
+    await framingCounty.click();
+    await zoomCountyRequest;
+
+    await expect(framingCounty).toHaveAttribute("aria-pressed", "true");
+  });
 });

@@ -29,8 +29,7 @@ class TestContractParity:
         fixture_path = (
             Path(__file__).parent.parent.parent.parent
             / "web"
-            / "frontend"
-            / "src"
+            / "game"
             / "fixtures"
             / "mock_map_data.json"
         )

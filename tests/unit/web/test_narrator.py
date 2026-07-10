@@ -421,3 +421,105 @@ class TestProviderSwap:
         with_vis = narrator.narrate(events, meta, visibility={"hegemony": 0.9})
 
         assert json.dumps(without_vis, sort_keys=True) == json.dumps(with_vis, sort_keys=True)
+
+
+# -- Spec-111: get_wire_feed() + NarrativeService (flag parity + augmentation) -
+
+
+class TestWireFeedNarrativeServiceIntegration:
+    """Spec-111: EngineBridge.get_wire_feed's narrative_service augmentation.
+
+    Constitution II.5 (AI narrates, never adjudicates) + III.11 (loud failure).
+    """
+
+    @staticmethod
+    def _expected_bridge_meta(session_id: Any, tick: int) -> dict[str, Any]:
+        """Reconstruct the meta dict EngineBridge.get_wire_feed builds internally.
+
+        get_wire_feed derives its own presentation meta from the session +
+        hydrated tick (not from a caller-supplied meta) — see its docstring.
+        """
+        return {
+            "tick": tick,
+            "session": str(session_id),
+            "operator": "RASKOVA-2",
+            "freq": "88.7 MHz",
+            "qth": "WAYNE CO / GRID EN82",
+            "classification": "TS//SI//NOFORN",
+            "cable_id": f"{tick:04d}-A",
+            "page_of": "001/001",
+            "timestamp_utc": "2026-05-12T08:47:22Z",
+        }
+
+    def test_flag_off_wire_feed_is_byte_identical_to_pre_spec_111(
+        self, events: list[dict[str, Any]]
+    ) -> None:
+        """With BABYLON_LLM_NARRATOR off (the default), get_wire_feed's output
+        must be exactly what DeterministicNarrator.narrate() produces —
+        the NarrativeService augmentation must be a true no-op."""
+        import uuid
+        from unittest.mock import MagicMock
+
+        from game.engine_bridge import EngineBridge
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        session_id = uuid.uuid4()
+        tick = 42
+        expected_meta = self._expected_bridge_meta(session_id, tick)
+        direct = narrator.narrate(events, expected_meta)
+
+        persistence = MagicMock()
+        bridge = EngineBridge(persistence=persistence, narrator=narrator)
+        bridge.hydrate_state = MagicMock(return_value=(MagicMock(tick=tick), None))
+        bridge.get_journal_dashboard = MagicMock(return_value={"events": events})
+
+        feed = bridge.get_wire_feed(session_id=session_id)
+
+        assert json.dumps(feed, sort_keys=True) == json.dumps(direct, sort_keys=True)
+
+    def test_flag_on_with_landed_result_augments_wire_feed(
+        self, events: list[dict[str, Any]]
+    ) -> None:
+        """With the flag on and a healthy NarrativeResult already cached for
+        this tick, get_wire_feed carries an ``llm_narrative`` key alongside
+        the (untouched) deterministic feed."""
+        import uuid
+        from unittest.mock import MagicMock
+
+        from game.engine_bridge import EngineBridge
+        from game.narrative_service import NarrativeResult, NarrativeService
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        session_id = uuid.uuid4()
+        tick = 42
+        expected_meta = self._expected_bridge_meta(session_id, tick)
+
+        service = NarrativeService()
+        service._results[(session_id, tick)] = NarrativeResult(
+            tick=tick,
+            model_id="deepseek-chat",
+            prompt_version="v1",
+            degraded=False,
+            corporate="corp text",
+            liberated="lib text",
+        )
+
+        persistence = MagicMock()
+        bridge = EngineBridge(persistence=persistence, narrator=narrator, narrative_service=service)
+        bridge.hydrate_state = MagicMock(return_value=(MagicMock(tick=tick), None))
+        bridge.get_journal_dashboard = MagicMock(return_value={"events": events})
+
+        with pytest.MonkeyPatch.context() as mp:
+            from django.conf import settings as django_settings
+
+            mp.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
+            feed = bridge.get_wire_feed(session_id=session_id)
+
+        direct = narrator.narrate(events, expected_meta)
+        assert feed["llm_narrative"]["degraded"] is False
+        assert feed["llm_narrative"]["corporate"] == "corp text"
+        # Deterministic keys are byte-identical to the un-augmented feed.
+        for key in direct:
+            assert feed[key] == direct[key]

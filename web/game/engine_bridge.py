@@ -3,7 +3,9 @@
 This is the **ONLY** file in ``web/`` that imports from ``babylon.engine``,
 ``babylon.models``, ``babylon.config``, ``babylon.ooda``, or
 ``babylon.persistence``.  Django views and serializers call this bridge;
-they never see engine internals.
+they never see engine internals. (Spec-111 exception: ``game/narrative_service.py``
+also sits at this boundary — see its module docstring — because the LLM
+narrator upgrade path needs ``babylon.ai``/``babylon.rag``/model config.)
 
 All methods return plain Python dicts / lists / scalars that are
 JSON-serializable, suitable for DRF serializer consumption.
@@ -33,6 +35,7 @@ from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolve
 from .map_contract import MAP_METRIC_PROPERTIES
 
 if TYPE_CHECKING:
+    from game.narrative_service import NarrativeService
     from game.narrator import NarratorProvider
 
 logger = logging.getLogger(__name__)
@@ -1141,7 +1144,10 @@ class EngineBridge:
     """
 
     def __init__(
-        self, persistence: RuntimePersistence, narrator: NarratorProvider | None = None
+        self,
+        persistence: RuntimePersistence,
+        narrator: NarratorProvider | None = None,
+        narrative_service: NarrativeService | None = None,
     ) -> None:
         self._persistence = persistence
         if narrator is None:
@@ -1149,6 +1155,11 @@ class EngineBridge:
 
             narrator = DeterministicNarrator()
         self._narrator = narrator
+        if narrative_service is None:
+            from game.narrative_service import NarrativeService as _NarrativeService
+
+            narrative_service = _NarrativeService()
+        self._narrative_service = narrative_service
         logger.info("EngineBridge initialized with %s", type(persistence).__name__)
 
     # ------------------------------------------------------------------ #
@@ -2066,7 +2077,12 @@ class EngineBridge:
             "timestamp_utc": "2026-05-12T08:47:22Z",
         }
 
-        return self._narrator.narrate(events, meta)
+        feed = self._narrator.narrate(events, meta)
+        # Spec-111: additive-only. No-op unless BABYLON_LLM_NARRATOR is on
+        # AND a generation attempt for this tick has landed (see
+        # game/narrative_service.py — augment_feed never touches the
+        # deterministic feed's own keys).
+        return self._narrative_service.augment_feed(feed, session_id, tick)
 
     # ------------------------------------------------------------------ #
     # Spec 095: Endgame Chronicle + Journal + Dialectic screen
@@ -2793,6 +2809,12 @@ class EngineBridge:
 
         # Mark submitted turns as resolved
         _mark_resolved_safe(self._persistence, session_id, state.tick)
+
+        # Spec-111: post-tick, non-blocking LLM narrative generation. No-op
+        # when BABYLON_LLM_NARRATOR is off (default) — see
+        # game/narrative_service.py. Fire-and-forget: never awaited here,
+        # so this never blocks resolve_tick's return.
+        self._narrative_service.schedule(session_id, state, new_state)
 
         return snapshot
 

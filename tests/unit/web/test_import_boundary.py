@@ -32,6 +32,11 @@ ALLOWED_FILES = {
     # REPORTS engine configuration (babylon.config.llm_config); it never
     # invokes engine mechanics. Deliberate, read-only exception.
     "babylon_web/health/views.py",
+    # Spec-111: the LLM narrator upgrade path sits AT the bridge boundary
+    # (see its module docstring) — it needs babylon.ai/babylon.rag/
+    # babylon.config to drive NarrativeDirector. game/narrator.py itself
+    # stays import-pure; this is the flagged upgrade layer above it.
+    "game/narrative_service.py",
 }
 
 

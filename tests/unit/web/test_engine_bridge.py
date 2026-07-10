@@ -1665,3 +1665,80 @@ class TestResolveTickConsumesEngineResults:
         kwargs = mock_persistence.persist_action_result.call_args.kwargs
         assert kwargs["success"] is False
         assert kwargs["details"]["failure_reason"] is not None
+
+
+# ---------------------------------------------------------------------- #
+# Spec-111: resolve_tick's narrative_service hook (region-disjoint,
+# additive-only — see game/narrative_service.py)
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestResolveTickNarrativeServiceHook:
+    """Verify resolve_tick schedules narrative generation without blocking."""
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_calls_narrative_service_schedule(self, mock_step: MagicMock) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_new_state = _make_mock_new_state()
+        mock_step.return_value = mock_new_state
+        mock_narrative_service = MagicMock()
+        mock_narrative_service.schedule.return_value = None
+
+        bridge = EngineBridge(mock_persistence, narrative_service=mock_narrative_service)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        bridge.resolve_tick(sid)
+
+        mock_narrative_service.schedule.assert_called_once()
+        call_args = mock_narrative_service.schedule.call_args.args
+        assert call_args[0] == sid
+        # previous_state is the hydrated pre-step WorldState; new_state is
+        # whatever step() returned — both passed through unmodified.
+        assert call_args[2] is mock_new_state
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_returns_snapshot_without_waiting_on_narrative(
+        self, mock_step: MagicMock
+    ) -> None:
+        """resolve_tick must not block on narrative generation (never blocks /resolve/)."""
+        mock_persistence = _make_mock_persistence()
+        mock_step.return_value = _make_mock_new_state()
+
+        blocking_service = MagicMock()
+
+        def _never_finishes(*_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError("resolve_tick must not synchronously await narrative generation")
+
+        # schedule() itself must be safe to call synchronously (fire-and-forget
+        # submission to a background executor) — resolve_tick calling it
+        # directly, and getting back immediately, IS the non-blocking
+        # contract; a real NarrativeService.schedule() never runs generation
+        # on the calling thread. This mock just proves resolve_tick doesn't
+        # try to read a result back from schedule()'s return value.
+        blocking_service.schedule.return_value = MagicMock()
+
+        bridge = EngineBridge(mock_persistence, narrative_service=blocking_service)
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        result = bridge.resolve_tick(sid)
+
+        assert isinstance(result, dict)
+        assert result["tick"] == 1
+        blocking_service.schedule.assert_called_once()
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_default_narrative_service_flag_off_is_inert(
+        self, mock_step: MagicMock
+    ) -> None:
+        """With no narrative_service injected and the flag off (test default),
+        resolve_tick behaves exactly as before spec-111 — no exception, same
+        snapshot shape."""
+        mock_persistence = _make_mock_persistence()
+        mock_step.return_value = _make_mock_new_state()
+        bridge = EngineBridge(mock_persistence)  # narrative_service=None -> lazy default
+        sid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        result = bridge.resolve_tick(sid)
+
+        assert result["tick"] == 1

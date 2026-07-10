@@ -2,9 +2,23 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.19.0"
+  version: "2.20.0"
   updated: "2026-07-09"
   truth_status: |
+    (2026-07-09 NIGHT, wave 3) THE COCKPIT EXISTS + item 30 CLOSED + program 13
+    COMPLETE. B3+B4 merged (a8c8a9dd+a1187bca, 307 vitest): one zustand store, ONE
+    visibility-gated fetch orchestrator (13 pollers dead in the new app),
+    Pause/Step/Play state machine (409/5xx/autopause, serialized Play), login→lobby→
+    game routes, full five-region shell on the real A4 endpoints + B2 map. Item 30
+    closed (143a3eed): the web bridge NEVER wired calculators (TickDynamics no-op'd
+    on every web session since spec-061) — now wired, wayne county-backed (26163×81),
+    flows carried across resolves: flow_wage_accrued 0→84M→168M proven through real
+    resolve_tick calls. Program 13 complete (dense goldens 60a919e3; constitution
+    v2.9.1, III.12(a) → IMPLEMENTED). Item 27 closed TIER-3-live (8/10 formerly
+    false-red specs pass authed; 2 residuals = new item 33 spec bugs). New item 32:
+    annual county continuity across year boundaries (web). Next: B5 takeovers + B6
+    e2e port/parity drive + Phase C. The (2026-07-09 EVENING) banner below predates
+    wave 3.
     (2026-07-09 EVENING) PROGRAM 12 "The Cockpit" EXECUTING — clean-room frontend
     rebuild ratified (4 owner rulings; master: project/programs/12-cockpit.md; ADR061).
     Phase A data spine MERGED except A7: A8 f1a57ff3, A1 08e3131a, A3+A5 665e0814,

@@ -243,6 +243,44 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
   (Parts 0–6 complete, verdict CLOSED). Remediation 2.R row closed. What remains of item 25's spirit
   is item 30 (web visibility, lane in flight) and the deliberately-deferred hex-layer Option C
   (future owner-ruled spec).
+
+## Updates 2026-07-09 night (wave 3 merged: the cockpit exists + item 30 closed + program 13 complete)
+
+- **Item 30 ✅ CLOSED** (`143a3eed`). The lane confirmed both A7 findings AND found a third, bigger
+  one: **EngineBridge never wired the economic calculators at all** — zero ServiceContainer overrides
+  in the web bridge, so TickDynamicsSystem unconditionally no-op'd on EVERY web session since spec-061.
+  Fix (all bridge-layer, zero engine changes): calculators wired mirroring the headless runner (gated
+  on county_fips presence, no-op for non-county scenarios — byte-identical elsewhere); all 81 wayne
+  territories county-backed with real FIPS 26163 (all-81 chosen over one-designated because a
+  5-char/H3-id mix would crash CountyEconomicState's fips constraint); county flows carried across
+  resolve→persist→hydrate→resolve via the graph-level county_states dict + per-tick accrual slice.
+  **Acceptance proven through the real production path: flow_wage_accrued 0.0 → 84,000,000 →
+  168,000,000 across consecutive resolve_tick calls** (= median_wage 21.0 × 2080 h × 100k employment
+  ÷ 52, exact), surfaced honestly in get_economy_dashboard.county_flow (None when absent). Gates:
+  qa:regression 5/5, qa:e2e-regression zero drift, qa:storage-budget unchanged, tests/unit/web 371/371.
+- **Item 32 (NEW, follow-on from item 30):** annual (year-over-year) county continuity in web
+  sessions — every 52-tick boundary re-bootstraps county state (capital_stock/median_wage reset)
+  because persistent_context is not stored durably per session. Within-year flows are fixed; multi-year
+  accumulation needs session-level persistent_context storage. Also inherited notes: the spec-057
+  Leontief phi pipeline is unwired in BOTH runners (phi flows stay 0.0 — a data-pipeline program, not a
+  bug); territory_snapshot's (game_id,tick,county_fips) PK keeps 1-of-81 wayne rows (pre-existing).
+- **Item 27 ✅ CLOSED — TIER-3 LIVE VERIFIED** (`1c62fc93`): storageState auth harness added
+  (setup project + chromium-authenticated project); ran against the live stack — **8/10 previously
+  false-red specs now pass authenticated** (G1 resolved). The 2 residuals are pre-existing spec bugs,
+  now **item 33**: (a) `polling-tick-aligned.spec.ts:33` uses an unauthenticated `request.newContext()`
+  for its direct /resolve/ call (401s regardless of login); (b) `orgs-live-data.spec.ts:28` OODA-badge
+  text assertion doesn't match the live rendering. Both are small test fixes, no ruling needed —
+  queued for the next smalls lane.
+- **Item 31 — docstring half ✅ DONE** (`d94c82db`): envelope.py now describes the two-hashes reality
+  precisely. The rename (tick_commit.determinism_hash → replay_identity) remains yours to rule.
+- **Program 13 ✅ COMPLETE** (`60a919e3` + `66125a22`): dense per-tick goldens for all 5 scenarios,
+  byte-compared in qa:regression by default (wall time unchanged — same simulation run feeds both
+  paths), double-generation determinism proof, synthetic-mutation detection named tick+column.
+  Constitution III.12 corollary (a) flipped to `[IMPLEMENTED]` (v2.9.1, PATCH).
+- **B3+B4 ✅ MERGED — the cockpit exists** (`a8c8a9dd` + `a1187bca`, 307 vitest tests): one store,
+  one orchestrator (the 13 pollers are dead in the new app), Pause/Step/Play with 409/5xx/autopause,
+  login→lobby→game routes, full five-region shell wired to the real A4 endpoints and the B2 map.
+  Remaining Phase-B: B5 takeovers, B6 e2e port + live-browser parity drive (next wave).
 - **Item 30 (NEW — the web-visibility half of item 25; needs scheduling, not a design ruling):**
   web sessions cannot sustain county-layer state at all, independent of A7. Two structural gaps found
   with source-level verification: (a) `EngineBridge.resolve_tick` passes a FRESH

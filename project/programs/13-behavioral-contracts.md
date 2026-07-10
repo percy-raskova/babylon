@@ -5,8 +5,12 @@ with the plan which I read over and approve").
 **Constitutional anchor:** Amendment Q (v2.9.0) — III.12 Behavioral Contracts +
 VIII.13 Spec Trapped in Implementation.
 **Evidence base:** `project/assessments/TEST_SUITE_REWRITE_AUDIT-2026-07-09.md`.
-**Status:** REGISTERED — unscheduled; small program, runs as a lane inside Program 12's
-Phase B/C window or immediately after Phase A closes. No dependency on A7.
+**Status:** ✅ **COMPLETE 2026-07-09 (same day as ratification).** Item 1 `66125a22`
+(determinism-contract.rst, hand-computation gate satisfied); item 2 `60a919e3` (dense
+per-tick goldens for all 5 scenarios, byte-compared in qa:regression by default, shared
+tick-loop core so wall time is unchanged, double-generation determinism proof, synthetic
+1-value mutation caught with tick+column named); item 3 is standing law (III.12).
+Constitution marker flipped to `[IMPLEMENTED]` in v2.9.1.
 
 ## Premise
 
@@ -38,7 +42,8 @@ gaps, which are this program's work items.
    Gate: a reviewer can compute `defines_hash` for a toy defines fragment by hand from
    the doc alone, without reading the Python.
 
-2. **Dense golden traces for the five regression scenarios.** Extend
+2. ✅ **DONE 2026-07-09 (`60a919e3`)** — **Dense golden traces for the five regression
+   scenarios.** Extend
    `tools/regression_test.py` with a dense mode: per-tick, full-variable trace artifacts
    (committed alongside the sampled-checkpoint JSONs, which stay for fast diagnosis).
    Today `imperial_circuit.json` pins ~9 variables × ~6 checkpoints ≈ 54 numbers for a

@@ -284,7 +284,7 @@ rm -f .coverage .coverage.*
 find . -type d -name __pycache__ \
   -not -path './.venv/*' \
   -not -path './node_modules/*' \
-  -not -path './web/frontend/node_modules/*' \
+  -not -path './src/frontend/node_modules/*' \
   -exec rm -rf {} + 2>/dev/null || true
 # Recreate the reports root for next run
 mkdir -p reports/test-results
@@ -1049,7 +1049,7 @@ run = "poetry run python manage.py runserver 8000"
 
 [tasks."web:frontend"]
 description = "Start Vite dev server in foreground (port 5173)"
-dir = "web/frontend"
+dir = "src/frontend"
 raw = true
 run = "npm run dev"
 
@@ -1070,7 +1070,7 @@ fi
 if [ -f .web-pids/vite.pid ] && kill -0 "$(cat .web-pids/vite.pid)" 2>/dev/null; then
   echo "Vite already running (PID $(cat .web-pids/vite.pid))"
 else
-  nohup bash -c 'cd web/frontend && exec npx vite' \
+  nohup bash -c 'cd src/frontend && exec npx vite' \
     > .web-pids/vite.log 2>&1 &
   echo $! > .web-pids/vite.pid
   echo "Vite started (PID $!) — log: .web-pids/vite.log"
@@ -1145,7 +1145,7 @@ run = "tail -f .web-pids/django.log .web-pids/vite.log"
 description = "Install Python + Node dependencies for the web app"
 run = """
 (cd web && poetry install)
-(cd web/frontend && npm install)
+(cd src/frontend && npm install)
 """
 
 [tasks."web:migrate"]
@@ -1153,48 +1153,21 @@ description = "Run Django database migrations"
 dir = "web"
 run = "poetry run python manage.py migrate"
 
+# The frontend tasks below target src/frontend — the cockpit (spec-110),
+# THE frontend since the spec-112 cutover deleted web/frontend. The old
+# web:cockpit:* aliases were retired with the cutover; web:* is canonical.
+
 [tasks."web:test"]
 description = "Run frontend tests (Vitest)"
-dir = "web/frontend"
+dir = "src/frontend"
 run = "npm run test"
 
 [tasks."web:check"]
 description = "Run frontend quality checks (tsc + eslint + prettier + vitest)"
-dir = "web/frontend"
+dir = "src/frontend"
 run = "npm run check"
 
 [tasks."web:build"]
 description = "Build frontend for production"
-dir = "web/frontend"
-run = "npm run build"
-
-# =============================================================================
-# COCKPIT (spec-110, src/frontend) — clean-room replacement for web/frontend.
-# Dev server on 5174; web/frontend keeps 5173 until cutover.
-# =============================================================================
-
-[tasks."web:cockpit:install"]
-description = "Install cockpit frontend dependencies (src/frontend)"
-dir = "src/frontend"
-run = "npm install"
-
-[tasks."web:cockpit:dev"]
-description = "Start cockpit Vite dev server in foreground (port 5174)"
-dir = "src/frontend"
-raw = true
-run = "npm run dev"
-
-[tasks."web:cockpit:test"]
-description = "Run cockpit frontend tests (Vitest)"
-dir = "src/frontend"
-run = "npm run test"
-
-[tasks."web:cockpit:check"]
-description = "Run cockpit quality checks (tsc + eslint + prettier + vitest)"
-dir = "src/frontend"
-run = "npm run check"
-
-[tasks."web:cockpit:build"]
-description = "Build cockpit frontend for production"
 dir = "src/frontend"
 run = "npm run build"

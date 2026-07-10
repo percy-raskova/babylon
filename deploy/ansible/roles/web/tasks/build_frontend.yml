@@ -19,11 +19,11 @@
 - name: Install frontend dependencies
   ansible.builtin.command:
     cmd: npm ci
-    chdir: "{{ django_project_dir | default(project_path) }}/frontend"
+    chdir: "{{ frontend_dir | default(project_path ~ '/src/frontend') }}"
   changed_when: true
 
 - name: Build frontend for production
   ansible.builtin.command:
     cmd: npm run build
-    chdir: "{{ django_project_dir | default(project_path) }}/frontend"
+    chdir: "{{ frontend_dir | default(project_path ~ '/src/frontend') }}"
   changed_when: true

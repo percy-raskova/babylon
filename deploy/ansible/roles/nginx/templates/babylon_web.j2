@@ -70,7 +70,7 @@ server {
 
     # Vite-built React assets (hashed filenames, long cache)
     location /assets/ {
-        alias   {{ django_project_dir | default(project_path) }}/frontend/dist/assets/;
+        alias   {{ frontend_dir | default(project_path ~ '/src/frontend') }}/dist/assets/;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
@@ -110,7 +110,7 @@ server {
 
     # React SPA fallback — all other routes serve index.html
     location / {
-        root {{ django_project_dir | default(project_path) }}/frontend/dist;
+        root {{ frontend_dir | default(project_path ~ '/src/frontend') }}/dist;
         try_files $uri $uri/ /index.html;
     }
 

@@ -212,7 +212,8 @@ This runs `dbservers.yml` then `webservers.yml` in sequence:
   Node.js 22 LTS + React build, nginx, R2 backups
 
 The frontend build runs automatically via `build_frontend.yml` (Node.js 22 LTS,
-`npm ci`, `npm run build`). No manual SSH required.
+`npm ci`, `npm run build` in `src/frontend` — the cockpit, THE frontend since
+the spec-112 cutover). No manual SSH required.
 
 ## Step 6: Create the Django Superuser
 
@@ -347,7 +348,7 @@ sudo nft list ruleset | grep 'tcp dport 443'
 is not configured to serve it. Verify:
 
 ```bash
-ls /webapps/babylon_web/babylon/web/frontend/dist/index.html
+ls /webapps/babylon_web/babylon/src/frontend/dist/index.html
 sudo nginx -t
 ```
 

@@ -33,6 +33,9 @@ gunicorn_timeout_seconds: 120
 django_settings_file: "babylon_web.settings.production"
 django_secret_key: "{{ vault_django_secret_key }}"
 django_project_dir: "{{ project_path }}/web"
+# The React frontend is src/frontend (the cockpit) since the spec-112
+# cutover — a repo-root sibling of web/, NOT a child of the Django dir.
+frontend_dir: "{{ project_path }}/src/frontend"
 run_django_db_migrations: true
 run_django_collectstatic: true
 use_poetry: true

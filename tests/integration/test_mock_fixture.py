@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-FIXTURE_PATH = Path("web/frontend/src/fixtures/mock_map_data.json")
+FIXTURE_PATH = Path("web/game/fixtures/mock_map_data.json")
 
 
 @pytest.fixture

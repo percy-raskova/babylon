@@ -14,9 +14,7 @@ def test_game(db):
 @pytest.mark.django_db
 def test_seed_command_populates(test_game):
     """Running seed_hex_data creates rows matching fixture count."""
-    call_command(
-        "seed_hex_data", str(test_game.id), fixture="web/frontend/src/fixtures/mock_map_data.json"
-    )
+    call_command("seed_hex_data", str(test_game.id), fixture="web/game/fixtures/mock_map_data.json")
     count = HexState.objects.filter(game=test_game).count()
     # At least we generated 50 hexes, let's just make sure it's 50
     assert count == 50
@@ -50,9 +48,7 @@ def test_unique_constraint(test_game):
 @pytest.mark.django_db
 def test_county_fips_values(test_game):
     """All rows have county_fips in {26163, 26125, 26099}."""
-    call_command(
-        "seed_hex_data", str(test_game.id), fixture="web/frontend/src/fixtures/mock_map_data.json"
-    )
+    call_command("seed_hex_data", str(test_game.id), fixture="web/game/fixtures/mock_map_data.json")
 
     invalid_fips = HexState.objects.filter(game=test_game).exclude(
         county_fips__in=["26163", "26125", "26099"]

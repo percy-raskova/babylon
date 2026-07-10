@@ -1,6 +1,6 @@
 """Contract parity tests: verify frontend fixture shape matches backend serializers.
 
-The mock fixture in ``web/frontend/src/test/fixtures.ts`` defines the exact
+The mock fixture in ``src/frontend/src/test/fixtures.ts`` (formerly web/frontend) defines the exact
 shape the React frontend expects. The serializers in ``web/game/serializers.py``
 define the shape the Django backend produces. This test verifies they match.
 

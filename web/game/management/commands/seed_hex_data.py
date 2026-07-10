@@ -16,7 +16,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--fixture",
             type=str,
-            default="frontend/src/fixtures/mock_map_data.json",
+            default="game/fixtures/mock_map_data.json",
             help="Path to the mock fixture JSON file relative to web directory",
         )
 

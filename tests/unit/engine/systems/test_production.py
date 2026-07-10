@@ -436,3 +436,55 @@ class TestTensorAwareProduction:
         # Wayne should produce 2x Oakland
         assert graph.nodes["W1"]["wealth"] == pytest.approx(2.0 * graph.nodes["W2"]["wealth"])
         services.database.close()
+
+    def test_tensor_lookup_year_advances_with_tick(self) -> None:
+        """The tensor-registry year must climb with tick, not stay pinned.
+
+        Owner item 25 (ProductionSystem staleness bug): ``current_year`` was
+        read once from ``base_year`` and never advanced, so tensor lookups
+        stayed pinned to one year forever. The fix: ``current_year =
+        base_year + tick // weeks_per_year`` — the same epoch formula
+        ``TickDynamicsSystem._determine_year`` and ``sim_clock`` already use.
+        """
+        mock_registry = MagicMock()
+        mock_registry.get.return_value = _make_tensor(total_v=520000.0)
+
+        services = ServiceContainer.create(tensor_registry=mock_registry)
+        weeks_per_year = services.defines.timescale.weeks_per_year
+
+        graph: nx.DiGraph = BabylonGraph()
+        graph.graph["base_year"] = 2022
+        _create_worker_node(graph, "W1", wealth=0.0, population=1)
+        _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
+        graph.nodes["T1"]["fips_code"] = "26163"
+        _create_tenancy_edge(graph, "W1", "T1")
+
+        system = ProductionSystem()
+        # A tick two full years past base_year — the year passed to the
+        # tensor registry must be base_year + 2, not the pinned base_year.
+        system.step(graph, services, {"tick": 2 * weeks_per_year})
+
+        mock_registry.get.assert_called_once_with("26163", 2024)
+        services.database.close()
+
+    def test_tensor_lookup_year_stays_at_base_year_within_first_year(self) -> None:
+        """Ticks 0..weeks_per_year-1 still resolve to the unadvanced base_year
+        (byte-identical for the 5-tick qa:e2e-regression window, since
+        5 // 52 == 0)."""
+        mock_registry = MagicMock()
+        mock_registry.get.return_value = _make_tensor(total_v=520000.0)
+
+        services = ServiceContainer.create(tensor_registry=mock_registry)
+
+        graph: nx.DiGraph = BabylonGraph()
+        graph.graph["base_year"] = 2022
+        _create_worker_node(graph, "W1", wealth=0.0, population=1)
+        _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
+        graph.nodes["T1"]["fips_code"] = "26163"
+        _create_tenancy_edge(graph, "W1", "T1")
+
+        system = ProductionSystem()
+        system.step(graph, services, {"tick": 5})
+
+        mock_registry.get.assert_called_once_with("26163", 2022)
+        services.database.close()

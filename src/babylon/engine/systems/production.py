@@ -88,7 +88,7 @@ class ProductionSystem(SystemBase):
         self,
         graph: GraphProtocol,
         services: ServiceContainer,
-        _context: ContextType,
+        context: ContextType,
     ) -> None:
         """Generate wealth for workers and set extraction_intensity.
 
@@ -108,6 +108,21 @@ class ProductionSystem(SystemBase):
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
         base_labor_power = annual_labor_power / weeks_per_year
+
+        # Owner item 25 (ProductionSystem staleness bug): the tensor-registry
+        # lookup year must climb with tick, not stay pinned at whatever
+        # ``base_year`` was hydrated with. Same epoch formula as
+        # TickDynamicsSystem._determine_year / babylon.sim_clock
+        # (``base_year + tick // weeks_per_year``) — reconciled here rather
+        # than centralized, since those two call sites don't take a
+        # ServiceContainer/weeks_per_year the same way this one does.
+        tick: int
+        if hasattr(context, "tick"):
+            tick = context.tick
+        elif isinstance(context, dict):
+            tick = context.get("tick", 0)
+        else:
+            tick = 0
 
         # Track production per territory for extraction_intensity
         territory_production: dict[str, float] = {}
@@ -150,7 +165,8 @@ class ProductionSystem(SystemBase):
             if tensor_registry is not None:
                 fips_code = territory_attrs.get("fips_code")
                 if fips_code is not None:
-                    current_year = graph.get_graph_attr("base_year", 2022)
+                    hydrated_base_year = graph.get_graph_attr("base_year", 2022)
+                    current_year = hydrated_base_year + tick // weeks_per_year
                     tensor = tensor_registry.get(fips_code, current_year)
                     if not isinstance(tensor, NoDataSentinel):
                         # Use variable capital as proxy for productive capacity

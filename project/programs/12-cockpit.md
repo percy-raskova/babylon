@@ -62,8 +62,10 @@ proof.md (A7 is the one sanctioned rebaseline).
 | A6 | spec-070 balkanization layer seeds into every web session (owner item 8; faction half of item 12); res-7→res-6 H3 aggregation; `WorldState.factions` round-trip | ✅ MERGED | c5c19e21 |
 | A2 | hex projection enriched: habitability end-to-end (graph-threaded, `attributes` JSONB + migration 0013), real org_count/heat_delta/state_fips; III.11-honest Nones documented | ✅ MERGED | b0907b97 |
 | A4 | real `/summary/`, `/economy/`, `/communities/` (solidarity-component communities); contract tests | ✅ MERGED | 9addfa94 |
-| A7 | static economy — per-tick material-base movement (owner item 25 second half) | 🔶 SCOUTED — 4 design options + 5 open questions delivered to owner (see owner-queue item 25 update); implementation blocked on ruling | — |
+| A7 | static economy — per-tick material-base movement (owner item 25 second half) | ✅ ENGINE HALF MERGED (Option B: two-mode TickDynamics, flow accrual annual÷52 with conservation property tests; base_year advances with tick). ZERO baseline drift (root-caused: the 5-tick compare surface reads only the untouched hex layer). 520-tick canonical + A/B determinism = orchestrator, proof-A7 Parts 2/3/4/6. Web visibility = new owner item 30. | 742e7163 + e75464fe |
 | B1 | cockpit scaffold at `src/frontend/` (React 19/Vite/Tailwind 4/deck.gl 9.2, port 5174) + tooling guards (ruff/mypy excludes, pre-commit set, mise tasks, CI job) | ✅ MERGED (early — no A dependency) | 30f5512e + 504302bf |
+| B2 | port survivors: tokens/types/lib/verbs/selectors + unified `Lens` union + map components as controlled components (172 tests) | ✅ MERGED (stores/shell/routing = B3) | dc384c78 + 115e6fc7 |
+| P13.1 | determinism-contract reference doc (program 13 item 1 / Amendment Q corollary a) | ✅ MERGED — plus 3 integrity findings (owner item 31: tick_commit hash is an identity stamp, not a content hash) | 66125a22 |
 | — | 3 pre-existing `entities`-key integration failures: verdict = retired pre-Spec-052 contract; tests rewritten to current contract | ✅ MERGED | 0613d508 |
 | — | endgame faction xfail: A6 round-trip machinery proven fixed; real blocker re-diagnosed (FASCIST_CONSOLIDATION absolute-count threshold pre-empts REVOLUTIONARY_VICTORY — owner-queue item 28) | ✅ MERGED (accurate xfail) | e0338924 |
 

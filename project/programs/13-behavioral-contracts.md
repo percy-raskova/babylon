@@ -18,8 +18,10 @@ gaps, which are this program's work items.
 
 ## Work items
 
-1. **`docs/reference/determinism-contract.rst`** — the language-agnostic specification
-   of every constitutional hash:
+1. ✅ **DONE 2026-07-09 (`66125a22`)** — **`docs/reference/determinism-contract.rst`** — the
+   language-agnostic specification of every constitutional hash (621 lines; worked example
+   reproduces the committed imperial_circuit `defines_hash` exactly; hand-computation gate
+   satisfied; three implementation/doc discrepancies surfaced as owner-queue item 31):
    - `defines_hash`: exact byte recipe (today: sha256 over Python `json.dumps` of the
      Pydantic dump, first 16 hex chars — `tools/regression_test.py:131`; the doc must pin
      field order, separators, float formatting so a non-Python implementation can

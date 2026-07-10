@@ -14,14 +14,21 @@ meta:
     session (owner item 8 CLOSED; item 12 faction half CLOSED), and /summary/,
     /economy/, /communities/ return real engine values. B1 cockpit scaffold merged at
     src/frontend/ (30f5512e + 504302bf; port 5174; old app untouched until Phase D).
-    A7 (static economy, item 25 second half) is SCOUTED, NOT implemented: three
-    economy layers mapped (entity wealth already moves per tick; county TickDynamics
-    gated on tick%52; hex c/v/s/k frozen at tick-0 by design), 4 design options +
-    ruling questions sit with Percy in owner-queue item 25. Per-lane gates were green
-    before each merge (unit/integration/frontend per lane; qa:regression 5/5 where
-    applicable); the integrated post-merge gate verdict is recorded in this docs
-    commit's message. Constitution is v2.9.0 (Amendment Q — Behavioral Contracts,
-    III.12 + VIII.13, ADR062; program 13 behavioral-contracts hardening registered).
+    WAVE 2 (same evening, later): A7's ENGINE half is IMPLEMENTED + MERGED
+    (742e7163 Option-B flow accrual with conservation property tests + e75464fe
+    base_year advances with tick) with ZERO baseline drift — root-caused: the 5-tick
+    compare surface (view_runtime_trace_emission) reads only the hex layer, which
+    Option B leaves frozen by design; the sanctioned rebaseline turned out to be no
+    rebaseline. Remaining for item 25: the 520-tick canonical + A/B determinism
+    (specs/109-data-spine/proof-A7.md Parts 2/3/4/6). Web sessions still cannot SHOW
+    county flows (owner item 30: fresh persistent_context per resolve + wayne is
+    hex-only) — engine truth proven by test_static_economy_flow.py. Program 13 item 1
+    is DONE (66125a22, docs/reference/determinism-contract.rst; three integrity
+    findings = owner item 31, headline: tick_commit.determinism_hash is an identity
+    stamp, not a content hash). B2 is MERGED (dc384c78: cockpit gets tokens/types/
+    lib/verbs/selectors + one unified Lens union + controlled-component map; 172
+    tests; stores/shell/routing = B3 next). Constitution is v2.9.0 (Amendment Q —
+    Behavioral Contracts, III.12 + VIII.13, ADR062; program 13 registered).
     dev is ahead of origin and push is HELD pending owner say-so.
     (2026-07-09) UPDATE — the core loop is now PLAYABLE, verified live. A
     post-remediation sanity-check walkthrough (project/assessments/E2E_WALKTHROUGH-2026-07-09.md)

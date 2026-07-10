@@ -218,3 +218,53 @@ accruing per tick; (3) is `tests/baselines/storage-budget-5t.json` part of the O
 rebaseline, or a separate sign-off? (4) fix the pinned `base_year` staleness in the same spec or
 separately? Rebaseline procedure is fully mapped to the proof-2R precedent (detroit-tri-county-5t +
 storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Postgres EXCEPT diff).
+
+## Updates 2026-07-09 late evening (wave-2 merged: A7 engine half + determinism contract + B2)
+
+- **Item 25 second half — ENGINE HALF ✅ IMPLEMENTED** (Percy's "lets get at it" read as Option-B
+  approval; `742e7163` flow accrual + `e75464fe` base_year fix). TickDynamicsSystem is two-mode:
+  boundary ticks run the annual pipeline unchanged; non-boundary ticks accrue per-tick flow slices
+  (`flow_phi_accrued`/`flow_wage_accrued`, annual÷52, conservation proven by property tests — 52
+  slices sum exactly to the annual total). ProductionSystem's tensor year now advances with the tick
+  (was pinned to `base_year` forever). **Zero baseline drift anywhere**: qa:regression 5/5
+  byte-identical (no defines_hash movement — no new coefficients needed), and qa:e2e-regression +
+  qa:storage-budget PASS unchanged — root-caused (proof-A7 Part 1c/5): those gates compare
+  `view_runtime_trace_emission`, sourced entirely from `dynamic_hex_state`, which Option B leaves
+  frozen by design. **The "one sanctioned rebaseline" turned out to be zero rebaselines.** Remaining:
+  the 520-tick canonical run + A/B determinism (proof-A7 Parts 2/3/4/6) to CLOSE `cc4a5303` — being
+  run by the orchestrator now.
+- **Item 30 (NEW — the web-visibility half of item 25; needs scheduling, not a design ruling):**
+  web sessions cannot sustain county-layer state at all, independent of A7. Two structural gaps found
+  with source-level verification: (a) `EngineBridge.resolve_tick` passes a FRESH
+  `persistent_context={}` every call and the round-trip strips `tick_`/`flow_` territory attrs
+  (Territory `extra="forbid"`), so TickDynamics per-node output can never survive between resolve
+  calls; (b) the `wayne_county` web scenario has ZERO county-resolution territories (hex-only H3 ids,
+  `county_fips=None` everywhere), so county flows can't surface there even after (a). The engine-level
+  fix is proven by `tests/integration/web/test_static_economy_flow.py` (flows move tick-to-tick on a
+  persistent graph through the full 26-system pipeline — the headless model). Making the WEB session
+  show it = thread `persistent_context` (or round-trip the flow attrs) + give web scenarios
+  county-backed territories. Candidate: fold into Phase C or its own small spec.
+- **Item 31 (NEW — constitutional-integrity findings from the determinism-contract lane; rule when
+  convenient):** (a) `tick_commit.determinism_hash` is NOT a content hash — it is literally
+  `sha256(f"{session_id}:{tick}:{seed}")`, zero dependency on world state or actions, so it cannot
+  detect a divergent replay; the hash that matches III.7's text is `compute_determinism_hash()` in
+  `conservation_audit_log`. The migration comment calling it "the queryable Constitution-III.7 hash
+  chain" overstates it. (b) `PerTickTransactionEnvelope`'s docstring claims one shared hash per tick;
+  the live wiring computes two different values under the same field name. (c) player actions are
+  never threaded into the content hash in the live runner path. All documented (not fixed — doc-only
+  lane) in `docs/reference/determinism-contract.rst` "Known Discrepancies". Options: rename
+  `tick_commit.determinism_hash` → `replay_identity`, fix the docstring, thread actions when a caller
+  exists. Also noted: `mise run docs:strict` (sphinx -W) is RED at HEAD with 1,919 PRE-EXISTING
+  warnings (CI uses plain sphinx-build and is unaffected) — a separate doc-hygiene pass someday.
+- **Program 13 item 1 ✅ DONE** (`66125a22`): `docs/reference/determinism-contract.rst` (621 lines) —
+  all three hashes specified byte-level with empirically verified serialization claims and a worked
+  example that reproduces the committed `imperial_circuit.json` defines_hash (`fe1ada8c54bec6c0`)
+  exactly. III.12 corollary (a) marker stays `[PENDING CODE]` until item 2 (dense goldens) lands, per
+  the program's own DoD.
+- **B2 ✅ MERGED** (`dc384c78` + `115e6fc7`): survivor modules ported into the cockpit — Cold Collapse
+  tokens (self-hosted fonts), types, lib (eventClassifier, verb-config, all 9 verbs + fetchVerbTargets
+  extracted store-free, selectors), the unified `Lens` discriminated union (duplicate-"heat" collision
+  eliminated; `MAP_METRICS` mirrors `map_contract.py`), map components as pure controlled components
+  (store/router wiring = B3). 17 test files / 172 tests green. Also fixed a real B1 bug: prettier
+  semver drift vs the pre-commit exact pin (format ping-pong). Not ported (documented): FramingSelector
+  + the third "analytical lens" concept (`lensDefinitions.ts`/`useLens.ts`) — B3 decides.

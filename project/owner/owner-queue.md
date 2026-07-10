@@ -352,3 +352,34 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
   (store/router wiring = B3). 17 test files / 172 tests green. Also fixed a real B1 bug: prettier
   semver drift vs the pre-commit exact pin (format ping-pong). Not ported (documented): FramingSelector
   + the third "analytical lens" concept (`lensDefinitions.ts`/`useLens.ts`) — B3 decides.
+
+## 2026-07-10 midday — C3 design-sync session (Percy-invoked `/design-sync`)
+
+- **C3 substrate ✅ DELIVERED** (`23016c79` + `ccf8994c`, dev @ `ccf8994c`): all 49 cockpit
+  components synced to the claude.ai/design project **"Babylon Cockpit"**
+  (`https://claude.ai/design/p/9ccdf916-1447-4c12-92a3-dfc2a0939a4c`) — 121 authored preview cells
+  all graded good (solo calibration + 6-lane sonnet wave, 1.86M tokens, 0 errors), render check
+  49/49, `.d.ts` API contracts parse-clean, conventions header (the design agent's Cold Collapse
+  contract) validated name-by-name against the shipped stylesheet. Your existing "Babylon Design
+  System" canon project untouched (kept as archive/reference). Design sessions there now compose
+  with the REAL components; token/CSS output paths back into `src/frontend` per the C3 plan.
+- **Two production bugs found by the campaign, FIXED (no ruling needed)**: WireApp triptych columns
+  had no flex-basis (row collapsed at `story=null`; IntelColumn wrapped mid-word populated) →
+  `wire.css` `.col-wrap` `flex: 1 1 0`; `EMPTY_WIRE_FEED` filter accents referenced unprefixed
+  `var(--rent)`-style tokens nothing defines → `--babylon-*`. Both pinned by
+  `wire.contracts.test.ts` (red→green).
+- **Item 35 (NEW — small design ruling):** the `:root` type scale (`--text-md`, `--tracking-label`…)
+  is vars-only, NOT `@theme`, so `text-xs`-style utilities are Tailwind's default rem scale, not your
+  10px scale — components (and now the design agent's conventions) use the `text-[10px]` pixel idiom
+  instead. Promoting the scale into `@theme` in `src/frontend/src/index.css` would make `text-xs`
+  MEAN 10px — but it re-sizes any existing default-scale usage, i.e. app-visible. Rule: promote or
+  keep the pixel idiom canonical.
+- **Item 36 (NEW — contract disagreement):** `DialecticSpread` labels at most 2 oppositions
+  (`frame.principal`/`frame.secondary` slots) while `ContradictionFrame.oppositions[]` is unbounded —
+  a 3rd+ entry renders raw snake_case keys + bare pole letters (reads broken). Also its
+  `{error && …}` banner renders unconditionally (not gated on empty data) — a fetch hiccup under a
+  real gameId grows a stray error above an otherwise-populated grid (III.11 wart). Rule: bound the
+  type, extend the frame, or gate the banner.
+- **Item 37 (NEW — dead field):** `GameSnapshot.endgame` (`types/game.ts`, 3-outcome `EndgameData`)
+  has ZERO readers — the real endgame path is `panels.endgame` reading `EndgameState`/
+  `TerminalOutcome` from `types/dialectic.ts` (the 5 real outcomes). Delete the orphan or wire it.

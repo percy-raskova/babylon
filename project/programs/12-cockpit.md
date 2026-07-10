@@ -78,9 +78,13 @@ proof.md (A7 is the one sanctioned rebaseline).
 | C1 | LLM narrator at the bridge boundary: BABYLON_LLM_NARRATOR flag (default OFF = byte-identical DeterministicNarrator, parity-tested), async fire-and-forget post-tick, III.6 model+prompt pinning, III.11 loud degraded marker, provider mocked in tests | ✅ MERGED | a0054dc5 |
 | item 33 | polling spec authenticated (real tick advance proven in DB); orgs spec bug had already dissolved with the item-27 harness (no stale assertion existed — verified live ×4 sessions) | ✅ MERGED | 2491b9ba |
 
+| C3 (substrate) | **Claude Design sync (2026-07-10, Percy-invoked `/design-sync`)**: all 49 cockpit components → claude.ai/design project "Babylon Cockpit" (`9ccdf916-…`), 121 authored preview cells graded good, render check 49/49, conventions header (Cold Collapse contract for the design agent) vocabulary-verified; full-token safelist stylesheet ships (`ds-tailwind-entry.css` — app JIT css only carries used utilities). Durable inputs committed under `.design-sync/` + `src/frontend/design-sync.entry.tsx`. Visual iteration itself remains owner-driven in the Design pane. | ✅ SYNCED | ccf8994c |
+| — | **Two production defects found by the preview campaign, fixed TDD**: `wire.css` `.col-wrap` had no flex-basis (triptych collapsed at story=null; IntelColumn mid-word wraps when populated) → `flex: 1 1 0`; `EMPTY_WIRE_FEED` filter colors used unprefixed `var(--rent)`-style tokens that nothing defines → `--babylon-*`. Pinned by `wire.contracts.test.ts`. | ✅ MERGED | 23016c79 |
+
 **PHASE B: COMPLETE (exit gate GREEN — 23/23 live parity, two consecutive runs).**
-**PHASE C: substantially complete** (C1 narrator, C2 dashboards, C4 observatory done; C3 design
-session = owner-invited; C5 polish deferred until after C3 reshapes visuals).
+**PHASE C: substantially complete** (C1 narrator, C2 dashboards, C4 observatory done; **C3 substrate
+delivered 2026-07-10** — the component library lives in claude.ai/design; the iteration sessions are
+owner-driven; C5 polish deferred until after C3 reshapes visuals).
 **PHASE D: gated on Percy** (parity evidence exists; needs green on ≥2 consecutive dev merges +
 the owner's explicit go for deleting `web/frontend`).
 | — | 3 pre-existing `entities`-key integration failures: verdict = retired pre-Spec-052 contract; tests rewritten to current contract | ✅ MERGED | 0613d508 |

@@ -9,4 +9,4 @@ assets/audio/** filter=lfs diff=lfs merge=lfs -text
 
 # Dense regression goldens are BEHAVIORAL ARTIFACTS (Constitution III.12): small,
 # diffable, byte-compared plain text — never LFS pointers (program 13 item 2).
-tests/baselines/dense/*.csv -filter -diff -merge text
+tests/baselines/dense/*.csv -filter diff merge text

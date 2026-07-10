@@ -383,14 +383,14 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/frontend/package-lock.json
+          cache-dependency-path: src/frontend/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: web/frontend
+        working-directory: src/frontend
         run: npm ci
 
       - name: Install Playwright Chromium
-        working-directory: web/frontend
+        working-directory: src/frontend
         run: npx playwright install --with-deps chromium
 
       - name: Start isolated Postgres (compose, port 5433)
@@ -444,7 +444,7 @@ jobs:
           curl -sf http://localhost:8000/health/
 
       - name: Run Playwright suite (Vite auto-started by webServer)
-        working-directory: web/frontend
+        working-directory: src/frontend
         env:
           CI: "true"
         run: >-
@@ -462,18 +462,18 @@ jobs:
         with:
           name: playwright-report
           path: |
-            web/frontend/playwright-report/
+            src/frontend/playwright-report/
             django-ci.log
 
       - name: Stop Postgres
         if: always()
         run: docker compose down -v
 
-  # Cockpit scaffold (spec-110, src/frontend) — build/typecheck/test gate.
-  # No backend or e2e leg yet: B1 is scaffold-only (no feature porting), so
-  # there is no real cockpit flow to drive against a live Django server.
+  # Frontend unit/typecheck/build gate (src/frontend — the cockpit, THE
+  # frontend since the spec-112 cutover). The e2e leg against the live
+  # stack is the playwright-e2e job above.
   cockpit-frontend:
-    name: Cockpit Frontend (src/frontend)
+    name: Frontend (src/frontend)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

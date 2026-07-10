@@ -6,15 +6,34 @@ behavioral drift.
 
 ## Files
 
-| File                       | Origin                                             | Regeneration command              |
-| -------------------------- | -------------------------------------------------- | --------------------------------- |
-| `imperial_circuit.json`    | Legacy in-memory engine, imperial-circuit scenario | `mise run qa:regression-generate` |
-| `two_node.json`            | Legacy in-memory engine, two-node scenario         | `mise run qa:regression-generate` |
-| `starvation.json`          | Legacy in-memory engine, starvation scenario       | `mise run qa:regression-generate` |
-| `glut.json`                | Legacy in-memory engine, glut scenario             | `mise run qa:regression-generate` |
-| `fascist_bifurcation.json` | Legacy in-memory engine                            | `mise run qa:regression-generate` |
-| `mutation_baseline.json`   | Mutation-testing baseline (mutmut)                 | `mise run qa:mutation-baseline`   |
-| **`michigan-e2e.json`**    | **Spec-064: headless Postgres runner**             | See below                         |
+| File                       | Origin                                                                 | Regeneration command                    |
+| -------------------------- | ---------------------------------------------------------------------- | --------------------------------------- |
+| `imperial_circuit.json`    | Legacy in-memory engine, imperial-circuit scenario                     | `mise run qa:regression-generate`       |
+| `two_node.json`            | Legacy in-memory engine, two-node scenario                             | `mise run qa:regression-generate`       |
+| `starvation.json`          | Legacy in-memory engine, starvation scenario                           | `mise run qa:regression-generate`       |
+| `glut.json`                | Legacy in-memory engine, glut scenario                                 | `mise run qa:regression-generate`       |
+| `fascist_bifurcation.json` | Legacy in-memory engine                                                | `mise run qa:regression-generate`       |
+| `mutation_baseline.json`   | Mutation-testing baseline (mutmut)                                     | `mise run qa:mutation-baseline`         |
+| **`michigan-e2e.json`**    | **Spec-064: headless Postgres runner**                                 | See below                               |
+| **`dense/<scenario>.csv`** | **Program 13 item 2: dense per-tick traces for the 5 scenarios above** | `mise run qa:regression-generate-dense` |
+
+## `dense/` — dense per-tick golden traces (Program 13 item 2)
+
+The five `*.json` files above sample ~9 variables every 10th tick (~54
+numbers for a 52-tick scenario) — a plausible-but-wrong engine could
+reproduce those without reproducing the actual per-tick dynamics.
+`dense/<scenario>.csv` pins **every tick** of the same run, plus every
+entity's wealth/tension-relevant fields and every relationship's
+value_flow/tension. Compared **byte-identically** (not tolerance-bounded)
+by `qa:regression` whenever the file exists — a mismatch reports the exact
+first divergent tick and column.
+
+Column contract, float/bool formatting, and the topology-static assumption
+are documented in `docs/reference/determinism-contract.rst` ("Dense Golden
+Traces"). Regenerate with `mise run qa:regression-generate-dense` (this
+also regenerates the sampled `*.json` baselines above, since both share one
+simulation run per scenario — only the `generated_at` timestamp field in
+the JSON will move if behavior is unchanged).
 
 ## Regenerating michigan-e2e.json (spec-064)
 

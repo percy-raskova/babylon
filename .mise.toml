@@ -588,6 +588,10 @@ run = "poetry run python tools/regression_test.py compare"
 description = "Generate regression baselines (after intentional changes)"
 run = "poetry run python tools/regression_test.py generate --force"
 
+[tasks."qa:regression-generate-dense"]
+description = "Generate dense per-tick golden trace CSVs for the 5 regression scenarios (Program 13 item 2; also regenerates the sampled-checkpoint JSONs)"
+run = "poetry run python tools/regression_test.py generate --force --dense"
+
 [tasks."qa:e2e-regression"]
 description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038)"
 run = """

@@ -1300,12 +1300,17 @@ class TestGetEconomy:
         assert result["exploitation_rate"] is None
 
     def test_no_territory_id_delegates_to_dashboard(self) -> None:
+        # Spec 109 A4: get_economy_dashboard is real now (no longer a `{}`
+        # stub) — the delegation contract this test verifies is that
+        # omitting territory_id returns exactly what get_economy_dashboard
+        # returns for the same session, not a fixed literal.
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
+        session_id = uuid.uuid4()
 
-        result = bridge.get_economy(uuid.uuid4())
+        result = bridge.get_economy(session_id)
 
-        assert result == {}
+        assert result == bridge.get_economy_dashboard(session_id)
 
 
 @pytest.mark.unit

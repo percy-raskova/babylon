@@ -521,7 +521,8 @@ def game_economy(request: Request, game_id: str) -> JsonResponse:
 
     Spec 093: with ``?territory_id=``, returns Territory Detail's real
     per-territory economic summary (:meth:`EngineBridge.get_economy`).
-    Without it, falls back to the still-stub dashboard-wide summary.
+    Without it, falls back to the dashboard-wide summary
+    (:meth:`EngineBridge.get_economy_dashboard`, spec 109 A4).
     """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:

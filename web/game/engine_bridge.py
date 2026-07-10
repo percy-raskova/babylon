@@ -756,6 +756,215 @@ def _empty_economy_payload(territory_id: str | None) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------- #
+# Spec 109 A4: real summary/economy/communities dashboards. Graph-wide
+# analogues of the spec-093 US5 per-territory helpers above — same
+# EXTRACTIVE/ANTAGONISTIC edge-mode filter, same exploitation-rate proxy —
+# summed over the entire graph instead of one territory's node subset.
+# ---------------------------------------------------------------------- #
+
+
+def _graph_economy_nodes(graph: BabylonGraph) -> list[tuple[str, dict[str, Any]]]:
+    """Return (node_id, data) for every social_class/organization node in the graph."""
+    return [
+        (node_id, data)
+        for node_id, data in graph.nodes(data=True)
+        if data.get("_node_type") in ("social_class", "organization")
+    ]
+
+
+def _aggregate_graph_economy(graph: BabylonGraph) -> dict[str, Any]:
+    """Aggregate real wealth/extraction/exploitation stats across the whole graph.
+
+    Mirrors :meth:`EngineBridge.get_economy`'s per-territory computation
+    exactly (same ``_EXTRACTIVE_EDGE_MODES`` filter over ``edge_mode``/
+    ``edge_type``/``_edge_type``, same ``calculate_unequal_exchange_rate``
+    proxy) but over every social_class/organization node rather than one
+    territory's subset. ``edge_mode`` (the dialectical EdgeMode
+    classification) is only populated once EdgeTransitionSystem has run at
+    least one tick — a fresh tick-0 graph legitimately has ``has_data:
+    False`` until then.
+    """
+    econ_nodes = _graph_economy_nodes(graph)
+    value_produced = sum(float(data.get("wealth", 0.0)) for _, data in econ_nodes)
+
+    rent_extracted = 0.0
+    for source, target in graph.edges:
+        edge_data = graph.edges[(source, target)]
+        mode = str(
+            edge_data.get("edge_mode", edge_data.get("edge_type", edge_data.get("_edge_type", "")))
+        ).lower()
+        if mode not in _EXTRACTIVE_EDGE_MODES:
+            continue
+        rent_extracted += float(edge_data.get("value_flow", 0.0))
+
+    has_data = value_produced > 0.0 or rent_extracted > 0.0
+    exploitation_rate: float | None = None
+    if has_data and value_produced > 0.0:
+        exchange_ratio = (value_produced + rent_extracted) / value_produced
+        exploitation_rate = round(calculate_unequal_exchange_rate(exchange_ratio) / 100.0, 4)
+
+    return {
+        "has_data": has_data,
+        "value_produced": round(value_produced, 4),
+        "rent_extracted": round(rent_extracted, 4),
+        "exploitation_rate": exploitation_rate,
+    }
+
+
+def _sum_edge_value_flow_by_mode(graph: BabylonGraph, edge_types: frozenset[str]) -> float:
+    """Sum ``value_flow`` over graph edges whose mechanical ``edge_type``
+    (EdgeType — not the dialectical EdgeMode) is in ``edge_types``.
+
+    Used for WAGES/TRIBUTE flow totals, which are EdgeType values with no
+    EdgeMode analogue.
+    """
+    total = 0.0
+    for source, target in graph.edges:
+        edge_data = graph.edges[(source, target)]
+        etype = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+        if etype in edge_types:
+            total += float(edge_data.get("value_flow", 0.0))
+    return round(total, 4)
+
+
+def _wealth_by_class_role(state: WorldState) -> dict[str, float]:
+    """Sum ``SocialClass.wealth`` grouped by ``SocialRole`` — real values only."""
+    totals: dict[str, float] = {}
+    for entity in state.entities.values():
+        role = _enum_val(entity.role)
+        totals[role] = totals.get(role, 0.0) + float(entity.wealth)
+    return {role: round(total, 4) for role, total in totals.items()}
+
+
+def _collect_solidarity_edges(graph: BabylonGraph) -> list[tuple[str, str, float]]:
+    """Return ``(source, target, solidarity_strength)`` for every live
+    SOLIDARITY edge in ``graph``."""
+    solidarity_edges: list[tuple[str, str, float]] = []
+    for source, target in graph.edges:
+        edge_data = graph.edges[(source, target)]
+        etype = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+        if etype != "solidarity":
+            continue
+        strength = float(edge_data.get("solidarity_strength", 0.0))
+        solidarity_edges.append((source, target, strength))
+    return solidarity_edges
+
+
+def _find_root(parent: dict[str, str], node_id: str) -> str:
+    """Union-find ``find`` with path compression over ``parent``."""
+    parent.setdefault(node_id, node_id)
+    root = node_id
+    while parent[root] != root:
+        root = parent[root]
+    while parent[node_id] != root:
+        parent[node_id], node_id = root, parent[node_id]
+    return root
+
+
+def _group_solidarity_components(
+    solidarity_edges: list[tuple[str, str, float]],
+) -> tuple[dict[str, set[str]], dict[str, list[tuple[str, str, float]]]]:
+    """Union-find ``solidarity_edges`` into connected components.
+
+    Returns ``(members_by_root, edges_by_root)`` keyed by each component's
+    union-find root node id.
+    """
+    parent: dict[str, str] = {}
+    for source, target, _strength in solidarity_edges:
+        root_a, root_b = _find_root(parent, source), _find_root(parent, target)
+        if root_a != root_b:
+            parent[root_a] = root_b
+
+    members_by_root: dict[str, set[str]] = {}
+    edges_by_root: dict[str, list[tuple[str, str, float]]] = {}
+    for source, target, strength in solidarity_edges:
+        root = _find_root(parent, source)
+        members_by_root.setdefault(root, set()).update((source, target))
+        edges_by_root.setdefault(root, []).append((source, target, strength))
+    return members_by_root, edges_by_root
+
+
+def _social_class_stats(
+    graph: BabylonGraph, member_ids: list[str]
+) -> tuple[float | None, str | None]:
+    """Return ``(avg_consciousness, dominant_role)`` over the social_class
+    members of a community — organization members carry neither field."""
+    from collections import Counter
+
+    consciousness_values: list[float] = []
+    roles: list[str] = []
+    for member_id in member_ids:
+        node_data = graph.nodes.get(member_id, {})
+        if node_data.get("_node_type") != "social_class":
+            continue
+        consciousness = node_data.get("class_consciousness")
+        if consciousness is not None:
+            consciousness_values.append(float(consciousness))
+        role = node_data.get("role")
+        if role is not None:
+            roles.append(_enum_val(role))
+    avg_consciousness = (
+        sum(consciousness_values) / len(consciousness_values) if consciousness_values else None
+    )
+    dominant_role = Counter(roles).most_common(1)[0][0] if roles else None
+    return avg_consciousness, dominant_role
+
+
+def _build_solidarity_communities(graph: BabylonGraph) -> list[dict[str, Any]]:
+    """Group nodes into communities via connected SOLIDARITY edges.
+
+    The XGI hypergraph community layer (``community_memberships``,
+    :class:`~babylon.engine.systems.community.CommunitySystem`) is never
+    seeded by any scenario builder — no production code assigns
+    ``SocialClass.community_memberships`` outside its own model/tests — so
+    building this dashboard from that layer would emit an honest but
+    *permanently* empty list, identical to the prior stub. This instead
+    reads the one community structure the engine actually materializes:
+    connected clusters of social_class/organization nodes joined by live
+    SOLIDARITY edges (EdgeType.SOLIDARITY) — real seeded data (e.g.
+    wayne_county's Detroit-proletariat/Dearborn-workers edge) that
+    :class:`~babylon.engine.systems.solidarity.SolidaritySystem` acts on
+    every tick.
+
+    Args:
+        graph: The hydrated session graph.
+
+    Returns:
+        One dict per connected component, sorted by descending member
+        count then id: ``id``/``member_ids``/``member_count``/
+        ``dominant_role``/``avg_consciousness``/``total_solidarity_strength``.
+        Empty list when no SOLIDARITY edges exist yet.
+    """
+    solidarity_edges = _collect_solidarity_edges(graph)
+    if not solidarity_edges:
+        return []
+
+    members_by_root, edges_by_root = _group_solidarity_components(solidarity_edges)
+
+    import uuid as uuid_module
+
+    communities: list[dict[str, Any]] = []
+    for root, members in members_by_root.items():
+        member_ids = sorted(members)
+        avg_consciousness, dominant_role = _social_class_stats(graph, member_ids)
+        total_strength = round(sum(strength for _s, _t, strength in edges_by_root[root]), 4)
+        community_id = str(uuid_module.uuid5(uuid_module.NAMESPACE_URL, "|".join(member_ids)))
+        communities.append(
+            {
+                "id": community_id,
+                "member_ids": member_ids,
+                "member_count": len(member_ids),
+                "dominant_role": dominant_role,
+                "avg_consciousness": avg_consciousness,
+                "total_solidarity_strength": total_strength,
+            }
+        )
+
+    communities.sort(key=lambda c: (-c["member_count"], str(c["id"])))
+    return communities
+
+
 class EngineBridge:
     """Translates between Django request/response and simulation engine.
 
@@ -1108,9 +1317,68 @@ class EngineBridge:
     # Domain Dashboards (Scaffolding for full UI requirements)
     # ------------------------------------------------------------------ #
 
-    def get_game_summary(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the top-bar summary data: tick, profit rate, phi, state faction, alerts."""
-        return {}
+    def get_game_summary(self, session_id: UUID) -> dict[str, Any]:
+        """Return the top-bar summary: tick, imperial rent, consciousness,
+        population, aggregate exploitation, and per-severity event counts.
+
+        Spec 109 A4. Sources the live :meth:`hydrate_state` WorldState/graph
+        for tick/imperial-rent/consciousness/population/exploitation (the
+        graph-wide analogue of :meth:`get_economy`, via
+        :func:`_aggregate_graph_economy`), and the persisted ``tick_event``
+        rows (spec 092) for the latest tick's severity counts.
+        ``profit_rate`` stays ``None`` — the engine computes no c/v/s
+        decomposition on the live graph (Constitution III.11: no invented
+        values).
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            Dict with ``tick``/``imperial_rent``/``avg_consciousness``/
+            ``population_total``/``exploitation_rate``/``profit_rate``/
+            ``org_count``/``class_count``/``event_counts``.
+        """
+        state, graph = self.hydrate_state(session_id)
+
+        consciousness_values = [
+            float(sc.ideology.class_consciousness) for sc in state.entities.values()
+        ]
+        avg_consciousness = (
+            sum(consciousness_values) / len(consciousness_values) if consciousness_values else None
+        )
+
+        population_total = (
+            sum(t.population for t in state.territories.values()) if state.territories else None
+        )
+
+        imperial_rent = float(state.economy.imperial_rent_pool) if state.economy else None
+        econ = _aggregate_graph_economy(graph)
+
+        event_rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_tick_events", None)
+        if callable(query):
+            try:
+                event_rows = query(session_id, state.tick)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_game_summary: query_tick_events failed")
+                event_rows = []
+        event_counts: dict[str, int] = {"critical": 0, "warning": 0, "informational": 0}
+        for row in event_rows:
+            severity = row.get("severity") or _classify_event(str(row.get("event_type", "")))
+            if severity in event_counts:
+                event_counts[severity] += 1
+
+        return {
+            "tick": state.tick,
+            "imperial_rent": imperial_rent,
+            "avg_consciousness": avg_consciousness,
+            "population_total": population_total,
+            "exploitation_rate": econ["exploitation_rate"],
+            "profit_rate": None,
+            "org_count": len(state.organizations),
+            "class_count": len(state.entities),
+            "event_counts": event_counts,
+        }
 
     def get_game_timeseries(self, session_id: UUID) -> dict[str, Any]:
         """Return historical timeseries data for charting (spec 061 US3, FR-026).
@@ -1163,9 +1431,52 @@ class EngineBridge:
             "biocapacity": biocapacity,
         }
 
-    def get_economy_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return the economy left-panel dashboard data."""
-        return {}
+    def get_economy_dashboard(self, session_id: UUID) -> dict[str, Any]:
+        """Return the economy left-panel dashboard: real aggregate wealth,
+        extraction, imperial-rent-pool state, and wage/tribute flows across
+        the whole graph.
+
+        Spec 109 A4. Graph-wide analogue of :meth:`get_economy`'s
+        per-territory computation (same EXTRACTIVE/ANTAGONISTIC edge-mode
+        filter and exploitation-rate proxy via
+        :func:`_aggregate_graph_economy`), plus real WAGES/TRIBUTE flow
+        sums and wealth grouped by class role. ``profit_rate``/``occ`` stay
+        ``None`` — no c/v/s decomposition or organic-composition-of-capital
+        formula runs on the live graph (Constitution III.11); the hex-level
+        static-economy broadcast (spec-109 A7) is a separate, still-partial
+        data source this dashboard does not depend on.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            Dict with ``tick``/``has_data``/``value_produced``/
+            ``rent_extracted``/``exploitation_rate``/``profit_rate``/
+            ``occ``/``imperial_rent_pool``/``current_super_wage_rate``/
+            ``wage_flow_total``/``tribute_flow_total``/
+            ``wealth_by_class_role``.
+        """
+        state, graph = self.hydrate_state(session_id)
+        econ = _aggregate_graph_economy(graph)
+
+        return {
+            "tick": state.tick,
+            "has_data": econ["has_data"],
+            "value_produced": econ["value_produced"],
+            "rent_extracted": econ["rent_extracted"],
+            "exploitation_rate": econ["exploitation_rate"],
+            "profit_rate": None,
+            "occ": None,
+            "imperial_rent_pool": (
+                float(state.economy.imperial_rent_pool) if state.economy else None
+            ),
+            "current_super_wage_rate": (
+                float(state.economy.current_super_wage_rate) if state.economy else None
+            ),
+            "wage_flow_total": _sum_edge_value_flow_by_mode(graph, frozenset({"wages"})),
+            "tribute_flow_total": _sum_edge_value_flow_by_mode(graph, frozenset({"tribute"})),
+            "wealth_by_class_role": _wealth_by_class_role(state),
+        }
 
     def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:
         """Return a per-territory economic summary (spec 093 US5).
@@ -1176,8 +1487,8 @@ class EngineBridge:
         Returns ``has_data: False`` with honest zeros when the territory
         has no such nodes/edges yet — never a fabricated nonzero value.
 
-        Without ``territory_id``, delegates to the (still-stub)
-        dashboard-wide :meth:`get_economy_dashboard` for backward
+        Without ``territory_id``, delegates to the dashboard-wide
+        :meth:`get_economy_dashboard` (spec 109 A4) for backward
         compatibility with the existing ``/economy/`` route.
         """
         if territory_id is None:
@@ -1242,16 +1553,25 @@ class EngineBridge:
             ),
         }
 
-    def get_communities_dashboard(self, _session_id: UUID) -> dict[str, Any]:
-        """Return communities dashboard (spec 061 US6 T089, FR-018).
+    def get_communities_dashboard(self, session_id: UUID) -> dict[str, Any]:
+        """Return communities dashboard (spec 061 US6 T089, FR-018 / spec 109 A4).
 
-        Returns ``{"communities": [...]}`` where each entry has the
-        canonical shape from ``contracts/communities.yaml``. The engine
-        Community model is not yet wired through the bridge; until that
-        lands (US6 follow-up), this method emits an empty list — the
-        frontend can render a "no communities surfaced" empty state.
+        The XGI hypergraph community layer (``community_memberships``) is
+        never seeded by any scenario builder, so this reads the one
+        community structure the engine actually materializes — connected
+        clusters of nodes joined by live SOLIDARITY edges — via
+        :func:`_build_solidarity_communities`. See that function's
+        docstring for the full rationale.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``{"communities": [...]}`` — empty list when no SOLIDARITY
+            edges exist yet (honest empty, Constitution III.11).
         """
-        return {"communities": []}
+        _state, graph = self.hydrate_state(session_id)
+        return {"communities": _build_solidarity_communities(graph)}
 
     # ------------------------------------------------------------------ #
     # Spec 061 US6 T091: inspector endpoints (FR-019)

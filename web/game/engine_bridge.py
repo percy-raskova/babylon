@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
 from babylon.config.defines import GameDefines
@@ -21,6 +21,7 @@ from babylon.engine.graph import BabylonGraph
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
+from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import ActionType
@@ -1442,9 +1443,13 @@ class EngineBridge:
         :func:`_aggregate_graph_economy`), plus real WAGES/TRIBUTE flow
         sums and wealth grouped by class role. ``profit_rate``/``occ`` stay
         ``None`` — no c/v/s decomposition or organic-composition-of-capital
-        formula runs on the live graph (Constitution III.11); the hex-level
-        static-economy broadcast (spec-109 A7) is a separate, still-partial
-        data source this dashboard does not depend on.
+        formula runs on the live graph (Constitution III.11).
+
+        ``county_flow`` (owner item 30, point 5) surfaces the hex-level
+        static-economy broadcast (spec-109 A7) for sessions where it is
+        now reachable (county-resolution territory + wired calculators,
+        see :func:`_has_county_resolution_territory`) — ``None`` fields
+        when no territory has ever carried boundary state this session.
 
         Args:
             session_id: The game session UUID.
@@ -1454,7 +1459,7 @@ class EngineBridge:
             ``rent_extracted``/``exploitation_rate``/``profit_rate``/
             ``occ``/``imperial_rent_pool``/``current_super_wage_rate``/
             ``wage_flow_total``/``tribute_flow_total``/
-            ``wealth_by_class_role``.
+            ``wealth_by_class_role``/``county_flow``.
         """
         state, graph = self.hydrate_state(session_id)
         econ = _aggregate_graph_economy(graph)
@@ -1476,6 +1481,7 @@ class EngineBridge:
             "wage_flow_total": _sum_edge_value_flow_by_mode(graph, frozenset({"wages"})),
             "tribute_flow_total": _sum_edge_value_flow_by_mode(graph, frozenset({"tribute"})),
             "wealth_by_class_role": _wealth_by_class_role(state),
+            "county_flow": _county_flow_snapshot(graph),
         }
 
     def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:
@@ -2351,6 +2357,13 @@ class EngineBridge:
             if tid and tid in graph.nodes:
                 pre_step[tid] = {"heat": float(graph.nodes[tid].get("heat", 0.0))}
 
+        # Owner item 30, point 3: wire the county economics calculators
+        # only when this session actually has county-resolution territory
+        # data for them to compute over (see _has_county_resolution_territory).
+        calculator_overrides = (
+            _bridge_economics_overrides() if _has_county_resolution_territory(state) else None
+        )
+
         # Step the engine
         logger.debug("Stepping engine session=%s tick=%d", session_id, state.tick)
         new_state = step(
@@ -2358,6 +2371,7 @@ class EngineBridge:
             sim_config,
             persistent_context=persistent_context,
             defines=game_defines,
+            calculator_overrides=calculator_overrides,
         )
         logger.info(
             "Engine step complete session=%s tick=%d->%d entities=%d events=%d",
@@ -2370,6 +2384,11 @@ class EngineBridge:
 
         # Persist the new tick
         new_graph = new_state.to_graph()
+        # Owner item 30, point 1: re-apply TickDynamicsSystem's territory-node
+        # tick_/flow_ state, which step()'s WorldState round-trip just
+        # stripped (see _carry_tick_dynamics_flows's docstring for why).
+        # Mutates new_graph in place, before it gets persisted below.
+        _carry_tick_dynamics_flows(graph, new_graph, persistent_context)
         events_as_dicts: list[dict[str, Any]] = [
             e.model_dump(mode="json") for e in new_state.events
         ]
@@ -3466,6 +3485,14 @@ _SCENARIO_ALIASES: dict[str, str] = {
     "detroit": "wayne_county",
 }
 
+# Wayne County, Michigan (Detroit) — verified against the reference DB's
+# dim_county.fips (owner item 30): SELECT fips FROM dim_county WHERE
+# county_name = 'Wayne County' AND fips LIKE '26%' -> '26163'. Also the
+# fips already used as the canonical Wayne-County example elsewhere in
+# this file's tests (test_map_contract.py's ``_hex_row_stub``) and in
+# ``CountyEconomicState``'s own docstring example.
+WAYNE_COUNTY_FIPS: Final[str] = "26163"
+
 
 def resolve_scenario(scenario: str) -> str:
     """Resolve a scenario identifier or alias to a canonical registry name.
@@ -3502,7 +3529,296 @@ def _build_initial_state_for_scenario(scenario: str) -> WorldState:
     """
     canonical = resolve_scenario(scenario)
     state, _config, _defines = get_scenario(canonical)().build()
-    return _seed_balkanization_layer(state)
+    state = _seed_balkanization_layer(state)
+    if canonical == "wayne_county":
+        state = _seed_wayne_county_fips(state)
+    return state
+
+
+def _seed_wayne_county_fips(state: WorldState) -> WorldState:
+    """Stamp every ``wayne_county`` territory with its real county FIPS.
+
+    Owner item 30 (the web half of item 25 — proof-A7 Part 6, gap (b)):
+    the ``wayne_county`` scenario builds 81 hex-resolution territories
+    (H3 ids, ``county_fips=None`` everywhere), so ``TickDynamicsSystem``'s
+    county pipeline has nothing to compute for a web wayne_county session
+    even once it runs. Every one of those 81 hexes genuinely sits inside
+    Wayne County, MI (verified against the reference DB's
+    ``dim_county`` table — see :data:`WAYNE_COUNTY_FIPS`), so stamping
+    all of them (not one arbitrarily "designated" hex) is the honest
+    choice, not a shortcut.
+
+    It is also the only crash-safe choice bridge-only. ``county_fips`` on
+    a *subset* of territories would leave the other hexes' 15-char H3 ids
+    as ``TickDynamicsSystem._get_territory_fips``'s per-node fallback
+    (``county_fips or node.id``) — and ``CountyEconomicState.fips`` is a
+    hard ``min_length=5, max_length=5`` Pydantic constraint, so a mix of
+    one real 5-digit fips plus 80 fifteen-char H3 ids would raise
+    ``ValidationError`` the moment the annual pipeline runs. Giving every
+    territory the *identical* real fips avoids that without touching the
+    engine: ``_compute_county_states`` computes into a ``dict[fips, ...]``,
+    so 81 identical keys collapse to exactly ONE ``CountyEconomicState`` —
+    "computed once per fips, no double-counting" holds structurally, not
+    just as documentation.
+
+    The one accepted structural cost: two OTHER per-node/per-row
+    mechanisms also key on fips and therefore only keep ONE of the 81
+    territories' contributions per tick — ``write_tick_state_to_graph``'s
+    node writeback (``fips_to_node`` dict, last node in iteration order
+    wins) and ``persist_territory_snapshots``'s composite PK
+    ``(game_id, tick, county_fips)`` (``ON CONFLICT ... DO NOTHING``,
+    Spec 061 FR-004's designed retry-safety semantics — first row in the
+    batch wins, the rest are silently dropped, not an error). Neither is
+    a new failure mode this lane introduces, and neither is load-bearing
+    for this lane's CARRY fix (:func:`_carry_tick_dynamics_flows`), which
+    reads TickDynamicsSystem's graph-level ``tick_dynamics.county_states``
+    dict rather than the per-node writeback.
+
+    Args:
+        state: The wayne_county tick-0 WorldState (post balkanization seed).
+
+    Returns:
+        The state with every territory's ``county_fips`` set to
+        :data:`WAYNE_COUNTY_FIPS`; unchanged if there are no territories.
+    """
+    if not state.territories:
+        return state
+    updated = {
+        tid: t.model_copy(update={"county_fips": WAYNE_COUNTY_FIPS})
+        for tid, t in state.territories.items()
+    }
+    return state.model_copy(update={"territories": updated})
+
+
+def _has_county_resolution_territory(state: WorldState) -> bool:
+    """True if any territory carries a real county FIPS.
+
+    Gates whether :meth:`EngineBridge.resolve_tick` wires the
+    ``TickDynamicsSystem`` economics calculators (owner item 30, point 3).
+    A scenario with no county-resolution territory (``us``, or
+    ``wayne_county`` before this lane) has nothing for the county pipeline
+    to compute, and wiring the calculators for it would cost a real
+    SQLite round-trip per resolve for no effect — worse, per
+    :func:`_seed_wayne_county_fips`'s docstring, wiring them for a
+    scenario with a MIX of real-fips and hex-only territories would
+    crash. Gating on real data presence (not a hardcoded scenario-name
+    check) means any future scenario that gets county-backed via the
+    same seam picks this up automatically.
+
+    Args:
+        state: The hydrated WorldState for this resolve.
+
+    Returns:
+        True if at least one territory has a non-empty ``county_fips``.
+    """
+    return any(t.county_fips for t in state.territories.values())
+
+
+def _bridge_economics_overrides() -> dict[str, Any]:
+    """Wire the ``melt_calculator``/``gamma_calculator`` TickDynamicsSystem needs.
+
+    Owner item 30, point 3. Mirrors
+    ``babylon.engine.headless_runner.runner._build_economics_overrides``:
+    without these, ``ServiceContainer.create()`` leaves both at their
+    default ``None``, and ``TickDynamicsSystem.step`` no-ops
+    unconditionally on year boundaries (the
+    ``services.melt_calculator is None`` gate at
+    ``economics/tick/system/__init__.py``'s annual-pipeline entry).
+
+    Only the same 2 calculators the headless runner wires are wired here.
+    The Spec-057 Leontief imperial-rent pipeline
+    (``periphery_labor_source``/``final_demand_source``/
+    ``industry_county_allocator``/``production_chain_calculator``/
+    ``bea_industries``) is unwired in BOTH the headless runner and this
+    bridge — a much larger, separate data-pipeline task, out of this
+    lane's scope (see ``babylon.economics.tick.system.imperial_rent
+    ._spec_057_pipeline_wired``). ``phi_hour`` therefore stays ``0.0``
+    for web sessions exactly as it does for the headless canonical run;
+    ``median_wage``/``employment`` (Vol I's ``DefaultWagePressureCalculator``
+    is ALSO unwired in both runners — no ``reserve_army_data_source`` —
+    so they stay at ``CountyEconomicState``'s bootstrap defaults, 21.0
+    $/hr and 100,000 workers) are the calculator-independent values that
+    make ``flow_wage_accrued`` move (Constitution III.11: these are the
+    engine's own documented graceful-degradation defaults, not a value
+    this lane invents).
+
+    Returns:
+        Dict of service overrides for ``step()``'s ``calculator_overrides``.
+    """
+    from babylon.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
+    from babylon.economics.gamma.gamma_iii import DefaultGammaIIICalculator
+    from babylon.economics.melt import DefaultMELTCalculator
+    from babylon.economics.melt.adapters import (
+        SQLiteBEANationalGDPSource,
+        SQLiteQCEWNationalEmploymentSource,
+    )
+    from babylon.reference.database import get_normalized_session_factory
+
+    gamma = DefaultGammaIIICalculator(MVPUnpaidCareHoursSource(), QCEWCareAdapter())
+
+    session_factory = get_normalized_session_factory()
+    melt = DefaultMELTCalculator(
+        SQLiteBEANationalGDPSource(session_factory),
+        SQLiteQCEWNationalEmploymentSource(session_factory),
+    )
+
+    return {"gamma_calculator": gamma, "melt_calculator": melt}
+
+
+def _carry_tick_dynamics_flows(
+    old_graph: Any,
+    new_graph: Any,
+    persistent_context: dict[str, Any],
+) -> None:
+    """Carry ``TickDynamicsSystem``'s territory-node state across a resolve.
+
+    Owner item 30, point 1 (proof-A7 Part 6, gap (a)). ``step()`` round-
+    trips the graph through ``WorldState`` on every call
+    (``to_graph -> run_tick -> from_graph``), and ``Territory`` has
+    ``extra="forbid"``, so ``_reconstruct_territory`` strips every
+    ``tick_``/``flow_``-prefixed attr ``TickDynamicsSystem`` writes —
+    they never survive past the ``step()`` call that produced them, let
+    alone across two separate ``resolve_tick`` calls. Chosen fix: sanction
+    (i) from the lane brief — persist-and-reapply at the bridge layer,
+    zero ``Territory``/engine changes. Concretely: this function mutates
+    ``new_graph`` (the raw :class:`~babylon.engine.graph.BabylonGraph`
+    the bridge is about to persist) directly — graph nodes are plain
+    dicts, not Pydantic, so this is not the ``extra="forbid"`` landmine —
+    right before ``persist_tick``, so the injected attrs (a) show up in
+    THIS tick's snapshot via :func:`_territory_graph_attr` (the same
+    established pattern as ``habitability``/``wage_pressure``), and (b)
+    round-trip through Postgres's ``node_state.attributes`` JSONB (which
+    persists arbitrary graph node attrs faithfully — verified by reading
+    ``PostgresRuntime.persist_tick``/``hydrate_graph``), so the NEXT
+    ``resolve_tick``'s ``old_graph`` (from :meth:`hydrate_state`) has
+    last tick's carried values to build on.
+
+    Two cases, mirroring ``TickDynamicsSystem._accrue_flows``/
+    ``_reset_flow_accrual``/``write_tick_state_to_graph`` exactly:
+
+    * **A boundary just ran this call** (``persistent_context["_tick_dynamics"]``
+      is present — ``_save_graph_context`` only sets it when
+      ``write_tick_state_to_graph`` ran, i.e. a year boundary AND wired
+      calculators AND usable reference data for that year; the SAME
+      condition under which the engine's own node writeback would have
+      fired had it survived): pull the fresh
+      ``CountyEconomicState`` per fips out of
+      ``persistent_context["_tick_dynamics"]["county_states"]`` (graph-
+      level, and therefore — per ``_save_graph_context`` — the one piece
+      of ``TickDynamicsSystem`` output that DOES survive a single
+      ``step()`` call) and reset the flow counters to 0.0 (the annual
+      "true-up").
+    * **No boundary this call**: carry ``old_graph``'s last-known
+      ``tick_*`` values forward and accrue one more
+      ``annual_value / WEEKS_PER_YEAR`` slice — byte-for-byte the same
+      arithmetic as ``_accrue_flows``. A territory with no carried
+      ``tick_phi_hour`` yet (no boundary has ever produced usable data
+      this session) is an empty domain (Constitution III.11) and is
+      skipped, not defaulted.
+
+    Only territories with a real ``county_fips`` are touched — hex-only
+    territories (``county_fips=None``) have no county identity to key
+    ``county_states`` by and are left alone.
+
+    Does NOT affect the headless path: ``babylon.engine.headless_runner``
+    never calls this function, keeps one persistent graph object across
+    the whole run (no per-tick ``WorldState`` round-trip), and threads
+    ``persistent_context`` natively — this is bridge-only, additive
+    behavior that only fires when the bridge itself calls it.
+
+    Args:
+        old_graph: The graph :meth:`hydrate_state` loaded before this
+            resolve's ``step()`` call (last tick's persisted state, plus
+            any values a prior call to this function injected).
+        new_graph: ``new_state.to_graph()`` — about to be persisted;
+            mutated in place.
+        persistent_context: The dict passed into ``step()`` for this
+            call; mutated in place by ``step()`` to carry
+            ``_tick_dynamics`` (graph-level ``TickDynamicsSystem`` output)
+            when a boundary ran.
+    """
+    tick_dynamics = persistent_context.get("_tick_dynamics")
+    county_states = tick_dynamics.get("county_states") if isinstance(tick_dynamics, dict) else None
+
+    for node_id, node_data in new_graph.nodes(data=True):
+        if node_data.get("_node_type") != "territory":
+            continue
+        fips = node_data.get("county_fips")
+        if not fips:
+            continue
+
+        if county_states is not None and fips in county_states:
+            county = county_states[fips]
+            new_graph.update_node(
+                node_id,
+                tick_capital_stock=county.capital_stock,
+                tick_phi_hour=county.phi_hour,
+                tick_median_wage=county.median_wage,
+                tick_employment=county.employment,
+                tick_year=county.year,
+                flow_phi_accrued=0.0,
+                flow_wage_accrued=0.0,
+            )
+            continue
+
+        if node_id not in old_graph.nodes:
+            continue
+        old_data = old_graph.nodes[node_id]
+        phi_hour = old_data.get("tick_phi_hour")
+        if phi_hour is None:
+            continue  # empty domain: no boundary state yet this session
+
+        median_wage = old_data.get("tick_median_wage", 0.0)
+        employment = old_data.get("tick_employment", 0.0)
+        annual_phi = phi_hour * HOURS_PER_YEAR
+        annual_wage = median_wage * HOURS_PER_YEAR * employment
+        prior_phi = old_data.get("flow_phi_accrued", 0.0)
+        prior_wage = old_data.get("flow_wage_accrued", 0.0)
+
+        new_graph.update_node(
+            node_id,
+            tick_capital_stock=old_data.get("tick_capital_stock", 0.0),
+            tick_phi_hour=phi_hour,
+            tick_median_wage=median_wage,
+            tick_employment=employment,
+            tick_year=old_data.get("tick_year"),
+            flow_phi_accrued=prior_phi + annual_phi / WEEKS_PER_YEAR,
+            flow_wage_accrued=prior_wage + annual_wage / WEEKS_PER_YEAR,
+        )
+
+
+def _county_flow_snapshot(graph: Any) -> dict[str, Any]:
+    """Read the shared county-level flow-accrual state off a graph.
+
+    Owner item 30, point 5: surfaces :func:`_carry_tick_dynamics_flows`'s
+    output on :meth:`EngineBridge.get_economy_dashboard`. Every
+    ``wayne_county`` territory carries the SAME ``county_fips`` (see
+    :func:`_seed_wayne_county_fips`), so ``_carry_tick_dynamics_flows``
+    stamps the SAME ``flow_phi_accrued``/``flow_wage_accrued``/
+    ``tick_year`` onto every one of them — summing across territories
+    would inflate a single county-level quantity N-fold, so this reads
+    the first territory carrying the attr instead of aggregating.
+
+    Args:
+        graph: A live graph (e.g. :meth:`hydrate_state`'s second return
+            value) whose territory nodes may carry carried flow state.
+
+    Returns:
+        ``{"year": ..., "phi_accrued_this_year": ...,
+        "wage_accrued_this_year": ...}`` — every value ``None`` when no
+        territory has ever carried boundary state this session
+        (Constitution III.11: an empty domain, not a fabricated zero).
+    """
+    for _node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") != "territory":
+            continue
+        if "flow_wage_accrued" in data:
+            return {
+                "year": data.get("tick_year"),
+                "phi_accrued_this_year": data.get("flow_phi_accrued"),
+                "wage_accrued_this_year": data.get("flow_wage_accrued"),
+            }
+    return {"year": None, "phi_accrued_this_year": None, "wage_accrued_this_year": None}
 
 
 def _seed_balkanization_layer(state: WorldState) -> WorldState:

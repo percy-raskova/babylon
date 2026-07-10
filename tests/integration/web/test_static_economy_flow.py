@@ -11,19 +11,41 @@ Structural finding (verified by reading ``babylon.engine.simulation_engine
 .step`` end to end, not inferred): ``EngineBridge.resolve_tick`` advances the
 simulation via the module-level ``step(state, ...)`` function, which does a
 full ``WorldState.to_graph() -> run_tick() -> WorldState.from_graph()``
-round-trip on **every call**, and ``resolve_tick`` passes a **fresh**
-``persistent_context={}`` on every call (no caller threads one across
-requests — see ``test_full_persistence.py``'s ``bridge.resolve_tick(session_id)``
-call sites, no second argument). ``_reconstruct_territory`` drops every
+round-trip on **every call**, and (at the time A7 landed) passed a **fresh**
+``persistent_context={}`` on every call. ``_reconstruct_territory`` drops every
 ``tick_``/``flow_``-prefixed attr because ``Territory`` has ``extra="forbid"``
 and they are not real Territory fields (the b57faee6 tick-52 fix, extended by
 this lane). ``_restore_graph_context``/``_save_graph_context`` only thread
 ``graph.graph["tick_dynamics"]`` (a *graph-level* dict) through
-``persistent_context`` — never *territory-node-level* attrs. The net effect:
-**no territory-node-level ``tick_``/``flow_`` state survives across two
-separate ``resolve_tick()`` calls for any web session today** — a pre-existing
-gap in cross-call ``persistent_context`` threading, orthogonal to this lane
-and out of its scope to fix (see the worktree's final report `unresolved`).
+``persistent_context`` — never *territory-node-level* attrs. Net effect at
+the time: no territory-node-level ``tick_``/``flow_`` state survived across
+two separate ``resolve_tick()`` calls for any web session, and the
+``wayne_county`` scenario's territories were hex-only (``county_fips=None``
+everywhere), so the county pipeline had nothing to compute even if it had
+survived.
+
+**Resolved by owner item 30** (the web half of item 25): ``resolve_tick``
+now wires the ``melt``/``gamma`` calculators when a session has
+county-resolution territory (:func:`game.engine_bridge
+._has_county_resolution_territory` /
+:func:`game.engine_bridge._bridge_economics_overrides`), the
+``wayne_county`` scenario stamps every one of its 81 territories with the
+real Wayne County FIPS at the bridge scenario-build layer
+(:func:`game.engine_bridge._seed_wayne_county_fips` — deliberately ALL 81,
+not one "designated" territory; see that function's docstring for why),
+and :func:`game.engine_bridge._carry_tick_dynamics_flows` re-applies the
+territory-node ``tick_``/``flow_`` state that ``step()``'s round-trip would
+otherwise strip, by mutating the raw graph directly before
+``persist_tick`` (bridge-only — zero ``Territory``/engine changes; the
+headless path is untouched, since it never calls this function).
+``TestWayneCountyFlowSurvivesWebResolve`` below is the literal acceptance
+test this unblocks: a real economic value (``flow_wage_accrued``, surfaced
+via ``get_economy_dashboard``'s ``county_flow`` field) MOVES between two
+consecutive ``resolve_tick`` calls, through the full
+resolve->persist->hydrate->resolve cycle. ``phi_hour`` (and hence
+``flow_phi_accrued``) stays 0.0 — the Spec-057 Leontief imperial-rent
+pipeline is unwired in both the headless runner and this bridge, out of
+this lane's scope (see ``_bridge_economics_overrides``'s docstring).
 
 ``TestWayneCountyResolveDoesNotRegress`` proves the real ``EngineBridge``
 production path (Postgres, ``wayne_county`` scenario) still resolves cleanly
@@ -250,13 +272,13 @@ def bridge(_django_setup: None) -> object:
 class TestWayneCountyResolveDoesNotRegress:
     """Regression-safety gate through the REAL production path.
 
-    Per this module's structural finding, a fresh ``wayne_county`` web
-    session's territories are hex-resolution (no real ``county_fips``) and
-    ``resolve_tick`` round-trips through Pydantic ``Territory`` on every
-    call — so this does not (and structurally cannot, today) exercise
-    cross-tick flow accrual. What it DOES prove: wiring
-    ``TickDynamicsSystem``'s new two-mode ``step()`` into the default engine
-    pipeline does not crash or otherwise regress a real bridged session.
+    Wiring ``TickDynamicsSystem``'s two-mode ``step()`` into the default
+    engine pipeline, plus owner item 30's calculator wiring + county-FIPS
+    scenario seeding, does not crash or otherwise regress a real bridged
+    ``wayne_county`` session. (Before owner item 30, this test's docstring
+    noted the session's territories were hex-only and this gate could not
+    exercise cross-tick flow accrual at all — see
+    ``TestWayneCountyFlowSurvivesWebResolve`` below for that coverage now.)
     """
 
     def test_two_resolves_on_a_wayne_county_session_do_not_crash(self, bridge: object) -> None:
@@ -269,3 +291,60 @@ class TestWayneCountyResolveDoesNotRegress:
         assert second is not None
         ts = bridge.get_game_timeseries(session_id)
         assert ts["ticks"] == [0, 1, 2]
+
+
+class TestWayneCountyFlowSurvivesWebResolve:
+    """Owner item 30 acceptance gate: a real economic value MOVES between
+    two consecutive ``resolve_tick`` calls on a ``wayne_county`` web
+    session, through the full resolve->persist->hydrate->resolve cycle —
+    the literal G3 target this module's docstring previously reported as
+    unreachable.
+
+    Tick 0->1 is a ``TickDynamicsSystem`` year boundary (``tick % 52 ==
+    0``): the annual pipeline runs (calculators wired by owner item 30)
+    and ``_carry_tick_dynamics_flows`` resets the flow counters to 0.0 —
+    the "true-up" half of the binding design. Tick 1->2 is NOT a boundary:
+    ``_carry_tick_dynamics_flows`` carries forward the boundary-
+    authoritative ``tick_median_wage``/``tick_employment`` from the tick-1
+    graph (loaded fresh from Postgres by tick 2's ``hydrate_state``) and
+    accrues one ``annual_value / WEEKS_PER_YEAR`` slice.
+    """
+
+    def test_wage_flow_moves_between_tick_1_and_tick_2(self, bridge: object) -> None:
+        session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)
+
+        first = bridge.resolve_tick(session_id)
+        assert first["tick"] == 1
+        after_tick_1 = bridge.get_economy_dashboard(session_id)["county_flow"]
+        assert after_tick_1["wage_accrued_this_year"] == pytest.approx(0.0)
+
+        second = bridge.resolve_tick(session_id)
+        assert second["tick"] == 2
+        after_tick_2 = bridge.get_economy_dashboard(session_id)["county_flow"]
+
+        assert after_tick_2["wage_accrued_this_year"] > after_tick_1["wage_accrued_this_year"]
+
+        # Byte-for-byte the same formula as TickDynamicsSystem._accrue_flows,
+        # applied to the engine's own bootstrap defaults (median_wage=21.0
+        # $/hr, employment=100_000.0 — CountyEconomicState's documented
+        # graceful-degradation defaults; Vol I's wage-pressure calculator
+        # and the Spec-057 imperial-rent pipeline are both unwired in this
+        # bridge, mirroring the headless runner).
+        annual_wage = 21.0 * HOURS_PER_YEAR * 100_000.0
+        assert after_tick_2["wage_accrued_this_year"] == pytest.approx(annual_wage / WEEKS_PER_YEAR)
+
+        # phi_hour stays 0.0 — the Leontief imperial-rent pipeline is
+        # unwired (out of scope; see _bridge_economics_overrides).
+        assert after_tick_2["phi_accrued_this_year"] == pytest.approx(0.0)
+
+    def test_flow_keeps_accruing_across_a_third_resolve(self, bridge: object) -> None:
+        """Two full slices after tick 3 — the accrual is not a one-shot."""
+        session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)
+        bridge.resolve_tick(session_id)
+        bridge.resolve_tick(session_id)
+        third = bridge.resolve_tick(session_id)
+        assert third["tick"] == 3
+
+        flow = bridge.get_economy_dashboard(session_id)["county_flow"]
+        annual_wage = 21.0 * HOURS_PER_YEAR * 100_000.0
+        assert flow["wage_accrued_this_year"] == pytest.approx(2 * annual_wage / WEEKS_PER_YEAR)

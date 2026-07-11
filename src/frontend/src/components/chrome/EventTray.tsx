@@ -15,12 +15,14 @@ import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
 import { EventsFeed } from "@/components/events/EventsFeed";
 import { EVENT_CATEGORIES } from "@/lib/eventClassifier";
+import { NarrationBlock } from "@/components/narration/NarrationBlock";
+import { useNarration } from "@/hooks/useNarration";
 
 interface EventTrayProps {
   gameId: string;
 }
 
-export function EventTray(_props: EventTrayProps): React.JSX.Element {
+export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
   const eventTrayOpen = useStore((s) => s.ui.chrome.eventTrayOpen);
   const toggleEventTray = useStore((s) => s.ui.toggleEventTray);
   const eventCounts = useStore((s) => s.panels.summary.data?.event_counts);
@@ -28,6 +30,10 @@ export function EventTray(_props: EventTrayProps): React.JSX.Element {
   const toggleMuteCategory = useStore((s) => s.events.toggleMuteCategory);
   const tray = useStore((s) => s.events.tray);
   const restoreToast = useStore((s) => s.events.restoreToast);
+  // The tray is the narration panel's canonical always-mounted host (spec-113
+  // integration ledger): mounting here keeps the cumulative beat feed warm for
+  // every other slot (toasts, inspection cards, chronicle).
+  const narration = useNarration(gameId);
 
   return (
     <FloatingPanel
@@ -53,6 +59,11 @@ export function EventTray(_props: EventTrayProps): React.JSX.Element {
             />
           </div>
         )}
+
+        <div className="border-b border-rebar px-2 py-1.5" data-testid="event-tray-narration">
+          <p className="mb-1 text-[9px] uppercase tracking-widest text-ash">Narrator</p>
+          <NarrationBlock beat={narration.latest} state={narration.status} />
+        </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <EventsFeed />

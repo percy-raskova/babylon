@@ -28,6 +28,7 @@ import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/t
 import type { TradeFlowsPayload } from "@/types/trade";
 import type { RootState } from "../../types";
 import { createPanel, type Panel } from "./panelFactory";
+import { createNarrationPanel, type NarrationPanel } from "./narrationPanel";
 
 export type { PanelKey, TakeoverPanelKey } from "./panelFactory";
 export { PANEL_KEYS, TAKEOVER_PANEL_KEYS } from "./panelFactory";
@@ -49,6 +50,7 @@ export interface PanelsSlice {
     endgame: Panel<EndgameState>;
     objectives: Panel<ObjectivesTracker>;
     tradeFlows: Panel<TradeFlowsPayload>;
+    narration: NarrationPanel;
   };
 }
 
@@ -109,6 +111,10 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
       set((s) => ({ panels: { ...s.panels, tradeFlows: updater(s.panels.tradeFlows) } })),
     get,
   );
+  const narration = createNarrationPanel(
+    (updater) => set((s) => ({ panels: { ...s.panels, narration: updater(s.panels.narration) } })),
+    () => get().panels.narration,
+  );
 
   return {
     panels: {
@@ -122,6 +128,7 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
       endgame,
       objectives,
       tradeFlows,
+      narration,
     },
   };
 };

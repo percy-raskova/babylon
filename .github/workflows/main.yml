@@ -1,0 +1,308 @@
+name: Main (Full Pipeline)
+
+# Program 15 (The Gauntlet): the FULL PIPELINE — "push to main does the whole
+# thing". Runs everything the dev fast lane runs, plus the heavy legs: the
+# non-unit test shard, Postgres integration, Playwright E2E against the real
+# stack, the Postgres-backed determinism bundle, docs, and infra validation.
+#
+# Reference-DB legs are gated on the repo variable CI_REFDB_READY until the
+# CI subset artifact exists (owner item 40, Phase 6 of program 15): the full
+# reference DB is 5.7GB and lives only on the operator's machine. A gated
+# job is an EXPLICIT red, not a hidden one — the gate names its item.
+#
+# Concurrency: no cancel-in-progress — a running full-pipeline verdict on a
+# main push should complete even if another promotion lands behind it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── The dev fast lane, verbatim (same mise tasks, same composite) ────────
+  fast-gate:
+    name: Fast Gate (hygiene, lint, format, imports, types, lock)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - name: Repo hygiene gate
+        run: mise run check:hygiene
+      - name: Lint (ruff check)
+        run: mise run lint:check
+      - name: Format (ruff format --check — blocking)
+        run: mise run format:check
+      - name: Import-boundary contracts
+        run: mise run lint:imports
+      - name: Type check (mypy strict)
+        run: mise run typecheck
+      - name: Poetry lock consistency
+        run: poetry check --lock
+
+  test-unit:
+    name: Unit Tests (xdist, coverage gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - name: Unit shard (excludes ai/slow/reference-DB; engine/systems cov >= 80%)
+        run: mise run test:unit-ci
+      - name: Upload test results + coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-ci-results
+          path: reports/test-results/unit-ci/
+
+  qa-regression:
+    name: Determinism Gate (byte-identical dense goldens)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+      - name: qa:regression (5 scenarios vs committed baselines)
+        run: mise run qa:regression
+
+  frontend:
+    name: Frontend (tsc, eslint, prettier, vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-node
+      - name: Check (tsc + eslint + prettier + vitest)
+        working-directory: src/frontend
+        run: npm run check
+      - name: Build
+        working-directory: src/frontend
+        run: npm run build
+
+  security:
+    name: Security Audit (advisory until item-41)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+      - name: pip-audit
+        run: poetry run pip-audit --ignore-vuln CVE-2026-3219
+
+  # ── The heavy legs ────────────────────────────────────────────────────────
+  test-rest:
+    name: Non-Unit Tests (integration, scenarios, property, contract)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - name: Heavy shard (includes slow; web-Postgres suites run in their own job)
+        run: mise run test:rest-ci
+      - name: Upload test results + coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rest-ci-results
+          path: reports/test-results/rest-ci/
+
+  # The web integration suites expect the Django schema AND reference-derived
+  # seed data — item 40 territory until the subset artifact lands (Phase 6).
+  # Uses the repo-canonical compose service: docker/postgres/Dockerfile is
+  # postgis/postgis:16-3.4 + pgvector. A GitHub services: block cannot build
+  # that Dockerfile, and a stock postgis image lacks pgvector, which aborts
+  # PostgresRuntime.init_schema at `CREATE EXTENSION vector`.
+  postgres-integration:
+    name: Postgres Integration (web bridge)
+    if: ${{ vars.CI_REFDB_READY == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - name: Start isolated Postgres (compose, port 5433)
+        run: docker compose up -d --wait babylon-pg
+      - name: Django migrate (fresh compose DB)
+        working-directory: web
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        run: poetry run python manage.py migrate
+      # Max verbosity by owner ruling (2026-07-11): CI logs are agent-read.
+      - name: Run web integration suites (direct-host + testcontainers)
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        run: poetry run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down -v
+
+  # Boots the REAL stack (compose Postgres → migrate → seed wayne_county →
+  # Django dev server) and runs the browser suite against it. Vite is started
+  # by Playwright's own webServer block. Seed data needs the reference DB —
+  # item 40 territory until Phase 6.
+  playwright-e2e:
+    name: Playwright E2E (real loop)
+    if: ${{ vars.CI_REFDB_READY == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - uses: ./.github/actions/bootstrap-node
+      - name: Install Playwright Chromium
+        working-directory: src/frontend
+        run: npx playwright install --with-deps chromium
+      - name: Start isolated Postgres (compose, port 5433)
+        run: docker compose up -d --wait babylon-pg
+      - name: Django migrate
+        working-directory: web
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        run: poetry run python manage.py migrate
+      # RUN_MAIN=true is required: game/apps.py skips EngineBridge init for
+      # DEBUG-mode management commands otherwise and the seed refuses the stub.
+      - name: Seed wayne_county session
+        working-directory: web
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          RUN_MAIN: "true"
+        run: |
+          SEED_OUT=$(poetry run python manage.py seed_initial_game --scenario wayne_county --player admin)
+          echo "$SEED_OUT"
+          SESSION_ID=$(echo "$SEED_OUT" | grep -oE 'Game session created: [0-9a-f-]{36}' | awk '{print $4}')
+          test -n "$SESSION_ID"
+          echo "SPEC061_TEST_SESSION_ID=$SESSION_ID" >> "$GITHUB_ENV"
+      # --noreload never sets RUN_MAIN itself; without it /api/* silently
+      # serves the StubEngineBridge fallback (game/apps.py + game/api.py).
+      - name: Start Django backend
+        working-directory: web
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          RUN_MAIN: "true"
+        run: |
+          nohup poetry run python manage.py runserver 8000 --noreload > ../django-ci.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health/ && break
+            sleep 1
+          done
+          curl -sf http://localhost:8000/health/
+      # --reporter=list,html: per-test lines in the log (agent-read) + the
+      # html report artifact. --trace=retain-on-failure: full traces for
+      # every failing test ride the artifact.
+      - name: Run Playwright suite (Vite auto-started by webServer)
+        working-directory: src/frontend
+        env:
+          CI: "true"
+        run: >-
+          npx playwright test
+          --reporter=list,html --trace=retain-on-failure
+          e2e/real-loop.spec.ts
+          e2e/end-turn-flow.spec.ts
+          e2e/verb-submit.spec.ts
+          e2e/auth.spec.ts
+          e2e/briefing-map-smoke.spec.ts
+          e2e/map-lens-cycling.spec.ts
+      - name: Upload Playwright report + Django log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            src/frontend/playwright-report/
+            django-ci.log
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down -v
+
+  # The Postgres-backed strict determinism bundle (spec-064): headless 5-tick
+  # tri-county run compared like-for-like against the committed baseline.
+  # Hydrates from the reference DB — item 40 territory until Phase 6, where
+  # the fetch-reference-db composite lands as the first step here.
+  qa-e2e-regression:
+    name: Determinism Bundle (Postgres-backed, strict)
+    if: ${{ vars.CI_REFDB_READY == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - name: Start isolated Postgres (compose, port 5433)
+        run: docker compose up -d --wait babylon-pg
+      - name: qa:e2e-regression (strict 5-tick bundle vs baseline)
+        run: mise run qa:e2e-regression
+      - name: qa:storage-budget (rows/tick vs committed baseline)
+        run: mise run qa:storage-budget
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down -v
+
+  ai-tests:
+    name: AI Tests (advisory — non-deterministic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - name: Run AI unit tests
+        run: poetry run pytest tests/unit/ai -o addopts="" -vv -ra -l --tb=long --durations=0
+
+  docs:
+    name: Documentation Build (non-strict — item-44 blocks -W)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          docs: "true"
+      - name: Run doctest examples
+        run: poetry run pytest --doctest-modules src/babylon/formulas -o addopts="" -vv -ra --tb=long
+      - name: Build documentation
+        working-directory: docs
+        run: poetry run sphinx-build -b html . _build/html

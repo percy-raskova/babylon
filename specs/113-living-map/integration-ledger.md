@@ -31,6 +31,36 @@ owner item.
 
 ## Phase D (design/reskin) queue
 
+### The Juice Pass (owner directive 2026-07-11: "really fancy Tailwind + effects,
+### as long as they don't bog down performance — make it feel like a **game**")
+
+Effects inventory (Tailwind v4 + custom keyframes; extend the takeovers'
+phosphor/scanline language into all chrome):
+- Panel chrome: gradient hairline borders (conic accents at corners), layered
+  box-shadow glow tokens (cyan ambient + red urgency), backdrop-blur + saturate
+  on floating panels, subtle noise texture via data-URI background.
+- Text: phosphor bloom (text-shadow token) on display-register numerals; wire
+  headlines get a one-shot CRT-reveal on arrival.
+- Motion (@keyframes): tick pulse on the time cluster (every resolve);
+  toast slam-in + settle; critical-alert throb (border/glow only); claim-redraw
+  shimmer along the new border path (≥600ms, cause-named per bible §2.2);
+  legend flash on domain change; endgame takeover iris/fade.
+- Map chrome: vignette + scanline mask on takeover overlays only (never the
+  live map canvas); selection halo pulse; hover glow signifiers (Norman).
+
+PERFORMANCE BUDGET (hard rules):
+- Compositor-only animation: transform + opacity ONLY on persistent/looping
+  animations; no animated filter/backdrop-filter/box-shadow loops on large
+  surfaces; one-shot entrance effects may animate shadow/filter.
+- backdrop-blur is expensive over a live WebGL canvas: small panels only
+  (≤ ~25% viewport each), never full-screen scrims while unpaused.
+- `prefers-reduced-motion` honored globally (all loops off, one-shots reduced
+  to fades) + a settings kill-switch.
+- Nothing animates on the deck.gl render path itself except deck-native layer
+  transitions; DeckGLMap.stability render-count test must stay green.
+- Verify: Chrome DevTools performance profile on the wayne_county session —
+  no long tasks from CSS, 60fps pan/zoom preserved with all effects on.
+
 - [ ] Extend takeover diegetic language into shell chrome (audit: two visual
       languages; reskin = extend the first into the second).
 - [ ] OrgSelect + faction `<select>` restyle in-register (bible §9.6).

@@ -771,8 +771,15 @@ class TestExtractSweepSummary:
 
 
 @_SKIP_NEEDS_PG
+@pytest.mark.slow
 class TestRunSweep:
-    """Tests for run_sweep function."""
+    """Tests for run_sweep function.
+
+    Marked ``slow``: every method (except the existence check) drives real
+    multi-tick engine sweeps through the headless runner — 80-290s each,
+    ~1075s total (measured 2026-07-11). They run via ``mise run test:slow``
+    locally and the CI heavy shard (``test:rest-ci``), not the fast gate.
+    """
 
     def test_run_sweep_function_exists(self) -> None:
         """run_sweep() function should exist."""

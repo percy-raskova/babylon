@@ -170,6 +170,7 @@ class TestSimulationRunner:
             "Module needs a function to run simulations (run_simulation or run_single_simulation)"
         )
 
+    @pytest.mark.slow  # real 5-tick sim through headless_runner: ~118s (2026-07-11)
     @pytest.mark.skipif(
         os.environ.get("BABYLON_TEST_PG_DSN") is None,
         reason="spec-064: run_simulation routes through headless_runner; "

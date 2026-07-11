@@ -145,18 +145,25 @@ poetry run coverage report --include='src/babylon/engine/systems/*' --fail-under
 """
 
 [tasks."test:rest-ci"]
-description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job); max-verbosity output; full-tree coverage artifacts (no gate); includes slow; excludes red_phase/requires_reference_db"
+description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; full-tree coverage artifacts (no gate); includes slow; excludes red_phase/requires_reference_db"
 run = """
 set -e
 mkdir -p reports/test-results/rest-ci
 poetry run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
   -m 'not red_phase and not requires_reference_db' \
+  -n 4 --dist loadscope \
   --cov=src/babylon \
   --cov-report=term-missing:skip-covered \
   --cov-report=xml:reports/test-results/rest-ci/coverage.xml \
   --cov-report=json:reports/test-results/rest-ci/coverage.json \
   --junit-xml=reports/test-results/rest-ci/junit.xml
+echo '=== slow-marked tests/unit tests (excluded from the test:unit-ci fast shard) ==='
+poetry run pytest tests/unit --ignore=tests/unit/ai \
+  -o addopts="" -vv -ra -l --tb=long --durations=0 \
+  -m 'slow and not red_phase and not requires_reference_db' \
+  -n 4 --dist loadscope \
+  --junit-xml=reports/test-results/rest-ci/junit-slow-unit.xml
 """
 
 [tasks."security:pip-audit"]
@@ -206,10 +213,10 @@ git status --short | grep -v "^??" || true
 # -----------------------------------------------------------------------------
 
 [tasks."test:unit"]
-description = "Unit tests (fast) → reports/test-results/unit/"
+description = "Unit tests (fast gate — excludes slow-marked; those run in test:slow locally and CI's test:rest-ci) → reports/test-results/unit/"
 run = """
 mkdir -p reports/test-results/unit
-poetry run pytest tests/unit -m 'not red_phase' \
+poetry run pytest tests/unit -m 'not red_phase and not slow' \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/unit/junit.xml \
   --json-report --json-report-file=reports/test-results/unit/report.json --json-report-indent=2 \

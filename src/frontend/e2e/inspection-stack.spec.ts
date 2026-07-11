@@ -194,16 +194,21 @@ test.describe("InspectionStack progressive disclosure (backend-free, spec-113 La
     await expect(explainRow).toBeVisible();
     await explainRow.click();
 
-    // Child frame: the metric's FormulaCard, breadcrumb now shows the
-    // parent as a clickable (non-current) entry at index 0.
-    await expect(page.getByTestId("formula-card")).toBeVisible({ timeout: 10000 });
+    // Child frame: the drilled metric renders its Expression row and the
+    // breadcrumb shows the parent as a clickable entry at index 0. NOTE:
+    // `formula-card` is InspectionCard's generic BODY renderer for every
+    // resolved frame (hex included), so its count is 1 whenever any card
+    // is open — the metric-only discriminator is `value-row-Expression`
+    // (found live, spec-113 Phase V).
+    await expect(page.getByTestId("value-row-Expression")).toContainText("s / (c + v)", {
+      timeout: 10000,
+    });
     await expect(page.getByTestId("inspection-breadcrumb-0")).toBeVisible();
-    await expect(page.getByTestId("value-row-Expression")).toContainText("s / (c + v)");
 
     // Escape pops the top (metric) frame back to the root hex card.
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("inspection-card")).toContainText("Wayne County");
-    await expect(page.getByTestId("formula-card")).toHaveCount(0);
+    await expect(page.getByTestId("value-row-Expression")).toHaveCount(0);
     await expect(page.getByTestId("inspection-breadcrumb-0")).toHaveCount(0);
 
     expect(pageErrors, `uncaught page errors: ${pageErrors.join(" | ")}`).toEqual([]);
@@ -218,12 +223,14 @@ test.describe("InspectionStack progressive disclosure (backend-free, spec-113 La
 
     await expect(page.getByTestId("inspection-card")).toBeVisible({ timeout: 10000 });
     await page.getByTestId("explain-Profit Rate").click();
-    await expect(page.getByTestId("formula-card")).toBeVisible({ timeout: 10000 });
+    // value-row-Expression is the metric-frame discriminator — see the
+    // NOTE in the Escape test above (`formula-card` renders for EVERY frame).
+    await expect(page.getByTestId("value-row-Expression")).toBeVisible({ timeout: 10000 });
 
     await page.getByTestId("inspection-breadcrumb-0").click();
 
     await expect(page.getByTestId("inspection-card")).toContainText("Wayne County");
-    await expect(page.getByTestId("formula-card")).toHaveCount(0);
+    await expect(page.getByTestId("value-row-Expression")).toHaveCount(0);
   });
 
   test("inspection-close-all clears the whole stack", async ({ page }) => {

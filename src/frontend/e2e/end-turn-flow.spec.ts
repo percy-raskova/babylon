@@ -93,6 +93,12 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
   test("selecting 2x speed then Play reflects a playing state; spacebar pauses", async ({
     page,
   }) => {
+    // Live budget: the PAUSED assertion below allots 45s (one in-flight
+    // engine resolve) — the default 30s TEST budget would truncate it.
+    // KNOWN RED (engine, not frontend): the play loop can 500 mid-run on
+    // the UNKNOWN-event UniqueViolation (see HANDOFF-PHASE-V.md owner
+    // items) — status then honestly shows ERROR and this test fails.
+    test.setTimeout(120_000);
     expect(gameId, "session-creation test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
     await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 15000 });

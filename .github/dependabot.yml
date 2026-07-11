@@ -45,12 +45,15 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-    # Major updates stay as individual PRs for careful review.
-    # Ignore specific packages that cause issues or need manual handling.
-    # Example: ignore major numpy updates (uncomment if needed)
-    # ignore:
-    #   - dependency-name: "numpy"
-    #     update-types: ["version-update:semver-major"]
+      # Majors arrive as ONE reviewable PR per ecosystem (never auto-merged —
+      # the automerge workflow only takes minor/patch). An agent unbundles
+      # locally if one member is red.
+      python-majors:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # ==========================================================================
   # GitHub Actions
@@ -108,6 +111,13 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+      # Majors as one reviewable PR (see python-majors rationale above).
+      frontend-majors:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # ==========================================================================
   # Postgres base image (Docker) — monthly: base-image bumps are deliberate,
@@ -126,6 +136,13 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    # PG-major bumps (16 -> 17, alpine, etc.) are OWNER ITEM 45: a Postgres/
+    # PostGIS major can alter geometry float behavior under the byte-identical
+    # determinism bundle and needs the full protocol (qa:e2e-regression on the
+    # new image + pg_upgrade path + testcontainers lockstep). Not a casual PR.
+    ignore:
+      - dependency-name: "postgis/postgis"
+        update-types: ["version-update:semver-major"]
 
   # ==========================================================================
   # Ansible deploy tooling (pip) — monthly: infra tooling, not runtime deps.
@@ -140,3 +157,18 @@ updates:
     labels:
       - "dependencies"
       - "infra"
+    groups:
+      # Infra tooling travels as (at most) two PRs: minors+patches, majors.
+      ansible-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      ansible-majors:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"

@@ -2,9 +2,33 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.25.0"
+  version: "2.26.0"
   updated: "2026-07-11"
   truth_status: |
+    (2026-07-11 ~5pm) PHASE 8 CLOSED + DEPENDABOT MADE REPRODUCIBLE. A second
+    promotion carried the CI-hardening/proving-run wave to main (82a92882 ->
+    a491c22d, 28 commits, clean ff via promote.sh; gate 2 saw 21 green checks).
+    Proving-run saga: #4 exposed one real red once the heavy-shard OOM fix let
+    the shard complete — a headless-runner trace test lacking the
+    requires_reference_db marker (routed it to the Reference-Data job); the
+    advisory sphinx build was cancelling the docs job by breaching its 15-min
+    JOB timeout (job-timeout is NOT swallowed by continue-on-error) so it was
+    capped `timeout 480`. #5 = full pipeline green. The real main run then flaked
+    ONE blocking unit test (test_running_loop_executes_steps, assert 1>=2, a
+    wall-clock test starved under CI load — green twice on the same SHA), fixed
+    to a bounded poll (PR #176). DEPENDABOT: alerts 34 -> 0 (poetry.lock/ansible
+    auto-resolved by the wave; 27 uv.lock phantoms dismissed inaccurate — manifest
+    deleted, can't regenerate); PRs 11 -> 1 (3 phantom + 3 superseded + 5 deferred
+    majors closed — Dependabot AUTO-closed 4 the moment it re-read the new ignores
+    from main, proving the mechanism; #175 frontend-majors left for owner review,
+    item 57). dependabot.yml ignores the deferred semver-majors (django/-stubs/mypy
+    item 55, typescript TS7, postgis item 45); node pinned via src/frontend/.nvmrc;
+    security updates route via dev (owner B4 ruling). New owner items 57 (#175
+    frontend majors) + 58 (latent timing-flaky sibling). GOTCHAS: promote.sh gate 2
+    filters check-runs whose name contains "advisory" (+ "Dependabot") — every
+    non-gating job carries that word; a job-level timeout-minutes CANCELS the job
+    and continue-on-error does NOT save it (cap the slow step instead).
+
     (2026-07-11 late afternoon) PROMOTED + THE DEPENDABOT WAVE. main moved
     1a8c68a6 -> 82a92882 (790 commits, frozen since Apr 28) then took the
     dependabot wave; rulesets ACTIVE (main: no force-push/deletion; dev:

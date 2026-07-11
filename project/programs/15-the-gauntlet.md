@@ -111,3 +111,64 @@ IS the headless runner's path; the Determinism Bundle died ENGINE_FAILURE withou
 pre-existing rest-leg failures surfaced by first-ever execution: an `rg` subprocess test (hosted
 runners have no ripgrep — rewritten pure-Python) and a real bridge transaction bug in the map
 view's hex-persist path (item 56, evidence-cited xfail).
+
+## Phase 8 close — the proving-run saga + second promotion (2026-07-11 late afternoon)
+
+The maiden main.yml reds and the ci-data FAF gap were fixed on a follow-up branch, then a second
+promotion carried the whole CI-hardening wave to main (`82a92882 → a491c22d`, 28 commits, clean
+ff via `tools/promote.sh`; gate 2 saw 21 green checks). Getting there took four proving runs
+(main.yml dispatched on dev) that peeled one gap each — the discipline was *never widen the subset
+speculatively; peel the next real gap*:
+
+1. **TIGER data path** (proving run #3): the Determinism Bundle needs `data/tiger/county` (the last
+   engine-read data path outside `data/sqlite`). Added a cached-tarball fetch to the
+   `fetch-reference-db` composite. Green.
+2. **Heavy-shard OOM** (proving run #3→#4): `pytest-cov` under `-n 4` instruments all of
+   `src/babylon` per worker; stacked on the memory-heavy integration/property suites it tripped the
+   OOM-killer (SIGKILL, no traceback, a different test each attempt). Dropped non-gating coverage
+   from the heavy shard (the coverage gate lives on the unit shard). The shard then *completed* and
+   exposed one real red:
+3. **Missing `requires_reference_db` marker** (proving run #4→#5): `test_full_trace_to_csv` drives
+   `run_trace()` → the headless runner (loads the SQLite reference DB), but sat in the heavy shard
+   with no marker → `ReferenceDataMissingError`. A module-level `requires_reference_db` marker routes
+   all four tests in that class to the main-tier Reference-Data job (ci-data subset,
+   detroit-tri-county scope — verified passing).
+4. **Docs job cancelled by a job timeout** (same fix set): the doctest step (blocking) passed, but
+   the advisory sphinx build breached the docs job's `timeout-minutes: 15` and the whole job was
+   **cancelled** — a job-level timeout is NOT swallowed by step-level `continue-on-error`. Capped the
+   build with coreutils `timeout 480` so a too-slow tree self-terminates as a swallowed step failure
+   well under the job cap.
+
+**Proving run #5 = full pipeline GREEN** (advisory Image Scan red is filtered by `promote.sh`). Promoted.
+
+**The flaky-test coda.** The real main.yml run on `main` then red'd ONE blocking unit test —
+`test_running_loop_executes_steps` (`assert 1 >= 2`) — that had passed on both PR #174's fast lane
+and proving run #5 on the *identical* SHA. A wall-clock test (fixed `sleep(0.05)`, assert `>= 2`
+steps at `tick_interval=0.01`) starved by CI load. De-flaked to a **bounded poll** (≤2s ceiling,
+breaks the instant two steps land) — the real contract (the loop executes repeatedly) asserted
+deterministically. The lesson: *a green pipeline on a wall-clock test is a coin that landed heads*;
+determinism-first CI can't carry timing-count asserts. (PR #176; a lower-risk `>= 1` sibling noted
+as item 58.)
+
+## Dependabot made reproducible (owner: "truly reproducible, non-recurring")
+
+The bot churn had two root causes, both now closed:
+
+- **Stale phantom graph.** `uv.lock` (spec-037) and `web/frontend` (spec-112) were deleted from both
+  branches, yet GitHub's dependency graph still flagged ~27 `uv.lock` alerts and opened
+  main-targeted security PRs. A push to the DEFAULT branch (the promotion) forces a rescan: the 6
+  poetry.lock (CVE-wave patches now on main) + 1 ansible (14.1) alerts **auto-resolved**; the 27
+  `uv.lock` phantoms were **dismissed `inaccurate`** with a traceable note — they can't regenerate
+  because the manifest is gone. **Alerts 34 → 0.**
+- **Deferred majors lived only in prose.** TS7, django 6, django-stubs 6, mypy 2 had no `ignore`
+  directive (only postgis did), so Dependabot re-opened them every scan. Added `ignore` entries
+  scoped to `version-update:semver-major` (minor/patch security still flows), each with an UNBLOCK
+  note tying it to its owner item. Dependabot **auto-closed 4 of the deferred-major PRs the instant
+  it re-read the new config from `main`** — the mechanism proving itself. **PRs 11 → 1** (the one
+  survivor, #175, is a *legitimate* frontend-majors batch → item 57).
+
+Plus reproducibility hardening: node pinned via `src/frontend/.nvmrc` (single source for nvm + mise
++ setup-node), lockfiles remain the anchor (gated by `poetry check --lock` / `npm ci`), and the
+owner's B4 ruling — security updates stay ON and route via `dev` (no repo Settings change) — is
+recorded. The steady state: weekly grouped version PRs to dev, majors as one reviewable dev PR
+(never auto-merged), deferred majors ignored-with-cause, phantoms structurally impossible.

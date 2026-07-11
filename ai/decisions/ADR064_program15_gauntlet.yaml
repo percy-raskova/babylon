@@ -91,4 +91,41 @@ ADR064_program15_gauntlet:
     hardcoded-path files via isolated worktree (44 pass + 1 intentional
     xfail). Full ruff (incl. S) zero findings; mypy strict green (567
     files); pip-audit wrapper exit 0; npm audit 0.
+  execution_followup: |
+    (2026-07-11 late afternoon, Opus 4.8) Phase 8 CLOSED + Dependabot made
+    reproducible (owner directive: "truly reproducible, non-recurring").
+    A second promotion carried the CI-hardening/proving-run wave to main
+    (82a92882 -> a491c22d, 28 commits, clean ff via promote.sh; gate 2 saw
+    21 green checks). Four proving runs (main.yml dispatched on dev) peeled
+    one gap each — never widen the subset speculatively:
+      #3 TIGER data path (data/tiger/county — the last engine-read path
+         outside data/sqlite) added to the fetch-reference-db composite as
+         a cached tarball; #3->#4 heavy-shard OOM (pytest-cov under -n4
+         instruments all of src/babylon per worker + memory-heavy suites =
+         SIGKILL) fixed by dropping non-gating coverage from the heavy shard;
+         that let the shard complete and exposed #4->#5 a headless-runner
+         trace test lacking the requires_reference_db marker (routed to the
+         Reference-Data job) + the advisory sphinx build CANCELLING the docs
+         job by breaching its 15-min JOB timeout (job-timeout is NOT swallowed
+         by continue-on-error — capped `timeout 480`). #5 = full green.
+    The real main run then flaked ONE blocking unit test
+    (test_running_loop_executes_steps, assert 1>=2) that had passed twice on
+    the identical SHA — a wall-clock test starved under CI load, de-flaked to
+    a bounded poll (PR #176). Determinism-first CI cannot carry timing-count
+    asserts.
+    DEPENDABOT REPRODUCIBILITY: alerts 34 -> 0 (poetry.lock/ansible resolved
+    by the wave landing on main; 27 uv.lock phantoms dismissed inaccurate —
+    manifest deleted spec-037, can't regenerate); PRs 11 -> 1 (3 phantom + 3
+    superseded + 5 deferred-major closed — Dependabot AUTO-closed 4 the moment
+    it re-read the new ignores from main, proving the mechanism). dependabot.yml
+    now ignores the deferred semver-majors (django/-stubs/mypy = item 55,
+    typescript = TS7, postgis = item 45), each with an UNBLOCK note; node pinned
+    via src/frontend/.nvmrc (single source: nvm + mise + setup-node); security
+    updates stay ON and route via dev (owner B4 ruling, no repo Settings change).
+    New owner items: 57 (frontend-majors #175 — react-router 8 + recharts 3
+    breaking, awaits owner), 58 (latent >=1 timing sibling). Two durable CI
+    gotchas: promote.sh gate 2 filters check-runs whose name contains "advisory"
+    (or equals "Dependabot") — every non-gating job carries that word by
+    convention; and a job-level timeout-minutes CANCELS the whole job, which
+    step-level continue-on-error does NOT rescue (cap the slow step itself).
   file: ADR064_program15_gauntlet.yaml

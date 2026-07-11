@@ -119,6 +119,7 @@ testcontainers = {extras = ["postgres"], version = "^4.14.2"}
 pytest-json-report = "^1.5.0"
 pytest-html = "^4.1.0"
 pytest-timeout = "^2.4.0"
+import-linter = "^2.13"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -463,3 +464,30 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pyright]
 extraPaths = ["."]
+
+# ── Import-boundary contracts (Program 14, Phase 1) ─────────────────────────
+# Runtime layering law: kernel < models/formulas < domain < engine. Engine may
+# import downward; nothing imports the engine back. TYPE_CHECKING imports are
+# excluded — annotations may reference upward, the import graph may not.
+# Run: poetry run lint-imports (wired into mise check + pre-commit + CI).
+[tool.importlinter]
+root_packages = ["babylon"]
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+name = "economics must not import the engine (kernel abstractions only)"
+type = "forbidden"
+source_modules = ["babylon.economics"]
+forbidden_modules = ["babylon.engine"]
+
+[[tool.importlinter.contracts]]
+name = "persistence must not import the engine"
+type = "forbidden"
+source_modules = ["babylon.persistence"]
+forbidden_modules = ["babylon.engine"]
+
+[[tool.importlinter.contracts]]
+name = "formulas are pure math — no engine imports"
+type = "forbidden"
+source_modules = ["babylon.formulas"]
+forbidden_modules = ["babylon.engine"]

@@ -16,6 +16,13 @@ import pytest
 
 from babylon.engine.headless_runner.runner import PostgresUnreachableError
 
+# Every test here drives run_trace() -> headless runner, which loads the SQLite
+# reference DB (data/sqlite/marxist-data-3NF.sqlite). The dev CI heavy shard has
+# no reference DB, so these belong to the main/nightly "Reference-Data Tests" job
+# that fetches the ci-data subset (item 40). Combines with the per-method
+# @pytest.mark.integration marks below.
+pytestmark = pytest.mark.requires_reference_db
+
 # Path to the project root (babylon/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 

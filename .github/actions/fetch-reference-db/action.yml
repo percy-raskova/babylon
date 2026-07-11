@@ -24,6 +24,16 @@ inputs:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
     default: 922b5a660306006d04ec1d322795d975c33638c59cb1278fbefb555db363b339
+  tiger-asset:
+    description: TIGER county-shapefile tarball within the release (the
+      headless runner reads data/tiger/county/tl_2024_us_county.shp — proving
+      run 2 died FileNotFoundError without it)
+    required: false
+    default: tiger-county-2024.tar.gz
+  tiger-sha256:
+    description: Expected sha256 of the TIGER tarball
+    required: false
+    default: 516fe00e77ca374e5400c8d73ac830e126a576cebbb967651c2f72e0cf574095
 
 runs:
   using: composite
@@ -60,3 +70,29 @@ runs:
         # the first reader flips it to WAL and rewrites it.
         cp ~/refdb/'${{ inputs.asset }}' data/sqlite/marxist-data-3NF.sqlite
         ls -la data/sqlite/
+
+    - name: Restore cached TIGER tarball
+      id: tiger-cache
+      uses: actions/cache@v6
+      with:
+        path: ~/refdb/${{ inputs.tiger-asset }}
+        key: refdb-${{ inputs.tag }}-${{ inputs.tiger-sha256 }}
+
+    - name: Download TIGER tarball (cache miss)
+      if: steps.tiger-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release download '${{ inputs.tag }}' \
+          --repo "$GITHUB_REPOSITORY" \
+          --pattern '${{ inputs.tiger-asset }}' \
+          --output ~/refdb/'${{ inputs.tiger-asset }}'
+
+    - name: Verify + extract TIGER county shapefile
+      shell: bash
+      run: |
+        echo '${{ inputs.tiger-sha256 }}  '"$HOME"'/refdb/${{ inputs.tiger-asset }}' | sha256sum -c -
+        mkdir -p data/tiger/county
+        tar xzf ~/refdb/'${{ inputs.tiger-asset }}' -C data/tiger/county
+        ls -la data/tiger/county/

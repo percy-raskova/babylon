@@ -13,7 +13,7 @@ Usage:
 
 See Also:
     :class:`babylon.models.enums.SocialRole` for the enum definitions
-    :doc:`/ai-docs/decisions.yaml` for ADR context
+    :doc:`/ai/decisions.yaml` for ADR context
 """
 
 from __future__ import annotations

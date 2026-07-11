@@ -266,7 +266,7 @@ class TestDetroitGentrificationSignal:
         Note: Threshold lowered from 10% to 5% to reflect data limitations.
         BEA/CEX data does not track purchases by consumer income class at
         industry level, so IIa/IIb splits are informed estimates per
-        ai-docs/brainstorms/bea2ratio.md.
+        ai/brainstorms/bea2ratio.md.
         """
         wayne = production_hydrator.hydrate(WAYNE_FIPS, 2022)
         oakland = production_hydrator.hydrate(OAKLAND_FIPS, 2022)

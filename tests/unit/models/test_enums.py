@@ -79,7 +79,7 @@ class TestSocialRole:
         - INTERNAL_PROLETARIAT: Core workers outside LA (precariat, lumpen, unemployed)
         - CARCERAL_ENFORCER: Guards, cops, prison staff (repressive apparatus)
 
-        See ai-docs/terminal-crisis-dynamics.md for full theory.
+        See ai/terminal-crisis-dynamics.md for full theory.
         """
         assert hasattr(SocialRole, "INTERNAL_PROLETARIAT")
         assert hasattr(SocialRole, "CARCERAL_ENFORCER")
@@ -344,7 +344,7 @@ class TestEventType:
         - CONTROL_RATIO_CRISIS: Prisoners exceed guard capacity
         - TERMINAL_DECISION: Revolution or genocide bifurcation
 
-        See ai-docs/terminal-crisis-dynamics.md for full theory.
+        See ai/terminal-crisis-dynamics.md for full theory.
         """
         assert hasattr(EventType, "PERIPHERAL_REVOLT")
         assert hasattr(EventType, "SUPERWAGE_CRISIS")

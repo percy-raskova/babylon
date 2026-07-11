@@ -52,9 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- Added ai-docs/observer-layer.yaml with Bondi Algorithm narrative style
-- Added ai-docs/agency-layer.yaml
-- Added ai-docs/carceral-geography.yaml
+- Added ai/observer-layer.yaml with Bondi Algorithm narrative style
+- Added ai/agency-layer.yaml
+- Added ai/carceral-geography.yaml
 - Added empirical validation to George Jackson bifurcation model docs
 - Updated balance-tuning registry with sweep findings
 

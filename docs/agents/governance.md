@@ -43,14 +43,14 @@ feature/*, fix/*, docs/*, refactor/*
 
 **Before Re-investigating**:
 
-- Check `ai-docs/decisions.yaml` for relevant ADRs
-- Review `ai-docs/state.yaml` for current project status
+- Check `ai/decisions.yaml` for relevant ADRs
+- Review `ai/state.yaml` for current project status
 
 **After Completing Significant Work**:
 
-1. Update `ai-docs/state.yaml` with new status/test counts
-1. Create ADR in `ai-docs/decisions.yaml` for architectural patterns
-1. Update `ai-docs/roadmap.md` if milestones changed
+1. Update `ai/state.yaml` with new status/test counts
+1. Create ADR in `ai/decisions.yaml` for architectural patterns
+1. Update `ai/roadmap.md` if milestones changed
 
 **ADR Format** (in `decisions.yaml`):
 

@@ -49,7 +49,7 @@ Here's a sample of recent commits:
 feat(engine): add Carceral Geography to TerritorySystem (Sprint 3.7)
 feat(observer): add TopologyMonitor for condensation detection (Sprint 3.1)
 refactor(models): replace IdeologicalComponent with George Jackson Model
-docs(ai-docs): add observer-layer.yaml with Bondi Algorithm aesthetic
+docs(ai): add observer-layer.yaml with Bondi Algorithm aesthetic
 fix(engine): calculate wages from tribute flow, not accumulated wealth
 ```
 

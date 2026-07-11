@@ -98,7 +98,7 @@ web/                     # The game itself
 └── babylon_web/         # Django project settings
 
 project/                 # Project management one-stop shop (plans, assessments, progress)
-ai-docs/                 # Machine-readable YAML docs for AI agents (architecture, ADRs, state)
+ai/                 # Machine-readable YAML docs for AI agents (architecture, ADRs, state)
 specs/                   # Feature specifications per branch (001-105+)
 tests/                   # unit / integration / scenarios / property / contract
 tools/                   # Simulation lab: traces, sweeps, tuning, QA gates
@@ -288,14 +288,14 @@ git checkout -b feature/your-feature
 
 ## Documentation
 
-| Location                                   | Content                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------- |
-| [`project/`](project/)                     | Project management: plans, progress reports, assessments, owner queue |
-| [`ai-docs/`](ai-docs/)                     | Machine-readable YAML docs for AI agents (architecture, ADRs)         |
-| [`ai-docs/state.yaml`](ai-docs/state.yaml) | Project status — read its `truth_status` banner first                 |
-| [`ai-docs/decisions/`](ai-docs/decisions/) | Architecture Decision Records (one YAML per ADR)                      |
-| [`specs/`](specs/)                         | Per-feature specifications with verified task ledgers                 |
-| [`docs/`](docs/)                           | Sphinx API documentation (`mise run docs:live`)                       |
+| Location                         | Content                                                               |
+| -------------------------------- | --------------------------------------------------------------------- |
+| [`project/`](project/)           | Project management: plans, progress reports, assessments, owner queue |
+| [`ai/`](ai/)                     | Machine-readable YAML docs for AI agents (architecture, ADRs)         |
+| [`ai/state.yaml`](ai/state.yaml) | Project status — read its `truth_status` banner first                 |
+| [`ai/decisions/`](ai/decisions/) | Architecture Decision Records (one YAML per ADR)                      |
+| [`specs/`](specs/)               | Per-feature specifications with verified task ledgers                 |
+| [`docs/`](docs/)                 | Sphinx API documentation (`mise run docs:live`)                       |
 
 ## License
 

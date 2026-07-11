@@ -840,7 +840,7 @@ ______________________________________________________________________
    `mise run web:check` + Playwright suites.
 1. **Close-out**: update `project/01-state-of-the-world.md` (status),
    this file's §2 entry (mark DONE + actual spec number),
-   `ai-docs/state.yaml`; ADR if an architectural decision was made;
+   `ai/state.yaml`; ADR if an architectural decision was made;
    owner-review items go to Percy — do not merge to dev yourself.
 
 ______________________________________________________________________

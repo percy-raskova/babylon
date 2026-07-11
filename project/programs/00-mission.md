@@ -39,8 +39,8 @@ agent lanes; owner decisions P1–P4 recorded there).
 
 ## Roadmap authority (ratified 2026-07-02)
 
-- The **living roadmap** = the audit report + `ai-docs/state.yaml`.
-- `ai-docs/epochs/` is **historical vision**, not authority (banners added).
+- The **living roadmap** = the audit report + `ai/state.yaml`.
+- `ai/epochs/` is **historical vision**, not authority (banners added).
 - **Spec numbers are first-come**; the audit's numbers are advisory. 086 and
   097 were consumed by the QCEW data-quality track — when starting a catalog
   spec, take the next free number in `specs/` and note the audit's advisory
@@ -97,8 +97,8 @@ agent lanes; owner decisions P1–P4 recorded there).
   III.8 data-grounding, II.11, I.20, IV) checked in plan.md.
 - **Docs**: demand-driven, verifiable claims only, never document unbuilt
   features (a "Future Enhancements" doc is the only place for plans).
-- **After significant work**: update `ai-docs/state.yaml`, add ADRs to
-  `ai-docs/decisions/` (+ index), and update THIS kit's `01-state-of-the-world.md`.
+- **After significant work**: update `ai/state.yaml`, add ADRs to
+  `ai/decisions/` (+ index), and update THIS kit's `01-state-of-the-world.md`.
 - **Owner review items** go to Percy; do not merge to dev/main yourself.
 
 ## Theory grounding (why the economics look the way they do)

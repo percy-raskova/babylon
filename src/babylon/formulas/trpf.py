@@ -9,11 +9,11 @@ Epoch 1 Implementation:
 
 Epoch 2 Implementation (Planned):
     Full OCC tracking with constant_capital/variable_capital on entities.
-    See ai-docs/epoch2-trpf.yaml for specification.
+    See ai/epoch2-trpf.yaml for specification.
 
 See Also:
     :doc:`/reference/trpf` for full theoretical background
-    ai-docs/theory.md for Marx's original formulation
+    ai/theory.md for Marx's original formulation
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def calculate_trpf_multiplier(
         - tick 1800+: floors at 10% efficiency
 
         Full OCC-based TRPF calculation planned for Epoch 2.
-        See ai-docs/epoch2-trpf.yaml for specification.
+        See ai/epoch2-trpf.yaml for specification.
 
     Theoretical Basis:
         Marx, Capital Vol. 3, Chapters 13-15:
@@ -163,7 +163,7 @@ def calculate_rate_of_profit(
         - surplus_extracted tracking per tick
         - OCC dynamics (automation investments shifting c/v ratio)
 
-        See :doc:`ai-docs/epochs/epoch3/epoch2-trpf.yaml` for specification.
+        See :doc:`ai/epochs/epoch3/epoch2-trpf.yaml` for specification.
     """
     total_capital = constant_capital + variable_capital
     if total_capital <= 0:
@@ -243,7 +243,7 @@ def calculate_organic_composition(
         - OCC = 0.5: Early capitalism (labor-intensive)
         - OCC = 4.0: Advanced capitalism (capital-intensive)
 
-        See :doc:`ai-docs/epochs/epoch3/epoch2-trpf.yaml` for specification.
+        See :doc:`ai/epochs/epoch3/epoch2-trpf.yaml` for specification.
     """
     if variable_capital <= 0:
         return 0.0

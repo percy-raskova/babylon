@@ -436,4 +436,4 @@ See Also
 - :doc:`formulas` - Complete formula specification
 - :doc:`fred-data` - FRED data sources and API usage
 - ``tools/analyze_wealth_distribution.py`` - Analysis script
-- ``ai-docs/class-dynamics.yaml`` - Machine-readable specification
+- ``ai/class-dynamics.yaml`` - Machine-readable specification

@@ -150,7 +150,7 @@ class SourceRegistry:
 - [ ] At least 10 `Default*` classes (chosen from `melt/` + `gamma/`) migrated to inherit from `CachedSource[T]` and lose their hand-rolled `__init__`.
 - [ ] `mise run check` passes with zero new findings.
 - [ ] All 150+ persistence + economics unit tests pass unchanged.
-- [ ] A migration guide in this ADR's "Rollout" section is followed; remaining 51 Default\* classes are listed as follow-up work in `ai-docs/roadmap.md`.
+- [ ] A migration guide in this ADR's "Rollout" section is followed; remaining 51 Default\* classes are listed as follow-up work in `ai/roadmap.md`.
 
 ## Rollout
 

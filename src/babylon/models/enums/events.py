@@ -53,7 +53,7 @@ class EventType(StrEnum):
         POPULATION_DEATH: Probabilistic mortality from inequality (Mass Line Refactor)
         POPULATION_ATTRITION: Grinding Attrition deaths from coverage deficit (Mass Line Phase 3)
 
-    Terminal Crisis Dynamics (ai-docs/terminal-crisis-dynamics.md):
+    Terminal Crisis Dynamics (ai/terminal-crisis-dynamics.md):
         PERIPHERAL_REVOLT: Periphery severs EXPLOITATION edges when P(S|R) > P(S|A)
         SUPERWAGE_CRISIS: Core bourgeoisie can't afford super-wages (pool exhausted)
         CLASS_DECOMPOSITION: Labor aristocracy splits into enforcers + internal proletariat

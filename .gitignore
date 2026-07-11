@@ -130,6 +130,10 @@ node_modules
 pytest_out.txt
 ast_usages.txt
 
+# Claude's scratch space (ai/ tree is Claude-owned; scratch contents are ephemeral)
+ai/scratch/*
+!ai/scratch/README.md
+
 # Frontend (src/frontend — the cockpit, spec-110/112)
 dev_harness.png
 test_hang.py

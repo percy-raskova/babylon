@@ -433,7 +433,7 @@ def observatory_hex(request: Request, session_id: str) -> JsonResponse:
     II.11 sparse-hex gotcha). Reconstructing a hex frame from the archive
     alone would therefore always come back with no spatial keys, silently
     breaking the ``county_fips`` filter and county/state display — worse than
-    an explicit "not supported" error. See ``ai-docs``/owner-review notes
+    an explicit "not supported" error. See ``ai``/owner-review notes
     (spec-099 fix #3) for the follow-up decision.
     """
     try:

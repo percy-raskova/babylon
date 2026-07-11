@@ -32,7 +32,7 @@ from babylon.models.entity_registry import (
 # fail on real defines mismatches (peak-in-plateau, decay decline, monotonic
 # scoring). The original "Sprint 1.5 Dashboard" gate is gone (dashboard
 # deleted with src/babylon/ui/), but the underlying defines tuning gap
-# remains. Tracked in ai-docs/decisions/ADR037_test_skip_remediation.yaml;
+# remains. Tracked in ai/decisions/ADR037_test_skip_remediation.yaml;
 # a follow-up commit may split this into individual @pytest.mark.skip on
 # the 5 calibration-blocked tests so the 7 cheap wins land.
 pytestmark = [

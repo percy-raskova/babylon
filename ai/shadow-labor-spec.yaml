@@ -1,0 +1,761 @@
+# Shadow Labor Visibility Specification
+# Department III (Social Reproduction) Visibility Dimension
+#
+# Context: Shadow labor represents unpaid reproductive work that subsidizes
+# capital accumulation without entering the formal commodity circuit.
+
+meta:
+  version: "2.0.0"
+  created: "2026-01-29"
+  updated: "2026-01-30"
+  purpose: "Define shadow labor visibility calculations for Department III"
+  status: "COMPLETE - Tensor Integration + Lens Pattern"
+  sprints:
+    - "Shadow Labor Sprint (Lens Pattern)"
+    - "Sprint 2.1 (Visibility Tensor)"
+  problem_statement: |
+    The 4-department Marxian tensor (ValueTensor4x3) models Department III
+    (Social Reproduction) but does not distinguish between:
+
+    1. MONETIZED care work: Enters formal commodity circuit (daycare, nursing
+       homes, home health aides, domestic workers)
+
+    2. SHADOW labor: Unpaid household work that reproduces labor power without
+       direct compensation (cooking, cleaning, childcare, elder care)
+
+    This invisibility masks a massive subsidy to capital accumulation.
+    ATUS 2022 data suggests ~70% of reproductive labor is unpaid.
+
+# =============================================================================
+# THEORETICAL FOUNDATION
+# =============================================================================
+
+theoretical_foundation:
+
+  summary: |
+    Shadow labor is the unpaid reproductive work that maintains and reproduces
+    labor power. Without this work, workers could not return to work each day.
+    Capital benefits from this labor without paying for it - a structural
+    subsidy hidden from economic measurement.
+
+  framework: "Feminist Marxism / Social Reproduction Theory"
+
+  key_texts:
+    - "Federici, S. (2012). Revolution at Point Zero"
+    - "Federici, S. (2004). Caliban and the Witch"
+    - "Fortunati, L. (1981). The Arcane of Reproduction"
+    - "Vogel, L. (2013). Marxism and the Oppression of Women"
+    - "Bhattacharya, T. (2017). Social Reproduction Theory"
+    - "Mies, M. (1986). Patriarchy and Accumulation on a World Scale"
+    - "Meillassoux, C. (1981). Maidens, Meal and Money"
+    - "MIM Prisons. Gender and Revolutionary Feminism"
+
+  core_insight: |
+    Reproductive labor is NECESSARY for capital accumulation but INVISIBLE
+    in economic measurement. The visibility coefficient g_33 makes this
+    labor visible by splitting Department III value into:
+
+    - v_market: Reproductive labor that enters commodity circuit
+    - v_shadow: Reproductive labor performed as unpaid household work
+
+    The shadow component represents value transferred to capital without
+    compensation - analogous to imperial rent in the core-periphery relation.
+
+  formulas:
+    decomposition:
+      v_market: "T_3,v × w_shadow × g_33"
+      v_shadow: "T_3,v × w_shadow × (1 - g_33)"
+
+    definitions:
+      T_3_v: "Total reproductive labor hours (from ATUS)"
+      w_shadow: "Shadow wage (replacement cost basis, $15.43/hour)"
+      g_33: "Visibility coefficient ∈ [0, 1] (fraction monetized)"
+
+    invariant: "v_market + v_shadow = total_value (value conservation)"
+
+  boundary_conditions:
+    full_monetization:
+      g_33: 1.0
+      interpretation: "All care work enters formal circuit (paid daycare, etc.)"
+      result: "v_shadow = 0"
+
+    full_shadow:
+      g_33: 0.0
+      interpretation: "All care work is unpaid (full-time homemaker)"
+      result: "v_market = 0, maximum subsidy to capital"
+
+    default:
+      g_33: 0.3
+      interpretation: "ATUS 2022 national average (~30% monetized)"
+      result: "70% of reproductive labor is shadow subsidy"
+
+  data_sources:
+    atus:
+      name: "American Time Use Survey"
+      provider: "Bureau of Labor Statistics"
+      available_since: 2003
+      description: "24-hour time diaries tracking all activities"
+      key_metric: "~21 hours/week average reproductive labor"
+
+    bls_oes:
+      name: "Occupational Employment Statistics"
+      provider: "Bureau of Labor Statistics"
+      reference_occupation: "SOC 31-1120 (Home Health and Personal Care Aides)"
+      median_wage: "$15.43/hour (May 2023)"
+      rationale: "Market replacement cost for unpaid care work"
+
+# =============================================================================
+# SPRINT 2.1: VISIBILITY TENSOR INTEGRATION
+# =============================================================================
+
+visibility_tensor:
+  sprint: "Sprint 2.1"
+  status: "COMPLETE"
+  location: "src/babylon/economics/tensor.py"
+
+  description: |
+    The visibility tensor (g₃₃) is now integrated directly into ValueTensor4x3,
+    enabling Department III shadow labor calculations at the tensor level.
+    This complements the ShadowLaborService lens pattern with direct tensor
+    support for Fortunati's exploitation rate.
+
+  new_field:
+    name: "visibility_g33"
+    type: "float"
+    constraint: "[0.0, 1.0]"
+    default: 1.0
+    rationale: |
+      Default 1.0 preserves backward compatibility - existing code sees
+      no change. Values < 1.0 activate shadow labor calculations.
+
+  new_computed_properties:
+    total_s:
+      formula: "Σ s_dept for all departments"
+      purpose: "Extracted from profit_rate for reuse"
+
+    monetized_value:
+      formula: "Σ dept.total for I,IIa,IIb + (dept_III.total × g₃₃)"
+      purpose: "Total value visible to price system"
+
+    monetized_v:
+      formula: "Σ v_dept for I,IIa,IIb + (v_III × g₃₃)"
+      purpose: "Wages actually paid (denominator for Fortunati rate)"
+
+    shadow_subsidy:
+      formula: "v_III × (1 - g₃₃)"
+      purpose: "Unpaid reproductive labor appropriated as surplus"
+
+    exploitation_rate_fortunati:
+      formula: "e' = (total_s + shadow_subsidy) / monetized_v"
+      purpose: "Expanded exploitation rate recognizing shadow labor"
+
+  theoretical_grounding: |
+    The Fortunati rate differs from the standard exploitation rate (s/v) by:
+
+    1. NUMERATOR: Adds shadow_subsidy to total_s
+       - Shadow labor is APPROPRIATED SURPLUS, not merely reduced costs
+       - Capital extracts labor time without any compensation
+
+    2. DENOMINATOR: Uses monetized_v, not total_v
+       - Only wages actually paid count
+       - Recognizes that unpaid labor receives nothing
+
+    This produces dramatically higher exploitation rates when shadow labor
+    is recognized. The canonical example (Dept III: v=100, s=100, g₃₃=0.5):
+    - Standard rate: 100/100 = 100%
+    - Fortunati rate: 150/50 = 300%
+
+    The 3x multiplier effect demonstrates Fortunati's insight.
+
+# =============================================================================
+# THE INFINITY DIALECTIC
+# =============================================================================
+
+infinity_dialectic:
+
+  condition: "monetized_v = 0"
+  result: "exploitation_rate_fortunati = ∞"
+
+  meaning: |
+    When monetized_v reaches zero, the exploitation rate becomes infinite.
+    This is NOT a mathematical edge case to be "handled" - it represents
+    a QUALITATIVE SHIFT in the social relation of production.
+
+  dialectical_interpretation: |
+    The wage relation, despite being exploitative, contains a formal exchange:
+    labor-power for money. When wages reach zero, this exchange disappears.
+    What remains is DIRECT APPROPRIATION - the condition of slavery, serfdom,
+    or what MIM Prisons calls the relationship between oppressor and oppressed
+    nations.
+
+    The infinity signals that we have crossed from EXPLOITATION (wage relation)
+    to EXPROPRIATION (pure extraction). This is a qualitative, not merely
+    quantitative, transformation.
+
+  historical_conditions:
+    slavery:
+      description: "Labor-power extracted with zero wages"
+      significance: "Foundation of American primitive accumulation"
+      monetary_relation: "None - pure extraction"
+
+    domestic_labor_historical:
+      description: "Housewives historically received zero wages"
+      significance: "Entire reproductive labor appropriated"
+      monetary_relation: "Mediated through male wage (Fortunati)"
+
+    prison_labor:
+      description: "13th Amendment explicitly permits slavery as punishment"
+      significance: "Continuation of slavery by other means"
+      monetary_relation: "$0.00-$0.50/hour or nothing"
+
+    colonial_extraction:
+      description: "Indigenous dispossession and forced labor"
+      significance: "Global primitive accumulation"
+      monetary_relation: "Tribute, not wages"
+
+    peripheral_child_labor:
+      description: "Children in mines, fields, factories"
+      significance: "Most brutal extraction"
+      monetary_relation: "Subsistence or nothing"
+
+  federici_insight: |
+    From Federici's "Caliban and the Witch": The wage relation is built
+    ON TOP OF unwaged labor, not the other way around. The "normal" case
+    of finite exploitation (where workers receive some wage) is actually
+    the HISTORICAL EXCEPTION - a privilege granted primarily to white
+    male workers in the imperial core.
+
+    The witch hunts were primitive accumulation against women's bodies.
+    Capitalism required the disciplining of women into unpaged reproductive
+    labor. The wage is a tool of division - it hides the unwaged labor
+    that makes waged labor possible.
+
+  meillassoux_insight: |
+    From "Maidens, Meal and Money": Capitalism PARASITIZES the domestic
+    community and the colonized periphery. It extracts labor-power without
+    paying reproduction costs. This isn't "superexploitation" in the sense
+    of EXTRA exploitation - it's the FOUNDATIONAL mode of extraction that
+    makes waged exploitation in the core possible.
+
+  mim_prisons_analysis: |
+    The MIM (Maoist Internationalist Movement) framework emphasizes:
+
+    1. First World "workers" often receive W > V (wages exceeding value
+       produced) - they are NET BENEFICIARIES of imperial rent
+
+    2. The Fortunati rate going to infinity in the periphery is the
+       mathematical inverse of the labor aristocracy receiving more
+       than they produce in the core:
+
+       Core:       W > V    →  exploitation may be negative (net recipients)
+       Periphery:  W → 0    →  exploitation → ∞ (pure extraction)
+
+    3. Gender oppression intersects with national oppression - both serve
+       the extraction of unwaged labor for imperial accumulation
+
+  implementation_guidance: |
+    DO NOT sanitize the infinity. The mathematical infinity correctly
+    represents historical brutality. Clamping to an arbitrary maximum
+    would be IDEOLOGICAL MYSTIFICATION - it would make slavery, prison
+    labor, and unwaged domestic work appear as merely "very high"
+    exploitation rather than qualitatively different conditions.
+
+    PRESERVE the infinity and ADD SEMANTIC MEANING:
+
+    @computed_field
+    @property
+    def is_pure_extraction(self) -> bool:
+        """True when labor is appropriated without any wage relation."""
+        return self.monetized_v == 0.0
+
+    This property makes explicit the political meaning of the infinity.
+
+  downstream_implications: |
+    Systems consuming exploitation_rate_fortunati must handle infinity:
+
+    1. COMPARISON: float('inf') > any_finite_number (always True)
+    2. ARITHMETIC: float('inf') + x = float('inf') (absorbs finite values)
+    3. DANGER: float('inf') - float('inf') = nan (undefined)
+    4. SEMANTIC: Treat infinity as "pure extraction mode" flag
+
+    The simulation should recognize this as a distinct REGIME, not just
+    an extreme value. When exploitation → ∞, the social relation has
+    qualitatively transformed.
+
+# =============================================================================
+# ARCHITECTURE: LENS PATTERN
+# =============================================================================
+
+architecture:
+
+  pattern: "Lens/View"
+
+  principle: |
+    The shadow labor service provides an alternative VIEW on Department III
+    without modifying the underlying ValueTensor4x3 structure. This is a
+    "lens" that decomposes existing value, not a new data source.
+
+  diagram: |
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                    EXISTING INFRASTRUCTURE                       │
+    │  ┌──────────────────┐    ┌─────────────────────┐                │
+    │  │ MarxianHydrator  │───▶│   ValueTensor4x3    │                │
+    │  │                  │    │   dept_III: (c,v,s) │                │
+    │  └──────────────────┘    └─────────────────────┘                │
+    └─────────────────────────────────────────────────────────────────┘
+                                        │
+                                        │ (no modification)
+                                        ▼
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                    NEW SHADOW LABOR LENS                         │
+    │  ┌──────────────────────┐    ┌─────────────────────────────┐    │
+    │  │ MockReproductionLoader│───▶│   ShadowLaborService       │    │
+    │  │   T_3,v hours        │    │   calculate_shadow_decomp() │    │
+    │  └──────────────────────┘    └─────────────────────────────┘    │
+    │                                        │                         │
+    │                                        ▼                         │
+    │                              ┌─────────────────────┐             │
+    │                              │  ShadowLaborResult  │             │
+    │                              │  - v_market         │             │
+    │                              │  - v_shadow         │             │
+    │                              └─────────────────────┘             │
+    └─────────────────────────────────────────────────────────────────┘
+
+  design_rationale: |
+    1. SEPARATION: Shadow labor is a LENS, not a modification to tensor
+    2. INDEPENDENCE: Service can operate without tensor infrastructure
+    3. EXTENSIBILITY: Future integration possible without breaking changes
+    4. TESTABILITY: Mock loader enables testing without external data
+
+# =============================================================================
+# IMPLEMENTATION
+# =============================================================================
+
+implementation:
+
+  status: "COMPLETE"
+  approach: "Mock infrastructure with extensibility for real ATUS data"
+
+  files:
+    atus_package:
+      path: "src/babylon/data/atus/"
+      modules:
+        __init__.py:
+          description: "Package exports"
+          exports:
+            - "ATUSActivityRecord"
+            - "ATUSHouseholdSummary"
+            - "ReproductionLoaderProtocol"
+            - "MockReproductionLoader"
+            - "NATIONAL_AVG_UNPAID_CARE_WEEKLY"
+            - "REPLACEMENT_COST_HOURLY"
+
+        models.py:
+          description: "Pydantic models for ATUS data"
+          classes:
+            - name: "ATUSActivityRecord"
+              description: "Single time diary entry"
+              fields:
+                - "respondent_id: str"
+                - "activity_code: str  # ATUS 6-digit code"
+                - "duration_minutes: int  # [0, 1440]"
+                - "is_reproductive: bool = False"
+                - "is_paid: bool = False"
+
+            - name: "ATUSHouseholdSummary"
+              description: "Aggregated reproductive hours for household"
+              fields:
+                - "fips_code: str  # 5-digit FIPS"
+                - "year: int  # >= 2003"
+                - "total_reproductive_hours_weekly: float"
+                - "unpaid_care_hours_weekly: float"
+                - "paid_care_hours_weekly: float"
+                - "household_weight: float = 1.0"
+
+        protocol.py:
+          description: "Abstract protocol for data loaders"
+          classes:
+            - name: "ReproductionLoaderProtocol"
+              description: "ABC for reproductive labor data loaders"
+              methods:
+                - "load_county_summary(fips_code, year) -> ATUSHouseholdSummary"
+                - "get_shadow_wage(fips_code, year) -> float"
+
+        mock_loader.py:
+          description: "Mock implementation with national averages"
+          constants:
+            - "NATIONAL_AVG_UNPAID_CARE_WEEKLY: 21.0  # hours/week"
+            - "REPLACEMENT_COST_HOURLY: 15.43  # USD/hour"
+          classes:
+            - name: "MockReproductionLoader"
+              description: "Returns configurable national averages"
+              parameters:
+                - "default_weekly_hours: float = 21.0"
+                - "shadow_wage_hourly: float = 15.43"
+
+    shadow_labor_module:
+      path: "src/babylon/economics/shadow_labor.py"
+      classes:
+        - name: "ShadowLaborConfig"
+          description: "Configuration for visibility calculations"
+          fields:
+            - "g_33: float = 0.3  # [0, 1] visibility coefficient"
+            - "shadow_wage_hourly: float = 15.43"
+          properties:
+            - "frozen: True (immutable)"
+
+        - name: "ShadowLaborResult"
+          description: "Result with monetized/shadow decomposition"
+          fields:
+            - "fips_code: str"
+            - "year: int"
+            - "total_hours_annual: float"
+            - "shadow_wage: float"
+            - "g_33: float"
+          computed_fields:
+            - "total_value: hours × wage"
+            - "v_market: total_value × g_33"
+            - "v_shadow: total_value × (1 - g_33)"
+            - "shadow_subsidy_ratio: 1 - g_33"
+
+        - name: "ShadowLaborService"
+          description: "Service that calculates shadow decomposition"
+          methods:
+            - "calculate_shadow_decomposition(fips_code, year, g_33_override) -> ShadowLaborResult"
+          injection:
+            - "loader: ReproductionLoaderProtocol"
+            - "config: ShadowLaborConfig (optional)"
+
+    configuration:
+      path: "src/babylon/config/defines.py"
+      changes:
+        - field: "shadow_wage_hourly"
+          class: "EconomyDefines"
+          default: 15.43
+          description: "BLS 31-1120 home health aide median (May 2023)"
+
+  exports:
+    module: "babylon.economics"
+    new_exports:
+      - "ShadowLaborConfig"
+      - "ShadowLaborResult"
+      - "ShadowLaborService"
+
+# =============================================================================
+# TEST COVERAGE
+# =============================================================================
+
+test_coverage:
+
+  file: "tests/unit/economics/test_shadow_labor.py"
+
+  test_classes:
+    TestShadowLaborConfig:
+      description: "Configuration model validation"
+      tests:
+        - "test_default_g_33: Default is 0.3"
+        - "test_default_shadow_wage: Default is $15.43"
+        - "test_g_33_lower_bound: Rejects < 0"
+        - "test_g_33_upper_bound: Rejects > 1"
+        - "test_g_33_at_boundaries: Accepts 0.0 and 1.0"
+        - "test_shadow_wage_non_negative: Rejects negative"
+        - "test_config_immutable: Frozen model"
+        - "test_custom_config: Custom values accepted"
+      count: 8
+
+    TestShadowLaborResult:
+      description: "Result computed fields"
+      tests:
+        - "test_total_value_computation: hours × wage"
+        - "test_v_market_computation: total × g_33"
+        - "test_v_shadow_computation: total × (1 - g_33)"
+        - "test_shadow_subsidy_ratio: 1 - g_33"
+        - "test_result_immutable: Frozen model"
+        - "test_fips_code_stored: FIPS preserved"
+      count: 6
+
+    TestATUSActivityRecord:
+      description: "Activity record validation"
+      tests:
+        - "test_default_values: is_reproductive, is_paid default False"
+        - "test_duration_bounds: [0, 1440] minutes"
+      count: 2
+
+    TestATUSHouseholdSummary:
+      description: "Household summary validation"
+      tests:
+        - "test_fips_code_format: Must be 5 digits"
+        - "test_year_minimum: >= 2003 (ATUS start)"
+        - "test_hours_non_negative: >= 0"
+        - "test_default_weight: Default 1.0"
+      count: 4
+
+    TestMockReproductionLoader:
+      description: "Mock loader implementation"
+      tests:
+        - "test_implements_protocol: Satisfies ABC"
+        - "test_default_weekly_hours: 21 hours"
+        - "test_default_shadow_wage: $15.43"
+        - "test_custom_weekly_hours: Configurable"
+        - "test_custom_shadow_wage: Configurable"
+        - "test_fips_code_passthrough: FIPS preserved"
+        - "test_year_passthrough: Year preserved"
+      count: 7
+
+    TestShadowSubsidyCalculation:
+      description: "Core calculation tests"
+      tests:
+        - "test_full_monetization_zero_subsidy: g_33=1.0 → v_shadow=0"
+        - "test_full_shadow_maximum_subsidy: g_33=0.0 → max subsidy"
+        - "test_partial_visibility_default: g_33=0.3 → 70% shadow"
+        - "test_invariant_total_value_preserved: v_market + v_shadow = total"
+        - "test_g_33_override_takes_precedence: Override > config"
+        - "test_service_with_custom_config: Custom config accepted"
+      count: 6
+
+    TestExistingInfrastructureUnaffected:
+      description: "No regression on existing code"
+      tests:
+        - "test_shadow_service_independent: Operates without tensor"
+      count: 1
+
+    TestEdgeCases:
+      description: "Edge case handling"
+      tests:
+        - "test_zero_hours_zero_value: 0 hours → 0 value"
+        - "test_zero_wage_zero_value: $0 wage → 0 value"
+        - "test_high_hours_high_value: 40 hrs/week correct"
+      count: 3
+
+  test_constants:
+    file: "tests/constants.py"
+    class: "ShadowLaborDefaults"
+    values:
+      - "WEEKLY_HOURS: 21.0"
+      - "ANNUAL_HOURS: 1092.0"
+      - "SHADOW_WAGE_HOURLY: 15.43"
+      - "G_33_FULL_MONETIZED: 1.0"
+      - "G_33_FULL_SHADOW: 0.0"
+      - "G_33_DEFAULT: 0.3"
+      - "TEST_HOURS: 1000.0"
+      - "TEST_TOTAL_VALUE: 15430.0"
+      - "TEST_SHADOW_FULL: 15430.0"
+      - "TEST_SHADOW_NONE: 0.0"
+      - "TEST_MARKET_DEFAULT: 4629.0"
+      - "TEST_SHADOW_DEFAULT: 10801.0"
+
+  total_tests: 37
+  pass_rate: "100%"
+
+# =============================================================================
+# FUTURE ROADMAP
+# =============================================================================
+
+future_roadmap:
+
+  phase_2:
+    name: "Real ATUS Data Integration"
+    status: "PLANNED"
+    description: "Replace mock loader with real ATUS microdata"
+    changes:
+      - "BLS ATUS API integration"
+      - "Activity code parsing (030xxx = caring for household)"
+      - "Survey weight aggregation"
+      - "County-level estimates (limited by ATUS sample size)"
+    blockers:
+      - "ATUS microdata access (restricted use files)"
+      - "Sample size for county-level estimates"
+
+  phase_3:
+    name: "County-Level g_33 Variation"
+    status: "PLANNED"
+    description: "Empirical calibration of visibility by county"
+    approach: |
+      g_33 should vary by:
+      - Urban/rural (more daycare in cities)
+      - Income level (affluent buy more care)
+      - Female labor force participation
+      - Elder care infrastructure
+    data_sources:
+      - "ACS childcare arrangements"
+      - "Medicare home health utilization"
+      - "State childcare subsidy data"
+
+  phase_4:
+    name: "Tensor Integration"
+    status: "COMPLETE (Sprint 2.1)"
+    description: "visibility_g33 field and computed properties on ValueTensor4x3"
+    implementation: |
+      Sprint 2.1 integrated shadow labor directly into ValueTensor4x3:
+
+      class ValueTensor4x3(BaseModel):
+          visibility_g33: float = 1.0  # [0.0, 1.0]
+
+          @computed_field
+          def shadow_subsidy(self) -> Currency:
+              return Currency(self.dept_III.v * (1 - self.visibility_g33))
+
+          @computed_field
+          def exploitation_rate_fortunati(self) -> float:
+              if self.monetized_v == 0.0:
+                  return float("inf")  # Pure extraction
+              return (self.total_s + self.shadow_subsidy) / self.monetized_v
+
+      See visibility_tensor section above for full details.
+
+  phase_5:
+    name: "Gendered Split"
+    status: "PLANNED"
+    description: "Decompose shadow labor by gender"
+    rationale: |
+      ATUS data shows significant gender disparity:
+      - Women: ~4.5 hours/day on household activities
+      - Men: ~2.8 hours/day on household activities
+
+      This matters for modeling:
+      - Female labor force participation effects
+      - Dual-income household dynamics
+      - Policy interventions (childcare, family leave)
+
+  phase_6:
+    name: "International Comparison"
+    status: "PLANNED"
+    description: "World Bank/ILO time-use data integration"
+    data_sources:
+      - "ILO time-use surveys"
+      - "World Bank Living Standards Measurement"
+      - "UN ECLAC time-use surveys (Latin America)"
+    rationale: |
+      Shadow labor varies dramatically by country due to:
+      - State provision of care (Nordic vs US)
+      - Extended family structures
+      - Domestic worker availability
+
+      This enables core-periphery shadow labor comparison.
+
+# =============================================================================
+# INTEGRATION WITH EXISTING SYSTEMS
+# =============================================================================
+
+integration:
+
+  marxian_tensor:
+    relationship: "Parallel lens, not dependency"
+    pattern: |
+      # Tensor (economic primitive)
+      tensor = hydrator.hydrate(fips, year)
+
+      # Shadow lens (visibility decomposition)
+      shadow = shadow_service.calculate_shadow_decomposition(fips, year)
+
+      # Both can be used independently
+      dept_iii_total = tensor.dept_III.v
+      shadow_subsidy = shadow.v_shadow
+
+  imperial_rent:
+    reference: "ai/imperial-rent-spec.yaml"
+    analogy: |
+      Shadow labor is to gender what imperial rent is to imperialism:
+
+      IMPERIAL RENT: Value transfer from periphery to core
+        - Measured as: W_actual - P_periphery
+        - Beneficiary: Core workers (labor aristocracy)
+        - Mechanism: Unequal exchange in global commodity circuit
+
+      SHADOW LABOR: Value transfer from household to capital
+        - Measured as: T_3,v × w_shadow × (1 - g_33)
+        - Beneficiary: Capital (reduced reproduction costs)
+        - Mechanism: Unpaid household labor excluded from wage
+
+  consciousness_system:
+    relationship: "Potential future integration"
+    hypothesis: |
+      Shadow labor visibility could affect consciousness dynamics:
+      - High v_shadow → "domestic trap" (tied to household)
+      - Low g_33 → Reduced participation in collective action
+      - Visibility of shadow labor → Potential for feminist consciousness
+
+      This is THEORETICAL and not yet implemented.
+
+  department_mapper:
+    reference: "src/babylon/economics/department_mapper.py"
+    relevant_sectors: |
+      NAICS codes mapped to Department III:
+      - 62: Health Care and Social Assistance
+      - 61: Educational Services
+      - 81: Other Services (includes household services)
+
+      These represent MONETIZED reproductive labor.
+      Shadow labor is the UNMEASURED complement.
+
+# =============================================================================
+# USAGE EXAMPLES
+# =============================================================================
+
+usage_examples:
+
+  basic_calculation: |
+    from babylon.economics.shadow_labor import ShadowLaborService
+    from babylon.data.atus import MockReproductionLoader
+
+    # Create service with mock data
+    loader = MockReproductionLoader()
+    service = ShadowLaborService(loader=loader)
+
+    # Calculate for Alameda County, CA
+    result = service.calculate_shadow_decomposition(
+        fips_code="06001",
+        year=2022,
+    )
+
+    print(f"Total reproductive value: ${result.total_value:,.2f}")
+    print(f"Monetized (v_market):     ${result.v_market:,.2f}")
+    print(f"Shadow subsidy:           ${result.v_shadow:,.2f}")
+    # Output:
+    # Total reproductive value: $16,858.36  (21 hrs × 52 × $15.43)
+    # Monetized (v_market):     $5,057.51   (30%)
+    # Shadow subsidy:           $11,800.85  (70%)
+
+  custom_scenario: |
+    # Test scenario: 1000 annual hours, full shadow labor
+    loader = MockReproductionLoader(
+        default_weekly_hours=1000/52,
+        shadow_wage_hourly=15.43,
+    )
+    service = ShadowLaborService(loader=loader)
+
+    result = service.calculate_shadow_decomposition(
+        fips_code="06001",
+        year=2022,
+        g_33_override=0.0,  # Full shadow (homemaker scenario)
+    )
+
+    assert result.v_shadow == pytest.approx(15430.0)
+    assert result.v_market == pytest.approx(0.0)
+
+  comparative_analysis: |
+    # Compare visibility across hypothetical scenarios
+    scenarios = {
+        "Nordic welfare state": 0.6,   # High monetization
+        "US average": 0.3,              # Mixed
+        "Traditional household": 0.1,   # Low monetization
+    }
+
+    for name, g_33 in scenarios.items():
+        result = service.calculate_shadow_decomposition(
+            fips_code="06001",
+            year=2022,
+            g_33_override=g_33,
+        )
+        subsidy_pct = result.shadow_subsidy_ratio * 100
+        print(f"{name}: {subsidy_pct:.0f}% shadow subsidy")
+
+# =============================================================================
+# MANTRA
+# =============================================================================
+
+mantra: |
+  "Behind every worker who shows up ready to work is a vast amount of
+  unpaid labor: meals cooked, clothes washed, children raised, elders
+  cared for. Capital receives this labor for free. The visibility
+  coefficient makes this subsidy measurable."

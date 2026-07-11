@@ -165,7 +165,7 @@ class TestBiocapacityDynamics:
             "Calibration TODO: extraction_intensity (0.8) + regeneration_rate "
             "(0.02) + entropy currently produce a net positive delta "
             "(R > E*eta), so biocapacity does NOT deplete with the current "
-            "defines. Tracked in ai-docs/decisions/ADR037_test_skip_remediation.yaml. "
+            "defines. Tracked in ai/decisions/ADR037_test_skip_remediation.yaml. "
             "Tune defines or convert this test to assert that SOME (E, R, eta) "
             "combination depletes."
         )

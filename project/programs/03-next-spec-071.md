@@ -25,7 +25,7 @@ Dependency: spec-070 Balkanization (DONE — Faction model is live).
    **v2.7.0** gates in plan.md (now incl. II.12 authoring-API and the III.7
    determinism-hash contract; Amendments K+L are the two new foundations).
    NO MVP-scoping — implement the full catalog entry.
-1. TDD throughout; commit per task-group; update `ai-docs/state.yaml` + ADR
+1. TDD throughout; commit per task-group; update `ai/state.yaml` + ADR
    at the end; then update `project/01-state-of-the-world.md`.
 
 ## Inherited obligations (added 2026-07-03 — both foundations landed)
@@ -102,4 +102,4 @@ building alongside it:
   test that INDUCES crisis, e.g. wage cut or pool drain, and asserts drift +
   faction reassignment fire).
 - Update the engine-pipeline table in root `CLAUDE.md` (system count/order)
-  and `ai-docs/state.yaml`; ADR for the position decision.
+  and `ai/state.yaml`; ADR for the position decision.

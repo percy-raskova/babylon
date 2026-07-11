@@ -6,7 +6,7 @@ When P(S|R) > P(S|A) for PERIPHERY_PROLETARIAT, revolt severs EXPLOITATION edges
 This models the anti-colonial revolution that cuts off imperial extraction,
 triggering the cascade: no extraction → no wages → LA decomposition → carceral turn.
 
-See ai-docs/terminal-crisis-dynamics.md for full theory.
+See ai/terminal-crisis-dynamics.md for full theory.
 """
 
 from __future__ import annotations

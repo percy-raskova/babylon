@@ -56,6 +56,6 @@ Chronological record of wiki ingests and maintenance operations.
 - Each ADR cross-references CLAUDE.md "Common Gotchas" and "Coding Standards" sections relevant to the change.
 - Each ADR cites specific knowledge-graph node IDs (file paths + LOC + in-degree) so the evidence is auditable.
   **Open Questions**:
-- Should accepted/implemented ADRs eventually mirror into `ai-docs/decisions.yaml` (the immutable history file), or stay in markdown?
-- Recommended capture flow when an ADR ships: append `ai-docs/decisions.yaml` entry + flip ADR status header to `Implemented`.
+- Should accepted/implemented ADRs eventually mirror into `ai/decisions.yaml` (the immutable history file), or stay in markdown?
+- Recommended capture flow when an ADR ships: append `ai/decisions.yaml` entry + flip ADR status header to `Implemented`.
 - ADRs are meant to be picked up by spec-kit (`/speckit.specify` → `.../implement`) one phase at a time; first candidate is ADR-001.

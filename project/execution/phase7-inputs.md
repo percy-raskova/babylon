@@ -31,7 +31,7 @@ until dormant-sim wiring (Phase 5).
 From 1.5 scout (note-only): gameStore.ts:111 leftover editing artifact comment.
 
 From the C.11 doc-reference linter prototype (first run, 2026-07-08): 169 unique broken
-path references out of 768 scanned. Distribution: 116 of 169 (69%) sit in ai-docs
+path references out of 768 scanned. Distribution: 116 of 169 (69%) sit in ai
 `state.yaml` + `entities.yaml` + `architecture.yaml` (the Phase-7 regen targets);
 CLAUDE.md has 6 (incl. `simulation.py` → `simulation/_legacy.py` moves); project/README.md
 has 9 — but those are the DELIBERATE old→new mapping lines in its reorganization note,

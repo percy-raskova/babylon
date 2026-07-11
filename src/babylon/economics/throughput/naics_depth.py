@@ -8,7 +8,7 @@ Depth values are theoretically derived from position in the supply chain funnel,
 not empirically calibrated.
 
 TVT Extension Reference:
-    The supply chain funnel model from ai-docs/brainstorms/tensor/tvt_throughput_extension.md
+    The supply chain funnel model from ai/brainstorms/tensor/tvt_throughput_extension.md
 
 Depth Scale:
     0 = Extraction (value creation at origin)
@@ -81,7 +81,7 @@ Retail Paradox:
     enormous value flow - they have high τ_through but capture little.
 
 Reference:
-    - TVT Throughput Extension: ai-docs/brainstorms/tensor/tvt_throughput_extension.md
+    - TVT Throughput Extension: ai/brainstorms/tensor/tvt_throughput_extension.md
     - BLS NAICS Codes: https://www.bls.gov/cew/classifications/industry/
 """
 

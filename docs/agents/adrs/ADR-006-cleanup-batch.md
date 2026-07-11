@@ -165,7 +165,7 @@ For each, verify:
 Action per schema:
 
 - Add a top-level `description` field clarifying its role.
-- If unused and superseded by a Pydantic model, delete it (with an entry in `ai-docs/decisions.yaml`).
+- If unused and superseded by a Pydantic model, delete it (with an entry in `ai/decisions.yaml`).
 - If standalone-by-design, add a `# standalone schema, no $ref` comment to its `models/entities/*.py` counterpart.
 
 ## Consequences
@@ -189,7 +189,7 @@ Action per schema:
 - [ ] `economics/tick/system.py` decomposed; facade ≤200 LOC; no constituent file >400 LOC.
 - [ ] `engine/systems/edge_transition.py` split with predicates and System in separate files.
 - [ ] `BEAMappings` Pydantic model defined and consumed by `department_mapper.py` instead of raw TOML parsing.
-- [ ] Each of the 8 orphan schemas has been audited; each has either: (a) a documented standalone status, (b) a `defines_schema` edge to a Pydantic counterpart, or (c) been deleted with rationale in `ai-docs/decisions.yaml`.
+- [ ] Each of the 8 orphan schemas has been audited; each has either: (a) a documented standalone status, (b) a `defines_schema` edge to a Pydantic counterpart, or (c) been deleted with rationale in `ai/decisions.yaml`.
 - [ ] `mise run check` passes; `mise run test:all` passes.
 
 ## Rollout

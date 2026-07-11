@@ -6,7 +6,7 @@ SUPERWAGE_CRISIS is emitted, signaling the beginning of LA decomposition.
 
 This is triggered by peripheral revolt cutting off extraction.
 
-See ai-docs/terminal-crisis-dynamics.md for full theory.
+See ai/terminal-crisis-dynamics.md for full theory.
 """
 
 from __future__ import annotations

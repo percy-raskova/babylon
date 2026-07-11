@@ -1,0 +1,2504 @@
+# Babylon Project State
+# What exists vs what's planned - KEEP THIS UPDATED
+
+meta:
+  version: "2.22.0"
+  updated: "2026-07-10"
+  truth_status: |
+    (2026-07-10 EVENING) PROGRAM 12 COMPLETE — THE CUTOVER IS DONE. The cockpit
+    (src/frontend) is THE frontend on canonical :5173 under the game title;
+    web/frontend is DELETED (2c7cc159, 269 files / -39,818 lines) with every
+    behavior guard dispositioned in specs/112-cutover/test-port-ledger.md
+    (68 vitest + 12 e2e + setup: 19 ported / 28 rewritten / 2 constitution
+    contracts RE-GUARDED d845c368 / 19+4 retired with authority). Parity
+    25/25 live at BOTH bracketing HEADs (28683951 pre / de50eba4 post).
+    C5 landed the same day: Q/E lens cycling, heartbeat referential
+    stability (the per-beat deck.gl rebuild killed at worldSlice), and
+    county/region framing (net-new rendering: member_h3 aggregates +
+    FramingSelector + regionFill + H3ClusterLayer; default framing honest
+    "hex"). Tooling re-pointed end to end: mise web:* (cockpit aliases
+    retired), pre-commit (old hook set deleted), CI playwright-e2e +
+    Frontend jobs, Ansible frontend_dir (syntax-checked only — WATCH the
+    next Hetzner deploy). Deletion gates caught 3 live deps hiding in the
+    retired tree (seed fixture x2 consumers, e2e BASE port) — fixed
+    daaa4a9f/3187d7d3/de50eba4. Insurance: mise check TRUE-exit 0 (9,457),
+    qa:regression 5/5 byte-identical. Earlier same day: C3 substrate — all
+    49 components synced to claude.ai/design "Babylon Cockpit" (121 cells
+    graded good) + wire triptych flex + EMPTY_WIRE_FEED token fixes
+    (23016c79). Dev pushed to origin at a682b63a (wave 0 anchor +
+    pre-112-final-arc tag); final push follows the records commit. New
+    owner items: 38 (bea_ea zoom falls through to county grouping like cz),
+    39 (stance->consciousness region-fill mapping wants an eye).
+    (2026-07-10 EARLY AM, wave 4) PHASE B COMPLETE — THE PARITY GATE IS GREEN,
+    LIVE: 23/23 cockpit e2e specs pass in a real browser against the real
+    EngineBridge, twice consecutively (f7fff8ab). B6 found the one blocker
+    (CSRF/CORS origins lacked 5174 — every cockpit POST 403'd; fixed d5f270b2
+    + BABYLON_EXTRA_DEV_ORIGINS) and two real UI defects (pause unreachable
+    mid-resolve; events honest-empty missing its testid), both fixed. B5
+    takeovers (Wire/Chronicle/Dialectic + Objectives dock) merged a7b7a9b2.
+    Phase C substantially complete: C1 narrator (flag-gated, parity-tested OFF,
+    async, model-pinned, loud degradation) a0054dc5; C2 dashboards + history
+    endpoints (get_infrastructure had NEVER existed) f9ac774c; C4 observatory
+    ported 30c5faf1. Item 33 closed 2491b9ba. New item 34: StubEngineBridge
+    signature drift + silent stub fallback when RUN_MAIN unset (make it loud).
+    REMAINING (all owner-gated): C3 design session, C5 polish (after C3),
+    Phase D cutover (delete web/frontend — parity evidence exists, needs
+    Percy's go), push to origin (dev is 30+ ahead), owner items 26/28/29/
+    31-rename/32. The autonomous ultracode backlog is exhausted.
+    (2026-07-09 NIGHT, wave 3) THE COCKPIT EXISTS + item 30 CLOSED + program 13
+    COMPLETE. B3+B4 merged (a8c8a9dd+a1187bca, 307 vitest): one zustand store, ONE
+    visibility-gated fetch orchestrator (13 pollers dead in the new app),
+    Pause/Step/Play state machine (409/5xx/autopause, serialized Play), login→lobby→
+    game routes, full five-region shell on the real A4 endpoints + B2 map. Item 30
+    closed (143a3eed): the web bridge NEVER wired calculators (TickDynamics no-op'd
+    on every web session since spec-061) — now wired, wayne county-backed (26163×81),
+    flows carried across resolves: flow_wage_accrued 0→84M→168M proven through real
+    resolve_tick calls. Program 13 complete (dense goldens 60a919e3; constitution
+    v2.9.1, III.12(a) → IMPLEMENTED). Item 27 closed TIER-3-live (8/10 formerly
+    false-red specs pass authed; 2 residuals = new item 33 spec bugs). New item 32:
+    annual county continuity across year boundaries (web). Next: B5 takeovers + B6
+    e2e port/parity drive + Phase C. The (2026-07-09 EVENING) banner below predates
+    wave 3.
+    (2026-07-09 EVENING) PROGRAM 12 "The Cockpit" EXECUTING — clean-room frontend
+    rebuild ratified (4 owner rulings; master: project/programs/12-cockpit.md; ADR061).
+    Phase A data spine MERGED except A7: A8 f1a57ff3, A1 08e3131a, A3+A5 665e0814,
+    A6 c5c19e21, A2 b0907b97, A4 9addfa94 — /timeseries/ + snapshots fill every tick,
+    one map-metric contract with habitability end-to-end, the fake consciousness
+    simplex is dead (honest null), the spec-070 balkanization layer seeds every web
+    session (owner item 8 CLOSED; item 12 faction half CLOSED), and /summary/,
+    /economy/, /communities/ return real engine values. B1 cockpit scaffold merged at
+    src/frontend/ (30f5512e + 504302bf; port 5174; old app untouched until Phase D).
+    WAVE 2 (same evening, later): A7's ENGINE half is IMPLEMENTED + MERGED
+    (742e7163 Option-B flow accrual with conservation property tests + e75464fe
+    base_year advances with tick) with ZERO baseline drift — root-caused: the 5-tick
+    compare surface (view_runtime_trace_emission) reads only the hex layer, which
+    Option B leaves frozen by design. ITEM 25 IS NOW CLOSED at the engine layer +
+    cc4a5303 R-PROOF CLOSED: the 520-tick canonical COMPLETED twice (sessions
+    a8cbf1ab/970951e3, ~45 min each — first completions since gamma exposed the
+    tick-52 crash), michigan-e2e.json regenerated (gated fields byte-identical by
+    frozen-hex design; +9 year-boundary events = the real movement), A/B determinism
+    0-row EXCEPT diffs across all 4 dynamic tables (585,760 rows/direction) —
+    specs/109-data-spine/proof-A7.md Parts 0-6 COMPLETE, verdict CLOSED; remediation
+    2.R row closed. Web sessions still cannot SHOW
+    county flows (owner item 30: fresh persistent_context per resolve + wayne is
+    hex-only) — engine truth proven by test_static_economy_flow.py. Program 13 item 1
+    is DONE (66125a22, docs/reference/determinism-contract.rst; three integrity
+    findings = owner item 31, headline: tick_commit.determinism_hash is an identity
+    stamp, not a content hash). B2 is MERGED (dc384c78: cockpit gets tokens/types/
+    lib/verbs/selectors + one unified Lens union + controlled-component map; 172
+    tests; stores/shell/routing = B3 next). Constitution is v2.9.0 (Amendment Q —
+    Behavioral Contracts, III.12 + VIII.13, ADR062; program 13 registered).
+    dev is ahead of origin and push is HELD pending owner say-so.
+    (2026-07-09) UPDATE — the core loop is now PLAYABLE, verified live. A
+    post-remediation sanity-check walkthrough (project/assessments/E2E_WALKTHROUGH-2026-07-09.md)
+    drove the real UI + API against a live Postgres EngineBridge on dev @ b57faee6:
+    real-loop.spec.ts 7/7 (login -> create game -> real map -> verb submit ->
+    END TURN advances the tick -> results/events), and every game surface returns
+    live data when authenticated. All six 2026-07-07 P0s are fixed AND verified
+    live (not merely by-merge). The tick-52 crash (owner item 25, crash half) is
+    fixed (b57faee6). dev is pushed to origin (origin/dev == 1c7524b8) and the
+    leaked token scrubbed from history (item 22 rotation is now hygiene, not a
+    blocker). Still open (none block the loop): the Playwright C.5 gate has an
+    AUTH-HARNESS gap (9 secondary specs never log in -> render /login -> false red;
+    see walkthrough G1); the early-tick economy is STATIC (owner item 25 second
+    half, wayne_county MELT unavailable pre-tick-52); per-tick history tables
+    (tick_summary/territory_snapshot) stay empty after resolve; objectives/wire are
+    still the DeterministicNarrator placeholder. The (2026-07-08) banner below is
+    the prior-day record; where it says UNPLAYABLE, read this paragraph instead.
+    (2026-07-08) READ THIS FIRST. Program 09 merged to dev on Jul 6, but the
+    first real E2E pass (Jul 7) found the web product UNPLAYABLE at merge —
+    see project/assessments/E2E_SUMMARY.md and project/assessments/POST_ASSESSMENT.md. A 15-agent
+    whole-repo review the same evening found systemic silent failures beyond
+    the web layer (no-op engine systems, dead collapse layer, unseeded RNG,
+    disarmed test guardrails) — see project/assessments/HOLISTIC_REVIEW-2026-07-07.md.
+    A remediation program ("Loud Machine") was ratified by Percy on Jul 7 and
+    is now executing — see project/execution/REMEDIATION_PLAN.md for phases and status.
+    Authority chain: project/programs/09-program-full-game.md (scope) ->
+    project/assessments/POST_ASSESSMENT.md -> project/assessments/HOLISTIC_REVIEW-2026-07-07.md ->
+    project/execution/REMEDIATION_PLAN.md (execution). Counts and sprint blocks below
+    this line predate the review and are STALE until the Phase 7 regeneration
+    of this file; where they disagree with the documents above, the documents
+    above win.
+  remediation_lane_2_2: |
+    (2026-07-08) Loud Machine lane 2.2 (territory-case no-ops) COMPLETE —
+    branch fix/territory-case-noops-r2. ReserveArmySystem (#5) and
+    DispossessionEventSystem (#10) filtered graph nodes by node_type
+    "Territory" (capitalized) while WorldState.to_graph writes "territory"
+    (lowercase), so both were silent no-ops on every real run. Both filters
+    flipped to lowercase; both are now ACTIVATABLE (still inert until a
+    scenario seeds the inputs — zero defaults early-continue, so baselines
+    stay byte-identical). The extra="forbid" from_graph round-trip latch is
+    defused: 8 new Territory model fields (median_wage, reserve_ratio,
+    wealth, foreclosure_rate, eviction_rate, displacement_rate,
+    concentrated_ownership, absentee_landlord_share) + 2 per-tick computed
+    outputs (wage_pressure, dispossession_intensity) added to
+    TERRITORY_EXCLUDED_FIELDS. Masking wrong-case test fixtures rebuilt via
+    WorldState().to_graph(). Lane 2.2 is baseline-neutral: regression
+    output is byte-identical to pristine dev (proven by stash-and-compare;
+    identical defines_hash pairs on both trees). NOTE: tools/regression_test.py
+    compare currently FAILs on a PRE-EXISTING dev-wide defines_hash drift
+    (committed baselines stale vs dev HEAD GameDefines) — unrelated to 2.2;
+    do NOT regenerate here. PARKED
+    (out of 2.2 scope): DecompositionSystem._create_target_entity omits
+    inequality on decomposition-created nodes -> VitalitySystem (#1)
+    KeyErrors on the next tick (required-read attr); one-line fix
+    inequality=la_data.get("inequality", 0.0) belongs to a decomposition/
+    vitality lane.
+  active_program: |
+    Program 09 — Full-Game Build (ratified 2026-07-03 evening; master
+    doc project/programs/09-program-full-game.md). Percy's directive: React/
+    Django UI build-out per the design canon, Observatory debug
+    dashboard, trade-bloc international layer, nationwide scope — with
+    the FULL GAME as the stated end state. Four parallel agent lanes:
+    E[071->101->102->104->105] W[090->091->092||093->094->095->103]
+    D[100 || 098-LODES || 068-slice] O[096->099]. Owner decisions
+    P1-P4 recorded in 09 SS0; program rulings (no-MVP nuance, R-AMEND
+    non-agentic blocs, R-VII Article-VII amendment for Cold Collapse,
+    R-CRT chrome-vs-data texture rule) in 09 SS1. Design canon staged
+    at design/mockups/ (66 files, replay-extracted from the claude.ai
+    export; PROVENANCE.md). Same evening: dev fast-forwarded
+    9dd4c4f6->2f506bc2 (97 commits) and pushed, owner-directed.
+  lawverian_dialectics_refactor: |
+    project/06 Lawverian dialectics refactor COMPLETE (branch
+    refactor/lawverian-dialectics; Phases A-E, ADR051). The saturating add-only
+    edge-tension accumulator AND the dormant Feature-002 field-registry plumbing
+    are replaced by an executable contradiction layer: an OppositionRegistry of
+    measured adjunction defects (src/babylon/dialectics/), scale/connectivity/
+    value-form adjunction instances, spatial+social level lattices with an
+    Aufhebung operator (instances/levels.py), and a fixed-point regime classifier
+    (core/regime.py). Phase E: Systems 19-21 live (opposition-sourced, no
+    field_registry); ContradictionSystem @18 classifies the tick regime
+    (reproduction/crisis/sublation) and publishes EventType.LEVEL_TRANSITION on
+    sublation (71 members now). Canonical michigan re-baseline refreshed. Two
+    resolutions flagged for review in ADR051 (regime classifies capital_labor
+    not the abstract principal; E3's TRANSACTIONAL universal weakened to the
+    true law). Pre-existing red left alone: test_grundrisse_cycle.py::
+    test_fast_developing_wage_overtakes_then_cedes (stale C1.7 test superseded by
+    D5's wage rebind; @integration, outside the fast gate).
+  last_sprint: "Program 09 remediation + optimization sprint (2026-07-06, multiple branches). P0 truth reconciliation: E:102 alpha double-count fixed (dropped Pacific Rim id=10, 4-bloc set {1,7,9,12}), E:105 signature pin updated. Percy's 3 ruled items executed: #11 eventClassifier UPPERCASE→lowercase (2e6b2754), #9 gamma wired into headless runner via _build_economics_overrides (cc4a5303, data-starved for 2010 but system now attempts computation), #8 balkanization INFLUENCES seed pipeline built with 6,456 edges across 1,614 H3 hexes (69c62a04). Two approved optimizations: C=ContradictionFieldSystem O(N×M)→O(N+M) single-pass tension index, 182.6ms→55.8ms/tick projected at national scale, R-PROOF preserved (2d40eafd); D=hex hydration parallel H3 polyfill + COPY-based persistence, 600s→113s for 3,156 counties (d37f7b6a). NATIONAL 1-TICK RUN COMPLETED: 633s total (252s hydration + 381s tick), 3,128 counties, v=$109.96B/week, c=$135.28B, s=$170.54B, k=$43.54T. Was >30min/tick before optimization. 50-tick canonical run feasible (~5.3hrs). Remaining: A=hex_spatial_map session-scoping (schema change approved, subagent failed, deferred), B=tick-budget ratification (Percy), F=DeepSeek max-thinking directive unfulfilled."
+  previous_sprint_086: "086-qcew-loader-imputation (Implementation complete + LIVE APPLIED 2026-07-02; 37/41 tasks — see specs/086-qcew-loader-imputation/tasks.md and ADR050. T038 michigan-e2e re-baseline DONE by the Lawverian Phase E re-baseline; T039-T041 docs/ledger close-out.)"
+  previous_sprint: "070-balkanization (Complete; ~100/118 tasks done — see specs/070-balkanization/tasks.md and ADR048. Phase 1+2 foundational, Phase 3 US1 MVP, Phase 4 US2 faction competition, Phase 5 US3 collapse+endgames, Phase 6 US4 secession+O(K) fracture shipped. Phase 7 polish + Phase 7b post-analyze remediation partially deferred — see ADR048 follow_ups.)"
+  previous_sprint_069: "069-sqlite-cache-optimization (Complete; 37/37 tasks done — see specs/069-sqlite-cache-optimization/tasks.md and ADR047. SC-001 absolute 60-min wallclock gate deferred to operator-side canonical run per quickstart.md T036.)"
+  spec_063_circulation_tail_r62: |
+    (2026-07-08 remediation lane 6.2, branch feat/spec-063-tail-r2) spec-063
+    Vol-II circulation tail closed the honest T042/T043 gaps + integration
+    coverage. Landed: T043 PairedCrossBorderEmissionEvaluator (FR-030c,
+    conservation_audit.py, registered in headless_runner/runner.py; aggregates
+    one ALARM per external dest — the (session,tick,scale,invariant) PK cannot
+    hold per-pair rows); T042 border-commute synthesis wired into
+    initialize_session (persist_to_postgres + merge_into_postgres_lodes);
+    T040 completion — the previously-missing in-memory
+    BorderCommuteSynthesisLoader.merge_into_year_matrix + a DRY module-level
+    build_year_matrix() extracted from LODESCommuteMatrixLoader._build_csr_matrix
+    + default_tri_county_aggregate_hex() helper; and the FR-026
+    external_node_overrides / synthetic_lodes_canadian_rows init seams that
+    REVIVED the previously-dead canada-required guard (fail-fast before any I/O
+    for SC-006 <5s). Tests: 4 new merge unit tests, T033
+    test_canada_required_invariant.py (3, Postgres-only), T052
+    test_atomicity_inheritance.py (3, FR-008a rollback), plus 5 wip integration
+    files (T032/T035/T036/T013/T014) that skip cleanly without LODES/TIGER data.
+    Full lane sweep 337 passed / 17 skipped; mypy --strict clean on all 5 touched
+    source files. Baseline-NEUTRAL: Vol2 is dormant in src (vol2_step never set)
+    and enable_border_commute_synthesis defaults False, so the canonical run
+    emits zero cross-border rows. Ledger truth: specs/063/tasks.md T033/T040/
+    T042/T043/T045/T052 [X]; T051 deferred to spec-106 (Phase 6.6 perf).
+    T048 full state.yaml regeneration remains open.
+  spec_086_summary: |
+    QCEW loader reimplementation + synthetic suppression imputation —
+    the #1 data-correctness fix. Implements spec-097 FINAL (strategy 4);
+    supersedes spec-067's infeasible ±5%-on-raw-leaves targets.
+
+    New loader in the babylon-data repo (babylon_data.qcew: singlefile /
+    hierarchy / imputation / writer / validation / audit / __main__),
+    consuming babylon's canonical ORM; babylon's src/babylon_data symlink
+    repointed from the un-versioned trove to the git repo (minimal viable
+    packaging; full packaging = spec-098). Schema delta:
+    FactQcewAnnual.is_imputed provenance flag + new fact_qcew_county_rollup
+    constraints table; physical composite PK restored via the staged
+    rebuild. mise task: data:qcew (dry-run/apply/restart/rollback/
+    drop-backup).
+
+    LIVE APPLY (2026-07-02, 32.2 min): fact_qcew_annual rebuilt
+    15,097,464 -> 14,670,249 leaves (SS999/VI pseudo-rows excluded);
+    240,488 published constraints persisted; 10,479,767 rows (71.4%)
+    imputed and flagged. ALL SCs green against the live DB:
+    SC-001/002 99.94-100.00% of counties within ±2% per year;
+    SC-003 Wayne 2010 = 657,158 vs 657,150 published (+0.001%, was
+    -14.6%), wages exact to the penny; SC-004 ownership bands >=95%;
+    SC-005 national identity +0.19..+0.41% per year; SC-006 100%
+    provenance; SC-007 single offline operation; SC-008 digests
+    reproduce; SC-009 jsonschema-validated audit artifacts in
+    reports/ingest/. Identity: Shannon->Oglala 1,454 rows mapped,
+    2015 double-publication deduped (288); CT-2024 planning regions
+    flagged; 8 low-confidence county-years across 48,296.
+
+    86 spec-086 tests green (unit/integration/contract; importorskip-
+    gated in CI until babylon-data has its own CI per spec-098).
+    fact_qcew_annual__pre_086 backup retained pending operator
+    drop-backup. Downstream: michigan-e2e baseline regenerated (county v
+    rises by design; structural rate-of-profit invariants s>0, p' finite
+    unaffected).
+  previous_previous_sprint: "068-bea-national-io-ingest (Partial; ~60/77 tasks done — US1+US2+US3-partial+US4+ADR046 shipped; hex_hydrator wiring T056-T058 deferred to follow-up commit)"
+  spec_070_summary: |
+    Sovereign Topology + Faction Influence + Balkanization — adds the
+    political-topology overlay realising Constitution I.20 + I.4 +
+    I.20 + IV.1. 7 new enums, 3 new EdgeTypes (CLAIMS / INFLUENCES /
+    ADMINISTERS), 9 new EventTypes, 2 new GameOutcome values
+    (RED_OGV + FRAGMENTED_COLLAPSE), BalkanizationFaction +
+    Sovereign entities, 6 GraphProtocol extensions (with O(K)
+    bulk_partition_claims verified at N ∈ {10,100,1000}), 3 new
+    Systems (FactionInfluenceSystem 14.5, SovereigntySystem 17.5,
+    CollapseTransitionSystem 20.5) — pipeline 22 → 25 systems, all
+    CONSEQUENCE_SYSTEMS. EndgameDetector augmented for 5-endgame
+    priority order (FR-033) with I.4 cross-divide solidarity gate
+    (FR-031a). 144 spec-070 tests; 1937 total tests pass.
+
+    Naming disambiguation: code uses `BalkanizationFaction` (not
+    spec.md's "PoliticalFaction") to coexist with spec-031's
+    Organization-subclass PoliticalFaction per FR-045 + codebase-
+    takes-precedent feedback.
+
+  spec_069_summary: |
+    SQLite per-tick read cache for the bridged headless runner — closes
+    the spec-066 R8 deferred performance follow-up (ADR044's cited
+    ~30 min wallclock reclaim).
+
+    ReferenceDataCache class in
+    src/babylon/engine/headless_runner/reference_data_cache.py owned by
+    WorldStateBridge. Hydrates once at hydrate_initial time via two
+    batched SQL queries (Census + QCEW) under a single sqlite3.Connection
+    for the full scope × year_set Cartesian product; every persist_tick
+    thereafter reads from the in-memory dict. Constitution II.6 "No DB
+    I/O during tick" now holds for the bridge by construction.
+
+    Validation gates measured:
+      - SC-001 (≤ 60 min wallclock canonical): operator-side per
+        quickstart.md / T036. Not gated in CI.
+      - SC-002 (exactly 2×N×Y reads): PASS — fixture-backed integration
+        test at reduced scale 4×2×60 confirms; full-scale verification
+        via manifest.json.bridge_db_reads = 1660 on canonical (83×10×2).
+      - SC-003 (byte-identical trace.csv at same seed): cache-layer
+        determinism verified by test_cache_byte_identical_trace.py; full
+        trace.csv equality is operator-verified per quickstart.md.
+      - SC-004 (warning at most once per (county, year)): PASS via
+        test_reference_data_cache_miss_logging.py.
+
+    Bridge gains three @property accessors (population_db_reads /
+    employment_db_reads / total_db_reads) plus a new
+    manifest.json.bridge_db_reads top-level block for offline operator
+    inspection.
+
+    Spec docs off-by-one fix: canonical 520-tick run touches ticks 0..519
+    only (per runner.py:817-819), so the year-set is {2010..2019} =
+    10 years and SC-002 expected count is 2×83×10 = 1,660 (not 1,826).
+    Updated data-model.md, quickstart.md, plan.md, research.md,
+    contracts/instrumentation_contract.md, tasks.md accordingly.
+
+    Test totals: 102 unit + 9 integration = 111 green in headless_runner.
+    Existing test_manifest_builder.py + test_county_aggregation.py
+    unchanged (legacy fetchers preserved for non-bridge callers per
+    II.11 / R10).
+  spec_068_summary: |
+    BEA national I-O ingest — fact_bea_national_industry (1065 rows) +
+    fact_bea_io_coefficient (131,239 rows) populated from BEA Make+Use /
+    Supply-Use / TDR XLSX. BEAShareLookupService Protocol introduced as
+    the II.11 cross-subsystem contract.
+
+    Validation gates measured: SC-001 PASS (1065 >= 800), SC-002 PASS
+    (131,239 >= 50K), SC-003 PASS (0/1065 FR-002 violations), SC-004
+    PASS (0/1065 FR-004 violations), SC-005 measured 0.1024 stddev(c/v)
+    across MI-83 vs 0.2 directional threshold (per Clarification Q5),
+    SC-006 84.5% in-band (60/71), SC-007 PASS (~5.6s wallclock),
+    SC-008 pending hex_hydrator wiring.
+
+    Test totals: 43/43 passing in tests/unit/reference/bea/.
+
+    Deferred to follow-up commits on same branch:
+      - T056-T058 hex_hydrator refactor (BEAShareLookupService DI)
+      - tools/check_subsystem_boundary.py II.11 linter
+      - Spec amendment for SC-005 threshold + SC-006 calibration
+  previous_previous_previous_sprint: "066-marx-coherence-fixes (Complete; 79/79 tasks done — see specs/066-marx-coherence-fixes/tasks.md and ADR043 + ADR044)"
+  spec_067_summary: |
+    QCEW rollup-row normalization — closes the spec-066 follow-up
+    item that flagged the fragile `WHERE industry_id = 1 AND
+    ownership_id = 1` defensive filter pattern as a structural trap.
+
+    Delivered (4 user stories, 70 tasks):
+    - US1: `tools/normalize_qcew_rollups.py` migration tool with
+      preflight assertions, atomic backup-then-DELETE commit,
+      audit-report (Markdown + JSON sidecar) writers, dry-run /
+      apply / rollback / drop-backup modes. Live --apply against
+      the 43.3M-row reference DB removed ~28.2M rollup rows
+      (naics_level != 6 OR own_code = '0'), leaving ~15.1M
+      canonical leaves.
+    - US3: `src/babylon/persistence/{hex_hydrator, county_aggregation}.py`
+      refactored from `SELECT (rollup)` to `SUM (leaves)`. SC-004
+      grep enforcement integrated as `test_post_067_no_filter_lines_remain_in_production_paths`.
+    - US2: `test_state_rate_of_profit_in_relaxed_band` band tightened
+      from spec-066's [0.05, 0.80] back to spec-original [0.05, 0.50].
+      michigan-e2e baseline regenerated against the post-067 reference DB.
+    - US4: `tests/integration/test_audit_report_validation.py` —
+      contract harness enforcing
+      `contracts/audit_report.schema.json` plus FR-007 / SC-008
+      integrity-class accounting.
+
+    Key finding (research.md T036): QCEW data has ~10-30% BLS
+    confidentiality suppression at the 6-digit NAICS detail level.
+    `SUM(leaves)` is systematically LOWER than the BLS Total Covered
+    rollup by 14-30% per county-year. The spec's ±5% SC-001 / SC-007
+    targets are deferred to a follow-up amendment (see ADR045
+    negative consequences for mitigation options).
+
+    Documented in ADR045 + research.md `T001 pre-flight verification`
+    + research.md `T036 finding` sections.
+  spec_066_summary: |
+    Marx-coherence fixes — surfaces the 5 categorical bugs the spec-065
+    e2e Michigan-Canada audit identified and fixes them. After spec-066
+    the canonical run produces output that satisfies Marx's accounting
+    identities AND drives consciousness evolution.
+
+    Delivered (5 user stories, 79 tasks, ~30 files touched):
+    - US1 (Bug A): hex_hydrator surplus value formula fix
+      `s = max(0, GDP/52 - v)` per Marx Vol I Ch 9 + BEA value-added.
+      Closes the bug where total_s was uniformly 0 across all 83 counties.
+    - US2 (Bug E + Bug F): SimulationEngine.run_tick wired into the
+      bridged runner. ServiceContainer constructed once before tick loop;
+      bridge's event_bus/auditor/boundary_register patched in; fresh
+      SimulationEngine(_DEFAULT_SYSTEMS) per run; graph mutated in place;
+      world reconstituted via from_graph after each tick. EXPLOITATION
+      edge seeded per county at tick 0 (no SOLIDARITY — those are
+      strategic per Constitution III.5). Documented in ADR044.
+    - US3 (Bug D): explicit ideology baseline placeholder
+      (r=0.05, l=0.50, f=0.45) per ADR043. Factories accept
+      `ideology=IdeologicalProfile`; bridge passes BASELINE_IDEOLOGY to
+      every county entity.
+    - US4 (Bug B): employment_proxy unit fix. QCEW `employment` column
+      IS already BLS annual-average; removed /52 divisor entirely; added
+      industry_id=1 + ownership_id=1 filters to prevent NAICS-hierarchy
+      AND ownership-rollup double-counting. Wayne 2010 now returns ~660K
+      (matches BLS publication).
+    - US5 (Bug C): substrate apportionment split. New
+      _fetch_per_county_substrate_apportionment helper JOINs
+      dim_county_geometry.area_sq_km. energy_per_hex uses pop_factor;
+      raw_material_per_hex uses area_factor. Graceful T067 fallback
+      when area data missing.
+
+    Cascade fixes surfaced during implementation:
+    - hex_hydrator wages query gained the ownership_id=1 filter to
+      mirror the new employment_proxy filter (avoids ownership-rollup
+      double-counting in v).
+    - consciousness.routing_scale bumped 0.1 → 0.2 (FR-027 + Phase 0 R4)
+      for measurable consciousness drift visibility.
+    - dynamic_relationship_state CHECK constraint mismatch: bridge
+      now UPPERCASES edge_type before persisting (StrEnum.value is
+      lowercase but migration 0024 requires uppercase).
+    - test_state_rate_of_profit_in_relaxed_band band widened from
+      [0.05, 0.50] to [0.05, 0.80] to accommodate the un-doubled v.
+    - test_tick_over_tick_evolution loosened to "any column changes"
+      (the strict ≥5% threshold is validated by the 520-tick slow-gate
+      test_consciousness_evolution.py).
+
+  previous_sprint_2: "064-headless-sim-runner (Complete; 67/70 tasks done, 3 deferred — see specs/064-headless-sim-runner/tasks.md and ADR041)"
+  spec_065_summary: |
+    Engine-bridging — real per-tick state behind the headless runner.
+    Replaces spec-064's no-op carry-forward virtualization with a real
+    WorldStateBridge that hydrates per-county SocialClass entities,
+    persists per-tick subsystem rows (consciousness, demographics,
+    employment), and produces trace.csv values that vary per-county
+    from real BEA/QCEW/FCC reference data.
+
+    Delivered: WorldStateBridge (hydrate_initial + persist_tick +
+    poll_endgame); babylon.persistence.county_aggregation (4 pure
+    derivation helpers: aggregate_survival, aggregate_consciousness,
+    fetch_population, fetch_employment_proxy); hex hydrator rewrite
+    (real BEA GDP × intermediate-inputs-fraction for c, QCEW for v,
+    GDP-residual for s, capital-output-ratio for k, FCC + coercive
+    infrastructure for surveillance/internet); FR-022 reference-data
+    window preflight (silent/warn-and-clamp/hard-refuse three-mode
+    policy); --strict CLI flag that aborts on alarm-severity audit
+    rows; --endgame-detector CLI flag with importlib resolution;
+    EventCapture wiring into summary.events; aggregate_external_node_flows
+    pulling per-node summaries from boundary_flow_register table;
+    SocialClass.county_fips optional FIPS attribution field; bridge
+    mapping IdeologicalProfile(cc, ni) → TernaryConsciousness(r, l, f)
+    that's simplex-preserving by construction.
+
+    4 new Postgres migrations (0020-0023): dynamic_consciousness_state,
+    dynamic_demographics_state, dynamic_employment_state plus the
+    recreated view_runtime_trace_emission that JOINs them. The 22-column
+    external trace contract is preserved; previously-NULL columns now
+    flow from real engine state + reference data.
+
+    1500+ unit tests + 15 integration tests across persistence/models/
+    engine.headless_runner/integration. 1 xfail (T028 SC-004 tick-over-tick
+    variance) documents that full SimulationEngine integration is
+    deferred to a follow-up spec — the bridge + persistence layers are
+    ready, but the 15-system engine wiring is large enough to deserve
+    its own session.
+
+    Reconciliation note: the original spec contract referenced WorldState
+    fields (consciousness_simplex, demographics_per_county,
+    employment_per_county) that don't exist on the model. Research.md
+    §R10 documents the 2026-05-15 reconciliation that replaced those
+    flat field reads with derivation/aggregation helpers and added a
+    single optional SocialClass.county_fips field. Per Constitution II.6,
+    per-county aggregates are derived state and belong on the trace view
+    (where they already lived), not on WorldState.
+  spec_064_summary: |
+    Headless Postgres-backed simulation runner — canonical CLI surface
+    for end-to-end Babylon runs. A single `mise run sim:e2e-michigan`
+    bootstraps Postgres, hydrates hex state, runs a tick loop, and emits
+    an LLM-parseable artifact bundle (trace.csv + summary.json +
+    manifest.json with input_hash determinism fingerprint).
+
+    Delivered: babylon.engine.headless_runner package (8 modules:
+    runner, argparse_cli, scopes, models, trace_emitter, run_summary,
+    manifest, __main__). Postgres migration 0019_trace_emission_view.sql
+    establishes view_runtime_trace_emission as the II.11-compliant
+    declared cross-subsystem read interface. 6 in-scope tools
+    (audit_simulation, monte_carlo, parameter_analysis,
+    sensitivity_analysis, profiler, landscape_analysis) refactored to
+    route through tools/shared.py:run_simulation; SC-007 import audit
+    enforces the no-legacy-engine boundary at CI time. ADR041, baseline
+    snapshot, qa:e2e-regression mise gate.
+
+    Three tasks deferred: T024a + T033 (end-game detection), and a
+    future-spec recovery of full result-dict fidelity in tools/* once
+    real engine systems are wired into the headless tick loop. The MVP
+    runner carries hex state forward unchanged; richer per-tick
+    advancement lands in a follow-up spec.
+  spec_062_summary: |
+    Cross-scale value, substrate, and tick propagation engine. Codifies the
+    two-phase persistence boundary (SQLite-as-fixture / Postgres-as-runtime),
+    per-tick transactional atomicity (FR-008a), hex resolution 7 as the only
+    persisted source-of-truth for c/v/s/K/biocapacity (FR-018/FR-019),
+    year-scoped coefficient lookups with slowly-varying vs event-discrete
+    policy classes (FR-011/012/013/041), 9-node external boundary set
+    (8 international + rest_of_usa, Canada as first-class per Constitution
+    IV.1 R4 amendment), and a conservation audit log with per-tick SHA-256
+    determinism hash (GATE-1 / Constitution III.7).
+
+    Delivered: 6 Postgres migrations (0010-0015), 9 Pydantic models,
+    SubstrateSystem at pipeline slot 2.5, ConservationAuditor +
+    ConservationAuditQuery, ImmutableReferenceLookup with FR-016/041 clamp
+    behaviour, BoundaryFlowRegister with hex-pair discriminator schema,
+    distribute_phi_week_to_counties helper, distribution.split_surplus_to_pirt,
+    PostgresRuntime.persist_tick_atomic + get_last_committed_tick, ADR040,
+    111 unit + property tests passing.
+
+    All five constitutional gates close: GATE-1 (determinism hash),
+    GATE-2 (no DB I/O during tick), GATE-3 (subsystem ownership registry),
+    GATE-4 (Vol II = min-cost flow only, slime-mold deferred), GATE-5
+    (Canada as first-class international node).
+
+    36 tasks deferred to engine-integration follow-up (live-Postgres
+    integration tests, full LODES OD matrix loader, real Hickel/Ricci
+    hydration, 780-tick perf test). All deferrals documented inline in
+    specs/062-cross-scale-integration/tasks.md with explicit reasons.
+
+  spec_061_summary: |
+    Cutover from v2 fixture data to live Postgres-backed engine state.
+    Delivered: 5 migrations (0006-0010), atomic snapshot writes, hybrid retry-then-exit
+    boot, systemd unit, /health/detail/ with 404 obscurity, mid-session 503 middleware,
+    sentence-transformers pin (768-dim, SHA e8c3b32), 19 integration test files +
+    5 e2e Playwright scaffolds + 3 operator shell scripts (quickstart/perf/systemd
+    smoke), mock_bridge/mock_defines/seed_mock_game deleted, BABYLON_MOCK_MODE removed.
+    Test sweep: 94 integration tests pass + 6 graceful skips (missing optional schema).
+    Remaining: T119 partial (ai/roadmap.md doesn't exist in this codebase — content
+    captured in this file + ADR039). See ai/decisions/ADR039_spec_061_real_backend_wireup.yaml.
+  principle: "Be honest about what's implemented vs aspirational"
+  architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
+  canonical_roadmap: "reports/aidocs-vs-code-audit-2026-05-16.md (living roadmap per owner decision 2026-07-02; ai/epochs/ is historical vision)"
+  last_audit: "Documentation Accuracy Audit (2025-12-26)"
+  last_calibration: "Marxian Value Tensor BEA/CEX Calibration (2026-01-28)"
+
+# =============================================================================
+# EPOCH + SLICE STATUS
+# =============================================================================
+#
+# Epochs are playable checkpoints. Slices are complete vertical features.
+# See ai/epochs-overview.md for full details.
+#
+epoch_status:
+  current_epoch: 1
+  epoch_name: "The Demonstration"
+  thesis: "The player watches the Imperial Circuit consume itself and sees the Fascist Bifurcation."
+  mvp_status: "COMPLETE (2026-01-01)"
+  mvp_validation:
+    carceral_equilibrium_score: 88.87
+    test_count: 3050
+    scenario_tests: 22
+    all_phases_firing: true
+    phase_staggering: "validated"
+    milestone_commit: "6033d78"
+    milestone_document: "ai/epoch1-mvp-complete.md"
+
+  slices:
+    "1.1":
+      name: "The Circuit"
+      status: "COMPLETE"
+      deliverables:
+        - "ImperialRentSystem (4-phase extraction)"
+        - "SolidaritySystem (consciousness transmission)"
+        - "4-node Imperial Circuit scenario"
+      files:
+        - "src/babylon/engine/systems/economic.py"
+        - "src/babylon/engine/systems/solidarity.py"
+        - "src/babylon/engine/scenarios.py"
+
+    "1.2":
+      name: "The Struggle"
+      status: "COMPLETE"
+      deliverables:
+        - "StruggleSystem (George Floyd Dynamic)"
+        - "TerritorySystem (carceral geography)"
+        - "Agency Layer mechanics"
+      files:
+        - "src/babylon/engine/systems/struggle.py"
+        - "src/babylon/engine/systems/territory.py"
+
+    "1.3":
+      name: "The Observer"
+      status: "COMPLETE"
+      deliverables:
+        - "SimulationObserver protocol"
+        - "TopologyMonitor (phase transitions)"
+        - "MetricsCollector (unified metrics)"
+        - "11 EventTypes"
+      files:
+        - "src/babylon/engine/observer.py"
+        - "src/babylon/engine/topology_monitor.py"
+        - "src/babylon/engine/observers/metrics.py"
+
+    "1.4":
+      name: "The Rift"
+      status: "COMPLETE"
+      spec: "ai/metabolic-slice.yaml"
+      mvp_validated: "2026-01-01"
+      carceral_equilibrium_integration:
+        score: 88.87
+        phases_validated:
+          - "SUPERWAGE_CRISIS (Year ~42.9)"
+          - "CLASS_DECOMPOSITION (Year ~43.3)"
+          - "CONTROL_RATIO_CRISIS (Year ~44.1)"
+          - "TERMINAL_DECISION (Year ~44.9)"
+        phase_staggering: "Minimum 2-year spread, 1-tick inter-phase gaps"
+        scenario_tests: 22
+      deliverables_complete:
+        - "Territory metabolic fields (biocapacity, max_biocapacity, regeneration_rate, extraction_intensity)"
+        - "SocialClass consumption fields (s_bio, s_class, consumption_needs computed)"
+        - "WorldState computed properties (total_biocapacity, total_consumption, overshoot_ratio)"
+        - "calculate_biocapacity_delta() and calculate_overshoot_ratio() formulas"
+        - "ECOLOGICAL_OVERSHOOT EventType"
+        - "MetabolismSystem with 18 unit tests (includes population scaling)"
+        - "MetabolismSystem registered in DEFAULT_SYSTEMS (after TerritorySystem)"
+        - "Ecological metrics in TickMetrics (overshoot_ratio, total_biocapacity, total_consumption)"
+        - "MetricsCollector extracts ecological state from WorldState"
+        - "Integration tests proving system runs in engine loop (15 tests)"
+        - "MetabolismDefines in GameDefines (entropy_factor, overshoot_threshold, max_overshoot_ratio)"
+        - "TopologyDefines in GameDefines (gaseous_threshold, condensation_threshold, vanguard_density_threshold)"
+        - "EconomyDefines additions (negligible_rent, negligible_subsidy)"
+        - "All magic numbers wired to GameDefines (no hardcoded thresholds in systems)"
+      deliverables_remaining:
+        - "Dashboard metabolic gauge (Slice 1.5)"
+        - "[DEFERRED] Wire ImperialRentSystem to set extraction_intensity (Epoch 2)"
+      formula: "ΔB = Regeneration - (Extraction × Entropy_Factor)"
+      commits:
+        - "090a843: feat(metabolic): add Slice 1.4A material basis"
+        - "d215fff: test(metabolic): add comprehensive unit tests for Slice 1.4A"
+        - "ada50da: test(metabolic): add TDD Red Phase tests for MetabolismSystem"
+        - "fe7feb1: feat(metabolic): implement MetabolismSystem (TDD Green Phase)"
+        - "7563101: test(metabolic): add TDD RED phase tests for Sprint 1.4C"
+        - "ce5b888: feat(metabolic): wire MetabolismSystem into simulation engine (TDD Green Phase)"
+        - "8e2009c: refactor(defines): add MetabolismDefines and TopologyDefines"
+        - "e11cf6f: refactor(economic): wire negligible thresholds to GameDefines"
+        - "4609e4f: refactor(topology): wire phase thresholds to GameDefines"
+
+    "1.5":
+      name: "The Dashboard"
+      status: "PARTIAL"
+      deliverables_complete:
+        - "NiceGUI 4-panel layout"
+        - "TrendPlotter, NarrativeTerminal, SystemLog, StateInspector"
+        - "Control deck (STEP/PLAY/PAUSE/RESET)"
+      deliverables_remaining:
+        - "Wire 4-node scenario (currently 2-node)"
+        - "4 wealth lines color-coded by class"
+        - "Consciousness gap (P_w - C_w)"
+        - "Metabolic gauge showing overshoot_ratio"
+        - "Gramscian Wire MVP - dual narrative display"
+      files:
+        - "src/babylon/ui/main.py"
+        - "src/babylon/ui/components.py"
+      gramscian_wire_mvp:
+        spec: "ai/gramscian-wire-mvp.yaml"
+        description: "Dual narrative display demonstrating 'neutrality is hegemony'"
+        status: "PLANNED"
+
+    "1.6":
+      name: "The Endgame"
+      status: "NOT_STARTED"
+      deliverables_planned:
+        - "ECOLOGICAL_OVERSHOOT detection"
+        - "Solidarity check at crisis moment"
+        - "Win/lose display (Revolutionary vs Fascist Path)"
+        - "Bondi Algorithm narration"
+
+  completion_criteria:
+    - "[x] 4-node Imperial Circuit running in simulation (validated via scenario tests)"
+    - "[x] MetabolismSystem depletes biocapacity over time (Sprint 1.4B)"
+    - "[x] MetabolismSystem registered in engine (Sprint 1.4C)"
+    - "[x] Ecological metrics collected by MetricsCollector (Sprint 1.4C)"
+    - "[x] SUPERWAGE_CRISIS fires when rent pool exhausted (Year ~42.9)"
+    - "[x] CLASS_DECOMPOSITION fires (LA → Enforcer/Prisoner split)"
+    - "[x] CONTROL_RATIO_CRISIS fires when capacity breached"
+    - "[x] TERMINAL_DECISION fires with genocide outcome (null hypothesis)"
+    - "[x] Phase staggering validated (minimum 2-year spread)"
+    - "[x] Carceral Equilibrium optimization score: 88.87/100"
+    - "[x] All tests pass (current: 3050+)"
+    - "[ ] Dashboard shows 4-node circuit visually (Slice 1.5)"
+    - "[ ] Endgame screen displays outcome (Slice 1.6)"
+
+  future_epochs:
+    epoch_2:
+      name: "The Game"
+      thesis: "The player has agency. Decisions matter. Multiple endings."
+      structure: "Staged into 4 sub-epochs (2A/2B/2C/2D) per epoch-readiness-review.yaml"
+
+      sub_epochs:
+        "2A":
+          name: "Core Agency"
+          thesis: "The player can act. Resources constrain choices."
+          slices: ["2.1", "2.2a", "2.6"]
+          status: "PLANNED"
+        "2B":
+          name: "Organization"
+          thesis: "The party can fail from within. Class composition matters."
+          slices: ["2.2b", "2.3", "2.8"]
+          status: "PLANNED"
+          scope_note: "Doctrine System simplified to 3 trunks for 2B MVP"
+        "2C":
+          name: "Information"
+          thesis: "Win the narrative, know the terrain."
+          slices: ["2.5", "2.9", "2.10"]
+          status: "PLANNED"
+          critical_gap: "State AI decision logic must be defined before implementation"
+        "2D":
+          name: "Combat"
+          thesis: "Violence is the continuation of politics."
+          slices: ["2.7"]
+          status: "PLANNED"
+          note: "Combat is last because it requires all other systems"
+
+      slices:
+        "2.1": { name: "Demographic Resolution", sub_epoch: "2A", spec: "ai/demographics-spec.yaml" }
+        "2.2a": { name: "Strategy Layer", sub_epoch: "2A", spec: "ai/strategy-layer.yaml" }
+        "2.2b": { name: "The Vanguard", sub_epoch: "2B", spec: "ai/cohesion-mechanic.yaml" }
+        "2.3": { name: "Reactionary Subject", sub_epoch: "2B", spec: "ai/reactionary-subject.yaml" }
+        "2.4": { name: "Reproductive Labor", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+        "2.5": { name: "The Wire", sub_epoch: "2C", spec: "ai/gramscian-wire-vision.yaml" }
+        "2.6": { name: "Resource Economy", sub_epoch: "2A", spec: "ai/vanguard-economy.yaml" }
+        "2.7": { name: "Kinetic Warfare", sub_epoch: "2D", spec: "ai/kinetic-warfare.yaml" }
+        "2.8": { name: "LODES & Freight", sub_epoch: "2B", spec: "ai/epochs/epoch2/lodes-freight-flows.yaml" }
+        "2.9": { name: "Ideological Cartography", sub_epoch: "2C", spec: "ai/epochs/epoch2/ideological-geography.yaml" }
+        "2.10": { name: "Doctrine System", sub_epoch: "2B", spec: "ai/doctrine-tree.yaml" }
+        "2.11": { name: "The Panopticon", sub_epoch: "2C", spec: "ai/state-attention-economy.yaml", status: "SUPERSEDED by Feature 039 (state-apparatus-ai)" }
+        "2.12": { name: "Epistemic Horizon", sub_epoch: "2C", spec: "ai/fog-of-war.yaml" }
+        "2.13": { name: "Multiple Scenarios", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+
+    epoch_3:
+      name: "The Platform"
+      thesis: "Others can build on this. Modding, custom scenarios, educational tools."
+      slices:
+        "3.1": "Liberation Mechanics"
+        "3.2": "Scenario Editor"
+        "3.3": "Modding API"
+
+# =============================================================================
+# IMPLEMENTATION STATUS
+# =============================================================================
+
+implemented:
+
+  data_layer:
+    status: "functional"
+    components:
+      json_data_files:
+        status: "complete"
+        details: "17 entity collections migrated from XML"
+        location: "src/babylon/data/game/*.json"
+
+      json_schemas:
+        status: "complete"
+        details: "Draft 2020-12 schemas for all entities"
+        location: "src/babylon/schemas/"
+        validation: "poetry run python tools/validate_schemas.py"
+
+      pydantic_models:
+        status: "partial"
+        details: "Some models exist, not all entities covered"
+        location: "src/babylon/data/models/"
+
+      database:
+        status: "configured"
+        details: "SQLite setup, no tables populated yet"
+        location: "src/babylon/data/database.py"
+
+      marxian_tensor_calibration:
+        status: "complete"
+        date: "2026-01-28"
+        details: "BEA/CEX calibration of Marxian value tensor ratios"
+        spec: "ai/marxian-tensor-spec.yaml"
+        calibration_source: "ai/brainstorms/bea2ratio.md"
+        files_modified:
+          - "src/babylon/economics/data/naics_to_dept.yaml (defaults, overrides, sector_ratios)"
+          - "src/babylon/economics/department_mapper.py (sector ratio methods)"
+          - "src/babylon/economics/hydrator.py (three-tier lookup)"
+        key_changes:
+          default_ratios: "BEA-calibrated values producing 3-8% Piketty profit rates"
+          sector_ratios: "22 NAICS 2-digit sector-level ratios (NEW)"
+          naics_overrides: "60+ industry-specific allocations (expanded)"
+          lookup_hierarchy: "BEA → sector_ratios → default_ratios"
+        validation:
+          tests: 12
+          location: "tests/integration/tensors/test_empirical_validation.py"
+          assertions:
+            - "Profit rates within Piketty 3-8% bounds"
+            - "Gentrification signal: Oakland > Wayne (>5% difference)"
+            - "Conservation law: allocated + excluded = total"
+            - "Temporal stability across years"
+        theoretical_framework:
+          dept_I_II_split: "BEA Use Tables (intermediate vs final demand)"
+          IIa_IIb_split: "BLS CEX necessity index (worker vs capitalist consumption)"
+          dept_III: "Fortunati/Federici reproductive labor framework"
+
+      imperial_rent_calculation:
+        status: "complete"
+        date: "2026-01-29"
+        details: "Imperial rent as derived corollary to Marxian value tensor"
+        spec: "ai/imperial-rent-spec.yaml"
+        theoretical_framework: "Emmanuel-Amin unequal exchange"
+        files_created:
+          - "src/babylon/economics/reproduction.py (PeripheryReproductionBasket, ImperialRentCalculator, ImperialRentResult)"
+          - "src/babylon/economics/data/periphery_basket.yaml (peripheral reproduction costs)"
+          - "tests/integration/economics/test_imperial_rent.py (8 tests)"
+          - "tests/integration/economics/conftest.py (shared fixtures)"
+        files_modified:
+          - "src/babylon/economics/tensor.py (added total_v computed property)"
+          - "src/babylon/economics/hydrator.py (added hydrate_with_rent method)"
+          - "src/babylon/economics/__init__.py (exports)"
+        key_formula:
+          simple_baseline: "Phi = W_actual - P_periphery"
+          future_roadmap: "Phi_worker = (W_actual - P_periphery) × alpha (value chain layers)"
+        validation:
+          tests: 8
+          location: "tests/integration/economics/test_imperial_rent.py"
+          assertions:
+            - "All US counties have Phi > 0 (wages > periphery baseline)"
+            - "Imperial rent ratio > 99% (periphery cost negligible vs US wages)"
+            - "Computed fields (wage_multiple, rent_ratio) calculate correctly"
+        future_work:
+          - "Regional periphery baselines (Sub-Saharan, South Asia, LATAM)"
+          - "World Bank/ILO data integration"
+          - "Value chain extraction layers"
+          - "Per-worker imperial rent metrics"
+
+      shadow_labor_visibility:
+        status: "complete"
+        date: "2026-01-29"
+        details: "Shadow labor visibility dimension (g_33) for Department III"
+        spec: "ai/shadow-labor-spec.yaml"
+        theoretical_framework: "Feminist Marxism / Social Reproduction Theory (Federici, Vogel)"
+        files_created:
+          - "src/babylon/data/atus/__init__.py (package exports)"
+          - "src/babylon/data/atus/models.py (ATUSActivityRecord, ATUSHouseholdSummary)"
+          - "src/babylon/data/atus/protocol.py (ReproductionLoaderProtocol ABC)"
+          - "src/babylon/data/atus/mock_loader.py (MockReproductionLoader)"
+          - "src/babylon/economics/shadow_labor.py (ShadowLaborConfig, ShadowLaborResult, ShadowLaborService)"
+          - "tests/unit/economics/test_shadow_labor.py (37 tests)"
+        files_modified:
+          - "src/babylon/config/defines.py (added shadow_wage_hourly constant)"
+          - "src/babylon/economics/__init__.py (exports)"
+          - "tests/constants.py (ShadowLaborDefaults)"
+        key_formulas:
+          v_market: "T_3,v × w_shadow × g_33 (monetized care work)"
+          v_shadow: "T_3,v × w_shadow × (1 - g_33) (shadow subsidy)"
+          invariant: "v_market + v_shadow = total_value (value conservation)"
+        constants:
+          g_33_default: "0.3 (ATUS 2022: ~30% of care work monetized)"
+          shadow_wage: "$15.43/hour (BLS SOC 31-1120 median, May 2023)"
+          weekly_hours: "21 hours/week (ATUS 2022 national average)"
+        architecture:
+          pattern: "Lens/View - provides alternative decomposition without modifying tensor"
+          key_principle: "Shadow labor service operates alongside tensor, not inside it"
+        validation:
+          tests: 37
+          location: "tests/unit/economics/test_shadow_labor.py"
+          assertions:
+            - "g_33=1.0 → v_shadow=0 (full monetization)"
+            - "g_33=0.0 → v_market=0 (full shadow)"
+            - "Value conservation: v_market + v_shadow = total_value"
+        future_work:
+          - "Real ATUS microdata integration (BLS API)"
+          - "County-level g_33 variation (empirical calibration)"
+          - "Optional tensor integration (shadow_decomposition field)"
+          - "Gendered split of reproductive labor"
+          - "International comparison (ILO/World Bank time-use data)"
+
+      fundamental_tensor_primitive:
+        status: "complete"
+        date: "2026-02-01"
+        spec: "specs/011-fundamental-tensor-primitive/"
+        details: "ValueTensor4x3 as single source of truth for economic data, consumer isolation from database"
+        theoretical_framework: "Marxian reproduction schema (Capital Volume 2)"
+        files_created:
+          - "src/babylon/economics/tensor.py (ValueTensor4x3, DepartmentRow, NoDataSentinel)"
+          - "src/babylon/economics/tensor_registry.py (TensorRegistry, GeoLevel)"
+          - "src/babylon/economics/adapters.py (SQLAlchemyQCEWSource, InterpolatingBEASource)"
+          - "src/babylon/economics/exceptions.py (TensorError, TensorInitializationError, TensorHydrationError)"
+          - "src/babylon/ui/dashboard/tensor_consumer.py (TensorConsumer protocol, TensorConsumerMixin)"
+          - "tools/verify_hexagon_isolation.py (static import analysis)"
+        files_modified:
+          - "src/babylon/models/snapshots.py (TerritoryState.tensor_year, SimulationSnapshot.tensor_registry)"
+          - "src/babylon/engine/simulation.py (from_sqlite tensor initialization)"
+          - "src/babylon/economics/hydrator.py (MarxianHydrator returns ValueTensor4x3)"
+        test_suites:
+          - "tests/unit/economics/test_tensor.py"
+          - "tests/unit/economics/test_tensor_registry.py"
+          - "tests/unit/economics/test_snlt.py"
+          - "tests/unit/economics/test_bea_interpolation.py"
+          - "tests/unit/economics/test_derived_tensors.py"
+          - "tests/unit/economics/test_tensor_aggregation.py"
+          - "tests/unit/ui/test_hexagon_isolation.py"
+          - "tests/integration/test_tensor_data_flow.py"
+          - "tests/integration/test_tensor_hydration.py"
+          - "tests/benchmark/test_tensor_performance.py"
+          - "tests/benchmark/test_tensor_memory.py"
+        key_structures:
+          ValueTensor4x3: "4×3 tensor (4 departments × 3 components: c, v, s) in labor-hours"
+          TensorRegistry: "Thread-safe cached container with LRU aggregate cache"
+          NoDataSentinel: "Falsy marker for missing data enabling walrus operator patterns"
+          GeoLevel: "COUNTY, STATE, NATION aggregation levels"
+        derived_values:
+          profit_rate: "s / (c + v)"
+          exploitation_rate: "s / v"
+          organic_composition: "c / v"
+          imperial_rent: "total_v - total_value (SignedLaborHours)"
+        performance:
+          hydration: "100 counties × 10 years < 5 seconds"
+          get_latency: "p95 < 1ms (cache hit)"
+          aggregate_cold: "< 100ms"
+          aggregate_warm: "< 1ms"
+          memory: "Full US dataset < 500MB peak RSS"
+        consumer_isolation:
+          principle: "Hexagon visualization never touches database directly"
+          enforcement: "Static import analysis via verify_hexagon_isolation.py"
+          prohibited_imports: "babylon.data.*, sqlalchemy.orm.*, sqlite3"
+        validation:
+          tests: 150
+          release_checklist: "71/71 items passing"
+          phases_complete: "7/7"
+
+      multi_resolution_hex_journal:
+        status: "complete"
+        feature_id: "037"
+        date: "2026-04-10"
+        details: "Tiered persistence: county→R7→R8. 305× storage reduction for national-scale simulation."
+        files_created:
+          - "src/babylon/persistence/hex_init.py (tick-0 ETL seeding)"
+        files_modified:
+          - "src/babylon/persistence/postgres_schema.py (hex_latest, hex_substrate, 5 views, 4 indexes)"
+          - "src/babylon/persistence/postgres_runtime.py (refresh_hex_latest, reconstruct_hex_state)"
+          - "web/game/models.py (HexState → hex_latest)"
+        test_suites:
+          - "tests/unit/persistence/test_spec037_schema.py (18 tests)"
+          - "tests/unit/persistence/test_hex_latest_refresh.py (8 tests)"
+          - "tests/unit/persistence/test_hex_init.py (10 tests)"
+          - "tests/unit/persistence/test_reconstruct_hex_state.py (9 tests)"
+        test_count: 45
+        architecture:
+          territory_snapshot: "County-level economics (~3,100 rows/tick)"
+          hex_activity: "R7 sparse events (~5K rows/tick)"
+          hex_substrate: "R8 static terrain (~1.7M rows, once)"
+          hex_latest: "R7 denormalized cache (~243K rows, current)"
+        storage_budget: "~582 MB/session (was ~177 GB without tiering)"
+
+  core_logic:
+    status: "complete"
+    components:
+      simulation_engine:
+        status: "complete"
+        details: "Modular engine with 7 Systems, ServiceContainer DI, typed events"
+        location: "src/babylon/engine/simulation_engine.py"
+        tests: "tests/unit/engine/test_simulation_engine.py (30+ tests)"
+        architecture:
+          - "SimulationEngine.run_tick(graph, services, context)"
+          - "7 Systems: ImperialRent, Solidarity, Consciousness, Survival, Struggle, Contradiction, Territory"
+          - "ServiceContainer: config, database, event_bus, formulas, defines"
+          - "_convert_bus_event_to_pydantic(): EventBus → typed SimulationEvent (13 event classes)"
+          - "Observer event injection via persistent_context['_observer_events']"
+
+      service_container:
+        status: "complete"
+        details: "Dependency injection container for all services"
+        location: "src/babylon/engine/services.py"
+        tests: "tests/unit/engine/test_services.py"
+        provides:
+          - "config: SimulationConfig"
+          - "database: DatabaseConnection"
+          - "event_bus: EventBus"
+          - "formulas: FormulaRegistry"
+
+      event_bus:
+        status: "complete"
+        details: "Publish/subscribe event system with 11 EventTypes"
+        location: "src/babylon/engine/event_bus.py"
+        tests: "tests/unit/engine/test_event_bus.py (20 tests)"
+        events_published:
+          - "SURPLUS_EXTRACTION - imperial rent extracted"
+          - "IMPERIAL_SUBSIDY - subsidy paid to comprador"
+          - "ECONOMIC_CRISIS - crisis event triggered"
+          - "CONSCIOUSNESS_TRANSMISSION - ideology transmitted via solidarity"
+          - "MASS_AWAKENING - threshold crossed"
+          - "EXCESSIVE_FORCE - spark event (George Floyd Dynamic)"
+          - "UPRISING - revolt triggered"
+          - "SOLIDARITY_SPIKE - solidarity infrastructure built"
+          - "RUPTURE - tension reaches 1.0"
+          - "SOLIDARITY_AWAKENING - source enters struggle"
+          - "PHASE_TRANSITION - percolation state changes"
+
+      formula_registry:
+        status: "complete"
+        details: "Hot-swappable formula lookup with 12 registered formulas"
+        location: "src/babylon/engine/formula_registry.py"
+        tests: "tests/unit/engine/test_formula_registry.py (14 tests)"
+
+      systems:
+        status: "complete"
+        details: "4 modular System implementations"
+        location: "src/babylon/engine/systems/"
+        components:
+          protocol: "System protocol with step(graph, services, context)"
+          imperial_rent: "ImperialRentSystem - economic extraction"
+          consciousness: "ConsciousnessSystem - ideology drift"
+          survival: "SurvivalSystem - P(S|A) and P(S|R)"
+          contradiction: "ContradictionSystem - tension accumulation"
+
+      simulation_facade:
+        status: "complete"
+        details: "Stateful wrapper for multi-tick simulations"
+        location: "src/babylon/engine/simulation.py"
+        tests: "tests/unit/engine/test_simulation_facade.py (19 tests)"
+        provides:
+          - "Simulation.step() - advance one tick"
+          - "Simulation.run(n) - run n ticks"
+          - "Simulation.get_history() - all state snapshots"
+
+      entity_factories:
+        status: "complete"
+        details: "Factory functions for entity creation"
+        location: "src/babylon/engine/factories.py"
+        tests: "tests/unit/engine/test_factories.py (30 tests)"
+        provides:
+          - "create_proletariat() - exploited class"
+          - "create_bourgeoisie() - exploiter class"
+
+      world_state:
+        status: "complete"
+        details: "Immutable state with BabylonGraph conversion (rustworkx, Amendment L), state_finances integration"
+        location: "src/babylon/models/world_state.py"
+        tests: "tests/unit/models/test_world_state.py (41 tests)"
+        state_finances_integration:
+          field: "state_finances: dict[str, StateFinance]"
+          graph_storage: "G.graph['state_finances'] metadata"
+          tests: "TestStateFinancesIntegration (6 tests)"
+
+      finance_models:
+        status: "complete"
+        details: "Political Economy of Liquidity - Epoch 1 (The Ledger)"
+        spec: "ai/political-economy-liquidity.yaml"
+        location: "src/babylon/models/entities/"
+        tests: "tests/unit/models/ (187 tests)"
+        models:
+          state_finance:
+            location: "src/babylon/models/entities/state_finance.py"
+            fields: ["treasury", "police_budget", "social_reproduction_budget", "tax_rate", "tribute_income", "debt_level", "debt_ceiling"]
+            computed: ["burn_rate"]
+            tests: "test_state_finance.py (55 tests)"
+          revolutionary_finance:
+            location: "src/babylon/models/entities/revolutionary_finance.py"
+            fields: ["war_chest", "operational_burn", "dues_income", "expropriation_income", "donor_income", "heat", "reformist_drift"]
+            tests: "test_revolutionary_finance.py (56 tests)"
+          precarity_state:
+            location: "src/babylon/models/entities/precarity_state.py"
+            fields: ["nominal_wage", "ppp_factor", "inflation_index", "subsistence_threshold", "organization"]
+            computed: ["real_wage", "precarity_index", "proletarianization_risk"]
+            tests: "test_precarity_state.py (65 tests)"
+        cost_checking:
+          location: "src/babylon/engine/simulation_engine.py"
+          behavior: "Logs warning when treasury < burn_rate"
+          tests: "TestCostChecking (5 tests)"
+
+      simulation_config:
+        status: "complete"
+        details: "Frozen config with all formula coefficients"
+        location: "src/babylon/models/config.py"
+        tests: "tests/unit/models/test_config.py (42 tests)"
+
+      formulas:
+        status: "complete"
+        details: "All MLM-TW formulas implemented and tested"
+        location: "src/babylon/systems/formulas.py (348 lines)"
+        tests: "tests/unit/formulas/ (40 tests)"
+        includes:
+          - "calculate_imperial_rent() - consciousness-dependent extraction"
+          - "calculate_acquiescence_probability() - P(S|A) sigmoid"
+          - "calculate_revolution_probability() - P(S|R)"
+          - "calculate_consciousness_drift() - dΨ/dt ideology change"
+
+      scenarios:
+        status: "complete"
+        details: "Factory functions for test scenarios"
+        location: "src/babylon/engine/scenarios.py"
+        includes:
+          - "create_two_node_scenario()"
+          - "create_high_tension_scenario()"
+          - "create_labor_aristocracy_scenario()"
+
+      history_persistence:
+        status: "complete"
+        details: "History stack, file I/O, auto-checkpointing"
+        location: "src/babylon/engine/history/"
+        tests: "tests/unit/engine/history/ (123 tests)"
+        includes:
+          - "HistoryStack - undo/redo with max_depth pruning"
+          - "save_state/load_state - WorldState file I/O"
+          - "save_checkpoint/load_checkpoint - full state + config + metadata"
+          - "AutoCheckpointer - interval-based automatic saves"
+          - "Atomic writes - temp file + rename pattern"
+
+      contradiction_analysis:
+        status: "partial"
+        details: "ContradictionAnalysis class exists, basic methods work"
+        location: "src/babylon/systems/contradiction_analysis.py"
+        note: "Legacy - tension now tracked on Relationship edges"
+
+  ai_layer:
+    status: "partial"
+    components:
+      observer_protocol:
+        status: "complete"
+        details: "SimulationObserver protocol with lifecycle hooks"
+        location: "src/babylon/engine/observer.py"
+        tests: "tests/unit/engine/test_observer_pattern.py (32 tests)"
+        provides:
+          - "SimulationObserver protocol (@runtime_checkable)"
+          - "on_simulation_start(initial_state, config)"
+          - "on_tick(previous_state, new_state)"
+          - "on_simulation_end(final_state)"
+        implementations:
+          - "NarrativeDirector - AI narrative generation"
+          - "TopologyMonitor - phase transition detection"
+          - "EconomyMonitor - economic crisis detection"
+          - "CausalChainObserver - Shock Doctrine patterns"
+          - "MetricsCollector - unified metrics for dashboard/sweeper (Sprint 4.1)"
+
+      narrative_director:
+        status: "complete"
+        details: "AI Game Master that observes simulation and generates narrative using typed SimulationEvent objects"
+        location: "src/babylon/ai/director.py"
+        tests: "tests/unit/ai/test_narrative_director.py, test_director_rag.py, tests/integration/test_narrative_pipeline.py (36 tests)"
+        provides:
+          - "NarrativeDirector class implementing SimulationObserver"
+          - "RAG pipeline injection (optional)"
+          - "Prompt builder injection (optional)"
+          - "Error handling per ADR003"
+          - "Typed event consumption via state.events (Sprint 4.1)"
+          - "SEMANTIC_MAP with EventType enum keys for theoretical context"
+          - "SIGNIFICANT_EVENT_TYPES frozenset for narrative triggering"
+        sprint_4_1_changes:
+          - "Changed on_tick to use state.events instead of event_log strings"
+          - "SEMANTIC_MAP now uses EventType enum keys"
+          - "Added SIGNIFICANT_EVENT_TYPES: ECONOMIC_CRISIS, PHASE_TRANSITION, UPRISING, EXCESSIVE_FORCE, RUPTURE"
+          - "_retrieve_context_from_typed_events() method for semantic bridge"
+
+      prompt_builder:
+        status: "complete"
+        details: "Builds prompts following Marxist dialectical materialism with typed event formatting"
+        location: "src/babylon/ai/prompt_builder.py"
+        tests: "tests/unit/ai/test_prompt_builder.py, tests/integration/test_narrative_pipeline.py"
+        provides:
+          - "DialecticalPromptBuilder class"
+          - "build_system_prompt() - AI identity"
+          - "build_context_block(state, rag_context, events: list[SimulationEvent])"
+          - "_calculate_tension() - aggregate tension level"
+          - "_format_event() - typed event formatting with match/case (Sprint 4.1)"
+        sprint_4_1_changes:
+          - "Changed events param type from list[str] to list[SimulationEvent]"
+          - "Added _format_event() method with match/case for all event types"
+          - "PhaseTransitionEvent includes phase state and cadre_density"
+          - "CrisisEvent includes pool_ratio and decision"
+          - "SparkEvent includes trigger_type and node_id"
+          - "UprisingEvent includes participants count"
+
+      rag_pipeline:
+        status: "infrastructure_complete"
+        details: "RAG query pipeline implemented, but NO DATA populated"
+        location: "src/babylon/rag/rag_pipeline.py"
+        tests: "RAG module tests"
+        provides:
+          - "RagPipeline.query(text, top_k) → QueryResponse"
+          - "Sync wrapper for async operations"
+        missing: "Corpus data - ChromaDB is empty, no documents to retrieve"
+
+      chromadb:
+        status: "configured"
+        details: "ChromaDB 1.x API with PersistentClient"
+        location: "src/babylon/data/chroma_manager.py"
+        api_version: "1.3.5 (modern PersistentClient API)"
+        collections_defined:
+          - "THEORY_COLLECTION: marxist_theory (EMPTY)"
+          - "HISTORY_COLLECTION: game_history (EMPTY)"
+          - "ENTITIES_COLLECTION: entity_embeddings (EMPTY)"
+        missing: "Document ingestion pipeline, corpus data"
+
+      llm_client:
+        status: "not_implemented"
+        details: "No LLM provider integration yet"
+        priority: "CRITICAL - Sprint 3.3"
+        primary_choice: "DeepSeek API (OpenAI-compatible, cost-effective)"
+        fallback_options:
+          - "Ollama HTTP API (local models)"
+          - "Anthropic SDK (Claude)"
+
+  tooling:
+    status: "functional"
+    components:
+      xml_migration:
+        status: "complete"
+        location: "tools/migrate_xml_to_json.py"
+
+      schema_validation:
+        status: "complete"
+        location: "tools/validate_schemas.py"
+
+      testing:
+        status: "configured"
+        details: "Pytest with markers, some tests exist"
+
+      linting:
+        status: "configured"
+        details: "Ruff + MyPy strict"
+
+      shared_utilities:
+        status: "complete"
+        location: "tools/shared.py"
+        adr: "ADR036"
+        date: "2026-01-01"
+        description: "Centralized utilities for simulation tooling (DRY)"
+        provides:
+          - "inject_parameter(), inject_parameters()"
+          - "is_dead(), is_dead_by_wealth()"
+          - "run_simulation(), get_tunable_parameters()"
+          - "Entity ID constants"
+        importers:
+          - "tools/parameter_analysis.py"
+          - "tools/landscape_analysis.py"
+          - "tools/audit_simulation.py"
+          - "tools/tune_agent.py"
+          - "tools/monte_carlo.py"
+          - "tools/sensitivity_analysis.py"
+          - "tools/regression_test.py"
+
+      monte_carlo:
+        status: "complete"
+        location: "tools/monte_carlo.py"
+        date: "2026-01-01"
+        mise_task: "sim:monte-carlo"
+        description: "Monte Carlo uncertainty quantification (N-sample replication)"
+        provides:
+          - "N-sample replication with configurable seed"
+          - "t-distribution 95% confidence intervals"
+          - "CSV output + markdown report"
+        dependencies: ["scipy>=1.11.0"]
+
+      sensitivity_analysis:
+        status: "complete"
+        location: "tools/sensitivity_analysis.py"
+        date: "2026-01-01"
+        mise_tasks: ["tune:sensitivity", "tune:morris", "tune:sobol"]
+        description: "Global sensitivity analysis via SALib (Morris + Sobol)"
+        provides:
+          - "Morris elementary effects screening"
+          - "Sobol variance decomposition"
+          - "Parameter importance ranking"
+        dependencies: ["SALib>=1.4.7"]
+
+      regression_testing:
+        status: "complete"
+        location: "tools/regression_test.py"
+        date: "2026-01-01"
+        mise_tasks: ["qa:regression", "qa:regression-generate"]
+        description: "Regression testing via baseline comparison"
+        provides:
+          - "5 regression scenarios"
+          - "JSON baseline generation/comparison"
+          - "Formula drift detection"
+        baselines: "tests/baselines/"
+
+# =============================================================================
+# AGENCY SPECIFICATION (Internal Factions) - TARGET: EPOCH 3
+# =============================================================================
+# This advanced "Fractal Bureaucracy" logic is scheduled for Epoch 3.
+# Epoch 2 will use a simplified unitary State model.
+
+agencies:
+  SIB:
+    name: "State Intelligence Bureau"
+    doctrine_bias: 0.2  # -1.0 (Algorithm) to +1.0 (Case Officers)
+    cohesion: 0.6       # If low, factions actively sabotage each other
+
+  HSF:
+    name: "Homeland Security Force"
+    doctrine_bias: -0.5 # -1.0 (Professionals) to +1.0 (Praetorians)
+    cohesion: 0.8
+    triggers:
+      - if: "Player_Violence > 50"
+        effect: "doctrine_bias += 0.1" # Push toward Brutality
+
+  OEO:
+    name: "Office of Economic Order"
+    doctrine_bias: -0.8 # -1.0 (Globalist) to +1.0 (Nationalist)
+    triggers:
+      - if: "Imperial_Rent < 200"
+        effect: "doctrine_bias += 0.2" # Panic shift toward Nationalism
+
+# =============================================================================
+# NOT YET IMPLEMENTED
+# =============================================================================
+
+not_implemented:
+
+  llm_provider:
+    priority: "critical"
+    description: "LLM client abstraction for Claude/Ollama"
+    blockers: "None - ready to implement"
+    phase: 3
+    sprint: "3.3"
+    estimated_lines: 200
+
+  event_generation:
+    priority: "high"
+    description: "Systems emit events for wealth transfer, ideology drift"
+    blockers: "None - architecture supports it"
+    phase: 3
+    sprint: "3.3"
+    details: |
+      Currently only ContradictionSystem emits events (rupture).
+      ImperialRentSystem needs to emit exploitation events for narrative.
+    estimated_lines: 30
+
+  rag_corpus:
+    priority: "medium"
+    description: "Marxist theory documents for RAG retrieval"
+    blockers: "None"
+    phase: 3
+    sprint: "3.3"
+    source: "Marxists.org archive (user has full corpus available)"
+    mvp_selection:
+      description: "Curated minimal corpus for vertical slice"
+      recommended_texts:
+        - title: "Wage Labour and Capital"
+          author: "Karl Marx (1847)"
+          relevance: "Core explanation of surplus value extraction - directly maps to Imperial Rent"
+          url: "https://www.marxists.org/archive/marx/works/1847/wage-labour/"
+        - title: "Value, Price and Profit"
+          author: "Karl Marx (1865)"
+          relevance: "Accessible explanation of exploitation mechanics"
+          url: "https://www.marxists.org/archive/marx/works/1865/value-price-profit/"
+        - title: "Erta Klas - Principles of Communism"
+          author: "Frederick Engels (1847)"
+          relevance: "Q&A format, good for chunking, covers class relations"
+          url: "https://www.marxists.org/archive/marx/works/1847/11/prin-com.htm"
+        - title: "Imperialism, the Highest Stage of Capitalism (Chapters 1-4)"
+          author: "V.I. Lenin (1917)"
+          relevance: "Core theory for Imperial Rent and core-periphery dynamics"
+          url: "https://www.marxists.org/archive/lenin/works/1916/imp-hsc/"
+        - title: "The Wretched of the Earth (Chapter 1)"
+          author: "Frantz Fanon (1961)"
+          relevance: "Third Worldist perspective on colonial extraction"
+          url: "https://www.marxists.org/subject/africa/fanon/"
+      estimated_chunks: "~200-500 chunks from 5 texts"
+      ingestion_approach: "Simple script to fetch, chunk, embed, store in ChromaDB"
+
+  vertical_slice_testing:
+    priority: "high"
+    description: "Integration tests proving full narrative pipeline"
+    blockers: "LLM provider"
+    phase: 3
+    sprint: "3.3"
+    approach: "Pytest integration tests instead of CLI runner"
+    rationale:
+      - "Programmatic verification of data flow"
+      - "Reproducible in CI/CD"
+      - "Assertions on narrative generation"
+      - "No manual interaction required"
+    test_scenarios:
+      - "test_narrative_generated_on_exploitation_event"
+      - "test_rag_context_included_in_prompt"
+      - "test_deepseek_api_called_with_correct_format"
+      - "test_full_vertical_slice_10_ticks"
+
+  ui:
+    priority: "active"
+    description: "Developer Dashboard MVP - 4-panel layout operational"
+    status: "FUNCTIONAL"
+    phase: 4
+    pattern: "root_function"  # Use ui.run(main_page), NOT @ui.page decorator
+    components:
+      control_deck:
+        status: "complete"
+        location: "src/babylon/ui/controls.py"
+        tests: "tests/unit/ui/test_controls.py (20 tests)"
+        features:
+          - "STEP button - advance 1 tick"
+          - "PLAY button - start continuous loop"
+          - "PAUSE button - stop loop"
+          - "RESET button - reload simulation"
+          - "Tick counter - TICK: 000 format"
+        styling: "Cybernetic Terminal - dark bg, green text, monospace"
+      main_app:
+        status: "complete"
+        location: "src/babylon/ui/main.py"
+        tests: "tests/unit/ui/test_main.py"
+        note: "Uses root function pattern to avoid NiceGUI mode conflict"
+        layout: "3-column CSS Grid (1fr 2fr 1fr) with flex children"
+      dashboard_components:
+        status: "complete"
+        location: "src/babylon/ui/components.py"
+        tests: "tests/unit/ui/test_components.py (100+ tests)"
+        components:
+          trend_plotter: "ECharts time-series metrics (left panel)"
+          narrative_terminal: "Typewriter narrative display (center top)"
+          system_log: "Event log with auto-scroll (center bottom)"
+          state_inspector: "JSON editor for WorldState (right panel)"
+      async_runner:
+        status: "complete"
+        location: "src/babylon/engine/async_runner.py"
+        tests: "tests/unit/engine/test_async_runner.py"
+        purpose: "Non-blocking simulation for responsive UI during PLAY mode"
+        pattern: "Background thread with queue for UI callbacks"
+      subcutaneous_tests:
+        status: "complete"
+        location: "tests/integration/test_dashboard_integration.py"
+        purpose: "Integration tests with mocked NiceGUI components"
+        pattern: "Mock UI, test component logic without browser"
+    layout_fix_2025_12_25:
+      issue: "CSS Grid/Flexbox interaction - grid cell widths not propagating to flex-1 children"
+      root_cause: "flex-1 elements inside grid cells collapse to zero width without explicit w-full"
+      solution: "Add w-full class to all column and element wrappers in grid cells"
+      pattern: "grid cell → column with w-full → element with w-full + flex-1"
+      files_changed:
+        - "src/babylon/ui/main.py (grid layout)"
+        - "src/babylon/ui/components.py (component containers)"
+        - "src/babylon/ui/terminal.py (terminal container)"
+    blockers: "None - Dashboard operational"
+
+  branching_history:
+    priority: "low"
+    description: "Timeline branching for history stack (branch_id, create_branch)"
+    blockers: "None - deferred for simplicity"
+    notes: "Current linear history sufficient; add branching if needed for UI"
+
+  sanity_spies:
+    priority: "low"
+    description: "Runtime invariant validators (Babylon Protocol)"
+    blockers: "Event bus for integration"
+    design_doc: "brainstorm/babylon-protocol-verification.md"
+
+# =============================================================================
+# PLANNED FEATURES (BRAINSTORM)
+# =============================================================================
+
+planned:
+
+  gramscian_wiki:
+    status: "brainstorm"
+    location: "brainstorm/gramscian-wiki-engine.md"
+    description: "Hegemony as factional control over in-game wiki"
+    dependencies: ["jinja2", "markdown renderer"]
+
+  llm_tech_tree:
+    status: "implemented"
+    location: "src/babylon/data/technologies.json (T006-T011)"
+    description: "AI as dual-use technology in game mechanics"
+
+# =============================================================================
+# FUTURE CONCEPTS (QUARANTINED IDEAS)
+# =============================================================================
+
+future_concepts:
+
+  layer_0_pivot:
+    phase: 3.5
+    status: "brainstorm"
+    description: |
+      Layer 0 Pivot: Future refactor to ground all Social Graph (Topology) nodes
+      onto a Spatial Graph (Territory). Moves from abstract 'Factions' to
+      'Territory-bound Factions' with Host/Parasite tenure systems.
+
+      Key insight: Political power has material basis in territorial control.
+      The question "who controls this neighborhood?" precedes "who has ideology?"
+    key_components:
+      - "Strategic Sectors: territorial units (Slums, Financial District, Factory Zone)"
+      - "Subversive Tenancy: De Facto control while enemy holds Legal control"
+      - "Suspicion metric: probability of Eviction Event triggering"
+      - "Enclosure: converting communal tenure to private (primitive accumulation)"
+    dependencies: ["Phase 3.4 Imperial Circuit stable"]
+
+  vanguard_economy:
+    phase: 4
+    status: "brainstorm"
+    location: "brainstorm/mechanics/vanguard_economy.md"
+    description: |
+      Implementation of Cadre/Sympathizer distinction and Coherence mechanics.
+      Moves away from generic "mana" to materialist simulation of Organization vs Movement.
+      Key mechanic: Coherence Factor derived from Cadre:Sympathizer ratio.
+      Player trap: "Influencer Trap" - farming Reputation faster than training Cadre
+      leads to massive but uncontrollable mob during historical rupture.
+    resources:
+      - "Cadre Labor (CL): Deterministic, high-value, structural actions"
+      - "Sympathizer Labor (SL): Stochastic, mass volume, mass actions"
+      - "Reputation: Multiplier for SL volume (not quality)"
+    formula: "Effective Output = (SL * Reputation) * Coherence Factor"
+    dependencies: ["Phase 3.4 Imperial Circuit complete"]
+
+  kinetic_warfare:
+    phase: 5
+    status: "brainstorm"
+    location: "brainstorm/mechanics/kinetic_warfare.md"
+    description: |
+      Asymmetric combat focusing on infrastructure sabotage, supply chain interdiction,
+      and risk/blowback calculation (Civilian harm vs. State damage).
+      Not modeling frontlines (Hearts of Iron) but System Disruption and Insurgency.
+      Combat occurs on Layer 0 Spatial Graph (Nodes and Edges).
+    target_triad:
+      - "Nodes of Extraction: Industrial farms, mines, logistics hubs (starve State of resources)"
+      - "Edges of Circulation: Power lines, fiber cables, highways (Social Blowback mechanic)"
+      - "Nodes of Realization: Data centers, arms factories, command bunkers (QRF threat)"
+    gameplay_loop:
+      - "Reconnaissance: Reveal hidden attributes (Defense, Connectivity, Collateral Risk)"
+      - "Preparation: Cultivate local sympathy (Human Shield effect)"
+      - "Strike: Auto-resolved tactical resolution based on Force correlations"
+      - "Fallout: Calculate Consciousness shift and State Repression"
+    dependencies: ["Layer 0 Spatial Graph", "Consciousness Vector"]
+
+# =============================================================================
+# CURRENT FOCUS
+# =============================================================================
+
+current_focus:
+  primary: "Epoch 1: The Demonstration - completing Slices 1.4-1.6"
+  roadmap: "ai/epochs-overview.md"
+  legacy_roadmap: "brainstorm/plans/four-phase-engine-blueprint.md (DEPRECATED)"
+  legacy_phase_roadmap: "ai/roadmap.md (DEPRECATED - see epochs-overview.md)"
+  architecture_spec: "ai/game-loop-architecture.yaml"
+  verification_framework: "brainstorm/babylon-protocol-verification.md"
+
+  current_slice:
+    epoch: 1
+    slice: "1.5"
+    name: "The Dashboard"
+    spec: "ai/state.yaml (Slice 1.5 section)"
+    goal: "Wire 4-node Imperial Circuit to dashboard, add metabolic gauge"
+    previous_slice:
+      slice: "1.4"
+      name: "The Rift"
+      status: "COMPLETE"
+      note: "MetabolismSystem integrated, ecological metrics collected"
+
+  epoch_1_scope:
+    description: "Playable demo showing Imperial Circuit self-destruction"
+    thesis: "The player watches the Imperial Circuit consume itself and sees the Fascist Bifurcation."
+    entities: "4-node Imperial Circuit: P_w, P_c, C_b, C_w"
+    phenomenon: "Metabolic rift → ecological overshoot → crisis resolution"
+    outcome: "Win (solidarity) or Lose (fascism) based on solidarity_strength"
+
+  recently_completed:
+    - "Fork Reconciliation Ledger — Part 2 of the src/ sweep (2026-07-09; branch docs/fork-reconciliation-ledger, on dev @ ea403107; ADR059). Authored project/execution/FORK_RECONCILIATION_LEDGER.md via a 30-agent workflow (15 rigor analysts + 15 adversarial verifiers, 0 errors, 14/15 CONFIRMED, 1 CHALLENGED=Fork 4). One rigor+data-accuracy recommendation per successor-fork, grounded in the Constitution (III.8 Aleksandrov P0 tie-breaker; III.10 Earn-Its-Keep; II.2 derived-never-stored; III.4.2 fixture-vs-runtime; III.1; III.7) and adversarially verified. LEDGER PROPOSES, OWNER DISPOSES: no src/ changed, no baseline moved; each entry has a '— Percy's ruling:' slot; Part-2b implements rulings behind mise run check + byte-identical qa:regression. Disposition tally (15 forks): delete-orphan 5 (F2,7,9,10,12 — all byte-identical), wire-orphan/retire-live 4 (F1,3,4,6 — moves baseline), reconcile 4 (F5,8,13,14), unify 2 (F11,15). Corrections logged: II.11 is Subsystem-Table-Ownership not a BEA-SQL rule + both BEA paths raw-SQL (F2); county_exposure is a spatial key not a Φ rival, the 'live path' is a stub-zero pass-through (F1); the 'SQL trace_log view' doesn't exist, 0019/0023 create a different VIEW (F10); validate_schemas.py NOT obsolete (schemas/ survive, no-action); Marx formulas NOT deleted in Phase A (F12); AidDefines not composed into GameDefines (F3); F14 premise largely false. Cross-cutting: bundle F10+F11; fixture-as-runtime (III.4.2) recurs across F1/F6/F8 (own remediation pass); 'stub-is-the-live-path' recurs (F1/6/8). Owner routing: project/owner/owner-queue.md item 26. Non-forks: validate_schemas.py (no action), SimulationConfig shell (Part-3)."
+    - "src/ simplification sweep Phases A-D (2026-07-09; branch refactor/src-simplification-sweep, 12 gated commits, NOT yet pushed/merged; ADR058). Owner-authorized decision-free dedup/deadcode pass before resuming project/, under the rigor rule 'byte-identical or defer'. HEADLINE (B3): src/babylon/data/defines.yaml is now THE canonical, player-editable single source of truth for every GameDefines coefficient — generated from the schema by tools/generate_defines_config.py (Paradox-style one file: header + per-category sections + inline '# description (range)' per scalar), read by load_default(), guarded by a hard round-trip gate (load_from_yaml == GameDefines(), proven exact for all 39 categories) + --check staleness mode + test_constants_sync.py guards + docs/how-to/modding-defines.rst. B1 pruned 36 dead SimulationConfig coefficient fields (kept rng_seed); B2 centralized HOURS_PER_YEAR(2080)/WEEKS_PER_YEAR(52) into TimescaleDefines via formulas/constants.py (baselines regenerated for a proven behavior-identical defines_hash drift). C1 hoisted _get_persistent_data to SystemBase; C4 extracted build_schema_registry to utils/. D1 renamed Emmanuel calculate_exploitation_rate->calculate_unequal_exchange_rate (Marx tensor s/v property untouched — DB/wire/React contract); D2 renamed legacy SessionRecorder->JsonlSessionRecorder; D3 fixed stale 0031->0032 migration comments. Byte-identical throughout: test:unit 9370 passed, qa:regression 5/5. DEFERRED per rigor (proven not-byte-identical): C2 QCEW extraction REVERTED (short-circuit query-pattern change), C3 sv-ratios (inf-vs-0.0), C5 EndgameDetector (999.0 sentinel). STOPPED at Part 2 per owner: the Fork Reconciliation Ledger (tensor_hierarchy/leontief, Mobilize/AidDefines wiring, Feature-032 costs, institution/, gamma-III, PersistenceObserver, derivations/, TraceRecorder, Marx reference formulas) + Part 3 (persistence unify onto dynamic_* stack, frontend track) remain."
+    - "spec-099 Observatory deep panes (Program 09 Lane O; 2026-07-04; branch 099-observatory-deep-panes, stacks on 096, awaiting BD merge). Adds source=live|archive to every Observatory read: archive reads a session's exported Parquet under BABYLON_ARCHIVE_ROOT via in-memory DuckDB (mirrors babylon.persistence.archival.query_archived_session; ?-placeholder raw-table SQL translated to %s for Postgres), read-only. web/observatory/sources.py (Source, LiveReader/ArchiveReader, open_reader, list_archive_session_ids, SourceReadError), deep_queries.py (pure verify_chain + reader-based read_commit_chain/read_national_series/read_boundary/read_conservation + NATIONAL_RECON_SQL reconstructing the 0030 view over raw hex), deep_views.py (verify/boundary/conservation/diff endpoints). Four deep panes: /verify/ (structural tick_commit chain integrity — contiguity, checkpoint cadence via a locally-mirrored CHECKPOINT_EVERY_TICKS constant, hash length, gaps/dups; NO engine re-run per III.7), /boundary/ (empty-state-first, lights up at spec-101), /conservation/ (severity filter), /diff/ (two national series aligned by tick + commit compare). source= also wired into 096 sessions/ticks/commits/series. Frontend: deepApi.ts + DeepPanes.tsx (VerificationPane/BoundaryPane/ConservationPane) + source selector + Series/Diagnostics tabs in ObservatoryPage. GATE MET: the real archived 520-tick canonical session edf07b2e-ac2f-4ed7-990e-cadd159ed7b2 verifies valid via source=archive (chain 520 ticks, 10 checkpoints, national series over 45,572 hexes, Parquet never rewritten). Tests: 83 backend unit (tests/unit/observatory/) + 29 integration (tests/integration/observatory/ incl. real archive) + 27 Vitest/MSW; product suites untouched-green (backend web 246/246; frontend 337/337 non-parallel). Also swept two 096 re-review LOW nits: queries.py __all__ hex-limit exports + server-side logger.exception on the 503 path. Close-out review caught a third regression: deep_queries.py had imported babylon.persistence.delta directly, tripping tests/unit/web/test_import_boundary.py (only game/engine_bridge.py may cross that boundary); fixed by mirroring CHECKPOINT_EVERY_TICKS as a local constant instead (sources.py already used this convention) — backend web 246/246 verified genuinely green post-fix, not just asserted. No new deps (duckdb/pyarrow already present)."
+    - "spec-096 Observatory foundation (Program 09 Lane O; 2026-07-04; branch 096-observatory-foundation, awaiting BD merge). Read-only bridge from the Django product to the SIMULATION Postgres (5433/babylon_test, spec-062 dynamic_* + 087-089 additions). New Django app web/observatory/ (NO models): db.py builds DATABASES['sim'] from BABYLON_PG_DSN with OPTIONS options='-c default_transaction_read_only=on'; SimDatabaseRouter.allow_migrate('sim',...) == False (runner migrations own dynamic_* per II.11). Endpoints /api/observatory/{status,sessions,ticks,series,series.csv,commits,hex} read the declared views (v_{county,state,national}_value_aggregate, v_hex_state_asof) + tick_commit ONLY — never raw dynamic_hex_state. Flag-gated by OBSERVATORY_ENABLED (True dev/False prod → 404 when off, before auth/DB), auth-gated (IsAuthenticated), 503 on sim-DB OperationalError. React /observatory lazy route (one line in App.tsx): api.ts/csv.ts, Recharts ObservatoryChart (Tufte-minimal, palette tokens per Article VII), SessionPicker, SeriesBrowser (scope/metric + CSV export), ObservatoryPage (status-probe gating). Two-DB alias map documented in web/HOW-TO-LOCAL-DEV.md. Tests: 49 backend unit (tests/unit/observatory/) + 16 integration (tests/integration/observatory/ — live write-rejection + endpoint data) + 17 Vitest/MSW (web/frontend/src/observatory/); product suites untouched-green (Vitest 327/327; backend web 246/246). Deep panes (hash-chain recompute, conservation browser, two-session diff, archived-Parquet via DuckDB) deferred to spec-099."
+    - "ADR Bundle 1 / Spec 058 — structural prep for Spec 057 (2026-05-08): OODA dedup; enums.py + defines.py + tick/system.py packages; core/protocol_kit.py with DataSource + CachedSource[T] + SourceRegistry; 10 melt+gamma Default* migrated to CachedSource[T]; SourceRegistry.builtin_economics() registers 7 parameterless classes; BEAMappings typed Pydantic loader. 7 implementation commits; 9039 passed in fast gate (+51 new tests). Three SC reformulations documented as not-met-by-design: SC-002 facade<200LOC (tick/system Phase B deferred — existing 33-method class too self-coupled for safe under-pressure decomposition), SC-004 factory.py<150LOC (topological dep resolution is real domain work, not boilerplate), and the BEAMappings TOML schema (actual file uses {departments: {I, IIA, IIB, III: [codes]}}, not row-array with weights). Spec 057 unblocked."
+    - "Shadow Labor Visibility Sprint (2026-01-29)"
+    - "Imperial Rent Calculation (Emmanuel-Amin) (2026-01-29)"
+    - "Marxian Value Tensor BEA/CEX Calibration (2026-01-28)"
+    - "XML to JSON migration"
+    - "JSON Schema system (36 schemas)"
+    - "Schema validation tooling"
+    - "LLM technology entries (T006-T011)"
+    - "Project rename to Babylon"
+    - "AI documentation system (ai/)"
+    - "Four-phase engine blueprint"
+    - "Sprint 1: Types & Enums (Probability, Currency, Ideology, etc.)"
+    - "Sprint 1: StrEnums (SocialRole, EdgeType, IntensityLevel, ResolutionType)"
+    - "Tech debt cleanup: Migrated dataclasses to Pydantic"
+    - "Created src/babylon/models/entities/ (Effect, Contradiction, Trigger)"
+    - "Deleted old files: data/models/contradiction.py, data/models/trigger.py, core/contradiction.py"
+    - "Sprint 2: SocialClass entity model (Phase 1 node)"
+    - "Sprint 2: Relationship entity model (Phase 1 edge)"
+    - "Phase 1 integration tests (11 tests proving the equations)"
+    - "Phase 2 architecture design (Data/Logic separation)"
+    - "Created ai/game-loop-architecture.yaml"
+    - "Created brainstorm/plans/phase2-game-loop-design.md"
+    - "ADR010: Direct Entities + Formulas architecture (bypass Economy/Politics)"
+    - "Gap analysis: 8 gaps identified and resolved"
+    - "Formula-to-Entity wiring specification documented"
+    - "ADR011: Pure Graph Architecture (multi-AI consensus: Claude + Gemini)"
+    - "Decision: Delete Economy/Politics classes (not preserve)"
+    - "Decision: NetworkX from day one (not deferred)"
+    - "Decision: Hybrid state management (Snapshots + Events)"
+    - "Sprint 3: SimulationConfig model (42 tests)"
+    - "Sprint 4: WorldState with NetworkX integration (35 tests)"
+    - "Sprint 5: SimulationEngine step() function (19 tests)"
+    - "Sprint 6: Factory functions and integration tests (20 tests)"
+    - "Sprint 7: Deleted Economy/Politics classes per ADR011"
+    - "PHASE 2 COMPLETE: 318 tests passing, deterministic game loop"
+    - "Sprint 7.5: Consciousness Drift integration (7 tests, 325 total)"
+    - "Brainstorm: Babylon Protocol - emergence vs bugs verification framework"
+    - "Sprint 7.6: Configurable tension rate + consciousness feedback tests (5 tests, 330 total)"
+    - "Sprint 8: History Stack with File I/O and Auto-Checkpointing (123 tests, 453 total)"
+    - "Sprint 9: Component System (Material, Vitality, Spatial, Ideological, Organization)"
+    - "Sprint 10: ServiceContainer dependency injection (Sprint 3 architecture)"
+    - "Sprint 11: System Protocol and 4 System implementations"
+    - "Sprint 12: Simulation facade and entity factories (57 tests, 704 total)"
+    - "Integration Proof: 100-tick simulation proves wealth transfer dynamics"
+    - "Sprint 3.1: Observer Pattern - SimulationObserver protocol (32 tests, 736 total)"
+    - "Sprint 3.2: RAG Integration - RagPipeline injection into NarrativeDirector (27 tests, 763 total)"
+    - "Tech debt: Fixed 90 mypy errors in RAG module (Mikado refactor)"
+    - "Tech debt: Migrated ChromaDB API from deprecated Client to PersistentClient"
+    - "Sprint 3.1 Event Schema: src/babylon/models/events.py (SimulationEvent, ExtractionEvent)"
+    - "Sprint 3.1 Event Schema: WorldState.events: list[SimulationEvent] field"
+    - "Sprint 3.1 Event Schema: _convert_bus_event_to_pydantic() in SimulationEngine"
+    - "Sprint 3.1 Event Schema: DomainFactory.create_extraction_event(), Assert.has_event()"
+    - "Sprint 3.1+ Event Expansion: Added RUPTURE to EventType enum"
+    - "Sprint 3.1+ Event Expansion: 3 base classes (ConsciousnessEvent, StruggleEvent, ContradictionEvent)"
+    - "Sprint 3.1+ Event Expansion: 8 concrete events (SubsidyEvent, CrisisEvent, TransmissionEvent, MassAwakeningEvent, SparkEvent, UprisingEvent, SolidaritySpikeEvent, RuptureEvent)"
+    - "Sprint 3.1+ Event Expansion: _convert_bus_event_to_pydantic() handles all 10 EventTypes"
+    - "Sprint 3.1+ Event Expansion: Factory methods for all event types in DomainFactory"
+    - "Sprint 3.3 Topology Events: Added PHASE_TRANSITION to EventType (now 11 types)"
+    - "Sprint 3.3 Topology Events: TopologyEvent and PhaseTransitionEvent models"
+    - "Sprint 3.3 Topology Events: TopologyMonitor phase state tracking (_classify_phase)"
+    - "Sprint 3.3 Topology Events: TopologyMonitor.get_pending_events() for event collection"
+    - "Sprint 3.3 Topology Events: Simulation facade _collect_observer_events()"
+    - "Sprint 3.3 Topology Events: Observer events injected into next tick via persistent_context"
+    - "Sprint 3.3 4-Phase Model: Added cadre_density to TopologySnapshot and PhaseTransitionEvent"
+    - "Sprint 3.3 4-Phase Model: _classify_phase updated for gaseous/transitional/liquid/solid"
+    - "Sprint 3.3 4-Phase Model: Solid phase (cadre_density >= 0.5) distinguishes vanguard from mass movement"
+    - "Sprint 4.1 Narrative Bridge: PromptBuilder.build_context_block accepts list[SimulationEvent]"
+    - "Sprint 4.1 Narrative Bridge: Added _format_event() method with match/case for all event types"
+    - "Sprint 4.1 Narrative Bridge: NarrativeDirector.on_tick uses state.events instead of event_log"
+    - "Sprint 4.1 Narrative Bridge: SEMANTIC_MAP changed from string keys to EventType enum keys"
+    - "Sprint 4.1 Narrative Bridge: Added SIGNIFICANT_EVENT_TYPES frozenset for narrative filtering"
+    - "Phase 4 UI: AsyncSimulationRunner for non-blocking UI during PLAY mode"
+    - "Phase 4 UI: Subcutaneous integration tests for dashboard components"
+    - "Phase 4 UI: 4-panel dashboard layout with TrendPlotter, NarrativeTerminal, SystemLog, StateInspector"
+    - "Phase 4 UI: CSS Grid/Flexbox width propagation fix (w-full on flex-1 children in grid cells)"
+    - "Phase 4.1: MetricsCollector observer - unified metrics for dashboard/sweeper (TDD: 101 tests)"
+    - "Phase 4.1: Metrics Pydantic models (EntityMetrics, EdgeMetrics, TickMetrics, SweepSummary)"
+    - "Phase 4.1: Dashboard integration - MetricsCollector registered as Simulation observer"
+    - "Political Economy of Liquidity Epoch 1: StateFinance model (55 tests)"
+    - "Political Economy of Liquidity Epoch 1: RevolutionaryFinance model (56 tests)"
+    - "Political Economy of Liquidity Epoch 1: PrecarityState model with computed fields (65 tests)"
+    - "Political Economy of Liquidity Epoch 1: WorldState.state_finances integration (6 tests)"
+    - "Political Economy of Liquidity Epoch 1: Cost-checking in step() (5 tests)"
+
+  current_phase:
+    name: "Phase 3.4: The Imperial Circuit"
+    status: "IN PROGRESS - Sprint 3.4.3 next"
+    goal: "Expand 2-node model to 4-node with true MLM-TW dynamics"
+    tech: "SolidaritySystem + Multi-dimensional consciousness + Fascist Bifurcation"
+    result_so_far: "886 tests passing, Imperial Circuit operational, Proletarian Internationalism complete"
+    key_insight: "solidarity_strength stored on edge, not auto-calculated - enables Fascist Bifurcation"
+    mantras:
+      - "The bomb factory pays well. That's the problem."
+      - "Agitation without solidarity produces fascism, not revolution."
+    completed_sprints:
+      sprint_3_1:
+        name: "The Dialectical Interface"
+        status: "COMPLETE"
+        deliverables:
+          - "SimulationObserver protocol"
+          - "NarrativeDirector implementation"
+          - "Observer lifecycle hooks"
+        tests_added: 32
+      sprint_3_2:
+        name: "The Materialist Retrieval"
+        status: "COMPLETE"
+        deliverables:
+          - "DialecticalPromptBuilder"
+          - "RAG pipeline injection"
+          - "Context hierarchy assembly"
+        tests_added: 27
+    remaining_work:
+      sprint_3_3:
+        name: "LLM Integration (Vertical Slice)"
+        status: "NOT STARTED"
+        deliverables:
+          - "LLM Provider protocol + implementations"
+          - "Event generation in ImperialRentSystem"
+          - "Static theoretical quotes fallback"
+          - "Vertical slice CLI runner"
+    architecture: "Observer reads state, builds context, calls LLM, outputs narrative"
+
+  previous_phase:
+    name: "Phase 2: The Topological Engine"
+    status: "COMPLETE"
+    goal: "Game loop that runs equations forward in time"
+    tech: "Pure Python, Pydantic, Pytest - NO UI, NO AI"
+    result: "704 tests passing, modular System architecture, all feedback loops proven"
+    key_insight: "Separate Data (WorldState) from Logic (SimulationEngine)"
+    key_decisions:
+      - "ADR010 - Direct Entities + Formulas"
+      - "ADR011 - Pure Graph Architecture (multi-AI consensus)"
+    feedback_loops_proven:
+      - "Rent Spiral - extraction impoverishes worker"
+      - "Consciousness Drift - exploited workers become revolutionary"
+      - "Consciousness Resistance - revolutionary workers resist extraction"
+      - "Repression Trap - high repression delays but doesn't prevent revolution"
+      - "Tension Accumulation - wealth gap increases contradiction tension"
+    architecture: "Graph + Math = History"
+
+  next_phase:
+    name: "Phase 3.4: The Imperial Circuit"
+    goal: "Expand 2-node model to 4-node model with true MLM-TW dynamics"
+    tech: "WAGES edge type + Multi-dimensional consciousness"
+    spec: "ai/imperial-circuit.yaml"
+    rationale: |
+      The 2-node model is "orthodox book-worship Marxism" - too simple.
+      It correctly models periphery dynamics (exploitation → consciousness → revolution)
+      but fails to capture WHY core workers support imperialism: they benefit from it.
+      "The bomb factory pays well. That's the problem."
+    key_components:
+      - "4 nodes: P_w (periphery worker), P_c (comprador), C_b (core bourgeoisie), C_w (core worker)"
+      - "WAGES edge: C_b → C_w (super-wages funded by imperial rent)"
+      - "TRIBUTE edge: P_c → C_b (imperial rent transfer)"
+      - "Multi-dimensional consciousness: class_consciousness + national_identity + atomization"
+      - "W/V ratio determining consciousness direction (up for periphery, down for core)"
+    sprints:
+      3_4_1: "WAGES Edge Type - enable super-wage flow"
+      3_4_2: "4-Node Scenario - create_imperial_circuit_scenario()"
+      3_4_3: "Multi-Dimensional Consciousness - split ideology variable"
+      3_4_4: "Dynamic Balance - shrinking pool, bourgeoisie choices"
+    blockers: "None - Phase 3.3 vertical slice provides foundation"
+
+  phase_3_5:
+    name: "Phase 3.5: The Territorial Foundation (Layer 0)"
+    status: "COMPLETE"
+    goal: "Ground all Social Graph nodes onto a Spatial Graph (Territory)"
+    tech: "Spatial Graph + Host/Parasite tenure + Enclosure mechanics"
+    key_components:
+      - "Strategic Sectors - territorial units (Slums, Financial District, etc.)"
+      - "Subversive Tenancy - De Facto control while enemy holds Legal control"
+      - "Suspicion metric - likelihood of Eviction Event"
+      - "Enclosure mechanics - converting communal to private tenure"
+    architectural_insight: |
+      Layer 0 Pivot: Refactor to ground all Social Graph (Topology) nodes onto
+      a Spatial Graph (Territory). Moves from abstract 'Factions' to
+      'Territory-bound Factions' with Host/Parasite tenure systems.
+      This enables modeling geographic class struggle, gentrification,
+      and the material basis of political power (who controls what land).
+    blockers: "Phase 3.4 Imperial Circuit should be stable first"
+
+  future_phase:
+    name: "Phase 4: The Control Room"
+    goal: "NiceGUI dashboard for simulation control and visualization"
+    tech: "NiceGUI + State visualizations + User controls"
+    key_components:
+      - "State dashboard - entity status, tension gauges"
+      - "Narrative display - LLM-generated prose"
+      - "Control panel - start/stop/step simulation"
+      - "History browser - timeline with undo/redo"
+    blockers: "Phase 3.5 territorial foundation should be complete"
+
+  sprint_status:
+    sprint_1:
+      name: "Value Types & Enums"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/types.py (6 types)"
+        - "src/babylon/models/enums.py (4 enums)"
+        - "tests/unit/models/test_types.py (45 tests)"
+        - "tests/unit/models/test_enums.py (22 tests)"
+      tests_passing: 131
+
+    sprint_1_5:
+      name: "Physics Module"
+      status: "COMPLETE (PRE-EXISTING)"
+      discovery: "2024-12-07 - Formulas already existed in src/babylon/systems/formulas.py"
+      location: "src/babylon/systems/formulas.py (349 lines)"
+      tests: "tests/unit/formulas/ (40 tests, ALL PASSING)"
+      formulas_implemented:
+        - "calculate_imperial_rent() - Imperial rent extraction"
+        - "calculate_acquiescence_probability() - P(S|A) sigmoid"
+        - "calculate_revolution_probability() - P(S|R)"
+        - "calculate_crossover_threshold() - When revolt becomes rational"
+        - "calculate_labor_aristocracy_ratio() - Wc/Vc ratio"
+        - "is_labor_aristocracy() - Boolean check"
+        - "calculate_consciousness_drift() - dΨ/dt ideology change"
+        - "apply_loss_aversion() - Kahneman-Tversky λ=2.25"
+        - "calculate_exchange_ratio() - Unequal exchange ε"
+        - "calculate_value_transfer() - Core-periphery flows"
+        - "prebisch_singer_effect() - Deteriorating terms of trade"
+      lesson_learned: "Always explore actual codebase before planning new work"
+
+    sprint_2:
+      name: "Entity Models"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/entities/social_class.py (SocialClass)"
+        - "src/babylon/models/entities/relationship.py (Relationship)"
+        - "tests/unit/models/test_social_class.py (31 tests)"
+        - "tests/unit/models/test_relationship.py (29 tests)"
+        - "tests/integration/test_phase1_blueprint.py (11 tests)"
+      tests_passing: 202
+      phase_1_complete: true
+      notes: "Phase 1 blueprint proven: two nodes, one edge, formulas work"
+
+    sprint_3:
+      name: "SimulationConfig"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/config.py (SimulationConfig)"
+        - "tests/unit/models/test_config.py (42 tests)"
+      tests_passing: 244
+      notes: "Frozen config with all formula coefficients"
+
+    sprint_4:
+      name: "WorldState with NetworkX"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/world_state.py (WorldState)"
+        - "tests/unit/models/test_world_state.py (35 tests)"
+      tests_passing: 279
+      notes: "Immutable state, to_graph()/from_graph() conversion"
+
+    sprint_5:
+      name: "SimulationEngine step()"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/simulation_engine.py"
+        - "tests/unit/engine/test_simulation_engine.py (19 tests)"
+      tests_passing: 298
+      notes: "Pure function, deterministic, encodes historical materialism"
+
+    sprint_6:
+      name: "Factory Functions & Integration Tests"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/scenarios.py"
+        - "tests/integration/test_phase2_game_loop.py (20 tests)"
+      tests_passing: 318
+      notes: "Feedback loops proven: rent spiral, repression trap"
+
+    sprint_7:
+      name: "Delete Economy/Politics per ADR011"
+      status: "COMPLETE"
+      deliverables:
+        - "Deleted src/babylon/core/economy.py"
+        - "Deleted src/babylon/core/politics.py"
+        - "Updated __main__.py to use engine"
+      tests_passing: 318
+      notes: "Pure Graph Architecture - no institutional classes"
+
+    sprint_7_5:
+      name: "Consciousness Drift Integration"
+      status: "COMPLETE"
+      deliverables:
+        - "_update_consciousness_drift() helper function"
+        - "consciousness_decay_lambda config field"
+        - "tests/unit/engine/test_simulation_engine.py::TestStepConsciousnessDrift (7 tests)"
+      tests_passing: 325
+      notes: "Worker ideology drifts revolutionary as extraction continues"
+
+    sprint_7_6:
+      name: "Configurable Tension Rate & Feedback Tests"
+      status: "COMPLETE"
+      deliverables:
+        - "tension_accumulation_rate config field"
+        - "TestStepTensionRate (3 tests)"
+        - "TestConsciousnessFeedbackLoop (2 tests)"
+      tests_passing: 330
+      notes: "All feedback loops now proven with integration tests"
+
+    sprint_8:
+      name: "History Stack with File I/O and Auto-Checkpointing"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/history/models.py (5 Pydantic models)"
+        - "src/babylon/engine/history/stack.py (7 pure functions)"
+        - "src/babylon/engine/history/io.py (6 I/O functions + 4 exception types)"
+        - "src/babylon/engine/history/auto_checkpoint.py (AutoCheckpointer class)"
+        - "tests/unit/engine/history/ (123 tests)"
+      tests_passing: 453
+      notes: "Undo/redo, save/load, auto-checkpointing. Branching deferred."
+
+    sprint_9:
+      name: "Component System (Material Ontology)"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/components/base.py (Component protocol)"
+        - "src/babylon/models/components/material.py (MaterialComponent)"
+        - "src/babylon/models/components/vitality.py (VitalityComponent)"
+        - "src/babylon/models/components/spatial.py (SpatialComponent)"
+        - "src/babylon/models/components/ideological.py (IdeologicalComponent)"
+        - "src/babylon/models/components/organization.py (OrganizationComponent)"
+        - "tests/unit/models/components/ (129 tests)"
+      tests_passing: 582
+      notes: "Frozen Pydantic models with constrained types"
+
+    sprint_10:
+      name: "ServiceContainer & Dependency Injection"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/services.py (ServiceContainer)"
+        - "src/babylon/engine/event_bus.py (EventBus)"
+        - "src/babylon/engine/formula_registry.py (FormulaRegistry)"
+        - "src/babylon/engine/database.py (DatabaseConnection)"
+        - "tests/unit/engine/test_services.py"
+        - "tests/unit/engine/test_event_bus.py (20 tests)"
+        - "tests/unit/engine/test_formula_registry.py (14 tests)"
+      tests_passing: 630
+      notes: "Clean dependency injection for testability"
+
+    sprint_11:
+      name: "System Protocol & Implementations"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/systems/protocol.py (System protocol)"
+        - "src/babylon/engine/systems/economic.py (ImperialRentSystem)"
+        - "src/babylon/engine/systems/ideology.py (ConsciousnessSystem)"
+        - "src/babylon/engine/systems/survival.py (SurvivalSystem)"
+        - "src/babylon/engine/systems/contradiction.py (ContradictionSystem)"
+      tests_passing: 647
+      notes: "Modular systems with shared ServiceContainer"
+
+    sprint_12:
+      name: "Simulation Facade & Entity Factories"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/simulation.py (Simulation class)"
+        - "src/babylon/engine/factories.py (create_proletariat, create_bourgeoisie)"
+        - "src/babylon/engine/history_formatter.py (format_class_struggle_history)"
+        - "tests/unit/engine/test_simulation_facade.py (19 tests)"
+        - "tests/unit/engine/test_factories.py (30 tests)"
+        - "tests/integration/test_class_struggle.py (8 tests)"
+      tests_passing: 704
+      notes: "Integration proof: 100-tick wealth transfer verified"
+
+    sprint_3_1:
+      name: "The Dialectical Interface (Observer Pattern)"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/observer.py (SimulationObserver protocol)"
+        - "src/babylon/ai/director.py (NarrativeDirector)"
+        - "Modified src/babylon/engine/simulation.py (observer support)"
+        - "tests/unit/engine/test_observer_pattern.py (32 tests)"
+        - "tests/unit/ai/test_narrative_director.py"
+      tests_passing: 736
+      notes: "Observer Pattern for AI narrative integration"
+
+    sprint_3_2:
+      name: "The Materialist Retrieval (RAG Integration)"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/ai/prompt_builder.py (DialecticalPromptBuilder)"
+        - "Modified src/babylon/ai/director.py (RAG injection)"
+        - "tests/unit/ai/test_prompt_builder.py"
+        - "tests/unit/ai/test_director_rag.py (27 tests)"
+      tests_passing: 763
+      notes: "RAG pipeline integrated, context hierarchy implemented"
+      tech_debt_resolved:
+        - "90 mypy errors in RAG module (Mikado refactor)"
+        - "ChromaDB API migration to PersistentClient"
+
+    sprint_3_3:
+      name: "LLM Integration (Vertical Slice)"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/ai/llm_provider.py (protocol + DeepSeek implementation)"
+        - "Modified ImperialRentSystem (event generation)"
+        - "RAG corpus ingestion script (5 texts from Marxists.org)"
+        - "Integration tests proving full narrative pipeline"
+        - "4-phase model: cadre_density in TopologySnapshot/PhaseTransitionEvent"
+        - "_classify_phase() returns gaseous/transitional/liquid/solid"
+      llm_choice: "DeepSeek API (OpenAI-compatible, cost-effective)"
+      testing_approach: "Integration tests instead of CLI runner"
+      rag_corpus: "5 curated texts from Marxists.org (~200-500 chunks)"
+      tests_passing: 800
+      scope: "Factory worker vs capitalist, one phenomenon (wealth transfer)"
+      phase_model: "4-phase: gaseous/transitional/liquid/solid (cadre_density distinguishes mass movement from vanguard)"
+
+    sprint_4_1:
+      name: "The Narrative Bridge (Typed Event Pipeline)"
+      status: "COMPLETE"
+      deliverables:
+        - "PromptBuilder.build_context_block accepts list[SimulationEvent]"
+        - "_format_event() method with match/case for all event types"
+        - "NarrativeDirector.on_tick uses state.events instead of event_log"
+        - "SEMANTIC_MAP with EventType enum keys"
+        - "SIGNIFICANT_EVENT_TYPES frozenset for filtering"
+        - "_retrieve_context_from_typed_events() for semantic bridge"
+        - "tests/integration/test_narrative_pipeline.py (9 tests)"
+      tests_passing: 1795
+      commits: "d756498"
+      key_insight: "AI pipeline now consumes typed events, enabling rich formatting per event type"
+      significant_events:
+        - "ECONOMIC_CRISIS"
+        - "PHASE_TRANSITION"
+        - "UPRISING"
+        - "EXCESSIVE_FORCE"
+        - "RUPTURE"
+
+    sprint_3_4_1:
+      name: "Economic Infrastructure (Imperial Circuit)"
+      status: "COMPLETE"
+      deliverables:
+        - "EdgeType.TRIBUTE (P_c → C_b tribute transfer)"
+        - "EdgeType.WAGES (C_b → C_w super-wages)"
+        - "EdgeType.CLIENT_STATE (C_b → P_c imperial subsidy)"
+        - "EventType.IMPERIAL_SUBSIDY (narrative event)"
+        - "4-phase ImperialRentSystem (extraction, tribute, wages, subsidy)"
+        - "Relationship.subsidy_cap field for CLIENT_STATE edges"
+        - "SimulationConfig: comprador_cut, super_wage_rate, subsidy_* params"
+      tests_passing: 829
+      commit: "5c5dbc9"
+      key_insight: "Wealth converts to repression (not conserved) for imperial subsidy"
+
+    sprint_3_4_2:
+      name: "Proletarian Internationalism"
+      status: "COMPLETE"
+      deliverables:
+        - "SolidaritySystem - consciousness transmission via SOLIDARITY edges"
+        - "Relationship.solidarity_strength field (STORED ON EDGE)"
+        - "EventType.SOLIDARITY_AWAKENING (source enters active struggle)"
+        - "EventType.CONSCIOUSNESS_TRANSMISSION (delta transfer)"
+        - "EventType.MASS_AWAKENING (target crosses threshold)"
+        - "calculate_solidarity_transmission() formula"
+        - "SimulationConfig: solidarity_activation_threshold, mass_awakening_threshold"
+      tests_passing: 886
+      commit: "61fe9c1"
+      key_insight: |
+        solidarity_strength is STORED ON EDGE, not auto-calculated from organization.
+        This enables Fascist Bifurcation: same material conditions → different outcomes
+        based on whether solidarity infrastructure was BUILT beforehand.
+        "Agitation without solidarity produces fascism, not revolution."
+
+  phase_roadmap:
+    # ==========================================================================
+    # HISTORICAL REFERENCE ONLY - SUPERSEDED BY EPOCH + SLICE MODEL
+    # ==========================================================================
+    # This Phase numbering system is deprecated as of 2025-12-26.
+    # See ai/epochs-overview.md for the current organizational model.
+    # Kept for historical reference - old commits reference these phases.
+    #
+    # Mapping:
+    #   Phase 0-2  → Epoch 0 (The Kernel)
+    #   Phase 3-4  → Epoch 1 (The Demonstration)
+    #   Phase 5+   → Epoch 2-3 (The Game, The Platform)
+    # ==========================================================================
+    superseded_by: "ai/epochs-overview.md (Epoch + Slice model)"
+    superseded_date: "2025-12-26"
+    superseded_note: "Four-Phase Blueprint → Six-Phase Fractal Evolution (2025-12-09) → Epoch + Slice (2025-12-26)"
+    phase_1:
+      name: "Minimum Viable Dialectic"
+      summary: "Prove the equations work"
+      status: "COMPLETE"
+    phase_2:
+      name: "Topological Engine"
+      summary: "The physics/update loop"
+      status: "COMPLETE"
+    phase_2_5:
+      name: "Test Refactor (Operation Clean Slate)"
+      summary: "Testing infrastructure - DomainFactory, BabylonAssert, MetricsSpy"
+      status: "COMPLETE"
+      added: "2025-12-12 (Truth Sync)"
+    phase_2_6:
+      name: "Observer Protocol"
+      summary: "Decoupled observation - SimulationObserver, TopologyMonitor"
+      status: "COMPLETE"
+      added: "2025-12-12 (Truth Sync)"
+      note: "models/events.py (Pydantic event schema) COMPLETE - Sprint 3.1 Event Schema"
+    phase_3:
+      name: "Observer Pattern"
+      summary: "AI narrates, never controls"
+      status: "COMPLETE (Sprint 3.3 - Vertical Slice)"
+    phase_3_4:
+      name: "Imperial Circuit"
+      summary: "4-node model with WAGES edges"
+      status: "IN PROGRESS"
+      sprints:
+        3_4_1:
+          name: "Economic Infrastructure"
+          status: "COMPLETE"
+          deliverables:
+            - "TRIBUTE edge type (P_c → C_b)"
+            - "WAGES edge type (C_b → C_w)"
+            - "CLIENT_STATE edge type (C_b → P_c subsidy)"
+            - "IMPERIAL_SUBSIDY event type"
+            - "4-phase ImperialRentSystem"
+          tests: "829 tests passing"
+          commit: "5c5dbc9"
+        3_4_2:
+          name: "Proletarian Internationalism"
+          status: "COMPLETE"
+          deliverables:
+            - "SolidaritySystem (consciousness transmission)"
+            - "solidarity_strength edge attribute (stored infrastructure)"
+            - "SOLIDARITY_AWAKENING event type"
+            - "CONSCIOUSNESS_TRANSMISSION event type"
+            - "MASS_AWAKENING event type"
+            - "Fascist Bifurcation mechanic enabled"
+          tests: "886 tests passing"
+          commit: "61fe9c1"
+          key_insight: "solidarity_strength is STORED ON EDGE, not auto-calculated - enables Fascist Bifurcation"
+        3_4_3:
+          name: "Multi-Dimensional Consciousness (The George Jackson Refactor)"
+          status: "COMPLETE"
+          deliverables:
+            - "IdeologicalProfile model (class_consciousness, national_identity, agitation)"
+            - "calculate_ideological_routing() formula"
+            - "Fascist Bifurcation mechanic: agitation + solidarity → revolution, agitation alone → fascism"
+            - "Removed legacy scalar ideology - clean migration to multi-dimensional model"
+          tests: "987 tests passing"
+          commits: ["73d991d", "51c4de6"]
+          key_insight: "Fascism is the defensive form of capitalism."
+        3_4_4:
+          name: "Dynamic Balance"
+          status: "PLANNED"
+          deliverables:
+            - "Imperial rent pool as emergent property"
+            - "Bourgeoisie choice system"
+            - "Crisis events as phase transitions"
+    phase_3_5:
+      name: "Territorial Foundation (Layer 0)"
+      summary: "Spatial Graph grounding Social Graph"
+      status: "PLANNED"
+      key_components:
+        - "Strategic Sectors (territorial units)"
+        - "Subversive Tenancy (Host/Parasite logic)"
+        - "Suspicion metric (Eviction risk)"
+        - "Enclosure mechanics"
+    phase_4:
+      name: "Control Room"
+      summary: "NiceGUI dashboard"
+      status: "PLANNED"
+    phase_5:
+      name: "Internal Colonies"
+      summary: "Fractal topology - race/gender/geographic stratification"
+      status: "FUTURE"
+      key_insight: "Composite/Graph pattern enables modeling stratification within Core"
+    phase_6:
+      name: "Full Simulation"
+      summary: "Multi-country, multi-faction, full complexity"
+      status: "FUTURE"
+
+  next_steps:
+    # Using Epoch + Slice model - see ai/epochs-overview.md
+    current_work: "Slice 1.5: The Dashboard (wire 4-node scenario, metabolic gauge)"
+    epoch_1_remaining:
+      - "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
+      - "Slice 1.6: The Endgame - win/lose display based on solidarity"
+    epoch_1_completed:
+      - "Slice 1.1: The Circuit - ImperialRentSystem, 4-node scenario"
+      - "Slice 1.2: The Struggle - StruggleSystem, TerritorySystem"
+      - "Slice 1.3: The Observer - SimulationObserver, TopologyMonitor, MetricsCollector"
+      - "Slice 1.4: The Rift - MetabolismSystem, ecological metrics (Sprint 1.4A/B/C)"
+      - "011-fundamental-tensor-primitive: ValueTensor4x3, TensorRegistry, consumer isolation (Phase 7 Complete)"
+    epoch_2_planned:
+      - "Slice 2.1: Demographic Resolution (ai/demographics-spec.yaml)"
+      - "Slice 2.2: Player Controls"
+      - "Slice 2.3: Reproductive Labor"
+    optional:
+      - "Expand RAG corpus with more Marxists.org texts"
+      - "Timeline branching for history stack"
+
+    # Historical sprint references (pre-Epoch model)
+    completed_sprints_historical:
+      note: "Sprint numbering superseded by Slice numbering - kept for git history reference"
+      completed:
+        - "Sprint 3.3: Vertical Slice → part of Slice 1.3 (Observer)"
+        - "Sprint 3.4.1-3.4.3: Imperial Circuit → Slice 1.1 (Circuit)"
+        - "Sprint 3.5: Territorial Substrate → Slice 1.2 (Struggle)"
+        - "Phase 4.0: Dashboard MVP → Slice 1.5 (Dashboard)"
+
+  # ---------------------------------------------------------------------------
+  # VERTICAL INTEGRATION INITIATIVE: "The Living Circuit"
+  # ---------------------------------------------------------------------------
+  #
+  # Diagnosis (2025-12-25):
+  #   The dashboard EXISTS but doesn't REVEAL anything interesting.
+  #   Imperial rent hovers at 100, tension moves infinitesimally.
+  #   Root cause: Dashboard shows 2-node scenario, not the 4-node Imperial Circuit.
+  #
+  # Mantra: "A flat line on a fancy graph is still a flat line."
+  #
+  vertical_integration:
+    initiative_name: "The Living Circuit"
+    status: "IN PROGRESS"
+    diagnosis:
+      problem: "Dashboard is boring - flat metrics, single node visible"
+      root_causes:
+        - "Using create_two_node_scenario() instead of create_imperial_circuit_scenario()"
+        - "TrendPlotter only shows P_w (Periphery Worker), not all 4 classes"
+        - "Metrics show static wealth, not dynamic FLOWS between nodes"
+        - "Default GameDefines coefficients produce equilibrium, not crisis"
+      insight: "The dashboard is a LENS. It can't show interesting things if the simulation is static."
+
+    sprint_4_1_a:
+      name: "Wire the Circuit"
+      status: "PLANNED"
+      goal: "Switch dashboard to 4-node Imperial Circuit scenario"
+      deliverables:
+        - "main.py: import create_imperial_circuit_scenario"
+        - "main.py: replace create_two_node_scenario() call"
+        - "Verify 4 nodes appear in StateInspector: P_w, P_c, C_b, C_w"
+        - "Verify 5 edges: EXPLOITATION, TRIBUTE, WAGES, CLIENT_STATE, SOLIDARITY"
+      files:
+        - "src/babylon/ui/main.py (scenario import change)"
+      success_criteria: "StateInspector shows all 4 classes with their relationships"
+
+    sprint_4_1_b:
+      name: "Expose Meaningful Metrics"
+      status: "PLANNED"
+      goal: "TrendPlotter shows dynamics worth watching"
+      deliverables:
+        - "TrendPlotter: 4 wealth lines (color-coded by SocialRole)"
+        - "TrendPlotter: Consciousness differential (P_w - C_w)"
+        - "TrendPlotter: Solidarity edge strength over time"
+        - "TrendPlotter: Imperial rent pool level"
+        - "SystemLog: Filter for SIGNIFICANT_EVENT_TYPES only"
+      metrics_to_track:
+        wealth_by_class:
+          - "P_w (Periphery Worker) - red line"
+          - "P_c (Comprador) - orange line"
+          - "C_b (Core Bourgeoisie) - blue line"
+          - "C_w (Labor Aristocracy) - green line"
+        differentials:
+          - "consciousness_gap: P_w.consciousness - C_w.consciousness"
+          - "wealth_gap: C_b.wealth - P_w.wealth"
+        flows:
+          - "imperial_rent: total extraction per tick"
+          - "super_wages: WAGES edge value_flow"
+          - "solidarity_strength: SOLIDARITY edge attribute"
+      key_insight: |
+        The INTERESTING dynamics are in RELATIONSHIPS, not node attributes.
+        - EXPLOITATION rate (how fast value flows out of periphery)
+        - Consciousness DIFFERENTIAL (gap between P_w and C_w awareness)
+        - SOLIDARITY strength (infrastructure for revolution vs fascism)
+
+    sprint_4_1_c:
+      name: "Tune for Crisis"
+      status: "PLANNED"
+      goal: "Simulation produces crisis within 30-50 ticks"
+      deliverables:
+        - "GameDefines adjustment: faster consciousness drift"
+        - "GameDefines adjustment: higher tension accumulation"
+        - "Test Fascist Bifurcation path (solidarity_strength = 0)"
+        - "Test Revolutionary path (solidarity_strength > 0)"
+        - "Verify George Floyd Dynamic spark mechanics"
+      balance_targets:
+        - "Crisis event within 30-50 ticks of default scenario"
+        - "Visible consciousness divergence by tick 20"
+        - "Measurable wealth transfer by tick 10"
+        - "Fascist vs Revolutionary bifurcation clearly distinguishable"
+      formula_tuning:
+        - "consciousness_drift_k: increase for faster awakening"
+        - "tension_accumulation_rate: increase for faster crisis"
+        - "extraction_efficiency: balance for sustainable extraction"
+
+    philosophical_grounding: |
+      Horizontal expansion (more features) doesn't help if vertical integration
+      (making existing features work together) isn't complete.
+
+      The 4-node Imperial Circuit model exists. The dashboard exists.
+      But they're not connected. We're watching a 2-node toy model
+      on a 4-panel dashboard built for a 4-node system.
+
+      "A working 4-node simulation beats a broken 10-node simulation."
+
+  mantra: "Graph + Math = History"
+  epoch_mantra: "Build the demonstration first. Then build the game. Finally, build the platform."
+  old_mantras:
+    - "The bomb factory pays well. That's the problem."
+    - "State is data. Engine is logic. They never mix."
+    - "Agitation without solidarity produces fascism, not revolution."
+    - "Fascism is the defensive form of capitalism."
+    - "A flat line on a fancy graph is still a flat line."
+  milestone: "EPOCH 1 MVP COMPLETE: Carceral Equilibrium trajectory validated (88.87/100)"
+  milestone_date: "2026-01-01"
+  milestone_document: "ai/epoch1-mvp-complete.md"
+  next_milestone: "Slice 1.5: Dashboard wire-up (visualization only - mechanics complete)"
+  test_count: 7990
+  test_count_note: "Updated 2026-05-07 - Feature 056 Causal/Temporal Invariants property tests added 14 (US1=4 material-base ordering, US2=3 consequence-after-actions, US3=3 no-DB-I/O-during-tick, US4=4 monotonic-idempotent persistence [in-memory; +4 PostgresRuntime in tests/integration gated by mise run test:integration]). Combined property/ suite (Spec 053 + 054 + 055 + 056) runs in 89.97s on default profile (deterministic order via -p no:randomly). Previous baseline: 7976 (Feature 055 Topology Invariants). Spec 056 also reordered _DEFAULT_SYSTEMS so OODA runs at position 14 between MetabolismSystem and SurvivalSystem (per F6=α clarification, matching ADR032's documented Material Base → Action Phase → Consequences partition), refined RuntimePersistence.persist_tick contract from UPSERT to monotonic-idempotent (per F7=B), and extracted OODASystem._resolve_for_organization helper (per F1) for test-time instrumentation."
+
+  constants_remediation_sweep:
+    status: "COMPLETE"
+    date: "2026-02-27"
+    feature: "028-constants-remediation-sweep"
+    scope: "247 constants across ~20 source files"
+    deliverables:
+      - "3 Tier A constants wired to federal data (QCEW, BLS OES, FRED)"
+      - "34 Tier B dead code / deprecated constants eliminated"
+      - "28 Tier C inline constants centralized into GameDefines"
+      - "12 Tier D engineering constants documented with rationale"
+      - "96 Tier E game design constants documented"
+      - "25 Tier A constants deferred (blocked by features 002/013/021/024)"
+      - "247-disposition triage report (FR-008 accountability verified)"
+    new_gamedefines_subsections:
+      - "ClassDynamicsDefines (alpha_21, gamma_3, equilibrium targets)"
+      - "EdgeTransitionDefines (16 edge mode transition thresholds)"
+    files_modified:
+      - "src/babylon/config/defines.py (197+ lines added)"
+      - "src/babylon/engine/systems/edge_transition.py (refactored to _build_transitions())"
+      - "src/babylon/formulas/ (6 formula modules wired to GameDefines)"
+      - "src/babylon/engine/simulation.py (hydration at from_sqlite)"
+      - "src/babylon/data/reference/hydrator.py (3 new hydration functions)"
+    regression: "5/5 scenarios PASS, 7570 tests PASS, zero behavioral deviation"
+
+  magic_number_refactoring:
+    status: "COMPLETE"
+    date: "2025-12-31"
+    scope: "21 test files in tests/unit/models/"
+    pattern: "Centralized frozen dataclass constants"
+    location: "tests/constants.py"
+    adr: "ADR031_test_constants_architecture"
+    categories_added:
+      - "WealthDefaults (10.0, 50.0, 100.0, 500.0, etc.)"
+      - "ProbabilityDefaults (0.0-1.0 semantic values)"
+      - "IdeologyDefaults (-1.0 to +1.0 political spectrum)"
+      - "ConsciousnessDefaults (George Jackson model)"
+      - "TerritoryDefaults (heat, rent, population)"
+      - "EconomicFlowDefaults (extraction, rent pool)"
+      - "RevolutionaryFinanceDefaults (war_chest, income streams)"
+      - "VitalityDefaults (population, subsistence)"
+      - "OrganizationDefaults (cohesion, cadre)"
+      - "SpatialDefaults (mobility)"
+      - "AgitationDefaults (George Jackson agitation)"
+    phases_completed:
+      phase_1: "test_types.py, test_social_class.py, test_config.py, test_territory.py, test_world_state.py"
+      phase_2: "test_relationship.py, test_state_finance.py, test_economy.py, test_events.py, test_precarity_state.py"
+      phase_3: "Component tests (material, ideological, organization, spatial, vitality)"
+      phase_4: "test_revolutionary_finance.py, test_graph_models.py, test_metrics_models.py"
+    key_insight: |
+      Boundary values testing type contracts (0.0, 1.0, -1.0) stay inline.
+      Domain-semantic values (DEFAULT_WEALTH, MIDPOINT, REVOLUTIONARY) use constants.
+      This preserves test readability while eliminating magic numbers.
+
+  metrics_audit:
+    date: "2025-12-25"
+    status: "PHASE 4.1B COMPLETE - ~85% coverage"
+    source_document: "brainstorm/metrics-collector-audit-reasoning.md"
+    critical_fixed_in_4_1b:
+      - "current_super_wage_rate ✅ FIXED - now in TickMetrics"
+      - "current_repression_level ✅ FIXED - now in TickMetrics"
+      - "pool_ratio ✅ ADDED - imperial rent pool health"
+      - "consciousness_gap ✅ ADDED - P_w - C_w differential"
+      - "wealth_gap ✅ ADDED - C_b - P_w differential"
+    topology_model_ready:
+      - "TopologySummary model ✅ CREATED - percolation_ratio, cadre_density, phase"
+      - "Integration with dashboard ❌ PENDING - TopologyMonitor not registered"
+    bugs_fixed_in_4_1b:
+      - "global_tension ✅ FIXED - now only averages EXPLOITATION edges"
+      - "edge metrics ✅ FIXED - aggregates (max tension, sum flows)"
+    remaining_gaps:
+      - "TopologyMonitor dashboard integration (Phase 4.2)"
+      - "Territory aggregate metrics (heat, population)"
+      - "Event count per tick"
+      - "repression_faced per entity"
+    full_audit: "See observer-layer.yaml metrics_collector.audit section"
+
+  analysis_insight: |
+    2025-12-25: Diagnosed why dashboard is boring.
+    Using create_two_node_scenario() instead of create_imperial_circuit_scenario().
+    Dashboard shows 1 of 4 classes, misses the whole Imperial Circuit dynamic.
+    The dashboard is a LENS - it can't show interesting things if simulation is static.
+
+    2025-12-25: MetricsCollector audit reveals ~60% coverage.
+    Critical missing: economy drivers (wage_rate, repression) and topology (percolation).
+    These are the DIALS that make the simulation interesting to watch.
+    Without them, dashboard shows effects but not causes.
+
+    2025-12-25: PHASE 4.1B COMPLETE via TDD (43 new tests).
+    Fixed: current_super_wage_rate, current_repression_level, pool_ratio exposed.
+    Fixed: consciousness_gap, wealth_gap derived differentials.
+    Fixed: global_tension bug (was averaging all edges, now EXPLOITATION only).
+    Fixed: edge aggregation bug (was overwriting, now max/sum).
+    Created: TopologySummary model ready for dashboard integration.
+    Documented: Causal DAG (Fundamentals → Systems → Metrics) in architecture.yaml.
+  philosophical_grounding: |
+    "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
+    Architecture encodes theory. The code IS the analysis.
+
+# =============================================================================
+# IDEA QUARANTINE PROTOCOL
+# =============================================================================
+
+quarantine:
+  location: "~/projects/game/notes/"
+  purpose: "Dump ideas without derailing implementation"
+  rule: "If it's not in next_steps, it goes in notes/ or brainstorm/deferred-ideas.md"
+  deferred_parking: "brainstorm/deferred-ideas.md"
+
+# =============================================================================
+# TECH DEBT
+# =============================================================================
+
+tech_debt:
+
+  legacy_xml:
+    location: "src/babylon/data/xml/"
+    status: "Migrated, kept for reference"
+    action: "Can delete after confidence in JSON"
+    priority: "low"
+
+  legacy_economy_politics:
+    status: "RESOLVED"
+    action: "Deleted in Sprint 7 per ADR011"
+    notes: "Pure Graph Architecture - no institutional classes"
+
+  incomplete_models:
+    issue: "Not all entities have Pydantic models"
+    action: "Generate from JSON schemas as needed"
+    priority: "low - current models sufficient for Phase 2-3"
+
+  test_coverage:
+    status: "EXCELLENT"
+    current: "1926 tests passing (2025-12-14)"
+    coverage: "Core engine + systems + persistence + components + events + AI narrative fully tested, TDD discipline maintained"
+    action: "Continue TDD for new features"
+    testing_infrastructure:
+      - "DomainFactory (tests/factories/domain.py) - 31 tests"
+      - "BabylonAssert (tests/assertions.py) - 55 tests"
+      - "MockMetricsCollector (tests/mocks/metrics_collector.py) - 8 tests"
+      - "Event model tests (tests/unit/models/test_events.py) - 44 tests"
+      - "Event conversion tests (tests/unit/engine/test_event_conversion.py) - 13 tests"
+      - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 30 tests (Sprint 3.3 4-phase model)"
+      - "Narrative pipeline tests (tests/integration/system/test_narrative_pipeline.py) - 9 tests (Sprint 4.1)"
+      - "MetricsCollector tests (tests/unit/engine/observers/test_metrics_collector.py) - 60 tests (Sprint 4.1 TDD)"
+      - "Metrics model tests (tests/unit/models/test_metrics_models.py) - 41 tests (Sprint 4.1 TDD)"
+      - "Scenario tests (tests/scenarios/) - long-trajectory validation (ADR034)"
+
+    scenario_layer:
+      status: "NEW (2026-01-01)"
+      adr: "ADR034_scenario_layer_test_taxonomy"
+      purpose: "Validate 100-year arc null hypothesis from carceral-equilibrium.yaml"
+      directory: "tests/scenarios/"
+      files:
+        - "test_endgame_flow.py (14 tests) - moved from integration/system/"
+        - "test_fascist_bifurcation.py (4 tests) - moved from integration/mechanics/"
+        - "test_carceral_equilibrium.py (2 tests) - NEW, TDD RED phase"
+      markers:
+        - "@pytest.mark.slow - Long-running (2600+ ticks)"
+        - "@pytest.mark.integration - Full engine integration"
+        - "@pytest.mark.red_phase - TDD RED (trajectory test pending GREEN)"
+      note: "Scenario tests verify theoretical outcomes, not implementation correctness"
+
+  feature_039_state_apparatus_ai:
+    status: "COMPLETE"
+    date: "2026-03-02"
+    branch: "039-state-apparatus-ai"
+    spec: "specs/039-state-apparatus-ai/"
+    description: "State apparatus AI — three-faction coalition enemy with 6 verbs, 25 sub-verbs, attention threads, and Sparrow intelligence"
+    source_loc: 3407
+    test_count: 499
+    test_loc: 8795
+    phases_completed: 10
+    tasks_completed: 104
+    commits: 10
+    source_modules:
+      - "src/babylon/ooda/state_ai/ (11 modules, decision engine + effect resolution)"
+      - "src/babylon/ooda/attention/ (4 modules, intelligence gathering)"
+      - "src/babylon/models/entities/state_apparatus_ai.py (FactionBalance, StateBudget, StateAction, LegalFramework)"
+      - "src/babylon/models/entities/attention_thread.py (AttentionThread, SparrowAnalysis)"
+      - "src/babylon/formulas/state_ai.py (faction shift, fascist convergence)"
+      - "src/babylon/config/defines.py (StateApparatusAIDefines, 65+ parameters)"
+    test_modules:
+      - "tests/unit/state_ai/ (17 files)"
+      - "tests/contract/state_ai/ (8 files)"
+      - "tests/integration/test_state_ai_integration.py (52-tick lifecycle test)"
+    user_stories_complete:
+      - "US1: Faction-weighted verb selection"
+      - "US2: Attention thread intelligence"
+      - "US3: Faction balance dynamics"
+      - "US4: Territory effects (DEVELOP/WITHDRAW)"
+      - "US5: Spatial dynamics (PRESENCE, heat)"
+      - "US6: CO-OPT effects (PROPAGANDIZE/INCORPORATE/DIVIDE/BRIBE)"
+    deferred_requirements:
+      - "FR-D10: Per-org-type AI (Feature 040+)"
+      - "FR-E05: D-P-D' territory infrastructure (Feature 041+)"
+    known_gaps:
+      - "6 EventType members declared but not yet emitted by any system"
+      - "NPCDecisionStrategy protocol signature differs from RuleBasedStateAI.select_action()"
+      - "FactionBalance stored as graph node attributes, not in persistent_data"
+    documentation:
+      - "docs/reference/state-apparatus-ai.rst"
+      - "docs/concepts/state-apparatus-ai.rst"
+      - "docs/how-to/state-apparatus-ai.rst"
+
+  feature_041_mvp_nationwide_sim:
+    status: "COMPLETE"
+    date: "2026-03-03"
+    branch: "041-mvp-nationwide-sim"
+    spec: "specs/041-mvp-nationwide-sim/"
+    description: "MVP web-playable nationwide simulation — Django+React frontend with full game loop"
+    test_counts:
+      engine_unit: 7609
+      frontend_vitest: 219
+      django_backend: 23
+      e2e_playwright: 13
+    phases_completed: 8
+    tasks_completed: 43
+    commits: 8
+    user_stories:
+      - "US1: Play a complete game session (action submission, tick resolution, endgame)"
+      - "US2: Understand simulation state (hex map, inspector, time series)"
+      - "US3: Make strategic decisions (org filtering, verb tooltips, action results)"
+      - "US4: Resume games across sessions (React Router URL-based navigation)"
+      - "US5: Choose scenarios (scenario catalog API + selector dropdown)"
+    key_files:
+      backend:
+        - "web/game/api.py (12 DRF views — game lifecycle, state, actions, scenarios)"
+        - "web/game/engine_bridge.py (EngineBridge — action injection, result persistence, endgame)"
+        - "web/game/tick_resolver.py (atomic tick resolution with idempotency guard)"
+        - "web/game/urls.py (11 URL patterns under /api/)"
+      frontend:
+        - "web/frontend/src/App.tsx (React Router navigation with auth guards)"
+        - "web/frontend/src/components/layout/GameShell.tsx (3-panel game UI)"
+        - "web/frontend/src/components/action/ActionComposer.tsx (org-filtered action submission)"
+        - "web/frontend/src/components/GameList.tsx (scenario-aware game list)"
+        - "web/frontend/src/components/layout/EndgameOverlay.tsx (endgame notification)"
+      tests:
+        - "tests/unit/web/test_api.py (23 tests)"
+        - "tests/unit/web/test_engine_bridge.py (24 tests)"
+        - "web/frontend/e2e/ (3 spec files, 13 tests)"
+    success_criteria_met:
+      - "SC-001: Game session from tick 0 to endgame"
+      - "SC-002: 3+ actions submitted and resolved across 3 ticks"
+      - "SC-003: Session persisted and resumable via URL"
+      - "SC-004: Endgame notification triggered"
+      - "SC-005: Zero regressions (7609 engine tests pass)"
+      - "SC-006: 23+ Django backend tests (target: 20)"
+      - "SC-007: npm run build succeeds (zero TS errors)"
+      - "SC-008: E2E tests cover login, game creation, actions, resolution"
+
+  documentation_drift:
+    issue: "README.md still references PostgreSQL, old structure"
+    action: "Update when Phase 3 complete"
+    priority: "low - ai/ is source of truth"
+
+  legacy_contradiction_analysis:
+    location: "src/babylon/systems/contradiction_analysis.py"
+    status: "Partially superseded"
+    notes: "Tension now tracked on Relationship edges, but legacy class still used in __main__.py"
+    action: "Evaluate during Phase 3"

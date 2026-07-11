@@ -314,5 +314,5 @@ Related Documentation
 - :ref:`reproductive-labor` - Theoretical foundation
 - :mod:`babylon.economics.hydrator` - Transforms QCEW data into tensors
 - :mod:`babylon.economics.department_mapper` - Maps NAICS codes to departments
-- ``ai-docs/marxian-tensor-spec.yaml`` - Machine-readable specification
-- ``ai-docs/shadow-labor-spec.yaml`` - Shadow labor specification
+- ``ai/marxian-tensor-spec.yaml`` - Machine-readable specification
+- ``ai/shadow-labor-spec.yaml`` - Shadow labor specification

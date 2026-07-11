@@ -659,7 +659,7 @@ class StruggleSystem(SystemBase):
         This models anti-colonial revolution cutting off imperial extraction,
         triggering the cascade: no extraction → no super-wages → LA decomposition.
 
-        See ai-docs/terminal-crisis-dynamics.md for full theory.
+        See ai/terminal-crisis-dynamics.md for full theory.
         """
         tick = context.get("tick", 0)
 

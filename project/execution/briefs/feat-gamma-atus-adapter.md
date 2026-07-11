@@ -416,7 +416,7 @@ This branch changes `gamma_III_raw` from a constant 0.33 to ~0.37-0.40 varying b
 ## 6. Collateral (CI hygiene)
 - `gamma/__init__.py` — add new classes to imports + `__all__` (`:76-105`).
 - Fix the stale line-number references in `_build_economics_overrides`' docstring and the `:1025-1030` comment.
-- `ai-docs/state.yaml` note + MEMORY.md "gamma wired but data-starved" line becomes stale after merge (record-repair territory, Phase 7 — just flag in the PR).
+- `ai/state.yaml` note + MEMORY.md "gamma wired but data-starved" line becomes stale after merge (record-repair territory, Phase 7 — just flag in the PR).
 - Import order per CLAUDE.md (`from __future__ import annotations` first); tuple `zip` strictness N/A; keep every function under 100 lines.
 
 ## 7. Explicitly out of scope (do not drift)

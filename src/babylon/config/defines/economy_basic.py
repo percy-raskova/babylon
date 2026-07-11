@@ -282,7 +282,7 @@ class EconomyDefines(BaseModel):
     )
 
     # TRPF Surrogate - Tendency of the Rate of Profit to Fall (Marx, Capital Vol. 3)
-    # See ai-docs/epoch2-trpf.yaml for full OCC implementation planned for Epoch 2
+    # See ai/epoch2-trpf.yaml for full OCC implementation planned for Epoch 2
     trpf_coefficient: float = Field(
         default=0.0005,
         ge=0.0,

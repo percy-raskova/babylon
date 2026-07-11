@@ -667,7 +667,7 @@ See Also
 - :doc:`demographics` - Mass Line Refactor and population mechanics
 - :doc:`formulas` - Mathematical models for consciousness and survival
 - :doc:`../concepts/imperial-rent` - Theory of imperial rent extraction
-- :ref:`ai-docs/census-insights.yaml <census-insights>` - Machine-readable data
+- :ref:`ai/census-insights.yaml <census-insights>` - Machine-readable data
 
 Technical Reference
 ===================

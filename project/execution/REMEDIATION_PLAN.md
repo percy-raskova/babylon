@@ -91,7 +91,7 @@ All in `src/babylon/models/world_state.py` + writers:
 | C.8 | Wiring audit: runner startup logs wired-vs-None table for all TickDynamics services; NoDataSentinel drops logged with reason + counted in manifest (`tick/system/__init__.py:386-390` currently drops silently — why dead gamma went unnoticed) | runner log + manifest |
 | C.9 | Test-infra re-arm: `strict_markers = true` ini (addopts flag is a verified no-op on pytest 9); register `contract`, apply `ai` via conftest (179 unmarked tests); add pytest-timeout; `-m "not red_phase"` parity in mise; red_phase triage (30 zombies); `HYPOTHESIS_PROFILE=slow` nightly; delete dead ui-tests CI job; canary fail-not-skip | pyproject/CI/mise |
 | C.10 | deptry in CI (38 issues today; allowlist dynamic imports) | ci.yml + qa:deps |
-| C.11 | Doc-reference linter `tools/check_doc_refs.py`: path refs in CLAUDE.md/ai-docs must exist | pre-commit + CI |
+| C.11 | Doc-reference linter `tools/check_doc_refs.py`: path refs in CLAUDE.md/ai must exist | pre-commit + CI |
 | C.12 | Budget gates: unit tests for `tick_budget_check.py` (currently untested gate), CI-light wayne 3-tick budget smoke, documented `qa:nightly` for full storage/tick budgets (need the local reference DB) | PR-light + nightly local |
 | C.13 | 'resolving' watchdog: `POST /games/{id}/recover/` + stale-status sweeper command (today a worker death wedges sessions forever, `api.py:1014-1034`) | runtime |
 
@@ -159,7 +159,7 @@ All in `src/babylon/models/world_state.py` + writers:
 
 ### Phase 7 — Record repair
 Single branch `docs/record-repair` (M): project/ status banners + README authority chain
-(09 → POST_ASSESSMENT → HOLISTIC_REVIEW → this plan); regenerate (not patch) `ai-docs/state.yaml`
+(09 → POST_ASSESSMENT → HOLISTIC_REVIEW → this plan); regenerate (not patch) `ai/state.yaml`
 from repo truth, archive the Dec-2025 fossil fold; rewrite topology-system/graph-abstraction yamls
 (rustworkx reality) + architecture.yaml ChromaDB claim; backfill anti-patterns (fixture-mirror
 tests, silent-degradation handlers); rewrite parent `game/CLAUDE.md` (phantom codebase) + rag

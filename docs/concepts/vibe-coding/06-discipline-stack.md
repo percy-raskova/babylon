@@ -117,7 +117,7 @@ Types are contracts that constrain what the AI can produce. They're not trust—
 Architecture Decision Records document why decisions were made:
 
 ```yaml
-# From ai-docs/decisions.yaml
+# From ai/decisions.yaml
 
 ADR016_fascist_bifurcation:
   status: "accepted"

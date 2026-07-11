@@ -15,7 +15,7 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 
 ## Governance
 
-- [Governance](governance.md) — Git workflow, session continuity, ai-docs maintenance
+- [Governance](governance.md) — Git workflow, session continuity, ai maintenance
 
 ## Architecture Decision Records
 
@@ -36,9 +36,9 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 
 ## AI State
 
-- Decisions: `ai-docs/decisions.yaml`
-- Roadmap: `ai-docs/roadmap.md`
-- State: `ai-docs/state.yaml`
+- Decisions: `ai/decisions.yaml`
+- Roadmap: `ai/roadmap.md`
+- State: `ai/state.yaml`
 
 ## Agent Skills
 

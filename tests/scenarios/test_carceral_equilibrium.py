@@ -3,8 +3,8 @@
 This module validates the "null hypothesis" - the default trajectory of
 the Babylon simulation when no player intervention occurs. It tests the
 theoretical claims from:
-- ai-docs/carceral-equilibrium.md: The 70-Year Arc
-- ai-docs/theory.md: Core MLM-TW theoretical framework
+- ai/carceral-equilibrium.md: The 70-Year Arc
+- ai/theory.md: Core MLM-TW theoretical framework
 
 The test verifies that the simulation progresses through the following
 phases IN ORDER (phase sequence validation, not exact tick timing):
@@ -55,7 +55,7 @@ class TestCarceralEquilibrium:
     """Tests for the 70-Year Arc (Default - No Player Intervention).
 
     These tests validate the theoretical trajectory described in
-    ai-docs/carceral-equilibrium.md. The simulation should progress
+    ai/carceral-equilibrium.md. The simulation should progress
     through imperial extraction, metabolic rift, superwage crisis,
     LA decomposition, control ratio crisis, and terminal decision.
 
@@ -71,7 +71,7 @@ class TestCarceralEquilibrium:
     ) -> None:
         """70-Year Arc (Default - No Player Intervention).
 
-        Validates the trajectory from ai-docs/carceral-equilibrium.md:
+        Validates the trajectory from ai/carceral-equilibrium.md:
         - Phase 2: Metabolic Rift opens (overshoot > 1.0)
         - Phase 3: SUPERWAGE_CRISIS emitted (rent pool exhausted)
         - Phase 4: LA decomposition into Enforcers/Prisoners

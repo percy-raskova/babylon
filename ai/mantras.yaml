@@ -1,0 +1,293 @@
+# Babylon Development Mantras
+# Guiding principles for development decisions
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-11"
+  purpose: "Capture recurring insights as memorable principles"
+
+# =============================================================================
+# CORE MANTRAS
+# =============================================================================
+
+mantras:
+
+  north_star:
+    text: "A teenager picks it up, has fun, thinks it's cool, and learns how the world works."
+    meaning: |
+      This is the ultimate success criterion for Babylon.
+      Not architectural elegance. Not test coverage. Not theoretical rigor.
+
+      A person who hasn't read Marx plays this game and starts asking
+      the right questions about imperial rent, class consciousness,
+      and why revolution happens in the periphery, not the core.
+
+      Political education through storytelling with a complex backend.
+      The backend complexity serves the story. The story serves understanding.
+    applies_to:
+      - "Feature prioritization"
+      - "UI/UX decisions"
+      - "Scope discussions"
+      - "When to ship vs when to polish"
+    added: "2025-12-26"
+
+  graph_plus_math:
+    text: "Graph + Math = History"
+    meaning: |
+      The simulation is fundamentally two things:
+      1. A graph structure (NetworkX) capturing relationships
+      2. Mathematical formulas determining state changes
+      Everything else is presentation. History emerges from these deterministic rules.
+    applies_to:
+      - "Engine architecture decisions"
+      - "Feature prioritization"
+      - "Debugging simulation behavior"
+
+  state_is_data:
+    text: "State is pure data. Engine is pure transformation. They never mix."
+    meaning: |
+      WorldState contains only data (Pydantic models).
+      Engine contains only functions that transform state.
+      No business logic in data classes. No state in engine classes.
+    applies_to:
+      - "Model design"
+      - "System implementation"
+      - "Testing strategy"
+
+  agitation_without_solidarity:
+    text: "Agitation without solidarity produces fascism, not revolution."
+    meaning: |
+      Economic crisis creates "agitation energy" with no inherent direction.
+      Without pre-existing solidarity infrastructure (unions, internationals),
+      that energy flows toward scapegoating and fascism.
+      This is why accelerationism fails historically.
+    applies_to:
+      - "Bifurcation formula design"
+      - "Player strategy guidance"
+      - "Historical scenario validation"
+    reference: "ADR016_fascist_bifurcation"
+
+  ai_observes_never_controls:
+    text: "AI observes, never controls."
+    meaning: |
+      The AI (LLM) generates narrative from state changes.
+      It never determines mechanical outcomes.
+      This ensures reproducibility and testability.
+    applies_to:
+      - "NarrativeDirector design"
+      - "RAG integration"
+      - "Testing AI features"
+    reference: "ADR003_ai_as_observer"
+
+# =============================================================================
+# TOOLING MANTRAS
+# =============================================================================
+
+  documentation_reveals_structure:
+    text: "Good documentation highlights possible structural issues."
+    meaning: |
+      When documentation tools (like Sphinx) produce warnings about duplicates,
+      cross-reference conflicts, or organizational problems, treat these as
+      signals worth investigating. They may reveal deeper architectural issues.
+
+      However, warnings require DIAGNOSIS, not automatic refactoring.
+      The warning may indicate a tool configuration issue, not a code problem.
+    applies_to:
+      - "Sphinx documentation builds"
+      - "Static analysis warnings"
+      - "IDE hints and suggestions"
+    added: "2025-12-11"
+    context: "Discovered during Sphinx duplicate cross-reference investigation"
+
+  codebase_is_truth:
+    text: |
+      Tools conform to the codebase as truth.
+      We don't design the codebase to fit the tools.
+    meaning: |
+      When there's a conflict between how the codebase is structured and
+      how a tool wants things organized:
+
+      1. FIRST: Verify the codebase structure is intentional and correct
+      2. IF CORRECT: Configure the tool to work with our structure
+      3. NEVER: Warp the codebase architecture to satisfy tool defaults
+
+      The codebase embodies domain knowledge and architectural decisions.
+      Tools are interchangeable utilities. Priorities must reflect this.
+    applies_to:
+      - "Sphinx configuration vs Python re-exports"
+      - "Linter rules vs coding standards"
+      - "IDE refactoring suggestions"
+      - "Any tool that suggests 'restructuring' code"
+    added: "2025-12-11"
+    context: |
+      Sphinx autosummary was documenting re-exported classes twice.
+      Rather than flatten the API surface (removing re-exports from __init__.py),
+      we configured Sphinx with `autosummary_imported_members = False`.
+      The re-export pattern is intentional Python API design.
+
+  differentiate_structural_issues:
+    text: |
+      Differentiate between structural issues in the codebase
+      and structural issues with the tooling.
+    meaning: |
+      When a tool reports "problems," diagnose the actual source:
+
+      CODEBASE ISSUES (fix the code):
+      - Circular imports
+      - Duplicated logic
+      - Missing type hints
+      - Actual bugs
+
+      TOOLING ISSUES (fix the tool config):
+      - Documentation generation quirks
+      - Formatter opinion differences
+      - Static analyzer false positives
+      - Default configurations that don't match our patterns
+
+      Misdiagnosing leads to either:
+      - Unnecessary refactoring (treating tool issues as code issues)
+      - Hidden bugs (treating code issues as tool quirks)
+    applies_to:
+      - "Responding to CI warnings"
+      - "Evaluating linter suggestions"
+      - "Documentation build errors"
+    added: "2025-12-11"
+
+# =============================================================================
+# QUALITY MANTRAS
+# =============================================================================
+
+  block_on_correctness:
+    text: "Block on correctness, not style."
+    meaning: |
+      CI should fail on:
+      - Type errors (bugs waiting to happen)
+      - Test failures (broken functionality)
+      - Lint errors (likely bugs)
+
+      CI should NOT block on:
+      - Formatting differences (handled by pre-commit)
+      - Documentation style
+      - Optional improvements
+
+      Style is enforced locally via pre-commit hooks.
+      CI protects correctness, not aesthetics.
+    applies_to:
+      - "CI pipeline design"
+      - "PR review standards"
+      - "Pre-commit hook selection"
+    reference: "ADR021_cicd_philosophy"
+
+  test_logic_not_ai:
+    text: "Test logic deterministically. Evaluate AI probabilistically."
+    meaning: |
+      Logic tests (math, ledger, topology) must be deterministic.
+      Same input always produces same output. No flakiness allowed.
+
+      AI tests are evaluations, not assertions. They check quality
+      of generated content, which is inherently variable.
+
+      Never mix these in the same test file or pytest marker.
+    applies_to:
+      - "Test organization"
+      - "CI pipeline structure"
+      - "Debugging test failures"
+
+# =============================================================================
+# DOCUMENTATION MANTRAS
+# =============================================================================
+
+  explain_why_not_what:
+    text: "Document WHY, not WHAT. Code shows WHAT."
+    meaning: |
+      Comments and documentation should explain:
+      - Why this approach was chosen
+      - What tradeoffs were considered
+      - Historical context for decisions
+
+      NOT:
+      - What the code literally does (read the code)
+      - Step-by-step narration of implementation
+    applies_to:
+      - "Code comments"
+      - "ADR documentation"
+      - "Docstrings"
+
+  docstrings_enable_sphinx:
+    text: "Docstrings are the source of truth for Sphinx documentation."
+    meaning: |
+      Every public class, function, and module should have docstrings
+      that work with Sphinx autodoc. Use RST formatting correctly:
+      - Proper code blocks with :: or ``backticks``
+      - Correct emphasis: *italic* and **bold**
+      - Valid cross-references: :class:`ClassName`
+      - Example sections that pass doctest
+
+      Sphinx warnings about docstring formatting indicate documentation
+      that will render incorrectly. Treat as errors.
+    applies_to:
+      - "Writing new code"
+      - "Code review"
+      - "Documentation CI"
+    added: "2025-12-11"
+
+# =============================================================================
+# DESIGN MANTRAS
+# =============================================================================
+
+  red_is_pain:
+    text: "Red is Pain, not Decoration."
+    meaning: |
+      Use #D40000 (phosphor_burn_red) ONLY for critical alerts, ruptures,
+      and pain states. Never for decorative borders, inactive elements,
+      or general emphasis.
+
+      Red demands attention. Overuse dilutes its power.
+      When everything is urgent, nothing is urgent.
+    applies_to:
+      - "UI component design"
+      - "Alert system implementation"
+      - "Color selection for states"
+    anti_pattern: "Using red for decorative borders or inactive elements"
+    reference: "ai/design-system.yaml:palette.semantic.phosphor_burn_red"
+    added: "2025-12-14"
+
+  purple_is_life_green_is_data:
+    text: "Purple is Life, Green is Data."
+    meaning: |
+      Distinguish the AI's voice from the System's metrics:
+
+      - PURPLE (#9D00FF, grow_light_purple): AI Narrative, Life, Broadcast
+        The Signal. What the AI generates. Organic, alive, growing.
+
+      - GREEN (#39FF14, data_green): Metrics, Terminal Output, Statistics
+        The Carrier. What the system measures. Digital, precise, factual.
+
+      This separation lets players immediately identify AI-generated content
+      versus mechanical system data.
+    applies_to:
+      - "Narrative display styling"
+      - "Metrics/statistics formatting"
+      - "Terminal output design"
+    reference: "ai/design-system.yaml:palette.semantic"
+    added: "2025-12-14"
+
+  screen_is_physical:
+    text: "The Screen is a Physical Object."
+    meaning: |
+      The UI represents a CRT monitor in a damp basement, not a clean web app.
+      Grain, scanlines, and vignette are ESSENTIAL, not optional decorations.
+
+      Implementation requirements:
+      - CRT scanline overlay (horizontal lines)
+      - Vignette effect (edge darkening)
+      - Subtle grain texture
+      - Occasional flicker (intentional imperfection)
+
+      If it looks like a modern web app, something is wrong.
+    applies_to:
+      - "Root UI container styling"
+      - "Visual effect implementation"
+      - "Aesthetic consistency reviews"
+    reference: "ai/design-system.yaml:components.crt_overlay"
+    added: "2025-12-14"

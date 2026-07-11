@@ -4,7 +4,7 @@ Operating guidance for any coding agent working in this repository (Claude Code 
 natively; `AGENTS.md` is a symlink to it, so every tool shares one source of truth).
 
 <!-- This file is living configuration, not documentation. Keep it lean (<200 lines), accurate,
-     and imperative. Push deep reference into ai-docs/ and docs/ that load on demand. -->
+     and imperative. Push deep reference into ai/ and docs/ that load on demand. -->
 
 ## Babylon — The Fall of America
 
@@ -38,7 +38,7 @@ Amendments A–P; the canonical governance doc — read it before proposing arch
 
 ## Architecture: The Embedded Trinity
 
-Three-layer local system, no external servers. Full map: `ai-docs/architecture.yaml`.
+Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 - **The Ledger** — rigid material state. SQLite reference DB (`data/sqlite/marxist-data-3NF.sqlite`,
   read-only) + PostgreSQL runtime (`src/babylon/persistence/`) + a few JSON seeds in
@@ -57,7 +57,7 @@ Three-layer local system, no external servers. Full map: `ai-docs/architecture.y
 
 `SimulationEngine.run_tick(graph, services, context)` runs 26 Systems in strict materialist-causality
 order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated order in
-`ai-docs/architecture.yaml`. The three phases:
+`ai/architecture.yaml`. The three phases:
 
 1. **Material Base** (positions 1–13, + Substrate @2.5): Vitality, Territory, Production, TickDynamics,
    ReserveArmy, Community, Lifecycle, Solidarity, ImperialRent, Dispossession, Decomposition,
@@ -122,12 +122,12 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
 - `mise run check` — lint + format + typecheck + `test:unit` — green.
 - For any engine/economics/defines change: `mise run qa:regression` **byte-identical** (5 scenarios).
   If a value moves unintentionally, STOP; if intentionally, regenerate baselines and say so.
-- After significant work: update `ai-docs/state.yaml`; add an ADR in `ai-docs/decisions/` (individual
+- After significant work: update `ai/state.yaml`; add an ADR in `ai/decisions/` (individual
   `ADR0NN_*.yaml` files + `index.yaml` catalog) for architectural decisions.
 
 ## Commands
 
-`mise tasks` lists all ~120 tasks (full reference: `ai-docs/tooling.yaml`). Agent inner loop:
+`mise tasks` lists all ~120 tasks (full reference: `ai/tooling.yaml`). Agent inner loop:
 
 ```bash
 mise run commit -- "type(scope): msg"   # hook-safe commit
@@ -143,7 +143,7 @@ mise run db:sql -- "SELECT ..."         # one-shot SQL vs babylon_test
 CI (`.github/workflows/ci.yml`) uses raw `poetry run pytest … --tb=short -q`, never `mise` — the mise
 tasks are dev/agent ergonomics only.
 
-## Gotchas (hard-won; details in `ai-docs/anti-patterns.yaml`)
+## Gotchas (hard-won; details in `ai/anti-patterns.yaml`)
 
 - `WorldState.events` is **per-tick, not cumulative** — a tick with no events is `[]`, never carried over.
 - **Graph round-trip loses data:** `from_graph()` excludes computed fields and defaults missing ones;

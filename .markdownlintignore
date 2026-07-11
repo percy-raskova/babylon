@@ -5,7 +5,7 @@ dist/
 node_modules/
 
 # AI documentation (YAML-based specs)
-ai-docs/
+ai/
 
 # Generated files
 docs/api/

@@ -16,8 +16,8 @@ Usage:
     )
 
 See Also:
-    :doc:`/ai-docs/tooling.yaml` for full documentation
-    :doc:`/ai-docs/decisions.yaml` ADR036 for rationale
+    :doc:`/ai/tooling.yaml` for full documentation
+    :doc:`/ai/decisions.yaml` ADR036 for rationale
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ DEFAULT_MAX_TICKS: Final[int] = 5200
 """Default simulation length: 5200 ticks = 100 years (1 tick = 1 week).
 
 Extended from 70-year trajectory to allow full parameter exploration.
-See ai-docs/carceral-equilibrium.md for the phase transition sequence:
+See ai/carceral-equilibrium.md for the phase transition sequence:
 - Years 0-20:  Imperial Extraction
 - Years 15-25: Peripheral Revolt
 - Years 20-30: Superwage Crisis

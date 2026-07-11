@@ -1,0 +1,947 @@
+# Babylon Formula Specifications
+# Machine-readable spec for the core mathematical engine
+# Source: ~/projects/game/notes/manifesto.md
+
+meta:
+  version: "2.4.0"
+  created: "2024-12-07"
+  updated: "2026-01-02"
+  purpose: "Document the implemented mathematical formulas that transform types into behavior"
+  principle: "Types are nouns, formulas are verbs"
+  status: "IMPLEMENTED (28 formulas across 11 modules) + CONCEPTUAL (1 distribution pattern)"
+  location: "src/babylon/systems/formulas/"
+  tests: "tests/unit/formulas/ (80+ tests, ALL PASSING)"
+  formula_count: 28
+  note: "This spec documents the complete formula inventory driving the simulation."
+  sprint_3_4_3_update: "Added calculate_ideological_routing() for George Jackson Refactor"
+  class_dynamics_update: |
+    Added 6 class wealth dynamics formulas from FRED DFA analysis (2026-01-02).
+    See ai/class-dynamics.yaml for full specification.
+
+# =============================================================================
+# FORMULA INVENTORY (28 FORMULAS, ALL IMPLEMENTED)
+# =============================================================================
+# These formulas exist in src/babylon/systems/formulas/ with 80+ passing tests.
+# Organized into 8 categories across 11 modules.
+
+constants:
+  LOSS_AVERSION_COEFFICIENT:
+    value: 2.25
+    description: "Kahneman-Tversky coefficient - losses felt 2.25x more than gains"
+  EPSILON:
+    value: 1e-6
+    description: "Small constant to prevent division by zero"
+
+formulas:
+
+  # ---------------------------------------------------------------------------
+  # SECTION 1: FUNDAMENTAL THEOREM FUNCTIONS (4 formulas)
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # IMPERIAL RENT (The Edge)
+  # ---------------------------------------------------------------------------
+  imperial_rent:
+    function: "calculate_imperial_rent"
+    symbol: "Φ"
+    equation: "Φ(Wp, Ψp) = α × Wp × (1 - Ψp)"
+    description: |
+      The value extracted from periphery labor. This IS the exploitation edge.
+      In MLM-TW theory, this flow from South to North is why First World
+      revolution is impossible while Imperial Rent flows.
+      Higher periphery consciousness reduces extraction (resistance).
+
+    inputs:
+      alpha:
+        symbol: "α"
+        type: "Coefficient [0, 1]"
+        description: "Extraction efficiency coefficient"
+
+      periphery_wages:
+        symbol: "Wp"
+        type: "Coefficient [0, 1]"
+        description: "Periphery wage share"
+
+      periphery_consciousness:
+        symbol: "Ψp"
+        type: "Coefficient [0, 1]"
+        description: "Periphery consciousness/resistance (0=submissive, 1=revolutionary)"
+
+    output:
+      type: "Currency"
+      range: "[0, ∞)"
+      description: "Imperial Rent extracted (always >= 0)"
+
+    constraints:
+      - "Φ ≥ 0 (rent is never negative, enforced via max(0, ...))"
+      - "Higher consciousness reduces extraction"
+
+    tests:
+      - "calculate_imperial_rent(0.8, 0.5, 0.0) == 0.4  # full extraction"
+      - "calculate_imperial_rent(0.8, 0.5, 1.0) == 0.0  # revolutionary resistance"
+      - "calculate_imperial_rent(0.8, 0.5, 0.5) == 0.2  # partial resistance"
+
+  # ---------------------------------------------------------------------------
+  # LABOR ARISTOCRACY RATIO (The Bribe)
+  # ---------------------------------------------------------------------------
+  labor_aristocracy_ratio:
+    function: "calculate_labor_aristocracy_ratio"
+    symbol: "Wc/Vc"
+    equation: "Ratio = Wc / Vc"
+    description: |
+      Calculate labor aristocracy ratio. When ratio > 1, the worker receives
+      more than they produce, with the difference coming from Imperial Rent.
+      This quantifies the "bribe" that keeps core workers aligned with capital.
+
+    inputs:
+      core_wages:
+        symbol: "Wc"
+        type: "Currency"
+        description: "Wages received by core worker"
+
+      value_produced:
+        symbol: "Vc"
+        type: "Currency"
+        description: "Value produced by core worker"
+
+    output:
+      type: "float"
+      range: "[0, ∞)"
+      description: "Labor aristocracy ratio"
+
+    constraints:
+      - "value_produced > 0 (raises ValueError if zero or negative)"
+
+    tests:
+      - "calculate_labor_aristocracy_ratio(120, 100) == 1.2  # labor aristocrat"
+      - "calculate_labor_aristocracy_ratio(80, 100) == 0.8   # exploited"
+      - "calculate_labor_aristocracy_ratio(100, 0) raises ValueError"
+
+  # ---------------------------------------------------------------------------
+  # IS LABOR ARISTOCRACY (Boolean Check)
+  # ---------------------------------------------------------------------------
+  is_labor_aristocracy:
+    function: "is_labor_aristocracy"
+    equation: "Wc > Vc"
+    description: |
+      Boolean determination of labor aristocracy status.
+      Returns True when wages exceed value produced.
+
+    inputs:
+      core_wages:
+        symbol: "Wc"
+        type: "Currency"
+        description: "Wages received by core worker"
+
+      value_produced:
+        symbol: "Vc"
+        type: "Currency"
+        description: "Value produced by core worker"
+
+    output:
+      type: "bool"
+      description: "True if worker is labor aristocracy"
+
+    constraints:
+      - "value_produced > 0 (raises ValueError if zero or negative)"
+
+    tests:
+      - "is_labor_aristocracy(120, 100) == True"
+      - "is_labor_aristocracy(80, 100) == False"
+      - "is_labor_aristocracy(100, 100) == False  # exactly equal = not aristocrat"
+
+  # ---------------------------------------------------------------------------
+  # CONSCIOUSNESS DRIFT (The Awakening)
+  # ---------------------------------------------------------------------------
+  consciousness_drift:
+    function: "calculate_consciousness_drift"
+    symbol: "dΨc/dt"
+    equation: "dΨc/dt = k(1 - Wc/Vc) - λΨc"
+    description: |
+      Core consciousness drifts based on the material relationship between
+      wages and value produced. Exploitation (Wc < Vc) drives revolutionary
+      consciousness; labor aristocracy (Wc > Vc) drives reactionary drift.
+      Current consciousness decays without material basis (the λΨc term).
+
+    inputs:
+      core_wages:
+        symbol: "Wc"
+        type: "Currency"
+        description: "Wages received by core worker"
+
+      value_produced:
+        symbol: "Vc"
+        type: "Currency"
+        description: "Value produced by core worker"
+
+      current_consciousness:
+        symbol: "Ψc"
+        type: "Coefficient [0, 1]"
+        description: "Current consciousness level"
+
+      sensitivity_k:
+        symbol: "k"
+        type: "Coefficient"
+        description: "Sensitivity coefficient for material conditions"
+
+      decay_lambda:
+        symbol: "λ"
+        type: "Coefficient"
+        description: "Decay coefficient (consciousness fades without basis)"
+
+    output:
+      type: "float"
+      description: "Rate of change of consciousness (positive = revolutionary drift)"
+
+    constraints:
+      - "value_produced > 0 (raises ValueError if zero or negative)"
+
+    key_insight: |
+      When Wc/Vc < 1 (exploited): positive drift toward revolution
+      When Wc/Vc > 1 (labor aristocrat): negative drift toward reaction
+      Decay term prevents consciousness from persisting without material basis
+
+    tests:
+      - "calculate_consciousness_drift(80, 100, 0.5, 0.5, 0.1) > 0  # exploited → revolutionary"
+      - "calculate_consciousness_drift(120, 100, 0.5, 0.5, 0.1) < 0  # aristocrat → reactionary"
+
+  # ---------------------------------------------------------------------------
+  # IDEOLOGICAL ROUTING (The George Jackson Refactor)
+  # ---------------------------------------------------------------------------
+  ideological_routing:
+    function: "calculate_ideological_routing"
+    symbol: "Route(Δw, σ, Π)"
+    equation: |
+      If wage_change < 0:
+        agitation = abs(wage_change) × LOSS_AVERSION_LAMBDA
+        solidarity_factor = min(1.0, solidarity_pressure)
+        class_delta = agitation × solidarity_factor
+        nation_delta = agitation × (1 - solidarity_factor)
+    description: |
+      Routes crisis energy (agitation) into either class consciousness or national
+      identity based on solidarity infrastructure. This is the core of the
+      "Fascist Bifurcation" mechanic.
+
+      Key insight: "Fascism is the defensive form of capitalism."
+      The same material crisis (falling wages) produces opposite outcomes
+      depending on whether solidarity infrastructure was built beforehand.
+
+    inputs:
+      wage_change:
+        symbol: "Δw"
+        type: "float"
+        description: "Change in wages (negative = crisis)"
+
+      solidarity_pressure:
+        symbol: "σ"
+        type: "float [0, 1]"
+        description: "Solidarity infrastructure level (sum of SOLIDARITY edge strengths)"
+
+      current_profile:
+        symbol: "Π"
+        type: "IdeologicalProfile"
+        description: "Current ideological state (class_consciousness, national_identity, agitation)"
+
+    output:
+      type: "tuple[float, float, float]"
+      description: "(delta_class_consciousness, delta_national_identity, new_agitation)"
+
+    key_insight: |
+      With solidarity: crisis → class consciousness → revolution
+      Without solidarity: crisis → national identity → fascism
+      "Agitation without solidarity produces fascism, not revolution."
+
+    tests:
+      - "wage_decline + solidarity_strength=1.0 → class_consciousness increases"
+      - "wage_decline + solidarity_strength=0.0 → national_identity increases"
+      - "wage_stable → no agitation generated"
+
+    location: "src/babylon/systems/formulas.py"
+    added_in: "Sprint 3.4.3"
+
+  # ---------------------------------------------------------------------------
+  # SOLIDARITY TRANSMISSION (Proletarian Internationalism)
+  # ---------------------------------------------------------------------------
+  solidarity_transmission:
+    function: "calculate_solidarity_transmission"
+    symbol: "dΨ_target"
+    equation: "dΨ_target = σ × (Ψ_source - Ψ_target)"
+    description: |
+      Calculate consciousness transmission via solidarity edges. Implements the
+      core mechanic of Proletarian Internationalism: consciousness flows from
+      periphery to core workers through solidarity infrastructure.
+
+      Key insight: solidarity_strength is STORED ON EDGE, not auto-calculated.
+      This enables the Fascist Bifurcation mechanic - same crisis conditions
+      produce different outcomes based on pre-built solidarity infrastructure.
+
+    inputs:
+      source_consciousness:
+        symbol: "Ψ_source"
+        type: "Probability [0, 1]"
+        description: "Consciousness level of source (periphery worker)"
+
+      target_consciousness:
+        symbol: "Ψ_target"
+        type: "Probability [0, 1]"
+        description: "Consciousness level of target (core worker)"
+
+      solidarity_strength:
+        symbol: "σ"
+        type: "Probability [0, 1]"
+        description: "Strength of solidarity infrastructure on edge (STORED, not derived)"
+
+      activation_threshold:
+        type: "float"
+        default: 0.3
+        description: "Minimum source consciousness for transmission to occur"
+
+    output:
+      type: "float"
+      description: "Change in target consciousness (can be negative if target > source)"
+
+    constraints:
+      - "Returns 0.0 if source_consciousness <= activation_threshold"
+      - "Returns 0.0 if solidarity_strength <= 0"
+      - "Transmission can be negative (reverse flow if target more conscious)"
+
+    key_insight: |
+      solidarity_strength on edge is the STORED infrastructure of internationalism.
+      Without it, periphery revolt produces fascism in core (no transmission).
+      With it, periphery revolt raises core consciousness (revolutionary transmission).
+      "Agitation without solidarity produces fascism, not revolution."
+
+    tests:
+      - "calculate_solidarity_transmission(0.8, 0.2, 0.5) ≈ 0.3  # High source, low target"
+      - "calculate_solidarity_transmission(0.2, 0.5, 0.5) == 0.0  # Below threshold"
+      - "calculate_solidarity_transmission(0.8, 0.2, 0.0) == 0.0  # No solidarity"
+      - "calculate_solidarity_transmission(0.5, 0.8, 0.5) ≈ -0.15  # Reverse flow"
+
+    location: "src/babylon/systems/formulas.py"
+    added_in: "Sprint 3.4.2"
+
+  # ---------------------------------------------------------------------------
+  # BOURGEOISIE DECISION (Dynamic Balance)
+  # ---------------------------------------------------------------------------
+  bourgeoisie_decision:
+    function: "calculate_bourgeoisie_decision"
+    class: "BourgeoisieDecision"
+    symbol: "D(π, τ)"
+    equation: |
+      Decision matrix based on pool_ratio (π) and aggregate_tension (τ):
+        π >= 0.7 AND τ < 0.3 → BRIBERY (+5% wages)
+        π < 0.1             → CRISIS (-15% wages, +20% repression)
+        π < 0.3 AND τ > 0.5 → IRON_FIST (+10% repression)
+        π < 0.3 AND τ ≤ 0.5 → AUSTERITY (-5% wages)
+        else                → NO_CHANGE
+    description: |
+      Models the bourgeoisie as a rational actor responding to material conditions.
+      The "Driver" mechanic from Sprint 3.4.4: the ruling class adjusts wages and
+      repression based on imperial rent pool health and class tension.
+
+      This is the feedback loop that creates dynamic balance:
+      - High pool + low tension → buy off workers (bribery)
+      - Low pool + high tension → crush resistance (iron fist)
+      - Low pool + low tension → quietly extract more (austerity)
+      - Crisis (pool < 0.1) → emergency measures (wage slash + repression spike)
+
+    inputs:
+      pool_ratio:
+        symbol: "π"
+        type: "Probability [0, 1+]"
+        description: "Imperial rent pool / initial pool (can exceed 1.0 if growing)"
+
+      aggregate_tension:
+        symbol: "τ"
+        type: "Probability [0, 1]"
+        description: "Average tension across class relationships"
+
+      high_threshold:
+        type: "float"
+        default: 0.7
+        description: "Pool ratio above which prosperity declared"
+
+      low_threshold:
+        type: "float"
+        default: 0.3
+        description: "Pool ratio below which austerity begins"
+
+      critical_threshold:
+        type: "float"
+        default: 0.1
+        description: "Pool ratio below which crisis fires"
+
+    output:
+      type: "tuple[str, float, float]"
+      description: "(decision: BourgeoisieDecision, wage_delta, repression_delta)"
+
+    decision_values:
+      NO_CHANGE: "Maintain status quo"
+      BRIBERY: "Increase wages to buy loyalty"
+      AUSTERITY: "Cut wages to restore pool"
+      IRON_FIST: "Increase repression to suppress resistance"
+      CRISIS: "Emergency measures - slash wages and spike repression"
+
+    key_insight: |
+      The bourgeoisie responds rationally to material conditions, not ideology.
+      High rent pool → can afford to bribe labor aristocracy
+      Low rent pool → must choose between repression or extraction
+      Crisis → both simultaneously (historical pattern of fascism)
+
+    tests:
+      - "calculate_bourgeoisie_decision(0.8, 0.2) → ('bribery', 0.05, 0.0)"
+      - "calculate_bourgeoisie_decision(0.05, 0.5) → ('crisis', -0.15, 0.20)"
+      - "calculate_bourgeoisie_decision(0.2, 0.6) → ('iron_fist', 0.0, 0.10)"
+      - "calculate_bourgeoisie_decision(0.2, 0.3) → ('austerity', -0.05, 0.0)"
+
+    location: "src/babylon/systems/formulas.py"
+    added_in: "Sprint 3.4.4"
+
+  # ---------------------------------------------------------------------------
+  # ECONOMIC FLOW / SUPERWAGES (The Distribution of Imperial Rent)
+  # ---------------------------------------------------------------------------
+  # BUG FIX (2025-12-10): Wages must be calculated from tribute_inflow (income),
+  # NOT from accumulated wealth (capital). See imperial-circuit.yaml for details.
+  #
+  # CORRECT formula: desired_wages = tribute_inflow × super_wage_rate
+  # BUGGY formula:   desired_wages = bourgeoisie_wealth × super_wage_rate
+  #
+  # The buggy formula treated super-wages as a wealth tax instead of income
+  # distribution, causing Core Bourgeoisie to hemorrhage wealth to Labor Aristocracy.
+  # ---------------------------------------------------------------------------
+  economic_flow:
+    function: "calculate_economic_flow"
+    symbol: "Flow(Φ, β)"
+    status: "CONCEPTUAL (distribution pattern, not single function)"
+    equation: |
+      Profit_b = Φ × β           (bourgeoisie share)
+      Superwages_p = Φ × (1 - β) (proletariat share via cheap commodities)
+      Where β = bourgeoisie_share coefficient [0, 1]
+
+      IMPLEMENTATION (src/babylon/engine/systems/economic.py):
+        Phase 3 (Wages): desired_wages = tribute_inflow × super_wage_rate
+        Phase 4 (Subsidy): desired_subsidy = tribute_inflow × subsidy_conversion_rate
+
+        NOTE: Both wages and subsidies come from INCOME FLOW (tribute_inflow),
+        not from ACCUMULATED WEALTH (bourgeoisie_wealth). This prevents C_b drain.
+    description: |
+      Imperial Rent (Φ) extracted from the periphery does not go solely to the
+      bourgeoisie. A portion flows to core workers as "Superwages"—real wage
+      boosts via artificially cheap imported commodities (Unequal Exchange).
+
+      **Superwages Defined:** Value transfer via cheap commodities (Unequal Exchange),
+      effectively increasing the Real Wages of the Labor Aristocracy. When a
+      core worker buys a $20 t-shirt made in Bangladesh, the "savings" vs.
+      domestic production constitute a hidden wage subsidy.
+
+      This split explains WHY core workers are loyal to imperialism:
+      - They are not "brainwashed" or lacking consciousness
+      - They have a MATERIAL STAKE in peripheral exploitation
+      - Consumerism is the MECHANISM by which Superwages purchase loyalty
+
+    inputs:
+      imperial_rent:
+        symbol: "Φ"
+        type: "Currency"
+        description: "Total value extracted from periphery (from calculate_imperial_rent)"
+
+      bourgeoisie_share:
+        symbol: "β"
+        type: "Coefficient [0, 1]"
+        description: "Fraction of rent retained as profit (vs. passed to workers as cheap goods)"
+
+    outputs:
+      bourgeoisie_profit:
+        type: "Currency"
+        description: "Rent retained by capital for accumulation"
+
+      proletariat_superwages:
+        type: "Currency"
+        description: "Rent passed to workers via cheap imported commodities"
+
+    flow_diagram: |
+      PERIPHERY (Global South)
+            |
+            | Unequal Exchange (Lp hours --> Lc hours worth of goods)
+            | (More labor in, less value out)
+            v
+      +-------------------------------------------------------------+
+      |               IMPERIAL RENT (Phi)                           |
+      |         (Total value transfer to core)                      |
+      +-------------------------------------------------------------+
+            |
+            | Split by beta coefficient
+            |
+      +-----+-----+
+      |           |
+      v           v
+      beta*Phi   (1-beta)*Phi
+      |           |
+      v           v
+      BOURGEOISIE  PROLETARIAT
+      (Profit)     (Superwages)
+      |           |
+      |           v
+      |     +----------------------------+
+      |     | CHEAP IMPORTED GOODS       |
+      |     | - Electronics              |
+      |     | - Clothing                 |
+      |     | - Consumer goods           |
+      |     | = HIGH PURCHASING POWER    |
+      |     +----------------------------+
+      |           |
+      v           v
+      CAPITAL     CONSUMERISM
+      ACCUMULATION  |
+      |             v
+      |       CLASS LOYALTY
+      |       (Material basis for
+      |        Labor Aristocracy)
+      |           |
+      +-----+-----+
+            |
+            v
+      IMPERIAL STABILITY
+      (Core revolution impossible
+       while Phi flows)
+
+    key_insight: |
+      The "bribe" to the Labor Aristocracy is not a conspiracy or false
+      consciousness—it is a material reality. Core workers genuinely benefit
+      from cheap consumer goods made possible by peripheral super-exploitation.
+
+      When Superwages collapse (due to peripheral resistance, supply chain
+      disruption, or currency crisis), the material basis for loyalty vanishes.
+      Only THEN does revolutionary potential emerge in the core.
+
+      "High Imperial Rent" in the scenario matrix means:
+      - Cheap imports / High purchasing power
+      - Consumerism flourishes
+      - Workers have material stake in system
+
+      "Low Imperial Rent" means:
+      - Expensive imports / Low purchasing power
+      - Austerity conditions
+      - Material basis for loyalty evaporates
+
+    tests:
+      - "Given Φ=100, β=0.6: bourgeoisie gets 60, proletariat gets 40 as superwages"
+      - "Given Φ=100, β=0.3: bourgeoisie gets 30, proletariat gets 70 (high consumer economy)"
+      - "Given Φ=0, any β: both get 0 (imperial rent collapsed, crisis conditions)"
+
+    related_formulas:
+      - "calculate_imperial_rent (provides Φ input)"
+      - "is_labor_aristocracy (determines if worker receives superwages)"
+      - "calculate_consciousness_drift (superwages suppress revolutionary consciousness)"
+
+  # ---------------------------------------------------------------------------
+  # SECTION 2: SURVIVAL CALCULUS FUNCTIONS (4 formulas)
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # SURVIVAL BY ACQUIESCENCE (The Cliff)
+  # ---------------------------------------------------------------------------
+  p_acquiescence:
+    function: "calculate_acquiescence_probability"
+    symbol: "P(S|A)"
+    equation: "P(S|A) = 1 / (1 + e^(-k(W - S)))"
+    description: |
+      Probability of survival by obeying. Uses sigmoid function.
+      As wealth approaches subsistence, survival crashes off a cliff.
+      This models "Can I survive if I keep my head down and work?"
+
+    inputs:
+      wealth:
+        symbol: "W"
+        type: "Currency"
+        description: "Current wealth/resources"
+
+      subsistence_threshold:
+        symbol: "S"
+        type: "Currency"
+        description: "Minimum needed for survival (x_critical)"
+
+      steepness_k:
+        symbol: "k"
+        type: "Coefficient"
+        description: "Steepness of survival curve (higher = sharper drop)"
+
+    output:
+      type: "Probability"
+      range: "[0, 1]"
+      description: "Probability of survival through acquiescence"
+
+    key_insight: |
+      At W = S (wealth equals subsistence), P(S|A) = 0.5.
+      This is the "50/50 survival" point - the cliff edge.
+
+    implementation_note: "Exponent clamped to [-500, 500] to prevent overflow"
+
+    tests:
+      - "calculate_acquiescence_probability(100, 20, 0.5) > 0.95  # rich worker"
+      - "calculate_acquiescence_probability(20, 20, 0.5) ≈ 0.5   # at subsistence"
+      - "calculate_acquiescence_probability(10, 20, 0.5) < 0.5   # below subsistence"
+
+  # ---------------------------------------------------------------------------
+  # SURVIVAL BY REVOLUTION (The Gamble)
+  # ---------------------------------------------------------------------------
+  p_revolution:
+    function: "calculate_revolution_probability"
+    symbol: "P(S|R)"
+    equation: "P(S|R) = Cohesion / (Repression + ε)"
+    description: |
+      Probability of survival by revolting. Based on Lanchester's Laws.
+      Compares class organization against state repression capacity.
+      This models "Can I survive if I attack the state?"
+
+    inputs:
+      cohesion:
+        symbol: "O"
+        type: "Probability [0, 1]"
+        description: "Unity and organization level"
+
+      repression:
+        symbol: "R"
+        type: "Probability [0, 1]"
+        description: "State violence capacity"
+
+    output:
+      type: "Probability"
+      range: "[0, 1]"
+      description: "Probability of survival through revolution (clamped to max 1.0)"
+
+    key_insight: |
+      This is NOT about winning the revolution, it's about SURVIVING IT.
+      Even a failed revolution might be rational if working means certain death.
+
+    implementation_note: "Returns 0.0 if cohesion <= 0; uses EPSILON constant for division"
+
+    tests:
+      - "calculate_revolution_probability(0.9, 0.1) > 0.8  # strong union vs weak police"
+      - "calculate_revolution_probability(0.1, 0.9) < 0.2  # atomized vs strong state"
+      - "calculate_revolution_probability(0.0, 0.5) == 0.0  # no organization = no revolution"
+
+  # ---------------------------------------------------------------------------
+  # CROSSOVER THRESHOLD (The Tipping Point)
+  # ---------------------------------------------------------------------------
+  crossover_threshold:
+    function: "calculate_crossover_threshold"
+    symbol: "W*"
+    equation: "W* = S - ln(1/P(S|R) - 1) / k"
+    description: |
+      Find the wealth level where P(S|R) = P(S|A) - the point where
+      collective action becomes a rational survival strategy.
+      Below this wealth level, revolution is mathematically rational.
+
+    inputs:
+      cohesion:
+        symbol: "O"
+        type: "Probability"
+        description: "Unity and organization level"
+
+      repression:
+        symbol: "R"
+        type: "Probability"
+        description: "State violence capacity"
+
+      subsistence_threshold:
+        symbol: "S"
+        type: "Currency"
+        description: "Subsistence threshold for acquiescence"
+
+      steepness_k:
+        symbol: "k"
+        type: "Coefficient"
+        description: "Steepness of acquiescence curve"
+
+    output:
+      type: "Currency"
+      range: "[0, 1]"
+      description: "Wealth level at crossover point"
+
+    key_insight: |
+      This is the critical boundary in phase space.
+      At W < W*: revolution is rational
+      At W > W*: acquiescence is rational
+      At W = W*: indifference point (unstable equilibrium)
+
+    implementation_note: "Edge cases: returns 0.0 if P(S|R) <= 0, returns 1.0 if P(S|R) >= 1"
+
+    tests:
+      - "Given high organization/low repression: crossover is higher (revolt rational at higher wealth)"
+      - "Given low organization/high repression: crossover is lower (only revolt when desperate)"
+
+  # ---------------------------------------------------------------------------
+  # LOSS AVERSION (The Kahneman-Tversky Coefficient)
+  # ---------------------------------------------------------------------------
+  loss_aversion:
+    function: "apply_loss_aversion"
+    symbol: "λ"
+    equation: "Perceived = value × 2.25 (if loss) else value"
+    description: |
+      Apply Kahneman-Tversky loss aversion coefficient.
+      Losses are perceived as 2.25x more impactful than equivalent gains.
+      This affects decision-making under risk - people are risk-averse for gains
+      but risk-seeking to avoid losses.
+
+    inputs:
+      value:
+        type: "float"
+        description: "Raw value change (negative = loss, positive = gain)"
+
+    output:
+      type: "float"
+      description: "Perceived value after loss aversion"
+
+    constant:
+      LOSS_AVERSION_COEFFICIENT: 2.25
+
+    key_insight: |
+      This explains why workers tolerate exploitation until crisis:
+      the perceived loss of current wages outweighs potential revolutionary gains.
+
+    tests:
+      - "apply_loss_aversion(-100) == -225  # loss amplified"
+      - "apply_loss_aversion(100) == 100    # gain unchanged"
+      - "apply_loss_aversion(0) == 0        # neutral"
+
+  # ---------------------------------------------------------------------------
+  # SURVIVAL VERDICT (The Decision) - CONCEPTUAL PATTERN
+  # ---------------------------------------------------------------------------
+  survival_verdict:
+    status: "CONCEPTUAL (not a single function)"
+    symbol: "V"
+    equation: "V = REVOLT if P(S|R) > P(S|A) else ACQUIESCE"
+    description: |
+      The fundamental decision: obey or revolt?
+      This is the "cross-over point" - when revolution becomes mathematically
+      rational because it offers better survival odds than compliance.
+      Implemented via combining calculate_crossover_threshold with state comparison.
+
+    implementation: "Compare P(S|A) and P(S|R) results from individual formula functions"
+
+    key_insight: |
+      The "incentive" value is the revolutionary gap.
+      Positive incentive = revolution is rational.
+      Negative incentive = obedience is rational.
+      Zero = indifference point (unstable equilibrium).
+
+  # ---------------------------------------------------------------------------
+  # SECTION 3: UNEQUAL EXCHANGE FUNCTIONS (4 formulas)
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # EXCHANGE RATIO (The Measure of Theft)
+  # ---------------------------------------------------------------------------
+  exchange_ratio:
+    function: "calculate_exchange_ratio"
+    symbol: "ε"
+    equation: "ε = (Lp/Lc) × (Wc/Wp)"
+    description: |
+      The exchange ratio quantifies unequal exchange.
+      When ε > 1, the periphery gives more value than it receives.
+      This is the mathematical basis for dependency theory.
+
+    inputs:
+      periphery_labor_hours:
+        symbol: "Lp"
+        type: "float"
+        description: "Labor hours in periphery"
+
+      core_labor_hours:
+        symbol: "Lc"
+        type: "float"
+        description: "Labor hours in core for same product"
+
+      core_wage:
+        symbol: "Wc"
+        type: "Currency"
+        description: "Core wage rate"
+
+      periphery_wage:
+        symbol: "Wp"
+        type: "Currency"
+        description: "Periphery wage rate"
+
+    output:
+      type: "float"
+      range: "[0, ∞)"
+      description: "Exchange ratio"
+
+    constraints:
+      - "core_labor_hours > 0 (raises ValueError)"
+      - "periphery_wage > 0 (raises ValueError)"
+
+    tests:
+      - "calculate_exchange_ratio(10, 5, 20, 2) == 20  # massive exploitation"
+      - "calculate_exchange_ratio(10, 10, 10, 10) == 1  # fair exchange"
+
+  # ---------------------------------------------------------------------------
+  # EXPLOITATION RATE (Percentage Form)
+  # ---------------------------------------------------------------------------
+  exploitation_rate:
+    function: "calculate_exploitation_rate"
+    equation: "(ε - 1) × 100"
+    description: |
+      Convert exchange ratio to exploitation rate percentage.
+      ε = 2 means 100% exploitation (double value extracted).
+      ε = 1 means 0% exploitation (fair exchange).
+
+    inputs:
+      exchange_ratio:
+        symbol: "ε"
+        type: "float"
+        description: "The exchange ratio"
+
+    output:
+      type: "float"
+      description: "Exploitation rate as percentage"
+
+    tests:
+      - "calculate_exploitation_rate(2.0) == 100  # 100% exploitation"
+      - "calculate_exploitation_rate(1.0) == 0    # fair exchange"
+      - "calculate_exploitation_rate(1.5) == 50   # 50% exploitation"
+
+  # ---------------------------------------------------------------------------
+  # VALUE TRANSFER (Absolute Amount)
+  # ---------------------------------------------------------------------------
+  value_transfer:
+    function: "calculate_value_transfer"
+    equation: "Transfer = Production × (1 - 1/ε)"
+    description: |
+      Calculate value transferred from periphery to core.
+      This is the absolute amount of value extracted through unequal exchange.
+
+    inputs:
+      production_value:
+        type: "Currency"
+        description: "Value of peripheral production"
+
+      exchange_ratio:
+        symbol: "ε"
+        type: "float"
+        description: "The exchange ratio"
+
+    output:
+      type: "Currency"
+      description: "Value transferred to core"
+
+    constraints:
+      - "Returns 0.0 if exchange_ratio <= 0"
+
+    tests:
+      - "calculate_value_transfer(100, 2) == 50  # half the value stolen"
+      - "calculate_value_transfer(100, 1) == 0   # fair exchange"
+      - "calculate_value_transfer(100, 4) == 75  # 75% extracted"
+
+  # ---------------------------------------------------------------------------
+  # PREBISCH-SINGER EFFECT (Commodity Price Dynamics)
+  # ---------------------------------------------------------------------------
+  prebisch_singer:
+    function: "prebisch_singer_effect"
+    description: |
+      Calculate Prebisch-Singer effect on commodity prices.
+      Terms of trade decline for commodity exporters:
+      More production → lower prices → same poverty.
+      Models the trap of commodity-dependent economies.
+
+    inputs:
+      initial_price:
+        type: "Currency"
+        description: "Initial commodity price"
+
+      production_increase:
+        type: "float"
+        description: "Fractional increase in production (0.2 = 20%)"
+
+      elasticity:
+        type: "float"
+        description: "Price elasticity of demand (typically negative)"
+
+    output:
+      type: "Currency"
+      description: "New price after production increase (min 0.0)"
+
+    key_insight: |
+      This explains the "development trap": increasing commodity production
+      lowers prices, leaving peripheral countries on a treadmill where
+      they must export more to earn the same foreign currency.
+
+    tests:
+      - "prebisch_singer_effect(100, 0.2, -0.5) == 90  # 20% more production → 10% price drop"
+      - "prebisch_singer_effect(100, 0.0, -0.5) == 100  # no change"
+
+# =============================================================================
+# INTEGRATION TESTS
+# =============================================================================
+
+integration_test:
+  name: "The Squeeze"
+  description: |
+    Prove that squeezing the worker (lowering wages, raising organization)
+    causes the survival calculus to flip from ACQUIESCE to REVOLT.
+
+  scenario:
+    initial_state:
+      wealth: 50.0
+      subsistence: 20.0
+      organization: 0.2
+      repression: 0.7
+      expected_action: "ACQUIESCE"
+
+    crisis_state:
+      wealth: 15.0
+      subsistence: 20.0
+      organization: 0.7
+      repression: 0.3
+      expected_action: "REVOLT"
+
+  assertion: |
+    The same worker, under different material conditions,
+    rationally chooses different actions. This proves the math.
+
+# =============================================================================
+# FORMULA SUMMARY TABLE
+# =============================================================================
+
+formula_summary:
+  fundamental_theorem:
+    - { name: "calculate_imperial_rent", symbol: "Φ", purpose: "Value extraction" }
+    - { name: "calculate_labor_aristocracy_ratio", symbol: "Wc/Vc", purpose: "Bribery measure" }
+    - { name: "is_labor_aristocracy", symbol: "-", purpose: "Boolean bribery check" }
+    - { name: "calculate_consciousness_drift", symbol: "dΨ/dt", purpose: "Ideology change" }
+    - { name: "calculate_ideological_routing", symbol: "Route", purpose: "Fascist Bifurcation" }
+    - { name: "calculate_solidarity_transmission", symbol: "dΨ_target", purpose: "Proletarian Internationalism" }
+    - { name: "calculate_bourgeoisie_decision", symbol: "D(π,τ)", purpose: "Dynamic Balance" }
+    - name: "calculate_economic_flow"
+      symbol: "Flow(Φ,β)"
+      purpose: "Imperial Rent split (Profit vs Superwages)"
+      status: "CONCEPTUAL"
+
+  survival_calculus:
+    - { name: "calculate_acquiescence_probability", symbol: "P(S|A)", purpose: "Survival by compliance" }
+    - { name: "calculate_revolution_probability", symbol: "P(S|R)", purpose: "Survival by revolt" }
+    - { name: "calculate_crossover_threshold", symbol: "W*", purpose: "Tipping point" }
+    - { name: "apply_loss_aversion", symbol: "λ", purpose: "Kahneman-Tversky" }
+
+  unequal_exchange:
+    - { name: "calculate_exchange_ratio", symbol: "ε", purpose: "Theft measure" }
+    - { name: "calculate_exploitation_rate", symbol: "-", purpose: "Percentage form" }
+    - { name: "calculate_value_transfer", symbol: "-", purpose: "Absolute extraction" }
+    - { name: "prebisch_singer_effect", symbol: "-", purpose: "Commodity trap" }
+
+# =============================================================================
+# FUTURE FORMULAS (Phase 3+)
+# =============================================================================
+
+future:
+
+  bell_curve_distribution:
+    concept: "Class as Gaussian distribution, not scalar"
+    phase: 3
+    description: "Enables Engels defectors and fascist workers"
+
+  ideological_rotation:
+    concept: "Rotation matrix for anger redirection"
+    phase: 3+
+    description: "How ideology redirects anger from system to scapegoat"

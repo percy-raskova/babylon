@@ -24,7 +24,7 @@ Usage Example:
     >>> await runner.stop()
 
 See Also:
-    - ``ai-docs/asyncio-patterns.yaml`` for async best practices
+    - ``ai/asyncio-patterns.yaml`` for async best practices
 """
 
 from __future__ import annotations

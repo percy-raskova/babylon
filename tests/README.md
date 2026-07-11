@@ -268,5 +268,5 @@ def test_loader(in_memory_db, mock_db_session):
 
 - **Test Constants**: `tests/constants.py`
 - **GameDefines (YAML source)**: `src/babylon/data/defines.yaml`
-- **ADR008 (Test Separation)**: `ai-docs/decisions/ADR008_test_separation.yaml`
+- **ADR008 (Test Separation)**: `ai/decisions/ADR008_test_separation.yaml`
 - **Hypothesis docs**: https://hypothesis.readthedocs.io/

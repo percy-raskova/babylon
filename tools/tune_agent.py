@@ -10,7 +10,7 @@ Usage:
     poetry run python tools/tune_agent.py --study-name carceral_v1  # resumes
 
 The objective function maximizes a Carceral Equilibrium score (0-100) based on
-the theoretical trajectory in ai-docs/carceral-equilibrium.md:
+the theoretical trajectory in ai/carceral-equilibrium.md:
 
     - Superwage Crisis (0-25): Event occurs in Years 20-40
     - Class Decomposition (0-25): Event occurs in Years 25-50
@@ -57,7 +57,7 @@ from babylon.config.defines import GameDefines
 optuna.logging.set_verbosity(optuna.logging.INFO)
 
 # Carceral Equilibrium phase boundaries (ticks)
-# These map to theoretical year ranges in ai-docs/carceral-equilibrium.md
+# These map to theoretical year ranges in ai/carceral-equilibrium.md
 SUPERWAGE_CRISIS_WINDOW: Final[tuple[int, int]] = (20 * TICKS_PER_YEAR, 40 * TICKS_PER_YEAR)
 CLASS_DECOMPOSITION_WINDOW: Final[tuple[int, int]] = (25 * TICKS_PER_YEAR, 50 * TICKS_PER_YEAR)
 CONTROL_CRISIS_WINDOW: Final[tuple[int, int]] = (35 * TICKS_PER_YEAR, 60 * TICKS_PER_YEAR)

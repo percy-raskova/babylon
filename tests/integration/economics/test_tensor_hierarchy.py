@@ -60,7 +60,7 @@ class TestInterIndustryFlowPipeline:
       b. ``_GDP_FILE.exists()`` — fires if GDP-by-industry XLSX absent.
       c. ``_BEA_USE_XLSX.exists()`` — fires if repo's IO Use XLSX absent.
 
-    See ``ai-docs/decisions/ADR037_test_skip_remediation.yaml`` for the
+    See ``ai/decisions/ADR037_test_skip_remediation.yaml`` for the
     history of this test (the two-layer bug it surfaced and the
     namespace-bridge fix).
     """

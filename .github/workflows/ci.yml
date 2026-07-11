@@ -84,7 +84,7 @@ jobs:
             -q --tb=no
         # Blocks merge if simulation code coverage drops below 80%
 
-      # Code complexity analysis - see ADR028 in ai-docs/decisions.yaml
+      # Code complexity analysis - see ADR028 in ai/decisions.yaml
       - name: Code Complexity Report
         run: poetry run radon cc src/ -a -s --show-complexity
         continue-on-error: true  # Informational only, never blocks
@@ -258,7 +258,7 @@ jobs:
           fi
 
       # Run incremental mutation testing on changed files only
-      # See ADR028 in ai-docs/decisions.yaml
+      # See ADR028 in ai/decisions.yaml
       - name: Run Mutation Tests (Incremental)
         if: steps.changed.outputs.files != ''
         run: |

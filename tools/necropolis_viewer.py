@@ -23,9 +23,9 @@ Arguments:
     --interval N  Report interval in years (default: 5)
 
 See Also:
-    ai-docs/carceral-equilibrium.md: The 70-year trajectory theory
-    ai-docs/terminal-crisis-dynamics.md: Endgame mechanics
-    ai-docs/epoch1-mvp-complete.md: MVP milestone documentation
+    ai/carceral-equilibrium.md: The 70-year trajectory theory
+    ai/terminal-crisis-dynamics.md: Endgame mechanics
+    ai/epoch1-mvp-complete.md: MVP milestone documentation
 """
 
 from __future__ import annotations

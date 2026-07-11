@@ -5,7 +5,7 @@
 One of the most remarkable decisions in Babylon's history was ADR011: Pure Graph Architecture. This wasn't decided by a single developer or even a single AI. It emerged from what the documentation calls "multi-AI consensus":
 
 ```yaml
-# From ai-docs/decisions.yaml
+# From ai/decisions.yaml
 
 ADR011_pure_graph_architecture:
   status: "accepted"

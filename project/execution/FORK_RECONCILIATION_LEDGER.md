@@ -1,6 +1,6 @@
 # Fork Reconciliation Ledger — Part 2 of the `src/` simplification sweep
 
-Companion to **ADR058** (`ai-docs/decisions/ADR058_src_simplification_sweep.yaml`) and the sweep plan.
+Companion to **ADR058** (`ai/decisions/ADR058_src_simplification_sweep.yaml`) and the sweep plan.
 Part 1 (Phases A–D) landed the decision-free wins on local `dev` (@ `ea403107`). Every candidate
 that required **a judgment about which of two implementations is "more correct"** was deferred *by
 rule* to this ledger. Here each "successor fork" — a richer implementation built while the swap into
@@ -478,12 +478,12 @@ unregistered + uncalled = the textbook inert construct. II.2 tie. The tensor is 
 axis → the delete-orphan predicate.
 
 **Recommendation:** Delete both functions + imports + `__all__` + their tests + 2 RST doc refs. **Preserve
-the Epoch-2 intent** in `ai-docs/epochs/epoch3/epoch2-trpf.yaml` (the proper Future-Enhancements home per
+the Epoch-2 intent** in `ai/epochs/epoch3/epoch2-trpf.yaml` (the proper Future-Enhancements home per
 Percy's global rule). Keep `calculate_trpf_multiplier` (out of scope). · Cost **S** · byte-identical.
 **Counter-case:** spec-088 plans to wire these per-node — but that's future work; delete now, plan preserved.
 
 **Cites:** `trpf.py:107,174` · `formulas/__init__.py:130-131,185-186` · `formula_registry.py` (neither
-registered) · `tensor.py:350,384,178` · `specs/010-*/spec.md:66` · `ai-docs/epochs/epoch3/epoch2-trpf.yaml`
+registered) · `tensor.py:350,384,178` · `specs/010-*/spec.md:66` · `ai/epochs/epoch3/epoch2-trpf.yaml`
 · Constitution III.8 / III.10 / II.2
 
 **Adversarial verdict:** CONFIRMED. Zero production callers verified; the Future-Enhancements preservation
@@ -624,6 +624,6 @@ deliberate rebaseline. · Cost **S**.
 Authored by a 30-agent workflow (15 rigor analysts + 15 adversarial verifiers, 0 errors), each grounded in
 first-verified wiring facts and the Constitution v2.7.0; every recommendation carries an independent
 CONFIRMED/CHALLENGED verdict. No `src/` file was modified to produce this ledger — `git status` shows only
-docs/ai-docs/project/memory. The one CHALLENGED entry (Fork 4) records its dissent in full and defers to the
+docs/ai/project/memory. The one CHALLENGED entry (Fork 4) records its dissent in full and defers to the
 skeptic's revised recommendation. Implementation of any ruling is Part-2b, gated on `mise run check` +
 `qa:regression`.*

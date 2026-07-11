@@ -292,7 +292,7 @@ ______________________________________________________________________
   a real adversarial review of `8a521a33..13438ac5` (this review's static pass
   found it clean — but that is one reviewer, not a protocol substitute); then
   truth-up `tasks.md`, add the `web_lane_w_spec_095` block to
-  `ai-docs/state.yaml`, append the ledger wave, and record the two §6.6-adjacent
+  `ai/state.yaml`, append the ledger wave, and record the two §6.6-adjacent
   facts: the priority-pinning test exists, and the docstring fix remains an
   **E-lane** task awaiting Percy's doc-vs-code ruling.
 

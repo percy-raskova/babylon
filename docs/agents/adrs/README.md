@@ -2,9 +2,9 @@
 
 Markdown ADRs for the Babylon refactoring sequence. Each ADR is one "phase" — a single conventional commit unit per CLAUDE.md, sized to be picked up by spec-kit (`/speckit.specify` → `/speckit.plan` → `/speckit.tasks` → `/speckit.implement`).
 
-## Why ADRs here, not in `ai-docs/decisions.yaml`?
+## Why ADRs here, not in `ai/decisions.yaml`?
 
-The YAML file in `ai-docs/decisions.yaml` records *accepted* architectural decisions as immutable history. The ADRs here are **proposed** refactors awaiting implementation. Once implemented, each ADR's outcome is summarized into a YAML entry in `ai-docs/decisions.yaml`; the markdown stays as the in-flight design document.
+The YAML file in `ai/decisions.yaml` records *accepted* architectural decisions as immutable history. The ADRs here are **proposed** refactors awaiting implementation. Once implemented, each ADR's outcome is summarized into a YAML entry in `ai/decisions.yaml`; the markdown stays as the in-flight design document.
 
 ## Index
 

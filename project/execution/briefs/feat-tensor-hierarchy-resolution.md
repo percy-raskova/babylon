@@ -232,7 +232,7 @@ RED tests: NEW `tests/unit/engine/headless_runner/test_leontief_wiring.py`, clon
 
 **Step 7 — R-PROOF (`proof.md` in the same PR)**: A/B 20-tick Michigan-scope headless runs — OFF leg via temporary `src/babylon/data/defines.yaml` (`economy: {leontief_rent: {enabled: false}}`), ON leg default. Document: `Phi_aggregate` per boundary; per-county `tick_phi_hour` sample; count of wildcard sentinels (expect: 0 unwired sentinels ON-leg for 2010-2017 years, per-year periphery sentinel for 2018+); wall-clock delta per boundary (§E predicted ~95-115s); `_defines_hash` change; the 0.0955 OOM ratio + crosswalk-coverage 12.8% findings; baseline regen if the michigan-e2e baseline shifts (it will — `Phi_aggregate` enters summary) with `write_baseline_to` + proof, per standing rules. Coordination: 2.R owns the coordinated regen — if 5.3 lands after 2.R, do its own regen; sequence with Phase-2 owner.
 
-**Step 8 — docs**: update `ai-docs/state.yaml` (tensor_hierarchy status DORMANT→LIVE-gated), add ADR to `ai-docs/decisions.yaml` (noncomparable-imports proxy decision + unit-scaling decision), note Hickel-2017 coverage cliff next to the gamma-coverage note.
+**Step 8 — docs**: update `ai/state.yaml` (tensor_hierarchy status DORMANT→LIVE-gated), add ADR to `ai/decisions.yaml` (noncomparable-imports proxy decision + unit-scaling decision), note Hickel-2017 coverage cliff next to the gamma-coverage note.
 
 ## G. Verification commands
 ```bash

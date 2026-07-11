@@ -9,7 +9,7 @@ This models the shift from productive jobs to carceral jobs as the imperial
 economy contracts. The enforcers exist at genesis (not dormant) - they consume
 a portion of LA jobs from the start.
 
-See ai-docs/terminal-crisis-dynamics.md for full theory.
+See ai/terminal-crisis-dynamics.md for full theory.
 """
 
 from __future__ import annotations

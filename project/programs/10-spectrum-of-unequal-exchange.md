@@ -280,4 +280,4 @@ spectrum field visible in the Observatory panes.
       `SQLiteQCEWCarePaidHoursSource` is the adapter pattern precedent).
 - [ ] Dialectics: `"spectrum"` field + APEX⊣BASE opposition (seams in §5).
 - [ ] Couplings 1–3 behind `SpectrumDefines`; R-PROOF proof.md.
-- [ ] Update `ai-docs/` (architecture/state) as part of Phase 7 or the spec itself.
+- [ ] Update `ai/` (architecture/state) as part of Phase 7 or the spec itself.

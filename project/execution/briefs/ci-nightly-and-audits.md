@@ -174,21 +174,21 @@ DEP004 = ["optuna", "SALib", "midiutil", "markdownify", "pytest"]
 
 ### Verified current violations
 
-A prototype with the exact heuristics below found **768 refs checked, 169 unique missing** across `CLAUDE.md` + `ai-docs/*.yaml` + `project/README.md`. Distribution: `ai-docs/state.yaml` 67, `ai-docs/entities.yaml` 23, `ai-docs/architecture.yaml` 11, `project/README.md` 9, `CLAUDE.md` 6, theory/persistence-spec/game-loop-architecture 5 each, long tail across ~20 more yamls. Genuine rot it catches on day one:
+A prototype with the exact heuristics below found **768 refs checked, 169 unique missing** across `CLAUDE.md` + `ai/*.yaml` + `project/README.md`. Distribution: `ai/state.yaml` 67, `ai/entities.yaml` 23, `ai/architecture.yaml` 11, `project/README.md` 9, `CLAUDE.md` 6, theory/persistence-spec/game-loop-architecture 5 each, long tail across ~20 more yamls. Genuine rot it catches on day one:
 - `CLAUDE.md:297` → `src/babylon/engine/simulation.py` (now the `simulation/` package)
-- `CLAUDE.md:804` → `ai-docs/decisions.yaml` (now the `ai-docs/decisions/` directory); `CLAUDE.md:810` → `ai-docs/roadmap.md` (gone)
-- `project/README.md:71-75` → `project/POST_ASSESSMENT.md`, `project/HOLISTIC_REVIEW-2026-07-07.md`, `project/REMEDIATION_PLAN.md`, `project/_PROGRESS.md`, `project/_HANDOFF.md`, `project/c17-test-migration-ledger.md`, `project/owner-queue.md` — all stale since the assessments/execution/owner reorg (the actual files live in subdirs). **Fix these 9 in this branch** (tiny, unambiguous); the ai-docs mass belongs to Phase 7 (state.yaml is regenerated wholesale there).
+- `CLAUDE.md:804` → `ai/decisions.yaml` (now the `ai/decisions/` directory); `CLAUDE.md:810` → `ai/roadmap.md` (gone)
+- `project/README.md:71-75` → `project/POST_ASSESSMENT.md`, `project/HOLISTIC_REVIEW-2026-07-07.md`, `project/REMEDIATION_PLAN.md`, `project/_PROGRESS.md`, `project/_HANDOFF.md`, `project/c17-test-migration-ledger.md`, `project/owner-queue.md` — all stale since the assessments/execution/owner reorg (the actual files live in subdirs). **Fix these 9 in this branch** (tiny, unambiguous); the ai mass belongs to Phase 7 (state.yaml is regenerated wholesale there).
 - False-positive classes that need policy: placeholder examples (`tests/unit/foo.py` CLAUDE.md:125, `tests/unit/test_foo.py` :213), runtime artifact dirs (`reports/test-results/...`), pattern-refs (`project/NN`, `project/programs/NN`).
 
 ### Design (stdlib only: `re`, `sys`, `argparse`, `pathlib`)
 
 ```python
-_ROOTS = r"(?:src|tests|tools|web|ai-docs|project|specs|docs|data|reports|assets|contracts)"
+_ROOTS = r"(?:src|tests|tools|web|ai|project|specs|docs|data|reports|assets|contracts)"
 PATH_RE = re.compile(rf"(?<![\w./-])({_ROOTS}/[A-Za-z0-9_.\-/]+[A-Za-z0-9_])")
 PLACEHOLDER_RE = re.compile(r"(?:^|/)(?:foo|bar|baz|example|NN)(?:[_./]|$)", re.IGNORECASE)
 SKIP_SUBSTRINGS = ("*", "<", ">", "{", "}", "$")
 SKIP_PREFIXES = ("reports/test-results", "reports/sim-runs", "results/")
-TARGETS = ["CLAUDE.md", "project/README.md", *sorted(Path("ai-docs").glob("*.yaml"))]
+TARGETS = ["CLAUDE.md", "project/README.md", *sorted(Path("ai").glob("*.yaml"))]
 ```
 - Strip trailing `.,:;)` from tokens; dirs count as existing (`(repo / tok).exists()`).
 - **Allowlist ratchet**: `tools/doc_ref_allowlist.txt`, one `doc-path:ref-path` per line, `#` comments. Seed it from the first run's output (169 minus the 9 project/README fixes minus placeholder-skips). New violations (not in allowlist) → exit 1; allowlist entries whose ref now EXISTS → print "stale allowlist entry" warning (exit 0) so Phase 7 burn-down is visible. `--update-allowlist` regenerates the file (developer convenience; never run in CI).
@@ -203,11 +203,11 @@ Pure-function tests on tmp_path trees: extraction (backticked, prose, yaml-value
 - **pre-commit** (append to the `repo: local` frontend block region of `.pre-commit-config.yaml`, after :162):
   ```yaml
       - id: doc-refs
-        name: doc refs (paths in CLAUDE.md / ai-docs / project README exist)
+        name: doc refs (paths in CLAUDE.md / ai / project README exist)
         entry: poetry run python tools/check_doc_refs.py
         language: system
         pass_filenames: false
-        files: ^(CLAUDE\.md|ai-docs/[^/]+\.ya?ml|project/README\.md|tools/(check_doc_refs\.py|doc_ref_allowlist\.txt))$
+        files: ^(CLAUDE\.md|ai/[^/]+\.ya?ml|project/README\.md|tools/(check_doc_refs\.py|doc_ref_allowlist\.txt))$
   ```
 - **ci.yml**: one step in the main `ci` job next to the deptry step: `poetry run python tools/check_doc_refs.py`.
 

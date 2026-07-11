@@ -19,7 +19,7 @@ Sample Size Guidance:
     - 10000+ samples: Publication-quality (NIST recommended)
 
 See Also:
-    :doc:`/ai-docs/tooling.yaml` monte_carlo section
+    :doc:`/ai/tooling.yaml` monte_carlo section
 """
 
 from __future__ import annotations

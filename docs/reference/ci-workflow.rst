@@ -387,4 +387,4 @@ See Also
 
 - :doc:`/how-to/contribute` - Contribution workflow
 - :doc:`/how-to/run-ci-locally` - Local CI testing
-- ``ai-docs/ci-workflow.yaml`` - Machine-readable CI documentation
+- ``ai/ci-workflow.yaml`` - Machine-readable CI documentation

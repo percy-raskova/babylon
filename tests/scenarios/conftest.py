@@ -1,8 +1,8 @@
 """Fixtures for scenario tests (long-trajectory simulation validation).
 
 Scenario tests validate canonical outcomes from theoretical documents:
-- ai-docs/carceral-equilibrium.md: The 70-Year Arc (null hypothesis)
-- ai-docs/theory.md: Core MLM-TW theoretical framework
+- ai/carceral-equilibrium.md: The 70-Year Arc (null hypothesis)
+- ai/theory.md: Core MLM-TW theoretical framework
 
 These fixtures provide pre-configured WorldState instances for
 testing long-term simulation trajectories.

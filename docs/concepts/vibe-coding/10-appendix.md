@@ -35,7 +35,7 @@
 ```
 feat(engine): add Carceral Geography to TerritorySystem (Sprint 3.7)
 refactor(models): replace IdeologicalComponent with George Jackson Model
-docs(ai-docs): add observer-layer.yaml with Bondi Algorithm aesthetic
+docs(ai): add observer-layer.yaml with Bondi Algorithm aesthetic
 feat(observer): add TopologyMonitor for condensation detection (Sprint 3.1)
 docs(readme): rewrite for accuracy and truthfulness
 chore: update .gitignore for assets and results

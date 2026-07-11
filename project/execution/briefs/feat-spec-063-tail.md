@@ -382,7 +382,7 @@ In `specs/063-vol-ii-circulation/tasks.md`:
 
 Also fix the stale FR-026 annotation reality: T033's note claims the invariant was "already wired" — record that the guard was dead (unreachable) until this branch's `external_node_overrides` revival, in the T033 annotation.
 
-Update `ai-docs/state.yaml` spec-063 entry (T048 remains open for full polish, but per CLAUDE.md "update ai-docs after significant work" adjust the 063 task count 39/58 → 46/58 or as counted after flips).
+Update `ai/state.yaml` spec-063 entry (T048 remains open for full polish, but per CLAUDE.md "update ai after significant work" adjust the 063 task count 39/58 → 46/58 or as counted after flips).
 
 **Commit 5**: `docs(spec-063): ledger truth flips T042/T043/T045/T047/T052 + T051 deferral [record-reconciliation]`
 

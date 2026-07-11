@@ -19,7 +19,7 @@ Core Concepts:
     - **λ_proxy**: Wage share proxy = avg_wage / τ_through
 
 TVT Extension Reference:
-    ai-docs/brainstorms/tensor/tvt_throughput_extension.md
+    ai/brainstorms/tensor/tvt_throughput_extension.md
 
 Feature: 014-throughput-position
 Date: 2026-02-02

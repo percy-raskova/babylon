@@ -3,7 +3,7 @@
 **Purpose**: the one-stop shop for ANY agent (Claude Sonnet/Opus/Fable, or a human)
 to catch up on the project and pick up work mid-stream without the originating
 session's context. This directory is about **project management** — plans, status,
-assessments, owner decisions. Its sibling `ai-docs/` is about **documentation for
+assessments, owner decisions. Its sibling `ai/` is about **documentation for
 AI** — architecture, decisions (ADRs), tooling, machine-readable state.
 
 **The goal (definition of done)**: `reports/aidocs-vs-code-audit-2026-05-16.md`
@@ -88,9 +88,9 @@ map them as: `project/NN-*.md` → `project/programs/NN-*.md`; `project/POST_ASS
 
 - The catalog itself: `reports/aidocs-vs-code-audit-2026-05-16.md` (Part 3 =
   the 27-spec roadmap; Part 4 = dependency graph; Part 5 = doc hygiene).
-- Live project state: `ai-docs/state.yaml` (its `truth_status` banner governs),
-  `ai-docs/decisions/` (ADR index — ADR051 dialectics + ADR052 graph substrate),
-  `ai-docs/tuning-standard.yaml` (20-Year Entropy Standard).
+- Live project state: `ai/state.yaml` (its `truth_status` banner governs),
+  `ai/decisions/` (ADR index — ADR051 dialectics + ADR052 graph substrate),
+  `ai/tuning-standard.yaml` (20-Year Entropy Standard).
 - Governance: `CONSTITUTION.md` **v2.8.0** (Amendment K =
   dialectics, Amendment L = rustworkx substrate; II.12 authoring-API and
   III.7 determinism-hash gates bind all engine work).

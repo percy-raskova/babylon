@@ -239,7 +239,7 @@ repos:
           - mdformat-footnote
         exclude: |
           (?x)^(
-            ai-docs/.*|
+            ai/.*|
             thoughts/.*|
             specs/.*|
             \.specify/.*|

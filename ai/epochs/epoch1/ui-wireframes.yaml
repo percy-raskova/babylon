@@ -1,0 +1,298 @@
+# UI Wireframes Specification
+# DEPRECATED: DearPyGui Dashboard Layout
+#
+# "The dashboard is a bunker control room. Not a website."
+# - Bunker Constructivism Design Principle
+#
+# NOTE: DearPyGui support removed in Spec 010 (2026-02-01).
+# The current UI uses PyQt6 exclusively: src/babylon/ui/dashboard/
+# This document is retained for historical reference only.
+
+meta:
+  created: "2025-12-26"
+  updated: "2026-02-01"
+  purpose: "HISTORICAL: Document the removed DearPyGui dashboard layout"
+  status: "DEPRECATED"
+  deprecation_reason: |
+    DearPyGui dashboard code (dpg_runner.py, DPGColors) removed in Spec 010.
+    PyQt6 dashboard in src/babylon/ui/dashboard/ is now the only UI.
+  technology: "DearPyGui (REMOVED)"
+  current_source_of_truth: "src/babylon/ui/dashboard/"
+  design_system: "src/babylon/ui/design_system.py (BunkerPalette only - DPGColors removed)"
+
+# =============================================================================
+# DESIGN PHILOSOPHY
+# =============================================================================
+
+philosophy:
+  core_insight: |
+    The dashboard is a bunker control room, not a web application.
+    GPU-accelerated native rendering provides consistent 60fps updates.
+    Cold War industrial aesthetic reinforces the simulation's themes.
+
+  visual_hierarchy:
+    - "Primary: Real-time telemetry (what's happening NOW)"
+    - "Secondary: Trends (wealth trajectory, stability)"
+    - "Tertiary: Events and narrative (context and meaning)"
+
+  aesthetic:
+    name: "Bunker Constructivism"
+    inspiration: "Cold War bunker, terminal interfaces, industrial control panels"
+    palette:
+      VOID: "(5, 5, 5) - Background black"
+      WET_CONCRETE: "(26, 26, 26) - Panel backgrounds"
+      DARK_METAL: "(64, 64, 64) - Borders and grid lines"
+      SILVER_DUST: "(192, 192, 192) - Neutral text"
+      DATA_GREEN: "(57, 255, 20) - Healthy/positive metrics"
+      PHOSPHOR_RED: "(212, 0, 0) - Critical/danger states"
+      EXPOSED_COPPER: "(255, 215, 0) - Warning states"
+      GROW_PURPLE: "(157, 0, 255) - Narrative highlights"
+      ROYAL_BLUE: "(65, 105, 225) - Labor Aristocracy class"
+
+# =============================================================================
+# MAIN DASHBOARD LAYOUT (1460 x 820 viewport)
+# =============================================================================
+
+main_dashboard:
+  description: "Two-column layout with simulation controls and real-time telemetry"
+  viewport: "1460 x 820 pixels"
+
+  ascii_wireframe: |
+    ┌─────────────────────────────────────────────────────────────────────────────────┐
+    │  SYNOPTICON - BABYLON DASHBOARD                               [1460 x 820]     │
+    ├───────────────────────────────┬─────────────────────────────────────────────────┤
+    │                               │                                                 │
+    │  ┌─────────────────────────┐  │  ┌───────────────────────────────────────────┐  │
+    │  │ WEALTH TREND            │  │  │ STATUS BAR                                │  │
+    │  │ (460px height)          │  │  │ Phase: [ACCUMULATION]  Bifurcation: [→?]  │  │
+    │  │                         │  │  ├─────────────────┬─────────────────────────┤  │
+    │  │  $                      │  │  │ CONTROLS        │                         │  │
+    │  │   ╲                     │  │  │                 │                         │  │
+    │  │    ╲ P_w (green)        │  │  │ [STEP] [PLAY]   │                         │  │
+    │  │     ╲                   │  │  │ [PAUSE] [RESET] │                         │  │
+    │  │      ─────────          │  │  │                 │                         │  │
+    │  │         C_w (blue)      │  │  │ Tick: 42        │                         │  │
+    │  │                         │  │  └─────────────────┘                         │  │
+    │  │  tick →                 │  │                                              │  │
+    │  └─────────────────────────┘  │  ┌───────────────────────────────────────────┐  │
+    │                               │  │ NARRATIVE FEED         │ KEY METRICS      │  │
+    │  ┌─────────────────────────┐  │  │ (450px height)         │ (220px width)    │  │
+    │  │ TELEMETRY               │  │  │                        │                  │  │
+    │  │ (remaining height)      │  │  │ Corporate: "Officers   │ Consciousness    │  │
+    │  │                         │  │  │ restored order..."     │ Gap: 0.35        │  │
+    │  │ Imperial Rent Pool      │  │  │                        │                  │  │
+    │  │ ████████░░░░ 0.75       │  │  │ Liberated: ">>> STATE  │ Wealth Gap:      │  │
+    │  │                         │  │  │ VIOLENCE <<<..."       │ 45.2             │  │
+    │  │ LA Stability            │  │  │                        │                  │  │
+    │  │ ██████░░░░░░ 0.62       │  │  │ [Scrollable log]       │ Global Tension:  │  │
+    │  │                         │  │  │                        │ 0.28             │  │
+    │  │ Phase Tension           │  │  │                        │                  │  │
+    │  │ ███░░░░░░░░░ 0.28       │  │  │                        │ Pool Ratio:      │  │
+    │  │                         │  │  │                        │ 0.75             │  │
+    │  └─────────────────────────┘  │  └────────────────────────┴──────────────────┘  │
+    │                               │                                                 │
+    │       LEFT COLUMN             │  ┌───────────────────────────────────────────┐  │
+    │       (500px width)           │  │ EVENT LOG (remaining height)              │  │
+    │                               │  │                                           │  │
+    │                               │  │ [!] EXCESSIVE_FORCE in T_oakland         │  │
+    │                               │  │ [$] SURPLUS_EXTRACTION: 120 → C_b        │  │
+    │                               │  │ [↑] SOLIDARITY_FORMED: P_w ═══ L_u       │  │
+    │                               │  │ [Δ] PHASE_TRANSITION: GASEOUS→LIQUID     │  │
+    │                               │  │                                           │  │
+    │                               │  │ [Scrollable, color-coded by EventType]   │  │
+    │                               │  └───────────────────────────────────────────┘  │
+    │                               │                                                 │
+    │                               │       RIGHT COLUMN (960px width)                │
+    ├───────────────────────────────┴─────────────────────────────────────────────────┤
+    │                              x=500 divider                                      │
+    └─────────────────────────────────────────────────────────────────────────────────┘
+
+  layout_spec:
+    viewport:
+      width: 1460
+      height: 820
+
+    left_column:
+      x: 0
+      width: 500
+      panels:
+        wealth_trend:
+          height: 460
+          content: "4-class wealth line chart (P_w, P_c, C_b, C_w)"
+          colors:
+            P_w: "DATA_GREEN (57, 255, 20)"
+            P_c: "EXPOSED_COPPER (255, 215, 0)"
+            C_b: "PHOSPHOR_RED (212, 0, 0)"
+            C_w: "ROYAL_BLUE (65, 105, 225)"
+        telemetry:
+          height: "remaining (360px)"
+          content: "Imperial Rent Pool, LA Stability, Phase Tension plots"
+
+    right_column:
+      x: 500
+      width: 960
+      panels:
+        status_bar:
+          height: 80
+          content: "Phase state, bifurcation trend, simulation controls"
+          controls:
+            - "STEP - Advance one tick"
+            - "PLAY - Auto-advance (1 tick/sec)"
+            - "PAUSE - Stop auto-advance"
+            - "RESET - Return to tick 0"
+        narrative_metrics:
+          height: 450
+          layout: "Narrative Feed (740px) + Key Metrics (220px)"
+          narrative_feed: "Scrollable log from NarrativeDirector"
+          key_metrics:
+            - "Consciousness Gap (P_w.Ψ - C_w.Ψ)"
+            - "Wealth Gap (C_b.W - P_w.W)"
+            - "Global Tension (avg exploitation edge tension)"
+            - "Pool Ratio (current / initial imperial rent)"
+        event_log:
+          height: "remaining (290px)"
+          content: "Scrollable event log with color-coded EventTypes"
+          color_coding:
+            SURPLUS_EXTRACTION: "EXPOSED_COPPER"
+            UPRISING: "PHOSPHOR_RED"
+            SOLIDARITY_FORMED: "DATA_GREEN"
+            PHASE_TRANSITION: "GROW_PURPLE"
+
+# =============================================================================
+# COMPONENT PATTERNS
+# =============================================================================
+
+component_patterns:
+
+  line_plot:
+    description: "Real-time updating line chart"
+    implementation: "dpg.add_plot() with dpg.add_line_series()"
+    styling:
+      background: "VOID (5, 5, 5)"
+      grid: "DARK_METAL (64, 64, 64)"
+      axis_text: "SILVER_DUST (192, 192, 192)"
+
+  progress_bar:
+    description: "Horizontal gauge showing 0-1 ratio"
+    implementation: "dpg.draw_rect() on draw_list"
+    styling:
+      background: "DARK_METAL"
+      fill: "DATA_GREEN (or severity color)"
+      text: "SILVER_DUST"
+
+  scrollable_log:
+    description: "Vertical scrolling text log"
+    implementation: "dpg.add_child_window() with dpg.add_text()"
+    styling:
+      background: "WET_CONCRETE (26, 26, 26)"
+      text: "Color-coded by event type"
+
+  control_button:
+    description: "Simulation control button"
+    implementation: "dpg.add_button() with callback"
+    styling:
+      text: "SILVER_DUST"
+      border: "DARK_METAL"
+
+# =============================================================================
+# DATA FLOW
+# =============================================================================
+
+data_flow:
+  description: "How simulation state flows to UI"
+
+  pattern: |
+    Simulation.step()
+         │
+         ▼
+    SimulationObserver.on_tick(prev_state, new_state)
+         │
+         ├─── MetricsCollector → Key Metrics Panel
+         │
+         └─── NarrativeDirector → Narrative Feed Panel
+         │
+         ▼
+    DashboardState (dataclass)
+         │
+         ├─── wealth_history: list[tuple[float, float, float, float]]
+         ├─── events: list[str]
+         ├─── narratives: list[str]
+         └─── metrics: dict[str, float]
+         │
+         ▼
+    update_*() callbacks
+         │
+         ├─── update_wealth_trend() → Wealth Trend plot
+         ├─── update_telemetry() → Telemetry gauges
+         ├─── update_events() → Event Log
+         ├─── update_narrative() → Narrative Feed
+         └─── update_metrics() → Key Metrics
+
+  refresh_rate: "60 FPS (DearPyGui native)"
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+
+implementation:
+  framework: "DearPyGui 2.0+"
+  rendering: "GPU-accelerated (OpenGL/DirectX backend)"
+
+  key_files:
+    main: "src/babylon/ui/dpg_runner.py"
+    design: "src/babylon/ui/design_system.py"
+    tests: "tests/unit/ui/test_dpg_runner.py"
+
+  patterns_reference: "ai/dpg-patterns.yaml"
+
+  entry_point: |
+    # Run dashboard
+    mise run ui
+
+    # Or directly
+    poetry run python -m babylon.ui.dpg_runner
+
+  performance:
+    target_fps: 60
+    update_strategy: "Batch updates per frame"
+    plot_history: "Last 100 data points"
+
+# =============================================================================
+# FUTURE PANELS (Slice 1.4 Integration)
+# =============================================================================
+
+future_panels:
+
+  metabolic_gauge:
+    description: "Biocapacity vs Consumption ratio display"
+    status: "PLANNED (pending MetabolismSystem)"
+    location: "Telemetry panel or dedicated panel"
+    visualization: |
+      Overshoot Ratio: 0.85
+      [████████░░░░░░░░░░░░]
+      ◄─ sustainable ─┼─ overshoot ─►
+
+  rift_trend:
+    description: "Historical biocapacity depletion chart"
+    status: "PLANNED (pending MetabolismSystem)"
+    location: "New panel or overlay on wealth trend"
+
+# =============================================================================
+# OBSOLETE (DELETED)
+# =============================================================================
+
+obsolete:
+  note: |
+    The following web-based wireframes have been deleted.
+    See git history for archived specifications.
+
+  deleted_specs:
+    - "doctrine_tree: NiceGUI radial tree layout"
+    - "panopticon_view: NiceGUI surveillance eye metaphor"
+    - "fog_of_war: NiceGUI opacity overlay"
+    - "gramscian_wire_full: NiceGUI narrative warfare interface"
+    - "crisis_overlay: NiceGUI modal bifurcation display"
+
+  reason: |
+    Pivot from web-based NiceGUI to native DearPyGui.
+    These features will be reimplemented in DPG style if needed for Epoch 2.

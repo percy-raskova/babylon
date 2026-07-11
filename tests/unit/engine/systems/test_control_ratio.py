@@ -11,7 +11,7 @@ This models the mathematical limit of incarceration as surplus population
 management. When the carceral state can't contain the surplus, the system
 must choose between revolution (if organized) or genocide (if not).
 
-See ai-docs/terminal-crisis-dynamics.md for full theory.
+See ai/terminal-crisis-dynamics.md for full theory.
 """
 
 from __future__ import annotations

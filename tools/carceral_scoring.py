@@ -2,7 +2,7 @@
 """Carceral Equilibrium scoring for parameter optimization.
 
 Scores simulations based on phase transition timing and terminal outcome,
-aligned with the 70-year trajectory in ai-docs/carceral-equilibrium.md.
+aligned with the 70-year trajectory in ai/carceral-equilibrium.md.
 
 The Carceral Equilibrium trajectory describes the inevitable progression
 of late-stage imperialism through seven phases:
@@ -19,8 +19,8 @@ This module provides scoring functions that reward simulations exhibiting
 phase transitions within these theoretically expected windows.
 
 See Also:
-    ai-docs/carceral-equilibrium.md: Full theory specification
-    ai-docs/theory.md: MLM-TW foundation
+    ai/carceral-equilibrium.md: Full theory specification
+    ai/theory.md: MLM-TW foundation
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ class PhaseWindow:
     weight: float
 
 
-# Phase windows based on ai-docs/carceral-equilibrium.md
+# Phase windows based on ai/carceral-equilibrium.md
 # Windows are slightly wider than the theoretical ranges to allow for
 # parameter variation while still rewarding correct sequencing.
 PHASE_WINDOWS: Final[tuple[PhaseWindow, ...]] = (

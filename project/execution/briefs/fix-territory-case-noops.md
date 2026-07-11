@@ -383,8 +383,8 @@ Rewrite `_make_territory_graph` in both unit files and `_make_detroit_graph` in 
         absentee_landlord_share=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
 ```
 
-### Step 7 — ai-docs update
-Per repo CLAUDE.md: note in `ai-docs/state.yaml` that the two Feature-021 systems are live-able (case bug fixed, from_graph latch defused); the CLAUDE.md engine table needs no change (positions 5/10 already correct there).
+### Step 7 — ai update
+Per repo CLAUDE.md: note in `ai/state.yaml` that the two Feature-021 systems are live-able (case bug fixed, from_graph latch defused); the CLAUDE.md engine table needs no change (positions 5/10 already correct there).
 
 ---
 

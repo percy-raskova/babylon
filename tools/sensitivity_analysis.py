@@ -24,7 +24,7 @@ Interpretation:
         - Sum(ST) - Sum(S1) = variance from interactions
 
 See Also:
-    :doc:`/ai-docs/tooling.yaml` sensitivity_analysis section
+    :doc:`/ai/tooling.yaml` sensitivity_analysis section
     SALib documentation: https://salib.readthedocs.io/
 """
 

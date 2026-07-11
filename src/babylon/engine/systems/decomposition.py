@@ -7,7 +7,7 @@ Implements LA decomposition during SUPERWAGE_CRISIS:
 This models the shift from productive jobs to carceral jobs as the imperial
 economy contracts. The carceral state expands to manage the surplus population.
 
-See ai-docs/terminal-crisis-dynamics.md for full theory.
+See ai/terminal-crisis-dynamics.md for full theory.
 """
 
 from __future__ import annotations

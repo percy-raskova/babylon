@@ -26,7 +26,7 @@ class SocialRole(StrEnum):
         INTERNAL_PROLETARIAT: Core workers outside LA (precariat, unemployed, incarcerated)
         CARCERAL_ENFORCER: Guards, cops, prison staff (repressive apparatus)
 
-    Terminal Crisis Dynamics (ai-docs/terminal-crisis-dynamics.md):
+    Terminal Crisis Dynamics (ai/terminal-crisis-dynamics.md):
         When peripheral extraction fails and super-wages deplete, the Labor
         Aristocracy decomposes into CARCERAL_ENFORCER (30%) and INTERNAL_PROLETARIAT
         (70%). This models the carceral turn from productive to coercive labor.

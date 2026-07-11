@@ -10,7 +10,7 @@ The terminal decision bifurcation:
 - If average organization >= 0.5: prisoners + guards unite in REVOLUTION
 - If average organization < 0.5: system turns GENOCIDAL to eliminate surplus
 
-See ai-docs/terminal-crisis-dynamics.md for full theory.
+See ai/terminal-crisis-dynamics.md for full theory.
 """
 
 from __future__ import annotations

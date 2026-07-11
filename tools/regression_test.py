@@ -30,7 +30,7 @@ Dense goldens (Program 13 item 2, Constitution III.12 corollary (c)):
     ``docs/reference/determinism-contract.rst`` ("Dense Golden Traces").
 
 See Also:
-    :doc:`/ai-docs/tooling.yaml` regression_testing section
+    :doc:`/ai/tooling.yaml` regression_testing section
 """
 
 from __future__ import annotations

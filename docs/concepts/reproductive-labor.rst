@@ -327,5 +327,5 @@ See Also
 - :ref:`imperial-rent` - Imperial rent extraction parallels shadow labor extraction
 - :ref:`survival-calculus` - How material conditions affect revolutionary potential
 - :ref:`theory` - MLM-TW theoretical foundation
-- ``ai-docs/shadow-labor-spec.yaml`` - Machine-readable specification
-- ``ai-docs/marxian-tensor-spec.yaml`` - Tensor specification
+- ``ai/shadow-labor-spec.yaml`` - Machine-readable specification
+- ``ai/marxian-tensor-spec.yaml`` - Tensor specification

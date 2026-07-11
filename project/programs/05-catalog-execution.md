@@ -158,9 +158,9 @@ Remaining, in rough order of player-visible value:
 
 - Audit Part 5 lists the OBSOLETE-banner and update targets; epochs/ banners
   and roadmap-authority pointers were done 2026-07-02 (commit `108a6422`).
-- `ai-docs/decisions/index.yaml` was backfilled ADR030–040/048/049/050;
+- `ai/decisions/index.yaml` was backfilled ADR030–040/048/049/050;
   keep it current with every new ADR.
-- Keep `ai-docs/state.yaml` version-bumped per significant merge.
+- Keep `ai/state.yaml` version-bumped per significant merge.
 - Keep THIS kit's `01-state-of-the-world.md` current — it is the first thing
   a fresh agent reads.
 

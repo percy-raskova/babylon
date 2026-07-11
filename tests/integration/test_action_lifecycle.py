@@ -138,8 +138,8 @@ class TestResolveTickProcessesActions:
 
         monkeypatch.setattr(
             "web.game.engine_bridge.step",
-            lambda state, _config, persistent_context=None, defines=None: state.model_copy(  # noqa: ARG005
-                update={"tick": state.tick + 1}
+            lambda state, _config, persistent_context=None, defines=None, calculator_overrides=None: (  # noqa: ARG005
+                state.model_copy(update={"tick": state.tick + 1})
             ),
         )
         # Disable trap-detection side effects on the empty state.
@@ -160,8 +160,8 @@ class TestResolveTickProcessesActions:
 
         monkeypatch.setattr(
             "web.game.engine_bridge.step",
-            lambda state, _config, persistent_context=None, defines=None: state.model_copy(  # noqa: ARG005
-                update={"tick": state.tick + 1}
+            lambda state, _config, persistent_context=None, defines=None, calculator_overrides=None: (  # noqa: ARG005
+                state.model_copy(update={"tick": state.tick + 1})
             ),
         )
         monkeypatch.setattr(

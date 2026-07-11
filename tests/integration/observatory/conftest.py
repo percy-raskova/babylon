@@ -172,11 +172,15 @@ def _unseed_spatial_map(pool: Any, h3s: list[str]) -> None:
 
 
 @pytest.fixture
-def sim_alias(pg_dsn: str) -> Generator[str, None, None]:
+def sim_alias(pg_pool: Any, pg_dsn: str) -> Generator[str, None, None]:
     """Register the Django ``sim`` alias pointing at the live sim DB, read-only.
 
     Added AFTER pytest-django's DB setup, so the framework never tries to
     create/destroy it; restored on teardown.
+
+    ``pg_pool`` is otherwise unused here — it pulls in the skip-guarded
+    Postgres-availability probe (tests/conftest.py) so this fixture skips
+    cleanly instead of failing when Postgres is unavailable.
     """
     from django.conf import settings
     from django.db import connections

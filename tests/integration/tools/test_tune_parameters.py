@@ -12,6 +12,10 @@ from typing import Any
 
 import pytest
 
+from babylon.engine.headless_runner.runner import PostgresUnreachableError
+
+pytestmark = pytest.mark.requires_postgres
+
 # Path to the tune_parameters tool
 TUNE_PARAMETERS_PATH = Path(__file__).parent.parent.parent.parent / "tools" / "tune_parameters.py"
 
@@ -47,12 +51,15 @@ class TestIntegration:
         module = load_tune_parameters_module()
 
         # Run a minimal sweep with low extraction (should survive longer)
-        results = module.run_sweep(
-            "economy.extraction_efficiency",
-            start=0.1,
-            end=0.2,
-            step=0.1,
-        )
+        try:
+            results = module.run_sweep(
+                "economy.extraction_efficiency",
+                start=0.1,
+                end=0.2,
+                step=0.1,
+            )
+        except PostgresUnreachableError as exc:
+            pytest.skip(str(exc))
 
         assert len(results) >= 2, "Expected at least 2 results"
 
@@ -68,12 +75,15 @@ class TestIntegration:
         """Verify high extraction causes death sooner than low extraction."""
         module = load_tune_parameters_module()
 
-        results = module.run_sweep(
-            "economy.extraction_efficiency",
-            start=0.1,
-            end=0.9,
-            step=0.4,  # Test 0.1, 0.5, 0.9
-        )
+        try:
+            results = module.run_sweep(
+                "economy.extraction_efficiency",
+                start=0.1,
+                end=0.9,
+                step=0.4,  # Test 0.1, 0.5, 0.9
+            )
+        except PostgresUnreachableError as exc:
+            pytest.skip(str(exc))
 
         # Find results for low and high extraction
         low_result = next((r for r in results if r["value"] == 0.1), None)

@@ -1,6 +1,6 @@
 # Terraform
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl is intentionally tracked (provider version reproducibility)
 terraform.tfstate
 terraform.tfstate.backup
 *.tfvars

@@ -19,6 +19,8 @@ node_modules
 .env.test
 .env.production
 .envrc
+# The template is the one env file that MUST stay tracked (matched by .env* above)
+!.env.example
 
 # Session transcripts / agent logs — may contain secrets pasted into context.
 # NEVER commit: a Cloudflare API token leaked via sessions/session-ses_0d18.md
@@ -120,6 +122,13 @@ node_modules
 # Tool Caches
 .pre-commit-cache/
 .playwright-mcp/
+# Superpowers plugin working state (was local-only in .git/info/exclude; shared
+# here so the repo-hygiene gate sees the same ignore set locally and in CI)
+.superpowers/
+
+# One-off tool dumps (regenerable; were briefly tracked pre-Program-14)
+pytest_out.txt
+ast_usages.txt
 
 # Frontend (src/frontend — the cockpit, spec-110/112)
 dev_harness.png

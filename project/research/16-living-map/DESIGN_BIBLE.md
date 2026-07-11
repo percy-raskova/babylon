@@ -289,6 +289,64 @@ the first into the second** — the game already knows how to look like itself.
 7. **TimeseriesChart** stays hosting-only in Lane E but is flagged for a BblData-idiom
    restyle in Phase D (audit: last chart-first component).
 
+## 9b. THE INSTALLER — owner aesthetic ruling (2026-07-11, binding; amends §6)
+
+Percy's direction, given with three Guix 1.5.0 installer screenshots and their Kitty
+theme (`~/.config/kitty/themes/ksbc-new.conf`): *"the guix GUI is how I'd like the
+'aesthetic vibe aura' of Babylon to feel... the menus and dead space and what not in
+the style of GUIX, but with my Kitty configuration color scheme"* — while still
+rendering good maps.
+
+### Palette (Kitty `ksbc-new`, verbatim)
+
+| Role token | Value | Kitty source |
+|---|---|---|
+| field (dead space) | `#1a0000` | background — near-black, blood-red undertone |
+| text | `#e8e8e8` | foreground |
+| accent-crimson | `#dc143c` | cursor, active border — borders, urgency, cursor accents |
+| accent-gold | `#ffd700` | selection bg, bell, url — SELECTION, action, solidarity (Article VII's GOLD) |
+| selection text | `#000000` | selection_foreground — inverse video |
+| muted | `#404040` / `#c0c0c0` / `#202020` | inactive greys |
+| supporting | green `#228b22/#32cd32`, royal `#4169e1`, cyan `#008b8b` | ANSI ramp — data accents |
+
+Cold Collapse canon tokens REMAIN (contract add-only; wire/dialectic/data ramps keep
+their language). The CHROME skin moves to ksbc: crimson borders, gold selection/action,
+near-black field. §6's "cyan on frames" clause is superseded for chrome.
+
+### The dialog anatomy (newt idiom → FloatingPanel/modal reskin)
+
+- **Dead space is composition**: takeovers, lobby, login, scenario select, endgame =
+  a flat `#1a0000` field with ONE centered plate — the full Guix treatment (these
+  surfaces are literally menus; the map is absent there anyway).
+- **Plate**: flat panel tone, **hard offset shadow, zero blur** (`box-shadow: 8px 8px 0
+  #000`), square corners, generous inner padding.
+- **Title tab breaks the border**: panel titles render as a label interrupting the top
+  border line (fieldset/legend idiom), crimson text, `┤ ├` feel.
+- **Inner wells**: double-line borders (CSS `border-style: double` or layered) in
+  crimson around scrollable content regions.
+- **Selection = inverse video**: full-width gold bar, black text. Focus/hover the same
+  grammar at lower weight.
+- **Buttons are keys**: chunky, hard-shadowed; press = shadow collapse + 2px translate.
+  A keyboard-hint footer row on every dialog (the installer's soul; we already have
+  Q/E/space/1-2-3).
+- **Scrollbars**: styled hatched/dotted tracks, square thumbs.
+- **Monospace-first** for all chrome (JetBrains Mono/Departure Mono already shipped);
+  proportional reserved for long-form drill-down prose.
+- **In-game floating chrome** (over the live map): same anatomy at reduced opacity —
+  plates go `#1a0000`-translucent so the map reads through dead space, but borders/
+  title-tabs/selection grammar identical. The MAP CANVAS itself keeps §2/§6
+  cartographic discipline (muted fills, Tufte alpha rules) with crimson/gold as its
+  marker duo.
+
+### Juice-pass re-aim (supersedes the gradient items in the ledger inventory)
+
+OUT: gradient hairlines, conic corner accents, rounded anything, soft glows on chrome.
+IN (all compositor-budget rules still binding): inverse-video selection sweeps; hard-
+shadow button presses; title-tab blink-accents on critical dialogs (cursor-blink
+rhythm, `#dc143c`); gold flash on selection commit; claim-redraw shimmer stays but in
+gold; CRT/scanline effects stay confined to takeovers; phosphor bloom becomes SUBTLE
+and gold-tinted on display numerals only.
+
 ## 10. Acceptance gates (Phase V additions)
 
 - Lens-switch frame invariance (camera/geometry byte-identical pre/post).

@@ -847,9 +847,22 @@ class TestIntegration:
         runner = AsyncSimulationRunner(real_simulation, tick_interval=0.01)
 
         await runner.start()
-        await asyncio.sleep(0.05)
-        await runner.stop()
 
-        # Should have some states in queue
-        states = await runner.drain_queue()
+        # Poll (draining as we go, since drain_queue is destructive) until the
+        # loop has produced at least one state, rather than sleeping a fixed
+        # window and draining once — the same wall-clock flake class fixed in
+        # test_running_loop_executes_steps (a load-starved CI event loop can
+        # land zero steps in a fixed 50ms). drain_queue is non-blocking, so an
+        # empty poll just returns []; the bound makes a genuinely dead loop fail.
+        states: list[WorldState] = []
+        try:
+            for _ in range(200):  # bounded: 200 * 0.01s = 2s ceiling
+                states.extend(await runner.drain_queue())
+                if states:
+                    break
+                await asyncio.sleep(0.01)
+        finally:
+            await runner.stop()
+
+        # Should have produced at least one state
         assert len(states) >= 1

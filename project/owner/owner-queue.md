@@ -462,3 +462,9 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
 - **WATCH:** first CI run on the re-layered tree (push follows the records commit). Runner
   path expectations: hygiene gate + import contracts now run in the main job before pytest;
   reference-DB reds remain item-40 territory.
+- **WATCH RESOLVED (run 29142171038, `b6522ffa`):** first CI on the re-layered tree is
+  byte-for-byte the run-#4 red/green map — Frontend/AI Tests/Style green; **the two new
+  Program-14 gates GREEN in CI** (repo hygiene + import-boundary contracts, before Ruff+MyPy,
+  both also green); Playwright exactly 21/23 (the two item-40 resolve-500s); Postgres
+  Integration + main pytest leg + Security Audit = items 40/41 as before. The re-layering is
+  invisible to CI except for the added enforcement. CodeQL green.

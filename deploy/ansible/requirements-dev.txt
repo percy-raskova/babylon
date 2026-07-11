@@ -1,6 +1,6 @@
 -r requirements.txt
 
-ansible-lint==6.21.1
+ansible-lint==26.6.0
 flake8==6.1.0
 molecule==25.4.0
 molecule-plugins[docker]

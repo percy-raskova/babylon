@@ -165,7 +165,7 @@ the directory for the full set, including `balkanization.py`, `reactionary.py`,
 | `lifecycle.py`           | D–P–D′ lifecycle circuit, legitimation index               |
 
 The imperial-rent tensor mathematics (value tensors, Leontief pipeline, gamma
-visibility) lives in `src/babylon/economics/`.
+visibility) lives in `src/babylon/domain/economics/`.
 
 ## Mathematical Core
 

@@ -43,8 +43,9 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 - **The Ledger** — rigid material state. SQLite reference DB (`data/sqlite/marxist-data-3NF.sqlite`,
   read-only) + PostgreSQL runtime (`src/babylon/persistence/`) + a few JSON seeds in
   `src/babylon/data/game/`.
-- **The Topology** — fluid relational state via **rustworkx** (`BabylonGraph`; NetworkX was removed,
-  Amendment L / ADR052). `WorldState.to_graph()` / `from_graph()`. Foundational node types
+- **The Topology** — fluid relational state via **rustworkx** (`babylon.topology.BabylonGraph`;
+  its own package since Program 14; NetworkX was removed, Amendment L / ADR052).
+  `WorldState.to_graph()` / `from_graph()`. Foundational node types
   `social_class` and `territory`; later specs add `organization`, `institution`, `sovereign`,
   `hex`, `industry`, `key_figure`. Edges: EXPLOITATION, SOLIDARITY, WAGES, TRIBUTE, TENANCY,
   ADJACENCY, …
@@ -66,11 +67,17 @@ order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated o
 3. **Consequences** (14.5–21): FactionInfluence, Survival, Struggle, Consciousness, FascistFaction,
    Sovereignty, Contradiction, ContradictionField, FieldDerivative, CollapseTransition, EdgeTransition.
 
-Key modules: `engine/services.py` (ServiceContainer DI), `engine/event_bus.py` (plain-str types; the
-`EventType` enum — 79 values — is in `models/enums/events.py`), `engine/formula_registry.py`
-(23 hot-swappable formulas), `engine/observers/` (`SessionRecorder` black-box replay,
-`EndgameDetector` for the 5 terminal outcomes: REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE,
-FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE).
+Key modules: `engine/services.py` (concrete ServiceContainer; the DI *protocol* is
+`kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 79 values —
+is in `models/enums/events.py`), `engine/formula_registry.py` (23 hot-swappable formulas),
+`engine/observers/` (`SessionRecorder` black-box replay, `EndgameDetector` for the 5 terminal
+outcomes: REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV,
+FRAGMENTED_COLLAPSE).
+
+**Layering (Program 14, enforced by `mise run lint:imports`):** `kernel` < `models`/`formulas` <
+`topology` < `domain` (economics, dialectics, organizations, institution, bifurcation, geography)
+< `persistence` < `engine`; `intelligence` (ai + rag) observes. Nothing imports the engine
+backward; the kernel imports nothing above itself.
 
 ## Mathematical Core
 
@@ -82,8 +89,9 @@ FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE).
   edge presence.
 - **Metabolic Rift:** `ΔB = R − (E·η)`; overshoot `O = C / B` (O > 1 = ecological overshoot).
 
-Formulas: ~58 functions across 18 modules in `src/babylon/formulas/` (re-exported via `__init__.py`
-`__all__`). Imperial-rent tensor/Leontief math lives in `src/babylon/economics/`, not `formulas/`.
+Formulas: ~56 functions across 17 modules in `src/babylon/formulas/` (re-exported via `__init__.py`
+`__all__`; the two Epoch-2 placeholder Marx formulas were retired by fork-ledger F12).
+Imperial-rent tensor/Leontief math lives in `src/babylon/domain/economics/`, not `formulas/`.
 
 ## Configuration — one moddable source of truth
 

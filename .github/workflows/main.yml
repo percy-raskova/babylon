@@ -352,7 +352,7 @@ jobs:
         run: poetry run pytest tests/unit/ai -o addopts="" -vv -ra -l --tb=long --durations=0
 
   docs:
-    name: Documentation Build (non-strict — item-44 blocks -W)
+    name: Documentation Build (doctest blocks; manual advisory)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -364,9 +364,19 @@ jobs:
           # which initializes Django -> contrib.gis -> libgdal, so even the
           # formulas-scoped doctest run needs the system GDAL package.
           gdal: "true"
+      # The doctest run STAYS blocking: it verifies the formula docstring
+      # examples (III.12 float-honesty contract). It is cheap and deterministic.
       - name: Run doctest examples
         run: poetry run pytest --doctest-modules src/babylon/formulas -o addopts="" -vv -ra --tb=long
-      - name: Build documentation
+      # Bundling the manual is a RELEASE-TIME concern, not a per-push gate
+      # (owner ruling 2026-07-11: "we don't really need to bundle the docs as a
+      # manual until we're ready to release — lower priority"). Kept running so
+      # bit-rot stays visible as a red step, but continue-on-error so it never
+      # blocks a dev landing or the promotion. Flip back to blocking (or move to
+      # release.yml) when the manual becomes a release deliverable. item-44's
+      # 2.4k-warning wall still blocks the -W strict build regardless.
+      - name: Build documentation (advisory — manual bundled at release time)
+        continue-on-error: true
         working-directory: docs
         run: poetry run sphinx-build -b html . _build/html
 

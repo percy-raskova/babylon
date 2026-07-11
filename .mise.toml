@@ -105,6 +105,60 @@ run = "poetry run lint-imports"
 description = "Run a GitHub Actions job locally via gh-act (program 15) — e.g. mise run ci:local -- -W .github/workflows/ci.yml -j fast-gate. Install once: gh extension install https://github.com/nektos/gh-act"
 run = "gh act -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest --container-architecture linux/amd64"
 
+[tasks."lint:check"]
+description = "Ruff lint, no fixes (CI parity; the auto-fixing variant is tasks.lint)"
+run = "poetry run ruff check ."
+
+[tasks."format:check"]
+description = "Ruff format check, no rewrites (CI parity; the rewriting variant is tasks.format)"
+run = "poetry run ruff format --check ."
+
+# CI pytest flag rationale (both test:*-ci tasks):
+#   -o addopts="" is LOAD-BEARING: pyproject addopts inject --cov-report=html,
+#     and pytest-cov's clear-reports special case (--cov-report=) only fires
+#     when it is the SOLE occurrence across addopts+CLI — without the strip,
+#     every CI run silently writes htmlcov/. Wanted addopts are re-added below.
+#   Maximum verbosity by owner ruling (2026-07-11): CI logs are read by AI
+#     agents, so -vv/-ra/-l/--tb=long/--durations=0 — finest granularity wins.
+#   No --color=yes: CI is non-TTY, so pytest emits plain text — ANSI codes
+#     inside FAILED tokens break machine grep (bitten during Phase 0).
+#   Coverage (owner ruling 2026-07-11): MEASURE the whole tree (term-missing
+#     table + coverage.xml/json artifacts); GATE only engine/systems >= 80,
+#     enforced by a report-time --include filter on the same .coverage data —
+#     one pytest invocation, metrics and gate separated.
+[tasks."test:unit-ci"]
+description = "CI unit shard (program 15): xdist -n4, max-verbosity output, full-tree coverage artifacts, excludes ai/slow/red_phase/requires_reference_db, gates engine/systems cov >= 80"
+run = """
+set -e
+mkdir -p reports/test-results/unit-ci
+poetry run pytest tests/unit --ignore=tests/unit/ai \
+  -o addopts="" -vv -ra -l --tb=long --durations=0 \
+  -m 'not red_phase and not slow and not requires_reference_db' \
+  -n 4 \
+  --cov=src/babylon \
+  --cov-report=term-missing:skip-covered \
+  --cov-report=xml:reports/test-results/unit-ci/coverage.xml \
+  --cov-report=json:reports/test-results/unit-ci/coverage.json \
+  --junit-xml=reports/test-results/unit-ci/junit.xml
+echo '=== Coverage gate: src/babylon/engine/systems >= 80% ==='
+poetry run coverage report --include='src/babylon/engine/systems/*' --fail-under=80
+"""
+
+[tasks."test:rest-ci"]
+description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job); max-verbosity output; full-tree coverage artifacts (no gate); includes slow; excludes red_phase/requires_reference_db"
+run = """
+set -e
+mkdir -p reports/test-results/rest-ci
+poetry run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
+  -o addopts="" -vv -ra -l --tb=long --durations=0 \
+  -m 'not red_phase and not requires_reference_db' \
+  --cov=src/babylon \
+  --cov-report=term-missing:skip-covered \
+  --cov-report=xml:reports/test-results/rest-ci/coverage.xml \
+  --cov-report=json:reports/test-results/rest-ci/coverage.json \
+  --junit-xml=reports/test-results/rest-ci/junit.xml
+"""
+
 [tasks.commit]
 description = "Hook-safe commit: pre-run hooks on staged files, re-stage their fixes, commit, verify HEAD moved"
 usage = 'arg "<message>" help="Conventional commit message"'

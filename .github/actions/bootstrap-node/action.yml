@@ -1,0 +1,18 @@
+# Shared Node bootstrap for the cockpit frontend (Program 15).
+name: Bootstrap Node
+description: Node 22 + npm cache + npm ci in src/frontend
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: src/frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      shell: bash
+      working-directory: src/frontend
+      run: npm ci

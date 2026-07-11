@@ -1,11 +1,11 @@
-[tool.poetry]
+[project]
 name = "babylon"
 version = "0.3.0"
 description = "A Marxist text-based role playing game powered by Claude. It aims to educate and entertain by turning the immortal science of dialectical materialism into a game engine."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 authors = [
-    "Persephone Raskova <percy@babylonrpg.com>",
+    { name = "Persephone Raskova", email = "percy@babylonrpg.com" },
 ]
 keywords = [
     "ai",
@@ -14,6 +14,12 @@ keywords = [
     "rpg",
     "dystopian",
 ]
+requires-python = ">=3.12,<4.0"
+# Poetry 2.x hybrid mode (PEP 621 metadata + Poetry dependency tables):
+# classifiers are auto-derived; dependencies stay under [tool.poetry.*].
+dynamic = ["classifiers", "dependencies"]
+
+[tool.poetry]
 packages = [
     { include = "babylon", from = "src" },
     # babylon_data: thin Python wrapper around the data trove at
@@ -23,14 +29,13 @@ packages = [
     { include = "babylon_data", from = "src" },
 ]
 
-[tool.poetry.urls]
+[project.urls]
 Homepage = "https://babylonrpg.com"
 Documentation = "https://github.com/bogdanscarwash/babylon#readme"
 Issues = "https://github.com/bogdanscarwash/babylon/issues"
 Source = "https://github.com/bogdanscarwash/babylon"
 
 [tool.poetry.dependencies]
-python = "^3.12"
 pydantic = ">=2.10.3"
 numpy = ">=1.26.4"
 rustworkx = "^0.17.1"
@@ -458,7 +463,7 @@ asyncio = "WARNING"
 
 [build-system]
 requires = [
-    "poetry-core>=1.0.0",
+    "poetry-core>=2.0.0,<3.0.0",
 ]
 build-backend = "poetry.core.masonry.api"
 

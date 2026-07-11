@@ -16,7 +16,7 @@
 
 [tools]
 python = "3.12"
-poetry = "latest"  # one `mise install` provisions Python AND Poetry (registry: pipx:poetry)
+poetry = "2.2.1"  # pinned fleet-wide (CI + local) since the PEP-621 migration
 
 [env]
 PYTHONPATH = "src"

@@ -482,7 +482,7 @@ python:
 
   poetry:
     config_file: "pyproject.toml"
-    version: "1.8.4"
+    version: "2.2.1"
     dependency_groups:
       main: "Core runtime dependencies"
       dev: "Testing, linting, type checking"

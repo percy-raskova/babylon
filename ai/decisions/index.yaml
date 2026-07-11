@@ -289,3 +289,8 @@ decisions:
     status: accepted
     date: '2026-07-09'
     file: ADR062_amendment_q_behavioral_contracts.yaml
+  ADR063_program14_correspondence:
+    title: 'Program 14 (Correspondence): kernel/topology/domain/intelligence re-layering with import-linter law, repo-hygiene gate, six ratified fork deletions; subrepos rejected, Rust deferred to a measured trigger'
+    status: accepted
+    date: '2026-07-11'
+    file: ADR063_program14_correspondence.yaml

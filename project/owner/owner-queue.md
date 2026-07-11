@@ -431,3 +431,34 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
   init + the reference-DB strategy together); (c) playwright-e2e steady at 21/23 (the two
   resolve-500s = reference DB); (d) Security Audit = item 41. CI is now a working, honest
   signal again — what it says red IS red for a fresh environment.
+
+## 2026-07-11 — Program 14 (Correspondence) COMPLETE
+
+- **The tree now states the constitution, and the linters enforce it.** Layering law
+  (`kernel < models/formulas < topology < domain < persistence < engine`; `intelligence`
+  observes) is import-linter-enforced in pre-commit, `mise run check`, and CI. New packages:
+  `babylon.kernel` / `babylon.topology` / `babylon.domain` / `babylon.intelligence`. The
+  repo-hygiene gate (root allowlist, tracked-ignored=0, >1MiB non-LFS blobs) runs before
+  poetry in CI. Every phase held `qa:regression` 5/5 byte-identical — the engine never moved
+  numerically across ~900 touched files. ADR063 + `project/programs/14-correspondence.md`.
+- **Your six fork rulings are EXECUTED** (ledger rows stamped): F2, F7, F9, F10, F11, F12 —
+  ~3,900 LOC of adversarially-verified dead code gone, byte-identical proven. **Item 26 is
+  now 6 executed / 9 pending** (F1/F3/F4/F5/F6/F8/F13/F14/F15 still want rulings).
+- **Item 42 (NEW — deferred by the ledger, needs its own ruling): F2 interpolation salvage.**
+  Port the orphan's linear-interpolation into `DefaultBEAShareLookupService` as an optional
+  mode + give `GLOBAL_FALLBACK_SHARE=0.5` a GameDefines source (III.1). Baseline-moving.
+- **Item 43 (NEW — small ruling): `JsonlSessionRecorder`** (now `engine/observers/
+  jsonl_recorder.py`) — orphaned local-JSONL forensics sink; F11 left it as a separate item.
+  Keep (wire someday) or delete-orphan.
+- **Item 44 (NEW — docs architecture): `docs:strict` is structurally red** — first-ever run
+  of the gate exposed ~2.4k pre-existing duplicate-object warnings (autosummary × handwritten
+  `api/*.rst` document every symbol twice) + 24 toctree + 6 paradox-lexer. Zero rename-class
+  warnings (Program 14 is docs-clean). Ruling: drop the handwritten `api/{models,formulas,
+  engine}.rst` automodule pages, or disable autosummary recursion, or suppress-with-reason.
+- **Rust posture RULED and recorded:** deferred until a measured national-scale CPU profile;
+  method = PyO3 strangler per module behind the dense goldens under III.12(b) tolerance.
+  **Subrepos REJECTED** (one determinism contract spans the sim). The kernel boundary this
+  program built is the Rust preparation.
+- **WATCH:** first CI run on the re-layered tree (push follows the records commit). Runner
+  path expectations: hygiene gate + import contracts now run in the main job before pytest;
+  reference-DB reds remain item-40 territory.

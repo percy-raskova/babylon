@@ -2,9 +2,35 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.22.0"
-  updated: "2026-07-10"
+  version: "2.23.0"
+  updated: "2026-07-11"
   truth_status: |
+    (2026-07-11) PROGRAM 14 (CORRESPONDENCE) COMPLETE — THE TREE NOW STATES
+    THE CONSTITUTION. Layering law enforced by import-linter (pre-commit +
+    mise check + CI): kernel < models/formulas < topology < domain <
+    persistence < engine; intelligence observes (II.5). New packages:
+    babylon.kernel (event bus, interceptor, SystemBase/System protocols,
+    Graph/Services/Database/Metrics protocols, log/math/retry/exceptions/
+    schema_registry/sim_clock), babylon.topology (BabylonGraph + adapters +
+    algorithms — Trinity pillar 2), babylon.domain (economics + dialectics +
+    organizations + institution + bifurcation + geography[né infrastructure]),
+    babylon.intelligence (ai + rag — pillar 3). DELETED: babylon.utils +
+    babylon.exceptions shims, core/, simdb/, and the six owner-ratified fork
+    orphans (F2 InterpolatingBEASource, F7 consciousness trio, F9
+    derivations/, F10 trace cluster, F11 PersistenceObserver, F12 Marx
+    reference formulas) — ledger rows stamped EXECUTED, ~3,900 LOC gone,
+    every phase byte-identical (qa:regression 5/5 throughout; the engine
+    never moved numerically across ~900 touched files). Phase 0 shipped the
+    repo-hygiene gate (tools/check_repo_hygiene.py: root allowlist,
+    tracked-ignored=0, >1MiB non-LFS) + root architecture (ai-docs->ai with
+    scratch/, thoughts+datagaps->project/notes, PDFs->sources/,
+    michigan-e2e.json->LFS hash-verified). Known residue for the owner:
+    F2 interpolation salvage (baseline-moving, deferred), JsonlSessionRecorder
+    ruling, docs:strict pre-existing ~2.4k duplicate-object wall (first run
+    of the gate; zero rename-class warnings), 9 fork rows still pending.
+    Rust posture RULED: deferred until a measured national-scale CPU profile;
+    PyO3 strangler behind dense goldens is the method. Subrepos REJECTED.
+    ADR063; program record project/programs/14-correspondence.md.
     (2026-07-10 EVENING) PROGRAM 12 COMPLETE — THE CUTOVER IS DONE. The cockpit
     (src/frontend) is THE frontend on canonical :5173 under the game title;
     web/frontend is DELETED (2c7cc159, 269 files / -39,818 lines) with every

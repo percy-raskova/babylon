@@ -1,0 +1,82 @@
+ADR063_program14_correspondence:
+  status: "accepted"
+  date: "2026-07-11"
+  title: "Program 14 (Correspondence): repo structure aligned to the constitution — kernel/topology/domain/intelligence re-layering, import-linter law, repo-hygiene gate, six fork deletions; subrepos rejected, Rust deferred"
+  context: |
+    Percy brought an external structural analysis (a proposed src/ re-layering
+    plus a repo-hygiene audit) and asked for an honest verdict, adding two
+    escalations: split the packages into subrepositories, and rewrite the
+    kernel in Rust with a polyglot boundary. Verification (three explorations
+    + direct measurement, 2026-07-10) confirmed the diagnosis — economics
+    imported the engine 15x against 39 forward edges, persistence<->engine was
+    bidirectional, formulas reached the engine, 54 tracked-but-gitignored
+    files carried 70MB of reports/, dead lockfiles and root sprawl — while
+    refuting parts of the prescription: the dense goldens carry a deliberate
+    day-old never-LFS exemption (III.12), setup.cfg is a documented doc8
+    workaround, the pack was only 57.7MB (LFS already held the weight, so no
+    history rewrite was needed), and simdb/ was orphaned rather than live.
+    The key structural fact: the cycles were thin — the wrong-direction edges
+    were ~6 engine-owned framework abstractions plus a handful of type-only
+    imports, so the untangle was surgical rather than monumental.
+  decision: |
+    Owner rulings (2026-07-10): full restructure as Program 14; SUBREPOS
+    REJECTED (one determinism contract spans the sim — the tick hash and
+    dense goldens byte-compare economics+engine+formulas as a single
+    artifact; boundaries are enforced in-monorepo by import-linter instead);
+    RUST DEFERRED (trigger: a measured national-scale CPU profile; method:
+    PyO3 strangler per module behind the same dense goldens under the
+    III.12(b) tolerance policy — this restructure is itself the Rust
+    preparation); tests are REHOMED, never rewritten (the 2026-07-09 audit
+    stratification governs; scaffolding dies only with its code);
+    michigan-e2e.json (35MB) to LFS; fork-ledger rows F2/F7/F9/F10/F11/F12
+    ratified for execution; the root knowledge-tree design delegated
+    (ai/ = Claude's tree + scratch, project/notes absorbs thoughts+datagaps,
+    sources/ holds theory texts).
+    Executed phases: 0 hygiene + root architecture + the repo-hygiene gate
+    (tools/check_repo_hygiene.py: allowlist, tracked-ignored=0, >1MiB
+    non-LFS blobs); 1 kernel extraction (event_bus, interceptor, system
+    base/protocol, graph protocol, ServicesProtocol, DatabaseProtocol) +
+    topology extraction (babylon.topology = BabylonGraph + adapters +
+    algorithms) + database impl to persistence + simdb deleted + five
+    import-linter contracts wired into pre-commit/mise/CI (landed RED,
+    turned green); 2 the six ratified fork deletions (-2,300 LOC, byte-
+    identical proven); 3 the re-layering (kernel smalls by purity audit,
+    intelligence/ = ai+rag, domain/ = economics+dialectics+organizations+
+    institution+bifurcation+geography[né infrastructure]) — 3e REJECTED by
+    its own verify-first clause (reference/ is self-contained and imported
+    BY domain; moving it under persistence would invert the layering).
+  consequences: |
+    The import graph now states Constitution II.6 and import-linter enforces
+    it: kernel < models/formulas < topology < domain < persistence < engine;
+    intelligence observes (II.5). Every phase rode mise check + the
+    byte-identical qa:regression gate (5/5 at every boundary; the engine
+    never moved numerically). Deletions: ~3,900 LOC of adversarially-verified
+    dead code. Costs and residue: ~900 files touched across the renames;
+    three literal classes the seds could not see (attribute-style imports,
+    Path(__file__) anchors, segment-wise path builders) were caught by the
+    full-suite gates — the naics skip-if-absent guard that converted 19
+    breakages into silent skips is the loudest III.11 lesson; docs:strict
+    ran for the first time and exposed a pre-existing ~2.4k duplicate-object
+    warning wall (owner-queued, not rename damage — zero missing-module or
+    broken-reference warnings). Owner queue gains: F2 interpolation salvage
+    (baseline-moving, deferred by the ledger), JsonlSessionRecorder
+    disposition, the docs wall, and fork items 26 partial-close (6 executed
+    / 9 pending rulings).
+  alternatives_considered:
+    - "Subrepositories per package: rejected — coordination tax without benefit for a solo-BD repo whose determinism contract is whole-sim; import-linter gives the same boundary guarantee loudly."
+    - "Rust kernel now: deferred — no measured CPU wall exists (storage was the last constraint, solved); byte-identical dies at the language boundary by III.12(b), so the migration is a re-baselining project to be triggered by evidence, not vibes."
+    - "reference/ under persistence (planned 3e): rejected at execution — domain/economics imports reference; the move would create upward domain->persistence edges."
+    - "Full test rewrite: rejected — rehome only; behavioral strata keep growing under III.12 discipline."
+  verification: |
+    Per phase: mise run check (grew check:hygiene + lint:imports) true-exit
+    0; qa:regression 5/5 byte-identical after every phase (0.3 LFS
+    renormalize included); full unit suite at each heavy boundary (9,390-
+    9,468 passed, 17-skip baseline restored after the naics fix);
+    qa:e2e-regression + web:check green at Phase-3 close; mypy strict clean
+    throughout (566-577 files); import contracts 5 kept 0 broken from U2b
+    onward. Fresh-clone sanity + CI watch belong to the Phase-4 close.
+  references:
+    - "project/programs/14-correspondence.md (charter + execution record)"
+    - "project/execution/FORK_RECONCILIATION_LEDGER.md (rows F2/F7/F9/F10/F11/F12 stamped EXECUTED)"
+    - "ADR058 (src simplification sweep), ADR059 (fork ledger), ADR061 (program 12), ADR062 (Amendment Q)"
+    - "Constitution II.5, II.6, III.10, III.11, III.12, Amendment G, I.21"

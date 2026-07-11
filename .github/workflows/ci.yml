@@ -123,14 +123,16 @@ jobs:
         working-directory: src/frontend
         run: npm run build
 
+      - name: npm audit (prod deps, high+)
+        working-directory: src/frontend
+        run: npm audit --omit=dev --audit-level=high
+
   security:
-    # Advisory until item-41 (the CVE remediation wave) lands; then this job
-    # drops continue-on-error and the "(advisory)" label — that flip is
-    # item-41's definition of done. Never delete the label without the flip.
-    name: Security Audit (advisory until item-41)
+    # Blocking since 2026-07-11: item 41 closed the CVE wave (73 -> 5, the
+    # residue in security/pip-audit-ignores.toml with reasons + expiries).
+    name: Security Audit (pip-audit policy — blocking since item-41)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
 

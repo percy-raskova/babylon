@@ -17,3 +17,28 @@
 id = "CVE-2026-3219"
 reason = "torch/transformers dependency chain — no fixed release exists yet (verified 2026-07-11); quarterly re-review forced by expiry"
 expires = "2026-10-01"
+
+[[ignore]]
+id = "PYSEC-2026-139"
+reason = "torch 2.10.0 — pip-audit lists no fixed version (verified 2026-07-11)"
+expires = "2026-10-01"
+
+[[ignore]]
+id = "CVE-2025-3000"
+reason = "torch 2.10.0 — pip-audit lists no fixed version (verified 2026-07-11)"
+expires = "2026-10-01"
+
+[[ignore]]
+id = "PYSEC-2025-217"
+reason = "transformers 4.57.6 — pip-audit lists no fixed version (verified 2026-07-11)"
+expires = "2026-10-01"
+
+[[ignore]]
+id = "CVE-2026-1839"
+reason = "transformers fix is 5.0.0rc3, blocked by sentence-transformers' <5.0.0 parent pin — bumping sentence-transformers is an owner decision (item-41 residue, program 15)"
+expires = "2026-10-01"
+
+[[ignore]]
+id = "CVE-2026-4372"
+reason = "transformers fix is 5.3.0, blocked by sentence-transformers' <5.0.0 parent pin — bumping sentence-transformers is an owner decision (item-41 residue, program 15)"
+expires = "2026-10-01"

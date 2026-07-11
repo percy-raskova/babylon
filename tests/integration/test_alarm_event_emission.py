@@ -26,8 +26,8 @@ def test_conservation_alarm_event_published_to_bus():
     """ALARM-severity audit row → exactly one conservation_alarm Event on the bus."""
     from uuid import uuid4
 
-    from babylon.engine.event_bus import Event, EventBus
     from babylon.engine.simulation_engine import SimulationEngine
+    from babylon.kernel.event_bus import Event, EventBus
     from babylon.persistence.conservation_audit import ConservationAuditor, _InvariantResult
 
     received: list[Event] = []
@@ -87,8 +87,8 @@ def test_no_alarm_event_when_severity_ok():
     """OK-severity rows do NOT publish to the bus."""
     from uuid import uuid4
 
-    from babylon.engine.event_bus import Event, EventBus
     from babylon.engine.simulation_engine import SimulationEngine
+    from babylon.kernel.event_bus import Event, EventBus
     from babylon.persistence.conservation_audit import ConservationAuditor, _InvariantResult
 
     received: list[Event] = []

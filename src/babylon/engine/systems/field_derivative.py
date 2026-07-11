@@ -21,12 +21,12 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 from babylon.models.enums import EventType
 
 logger = logging.getLogger(__name__)
@@ -49,14 +49,14 @@ class FieldDerivativeSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Compute all spatial and temporal derivatives.
 
         Args:
             graph: Mutable graph (NetworkX or GraphProtocol).
-            services: ServiceContainer with field_registry.
+            services: ServicesProtocol with field_registry.
             context: TickContext or dict with tick and persistent_data.
         """
 
@@ -291,7 +291,7 @@ def _identify_principal_contradiction(
     graph: GraphProtocol,
     field_names: list[str],
     persistent_data: dict[str, Any],
-    services: ServiceContainer,
+    services: ServicesProtocol,
     tick: int,
 ) -> None:
     """Identify the principal contradiction from temporal derivatives.
@@ -304,7 +304,7 @@ def _identify_principal_contradiction(
         graph: Graph with field_derivatives on nodes.
         field_names: Registered field names.
         persistent_data: For tracking previous principal.
-        services: ServiceContainer for event_bus access.
+        services: ServicesProtocol for event_bus access.
         tick: Current tick number.
     """
     # Collect max |df/dt| per field across all nodes

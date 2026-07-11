@@ -26,19 +26,19 @@ import random
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.config.defines.balkanization import BalkanizationDefines
-from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase, resolve_rng
 from babylon.formulas.balkanization import (
     contiguous_influence_majority_subregion,
     detect_red_settler_trap,
     winning_faction_for_territory,
 )
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.models.enums import ColonialStance, EventType
 
 if TYPE_CHECKING:  # pragma: no cover
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
-    from babylon.engine.systems.protocol import ContextType
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
+    from babylon.kernel.system_protocol import ContextType
 
 
 _PREV_WINNING = "balkanization.previous_winning_faction_by_territory"
@@ -54,7 +54,7 @@ class FactionInfluenceSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         wrapped = self._wrap_graph(graph)
@@ -100,7 +100,7 @@ class FactionInfluenceSystem(SystemBase):
         persistent: dict[str, Any],
         winning: dict[str, str],
         tick: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         previous: dict[str, str] = persistent.get(_PREV_WINNING, {})
         for territory_id in sorted(winning):
@@ -128,7 +128,7 @@ class FactionInfluenceSystem(SystemBase):
         winning: dict[str, str],
         defines: BalkanizationDefines,
         tick: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         if not winning:
             return
@@ -158,7 +158,7 @@ class FactionInfluenceSystem(SystemBase):
         wrapped: GraphProtocol,
         defines: BalkanizationDefines,
         tick: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         for node in sorted(
             wrapped.query_nodes(node_type="balkanization_faction"),
@@ -192,7 +192,7 @@ class FactionInfluenceSystem(SystemBase):
         persistent: dict[str, Any],
         defines: BalkanizationDefines,
         tick: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         hysteresis: dict[str, int] = persistent.get(_HYSTERESIS, {})
         eligible: list[dict[str, Any]] = []
@@ -265,6 +265,6 @@ def _extract_persistent(context: ContextType) -> dict[str, Any]:
     return existing if isinstance(existing, dict) else dict(existing)
 
 
-def _resolve_defines(services: ServiceContainer) -> BalkanizationDefines:
+def _resolve_defines(services: ServicesProtocol) -> BalkanizationDefines:
     bk = getattr(services.defines, "balkanization", None)
     return bk if isinstance(bk, BalkanizationDefines) else BalkanizationDefines()

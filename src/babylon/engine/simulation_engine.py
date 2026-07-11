@@ -40,7 +40,6 @@ from uuid import uuid4
 from babylon.config.defines import GameDefines
 from babylon.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
-from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.engine.systems.community import CommunitySystem
@@ -58,7 +57,6 @@ from babylon.engine.systems.lifecycle import LifecycleSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.ooda import OODASystem
 from babylon.engine.systems.production import ProductionSystem
-from babylon.engine.systems.protocol import ContextType, System
 from babylon.engine.systems.reactionary import FascistFactionSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
 from babylon.engine.systems.solidarity import SolidaritySystem
@@ -68,6 +66,8 @@ from babylon.engine.systems.substrate import SubstrateSystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.engine.systems.vitality import VitalitySystem
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_protocol import ContextType, System
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EventType
 from babylon.models.events import (
@@ -92,6 +92,7 @@ from babylon.utils.log import log_context_scope
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
+    from babylon.kernel.services import ServicesProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +171,7 @@ class SimulationEngine:
     def run_tick(
         self,
         graph: BabylonGraph,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Execute all systems in order for one tick.
@@ -185,7 +186,7 @@ class SimulationEngine:
 
         Args:
             graph: NetworkX graph (mutated in place by systems)
-            services: ServiceContainer with config, formulas, event_bus, database, metrics
+            services: ServicesProtocol with config, formulas, event_bus, database, metrics
             context: TickContext or dict passed to all systems
 
         Spec 008: Logs within run_tick() include tick and correlation_id.
@@ -225,7 +226,7 @@ class SimulationEngine:
     def _run_audit(
         self,
         graph: BabylonGraph,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
         tick: int,
     ) -> None:

@@ -45,12 +45,12 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-from babylon.engine.event_bus import EventBus
 from babylon.engine.factories import create_bourgeoisie, create_labor_aristocracy
 from babylon.engine.headless_runner.reference_data_cache import (
     ReferenceDataCache,
     derive_year_set,
 )
+from babylon.kernel.event_bus import EventBus
 from babylon.models import Relationship
 from babylon.models.entities.social_class import IdeologicalProfile
 from babylon.models.entities.territory import Territory

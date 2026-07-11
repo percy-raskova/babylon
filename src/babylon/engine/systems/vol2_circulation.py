@@ -8,7 +8,7 @@ every flow that exits the study area, each paired with a wage-repatriation
 
 This is a **sub-stage** of :class:`ImperialRentSystem` (pipeline slot 5c per
 spec 062 FR-053), not a top-level System. The sub-stage signature differs
-from :class:`babylon.engine.systems.protocol.System` because the caller is
+from :class:`babylon.kernel.system_protocol.System` because the caller is
 ``ImperialRentSystem.step()`` and supplies the boundary register and session
 metadata directly.
 
@@ -45,16 +45,16 @@ from babylon.economics.boundary_flow_register import (
     BoundaryFlowRegister,
     NodeKind,
 )
-from babylon.engine.systems.base import SystemBase
+from babylon.kernel.system_base import SystemBase
 
 if TYPE_CHECKING:
     from babylon.economics.lodes_commute_matrix import (
         LODESCommuteMatrixLoader,
     )
-    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.systems.cross_border_commute import (
         CrossBorderCommuteClassifier,
     )
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 logger = logging.getLogger(__name__)
 

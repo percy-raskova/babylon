@@ -119,7 +119,7 @@ To create a custom interceptor, subclass :class:`EventInterceptor`:
 .. code-block:: python
 
    from babylon.engine.interceptor import EventInterceptor, InterceptResult
-   from babylon.engine.event_bus import Event
+   from babylon.kernel.event_bus import Event
 
    class SecurityInterceptor(EventInterceptor):
        """State security that blocks AGITATE events in surveilled areas."""

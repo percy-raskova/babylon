@@ -17,7 +17,7 @@ Pipeline Steps:
     8. Compute derived rates and assemble TickSummary
 
 See Also:
-    :mod:`babylon.engine.systems.protocol`: System protocol
+    :mod:`babylon.kernel.system_protocol`: System protocol
     :mod:`babylon.economics.tick.types`: Data models
     :mod:`babylon.economics.tick.graph_bridge`: Graph serialization
 """
@@ -64,13 +64,13 @@ from babylon.economics.tick.types import (
     SmoothedCoefficients,
     TickSummary,
 )
-from babylon.engine.systems.base import SystemBase
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
+from babylon.kernel.system_base import SystemBase
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
-    from babylon.engine.systems.protocol import ContextType
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
+    from babylon.kernel.system_protocol import ContextType
 
 logger = logging.getLogger(__name__)
 
@@ -107,14 +107,14 @@ class TickDynamicsSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Execute tick dynamics pipeline on year boundaries.
 
         Args:
             graph: Mutable NetworkX graph or GraphProtocol (modified in-place).
-            services: ServiceContainer with calculator services.
+            services: ServicesProtocol with calculator services.
             context: TickContext or dict with tick number.
         """
         # Extract tick number
@@ -317,7 +317,7 @@ class TickDynamicsSystem(SystemBase):
     def _write_hex_substrate(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         """Step 9: Write hex substrate economic state to graph territory nodes.
 
@@ -330,7 +330,7 @@ class TickDynamicsSystem(SystemBase):
 
         Args:
             graph: Mutable GraphProtocol (already wrapped).
-            services: ServiceContainer with optional hex_grid.
+            services: ServicesProtocol with optional hex_grid.
         """
         hex_grid = getattr(services, "hex_grid", None)
         if hex_grid is None:
@@ -439,14 +439,14 @@ class TickDynamicsSystem(SystemBase):
     def _compute_national_params(
         self,
         year: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         prev_coefficients: SmoothedCoefficients | None,
     ) -> NationalTickParameters | None:
         """Step 2: Compute national parameters.
 
         Args:
             year: Current year.
-            services: ServiceContainer with calculators.
+            services: ServicesProtocol with calculators.
             prev_coefficients: Previous smoothed coefficients (None on first tick).
 
         Returns:
@@ -542,7 +542,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         year: int,
         county_fips: list[str],
-        services: ServiceContainer,
+        services: ServicesProtocol,
         prev_county_states: dict[str, CountyEconomicState] | None,
     ) -> dict[str, CountyEconomicState]:
         """Step 3a: Compute county-level state.
@@ -550,7 +550,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             year: Current year.
             county_fips: List of FIPS codes to process.
-            services: ServiceContainer with calculators.
+            services: ServicesProtocol with calculators.
             prev_county_states: Previous county states.
 
         Returns:
@@ -695,7 +695,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         county_states: dict[str, CountyEconomicState],
         national_params: NationalTickParameters,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> dict[str, CountyEconomicState]:
         """Step 4: Compute imperial rent flows.
 
@@ -708,7 +708,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             county_states: Current county states.
             national_params: National parameters (provides tick year).
-            services: ServiceContainer with the 4 Spec 057 fields wired
+            services: ServicesProtocol with the 4 Spec 057 fields wired
                 (graceful degradation to stub behavior if not).
 
         Returns:
@@ -723,7 +723,7 @@ class TickDynamicsSystem(SystemBase):
     def _check_crisis_triggers(
         self,
         county_states: dict[str, CountyEconomicState],
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
     ) -> dict[str, CountyEconomicState]:
         """Step 5: Check crisis triggers using MultiPeriodCrisisDetector.
@@ -734,7 +734,7 @@ class TickDynamicsSystem(SystemBase):
 
         Args:
             county_states: Current county states.
-            services: ServiceContainer with event_bus, defines, tensor_registry.
+            services: ServicesProtocol with event_bus, defines, tensor_registry.
             tick: Current tick number.
 
         Returns:
@@ -802,7 +802,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         fips: str,
         year: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> float | None:
         """Retrieve profit rate for a county from TensorRegistry.
 
@@ -812,7 +812,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             fips: County FIPS code.
             year: Target year for lookup.
-            services: ServiceContainer with optional tensor_registry.
+            services: ServicesProtocol with optional tensor_registry.
 
         Returns:
             Profit rate or None if unavailable.
@@ -842,7 +842,7 @@ class TickDynamicsSystem(SystemBase):
 
     @staticmethod
     def _emit_crisis_event(
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
         fips: str,
         prev_phase: CrisisPhase,
@@ -853,7 +853,7 @@ class TickDynamicsSystem(SystemBase):
         """Emit crisis phase-change events (FR-004, FR-022).
 
         Args:
-            services: ServiceContainer with event_bus.
+            services: ServicesProtocol with event_bus.
             tick: Current simulation tick.
             fips: County FIPS code.
             prev_phase: Previous crisis phase.
@@ -862,7 +862,7 @@ class TickDynamicsSystem(SystemBase):
             crisis_duration: Current crisis duration.
         """
         # Lazy imports to avoid circular dependency (engine -> economics -> engine)
-        from babylon.engine.event_bus import Event
+        from babylon.kernel.event_bus import Event
         from babylon.models.enums import EventType
 
         # CRISIS_PHASE_TRANSITION on every phase change
@@ -899,7 +899,7 @@ class TickDynamicsSystem(SystemBase):
         fips: str,
         new_dist: ClassDistribution,
         prev_county_states: dict[str, CountyEconomicState],
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
     ) -> None:
         """Emit DISPOSSESSION_CASCADE at LA share decline milestones (FR-022).
@@ -912,7 +912,7 @@ class TickDynamicsSystem(SystemBase):
             fips: County FIPS code.
             new_dist: New class distribution after transitions.
             prev_county_states: Previous tick's county states (baseline).
-            services: ServiceContainer with event_bus and defines.
+            services: ServicesProtocol with event_bus and defines.
             tick: Current simulation tick.
         """
         prev_county = prev_county_states.get(fips)
@@ -934,7 +934,7 @@ class TickDynamicsSystem(SystemBase):
 
         if crossed is not None:
             # Lazy imports to avoid circular dependency
-            from babylon.engine.event_bus import Event
+            from babylon.kernel.event_bus import Event
             from babylon.models.enums import EventType
 
             services.event_bus.publish(
@@ -954,7 +954,7 @@ class TickDynamicsSystem(SystemBase):
     def _compute_vol1_layer(
         self,
         county_states: dict[str, CountyEconomicState],
-        services: ServiceContainer,
+        services: ServicesProtocol,
         year: int,
     ) -> dict[str, CountyEconomicState]:
         """Compute Volume I production layer — reserve army wage pressure.
@@ -966,7 +966,7 @@ class TickDynamicsSystem(SystemBase):
 
         Args:
             county_states: Current county snapshots.
-            services: ServiceContainer with reserve_army_data_source.
+            services: ServicesProtocol with reserve_army_data_source.
             year: Current simulation year.
 
         Returns:
@@ -995,7 +995,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         fips: str,
         county: CountyEconomicState,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         year: int,
         wage_calc: DefaultWagePressureCalculator,
     ) -> CountyEconomicState:
@@ -1004,7 +1004,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             fips: 5-digit county FIPS code.
             county: Current county economic state.
-            services: ServiceContainer with reserve_army_data_source.
+            services: ServicesProtocol with reserve_army_data_source.
             year: Current simulation year.
             wage_calc: Pre-built wage pressure calculator.
 
@@ -1022,7 +1022,7 @@ class TickDynamicsSystem(SystemBase):
     def _compute_circulation_layer(
         self,
         county_states: dict[str, CountyEconomicState],
-        services: ServiceContainer,
+        services: ServicesProtocol,
         year: int,
     ) -> dict[str, CountyEconomicState]:
         """Compute Volume II circulation state per county.
@@ -1033,7 +1033,7 @@ class TickDynamicsSystem(SystemBase):
 
         Args:
             county_states: Current county snapshots.
-            services: ServiceContainer with circulation data sources.
+            services: ServicesProtocol with circulation data sources.
             year: Current simulation year.
 
         Returns:
@@ -1073,7 +1073,7 @@ class TickDynamicsSystem(SystemBase):
 
     def _compute_national_circulation_state(
         self,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         year: int,
     ) -> tuple[float | None, float | None, float | None, float | None, float | None]:
         """Extract national circulation parameters from data sources.
@@ -1107,7 +1107,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         fips: str,
         county: CountyEconomicState,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         year: int,
         days_raw: float | None,
         days_finished: float | None,
@@ -1120,7 +1120,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             fips: 5-digit county FIPS code.
             county: Current county economic state.
-            services: ServiceContainer with circulation sources.
+            services: ServicesProtocol with circulation sources.
             year: Current simulation year.
             days_raw: National raw-materials days-of-inventory (or None).
             days_finished: National finished-goods days-of-inventory (or None).
@@ -1218,7 +1218,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         county_states: dict[str, CountyEconomicState],
         _national_params: NationalTickParameters,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         year: int,
     ) -> dict[str, CountyEconomicState]:
         """Compute Volume III financial distribution layer.
@@ -1230,7 +1230,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             county_states: Current county snapshots.
             _national_params: National economic context (reserved for future use).
-            services: ServiceContainer with financial calculators.
+            services: ServicesProtocol with financial calculators.
             year: Current simulation year.
 
         Returns:
@@ -1267,7 +1267,7 @@ class TickDynamicsSystem(SystemBase):
 
     def _compute_national_financial_state(
         self,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         year: int,
     ) -> tuple[float, FictitiousCapitalStock | None]:
         """Compute national-level financial parameters once per tick.
@@ -1292,7 +1292,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         fips: str,
         county: CountyEconomicState,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         year: int,
         national_rate: float,
         fictitious: FictitiousCapitalStock | None,
@@ -1302,7 +1302,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             fips: County FIPS code.
             county: Current county state.
-            services: ServiceContainer with financial calculators.
+            services: ServicesProtocol with financial calculators.
             year: Current simulation year.
             national_rate: National effective interest rate.
             fictitious: FictitiousCapitalStock or None.
@@ -1375,7 +1375,7 @@ class TickDynamicsSystem(SystemBase):
         fips: str,
         year: int,
         updates: dict[str, object],
-        services: ServiceContainer,
+        services: ServicesProtocol,
         national_rate: float,
         fictitious: FictitiousCapitalStock | None,
         total_surplus: float | None,
@@ -1404,7 +1404,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         fips: str,
         year: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> int:
         """Return nearest tensor-populated year for a county.
 
@@ -1416,7 +1416,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             fips: 5-digit county FIPS code.
             year: Requested simulation year.
-            services: ServiceContainer with tensor_registry.
+            services: ServicesProtocol with tensor_registry.
 
         Returns:
             Best available year: current, current-1, or current-2.
@@ -1434,14 +1434,14 @@ class TickDynamicsSystem(SystemBase):
         self,
         fips: str,
         year: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> float | None:
         """Get county profit rate from tensor registry.
 
         Args:
             fips: 5-digit county FIPS code.
             year: Calendar year.
-            services: ServiceContainer with tensor_registry.
+            services: ServicesProtocol with tensor_registry.
 
         Returns:
             Profit rate if available, None otherwise.
@@ -1461,14 +1461,14 @@ class TickDynamicsSystem(SystemBase):
         self,
         fips: str,
         year: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> float | None:
         """Get county total surplus from tensor registry.
 
         Args:
             fips: 5-digit county FIPS code.
             year: Calendar year.
-            services: ServiceContainer with tensor_registry.
+            services: ServicesProtocol with tensor_registry.
 
         Returns:
             Total surplus if available, None otherwise.
@@ -1489,7 +1489,7 @@ class TickDynamicsSystem(SystemBase):
         county_states: dict[str, CountyEconomicState],
         prev_county_states: dict[str, CountyEconomicState] | None,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
     ) -> dict[str, CountyEconomicState]:
         """Step 5b: Compute bifurcation risk for each county (FR-011).
@@ -1502,7 +1502,7 @@ class TickDynamicsSystem(SystemBase):
             county_states: Current county states (after transitions).
             prev_county_states: Previous county states (before transitions).
             graph: Simulation graph with social class nodes and edges.
-            services: ServiceContainer with event_bus and defines.
+            services: ServicesProtocol with event_bus and defines.
             tick: Current simulation tick.
 
         Returns:
@@ -1553,7 +1553,7 @@ class TickDynamicsSystem(SystemBase):
 
     @staticmethod
     def _emit_bifurcation_event(
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
         fips: str,
         metric: BifurcationRiskMetric,
@@ -1562,14 +1562,14 @@ class TickDynamicsSystem(SystemBase):
         """Emit BIFURCATION_THRESHOLD event (FR-022).
 
         Args:
-            services: ServiceContainer with event_bus.
+            services: ServicesProtocol with event_bus.
             tick: Current simulation tick.
             fips: County FIPS code.
             metric: Computed bifurcation risk metric.
             threshold: |score| threshold that was exceeded.
         """
         # Lazy imports to avoid circular dependency (engine -> economics -> engine)
-        from babylon.engine.event_bus import Event
+        from babylon.kernel.event_bus import Event
         from babylon.models.enums import EventType
 
         direction = "revolutionary" if metric.score < 0 else "fascist"
@@ -1593,7 +1593,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         county_states: dict[str, CountyEconomicState],
         national_params: NationalTickParameters,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         prev_county_states: dict[str, CountyEconomicState] | None = None,
         tick: int = 0,
     ) -> dict[str, CountyEconomicState]:
@@ -1602,7 +1602,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             county_states: Current county states.
             national_params: National parameters.
-            services: ServiceContainer with transition engine.
+            services: ServicesProtocol with transition engine.
             prev_county_states: Previous county states (for cascade tracking).
             tick: Current tick number (for event emission).
 

@@ -12,8 +12,8 @@ from babylon.engine.systems import (
     ContradictionSystem,
     ImperialRentSystem,
     SurvivalSystem,
-    System,
 )
+from babylon.kernel.system_protocol import System
 from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 
 

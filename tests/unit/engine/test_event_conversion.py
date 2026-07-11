@@ -11,8 +11,8 @@ Tests verify:
 
 from datetime import datetime
 
-from babylon.engine.event_bus import Event
 from babylon.engine.simulation_engine import _convert_bus_event_to_pydantic
+from babylon.kernel.event_bus import Event
 from babylon.models.entity_registry import (
     COMPRADOR_ID,
     CORE_BOURGEOISIE_ID,

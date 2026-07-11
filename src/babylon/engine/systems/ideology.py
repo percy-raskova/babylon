@@ -21,11 +21,11 @@ from babylon.formulas.consciousness_routing import (
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 
 # Context keys for storing previous values between ticks
 PREVIOUS_WAGES_KEY = "previous_wages"
@@ -90,7 +90,7 @@ class ConsciousnessSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Apply consciousness drift to all entities with bifurcation routing."""

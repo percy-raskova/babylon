@@ -20,7 +20,7 @@ in :attr:`WorldState.events`. This enables:
 
 - :py:mod:`babylon.models.events` - Pydantic event models (20+ classes)
 - :py:mod:`babylon.models.enums` - EventType enum (24 types)
-- :py:mod:`babylon.engine.event_bus` - Pub/sub event bus
+- :py:mod:`babylon.kernel.event_bus` - Pub/sub event bus
 - :py:mod:`babylon.engine.simulation_engine` - Event conversion
 
 EventType Enum
@@ -878,4 +878,4 @@ See Also
 - :doc:`/concepts/event-system` - Conceptual explanation of event architecture
 - :doc:`/reference/topology` - TopologyMonitor and phase transitions
 - :doc:`/reference/systems` - Systems that emit events
-- :py:mod:`babylon.engine.event_bus` - Event bus implementation
+- :py:mod:`babylon.kernel.event_bus` - Event bus implementation

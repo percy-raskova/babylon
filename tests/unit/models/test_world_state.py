@@ -176,7 +176,7 @@ class TestWorldStateToGraph:
     def test_to_graph_returns_babylon_graph(self, two_node_state: WorldState) -> None:
         """to_graph() returns a BabylonGraph satisfying GraphProtocol (Amendment L)."""
         from babylon.engine.graph import BabylonGraph
-        from babylon.engine.graph_protocol import GraphProtocol
+        from babylon.kernel.graph_protocol import GraphProtocol
 
         G = two_node_state.to_graph()
         assert isinstance(G, BabylonGraph)

@@ -373,7 +373,7 @@ class TestStruggleSystemStep:
 
     def test_spark_probability_is_repression_times_scale(self, services: ServiceContainer) -> None:
         """spark_prob = repression * spark_scale; the tick-seeded roll decides."""
-        from babylon.engine.systems.base import resolve_rng
+        from babylon.kernel.system_base import resolve_rng
 
         # Default spark_scale = 0.1, repression = 0.5 → prob = 0.05
         graph = _create_minimal_struggle_graph(repression=0.5, agitation=0.0)

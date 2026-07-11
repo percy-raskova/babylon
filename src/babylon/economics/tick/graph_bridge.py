@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 from babylon.economics.dynamics.types import ClassDistribution
 from babylon.economics.tick.derived_rates import DerivedRateCalculator

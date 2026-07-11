@@ -14,16 +14,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.engine.event_bus import Event
+from babylon.kernel.event_bus import Event
 from babylon.models.entity_registry import CORE_BOURGEOISIE_ID
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 
 # Spec-071 create-on-demand id offsets (keep clear of bridge ids: workers
 # C000-C082, bourgeois C500-C582). Enforcers land in the C7xx band, internal
@@ -106,7 +106,7 @@ class DecompositionSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Check for SUPERWAGE_CRISIS and execute LA decomposition with delay.
@@ -262,7 +262,7 @@ class DecompositionSystem(SystemBase):
     def _execute_decomposition(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
     ) -> bool:
         """Execute LA decomposition based on carceral defines.

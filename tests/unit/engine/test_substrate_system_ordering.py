@@ -17,7 +17,7 @@ class TestSubstrateSystemOrdering:
         assert SubstrateSystem().name == "substrate"
 
     def test_substrate_implements_system_protocol(self) -> None:
-        from babylon.engine.systems.protocol import System
+        from babylon.kernel.system_protocol import System
 
         assert isinstance(SubstrateSystem(), System)
 

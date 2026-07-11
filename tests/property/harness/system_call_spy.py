@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from babylon.engine.simulation_engine import SimulationEngine
-    from babylon.engine.systems.protocol import System
+    from babylon.kernel.system_protocol import System
     from tests.property.harness.causal_harness import SystemCallEvent
 
 

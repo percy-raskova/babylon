@@ -36,8 +36,8 @@ _graph_module = pytest.importorskip(
     reason="babylon.models.graph not yet implemented (RED phase)",
 )
 _protocol_module = pytest.importorskip(
-    "babylon.engine.graph_protocol",
-    reason="babylon.engine.graph_protocol not yet implemented (RED phase)",
+    "babylon.kernel.graph_protocol",
+    reason="babylon.kernel.graph_protocol not yet implemented (RED phase)",
 )
 
 # Import types from the modules after successful import

@@ -16,7 +16,7 @@ from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
 
 #: Attribute names revealed per target node type (the "fog of war" lift).
@@ -32,7 +32,7 @@ def resolve_investigate(
     action: Action,
     org_attrs: dict[str, Any],  # noqa: ARG001 — no acting-org state consumed
     graph: BabylonGraph,
-    services: ServiceContainer,  # noqa: ARG001 — no InvestigateDefines yet
+    services: ServicesProtocol,  # noqa: ARG001 — no InvestigateDefines yet
 ) -> ActionResult:
     """Resolve a player INVESTIGATE action (information-layer only).
 
@@ -40,7 +40,7 @@ def resolve_investigate(
         action: The INVESTIGATE action (``action_type == ActionType.MAP_NETWORK``).
         org_attrs: Acting organization's node attributes (unused).
         graph: World graph (read-only — no mutation).
-        services: ServiceContainer (unused; no InvestigateDefines exist yet).
+        services: ServicesProtocol (unused; no InvestigateDefines exist yet).
 
     Returns:
         :class:`~babylon.ooda.types.ActionResult` with ``direct_effects``

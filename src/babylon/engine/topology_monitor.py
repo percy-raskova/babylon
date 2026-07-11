@@ -40,7 +40,7 @@ from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.models.config import SimulationConfig
     from babylon.models.world_state import WorldState
 

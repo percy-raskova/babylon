@@ -53,11 +53,11 @@ def bridged():  # type: ignore[no-untyped-def]
     """One hydrated single-county bridged world + engine harness."""
     from babylon.config.defines import GameDefines
     from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-    from babylon.engine.event_bus import EventBus
     from babylon.engine.headless_runner.bridge import WorldStateBridge
     from babylon.engine.headless_runner.runner import EventCapture
     from babylon.engine.services import ServiceContainer
     from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
+    from babylon.kernel.event_bus import EventBus
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.conservation_audit import ConservationAuditor
     from babylon.persistence.postgres_initialization import initialize_session

@@ -24,7 +24,7 @@ from babylon.economics.tick.types import (
 )
 
 if TYPE_CHECKING:
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +61,14 @@ class DefaultTickInitializer:
         self,
         year: int,
         county_fips: list[str],
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> SimulationTickState:
         """Seed initial SimulationTickState.
 
         Args:
             year: Starting simulation year.
             county_fips: List of county FIPS codes to include.
-            services: ServiceContainer with calculator services.
+            services: ServicesProtocol with calculator services.
 
         Returns:
             Initial SimulationTickState with seeded data.
@@ -93,13 +93,13 @@ class DefaultTickInitializer:
     def _seed_national_params(
         self,
         year: int,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> NationalTickParameters:
         """Seed national parameters from calculators.
 
         Args:
             year: Starting year.
-            services: ServiceContainer with calculators.
+            services: ServicesProtocol with calculators.
 
         Returns:
             NationalTickParameters with seeded values.
@@ -144,14 +144,14 @@ class DefaultTickInitializer:
         self,
         year: int,
         county_fips: list[str],
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> dict[str, CountyEconomicState]:
         """Seed county states from calculators.
 
         Args:
             year: Starting year.
             county_fips: FIPS codes to initialize.
-            services: ServiceContainer with calculators.
+            services: ServicesProtocol with calculators.
 
         Returns:
             Dict of FIPS -> CountyEconomicState with seeded values.

@@ -19,7 +19,7 @@ Systems implement the ``System`` protocol. Here's a complete example—a
 
 .. code-block:: python
 
-   from babylon.engine.systems.protocol import System
+   from babylon.kernel.system_protocol import System
 
 
    class PropagandaSystem:

@@ -22,11 +22,11 @@ import logging
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 from babylon.models.enums import EdgeType
 
 logger = logging.getLogger(__name__)
@@ -66,14 +66,14 @@ class ContradictionFieldSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Compute contradiction fields for all social-class nodes.
 
         Args:
             graph: Mutable graph (NetworkX or GraphProtocol).
-            services: ServiceContainer with field_registry.
+            services: ServicesProtocol with field_registry.
             context: TickContext or dict with tick and persistent_data.
         """
 
@@ -149,7 +149,7 @@ class ContradictionFieldSystem(SystemBase):
     def _step_from_oppositions(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Source contradiction_fields from the opposition layer (E0 repoint).
@@ -165,7 +165,7 @@ class ContradictionFieldSystem(SystemBase):
 
         Args:
             graph: Mutable GraphProtocol.
-            services: ServiceContainer (for field bounds).
+            services: ServicesProtocol (for field bounds).
             context: TickContext or dict with persistent_data.
         """
         persistent_data = self._get_persistent_data(context)

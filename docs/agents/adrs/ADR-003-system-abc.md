@@ -34,7 +34,7 @@ import networkx as nx
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
     from babylon.engine.context import TickContext
-    from babylon.engine.event_bus import Event
+    from babylon.kernel.event_bus import Event
     from babylon.engine.services import ServiceContainer
 
 class SystemBase(ABC):

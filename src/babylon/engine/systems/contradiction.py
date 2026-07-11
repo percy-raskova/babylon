@@ -8,7 +8,7 @@ bugs of ``project/06-lawverian-dialectics.md`` §2). Each tick the system:
    (EXPLOITATION / WAGES / TENANCY) — scale-free, recomputed from current
    wealth, never accumulated;
 2. steps the :class:`~babylon.dialectics.core.opposition.OppositionRegistry`
-   (wired by :meth:`ServiceContainer.create`) over a :class:`GraphInputs`
+   (wired by :meth:`ServicesProtocol.create`) over a :class:`GraphInputs`
    snapshot built from the live graph, deriving each opposition's gap, rate,
    and the Maoist principal contradiction;
 3. derives ``contradiction_frames`` from the registry states (intensity ← gap,
@@ -42,18 +42,18 @@ from babylon.dialectics.core.opposition import OppositionState
 from babylon.dialectics.core.regime import classify_regime
 from babylon.dialectics.instances.catalog import GraphInputs
 from babylon.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
-from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
 from babylon.engine.topology_monitor import extract_solidarity_subgraph
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_gap
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
 from babylon.models.enums import ContradictionType, EdgeMode, EdgeType, EventType
 
 if TYPE_CHECKING:
     from babylon.dialectics.core.opposition import OppositionRegistry, OppositionSpec
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
 #: Graph attribute holding ``{key: OppositionState.model_dump()}`` for the tick.
 OPPOSITION_STATES_ATTR = "opposition_states"
@@ -91,7 +91,7 @@ class ContradictionSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Write fresh per-edge tension, then step the opposition registry."""
@@ -136,7 +136,7 @@ class ContradictionSystem(SystemBase):
     def _step_registry(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
     ) -> None:
         """Step the registry, derive frames, fire rupture, stash the snapshot."""
@@ -241,7 +241,7 @@ class ContradictionSystem(SystemBase):
     def _write_frames(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         registry: OppositionRegistry[GraphInputs],
         states: tuple[OppositionState, ...],
     ) -> None:
@@ -283,7 +283,7 @@ class ContradictionSystem(SystemBase):
 
     def _maybe_rupture(
         self,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         states: tuple[OppositionState, ...],
         tick: int,
     ) -> None:
@@ -312,7 +312,7 @@ class ContradictionSystem(SystemBase):
     def _classify_regime(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         registry: OppositionRegistry[GraphInputs],
         states: tuple[OppositionState, ...],
         tick: int,

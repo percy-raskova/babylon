@@ -33,7 +33,7 @@ from babylon.models.entity_registry import (
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
-    from babylon.engine.event_bus import Event
+    from babylon.kernel.event_bus import Event
 
 
 @pytest.fixture

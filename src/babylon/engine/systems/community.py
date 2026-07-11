@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import xgi  # type: ignore[import-untyped, unused-ignore]
 
-from babylon.engine.systems.base import SystemBase
+from babylon.kernel.system_base import SystemBase
 from babylon.models.entities.community import (
     LEGAL_STATUS_MULTIPLIERS,
     ROLE_STRENGTH_WEIGHTS,
@@ -30,7 +30,7 @@ from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, ConsciousnessTendency, HyperedgeCategory, SocialRole
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 # Map SocialRole → ClassPosition name for solidarity matrix lookup (Feature 038)
 _ROLE_TO_CLASS_POSITION: dict[str, str] = {

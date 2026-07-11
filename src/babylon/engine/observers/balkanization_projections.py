@@ -24,7 +24,7 @@ from babylon.formulas.balkanization import (
 from babylon.models.enums import ExtractionPolicy
 
 if TYPE_CHECKING:  # pragma: no cover
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 
 class SovereignProjection(BaseModel):

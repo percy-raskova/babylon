@@ -12,10 +12,10 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines
-from babylon.engine.event_bus import Event
 from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
+from babylon.kernel.event_bus import Event
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 

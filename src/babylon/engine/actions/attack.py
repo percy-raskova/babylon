@@ -24,7 +24,7 @@ from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
 
 #: State attention the acting org draws for a sabotage action.
@@ -35,7 +35,7 @@ def resolve_attack(
     action: Action,
     org_attrs: dict[str, Any],  # noqa: ARG001 — heat read live from the graph
     graph: BabylonGraph,
-    services: ServiceContainer,  # noqa: ARG001 — layer3 owns the infra delta
+    services: ServicesProtocol,  # noqa: ARG001 — layer3 owns the infra delta
 ) -> ActionResult:
     """Resolve a player ATTACK action: acting-org heat + layer-3 infra decay.
 
@@ -44,7 +44,7 @@ def resolve_attack(
         org_attrs: Acting organization's node attributes (unused; heat is read
             live from the graph so concurrent same-tick writes are respected).
         graph: World graph (mutated in place on the acting org node).
-        services: ServiceContainer (unused; layer 3 sources the infra delta).
+        services: ServicesProtocol (unused; layer 3 sources the infra delta).
 
     Returns:
         :class:`~babylon.ooda.types.ActionResult` carrying the ATTACK action so

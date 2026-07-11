@@ -21,7 +21,7 @@ year-scoped ImmutableReferenceLookup queries.
 
 See Also:
     ``specs/062-cross-scale-integration/spec.md`` FR-032/FR-033.
-    :mod:`babylon.engine.systems.protocol`: System Protocol.
+    :mod:`babylon.kernel.system_protocol`: System Protocol.
 """
 
 from __future__ import annotations

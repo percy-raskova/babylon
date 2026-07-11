@@ -17,10 +17,8 @@ Sprint 9: Integration proof with Simulation facade
 from typing import Any
 
 from babylon.engine.database import DatabaseConnection
-from babylon.engine.event_bus import Event, EventBus
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.engine.formula_registry import FormulaRegistry
-from babylon.engine.graph_protocol import GraphProtocol
 from babylon.engine.history_formatter import format_class_struggle_history
 from babylon.engine.observer import SimulationObserver
 from babylon.engine.runner import AsyncSimulationRunner
@@ -74,15 +72,12 @@ __all__ = [
     "create_imperial_circuit_scenario",
     "create_high_tension_scenario",
     "create_labor_aristocracy_scenario",
-    # Dependency Injection (Sprint 3)
-    "Event",
-    "EventBus",
+    # Dependency Injection (Sprint 3). Event/EventBus/GraphProtocol moved to
+    # babylon.kernel (Program 14 Phase 1) — import them from there directly.
     "DatabaseConnection",
     "FormulaRegistry",
     "ServiceContainer",
     # Observer Pattern (Sprint 3.1)
     "SimulationObserver",
     "TopologyMonitor",
-    # Slice 1.7: Graph Abstraction Layer
-    "GraphProtocol",
 ]

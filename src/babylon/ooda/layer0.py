@@ -15,12 +15,12 @@ from babylon.ooda.types import Action, ActionResult
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
 
 
 def process_layer0(
     graph: BabylonGraph,
-    services: ServiceContainer,  # noqa: ARG001 — reserved for future event_bus usage
+    services: ServicesProtocol,  # noqa: ARG001 — reserved for future event_bus usage
 ) -> list[ActionResult]:
     """Record automatic metabolism for Business organizations.
 
@@ -29,7 +29,7 @@ def process_layer0(
 
     Args:
         graph: World graph containing organization nodes.
-        services: ServiceContainer (for event_bus).
+        services: ServicesProtocol (for event_bus).
 
     Returns:
         List of ActionResult from auto-metabolism.

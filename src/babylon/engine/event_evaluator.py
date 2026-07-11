@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.models.entities.event_template import (
         EdgeCondition,
         EventTemplate,
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 def _ensure_protocol(graph: GraphProtocol) -> GraphProtocol:
     """Validate that the graph satisfies GraphProtocol (fail loud)."""
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
 
     if isinstance(graph, GraphProtocol):
         return graph

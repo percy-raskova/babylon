@@ -54,9 +54,9 @@ class TestServiceContainer:
     def test_all_services_accessible_as_attributes(self) -> None:
         """All services are accessible as named attributes."""
         from babylon.engine.database import DatabaseConnection
-        from babylon.engine.event_bus import EventBus
         from babylon.engine.formula_registry import FormulaRegistry
         from babylon.engine.services import ServiceContainer
+        from babylon.kernel.event_bus import EventBus
         from babylon.models.config import SimulationConfig
 
         container = ServiceContainer.create()
@@ -72,8 +72,8 @@ class TestServiceContainer:
 
     def test_event_bus_is_functional(self) -> None:
         """The event bus in the container is fully functional."""
-        from babylon.engine.event_bus import Event
         from babylon.engine.services import ServiceContainer
+        from babylon.kernel.event_bus import Event
 
         container = ServiceContainer.create()
         received: list[Event] = []
@@ -142,7 +142,7 @@ class TestServiceContainer:
 
             # They should have independent event buses
             container1.event_bus.publish(
-                __import__("babylon.engine.event_bus", fromlist=["Event"]).Event(
+                __import__("babylon.kernel.event_bus", fromlist=["Event"]).Event(
                     type="test", tick=0, payload={}
                 )
             )

@@ -28,7 +28,7 @@ from babylon.engine.context import TickContext
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
-from babylon.engine.systems.protocol import System
+from babylon.kernel.system_protocol import System
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.sovereign import Sovereign
 from babylon.models.entities.territory import Territory

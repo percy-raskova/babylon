@@ -19,12 +19,12 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 from babylon.models.enums import ContradictionCharacter, EdgeMode, EventType
 
 logger = logging.getLogger(__name__)
@@ -576,14 +576,14 @@ class EdgeTransitionSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Evaluate predicates and fire edge mode transitions.
 
         Args:
             graph: Mutable graph (NetworkX or GraphProtocol).
-            services: ServiceContainer with field_registry.
+            services: ServicesProtocol with field_registry.
             context: TickContext or dict with tick and persistent_data.
         """
 
@@ -694,7 +694,7 @@ class EdgeTransitionSystem(SystemBase):
 def _co_optive_suppression(
     graph: GraphProtocol,
     latent: dict[str, dict[str, float]],
-    services: ServiceContainer,
+    services: ServicesProtocol,
 ) -> None:
     """Suppress df/dt at co-opted nodes for declared fields (FR-014).
 
@@ -746,7 +746,7 @@ def _handle_co_optive_breakdowns(
     _graph: GraphProtocol,
     breakdowns: list[tuple[str, str, str]],
     latent: dict[str, dict[str, float]],
-    services: ServiceContainer,
+    services: ServicesProtocol,
     tick: int,
 ) -> None:
     """Handle CO-OPTIVE breakdowns: release latent contradictions (FR-015).
@@ -800,7 +800,7 @@ def _check_aspect_reversal(
     edge: Any,
     source_attrs: dict[str, Any],
     target_attrs: dict[str, Any],
-    services: ServiceContainer,
+    services: ServicesProtocol,
     tick: int,
 ) -> None:
     """Detect and emit aspect reversal events (FR-019).

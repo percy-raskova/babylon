@@ -17,10 +17,10 @@ from unittest.mock import MagicMock
 import networkx as nx
 import pytest
 
-from babylon.engine.event_bus import Event, EventBus
 from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.event_template import EventTemplateSystem
+from babylon.kernel.event_bus import Event, EventBus
 from babylon.models.entities.event_template import (
     EventEmission,
     EventTemplate,

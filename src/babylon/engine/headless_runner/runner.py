@@ -43,7 +43,6 @@ except ImportError:  # pragma: no cover - tqdm is a hard dep
 from babylon.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.economics.county_exposure import load_county_exposure_map
 from babylon.engine.context import TickContext
-from babylon.engine.event_bus import EventBus
 from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
 from babylon.engine.headless_runner.event_capture import EventCapture
@@ -68,6 +67,8 @@ from babylon.engine.headless_runner.storage_probe import query_storage_footprint
 from babylon.engine.headless_runner.trace_emitter import TRACE_COLUMNS, TraceEmitter
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
+from babylon.kernel.event_bus import EventBus
+from babylon.kernel.services import ServicesProtocol
 from babylon.models.world_state import WorldState
 
 _LOG = logging.getLogger("babylon.engine.headless_runner")
@@ -330,7 +331,7 @@ def _advance_tick(
     tick: int,
     determinism_hash: str,
     engine: SimulationEngine | None = None,
-    services: ServiceContainer | None = None,
+    services: ServicesProtocol | None = None,
     graph: Any = None,
     session_id: UUID | None = None,
     county_exposure_by_external: dict[str, dict[str, float]] | None = None,
@@ -1323,7 +1324,7 @@ def _tick_loop(
     per_tick_durations: list[float],
     graph: Any = None,
     engine: SimulationEngine | None = None,
-    services: ServiceContainer | None = None,
+    services: ServicesProtocol | None = None,
     county_exposure_by_external: dict[str, dict[str, float]] | None = None,
     external_nodes_phi: dict[str, float] | None = None,
 ) -> tuple[int, dict[str, Any] | None]:

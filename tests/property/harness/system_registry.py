@@ -23,7 +23,7 @@ import pkgutil
 from functools import lru_cache
 
 import babylon.engine.systems as engine_systems_pkg
-from babylon.engine.systems.protocol import System
+from babylon.kernel.system_protocol import System
 
 _MIN_EXPECTED_SYSTEMS = 21
 """Minimum System count expected at registry build time. Empirically verified

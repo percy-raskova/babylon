@@ -19,7 +19,7 @@ from typing import Literal
 from babylon.engine.context import TickContext
 from babylon.engine.invariants import Invariant, InvariantResult
 from babylon.engine.services import ServiceContainer
-from babylon.engine.systems.protocol import System
+from babylon.kernel.system_protocol import System
 from babylon.models.world_state import WorldState
 
 from .system_registry import all_systems

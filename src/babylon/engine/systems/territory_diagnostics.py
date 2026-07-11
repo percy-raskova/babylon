@@ -20,12 +20,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from babylon.engine.systems.base import SystemBase
+from babylon.kernel.system_base import SystemBase
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 
 @dataclass(frozen=True)

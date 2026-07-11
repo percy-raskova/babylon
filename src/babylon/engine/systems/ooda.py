@@ -14,8 +14,8 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 from babylon.models.enums import EventType, OrgType
 from babylon.ooda.cycle_time import compute_cycle_time
 from babylon.ooda.initiative import (
@@ -30,8 +30,8 @@ from babylon.ooda.types import ActionResult, InitiativeScore, OODAProfile, TurnR
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
 
 class OODASystem(SystemBase):
@@ -51,14 +51,14 @@ class OODASystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Execute OODA loop for all organizations.
 
         Args:
             graph: Mutable world graph.
-            services: ServiceContainer with defines, event_bus.
+            services: ServicesProtocol with defines, event_bus.
             context: TickContext or dict with 'tick'.
         """
         defines = services.defines.ooda
@@ -165,7 +165,7 @@ class OODASystem(SystemBase):
 
         # Emit summary event
         if services.event_bus:
-            from babylon.engine.event_bus import Event
+            from babylon.kernel.event_bus import Event
 
             services.event_bus.publish(
                 Event(
@@ -186,7 +186,7 @@ class OODASystem(SystemBase):
         player_actions: dict[str, Any],
         defines: Any,
         graph: BabylonGraph,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> list[ActionResult]:
         """Resolve one organization's action(s) for the current tick.
 
@@ -206,7 +206,7 @@ class OODASystem(SystemBase):
             defines: OODA defines from services.defines.ooda.
             graph: Mutable world graph (threaded to the player-verb
                 resolvers so they can apply real effects).
-            services: ServiceContainer (defines) for the resolvers.
+            services: ServicesProtocol (defines) for the resolvers.
 
         Returns:
             List of ``ActionResult`` produced for this organization

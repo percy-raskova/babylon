@@ -30,7 +30,7 @@ from tests.property.harness.system_registry import all_systems
 from tests.property.strategies.worldstate import worldstate_strategy
 
 if TYPE_CHECKING:
-    from babylon.engine.systems.protocol import System
+    from babylon.kernel.system_protocol import System
 
 # --------------------------------------------------------------------------- #
 # Per-System session results — collected by Predicate A, asserted by C        #

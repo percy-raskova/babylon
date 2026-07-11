@@ -18,7 +18,7 @@ from babylon.ooda.action_effects import resolve_action
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action, ActionResult
 
 
@@ -26,7 +26,7 @@ def resolve_educate(
     action: Action,
     org_attrs: dict[str, Any],
     graph: BabylonGraph,
-    services: ServiceContainer,
+    services: ServicesProtocol,
 ) -> ActionResult:
     """Resolve a player EDUCATE action into a real consciousness effect.
 
@@ -34,7 +34,7 @@ def resolve_educate(
         action: The EDUCATE action (``action_type == ActionType.EDUCATE``).
         org_attrs: Acting organization's node attributes.
         graph: World graph (read-only for this verb).
-        services: ServiceContainer providing the OODA/organization/reactionary
+        services: ServicesProtocol providing the OODA/organization/reactionary
             defines.
 
     Returns:

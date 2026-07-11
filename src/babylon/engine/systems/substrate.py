@@ -13,7 +13,7 @@ spec that owns physical-substrate dynamics.
 
 See Also:
     ``specs/062-cross-scale-integration/spec.md`` FR-050/FR-051/FR-052.
-    :mod:`babylon.engine.systems.protocol`: System Protocol.
+    :mod:`babylon.kernel.system_protocol`: System Protocol.
 """
 
 from __future__ import annotations
@@ -21,12 +21,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, ClassVar
 
-from babylon.engine.systems.base import SystemBase
+from babylon.kernel.system_base import SystemBase
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
-    from babylon.engine.systems.protocol import ContextType
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
+    from babylon.kernel.system_protocol import ContextType
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ class SubstrateSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Update substrate stocks for every hex node.

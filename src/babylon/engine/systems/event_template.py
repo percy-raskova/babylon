@@ -12,17 +12,17 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.engine.event_bus import Event
 from babylon.engine.event_evaluator import (
     evaluate_template,
     get_matching_nodes_for_resolution,
 )
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
     from babylon.models.entities.event_template import (
         EventTemplate,
         Resolution,
@@ -87,14 +87,14 @@ class EventTemplateSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Evaluate templates and apply matching resolutions.
 
         Args:
             graph: Mutable graph representing WorldState.
-            services: ServiceContainer with config, formulas, event_bus, database.
+            services: ServicesProtocol with config, formulas, event_bus, database.
             context: TickContext or dict with 'tick' (int) and optional metadata.
         """
 
@@ -139,7 +139,7 @@ class EventTemplateSystem(SystemBase):
         template: EventTemplate,
         resolution: Resolution,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
     ) -> None:
         """Apply effects and emit events for a resolution.
@@ -148,7 +148,7 @@ class EventTemplateSystem(SystemBase):
             template: The triggered EventTemplate.
             resolution: The selected Resolution.
             graph: Graph to modify.
-            services: ServiceContainer with event_bus.
+            services: ServicesProtocol with event_bus.
             tick: Current simulation tick.
         """
         # Get matching nodes for ${node_id} substitution

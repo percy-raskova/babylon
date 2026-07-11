@@ -23,7 +23,7 @@ from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
 
 #: Fraction of a transferred amount that reaches the target (rest is overhead).
@@ -34,7 +34,7 @@ def resolve_aid(
     action: Action,
     org_attrs: dict[str, Any],
     graph: BabylonGraph,
-    services: ServiceContainer,
+    services: ServicesProtocol,
 ) -> ActionResult:
     """Resolve a player AID action: consciousness effect + material transfer.
 
@@ -42,7 +42,7 @@ def resolve_aid(
         action: The AID action (``action_type == ActionType.PROVIDE_SERVICE``).
         org_attrs: Acting organization's node attributes.
         graph: World graph (mutated when a transfer occurs).
-        services: ServiceContainer providing defines.
+        services: ServicesProtocol providing defines.
 
     Returns:
         :class:`~babylon.ooda.types.ActionResult` with the consciousness delta

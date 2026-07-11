@@ -17,15 +17,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.engine.event_bus import Event
+from babylon.kernel.event_bus import Event
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 
 # Prisoner classes (internal proletariat + lumpen)
 _PRISONER_ROLES: frozenset[SocialRole] = frozenset(
@@ -101,7 +101,7 @@ class ControlRatioSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Check control ratio and emit crisis/terminal decision events with delays.
@@ -173,7 +173,7 @@ class ControlRatioSystem(SystemBase):
 
     def _emit_crisis(
         self,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
         enforcer_pop: int,
         prisoner_pop: int,
@@ -208,7 +208,7 @@ class ControlRatioSystem(SystemBase):
 
     def _emit_terminal_decision(
         self,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
         avg_organization: float,
         prisoner_pop: int,

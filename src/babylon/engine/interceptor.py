@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
 
 if TYPE_CHECKING:
-    from babylon.engine.event_bus import Event
+    from babylon.kernel.event_bus import Event
 
 
 class WorldContext(Protocol):

@@ -30,7 +30,7 @@ Services
 Event Bus
 ---------
 
-.. automodule:: babylon.engine.event_bus
+.. automodule:: babylon.kernel.event_bus
    :members:
    :undoc-members:
    :show-inheritance:

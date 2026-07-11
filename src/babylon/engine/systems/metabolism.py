@@ -15,18 +15,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-from babylon.engine.event_bus import Event
-from babylon.engine.services import ServiceContainer
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
 from babylon.formulas import (
     calculate_biocapacity_delta,
     calculate_overshoot_ratio,
 )
+from babylon.kernel.event_bus import Event
+from babylon.kernel.services import ServicesProtocol
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 
 class MetabolismSystem(SystemBase):
@@ -51,7 +51,7 @@ class MetabolismSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Apply metabolic rift logic to the world graph.
@@ -61,7 +61,7 @@ class MetabolismSystem(SystemBase):
 
         Args:
             graph: Graph via GraphProtocol.
-            services: ServiceContainer with config, formulas, event_bus, database.
+            services: ServicesProtocol with config, formulas, event_bus, database.
             context: Dict or TickContext with 'tick' (int) key.
         """
 

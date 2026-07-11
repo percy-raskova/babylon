@@ -39,8 +39,8 @@ from sqlalchemy.orm import Session
 from babylon.config.defines import LeontiefRentDefines
 from babylon.core.protocol_kit import CachedSource
 from babylon.economics.tensor import NoDataSentinel
-from babylon.engine.event_bus import Event, EventBus
 from babylon.formulas.constants import HOURS_PER_YEAR
+from babylon.kernel.event_bus import Event, EventBus
 from babylon.models.enums import EventType
 from babylon.models.events import PhiHourOutlierEvent, QcewCarryForwardEvent
 from babylon.reference.schema import (

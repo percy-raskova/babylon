@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any, Protocol, Union, runtime_checkable
 
 if TYPE_CHECKING:
     from babylon.engine.context import TickContext
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
 # Type alias for context parameter - accepts both legacy dict and typed TickContext
 ContextType = Union[dict[str, Any], "TickContext"]
@@ -25,14 +25,14 @@ class System(Protocol):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Apply system logic to the world graph.
 
         Args:
             graph: Mutable NetworkX graph representing WorldState.
-            services: ServiceContainer with config, formulas, event_bus, database.
+            services: ServicesProtocol with config, formulas, event_bus, database.
             context: TickContext or dict with 'tick' (int) and optional metadata.
                 TickContext is the preferred type; dict is supported for backward
                 compatibility with existing tests.

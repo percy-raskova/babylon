@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Literal
 from babylon.engine.context import TickContext
 from babylon.engine.invariants import Invariant, InvariantResult
 from babylon.engine.services import ServiceContainer
-from babylon.engine.systems.protocol import System
+from babylon.kernel.system_protocol import System
 from babylon.models.world_state import WorldState
 
 from .bound_harness import HarnessResult

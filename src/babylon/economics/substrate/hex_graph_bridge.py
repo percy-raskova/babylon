@@ -20,7 +20,7 @@ from :mod:`babylon.economics.tick.graph_bridge`.
 See Also:
     :mod:`babylon.economics.substrate.aggregation`: Aggregator methods.
     :mod:`babylon.economics.tick.graph_bridge`: County-level bridge.
-    :mod:`babylon.engine.graph_protocol`: GraphProtocol interface.
+    :mod:`babylon.kernel.graph_protocol`: GraphProtocol interface.
 """
 
 from __future__ import annotations
@@ -32,8 +32,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.infrastructure.types import TerrainClassification
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 from babylon.economics.substrate.aggregation import DefaultResolutionAggregator
 from babylon.economics.substrate.types import HexGrid

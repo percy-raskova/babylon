@@ -31,13 +31,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from babylon.economics.tensor import NoDataSentinel
-from babylon.engine.event_bus import Event
+from babylon.kernel.event_bus import Event
 from babylon.models.enums import EventType
 from babylon.models.events import QcewCarryForwardEvent
 
 if TYPE_CHECKING:
     from babylon.economics.tick.types import CountyEconomicState, NationalTickParameters
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
 
 __all__ = ["compute"]
 
@@ -45,7 +45,7 @@ __all__ = ["compute"]
 def compute(
     county_states: dict[str, CountyEconomicState],
     national_params: NationalTickParameters,
-    services: ServiceContainer,
+    services: ServicesProtocol,
 ) -> dict[str, CountyEconomicState]:
     """Compute per-county phi_hour via the Leontief production chain.
 
@@ -72,7 +72,7 @@ def compute(
     Args:
         county_states: Current per-county state dict (frozen Pydantic models).
         national_params: Year-scoped national context (provides tick year).
-        services: ServiceContainer carrying the 4 Spec 057 fields plus
+        services: ServicesProtocol carrying the 4 Spec 057 fields plus
             event_bus, defines, and database session.
 
     Returns:
@@ -155,7 +155,7 @@ def compute(
 # =============================================================================
 
 
-def _spec_057_pipeline_wired(services: ServiceContainer) -> bool:
+def _spec_057_pipeline_wired(services: ServicesProtocol) -> bool:
     """Returns True iff all 4 Spec 057 services + bea_industries are non-None."""
     return all(
         getattr(services, attr, None) is not None
@@ -169,10 +169,10 @@ def _spec_057_pipeline_wired(services: ServiceContainer) -> bool:
     )
 
 
-def _publish_pipeline_unwired_signal(services: ServiceContainer, *, year: int) -> None:
+def _publish_pipeline_unwired_signal(services: ServicesProtocol, *, year: int) -> None:
     """Emit one sentinel QcewCarryForwardEvent signaling pipeline-not-wired.
 
-    Per data-model.md ServiceContainer "Validation invariant": the
+    Per data-model.md ServicesProtocol "Validation invariant": the
     ``county_fips="*"`` + ``look_back_distance=0`` payload is the
     "Spec 057 pipeline not wired" sentinel pattern. (Originally proposed as
     -1 in the contract but bound-tightened to ge=0 at the model layer; we
@@ -194,7 +194,7 @@ def _publish_pipeline_unwired_signal(services: ServiceContainer, *, year: int) -
     )
 
 
-def _publish_no_data_signal(services: ServiceContainer, *, year: int, source_name: str) -> None:
+def _publish_no_data_signal(services: ServicesProtocol, *, year: int, source_name: str) -> None:
     """Emit one sentinel QcewCarryForwardEvent signaling source returned NoData.
 
     Same wildcard-fips pattern as ``_publish_pipeline_unwired_signal``; the

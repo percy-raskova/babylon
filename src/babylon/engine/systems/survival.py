@@ -17,11 +17,11 @@ from typing import TYPE_CHECKING, ClassVar
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 
 
 def _calculate_solidarity_multiplier(
@@ -79,7 +79,7 @@ class SurvivalSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         _context: ContextType,
     ) -> None:
         """Update P(S|A) and P(S|R) for all entities.

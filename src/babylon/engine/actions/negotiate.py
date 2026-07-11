@@ -20,7 +20,7 @@ from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
 
 #: Minimum ``cohesion + cadre_level`` to bring a counterparty to the table.
@@ -45,7 +45,7 @@ def resolve_negotiate(
     action: Action,
     org_attrs: dict[str, Any],
     graph: BabylonGraph,
-    services: ServiceContainer,  # noqa: ARG001 — no NegotiateDefines yet
+    services: ServicesProtocol,  # noqa: ARG001 — no NegotiateDefines yet
 ) -> ActionResult:
     """Resolve a player NEGOTIATE action: flip or forge a TRANSACTIONAL edge.
 
@@ -53,7 +53,7 @@ def resolve_negotiate(
         action: The NEGOTIATE action (``action_type == ActionType.PROPOSE_ALLIANCE``).
         org_attrs: Acting organization's node attributes (leverage source).
         graph: World graph (mutated in place on the org→target edge).
-        services: ServiceContainer (unused; no NegotiateDefines exist yet).
+        services: ServicesProtocol (unused; no NegotiateDefines exist yet).
 
     Returns:
         :class:`~babylon.ooda.types.ActionResult`; ``success=False`` when the

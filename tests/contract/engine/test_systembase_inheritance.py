@@ -15,7 +15,7 @@ import importlib
 
 import pytest
 
-from babylon.engine.systems.base import SystemBase
+from babylon.kernel.system_base import SystemBase
 
 # (module_path, class_name) — keep alphabetised by module within each grouping.
 SYSTEMS: list[tuple[str, str]] = [

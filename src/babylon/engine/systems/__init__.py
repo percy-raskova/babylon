@@ -14,7 +14,6 @@ from babylon.engine.systems.edge_transition import EdgeTransitionSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.production import ProductionSystem
-from babylon.engine.systems.protocol import System
 from babylon.engine.systems.reserve_army import ReserveArmySystem
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.engine.systems.struggle import StruggleSystem
@@ -22,8 +21,9 @@ from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.engine.systems.vitality import VitalitySystem
 
+# The System protocol moved to babylon.kernel.system_protocol (Program 14
+# Phase 1) — import it from the kernel directly.
 __all__ = [
-    "System",
     "VitalitySystem",
     "ProductionSystem",
     "ImperialRentSystem",

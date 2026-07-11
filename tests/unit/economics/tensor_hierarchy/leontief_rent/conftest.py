@@ -36,7 +36,7 @@ class CapturedEvent:
 
 
 class FakeEventBus:
-    """Test stand-in for ``babylon.engine.event_bus.EventBus`` that captures
+    """Test stand-in for ``babylon.kernel.event_bus.EventBus`` that captures
     every ``publish(Event(...))`` call into an ordered list.
 
     Tests assert via ``bus.history`` rather than wiring real subscribers.

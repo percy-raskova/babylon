@@ -25,15 +25,15 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase
 from babylon.formulas.balkanization import calculate_metabolic_impact
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_base import SystemBase
 from babylon.models.enums import EventType, ExtractionPolicy
 
 if TYPE_CHECKING:  # pragma: no cover
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
-    from babylon.engine.systems.protocol import ContextType
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
+    from babylon.kernel.system_protocol import ContextType
 
 
 class SovereigntySystem(SystemBase):
@@ -67,7 +67,7 @@ class SovereigntySystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         wrapped = self._wrap_graph(graph)

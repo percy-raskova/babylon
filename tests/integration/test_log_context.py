@@ -22,7 +22,7 @@ import pytest
 from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import SimulationEngine
-from babylon.engine.systems.protocol import ContextType, System
+from babylon.kernel.system_protocol import ContextType, System
 
 
 class LogCapturingHandler(logging.Handler):

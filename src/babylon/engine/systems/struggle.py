@@ -33,16 +33,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.engine.event_bus import Event
 from babylon.formulas.reactionary import calculate_spontaneous_riot_risk
+from babylon.kernel.event_bus import Event
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase, resolve_rng
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase, resolve_rng
+from babylon.kernel.system_protocol import ContextType
 
 # Social roles that can participate in struggle/uprising
 _STRUGGLING_ROLES: frozenset[SocialRole] = frozenset(
@@ -259,7 +259,7 @@ class StruggleSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Apply struggle dynamics to all eligible entities.
@@ -429,7 +429,7 @@ class StruggleSystem(SystemBase):
     def _check_spontaneous_riot(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Spec-071: LUMPENPROLETARIAT undirected disorder gated on volatility.
@@ -493,7 +493,7 @@ class StruggleSystem(SystemBase):
     def _check_power_vacuum(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Check for Comprador insolvency and apply George Jackson bifurcation.
@@ -559,7 +559,7 @@ class StruggleSystem(SystemBase):
     def _apply_revolutionary_offensive(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         p_w_id: str,
         p_w_data: dict[str, Any],
         revolutionary_capacity: float,
@@ -596,7 +596,7 @@ class StruggleSystem(SystemBase):
     def _apply_fascist_revanchism(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         p_w_id: str,  # noqa: ARG002 - kept for API consistency
         revolutionary_capacity: float,
         tick: int,
@@ -647,7 +647,7 @@ class StruggleSystem(SystemBase):
     def _check_peripheral_revolt(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Check for peripheral revolt and sever EXPLOITATION edges.

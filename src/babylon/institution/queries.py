@@ -10,7 +10,7 @@ See Also:
 
 from __future__ import annotations
 
-from babylon.engine.graph_protocol import GraphProtocol
+from babylon.kernel.graph_protocol import GraphProtocol
 from babylon.models.entities.institution import Institution
 
 

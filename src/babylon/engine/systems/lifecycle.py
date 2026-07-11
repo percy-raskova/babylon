@@ -20,14 +20,14 @@ from babylon.economics.lifecycle.inheritance import DefaultInheritanceCalculator
 from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculator
 from babylon.economics.lifecycle.mobility import DefaultClassMobilityCalculator
 from babylon.economics.lifecycle.types import ClassMobilityParams, DPDState, LegitimationState
-from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 from babylon.models.enums import EventType, LegitimationClassification
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class LifecycleSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Execute lifecycle circuit for one tick.

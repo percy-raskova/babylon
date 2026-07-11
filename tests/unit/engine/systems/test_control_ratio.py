@@ -21,10 +21,10 @@ from collections.abc import Generator
 import networkx as nx
 import pytest
 
-from babylon.engine.event_bus import Event
 from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.control_ratio import ControlRatioSystem
+from babylon.kernel.event_bus import Event
 from babylon.models.enums import EventType, SocialRole
 
 

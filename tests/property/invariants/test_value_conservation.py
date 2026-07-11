@@ -40,7 +40,7 @@ from hypothesis import HealthCheck, example, given, settings
 
 import babylon.engine.systems as engine_systems_pkg
 from babylon.economics.substrate.types import HexEconomicState, HexGrid
-from babylon.engine.systems.protocol import System
+from babylon.kernel.system_protocol import System
 from tests.property.strategies.hex_grid import hex_grid_strategy
 
 # --------------------------------------------------------------------------- #

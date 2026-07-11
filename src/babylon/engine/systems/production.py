@@ -33,11 +33,11 @@ from babylon.economics.tensor import NoDataSentinel
 from babylon.models.enums import EdgeType, SocialRole
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ class ProductionSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Generate wealth for workers and set extraction_intensity.
@@ -115,7 +115,7 @@ class ProductionSystem(SystemBase):
         # TickDynamicsSystem._determine_year / babylon.sim_clock
         # (``base_year + tick // weeks_per_year``) — reconciled here rather
         # than centralized, since those two call sites don't take a
-        # ServiceContainer/weeks_per_year the same way this one does.
+        # ServicesProtocol/weeks_per_year the same way this one does.
         tick: int
         if hasattr(context, "tick"):
             tick = context.tick

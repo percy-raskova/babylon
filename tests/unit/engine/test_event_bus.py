@@ -22,7 +22,7 @@ class TestEvent:
 
     def test_event_creation_with_required_fields(self) -> None:
         """Event can be created with type, tick, and payload."""
-        from babylon.engine.event_bus import Event
+        from babylon.kernel.event_bus import Event
 
         event = Event(type="test_event", tick=1, payload={"key": "value"})
 
@@ -32,7 +32,7 @@ class TestEvent:
 
     def test_event_timestamp_is_deterministic_function_of_tick(self) -> None:
         """III.7: the default timestamp derives from tick, not wall clock."""
-        from babylon.engine.event_bus import Event
+        from babylon.kernel.event_bus import Event
         from babylon.sim_clock import sim_datetime
 
         event_a = Event(type="test", tick=3, payload={})
@@ -42,7 +42,7 @@ class TestEvent:
 
     def test_event_is_frozen_immutable(self) -> None:
         """Event is immutable (frozen dataclass)."""
-        from babylon.engine.event_bus import Event
+        from babylon.kernel.event_bus import Event
 
         event = Event(type="test", tick=0, payload={})
 
@@ -51,7 +51,7 @@ class TestEvent:
 
     def test_event_equality(self) -> None:
         """Two events with same values are equal (except timestamp)."""
-        from babylon.engine.event_bus import Event
+        from babylon.kernel.event_bus import Event
 
         timestamp = datetime.now()
         event1 = Event(type="test", tick=1, payload={"a": 1}, timestamp=timestamp)
@@ -65,7 +65,7 @@ class TestEventBus:
 
     def test_handler_receives_published_event(self) -> None:
         """A subscribed handler receives the published event."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
         received_events: list[Event] = []
@@ -82,7 +82,7 @@ class TestEventBus:
 
     def test_multiple_subscribers_all_called(self) -> None:
         """Multiple subscribers to the same event type are all notified."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
         calls: list[str] = []
@@ -103,7 +103,7 @@ class TestEventBus:
 
     def test_subscribers_only_receive_matching_event_type(self) -> None:
         """Subscribers only receive events of the type they subscribed to."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
         tick_events: list[Event] = []
@@ -126,7 +126,7 @@ class TestEventBus:
 
     def test_publish_to_type_with_no_subscribers_does_not_error(self) -> None:
         """Publishing to an event type with no subscribers is a no-op."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
         # Should not raise
@@ -134,7 +134,7 @@ class TestEventBus:
 
     def test_history_stores_events_in_order(self) -> None:
         """Event history preserves chronological order."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
 
@@ -155,7 +155,7 @@ class TestEventBus:
 
     def test_clear_history_empties_event_log(self) -> None:
         """clear_history removes all stored events."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
         bus.publish(Event(type="test", tick=1, payload={}))
@@ -169,7 +169,7 @@ class TestEventBus:
 
     def test_get_history_returns_copy(self) -> None:
         """get_history returns a copy, not the internal list."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
         bus.publish(Event(type="test", tick=1, payload={}))
@@ -182,7 +182,7 @@ class TestEventBus:
 
     def test_event_bus_initially_empty(self) -> None:
         """A new EventBus has no history and no subscribers."""
-        from babylon.engine.event_bus import EventBus
+        from babylon.kernel.event_bus import EventBus
 
         bus = EventBus()
 
@@ -194,7 +194,7 @@ class TestHandlerIsolation:
 
     def test_raising_handler_does_not_starve_later_handlers(self) -> None:
         """Every handler receives the event; failures re-raise as ExceptionGroup."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
         calls: list[str] = []
@@ -217,7 +217,7 @@ class TestHandlerIsolation:
 
     def test_handler_failure_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         """Handler failures are logger.exception-logged, never silent."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
 
@@ -227,7 +227,7 @@ class TestHandlerIsolation:
         bus.subscribe("tick", bad_handler)
 
         with (
-            caplog.at_level(logging.ERROR, logger="babylon.engine.event_bus"),
+            caplog.at_level(logging.ERROR, logger="babylon.kernel.event_bus"),
             pytest.raises(ExceptionGroup),
         ):
             bus.publish(Event(type="tick", tick=2, payload={}))
@@ -236,7 +236,7 @@ class TestHandlerIsolation:
 
     def test_all_green_fanout_raises_nothing(self) -> None:
         """A fan-out with no failures raises nothing."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
         calls: list[str] = []
@@ -250,7 +250,7 @@ class TestHandlerIsolation:
 
     def test_history_retains_event_despite_failing_fanout(self) -> None:
         """History append precedes fan-out, so the event is never lost."""
-        from babylon.engine.event_bus import Event, EventBus
+        from babylon.kernel.event_bus import Event, EventBus
 
         bus = EventBus()
 

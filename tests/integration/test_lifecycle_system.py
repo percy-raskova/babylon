@@ -14,9 +14,9 @@ from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculat
 from babylon.economics.lifecycle.types import LegitimationState
 from babylon.engine.context import TickContext
 from babylon.engine.graph import BabylonGraph
-from babylon.engine.graph_protocol import GraphProtocol
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.lifecycle import LifecycleSystem
+from babylon.kernel.graph_protocol import GraphProtocol
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import SectorType
 

@@ -7,7 +7,7 @@ Lifts the shared scaffolding that the 22 System implementations duplicate:
 - the publish-via-event-bus shorthand
 
 The companion ``System`` Protocol in
-:mod:`babylon.engine.systems.protocol` is preserved for structural typing
+:mod:`babylon.kernel.system_protocol` is preserved for structural typing
 (tests, mocks). PEP 544 explicitly supports this dual-export pattern.
 
 Per ADR-003 (Bundle 2 / Spec 059) and research.md D1 (22 Systems, not 23).
@@ -20,18 +20,18 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 if TYPE_CHECKING:
-    from babylon.engine.event_bus import Event
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
-    from babylon.engine.systems.protocol import ContextType
+    from babylon.kernel.event_bus import Event
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
+    from babylon.kernel.system_protocol import ContextType
     from babylon.models.graph import GraphNode
 
 #: Seed salt shared by all System-level stochastic rolls (III.7).
 _SYSTEM_RNG_SEED_SALT: Final[int] = 0xBA1AC1A
 
 
-def resolve_rng(services: ServiceContainer, tick: int) -> random.Random:
+def resolve_rng(services: ServicesProtocol, tick: int) -> random.Random:
     """Seed-deterministic RNG for stochastic System rolls (III.7).
 
     Prefers ``services.rng`` when a harness injects one; otherwise a
@@ -74,12 +74,12 @@ class SystemBase(ABC):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Apply system logic to the world graph (in-place mutation).
 
-        The signature matches :class:`babylon.engine.systems.protocol.System`
+        The signature matches :class:`babylon.kernel.system_protocol.System`
         exactly. The engine (and all test fixtures) pass a
         :class:`~babylon.engine.graph.BabylonGraph`, which satisfies
         ``GraphProtocol``.
@@ -97,7 +97,7 @@ class SystemBase(ABC):
         Raises:
             TypeError: If ``graph`` does not satisfy :class:`GraphProtocol`.
         """
-        from babylon.engine.graph_protocol import GraphProtocol
+        from babylon.kernel.graph_protocol import GraphProtocol
 
         if not isinstance(graph, GraphProtocol):
             raise TypeError(
@@ -169,7 +169,7 @@ class SystemBase(ABC):
         return attrs.get(key, default)
 
     @staticmethod
-    def _publish(services: ServiceContainer, event: Event) -> None:
+    def _publish(services: ServicesProtocol, event: Event) -> None:
         """Publish an event via ``services.event_bus``."""
         services.event_bus.publish(event)
 

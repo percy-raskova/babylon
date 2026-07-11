@@ -17,7 +17,7 @@ from babylon.config.defines.balkanization import BalkanizationDefines
 from babylon.models.enums import ColonialStance, ExtractionPolicy
 
 if TYPE_CHECKING:  # pragma: no cover - import-only
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 
 # StanceToPolicyMapping (data-model.md §3.2). Deterministic.

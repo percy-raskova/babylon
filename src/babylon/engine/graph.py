@@ -1,6 +1,6 @@
 """BabylonGraph: the rustworkx-backed graph substrate (Amendment L, ADR052).
 
-One class is BOTH the :class:`~babylon.engine.graph_protocol.GraphProtocol`
+One class is BOTH the :class:`~babylon.kernel.graph_protocol.GraphProtocol`
 implementation AND the authoring API (constitution II.12). The rustworkx
 core provides Rust-speed algorithms; insertion-ordered Python mirrors
 provide NetworkX's exact iteration contract so event ordering — and with

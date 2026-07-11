@@ -16,8 +16,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.engine.graph import BabylonGraph
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import System
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import System
 from babylon.models.graph import GraphNode
 
 
@@ -55,7 +55,7 @@ class TestWrapGraph:
     def test_wraps_raw_networkx(self) -> None:
         g = BabylonGraph()
         wrapped = SystemBase._wrap_graph(g)
-        from babylon.engine.graph_protocol import GraphProtocol
+        from babylon.kernel.graph_protocol import GraphProtocol
 
         assert isinstance(wrapped, GraphProtocol)
 

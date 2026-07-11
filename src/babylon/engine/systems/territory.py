@@ -28,11 +28,11 @@ from babylon.models.enums import (
 )
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 
 
 class TerritorySystem(SystemBase):
@@ -79,7 +79,7 @@ class TerritorySystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Apply territorial dynamics to the graph.
@@ -102,7 +102,7 @@ class TerritorySystem(SystemBase):
     def _process_heat_dynamics(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         """Process heat accumulation/decay based on operational profile.
 
@@ -192,7 +192,7 @@ class TerritorySystem(SystemBase):
     def _process_eviction_pipeline(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Process eviction pipeline for territories.
@@ -265,7 +265,7 @@ class TerritorySystem(SystemBase):
     def _process_spillover(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         """Process heat spillover via ADJACENCY edges.
 
@@ -306,7 +306,7 @@ class TerritorySystem(SystemBase):
     def _process_necropolitics(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         """Process necropolitical effects on sink nodes.
 

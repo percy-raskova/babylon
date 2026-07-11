@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.engine.event_bus import Event
+from babylon.kernel.event_bus import Event
 from babylon.models.enums import EventType
 from babylon.models.events import (
     AxiomViolationEvent,

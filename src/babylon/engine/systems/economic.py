@@ -7,17 +7,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.engine.event_bus import Event
 from babylon.formulas import BourgeoisieDecision
+from babylon.kernel.event_bus import Event
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
 
-from babylon.engine.systems.base import SystemBase
-from babylon.engine.systems.protocol import ContextType
+from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 
 
 def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
@@ -61,7 +61,7 @@ class ImperialRentSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         """Execute 5-phase circuit. Economy state in graph.graph['economy']."""
@@ -101,7 +101,7 @@ class ImperialRentSystem(SystemBase):
         self._invoke_vol2_circulation_if_wired(graph, context)
 
     def _invoke_phi_distribution_if_wired(
-        self, context: ContextType, services: ServiceContainer | None = None
+        self, context: ContextType, services: ServicesProtocol | None = None
     ) -> None:
         """Distribute Φ inflow from external nodes to US counties (T079).
 
@@ -120,7 +120,7 @@ class ImperialRentSystem(SystemBase):
 
         Args:
             context: The per-tick context carrying the four keys above.
-            services: Optional :class:`ServiceContainer` (spec-101 review
+            services: Optional :class:`ServicesProtocol` (spec-101 review
                 minor). When supplied, ``weeks_per_year`` is sourced from
                 ``services.defines.timescale.weeks_per_year`` instead of an
                 independently-hardcoded ``52`` literal (III.1/DRY). Defaults
@@ -208,7 +208,7 @@ class ImperialRentSystem(SystemBase):
     def _process_subsistence_phase(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> None:
         """DEPRECATED: Subsistence burn moved to VitalitySystem (ADR032).
 
@@ -246,7 +246,7 @@ class ImperialRentSystem(SystemBase):
     def _process_extraction_phase(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
         tick_context: dict[str, Any] | None = None,
     ) -> None:
@@ -335,7 +335,7 @@ class ImperialRentSystem(SystemBase):
     def _process_tribute_phase(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,  # noqa: ARG002 - Used for config.comprador_cut
+        services: ServicesProtocol,  # noqa: ARG002 - Used for config.comprador_cut
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],  # noqa: ARG002 - Used for pool tracking
     ) -> None:
@@ -390,7 +390,7 @@ class ImperialRentSystem(SystemBase):
     def _process_wages_phase(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],
     ) -> None:
@@ -534,7 +534,7 @@ class ImperialRentSystem(SystemBase):
     def _process_subsidy_phase(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
         tick_context: dict[str, Any],
     ) -> None:
@@ -656,7 +656,7 @@ class ImperialRentSystem(SystemBase):
     def _process_decision_phase(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
         tick_context: dict[str, Any],
         initial_pool: float,
@@ -770,13 +770,13 @@ class ImperialRentSystem(SystemBase):
     def _load_economy(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> GlobalEconomy:
         """Load GlobalEconomy from graph metadata, or create default.
 
         Args:
             graph: The simulation graph
-            services: ServiceContainer for config access
+            services: ServicesProtocol for config access
 
         Returns:
             GlobalEconomy instance
@@ -796,7 +796,7 @@ class ImperialRentSystem(SystemBase):
         self,
         graph: GraphProtocol,
         tick_context: dict[str, Any],
-        services: ServiceContainer | None = None,
+        services: ServicesProtocol | None = None,
     ) -> None:
         """Save updated GlobalEconomy back to graph metadata.
 
@@ -806,7 +806,7 @@ class ImperialRentSystem(SystemBase):
         Args:
             graph: The simulation graph
             tick_context: Dictionary with current_pool, wage_rate, repression_level
-            services: Optional ServiceContainer for rent_pool_decay config
+            services: Optional ServicesProtocol for rent_pool_decay config
         """
         current_pool = tick_context["current_pool"]
 

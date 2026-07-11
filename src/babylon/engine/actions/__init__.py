@@ -34,7 +34,7 @@ from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
 
 
@@ -46,7 +46,7 @@ class VerbResolver(Protocol):
         action: Action,
         org_attrs: dict[str, Any],
         graph: BabylonGraph,
-        services: ServiceContainer,
+        services: ServicesProtocol,
     ) -> ActionResult:
         """Resolve one player action into an :class:`ActionResult`."""
         ...
@@ -72,7 +72,7 @@ def resolve_player_action(
     action: Action,
     org_attrs: dict[str, Any],
     graph: BabylonGraph,
-    services: ServiceContainer,
+    services: ServicesProtocol,
 ) -> ActionResult:
     """Dispatch one player action to its registered resolver.
 
@@ -80,7 +80,7 @@ def resolve_player_action(
         action: The player action to resolve.
         org_attrs: Acting organization's node attributes.
         graph: World graph.
-        services: ServiceContainer providing defines.
+        services: ServicesProtocol providing defines.
 
     Returns:
         The resolver's :class:`ActionResult`, or — when no resolver is

@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import GameDefines
 from babylon.engine.database import DatabaseConnection
-from babylon.engine.event_bus import EventBus
 from babylon.engine.formula_registry import FormulaRegistry
+from babylon.kernel.event_bus import EventBus
 from babylon.models.config import SimulationConfig
 
 if TYPE_CHECKING:

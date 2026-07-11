@@ -20,7 +20,7 @@ from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
 
 
@@ -28,7 +28,7 @@ def resolve_move(
     action: Action,
     org_attrs: dict[str, Any],  # noqa: ARG001 — org state read live from graph
     graph: BabylonGraph,
-    services: ServiceContainer,  # noqa: ARG001 — no MoveDefines yet
+    services: ServicesProtocol,  # noqa: ARG001 — no MoveDefines yet
 ) -> ActionResult:
     """Resolve a player MOVE action: relocate or expand org presence.
 
@@ -36,7 +36,7 @@ def resolve_move(
         action: The MOVE action (``action_type == ActionType.MOVE``).
         org_attrs: Acting organization's node attributes.
         graph: World graph (mutated in place on the acting org node).
-        services: ServiceContainer (unused; no MoveDefines exist yet).
+        services: ServicesProtocol (unused; no MoveDefines exist yet).
 
     Returns:
         :class:`~babylon.ooda.types.ActionResult`; ``success=False`` when the

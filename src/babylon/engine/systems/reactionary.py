@@ -28,7 +28,7 @@ N-1's regime (empty on tick 1). It is surfaced in the FASCIST_DRIFT event
 payload as observability only — the regime NEVER gates dynamics (the crisis
 gate is agitation, computed same-tick by ConsciousnessSystem @17), so the
 one-tick staleness is immaterial. Determinism (III.7): sorted iteration + the
-seed RNG (:func:`babylon.engine.systems.base.resolve_rng`).
+seed RNG (:func:`babylon.kernel.system_base.resolve_rng`).
 """
 
 from __future__ import annotations
@@ -36,18 +36,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.dialectics.core.coupling import StanceIntervention
-from babylon.engine.event_bus import Event
-from babylon.engine.systems.base import SystemBase, resolve_rng
 from babylon.formulas.reactionary import (
     calculate_defection_probability,
     calculate_fascist_pull,
 )
+from babylon.kernel.event_bus import Event
+from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:  # pragma: no cover
-    from babylon.engine.graph_protocol import GraphProtocol
-    from babylon.engine.services import ServiceContainer
-    from babylon.engine.systems.protocol import ContextType
+    from babylon.kernel.graph_protocol import GraphProtocol
+    from babylon.kernel.services import ServicesProtocol
+    from babylon.kernel.system_protocol import ContextType
 
 #: Roles that carry an entitlement stake and can drift fascist.
 _ENTITLED_ROLES: frozenset[SocialRole] = frozenset(
@@ -80,7 +80,7 @@ class FascistFactionSystem(SystemBase):
     def step(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         context: ContextType,
     ) -> None:
         wrapped = self._wrap_graph(graph)
@@ -105,7 +105,7 @@ class FascistFactionSystem(SystemBase):
     def _process_drift(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
         defines: Any,
         regime: str | None,
@@ -229,7 +229,7 @@ class FascistFactionSystem(SystemBase):
     def _process_org_defections(
         self,
         graph: GraphProtocol,
-        services: ServiceContainer,
+        services: ServicesProtocol,
         tick: int,
         defines: Any,
     ) -> None:
@@ -329,7 +329,7 @@ class FascistFactionSystem(SystemBase):
         return float(defines.defection_default_discipline)
 
     @staticmethod
-    def _crisis_this_tick(services: ServiceContainer, tick: int) -> bool:
+    def _crisis_this_tick(services: ServicesProtocol, tick: int) -> bool:
         bus = services.event_bus
         history = bus.get_history() if hasattr(bus, "get_history") else []
         return any(

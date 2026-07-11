@@ -1,4 +1,4 @@
-"""Tests for babylon.engine.graph_protocol - Graph Protocol definition.
+"""Tests for babylon.kernel.graph_protocol - Graph Protocol definition.
 
 TDD Red Phase: These tests define the contract for the GraphProtocol.
 The tests WILL FAIL initially because the implementations do not exist yet.
@@ -41,8 +41,8 @@ _graph_module = pytest.importorskip(
     reason="babylon.models.graph not yet implemented (RED phase)",
 )
 _protocol_module = pytest.importorskip(
-    "babylon.engine.graph_protocol",
-    reason="babylon.engine.graph_protocol not yet implemented (RED phase)",
+    "babylon.kernel.graph_protocol",
+    reason="babylon.kernel.graph_protocol not yet implemented (RED phase)",
 )
 
 # Import types from the modules after successful import

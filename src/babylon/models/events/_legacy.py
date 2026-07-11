@@ -53,7 +53,7 @@ Usage:
     )
 
 See Also:
-    :class:`babylon.engine.event_bus.Event`: The EventBus dataclass (internal)
+    :class:`babylon.kernel.event_bus.Event`: The EventBus dataclass (internal)
     :class:`babylon.models.world_state.WorldState`: Where events are stored
 """
 

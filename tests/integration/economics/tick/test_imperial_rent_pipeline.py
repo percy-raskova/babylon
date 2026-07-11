@@ -28,7 +28,7 @@ from babylon.economics.tensor_hierarchy.types import (
 )
 from babylon.economics.tick.system.imperial_rent import compute
 from babylon.economics.tick.types import CountyEconomicState
-from babylon.engine.event_bus import EventBus
+from babylon.kernel.event_bus import EventBus
 
 # =============================================================================
 # Mock data + fixtures

@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 from babylon.core.protocol_kit import CachedSource
 from babylon.economics.tensor import NoDataSentinel
 from babylon.economics.tensor_hierarchy.types import PeripheryLaborCoefficients
-from babylon.engine.event_bus import Event, EventBus
+from babylon.kernel.event_bus import Event, EventBus
 from babylon.models.enums import EventType
 from babylon.models.events import AxiomViolationEvent
 from babylon.reference.schema import DimTime, FactHickelERDIAnnual

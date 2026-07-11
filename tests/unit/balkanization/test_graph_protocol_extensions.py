@@ -18,7 +18,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.engine.graph import BabylonGraph
-from babylon.engine.graph_protocol import GraphProtocol
+from babylon.kernel.graph_protocol import GraphProtocol
 
 pytestmark = pytest.mark.topology
 

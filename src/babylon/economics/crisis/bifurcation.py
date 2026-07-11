@@ -34,7 +34,7 @@ from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
     from babylon.economics.dynamics.types import ClassDistribution
-    from babylon.engine.graph_protocol import GraphProtocol
+    from babylon.kernel.graph_protocol import GraphProtocol
 
 
 class BifurcationRiskCalculator:

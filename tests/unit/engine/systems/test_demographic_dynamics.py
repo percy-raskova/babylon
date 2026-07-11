@@ -28,7 +28,7 @@ from babylon.engine.systems.vitality import VitalitySystem
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
-    from babylon.engine.event_bus import Event
+    from babylon.kernel.event_bus import Event
 
 from babylon.engine.graph import BabylonGraph
 from tests.constants import TestConstants

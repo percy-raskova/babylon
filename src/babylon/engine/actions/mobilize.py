@@ -24,7 +24,7 @@ from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
     from babylon.engine.graph import BabylonGraph
-    from babylon.engine.services import ServiceContainer
+    from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
 
 #: Demonstrators mobilized per unit of committed sympathizer labor.
@@ -92,7 +92,7 @@ def resolve_mobilize(
     action: Action,
     org_attrs: dict[str, Any],  # noqa: ARG001 — turnout is driven by params/edges
     graph: BabylonGraph,
-    services: ServiceContainer,  # noqa: ARG001 — no MobilizeDefines yet
+    services: ServicesProtocol,  # noqa: ARG001 — no MobilizeDefines yet
 ) -> ActionResult:
     """Resolve a player MOBILIZE action: turnout, heat, and backfire.
 
@@ -100,7 +100,7 @@ def resolve_mobilize(
         action: The MOBILIZE action (``action_type == ActionType.PROTEST``).
         org_attrs: Acting organization's node attributes (unused).
         graph: World graph (mutated on the target node).
-        services: ServiceContainer (unused; no MobilizeDefines exist yet).
+        services: ServicesProtocol (unused; no MobilizeDefines exist yet).
 
     Returns:
         :class:`~babylon.ooda.types.ActionResult`; ``success=False`` when the

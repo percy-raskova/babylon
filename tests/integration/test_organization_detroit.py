@@ -35,7 +35,6 @@ from babylon.organizations.composition import (
     class_composition,
     lifecycle_composition,
 )
-from babylon.organizations.consciousness import consciousness_effect
 from babylon.organizations.topology import (
     classify_topology,
     cohesion_loss_on_removal,
@@ -304,26 +303,6 @@ class TestScenario6LifecycleComposition:
 
 # =========================================================================
 # Scenario 7: Consciousness Effect — Revolutionary Faction (US3, SC-003)
-# =========================================================================
-
-
-class TestScenario7ConsciousnessEffect:
-    """Five-factor consciousness effect from a revolutionary faction."""
-
-    @pytest.mark.integration
-    def test_rwp_consciousness_delta(self, rwp: PoliticalFaction) -> None:
-        """RWP: 0.15 * 0.7 * 0.6 * 0.5 = 0.0315."""
-        defines = OrganizationDefines()
-        delta = consciousness_effect(rwp, defines)
-
-        assert delta.collective_identity_delta == pytest.approx(0.0315)
-        assert delta.tendency_pressure == ConsciousnessTendency.REVOLUTIONARY
-        assert delta.tendency_magnitude == pytest.approx(0.0315)
-        assert delta.source_org_id == "org_rwp"
-
-
-# =========================================================================
-# Scenario 8: Key Figure Identification (US5, SC-005)
 # =========================================================================
 
 

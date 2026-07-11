@@ -14,13 +14,8 @@ from babylon.organizations.composition import (
     lifecycle_composition,
 )
 
-# Consciousness effect formula
-from babylon.organizations.consciousness import (
-    aggregate_consciousness_effects,
-    consciousness_effect,
-    derive_credibility,
-    tendency_modifier,
-)
+# Consciousness tendency modifier (F7 survivor; the effect trio was retired)
+from babylon.organizations.consciousness import tendency_modifier
 
 # Legacy migration
 from babylon.organizations.migration import (
@@ -51,9 +46,6 @@ __all__ = [
     "effective_capacity",
     "lifecycle_composition",
     # Consciousness
-    "aggregate_consciousness_effects",
-    "consciousness_effect",
-    "derive_credibility",
     "tendency_modifier",
     # Topology
     "classify_topology",

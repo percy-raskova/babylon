@@ -65,7 +65,7 @@ def calculate_threat_score(
         Cumulative threat score for the agent.
 
     Examples:
-        >>> calculate_threat_score([(0.4, 0.8, 1.0, 1.0)])
+        >>> round(calculate_threat_score([(0.4, 0.8, 1.0, 1.0)]), 6)
         0.32
     """
     total = 0.0
@@ -130,8 +130,8 @@ def calculate_solidarity_amplification(
     Examples:
         >>> calculate_solidarity_amplification(0.5, [])
         0.5
-        >>> calculate_solidarity_amplification(0.5, [(0.8, 0.6, 0.7, 0.4)])
-        0.567
+        >>> round(calculate_solidarity_amplification(0.5, [(0.8, 0.6, 0.7, 0.4)]), 6)
+        0.5672
     """
     if not shared_communities:
         return base_strength

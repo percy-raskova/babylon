@@ -42,7 +42,7 @@ run = """
 set -e
 mise install
 poetry install --with dev
-poetry run pre-commit install
+poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 mise run db:up
 mise run db:bootstrap
 if [ ! -f data/sqlite/marxist-data-3NF.sqlite ]; then
@@ -158,6 +158,10 @@ poetry run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
   --cov-report=json:reports/test-results/rest-ci/coverage.json \
   --junit-xml=reports/test-results/rest-ci/junit.xml
 """
+
+[tasks."security:pip-audit"]
+description = "pip-audit through the expiring-ignores policy wrapper (program 15): security/pip-audit-ignores.toml entries need reason + expiry; expired entries hard-fail"
+run = "poetry run python tools/run_pip_audit.py"
 
 [tasks.commit]
 description = "Hook-safe commit: pre-run hooks on staged files, re-stage their fixes, commit, verify HEAD moved"
@@ -1003,8 +1007,18 @@ run = "poetry run pre-commit run --all-files"
 # =============================================================================
 
 [tasks.bump]
-description = "Bump version with commitizen"
-run = "poetry run cz bump --changelog"
+description = "Deliberate version bump on dev (program 15, tag-driven releases): cz bump writes the bump commit + vX.Y.Z tag; both ride the next ff promotion, and pushing the tag fires release.yml"
+run = """
+set -e
+BRANCH=$(git branch --show-current)
+if [ "$BRANCH" != "dev" ]; then
+  echo "bump runs on dev (current: $BRANCH)"; exit 1
+fi
+poetry run cz bump --yes --changelog
+echo ""
+echo "Bump committed + tagged. Publish with: git push origin dev --follow-tags"
+echo "Then promote: tools/promote.sh"
+"""
 
 [tasks."bump:dry"]
 description = "Preview version bump without changes"

@@ -7,7 +7,7 @@ bugs of ``project/06-lawverian-dialectics.md`` §2). Each tick the system:
 1. writes per-edge ``tension`` as the *fresh* wealth-asymmetry gap of that edge
    (EXPLOITATION / WAGES / TENANCY) — scale-free, recomputed from current
    wealth, never accumulated;
-2. steps the :class:`~babylon.dialectics.core.opposition.OppositionRegistry`
+2. steps the :class:`~babylon.domain.dialectics.core.opposition.OppositionRegistry`
    (wired by :meth:`ServicesProtocol.create`) over a :class:`GraphInputs`
    snapshot built from the live graph, deriving each opposition's gap, rate,
    and the Maoist principal contradiction;
@@ -37,11 +37,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.dialectics.core.coupling import StanceIntervention, apply_interventions
-from babylon.dialectics.core.opposition import OppositionState
-from babylon.dialectics.core.regime import classify_regime
-from babylon.dialectics.instances.catalog import GraphInputs
-from babylon.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
+from babylon.domain.dialectics.core.coupling import StanceIntervention, apply_interventions
+from babylon.domain.dialectics.core.opposition import OppositionState
+from babylon.domain.dialectics.core.regime import classify_regime
+from babylon.domain.dialectics.instances.catalog import GraphInputs
+from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
 from babylon.engine.topology_monitor import extract_solidarity_subgraph
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_gap
 from babylon.kernel.event_bus import Event
@@ -51,7 +51,7 @@ from babylon.models.entities.contradiction import Contradiction, ContradictionFr
 from babylon.models.enums import ContradictionType, EdgeMode, EdgeType, EventType
 
 if TYPE_CHECKING:
-    from babylon.dialectics.core.opposition import OppositionRegistry, OppositionSpec
+    from babylon.domain.dialectics.core.opposition import OppositionRegistry, OppositionSpec
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
 

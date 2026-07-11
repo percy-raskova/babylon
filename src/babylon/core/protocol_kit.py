@@ -43,7 +43,7 @@ class DataSource(Protocol):
     """Marker protocol: every source has a ``name`` for registry diagnostics.
 
     All source Protocols in ``babylon.economics.*.data_sources`` and
-    ``babylon.infrastructure.*.data_sources`` SHOULD inherit from this marker
+    ``babylon.domain.geography.*.data_sources`` SHOULD inherit from this marker
     so that :class:`SourceRegistry` and downstream consumers can identify
     them via ``isinstance(impl, DataSource)``.
 

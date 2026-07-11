@@ -2,7 +2,7 @@
 
 The rewrite replaces the saturating, add-only edge-``tension`` accumulator
 with **fresh-per-tick** scale-free wealth-asymmetry gaps computed off the
-:class:`~babylon.dialectics.core.opposition.OppositionRegistry`. These tests
+:class:`~babylon.domain.dialectics.core.opposition.OppositionRegistry`. These tests
 pin the new contract:
 
 - per-edge ``tension`` is the current wealth-asymmetry gap, recomputed each
@@ -22,7 +22,7 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.dialectics.core.coupling import StanceIntervention
+from babylon.domain.dialectics.core.coupling import StanceIntervention
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import (
     OPPOSITION_INTERVENTIONS_ATTR,

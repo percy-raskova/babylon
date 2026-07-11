@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import InfrastructureDefines
-from babylon.infrastructure.capacity import DefaultEdgeCapacityCalculator
-from babylon.infrastructure.types import InfrastructureLinkState
+from babylon.domain.geography.capacity import DefaultEdgeCapacityCalculator
+from babylon.domain.geography.types import InfrastructureLinkState
 from babylon.models.enums import FlowCategory, InfrastructureType, TerrainType
 
 
@@ -247,7 +247,7 @@ class TestComputeMeshWeights:
         calculator: DefaultEdgeCapacityCalculator,
     ) -> None:
         """compute_mesh_weights returns weights for all edges."""
-        from babylon.infrastructure.inventory import DefaultInfrastructureInventory
+        from babylon.domain.geography.inventory import DefaultInfrastructureInventory
 
         inventory = DefaultInfrastructureInventory()
         link = _make_link()
@@ -281,7 +281,7 @@ class TestComputeMeshWeights:
         infra_defines: InfrastructureDefines,
     ) -> None:
         """LAND-LAND edge with no links gets natural weight only."""
-        from babylon.infrastructure.inventory import DefaultInfrastructureInventory
+        from babylon.domain.geography.inventory import DefaultInfrastructureInventory
 
         inventory = DefaultInfrastructureInventory()
         terrain_map = {

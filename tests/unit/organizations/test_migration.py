@@ -11,15 +11,15 @@ from pathlib import Path
 
 import pytest
 
+from babylon.domain.organizations.migration import (
+    migrate_all,
+    migrate_faction,
+    migrate_institution,
+)
 from babylon.models.enums import (
     ConsciousnessTendency,
     OrgType,
     ServiceType,
-)
-from babylon.organizations.migration import (
-    migrate_all,
-    migrate_faction,
-    migrate_institution,
 )
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "test_data" / "game"

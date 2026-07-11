@@ -313,7 +313,7 @@ class InfraTerrainDefines(BaseModel):
     defaults.
 
     See Also:
-        :mod:`babylon.infrastructure.terrain`: DefaultTerrainClassifier.
+        :mod:`babylon.domain.geography.terrain`: DefaultTerrainClassifier.
         ``specs/036-infrastructure-topology/spec.md``: FR-001 through FR-008.
     """
 
@@ -480,7 +480,7 @@ class InfrastructureDefines(BaseModel):
     OPSEC tradeoff ratios, and internet throttle fractions.
 
     See Also:
-        :mod:`babylon.infrastructure.capacity`: DefaultEdgeCapacityCalculator.
+        :mod:`babylon.domain.geography.capacity`: DefaultEdgeCapacityCalculator.
         ``specs/036-infrastructure-topology/spec.md``: FR-009 through FR-029.
     """
 

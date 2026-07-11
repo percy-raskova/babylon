@@ -302,7 +302,7 @@ class ServiceContainer:
         # import: the catalog depends only on formulas + dialectics (never on
         # babylon.engine), so it cannot cycle back into this module.
         if opposition_registry is None:
-            from babylon.dialectics.instances.catalog import build_default_registry
+            from babylon.domain.dialectics.instances.catalog import build_default_registry
 
             opposition_registry = build_default_registry(
                 rate_weight=resolved_defines.tension.principal_rate_weight

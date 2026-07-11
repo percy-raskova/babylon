@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.dialectics.core.coupling import StanceIntervention
+from babylon.domain.dialectics.core.coupling import StanceIntervention
 from babylon.formulas.reactionary import (
     calculate_defection_probability,
     calculate_fascist_pull,

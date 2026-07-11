@@ -33,7 +33,7 @@ class TestComputeBettiNumbers:
 
     def test_star_graph_betti_numbers(self, star_graph: nx.Graph) -> None:
         """Star (hub + 5 spokes): beta_0=1, beta_1=0 (tree, no cycles)."""
-        from babylon.bifurcation.resilience import compute_betti_numbers
+        from babylon.domain.bifurcation.resilience import compute_betti_numbers
 
         beta_0, beta_1 = compute_betti_numbers(star_graph)
 
@@ -42,7 +42,7 @@ class TestComputeBettiNumbers:
 
     def test_complete_k5_betti_numbers(self, complete_k5: nx.Graph) -> None:
         """Complete K5: beta_0=1, beta_1=6 (|E|-|V|+beta_0 = 10-5+1)."""
-        from babylon.bifurcation.resilience import compute_betti_numbers
+        from babylon.domain.bifurcation.resilience import compute_betti_numbers
 
         beta_0, beta_1 = compute_betti_numbers(complete_k5)
 
@@ -52,7 +52,7 @@ class TestComputeBettiNumbers:
 
     def test_ring_betti_numbers(self, ring_graph: nx.Graph) -> None:
         """Ring (5 nodes): beta_0=1, beta_1=1 (single cycle)."""
-        from babylon.bifurcation.resilience import compute_betti_numbers
+        from babylon.domain.bifurcation.resilience import compute_betti_numbers
 
         beta_0, beta_1 = compute_betti_numbers(ring_graph)
 
@@ -62,7 +62,7 @@ class TestComputeBettiNumbers:
 
     def test_three_disconnected_components(self, three_disconnected: nx.Graph) -> None:
         """3 isolated nodes: beta_0=3, beta_1=0."""
-        from babylon.bifurcation.resilience import compute_betti_numbers
+        from babylon.domain.bifurcation.resilience import compute_betti_numbers
 
         beta_0, beta_1 = compute_betti_numbers(three_disconnected)
 
@@ -72,7 +72,7 @@ class TestComputeBettiNumbers:
 
     def test_empty_graph_betti_numbers(self, empty_graph: nx.Graph) -> None:
         """Empty graph: beta_0=0, beta_1=0."""
-        from babylon.bifurcation.resilience import compute_betti_numbers
+        from babylon.domain.bifurcation.resilience import compute_betti_numbers
 
         beta_0, beta_1 = compute_betti_numbers(empty_graph)
 
@@ -81,7 +81,7 @@ class TestComputeBettiNumbers:
 
     def test_bridge_graph_betti_numbers(self, bridge_graph: nx.Graph) -> None:
         """Bridge graph (two triangles + bridge): beta_0=1, beta_1=2."""
-        from babylon.bifurcation.resilience import compute_betti_numbers
+        from babylon.domain.bifurcation.resilience import compute_betti_numbers
 
         beta_0, beta_1 = compute_betti_numbers(bridge_graph)
 
@@ -91,7 +91,7 @@ class TestComputeBettiNumbers:
 
     def test_single_node_betti_numbers(self) -> None:
         """Single node: beta_0=1, beta_1=0."""
-        from babylon.bifurcation.resilience import compute_betti_numbers
+        from babylon.domain.bifurcation.resilience import compute_betti_numbers
 
         G: nx.Graph = BabylonUGraph()
         G.add_node("solo")
@@ -121,7 +121,7 @@ class TestComputeEquivalenceClasses:
         Each frozenset is distinct (different excluded self-node),
         so 5 classes of size 1.
         """
-        from babylon.bifurcation.resilience import compute_equivalence_classes
+        from babylon.domain.bifurcation.resilience import compute_equivalence_classes
 
         result = compute_equivalence_classes(complete_k5)
 
@@ -134,7 +134,7 @@ class TestComputeEquivalenceClasses:
         Hub has N(hub) = {all 5 spokes} -> unique class, size 1.
         Each spoke has N(spoke) = {hub} -> same frozenset -> 1 class, size 5.
         """
-        from babylon.bifurcation.resilience import compute_equivalence_classes
+        from babylon.domain.bifurcation.resilience import compute_equivalence_classes
 
         result = compute_equivalence_classes(star_graph)
 
@@ -148,7 +148,7 @@ class TestComputeEquivalenceClasses:
         of neighbors: N(n0)={n1,n4}, N(n1)={n0,n2}, etc.
         Since all frozensets are distinct, we get 5 classes of size 1.
         """
-        from babylon.bifurcation.resilience import compute_equivalence_classes
+        from babylon.domain.bifurcation.resilience import compute_equivalence_classes
 
         result = compute_equivalence_classes(ring_graph)
 
@@ -157,7 +157,7 @@ class TestComputeEquivalenceClasses:
 
     def test_disconnected_nodes_same_class(self, three_disconnected: nx.Graph) -> None:
         """3 isolated nodes: all have empty neighbor set -> {3: 1}."""
-        from babylon.bifurcation.resilience import compute_equivalence_classes
+        from babylon.domain.bifurcation.resilience import compute_equivalence_classes
 
         result = compute_equivalence_classes(three_disconnected)
 
@@ -166,7 +166,7 @@ class TestComputeEquivalenceClasses:
 
     def test_empty_graph_equivalence_classes(self, empty_graph: nx.Graph) -> None:
         """Empty graph: no nodes -> empty dict."""
-        from babylon.bifurcation.resilience import compute_equivalence_classes
+        from babylon.domain.bifurcation.resilience import compute_equivalence_classes
 
         result = compute_equivalence_classes(empty_graph)
 
@@ -185,7 +185,7 @@ class TestComputeEquivalenceClasses:
 
         All frozensets are distinct -> 6 classes of size 1.
         """
-        from babylon.bifurcation.resilience import compute_equivalence_classes
+        from babylon.domain.bifurcation.resilience import compute_equivalence_classes
 
         result = compute_equivalence_classes(bridge_graph)
 
@@ -208,7 +208,7 @@ class TestFindCriticalSingletons:
 
     def test_star_hub_is_articulation_point(self, star_graph: nx.Graph) -> None:
         """Star: hub removal disconnects all spokes."""
-        from babylon.bifurcation.resilience import find_critical_singletons
+        from babylon.domain.bifurcation.resilience import find_critical_singletons
 
         result = find_critical_singletons(star_graph)
 
@@ -216,7 +216,7 @@ class TestFindCriticalSingletons:
 
     def test_star_spokes_not_articulation_points(self, star_graph: nx.Graph) -> None:
         """Star: spoke removal does not disconnect graph."""
-        from babylon.bifurcation.resilience import find_critical_singletons
+        from babylon.domain.bifurcation.resilience import find_critical_singletons
 
         result = find_critical_singletons(star_graph)
 
@@ -225,7 +225,7 @@ class TestFindCriticalSingletons:
 
     def test_k5_no_articulation_points(self, complete_k5: nx.Graph) -> None:
         """K5 mesh: removing any single node leaves graph connected."""
-        from babylon.bifurcation.resilience import find_critical_singletons
+        from babylon.domain.bifurcation.resilience import find_critical_singletons
 
         result = find_critical_singletons(complete_k5)
 
@@ -233,7 +233,7 @@ class TestFindCriticalSingletons:
 
     def test_ring_no_articulation_points(self, ring_graph: nx.Graph) -> None:
         """Ring: no single node removal disconnects a cycle."""
-        from babylon.bifurcation.resilience import find_critical_singletons
+        from babylon.domain.bifurcation.resilience import find_critical_singletons
 
         result = find_critical_singletons(ring_graph)
 
@@ -241,7 +241,7 @@ class TestFindCriticalSingletons:
 
     def test_empty_graph_no_articulation_points(self, empty_graph: nx.Graph) -> None:
         """Empty graph: no nodes to be articulation points."""
-        from babylon.bifurcation.resilience import find_critical_singletons
+        from babylon.domain.bifurcation.resilience import find_critical_singletons
 
         result = find_critical_singletons(empty_graph)
 
@@ -249,7 +249,7 @@ class TestFindCriticalSingletons:
 
     def test_bridge_graph_has_articulation_points(self, bridge_graph: nx.Graph) -> None:
         """Bridge graph: c and d are articulation points at the bridge."""
-        from babylon.bifurcation.resilience import find_critical_singletons
+        from babylon.domain.bifurcation.resilience import find_critical_singletons
 
         result = find_critical_singletons(bridge_graph)
 
@@ -258,7 +258,7 @@ class TestFindCriticalSingletons:
 
     def test_returns_sorted_list(self, bridge_graph: nx.Graph) -> None:
         """Result is a sorted list of node IDs for deterministic output."""
-        from babylon.bifurcation.resilience import find_critical_singletons
+        from babylon.domain.bifurcation.resilience import find_critical_singletons
 
         result = find_critical_singletons(bridge_graph)
 
@@ -280,7 +280,7 @@ class TestFindCriticalCutsets:
 
     def test_bridge_edge_cutset(self, bridge_graph: nx.Graph) -> None:
         """Bridge: minimum cut = 1 edge -> cutset includes nodes {c, d}."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         result = find_critical_cutsets(bridge_graph, max_cutset_size=3)
 
@@ -293,7 +293,7 @@ class TestFindCriticalCutsets:
 
     def test_k5_cutsets_exceed_max_size(self, complete_k5: nx.Graph) -> None:
         """K5: minimum cut is 4 edges -> skipped when max_cutset_size=3."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         result = find_critical_cutsets(complete_k5, max_cutset_size=3)
 
@@ -302,7 +302,7 @@ class TestFindCriticalCutsets:
 
     def test_k5_cutsets_with_high_max(self, complete_k5: nx.Graph) -> None:
         """K5: minimum cut included when max_cutset_size >= 4."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         result = find_critical_cutsets(complete_k5, max_cutset_size=4)
 
@@ -311,7 +311,7 @@ class TestFindCriticalCutsets:
 
     def test_empty_graph_no_cutsets(self, empty_graph: nx.Graph) -> None:
         """Empty graph: no components, no cutsets."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         result = find_critical_cutsets(empty_graph, max_cutset_size=3)
 
@@ -319,7 +319,7 @@ class TestFindCriticalCutsets:
 
     def test_single_node_no_cutsets(self) -> None:
         """Single node: no edges to cut."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         G: nx.Graph = BabylonUGraph()
         G.add_node("solo")
@@ -330,7 +330,7 @@ class TestFindCriticalCutsets:
 
     def test_disconnected_components_no_cutsets(self, three_disconnected: nx.Graph) -> None:
         """Disconnected single nodes: no edges to cut."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         result = find_critical_cutsets(three_disconnected, max_cutset_size=3)
 
@@ -338,7 +338,7 @@ class TestFindCriticalCutsets:
 
     def test_star_small_cutset(self, star_graph: nx.Graph) -> None:
         """Star: edge connectivity is 1 (removing any hub-spoke edge isolates a spoke)."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         result = find_critical_cutsets(star_graph, max_cutset_size=3)
 
@@ -347,7 +347,7 @@ class TestFindCriticalCutsets:
 
     def test_cutset_contains_frozenset_of_strings(self, bridge_graph: nx.Graph) -> None:
         """Each cutset element is a frozenset of string node IDs."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         result = find_critical_cutsets(bridge_graph, max_cutset_size=3)
 
@@ -358,7 +358,7 @@ class TestFindCriticalCutsets:
 
     def test_default_max_cutset_size(self, bridge_graph: nx.Graph) -> None:
         """Default max_cutset_size is 3."""
-        from babylon.bifurcation.resilience import find_critical_cutsets
+        from babylon.domain.bifurcation.resilience import find_critical_cutsets
 
         # Should work without explicitly passing max_cutset_size
         result = find_critical_cutsets(bridge_graph)
@@ -386,7 +386,7 @@ class TestComputePurgeResilience:
         Post-purge: 5 isolated nodes, L_max=1. Pre-purge: L_max=6.
         Resilience = 1/6 ~ 0.167.
         """
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         result = compute_purge_resilience(star_graph, removal_rate=0.2)
 
@@ -400,7 +400,7 @@ class TestComputePurgeResilience:
         Remaining 4 nodes still form K4 (fully connected). L_max=4.
         Pre-purge L_max=5. Resilience = 4/5 = 0.8.
         """
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         result = compute_purge_resilience(complete_k5, removal_rate=0.2)
 
@@ -408,7 +408,7 @@ class TestComputePurgeResilience:
 
     def test_empty_graph_vacuously_resilient(self, empty_graph: nx.Graph) -> None:
         """Empty graph: vacuously resilient -> 1.0."""
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         result = compute_purge_resilience(empty_graph, removal_rate=0.2)
 
@@ -416,7 +416,7 @@ class TestComputePurgeResilience:
 
     def test_result_clamped_zero_to_one(self, star_graph: nx.Graph) -> None:
         """Result is always in [0, 1]."""
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         result = compute_purge_resilience(star_graph, removal_rate=0.5)
 
@@ -424,7 +424,7 @@ class TestComputePurgeResilience:
 
     def test_seeded_reproducibility(self, complete_k5: nx.Graph) -> None:
         """Same seed produces same result."""
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         r1 = compute_purge_resilience(complete_k5, removal_rate=0.2, seed=42)
         r2 = compute_purge_resilience(complete_k5, removal_rate=0.2, seed=42)
@@ -437,7 +437,7 @@ class TestComputePurgeResilience:
         For star graph, the hub is always highest-degree so seed doesn't
         matter for tie-breaking. But the function should still accept seeds.
         """
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         # Both should work without error
         r1 = compute_purge_resilience(star_graph, removal_rate=0.2, seed=1)
@@ -448,7 +448,7 @@ class TestComputePurgeResilience:
 
     def test_original_graph_unmodified(self, complete_k5: nx.Graph) -> None:
         """Purge operates on a copy; original graph is unchanged."""
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         original_nodes = set(complete_k5.nodes())
         original_edges = set(complete_k5.edges())
@@ -463,7 +463,7 @@ class TestComputePurgeResilience:
 
         Pre: L_max=1, Post: L_max=0. Ratio=0/1=0.0.
         """
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         G: nx.Graph = BabylonUGraph()
         G.add_node("solo")
@@ -478,7 +478,7 @@ class TestComputePurgeResilience:
         Pre: L_max=5 (one component). Post: L_max=4 (chain of 4).
         Resilience = 4/5 = 0.8.
         """
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         result = compute_purge_resilience(ring_graph, removal_rate=0.2)
 
@@ -487,7 +487,7 @@ class TestComputePurgeResilience:
 
     def test_high_removal_rate(self, complete_k5: nx.Graph) -> None:
         """High removal rate (0.8) removes most nodes."""
-        from babylon.bifurcation.resilience import compute_purge_resilience
+        from babylon.domain.bifurcation.resilience import compute_purge_resilience
 
         result = compute_purge_resilience(complete_k5, removal_rate=0.8)
 

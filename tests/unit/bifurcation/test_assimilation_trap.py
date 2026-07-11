@@ -13,8 +13,8 @@ import networkx as nx
 import pytest
 import xgi  # type: ignore[import-untyped]
 
-from babylon.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.config.defines import BifurcationDefines
+from babylon.domain.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.models.entities.community import CommunityState
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import (
@@ -239,7 +239,7 @@ class TestBifurcationResultAssimilationRatio:
 
     def test_result_has_assimilation_ratio(self) -> None:
         """BifurcationResult includes mean_assimilation_ratio field."""
-        from babylon.bifurcation.analysis import bifurcation_tendency
+        from babylon.domain.bifurcation.analysis import bifurcation_tendency
 
         graph, H, community_states, agent_memberships = _build_solidarity_scenario(
             ci_marginalized=0.3,
@@ -260,7 +260,7 @@ class TestBifurcationResultAssimilationRatio:
 
     def test_high_fascist_component_high_assimilation(self) -> None:
         """Community with high f/(l+f) has high assimilation_ratio."""
-        from babylon.bifurcation.analysis import bifurcation_tendency
+        from babylon.domain.bifurcation.analysis import bifurcation_tendency
         from babylon.models.entities.consciousness import TernaryConsciousness
 
         graph: nx.DiGraph = BabylonGraph()
@@ -299,7 +299,7 @@ class TestBifurcationResultAssimilationRatio:
 
     def test_crisis_fragile_count_in_result(self) -> None:
         """BifurcationResult includes crisis_fragile_edge_count."""
-        from babylon.bifurcation.analysis import bifurcation_tendency
+        from babylon.domain.bifurcation.analysis import bifurcation_tendency
 
         graph, H, community_states, agent_memberships = _build_solidarity_scenario(
             ci_marginalized=0.1,  # Low CI → crisis-fragile edges

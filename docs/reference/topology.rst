@@ -459,15 +459,15 @@ or revolution. For conceptual background, see
 
 **Key Modules:**
 
-- :py:mod:`babylon.bifurcation` - Package with all analysis functions
-- :py:mod:`babylon.bifurcation.analysis` - Full orchestrator
-- :py:mod:`babylon.bifurcation.consciousness` - Sigmoid weighting
-- :py:mod:`babylon.bifurcation.axis` - Per-axis contradiction analysis
-- :py:mod:`babylon.bifurcation.bridges` - Community bridge detection
-- :py:mod:`babylon.bifurcation.resilience` - Topological resilience metrics
-- :py:mod:`babylon.bifurcation.ceiling` - Material solidarity ceiling
-- :py:mod:`babylon.bifurcation.legitimation` - Legitimation crisis amplifier
-- :py:mod:`babylon.bifurcation.types` - Result types
+- :py:mod:`babylon.domain.bifurcation` - Package with all analysis functions
+- :py:mod:`babylon.domain.bifurcation.analysis` - Full orchestrator
+- :py:mod:`babylon.domain.bifurcation.consciousness` - Sigmoid weighting
+- :py:mod:`babylon.domain.bifurcation.axis` - Per-axis contradiction analysis
+- :py:mod:`babylon.domain.bifurcation.bridges` - Community bridge detection
+- :py:mod:`babylon.domain.bifurcation.resilience` - Topological resilience metrics
+- :py:mod:`babylon.domain.bifurcation.ceiling` - Material solidarity ceiling
+- :py:mod:`babylon.domain.bifurcation.legitimation` - Legitimation crisis amplifier
+- :py:mod:`babylon.domain.bifurcation.types` - Result types
 - :py:mod:`babylon.engine.bifurcation_monitor` - Tick-level observer
 - :py:mod:`babylon.engine.community_state_store` - Community state protocol
 
@@ -573,7 +573,7 @@ Result Types
 BifurcationResult
 ~~~~~~~~~~~~~~~~~
 
-Frozen Pydantic model produced by :func:`~babylon.bifurcation.analysis.bifurcation_tendency`.
+Frozen Pydantic model produced by :func:`~babylon.domain.bifurcation.analysis.bifurcation_tendency`.
 One instance per analysis call.
 
 .. list-table::
@@ -653,7 +653,7 @@ One instance per analysis call.
 BifurcationSnapshot
 ~~~~~~~~~~~~~~~~~~~
 
-Wraps :class:`~babylon.bifurcation.types.BifurcationResult` with tick metadata.
+Wraps :class:`~babylon.domain.bifurcation.types.BifurcationResult` with tick metadata.
 Stored in ``BifurcationMonitor._bifurcation_history``.
 
 .. list-table::
@@ -800,7 +800,7 @@ bifurcation_tendency
 
    .. code-block:: python
 
-      from babylon.bifurcation import bifurcation_tendency
+      from babylon.domain.bifurcation import bifurcation_tendency
       from babylon.config.defines import BifurcationDefines
 
       result = bifurcation_tendency(
@@ -851,7 +851,7 @@ Extends the original float return with a crisis-fragile marker.
      - ``bool``
      - ``True`` if effective CI < crisis-fragile threshold (0.3). Default: ``False``.
 
-Defined in :py:class:`~babylon.bifurcation.types.WeightedSolidarityResult`.
+Defined in :py:class:`~babylon.domain.bifurcation.types.WeightedSolidarityResult`.
 See :doc:`/reference/ternary-consciousness` for full details.
 
 consciousness_weighted_solidarity
@@ -1090,7 +1090,7 @@ BifurcationMonitor
 
    Monitor tracking bifurcation tendency across simulation ticks.
 
-   Records :class:`~babylon.bifurcation.types.BifurcationSnapshot` per tick
+   Records :class:`~babylon.domain.bifurcation.types.BifurcationSnapshot` per tick
    and emits :class:`~babylon.models.events.BifurcationTendencyEvent` when
    the overall tendency changes.
 
@@ -1119,9 +1119,9 @@ Methods
 
    Run bifurcation analysis and record snapshot.
 
-   Calls :func:`~babylon.bifurcation.analysis.bifurcation_tendency` with
+   Calls :func:`~babylon.domain.bifurcation.analysis.bifurcation_tendency` with
    community states from the injected store, records the resulting
-   :class:`~babylon.bifurcation.types.BifurcationSnapshot`, and emits
+   :class:`~babylon.domain.bifurcation.types.BifurcationSnapshot`, and emits
    a :class:`~babylon.models.events.BifurcationTendencyEvent` if the
    overall tendency changed since the previous tick.
 
@@ -1208,7 +1208,7 @@ Usage Example
 
 .. code-block:: python
 
-   from babylon.bifurcation import bifurcation_tendency
+   from babylon.domain.bifurcation import bifurcation_tendency
    from babylon.config.defines import BifurcationDefines
    from babylon.engine.bifurcation_monitor import BifurcationMonitor
    from babylon.engine.community_state_store import InMemoryCommunityStateStore

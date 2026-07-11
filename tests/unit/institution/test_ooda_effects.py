@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.institution.ooda_effects import hegemonic_fraction_effect
+from babylon.domain.institution.ooda_effects import hegemonic_fraction_effect
 from babylon.models.enums import ActionType, RulingClassFraction
 
 

@@ -12,9 +12,9 @@ import pytest
 from shapely.geometry import Polygon  # type: ignore[import-untyped]
 
 from babylon.config.defines import InfraTerrainDefines
-from babylon.infrastructure.natural_earth_reader import LakeFeature, RegionFeature
-from babylon.infrastructure.terrain import DefaultBiocapacityStore, DefaultTerrainClassifier
-from babylon.infrastructure.types import TerrainClassification
+from babylon.domain.geography.natural_earth_reader import LakeFeature, RegionFeature
+from babylon.domain.geography.terrain import DefaultBiocapacityStore, DefaultTerrainClassifier
+from babylon.domain.geography.types import TerrainClassification
 from babylon.models.enums import BiocapacityType, TerrainType
 
 

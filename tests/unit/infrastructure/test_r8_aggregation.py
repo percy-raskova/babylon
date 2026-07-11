@@ -15,14 +15,14 @@ class TestClassifyR8Terrain:
 
     def _get_r8_cells(self) -> list:
         """Generate R8 cells for a single R7 hex."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_hex = h3.latlng_to_cell(42.3314, -83.0458, 7)
         return generate_r8_mesh({r7_hex}, {r7_hex: "26163"})
 
     def test_no_water_all_land(self) -> None:
         """With no water polygons, all cells remain LAND."""
-        from babylon.infrastructure.r8_mesh import classify_r8_terrain
+        from babylon.domain.geography.r8_mesh import classify_r8_terrain
 
         r8_cells = self._get_r8_cells()
         result = classify_r8_terrain(r8_cells, [])
@@ -35,7 +35,7 @@ class TestClassifyR8Terrain:
         """A large water polygon covering an R8 cell classifies it as WATER."""
         from shapely.geometry import Polygon  # type: ignore[import-untyped]
 
-        from babylon.infrastructure.r8_mesh import classify_r8_terrain
+        from babylon.domain.geography.r8_mesh import classify_r8_terrain
 
         r8_cells = self._get_r8_cells()
         target_cell = r8_cells[0]
@@ -66,7 +66,7 @@ class TestClassifyR8Terrain:
         """WATER cells must have all utility flags set to False."""
         from shapely.geometry import Polygon  # type: ignore[import-untyped]
 
-        from babylon.infrastructure.r8_mesh import classify_r8_terrain
+        from babylon.domain.geography.r8_mesh import classify_r8_terrain
 
         r8_cells = self._get_r8_cells()
         target_cell = r8_cells[0]
@@ -99,7 +99,7 @@ class TestClassifyR8Terrain:
         """Classification does not add or remove cells."""
         from shapely.geometry import Polygon  # type: ignore[import-untyped]
 
-        from babylon.infrastructure.r8_mesh import classify_r8_terrain
+        from babylon.domain.geography.r8_mesh import classify_r8_terrain
 
         r8_cells = self._get_r8_cells()
 
@@ -126,8 +126,8 @@ class TestAggregateTerrainR8ToR7:
 
     def test_all_land_children_produce_land_parent(self) -> None:
         """A R7 hex with all LAND R8 children is classified as LAND."""
-        from babylon.infrastructure.r8_aggregation import aggregate_terrain
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_aggregation import aggregate_terrain
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_hex = h3.latlng_to_cell(42.3314, -83.0458, 7)
         r8_cells = generate_r8_mesh({r7_hex}, {r7_hex: "26163"})
@@ -140,9 +140,9 @@ class TestAggregateTerrainR8ToR7:
 
     def test_majority_water_produces_water_parent(self) -> None:
         """R7 hex with >50% WATER children is classified as WATER."""
-        from babylon.infrastructure.r8_aggregation import aggregate_terrain
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
-        from babylon.infrastructure.r8_types import HexR8State
+        from babylon.domain.geography.r8_aggregation import aggregate_terrain
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_types import HexR8State
 
         r7_hex = h3.latlng_to_cell(42.3314, -83.0458, 7)
         r8_cells = generate_r8_mesh({r7_hex}, {r7_hex: "26163"})
@@ -176,9 +176,9 @@ class TestAggregateTerrainR8ToR7:
 
     def test_minority_water_stays_land(self) -> None:
         """R7 hex with <50% WATER children stays LAND."""
-        from babylon.infrastructure.r8_aggregation import aggregate_terrain
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
-        from babylon.infrastructure.r8_types import HexR8State
+        from babylon.domain.geography.r8_aggregation import aggregate_terrain
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_types import HexR8State
 
         r7_hex = h3.latlng_to_cell(42.3314, -83.0458, 7)
         r8_cells = generate_r8_mesh({r7_hex}, {r7_hex: "26163"})
@@ -216,8 +216,8 @@ class TestAggregateUtilityCoverage:
 
     def test_full_coverage_all_true(self) -> None:
         """All LAND children with service → 1.0 coverage."""
-        from babylon.infrastructure.r8_aggregation import aggregate_utility_coverage
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_aggregation import aggregate_utility_coverage
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_hex = h3.latlng_to_cell(42.3314, -83.0458, 7)
         r8_cells = generate_r8_mesh({r7_hex}, {r7_hex: "26163"})
@@ -229,9 +229,9 @@ class TestAggregateUtilityCoverage:
 
     def test_partial_coverage(self) -> None:
         """Some LAND children without service → partial coverage fraction."""
-        from babylon.infrastructure.r8_aggregation import aggregate_utility_coverage
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
-        from babylon.infrastructure.r8_types import HexR8State
+        from babylon.domain.geography.r8_aggregation import aggregate_utility_coverage
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_types import HexR8State
 
         r7_hex = h3.latlng_to_cell(42.3314, -83.0458, 7)
         r8_cells = generate_r8_mesh({r7_hex}, {r7_hex: "26163"})
@@ -264,9 +264,9 @@ class TestAggregateUtilityCoverage:
 
     def test_water_cells_excluded_from_denominator(self) -> None:
         """WATER cells should not count in the utility coverage denominator."""
-        from babylon.infrastructure.r8_aggregation import aggregate_utility_coverage
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
-        from babylon.infrastructure.r8_types import HexR8State
+        from babylon.domain.geography.r8_aggregation import aggregate_utility_coverage
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_types import HexR8State
 
         r7_hex = h3.latlng_to_cell(42.3314, -83.0458, 7)
         r8_cells = generate_r8_mesh({r7_hex}, {r7_hex: "26163"})
@@ -304,9 +304,9 @@ class TestAggregateInfrastructureRouting:
     def test_feature_crossing_r7_boundary(self) -> None:
         """Feature crossing from one R7 parent's R8 cell to another's
         should appear in the R7 edge results."""
-        from babylon.infrastructure.r8_aggregation import aggregate_infrastructure_routing
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
-        from babylon.infrastructure.r8_types import R8LinearFeature
+        from babylon.domain.geography.r8_aggregation import aggregate_infrastructure_routing
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_types import R8LinearFeature
 
         # Use two adjacent R7 hexes
         r7_a = h3.latlng_to_cell(42.3314, -83.0458, 7)
@@ -348,9 +348,9 @@ class TestAggregateInfrastructureRouting:
 
     def test_feature_within_single_r7_no_crossing(self) -> None:
         """Features staying within a single R7 parent produce no edge crossings."""
-        from babylon.infrastructure.r8_aggregation import aggregate_infrastructure_routing
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
-        from babylon.infrastructure.r8_types import R8LinearFeature
+        from babylon.domain.geography.r8_aggregation import aggregate_infrastructure_routing
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_types import R8LinearFeature
 
         r7_hex = h3.latlng_to_cell(42.3314, -83.0458, 7)
         r8_cells = generate_r8_mesh({r7_hex}, {r7_hex: "26163"})

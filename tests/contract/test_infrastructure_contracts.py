@@ -4,7 +4,7 @@ Verifies that all concrete implementations satisfy their ``@runtime_checkable``
 Protocol interfaces via ``isinstance()`` checks.
 
 See Also:
-    :mod:`babylon.infrastructure.protocols`: 7 Protocol definitions.
+    :mod:`babylon.domain.geography.protocols`: 7 Protocol definitions.
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import InfrastructureDefines, InfraTerrainDefines
-from babylon.infrastructure.capacity import DefaultEdgeCapacityCalculator
-from babylon.infrastructure.internet import (
+from babylon.domain.geography.capacity import DefaultEdgeCapacityCalculator
+from babylon.domain.geography.internet import (
     DefaultInternetAccessManager,
     DefaultInternetFieldOperator,
 )
-from babylon.infrastructure.inventory import DefaultInfrastructureInventory
-from babylon.infrastructure.protocols import (
+from babylon.domain.geography.inventory import DefaultInfrastructureInventory
+from babylon.domain.geography.protocols import (
     BiocapacityStore,
     EdgeCapacityCalculator,
     InfrastructureInventory,
@@ -27,7 +27,7 @@ from babylon.infrastructure.protocols import (
     SpatialSnapper,
     TerrainClassifier,
 )
-from babylon.infrastructure.terrain import (
+from babylon.domain.geography.terrain import (
     DefaultBiocapacityStore,
     DefaultTerrainClassifier,
 )
@@ -72,7 +72,7 @@ class TestProtocolCompliance:
 
     def test_spatial_snapper(self) -> None:
         """DefaultSpatialSnapper satisfies SpatialSnapper protocol."""
-        from babylon.infrastructure.snapping import DefaultSpatialSnapper
+        from babylon.domain.geography.snapping import DefaultSpatialSnapper
 
         class _MockReader:
             """Minimal mock to satisfy constructor."""

@@ -14,8 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from babylon.domain.organizations.types import ConsciousnessDelta
 from babylon.models.enums import ActionType, DecisionMode
-from babylon.organizations.types import ConsciousnessDelta
 
 
 class OODAProfile(BaseModel):

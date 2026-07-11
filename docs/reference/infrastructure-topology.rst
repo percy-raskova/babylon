@@ -11,7 +11,7 @@ conceptual background, see :doc:`/concepts/infrastructure-topology`.
 Module Overview
 ---------------
 
-The :py:mod:`babylon.infrastructure` package contains six submodules:
+The :py:mod:`babylon.domain.geography` package contains six submodules:
 
 .. list-table::
    :header-rows: 1
@@ -19,21 +19,21 @@ The :py:mod:`babylon.infrastructure` package contains six submodules:
 
    * - Submodule
      - Responsibility
-   * - :py:mod:`~babylon.infrastructure.types`
+   * - :py:mod:`~babylon.domain.geography.types`
      - 12 frozen Pydantic DTOs
-   * - :py:mod:`~babylon.infrastructure.protocols`
+   * - :py:mod:`~babylon.domain.geography.protocols`
      - 7 ``@runtime_checkable`` Protocol interfaces
-   * - :py:mod:`~babylon.infrastructure.terrain`
+   * - :py:mod:`~babylon.domain.geography.terrain`
      - ``DefaultTerrainClassifier``, ``DefaultBiocapacityStore``
-   * - :py:mod:`~babylon.infrastructure.inventory`
+   * - :py:mod:`~babylon.domain.geography.inventory`
      - ``DefaultInfrastructureInventory``
-   * - :py:mod:`~babylon.infrastructure.capacity`
+   * - :py:mod:`~babylon.domain.geography.capacity`
      - ``DefaultEdgeCapacityCalculator``
-   * - :py:mod:`~babylon.infrastructure.internet`
+   * - :py:mod:`~babylon.domain.geography.internet`
      - ``DefaultInternetAccessManager``, ``DefaultInternetFieldOperator``
-   * - :py:mod:`~babylon.infrastructure.snapping`
+   * - :py:mod:`~babylon.domain.geography.snapping`
      - ``DefaultSpatialSnapper``
-   * - :py:mod:`~babylon.infrastructure.nonlocal_edges`
+   * - :py:mod:`~babylon.domain.geography.nonlocal_edges`
      - ``generate_airport_edges()``, ``generate_shipping_edges()``
 
 Enumerations
@@ -227,7 +227,7 @@ Data Types
 ----------
 
 All data types are frozen Pydantic ``BaseModel`` subclasses defined in
-:py:mod:`babylon.infrastructure.types`.
+:py:mod:`babylon.domain.geography.types`.
 
 TerrainClassification
 ~~~~~~~~~~~~~~~~~~~~~
@@ -649,7 +649,7 @@ Protocols
 ---------
 
 All protocols are ``@runtime_checkable`` and defined in
-:py:mod:`babylon.infrastructure.protocols`.
+:py:mod:`babylon.domain.geography.protocols`.
 
 TerrainClassifier
 ~~~~~~~~~~~~~~~~~
@@ -896,7 +896,7 @@ Implementations
 DefaultTerrainClassifier
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-:py:mod:`babylon.infrastructure.terrain`
+:py:mod:`babylon.domain.geography.terrain`
 
 **Constructor**:
 ``DefaultTerrainClassifier(reader, defines)``
@@ -913,7 +913,7 @@ Classification: ``WATER`` if water coverage >= threshold, else
 DefaultBiocapacityStore
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-:py:mod:`babylon.infrastructure.terrain`
+:py:mod:`babylon.domain.geography.terrain`
 
 **Constructor**: ``DefaultBiocapacityStore(defines: InfraTerrainDefines)``
 
@@ -935,7 +935,7 @@ tick-snapshot compatibility.
 DefaultInfrastructureInventory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:py:mod:`babylon.infrastructure.inventory`
+:py:mod:`babylon.domain.geography.inventory`
 
 **Constructor**: ``DefaultInfrastructureInventory()``
 
@@ -952,7 +952,7 @@ Supports serialization via ``to_dict()`` / ``from_dict()``.
 DefaultEdgeCapacityCalculator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:py:mod:`babylon.infrastructure.capacity`
+:py:mod:`babylon.domain.geography.capacity`
 
 **Constructor**: ``DefaultEdgeCapacityCalculator(defines: InfrastructureDefines)``
 
@@ -963,7 +963,7 @@ Total = aggregate + natural.
 DefaultSpatialSnapper
 ~~~~~~~~~~~~~~~~~~~~~
 
-:py:mod:`babylon.infrastructure.snapping`
+:py:mod:`babylon.domain.geography.snapping`
 
 **Constructor**:
 ``DefaultSpatialSnapper(reader, defines)``
@@ -998,7 +998,7 @@ Point features snapped to nearest vertex within
 DefaultInternetAccessManager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:py:mod:`babylon.infrastructure.internet`
+:py:mod:`babylon.domain.geography.internet`
 
 **Constructor**: ``DefaultInternetAccessManager(defines: InfraTerrainDefines)``
 
@@ -1009,7 +1009,7 @@ data maps county penetration to per-hex access. WATER hexes always
 DefaultInternetFieldOperator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:py:mod:`babylon.infrastructure.internet`
+:py:mod:`babylon.domain.geography.internet`
 
 **Constructor**:
 ``DefaultInternetFieldOperator(manager, infra_defines=None)``
@@ -1025,7 +1025,7 @@ capacity.
 Nonlocal Edge Generators
 ------------------------
 
-Two module-level functions in :py:mod:`babylon.infrastructure.nonlocal_edges`.
+Two module-level functions in :py:mod:`babylon.domain.geography.nonlocal_edges`.
 
 .. py:function:: generate_airport_edges(airport_vertices: Sequence[VertexState], all_airports: Sequence[VertexState], defines: InfrastructureDefines, avg_hex_diameter_km: float) -> list[NonlocalEdgeState]
 

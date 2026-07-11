@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.models.enums import EdgeType, OrgType
-from babylon.organizations.composition import (
+from babylon.domain.organizations.composition import (
     class_composition,
     community_composition,
     effective_capacity,
     lifecycle_composition,
 )
-from babylon.organizations.types import CompositionResult
+from babylon.domain.organizations.types import CompositionResult
+from babylon.models.enums import EdgeType, OrgType
 from babylon.topology.graph import BabylonGraph
 
 

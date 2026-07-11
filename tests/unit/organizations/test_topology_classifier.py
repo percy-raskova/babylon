@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.domain.organizations.topology import classify_topology
 from babylon.models.enums import EdgeType, TopologyType
-from babylon.organizations.topology import classify_topology
 from babylon.topology.graph import BabylonGraph
 
 

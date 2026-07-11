@@ -505,10 +505,8 @@ forbidden_modules = [
     "babylon.formulas",
     "babylon.config",
     "babylon.ooda",
-    "babylon.ai",
-    "babylon.rag",
-    "babylon.dialectics",
-    "babylon.infrastructure",
+    "babylon.intelligence",
+    "babylon.domain",
 ]
 
 [[tool.importlinter.contracts]]

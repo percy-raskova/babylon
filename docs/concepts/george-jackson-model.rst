@@ -286,7 +286,7 @@ Feature 034 makes the assimilation trap concretely detectable. Solidarity
 edges where both endpoints have revolutionary consciousness ``r < 0.3``
 are marked **crisis-fragile** — they represent assimilated solidarity that
 would collapse when material conditions demand sacrifice. The
-:class:`~babylon.bifurcation.types.BifurcationResult` tracks
+:class:`~babylon.domain.bifurcation.types.BifurcationResult` tracks
 ``mean_assimilation_ratio_marginalized`` (mean ``f / (l + f)`` across
 marginalized communities) and ``crisis_fragile_edge_count`` (how many
 solidarity edges carry this marker). A high ratio of crisis-fragile to
@@ -502,4 +502,4 @@ See Also
 - :doc:`/reference/topology` -- Bifurcation analysis API reference
 - :doc:`/reference/configuration` -- GameDefines parameters
 - :py:mod:`babylon.engine.systems.ideology` -- Consciousness drift implementation
-- :py:mod:`babylon.bifurcation` -- Bifurcation topology analysis package
+- :py:mod:`babylon.domain.bifurcation` -- Bifurcation topology analysis package

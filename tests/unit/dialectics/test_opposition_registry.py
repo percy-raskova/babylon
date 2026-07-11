@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`babylon.dialectics.core.opposition`.
+"""Unit tests for :mod:`babylon.domain.dialectics.core.opposition`.
 
 The registry is the successor of both the saturating edge-tension scalar
 and the dormant layer's ``weight``: each opposition reports a
@@ -16,8 +16,8 @@ from dataclasses import dataclass
 import pytest
 from pydantic import ValidationError
 
-from babylon.dialectics.core.composition import sum_
-from babylon.dialectics.core.opposition import (
+from babylon.domain.dialectics.core.composition import sum_
+from babylon.domain.dialectics.core.opposition import (
     MAX_NESTING_DEPTH,
     BoundOpposition,
     GapReading,

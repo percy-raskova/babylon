@@ -14,14 +14,14 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import InfrastructureDefines
-from babylon.infrastructure.inventory import DefaultInfrastructureInventory
-from babylon.infrastructure.nonlocal_edges import (
+from babylon.domain.geography.inventory import DefaultInfrastructureInventory
+from babylon.domain.geography.nonlocal_edges import (
     _classify_locality,
     _haversine_km,
     generate_airport_edges,
     generate_shipping_edges,
 )
-from babylon.infrastructure.types import (
+from babylon.domain.geography.types import (
     JunctionState,
     NonlocalEdgeState,
     VertexState,
@@ -300,7 +300,7 @@ class TestNonlocalInventoryIntegration:
 
     def test_add_and_retrieve(self) -> None:
         """Nonlocal edges can be added to and retrieved from inventory."""
-        from babylon.infrastructure.types import InfrastructureLinkState
+        from babylon.domain.geography.types import InfrastructureLinkState
         from babylon.models.enums import FlowCategory
 
         inventory = DefaultInfrastructureInventory()
@@ -327,7 +327,7 @@ class TestNonlocalInventoryIntegration:
 
     def test_serialization_roundtrip(self) -> None:
         """Nonlocal edges survive to_dict()/from_dict() roundtrip."""
-        from babylon.infrastructure.types import InfrastructureLinkState
+        from babylon.domain.geography.types import InfrastructureLinkState
         from babylon.models.enums import FlowCategory
 
         inventory = DefaultInfrastructureInventory()

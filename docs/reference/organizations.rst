@@ -443,7 +443,7 @@ Frozen Pydantic models produced by calculators. Not stored on entities.
 
 .. code-block:: python
 
-   from babylon.organizations.types import (
+   from babylon.domain.organizations.types import (
        ConsciousnessDelta,
        AggregatedEffect,
        CompositionResult,
@@ -497,7 +497,7 @@ Composition Calculators
 
 .. code-block:: python
 
-   from babylon.organizations.composition import (
+   from babylon.domain.organizations.composition import (
        class_composition,
        community_composition,
        lifecycle_composition,
@@ -556,7 +556,7 @@ Consciousness Effect Formula
 
 .. code-block:: python
 
-   from babylon.organizations.consciousness import (
+   from babylon.domain.organizations.consciousness import (
        consciousness_effect,
        derive_credibility,
        aggregate_consciousness_effects,
@@ -647,7 +647,7 @@ Topology Classification
 
 .. code-block:: python
 
-   from babylon.organizations.topology import (
+   from babylon.domain.organizations.topology import (
        classify_topology,
        identify_key_figures,
        cohesion_loss_on_removal,
@@ -715,7 +715,7 @@ Legacy Migration
 
 .. code-block:: python
 
-   from babylon.organizations.migration import (
+   from babylon.domain.organizations.migration import (
        migrate_faction,
        migrate_institution,
        migrate_all,
@@ -890,5 +890,5 @@ See Also
 - :doc:`/reference/institutions` -- Institution Base Model reference (Feature 040)
 - :doc:`/reference/data-models` -- SocialClass and Territory models
 - :doc:`/reference/formulas` -- Consciousness drift and solidarity formulas
-- :py:mod:`babylon.organizations` -- Source code
+- :py:mod:`babylon.domain.organizations` -- Source code
 - :py:mod:`babylon.models.entities.organization` -- Entity source code

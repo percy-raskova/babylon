@@ -13,7 +13,7 @@ from __future__ import annotations
 import h3
 import pytest
 
-from babylon.infrastructure.h3_mesh import enumerate_edges, enumerate_vertices
+from babylon.domain.geography.h3_mesh import enumerate_edges, enumerate_vertices
 
 
 @pytest.mark.unit

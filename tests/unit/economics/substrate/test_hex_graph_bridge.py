@@ -297,7 +297,7 @@ class TestTerrainUtilityForwarding:
 
     def test_terrain_water_fraction_forwarded(self, hydrated_hex_grid: HexGrid) -> None:
         """R7 terrain water fractions aggregate to R6."""
-        from babylon.infrastructure.types import TerrainClassification
+        from babylon.domain.geography.types import TerrainClassification
 
         # Mock R7 terrain: Wayne has 1/3 water children
         r7_terrain: dict[str, TerrainClassification] = {}

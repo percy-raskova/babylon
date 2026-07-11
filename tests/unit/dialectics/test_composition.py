@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`babylon.dialectics.core.composition`.
+"""Unit tests for :mod:`babylon.domain.dialectics.core.composition`.
 
 Composition operates at the binding level: ``product`` (D1 ⊗ D2, "sharp
 only if both are sharp") and ``sum_`` (D1 ⊕ D2, "either develops") take
@@ -16,8 +16,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from babylon.dialectics.core.composition import product, sum_
-from babylon.dialectics.core.opposition import BoundOpposition, GapReading, OppositionSpec
+from babylon.domain.dialectics.core.composition import product, sum_
+from babylon.domain.dialectics.core.opposition import BoundOpposition, GapReading, OppositionSpec
 
 pytestmark = [pytest.mark.unit, pytest.mark.math]
 

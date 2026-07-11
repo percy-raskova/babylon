@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.dialectics.instances.catalog import GraphInputs, build_default_registry
+from babylon.domain.dialectics.instances.catalog import GraphInputs, build_default_registry
 from babylon.topology.graph import BabylonUGraph
 
 pytestmark = [pytest.mark.unit, pytest.mark.math]

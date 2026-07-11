@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.infrastructure.inventory import DefaultInfrastructureInventory
-from babylon.infrastructure.types import (
+from babylon.domain.geography.inventory import DefaultInfrastructureInventory
+from babylon.domain.geography.types import (
     InfrastructureLinkState,
     JunctionState,
     VertexState,

@@ -12,6 +12,15 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.config.defines import OrganizationDefines
+from babylon.domain.organizations.composition import (
+    class_composition,
+    lifecycle_composition,
+)
+from babylon.domain.organizations.topology import (
+    classify_topology,
+    cohesion_loss_on_removal,
+    identify_key_figures,
+)
 from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
@@ -31,15 +40,6 @@ from babylon.models.enums import (
     TopologyType,
 )
 from babylon.models.world_state import WorldState
-from babylon.organizations.composition import (
-    class_composition,
-    lifecycle_composition,
-)
-from babylon.organizations.topology import (
-    classify_topology,
-    cohesion_loss_on_removal,
-    identify_key_figures,
-)
 from babylon.topology.graph import BabylonGraph
 
 # =========================================================================

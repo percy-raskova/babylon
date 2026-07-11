@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 import xgi
 
-from babylon.bifurcation.types import BifurcationSnapshot
 from babylon.config.defines import BifurcationDefines
+from babylon.domain.bifurcation.types import BifurcationSnapshot
 from babylon.engine.bifurcation_monitor import BifurcationMonitor
 from babylon.engine.community_state_store import InMemoryCommunityStateStore
 from babylon.models.entities.community import CommunityState

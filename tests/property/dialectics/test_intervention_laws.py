@@ -14,8 +14,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from babylon.dialectics.core.coupling import StanceIntervention, apply_interventions
-from babylon.dialectics.core.opposition import OppositionState
+from babylon.domain.dialectics.core.coupling import StanceIntervention, apply_interventions
+from babylon.domain.dialectics.core.opposition import OppositionState
 
 pytestmark = [pytest.mark.property, pytest.mark.math]
 

@@ -10,7 +10,7 @@ routes toward fascism or revolution based on cross-line solidarity
 weighted by community consciousness.
 
 See Also:
-    :mod:`babylon.bifurcation.analysis`: Core analysis function.
+    :mod:`babylon.domain.bifurcation.analysis`: Core analysis function.
     :mod:`babylon.engine.topology_monitor`: Percolation-based monitor.
     :mod:`babylon.engine.community_state_store`: State store protocol.
 """
@@ -22,9 +22,9 @@ from typing import TYPE_CHECKING
 
 import xgi  # type: ignore[import-untyped, unused-ignore]
 
-from babylon.bifurcation.analysis import bifurcation_tendency
-from babylon.bifurcation.types import BifurcationSnapshot
 from babylon.config.defines import BifurcationDefines
+from babylon.domain.bifurcation.analysis import bifurcation_tendency
+from babylon.domain.bifurcation.types import BifurcationSnapshot
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType
 from babylon.models.events import BifurcationTendencyEvent, SimulationEvent

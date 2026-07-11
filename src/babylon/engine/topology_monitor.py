@@ -33,7 +33,7 @@ import logging
 import random
 from typing import TYPE_CHECKING
 
-from babylon.dialectics.instances.connectivity import pieces
+from babylon.domain.dialectics.instances.connectivity import pieces
 from babylon.models.enums import EdgeType
 from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
@@ -115,7 +115,7 @@ def calculate_component_metrics(
 
     Note:
         Component counting is grounded in the connectivity cylinder's
-        :math:`\\Pi_0` (:func:`babylon.dialectics.instances.connectivity.pieces`)
+        :math:`\\Pi_0` (:func:`babylon.domain.dialectics.instances.connectivity.pieces`)
         — the same connected-components computation, re-exposed as the
         Phase-B instance (``project/06-lawverian-dialectics.md`` §4).
     """

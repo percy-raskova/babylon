@@ -1,4 +1,4 @@
-"""Law tests for :class:`babylon.dialectics.core.cylinder.AdjointCylinder`.
+"""Law tests for :class:`babylon.domain.dialectics.core.cylinder.AdjointCylinder`.
 
 The fixture is the connectivity cylinder over small undirected graphs —
 the Phase-A test double of the production instance (Phase B grounds
@@ -27,7 +27,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from babylon.dialectics.core.cylinder import AdjointCylinder
+from babylon.domain.dialectics.core.cylinder import AdjointCylinder
 from babylon.topology.graph import BabylonUGraph
 
 pytestmark = [pytest.mark.property, pytest.mark.topology]

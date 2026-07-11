@@ -19,7 +19,7 @@ import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from babylon.dialectics.instances.value_form import (
+from babylon.domain.dialectics.instances.value_form import (
     class_position_by_phi_hour,
     phi_class,
 )

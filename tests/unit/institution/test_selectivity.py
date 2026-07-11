@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import GameDefines, InstitutionDefines
-from babylon.institution.selectivity import structural_selectivity
+from babylon.domain.institution.selectivity import structural_selectivity
 from babylon.models.enums import ActionType, ApparatusType
 
 from .conftest import make_institution, make_isa_institution

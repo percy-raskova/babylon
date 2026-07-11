@@ -13,14 +13,14 @@ import pytest
 from shapely.geometry import LineString, Polygon  # type: ignore[import-untyped]
 
 from babylon.config.defines import InfrastructureDefines
-from babylon.infrastructure.natural_earth_reader import (
+from babylon.domain.geography.natural_earth_reader import (
     AirportFeature,
     PortFeature,
     RailroadFeature,
     RoadFeature,
 )
-from babylon.infrastructure.snapping import DefaultSpatialSnapper
-from babylon.infrastructure.types import VertexState
+from babylon.domain.geography.snapping import DefaultSpatialSnapper
+from babylon.domain.geography.types import VertexState
 from babylon.models.enums import InfrastructureType, JunctionType
 
 

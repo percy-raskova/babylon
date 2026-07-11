@@ -5,7 +5,7 @@ bonus for consciousness effects, reusing Feature 031 composition
 calculators.
 
 See Also:
-    ``babylon.organizations.composition``: Underlying lifecycle analysis.
+    ``babylon.domain.organizations.composition``: Underlying lifecycle analysis.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from babylon.config.defines import OODADefines, OrganizationDefines
-from babylon.organizations.composition import effective_capacity, lifecycle_composition
+from babylon.domain.organizations.composition import effective_capacity, lifecycle_composition
 
 if TYPE_CHECKING:
     from babylon.topology.graph import BabylonGraph

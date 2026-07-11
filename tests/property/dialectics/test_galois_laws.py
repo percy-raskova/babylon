@@ -1,4 +1,4 @@
-"""Law tests for :class:`babylon.dialectics.core.galois.GaloisConnection`.
+"""Law tests for :class:`babylon.domain.dialectics.core.galois.GaloisConnection`.
 
 A Galois connection is an adjunction between preorders: the executable,
 fully law-testable core of Lawvere's "opposing tendencies are adjoint
@@ -21,7 +21,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from babylon.dialectics.core.galois import GaloisConnection
+from babylon.domain.dialectics.core.galois import GaloisConnection
 
 pytestmark = [pytest.mark.property, pytest.mark.math]
 

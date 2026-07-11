@@ -390,7 +390,7 @@ class TestDynamicBalancePolicySwitch:
             current_super_wage_rate=TC.DynamicBalance.LOW_WAGE_RATE,
             current_repression_level=TC.DynamicBalance.LOW_REPRESSION,
         )
-        from babylon.dialectics.core.opposition import OppositionState
+        from babylon.domain.dialectics.core.opposition import OppositionState
 
         seed = OppositionState(
             key="capital_labor",

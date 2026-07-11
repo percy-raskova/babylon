@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`babylon.dialectics.instances.levels` — level lattices.
+"""Unit tests for :mod:`babylon.domain.dialectics.instances.levels` — level lattices.
 
 The spatial resolution law (design §E1, verbatim): a field constant within
 states but differing between states is *resolved at county* (its county
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.dialectics.instances.levels import (
+from babylon.domain.dialectics.instances.levels import (
     LEVEL_INDEX,
     build_lattice_from_maps,
     level_index_for,

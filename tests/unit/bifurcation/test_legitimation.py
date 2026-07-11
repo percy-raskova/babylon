@@ -13,7 +13,7 @@ Where:
     scale = BifurcationDefines.legitimation_amplifier_scale
 
 See Also:
-    :mod:`babylon.bifurcation.legitimation`: Implementation.
+    :mod:`babylon.domain.bifurcation.legitimation`: Implementation.
     ``specs/033-bifurcation-topology/spec.md``: US7 specification.
 """
 
@@ -22,8 +22,8 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.bifurcation.legitimation import compute_legitimation_amplifier
 from babylon.config.defines import BifurcationDefines
+from babylon.domain.bifurcation.legitimation import compute_legitimation_amplifier
 from babylon.topology.graph import BabylonGraph
 
 

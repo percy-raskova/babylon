@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import OrganizationDefines
+from babylon.domain.organizations.topology import cohesion_loss_on_removal, identify_key_figures
 from babylon.models.enums import EdgeType
-from babylon.organizations.topology import cohesion_loss_on_removal, identify_key_figures
 from babylon.topology.graph import BabylonGraph
 
 

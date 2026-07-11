@@ -18,15 +18,15 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.dialectics.core.composition import sum_
-from babylon.dialectics.core.opposition import (
+from babylon.domain.dialectics.core.composition import sum_
+from babylon.domain.dialectics.core.opposition import (
     BoundOpposition,
     GapReading,
     OppositionRegistry,
     OppositionSpec,
     PoleBinding,
 )
-from babylon.dialectics.instances.levels import (
+from babylon.domain.dialectics.instances.levels import (
     social_lattice_from_memberships,
     spatial_lattice_for_counties,
 )

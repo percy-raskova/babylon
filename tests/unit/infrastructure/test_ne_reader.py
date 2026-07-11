@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from babylon.infrastructure.natural_earth_reader import NE_DB_PATH, NaturalEarthReader
+from babylon.domain.geography.natural_earth_reader import NE_DB_PATH, NaturalEarthReader
 
 # Detroit tri-county bounding box (approximate, EPSG:4326)
 # (min_lon, min_lat, max_lon, max_lat)

@@ -11,8 +11,8 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.bifurcation.ceiling import compute_solidarity_ceiling
 from babylon.config.defines import BifurcationDefines
+from babylon.domain.bifurcation.ceiling import compute_solidarity_ceiling
 from babylon.models.enums import CommunityType, EdgeType
 from babylon.topology.graph import BabylonGraph
 

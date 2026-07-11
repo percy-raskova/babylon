@@ -12,12 +12,12 @@ import networkx as nx
 import pytest
 from pydantic import ValidationError
 
-from babylon.bifurcation.axis import (
+from babylon.config.defines import BifurcationDefines
+from babylon.domain.bifurcation.axis import (
     classify_edge_antagonism,
     compute_axis_tendency,
     crosses_contradiction_axis,
 )
-from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
     CommunityState,
 )
@@ -754,7 +754,7 @@ class TestComputeAxisTendency:
         )
 
         # Verify it's an AxisTendency
-        from babylon.bifurcation.types import AxisTendency
+        from babylon.domain.bifurcation.types import AxisTendency
 
         assert isinstance(result, AxisTendency)
 

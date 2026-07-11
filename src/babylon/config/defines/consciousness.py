@@ -322,8 +322,8 @@ class BifurcationDefines(BaseModel):
     so assimilationist solidarity classifies as fragile/fascist.
 
     See Also:
-        :mod:`babylon.bifurcation.consciousness`: Sigmoid weighting.
-        :mod:`babylon.bifurcation.analysis`: Full bifurcation orchestrator.
+        :mod:`babylon.domain.bifurcation.consciousness`: Sigmoid weighting.
+        :mod:`babylon.domain.bifurcation.analysis`: Full bifurcation orchestrator.
         ``specs/033-bifurcation-topology/spec.md``: Feature specification.
     """
 

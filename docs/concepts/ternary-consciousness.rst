@@ -148,7 +148,7 @@ under crisis.
 
 Feature 034 marks solidarity edges where the effective collective identity
 (min of both endpoints) falls below 0.3 as **crisis-fragile**. The
-:class:`~babylon.bifurcation.types.BifurcationResult` tracks two new
+:class:`~babylon.domain.bifurcation.types.BifurcationResult` tracks two new
 fields:
 
 - ``mean_assimilation_ratio_marginalized`` — the mean ``f / (l + f)``
@@ -174,7 +174,7 @@ entities. Revolutionary consciousness is hidden: it operates through
 informal networks, oral tradition, and practices designed to evade
 surveillance.
 
-The function :func:`~babylon.bifurcation.consciousness.anisotropic_observation_error`
+The function :func:`~babylon.domain.bifurcation.consciousness.anisotropic_observation_error`
 models this asymmetry. It applies Gaussian noise to a consciousness position
 with different standard deviations per component:
 
@@ -223,4 +223,4 @@ See Also
 - :doc:`george-jackson-model` — Bifurcation theory and the assimilation trap
 - :py:mod:`babylon.models.entities.consciousness` — Source module
 - :py:mod:`babylon.formulas.consciousness` — Computation function
-- :py:mod:`babylon.bifurcation.consciousness` — Observation error and weighted solidarity
+- :py:mod:`babylon.domain.bifurcation.consciousness` — Observation error and weighted solidarity

@@ -660,8 +660,8 @@ compute_lifecycle_modifier
 Compute lifecycle-weighted capacity modifier. Youth = 0.0, Adult = 1.0,
 Elder = ``elder_capacity_factor`` (default 0.2). Returns [0, 1].
 
-Reuses :func:`babylon.organizations.composition.lifecycle_composition` and
-:func:`babylon.organizations.composition.effective_capacity`.
+Reuses :func:`babylon.domain.organizations.composition.lifecycle_composition` and
+:func:`babylon.domain.organizations.composition.effective_capacity`.
 
 **Source:** ``src/babylon/ooda/lifecycle_capacity.py:22``
 
@@ -717,7 +717,7 @@ Propagate action consequences to communities. Five sub-processors mutate
 the graph in place:
 
 1. **Consciousness aggregation**: groups CI deltas by target community,
-   calls :func:`babylon.organizations.consciousness.aggregate_consciousness_effects`,
+   calls :func:`babylon.domain.organizations.consciousness.aggregate_consciousness_effects`,
    updates ``collective_identity`` on community nodes.
 2. **Heat propagation**: REPRESS actions add ``repress_heat_delta`` (0.15),
    SURVEIL actions add ``surveil_heat_delta`` (0.05) to community ``heat``.

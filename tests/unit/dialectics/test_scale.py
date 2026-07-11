@@ -16,7 +16,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from babylon.dialectics.instances.scale import ScaleAdjunction
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
 
 pytestmark = [pytest.mark.unit, pytest.mark.math, pytest.mark.topology]
 

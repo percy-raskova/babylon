@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`babylon.dialectics.core.regime` — fixed-point regimes.
+"""Unit tests for :mod:`babylon.domain.dialectics.core.regime` — fixed-point regimes.
 
 Three outcomes of the one Picard operator (§9.4): reproduction (converged),
 crisis (diverging within the level), sublation (resolved at a higher level).
@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.dialectics.core.opposition import OppositionState
-from babylon.dialectics.core.regime import classify_regime
-from babylon.dialectics.instances.levels import spatial_lattice_for_counties
+from babylon.domain.dialectics.core.opposition import OppositionState
+from babylon.domain.dialectics.core.regime import classify_regime
+from babylon.domain.dialectics.instances.levels import spatial_lattice_for_counties
 
 pytestmark = pytest.mark.math
 

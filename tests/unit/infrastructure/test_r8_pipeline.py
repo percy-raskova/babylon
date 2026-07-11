@@ -41,7 +41,7 @@ class TestBuildR8Substrate:
 
     def test_pipeline_produces_r8_cells(self, ne_reader: MagicMock) -> None:
         """Pipeline returns R8 cells for all input R7 hexes."""
-        from babylon.infrastructure.r8_pipeline import build_r8_substrate
+        from babylon.domain.geography.r8_pipeline import build_r8_substrate
 
         r7_indices, county_map = self._get_sample_inputs()
         result = build_r8_substrate(r7_indices, county_map, DETROIT_BBOX, ne_reader)
@@ -53,8 +53,8 @@ class TestBuildR8Substrate:
         """Pipeline classifies WATER when lake polygons overlap R8 cells."""
         from shapely.geometry import Polygon  # type: ignore[import-untyped]
 
-        from babylon.infrastructure.natural_earth_reader import LakeFeature
-        from babylon.infrastructure.r8_pipeline import build_r8_substrate
+        from babylon.domain.geography.natural_earth_reader import LakeFeature
+        from babylon.domain.geography.r8_pipeline import build_r8_substrate
 
         r7_indices, county_map = self._get_sample_inputs()
 
@@ -87,8 +87,8 @@ class TestBuildR8Substrate:
         """Pipeline converts NE road features to R8LinearFeature objects."""
         from shapely.geometry import LineString  # type: ignore[import-untyped]
 
-        from babylon.infrastructure.natural_earth_reader import RoadFeature
-        from babylon.infrastructure.r8_pipeline import build_r8_substrate
+        from babylon.domain.geography.natural_earth_reader import RoadFeature
+        from babylon.domain.geography.r8_pipeline import build_r8_substrate
 
         r7_indices, county_map = self._get_sample_inputs()
 
@@ -117,8 +117,8 @@ class TestBuildR8Substrate:
         """Pipeline converts NE railroad features to R8LinearFeature objects."""
         from shapely.geometry import LineString  # type: ignore[import-untyped]
 
-        from babylon.infrastructure.natural_earth_reader import RailroadFeature
-        from babylon.infrastructure.r8_pipeline import build_r8_substrate
+        from babylon.domain.geography.natural_earth_reader import RailroadFeature
+        from babylon.domain.geography.r8_pipeline import build_r8_substrate
 
         r7_indices, county_map = self._get_sample_inputs()
 
@@ -143,8 +143,8 @@ class TestBuildR8Substrate:
         """Major Highway maps to HIGHWAY, Secondary Highway to ARTERIAL."""
         from shapely.geometry import LineString  # type: ignore[import-untyped]
 
-        from babylon.infrastructure.natural_earth_reader import RoadFeature
-        from babylon.infrastructure.r8_pipeline import build_r8_substrate
+        from babylon.domain.geography.natural_earth_reader import RoadFeature
+        from babylon.domain.geography.r8_pipeline import build_r8_substrate
 
         r7_indices, county_map = self._get_sample_inputs()
 
@@ -171,7 +171,7 @@ class TestBuildR8Substrate:
 
     def test_pipeline_returns_r7_terrain(self, ne_reader: MagicMock) -> None:
         """Pipeline returns aggregated R7 terrain classifications."""
-        from babylon.infrastructure.r8_pipeline import build_r8_substrate
+        from babylon.domain.geography.r8_pipeline import build_r8_substrate
 
         r7_indices, county_map = self._get_sample_inputs()
         result = build_r8_substrate(r7_indices, county_map, DETROIT_BBOX, ne_reader)
@@ -182,7 +182,7 @@ class TestBuildR8Substrate:
 
     def test_pipeline_returns_r7_utility_coverage(self, ne_reader: MagicMock) -> None:
         """Pipeline returns aggregated R7 utility coverage fractions."""
-        from babylon.infrastructure.r8_pipeline import build_r8_substrate
+        from babylon.domain.geography.r8_pipeline import build_r8_substrate
 
         r7_indices, county_map = self._get_sample_inputs()
         result = build_r8_substrate(r7_indices, county_map, DETROIT_BBOX, ne_reader)
@@ -195,7 +195,7 @@ class TestBuildR8Substrate:
 
     def test_pipeline_no_reader_uses_default(self) -> None:
         """When no reader is provided, pipeline attempts to use the default NE database."""
-        from babylon.infrastructure.r8_pipeline import build_r8_substrate
+        from babylon.domain.geography.r8_pipeline import build_r8_substrate
 
         r7_indices, county_map = self._get_sample_inputs()
 

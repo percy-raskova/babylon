@@ -13,11 +13,11 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import InfrastructureDefines, InfraTerrainDefines
-from babylon.infrastructure.internet import (
+from babylon.domain.geography.internet import (
     DefaultInternetAccessManager,
     DefaultInternetFieldOperator,
 )
-from babylon.infrastructure.types import InternetAccessState
+from babylon.domain.geography.types import InternetAccessState
 from babylon.models.enums import InternetResponseMode
 
 

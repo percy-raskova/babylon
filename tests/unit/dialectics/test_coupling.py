@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`babylon.dialectics.core.coupling` and the default graph.
+"""Unit tests for :mod:`babylon.domain.dialectics.core.coupling` and the default graph.
 
 Two concerns:
 
@@ -18,13 +18,13 @@ from dataclasses import dataclass
 import pytest
 from pydantic import ValidationError
 
-from babylon.dialectics.core.coupling import (
+from babylon.domain.dialectics.core.coupling import (
     Coupling,
     CouplingGraph,
     StanceIntervention,
     apply_interventions,
 )
-from babylon.dialectics.core.opposition import (
+from babylon.domain.dialectics.core.opposition import (
     BoundOpposition,
     GapReading,
     OppositionRegistry,
@@ -32,7 +32,7 @@ from babylon.dialectics.core.opposition import (
     OppositionState,
     PoleBinding,
 )
-from babylon.dialectics.instances.catalog import (
+from babylon.domain.dialectics.instances.catalog import (
     build_default_coupling_graph,
     build_default_registry,
 )
@@ -155,7 +155,7 @@ class TestDefaultCouplingGraph:
     def test_unbound_transforms_are_skipped_and_logged(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        with caplog.at_level(logging.INFO, logger="babylon.dialectics.instances.catalog"):
+        with caplog.at_level(logging.INFO, logger="babylon.domain.dialectics.instances.catalog"):
             build_default_coupling_graph(build_default_registry())
         skipped = [r for r in caplog.records if "Skipping coupling" in r.getMessage()]
         # The four crisis-producer transforms reference Phase D/E keys not yet bound.

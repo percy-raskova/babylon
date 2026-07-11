@@ -22,8 +22,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.bifurcation.consciousness import consciousness_sigmoid
 from babylon.config.defines import BifurcationDefines
+from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 from babylon.models.entities.community import (
     CommunityState,
 )
@@ -99,7 +99,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """DISABLED community with SETTLER + NEW_AFRIKAN members bridges colonial axis."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         agent_memberships: dict[str, set[CommunityType]] = {
             "A001": {CommunityType.SETTLER, CommunityType.DISABLED},
@@ -132,7 +132,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """INCARCERATED community with PATRIARCHAL + WOMEN members bridges patriarchal axis."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         agent_memberships: dict[str, set[CommunityType]] = {
             "A001": {CommunityType.PATRIARCHAL, CommunityType.INCARCERATED},
@@ -164,7 +164,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """QUEER community with members from both sides of BOTH axes."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         agent_memberships: dict[str, set[CommunityType]] = {
             "A001": {CommunityType.SETTLER, CommunityType.QUEER},
@@ -202,7 +202,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """DISABLED community with only marginalized members does NOT bridge."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         # All members are NEW_AFRIKAN (marginalized) — no hegemonic members
         agent_memberships: dict[str, set[CommunityType]] = {
@@ -233,7 +233,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """CONTRADICTION_PAIR community (NEW_AFRIKAN) excluded even if spanning."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         # NEW_AFRIKAN is CONTRADICTION_PAIR, not INSTITUTIONAL_EXCLUSION
         agent_memberships: dict[str, set[CommunityType]] = {
@@ -262,7 +262,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """LIFECYCLE_PHASE community (YOUTH) excluded by category filter."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         agent_memberships: dict[str, set[CommunityType]] = {
             "A001": {CommunityType.SETTLER, CommunityType.YOUTH},
@@ -291,7 +291,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """High CI=0.8, infrastructure=0.7 yields high weighted_potential."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         ci = 0.8
         infrastructure = 0.7
@@ -338,7 +338,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Low CI=0.1, infrastructure=0.7 yields low weighted_potential (assimilated)."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         ci = 0.1
         infrastructure = 0.7
@@ -385,7 +385,7 @@ class TestDetectBridges:
         """Empty hypergraph returns empty bridge list."""
         import xgi  # type: ignore[import-untyped]
 
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         H: xgi.Hypergraph = xgi.Hypergraph()
         community_states: dict[CommunityType, CommunityState] = {}
@@ -407,7 +407,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Multiple INSTITUTIONAL_EXCLUSION communities each spanning different axes."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         agent_memberships: dict[str, set[CommunityType]] = {
             # DISABLED bridges colonial
@@ -454,7 +454,7 @@ class TestDetectBridges:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Bridge member_count matches hyperedge member count."""
-        from babylon.bifurcation.bridges import detect_bridges
+        from babylon.domain.bifurcation.bridges import detect_bridges
 
         agent_memberships: dict[str, set[CommunityType]] = {
             "A001": {CommunityType.SETTLER, CommunityType.DISABLED},

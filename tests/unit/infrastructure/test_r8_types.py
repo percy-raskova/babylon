@@ -16,7 +16,7 @@ class TestHexR8State:
 
     def _make_r8(self, **overrides: object) -> object:
         """Create a HexR8State with sensible defaults."""
-        from babylon.infrastructure.r8_types import HexR8State
+        from babylon.domain.geography.r8_types import HexR8State
 
         r7_hex = "872a100d2ffffff"
         r8_children = list(h3.cell_to_children(r7_hex, 8))
@@ -112,7 +112,7 @@ class TestR8LinearFeature:
 
     def _make_feature(self, **overrides: object) -> object:
         """Create an R8LinearFeature with sensible defaults."""
-        from babylon.infrastructure.r8_types import R8LinearFeature
+        from babylon.domain.geography.r8_types import R8LinearFeature
 
         r7_hex = "872a100d2ffffff"
         r8_hex = list(h3.cell_to_children(r7_hex, 8))[0]

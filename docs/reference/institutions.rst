@@ -20,7 +20,7 @@ graph queries, enums, graph integration, and configuration.
        BonapartistModeEvent,
    )
 
-   from babylon.institution import (
+   from babylon.domain.institution import (
        structural_selectivity,
        update_internal_balance,
        hegemonic_fraction_effect,
@@ -381,7 +381,7 @@ No EventBus dependency.
 
 .. code-block:: python
 
-   from babylon.institution import (
+   from babylon.domain.institution import (
        structural_selectivity,
        update_internal_balance,
        hegemonic_fraction_effect,
@@ -674,5 +674,5 @@ See Also
 - :doc:`/reference/data-models` -- SocialClass, Territory, and graph structure
 - :doc:`/reference/state-apparatus-ai` -- State Apparatus AI reference
 - :doc:`/reference/ooda-loop-system` -- OODA Loop System reference
-- :py:mod:`babylon.institution` -- Pure function source code
+- :py:mod:`babylon.domain.institution` -- Pure function source code
 - :py:mod:`babylon.models.entities.institution` -- Entity model source code

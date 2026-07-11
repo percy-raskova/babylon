@@ -38,7 +38,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_ci_zero_near_zero(self) -> None:
         """CI=0.0 with midpoint=0.4, steepness=10 yields near-zero."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         result = consciousness_sigmoid(collective_identity=0.0, midpoint=0.4, steepness=10.0)
         # 1 / (1 + exp(-10 * (0 - 0.4))) = 1 / (1 + exp(4)) ~ 0.018
@@ -48,7 +48,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_ci_half_approximately_073(self) -> None:
         """CI=0.5 with midpoint=0.4, steepness=10 yields ~0.73."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         result = consciousness_sigmoid(collective_identity=0.5, midpoint=0.4, steepness=10.0)
         # 1 / (1 + exp(-10 * (0.5 - 0.4))) = 1 / (1 + exp(-1)) ~ 0.731
@@ -58,7 +58,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_ci_one_near_one(self) -> None:
         """CI=1.0 with midpoint=0.4, steepness=10 yields near-1.0."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         result = consciousness_sigmoid(collective_identity=1.0, midpoint=0.4, steepness=10.0)
         # 1 / (1 + exp(-10 * (1.0 - 0.4))) = 1 / (1 + exp(-6)) ~ 0.9975
@@ -68,7 +68,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_at_midpoint_equals_half(self) -> None:
         """At CI=midpoint, sigmoid should equal exactly 0.5."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         result = consciousness_sigmoid(collective_identity=0.4, midpoint=0.4, steepness=10.0)
         assert abs(result - 0.5) < 1e-10
@@ -76,7 +76,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_breakage_cliff_low_ci(self) -> None:
         """CI=0.1 (assimilated) with default params yields < 0.05."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         result = consciousness_sigmoid(collective_identity=0.1, midpoint=0.4, steepness=10.0)
         # 1 / (1 + exp(-10 * (0.1 - 0.4))) = 1 / (1 + exp(3)) ~ 0.047
@@ -85,7 +85,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_breakage_cliff_high_ci(self) -> None:
         """CI=0.8 (oppositional) with default params yields > 0.98."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         result = consciousness_sigmoid(collective_identity=0.8, midpoint=0.4, steepness=10.0)
         # 1 / (1 + exp(-10 * (0.8 - 0.4))) = 1 / (1 + exp(-4)) ~ 0.982
@@ -94,7 +94,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_configurable_midpoint(self) -> None:
         """Midpoint=0.6 shifts the cliff rightward."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         # At the midpoint, always 0.5
         result_at_mid = consciousness_sigmoid(collective_identity=0.6, midpoint=0.6, steepness=10.0)
@@ -107,7 +107,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_configurable_steepness(self) -> None:
         """Higher steepness makes sharper transitions."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         # Very high steepness: CI just above midpoint should be near 1
         steep_above = consciousness_sigmoid(collective_identity=0.45, midpoint=0.4, steepness=50.0)
@@ -123,7 +123,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_overflow_clamp_large_positive_ci(self) -> None:
         """Large CI with high steepness does not raise OverflowError."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         # steepness=50, ci=1.0, midpoint=0.0 => exponent = -50*1.0 = -50
         # Without clamp, this could overflow with extreme params
@@ -134,7 +134,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_overflow_clamp_large_negative_exponent(self) -> None:
         """CI=0.0 with midpoint=1.0 and high steepness is clamped, not overflow."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         # exponent = -50 * (0.0 - 1.0) = 50 => exp(50) is huge
         result = consciousness_sigmoid(collective_identity=0.0, midpoint=1.0, steepness=50.0)
@@ -144,7 +144,7 @@ class TestConsciousnessSigmoid:
     @pytest.mark.unit
     def test_return_type_is_float(self) -> None:
         """Sigmoid always returns a Python float."""
-        from babylon.bifurcation.consciousness import consciousness_sigmoid
+        from babylon.domain.bifurcation.consciousness import consciousness_sigmoid
 
         result = consciousness_sigmoid(collective_identity=0.5, midpoint=0.4, steepness=10.0)
         assert isinstance(result, float)
@@ -187,7 +187,7 @@ class TestConsciousnessWeightedSolidarity:
     @pytest.mark.unit
     def test_high_ci_edge_near_full_weight(self) -> None:
         """Both agents in high-CI marginalized communities -> near-full weight."""
-        from babylon.bifurcation.consciousness import (
+        from babylon.domain.bifurcation.consciousness import (
             consciousness_weighted_solidarity,
         )
 
@@ -229,7 +229,7 @@ class TestConsciousnessWeightedSolidarity:
     @pytest.mark.unit
     def test_low_ci_edge_near_zero_weight(self) -> None:
         """Agents in assimilated communities (CI=0.1) -> near-zero weight."""
-        from babylon.bifurcation.consciousness import (
+        from babylon.domain.bifurcation.consciousness import (
             consciousness_weighted_solidarity,
         )
 
@@ -273,7 +273,7 @@ class TestConsciousnessWeightedSolidarity:
         When agents only belong to hegemonic or no communities, their
         effective CI is 0, and sigmoid(0) with midpoint=0.4 is near-zero.
         """
-        from babylon.bifurcation.consciousness import (
+        from babylon.domain.bifurcation.consciousness import (
             consciousness_weighted_solidarity,
         )
 
@@ -314,7 +314,7 @@ class TestConsciousnessWeightedSolidarity:
     @pytest.mark.unit
     def test_multi_community_agent_uses_mean_ci(self) -> None:
         """Agent in multiple marginalized communities uses mean CI."""
-        from babylon.bifurcation.consciousness import (
+        from babylon.domain.bifurcation.consciousness import (
             consciousness_weighted_solidarity,
         )
 
@@ -361,7 +361,7 @@ class TestConsciousnessWeightedSolidarity:
     @pytest.mark.unit
     def test_asymmetric_ci_uses_min(self) -> None:
         """When source and target have different CI, min is used."""
-        from babylon.bifurcation.consciousness import (
+        from babylon.domain.bifurcation.consciousness import (
             consciousness_weighted_solidarity,
         )
 
@@ -404,7 +404,7 @@ class TestConsciousnessWeightedSolidarity:
     @pytest.mark.unit
     def test_solidarity_strength_scales_result(self) -> None:
         """The edge's solidarity_strength scales the sigmoid output."""
-        from babylon.bifurcation.consciousness import (
+        from babylon.domain.bifurcation.consciousness import (
             consciousness_weighted_solidarity,
         )
 
@@ -471,7 +471,7 @@ class TestAnisotropicObservationError:
 
     def test_returns_valid_ternary(self) -> None:
         """Observed consciousness is a valid simplex point."""
-        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.domain.bifurcation.consciousness import anisotropic_observation_error
         from babylon.models.entities.consciousness import TernaryConsciousness
 
         tc = TernaryConsciousness(r=0.5, l=0.3, f=0.2)
@@ -483,7 +483,7 @@ class TestAnisotropicObservationError:
 
     def test_r_has_higher_error_than_lf_ratio(self) -> None:
         """Over many samples, r deviation > l/f ratio deviation (anisotropic)."""
-        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.domain.bifurcation.consciousness import anisotropic_observation_error
         from babylon.models.entities.consciousness import TernaryConsciousness
 
         tc = TernaryConsciousness(r=0.4, l=0.35, f=0.25)
@@ -507,7 +507,7 @@ class TestAnisotropicObservationError:
 
     def test_deterministic_with_seed(self) -> None:
         """Same seed produces same observed consciousness."""
-        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.domain.bifurcation.consciousness import anisotropic_observation_error
         from babylon.models.entities.consciousness import TernaryConsciousness
 
         tc = TernaryConsciousness(r=0.3, l=0.5, f=0.2)
@@ -520,7 +520,7 @@ class TestAnisotropicObservationError:
 
     def test_different_seeds_produce_different_results(self) -> None:
         """Different seeds produce different observations."""
-        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.domain.bifurcation.consciousness import anisotropic_observation_error
         from babylon.models.entities.consciousness import TernaryConsciousness
 
         tc = TernaryConsciousness(r=0.4, l=0.35, f=0.25)
@@ -537,7 +537,7 @@ class TestAnisotropicObservationError:
 
     def test_observation_stays_in_bounds(self) -> None:
         """Observed components stay in [0, 1] even for extreme inputs."""
-        from babylon.bifurcation.consciousness import anisotropic_observation_error
+        from babylon.domain.bifurcation.consciousness import anisotropic_observation_error
         from babylon.models.entities.consciousness import TernaryConsciousness
 
         # Near-corner cases

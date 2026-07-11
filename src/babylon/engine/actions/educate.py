@@ -2,7 +2,7 @@
 
 Consciousness-raising through education. Thin delegate to the Feature-032
 effects machinery (:func:`babylon.ooda.action_effects.resolve_action`),
-which computes a five-factor :class:`~babylon.organizations.types.ConsciousnessDelta`
+which computes a five-factor :class:`~babylon.domain.organizations.types.ConsciousnessDelta`
 (plus the AGITATE-coupled EDUCATE contestation bonus). No direct graph writes.
 
 See Also:

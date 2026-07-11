@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`babylon.dialectics.core.level` — levels and Aufhebung.
+"""Unit tests for :mod:`babylon.domain.dialectics.core.level` — levels and Aufhebung.
 
 Fixture: quantization levels on the integers. Level ``i`` carries the
 skeleton "round down to a multiple of m_i" and the sheaf "round up to a
@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.dialectics.core.level import Level, LevelLattice, LevelOperators
+from babylon.domain.dialectics.core.level import Level, LevelLattice, LevelOperators
 
 pytestmark = pytest.mark.math
 

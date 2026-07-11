@@ -22,7 +22,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from babylon.dialectics.instances.connectivity import (
+from babylon.domain.dialectics.instances.connectivity import (
     atomization_index,
     connectivity_cylinder,
     pieces,

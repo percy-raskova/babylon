@@ -19,8 +19,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from babylon.dialectics.core.composition import product, sum_
-from babylon.dialectics.core.opposition import BoundOpposition, GapReading, OppositionSpec
+from babylon.domain.dialectics.core.composition import product, sum_
+from babylon.domain.dialectics.core.opposition import BoundOpposition, GapReading, OppositionSpec
 
 pytestmark = [pytest.mark.property, pytest.mark.math]
 

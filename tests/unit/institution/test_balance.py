@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.institution.balance import update_internal_balance
+from babylon.domain.institution.balance import update_internal_balance
 from babylon.models.entities.institution import (
     BonapartistModeEvent,
     FactionShiftEvent,

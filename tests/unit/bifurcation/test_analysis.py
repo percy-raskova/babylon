@@ -11,8 +11,8 @@ import pytest
 import xgi
 from pydantic import ValidationError
 
-from babylon.bifurcation.analysis import bifurcation_tendency
 from babylon.config.defines import BifurcationDefines
+from babylon.domain.bifurcation.analysis import bifurcation_tendency
 from babylon.models.entities.community import (
     CommunityState,
 )

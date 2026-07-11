@@ -309,7 +309,7 @@ anisotropic_observation_error
 
    Apply anisotropic noise modeling state surveillance asymmetry.
 
-   Defined in :py:mod:`babylon.bifurcation.consciousness`.
+   Defined in :py:mod:`babylon.domain.bifurcation.consciousness`.
 
    :param true_consciousness: Actual community consciousness position
    :type true_consciousness: TernaryConsciousness
@@ -342,7 +342,7 @@ WeightedSolidarityResult
 
    Result of consciousness-weighted solidarity computation.
 
-   Defined in :py:mod:`babylon.bifurcation.types`.
+   Defined in :py:mod:`babylon.domain.bifurcation.types`.
 
    .. list-table::
       :header-rows: 1
@@ -366,7 +366,7 @@ consciousness_weighted_solidarity
 
    Weight a solidarity edge by consciousness of connected communities.
 
-   Defined in :py:mod:`babylon.bifurcation.consciousness`.
+   Defined in :py:mod:`babylon.domain.bifurcation.consciousness`.
 
    :param source_id: Source agent node ID
    :type source_id: str
@@ -503,10 +503,10 @@ Module Cross-References
      - ``CommunityConsciousness`` (alias), ``CONSCIOUSNESS_DEFAULTS``
    * - :py:mod:`babylon.formulas.consciousness`
      - ``compute_ternary_consciousness()``
-   * - :py:mod:`babylon.bifurcation.consciousness`
+   * - :py:mod:`babylon.domain.bifurcation.consciousness`
      - ``anisotropic_observation_error()``,
        ``consciousness_weighted_solidarity()``
-   * - :py:mod:`babylon.bifurcation.types`
+   * - :py:mod:`babylon.domain.bifurcation.types`
      - ``WeightedSolidarityResult``, ``BifurcationResult``
        (updated with assimilation fields)
 

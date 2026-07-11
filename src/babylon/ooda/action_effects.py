@@ -13,11 +13,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import OODADefines, OrganizationDefines, ReactionaryDefines
+from babylon.domain.organizations.consciousness import tendency_modifier
+from babylon.domain.organizations.types import ConsciousnessDelta
 from babylon.models.enums import ActionType, ConsciousnessTendency, EdgeType, EventType
 from babylon.ooda._helpers import _compute_membership_overlap
 from babylon.ooda.types import Action, ActionResult
-from babylon.organizations.consciousness import tendency_modifier
-from babylon.organizations.types import ConsciousnessDelta
 
 if TYPE_CHECKING:
     from babylon.topology.graph import BabylonGraph

@@ -33,7 +33,7 @@ class TestGenerateR8Mesh:
 
     def test_each_r7_produces_7_children(self) -> None:
         """Every R7 hex must produce exactly 7 R8 children."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_indices, county_map = self._get_tri_county_r7_sample()
         r8_cells = generate_r8_mesh(r7_indices, county_map)
@@ -43,7 +43,7 @@ class TestGenerateR8Mesh:
 
     def test_parent_consistency(self) -> None:
         """h3.cell_to_parent(r8, 7) must equal parent_h3 for all cells."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_indices, county_map = self._get_tri_county_r7_sample()
         r8_cells = generate_r8_mesh(r7_indices, county_map)
@@ -57,7 +57,7 @@ class TestGenerateR8Mesh:
 
     def test_all_children_are_resolution_8(self) -> None:
         """All generated cells must be at H3 resolution 8."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_indices, county_map = self._get_tri_county_r7_sample()
         r8_cells = generate_r8_mesh(r7_indices, county_map)
@@ -67,7 +67,7 @@ class TestGenerateR8Mesh:
 
     def test_county_inheritance(self) -> None:
         """All children inherit their parent's county_fips."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_indices, county_map = self._get_tri_county_r7_sample()
         r8_cells = generate_r8_mesh(r7_indices, county_map)
@@ -79,7 +79,7 @@ class TestGenerateR8Mesh:
 
     def test_default_terrain_is_land(self) -> None:
         """All cells default to terrain_type=LAND."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_indices, county_map = self._get_tri_county_r7_sample()
         r8_cells = generate_r8_mesh(r7_indices, county_map)
@@ -89,7 +89,7 @@ class TestGenerateR8Mesh:
 
     def test_default_utilities_true(self) -> None:
         """All cells default to all utility flags True."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_indices, county_map = self._get_tri_county_r7_sample()
         r8_cells = generate_r8_mesh(r7_indices, county_map)
@@ -103,7 +103,7 @@ class TestGenerateR8Mesh:
 
     def test_elevation_stub_is_none(self) -> None:
         """All cells have elevation_m=None (stub)."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_indices, county_map = self._get_tri_county_r7_sample()
         r8_cells = generate_r8_mesh(r7_indices, county_map)
@@ -113,7 +113,7 @@ class TestGenerateR8Mesh:
 
     def test_no_duplicate_r8_indices(self) -> None:
         """All R8 cell indices must be unique."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r7_indices, county_map = self._get_tri_county_r7_sample()
         r8_cells = generate_r8_mesh(r7_indices, county_map)
@@ -123,7 +123,7 @@ class TestGenerateR8Mesh:
 
     def test_empty_input(self) -> None:
         """Empty input produces empty output."""
-        from babylon.infrastructure.r8_mesh import generate_r8_mesh
+        from babylon.domain.geography.r8_mesh import generate_r8_mesh
 
         r8_cells = generate_r8_mesh(set(), {})
         assert r8_cells == []

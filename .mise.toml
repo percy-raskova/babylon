@@ -86,12 +86,16 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "poetry run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: lint + format + typecheck + unit tests"
-depends = ["lint", "format", "typecheck", "test:unit"]
+description = "Fast CI gate: hygiene + lint + format + typecheck + unit tests"
+depends = ["check:hygiene", "lint", "format", "typecheck", "test:unit"]
 
 [tasks."check:quick"]
 description = "Quality gate without the test leg: lint + format + typecheck"
 depends = ["lint", "format", "typecheck"]
+
+[tasks."check:hygiene"]
+description = "Repo-hygiene gate: root allowlist, ignore-consistency, blob sizes (program 14)"
+run = "poetry run python tools/check_repo_hygiene.py"
 
 [tasks.commit]
 description = "Hook-safe commit: pre-run hooks on staged files, re-stage their fixes, commit, verify HEAD moved"

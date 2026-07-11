@@ -60,6 +60,12 @@ jobs:
       - name: Install GeoDjango system libraries
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
 
+      # Repo-hygiene gate (Program 14): root allowlist, no tracked-ignored
+      # files, no >1MiB non-LFS blobs. Stdlib-only — runs before anything
+      # heavy so violations fail in seconds.
+      - name: Repo hygiene gate
+        run: python3 tools/check_repo_hygiene.py
+
       # Correctness checks - these block merges
       # (--version printed while diagnosing CI-vs-local ruff drift: the venv
       # cache skips reinstall on hit, so a stale cache can pin an old ruff.)

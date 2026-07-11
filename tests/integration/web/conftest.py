@@ -59,7 +59,7 @@ def _pg_container() -> Generator[dict[str, Any], None, None]:
         return
 
     container = PostgresContainer(
-        image="postgis/postgis:16-3.4-alpine",
+        image="postgis/postgis:16-3.5-alpine",
         username="test",
         password="test",  # noqa: S106
         dbname="babylon_test",

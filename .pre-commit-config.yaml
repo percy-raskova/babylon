@@ -225,6 +225,8 @@ repos:
     hooks:
       - id: hadolint-docker
         files: 'Dockerfile'
+        # Same threshold as CI's hadolint job: warnings visible, errors block.
+        args: [--failure-threshold, error]
 
   # ==========================================================================
   # GIT LFS - Pointer integrity (pre-push; catches accidentally-materialized

@@ -429,10 +429,21 @@ class TestStartStop:
         runner = AsyncSimulationRunner(mock_simulation, tick_interval=0.01)
         await runner.start()
 
-        # Wait for a few ticks
-        await asyncio.sleep(0.05)
-
-        await runner.stop()
+        # Poll until the loop has executed at least two steps rather than
+        # sleeping a fixed window and asserting a count. A loaded CI runner can
+        # starve the event loop so only one step lands in a 50ms sleep, making
+        # `assert 1 >= 2` flaky (observed on the 2026-07-11 main pipeline while
+        # proving-run #5 on the same SHA passed). Waiting for the condition
+        # asserts the real contract — the loop executes repeatedly — without a
+        # wall-clock dependency: a fast machine passes instantly, a slow one
+        # waits, and a genuinely broken loop still fails when the bound expires.
+        try:
+            for _ in range(200):  # bounded: 200 * 0.01s = 2s ceiling
+                if mock_simulation.step.call_count >= 2:
+                    break
+                await asyncio.sleep(0.01)
+        finally:
+            await runner.stop()
 
         # Should have executed multiple steps
         assert mock_simulation.step.call_count >= 2

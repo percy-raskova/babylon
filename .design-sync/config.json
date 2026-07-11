@@ -165,6 +165,53 @@
     },
     "LiberatedColumn": {
       "cardMode": "column"
+    },
+    "TopBar": {
+      "cardMode": "single",
+      "primaryStory": "Populated",
+      "viewport": "1220x200"
+    },
+    "SpeedControls": {
+      "cardMode": "single",
+      "primaryStory": "Speed1Active"
+    },
+    "ActionDock": {
+      "cardMode": "single",
+      "primaryStory": "ComposerOpen"
+    },
+    "BottomDrawer": {
+      "cardMode": "single",
+      "primaryStory": "TrendsOpen"
+    },
+    "CriticalEventModal": {
+      "cardMode": "single",
+      "primaryStory": "Autopaused"
+    },
+    "EventToasts": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "EventTray": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "ObjectivesTray": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "OutlinerOverlay": {
+      "cardMode": "single",
+      "primaryStory": "Populated"
+    },
+    "InspectionStack": {
+      "cardMode": "single",
+      "primaryStory": "MultiFrameBreadcrumb"
+    },
+    "FramingSelector": {
+      "cardMode": "column"
+    },
+    "MapLensBar": {
+      "cardMode": "column"
     }
   },
   "componentSrcMap": {
@@ -176,14 +223,33 @@
     "BblData": "src/components/bbl/BblData.tsx",
     "BblLabel": "src/components/bbl/BblLabel.tsx",
     "Sparkline": "src/components/bbl/Sparkline.tsx",
+    "ActionDock": "src/components/chrome/ActionDock.tsx",
+    "BottomDrawer": "src/components/chrome/BottomDrawer.tsx",
+    "CriticalEventModal": "src/components/chrome/CriticalEventModal.tsx",
+    "EventToasts": "src/components/chrome/EventToasts.tsx",
+    "EventTray": "src/components/chrome/EventTray.tsx",
+    "FloatingPanel": "src/components/chrome/FloatingPanel.tsx",
+    "KeyHints": "src/components/chrome/KeyHints.tsx",
+    "ObjectivesTray": "src/components/chrome/ObjectivesTray.tsx",
+    "OutlinerOverlay": "src/components/chrome/OutlinerOverlay.tsx",
+    "SpeedControls": "src/components/chrome/SpeedControls.tsx",
+    "TopBar": "src/components/chrome/TopBar.tsx",
     "EventsFeed": "src/components/events/EventsFeed.tsx",
     "ConsciousnessBreakdown": "src/components/inspector/ConsciousnessBreakdown.tsx",
     "InspectorPanel": "src/components/inspector/InspectorPanel.tsx",
     "Stat": "src/components/inspector/Stat.tsx",
+    "FormulaCard": "src/components/inspect/FormulaCard.tsx",
+    "InspectionCard": "src/components/inspect/InspectionCard.tsx",
+    "InspectionStack": "src/components/inspect/InspectionStack.tsx",
+    "ValueRow": "src/components/inspect/ValueRow.tsx",
     "DeckGLMap": "src/components/map/DeckGLMap.tsx",
+    "FramingSelector": "src/components/map/FramingSelector.tsx",
     "HexTooltip": "src/components/map/HexTooltip.tsx",
+    "MapControls": "src/components/map/MapControls.tsx",
     "MapLegend": "src/components/map/MapLegend.tsx",
+    "MapLensBar": "src/components/map/MapLensBar.tsx",
     "MapModeSelector": "src/components/map/MapModeSelector.tsx",
+    "NarrationBlock": "src/components/narration/NarrationBlock.tsx",
     "ObjectivesTracker": "src/components/objectives/ObjectivesTracker.tsx",
     "AppShell": "src/components/shell/AppShell.tsx",
     "BottomStrip": "src/components/shell/BottomStrip.tsx",

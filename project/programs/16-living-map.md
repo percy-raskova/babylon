@@ -34,7 +34,7 @@ revolution, liberation movements, political collapse, instability.
 | A | Architecture (map-first recomposition, 8 lanes) | ✅ spec committed `012dcea3` |
 | I wave 1 | Carto + A(shell) + D(backend) | ✅ `577f62ec`/`0d7b269f`/`ae2c5fb4`; explain verified LIVE vs seeded session |
 | I wave 2 | B(lenses+political map) + C(InspectionStack) + E(time/events) + F(outliner/dock) + N(narration) | ✅ one wave commit; 706/706 vitest; narration integrated `0cc2f38a` |
-| I wave 3 | SKIN-CHROME + SKIN-MENUS (bible §9b The Installer) + G(consolidation) | ⏳ running |
+| I wave 3 | SKIN-CHROME + SKIN-MENUS (bible §9b The Installer) + G(consolidation) | ✅ `04c3c93f`; 740/740 vitest; live e2e → Phase V (tailwind-scan env blocker, root-caused) |
 | D | ds-sync: new chrome → "Babylon Cockpit" project, graded renders | pending (post-skin) |
 | V | Live backend run + screenshots, Playwright vs live, bible §10 gates, wrap-up docs | env READY (db migrated, session 5ad0c6ae seeded) |
 

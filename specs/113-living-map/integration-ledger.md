@@ -12,19 +12,49 @@ owner item.
       value_extraction_ratio ref).
 - [x] `narrationPanel` registered (TAKEOVER_PANEL_KEYS + PanelsSlice) + `useNarration`
       hook + EventTray narrator strip — commit `0cc2f38a`.
-- [~] `NarrationBlock` mounts: EventTray ✓; chronicle/endgame + wire strip → Wave 3
-      SKIN-MENUS; county InspectionCard section → deferred (needs fips↔beat adapter,
-      queue for Phase D/owner).
+- [x] `NarrationBlock` mounts: EventTray ✓; EndStateScreen epitaph (scope=endgame) +
+      WireApp strip (scope=tick) ✓ Wave 3 SKIN-MENUS; county InspectionCard section →
+      deferred (needs fips↔beat adapter, queue for Phase D/owner).
 - [ ] Three-channel critical events (bible §5.2): map-anchored cue for criticals —
       post-Wave-3 polish (event→geo ref data exists; cue layer is map-side).
 - [x] `inspectSlice` tick refetch: C used `api.subscribe` from its own slice file;
       unit-tested.
 - [x] mapSlice default-framing flip residue: MapStage test fixed by orchestrator in
       the wave-2 commit; C decoupled mapSlice.test from B's DEFAULT_LENS.
-- [~] `region-dock` / `region-bottomstrip` placements → Lane G rewriting real-loop
-      assertions in Wave 3; live validation in Phase V.
-- [~] TopBar StatChip metric props → Wave 3 SKIN-CHROME (chips click-ready).
-- [ ] `lib/inspectorMapping.ts` absorb → Wave 3 Lane G.
+- [~] `region-dock` / `region-bottomstrip` placements: real-loop rewritten (Lane G,
+      Wave 3) — live browser validation still Phase V.
+- [x] TopBar StatChip metric props: wired to real provenance keys (profit_rate,
+      imperial_rent); Pop stays non-clickable (no manifest key, III.11).
+- [x] `lib/inspectorMapping.ts` absorbed into EventsFeed (Lane G); org→org branch
+      coverage restored by orchestrator (institution/hyperedge rows statically
+      enforced, unreachable via classifyEvents today).
+
+## After Wave 3 (orchestrator residue — all committed in `04c3c93f`)
+
+- [x] SKIN-MENUS literal-hex fallbacks → landed `--ksbc-*` tokens
+      (LoginRoute/LobbyRoute/TakeoverOverlay hold no literal hex).
+- [x] TimeControls seam closed: reskinned to installerKit grammar;
+      `keyButtonUrgentClass` added (crimson Resume, never gold).
+- [x] event-popup.spec.ts added to `AUTHENTICATED_SPECS`.
+- [x] Dead `Selection`/`InspectionFrame` barrel re-exports removed (Lane G finding).
+- [x] `FormEvent` → `React.SubmitEvent` (deprecated in current React types).
+
+### Flagged for owner review (Wave-3 lane judgment calls)
+
+- `--ksbc-plate` #2a0d0d is DERIVED (field + one step toward crimson), not a literal
+  Kitty-palette value — swap if an exact ksbc value is preferred.
+- Map lens/framing buttons got selection grammar + lean chips, NOT the full chunky
+  key-button shadow (SKIN-CHROME judged ~10 packed buttons would clutter; bible item 7
+  said "styling + selection grammar only"). Revisit if the full treatment was intended.
+- TakeoverOverlay title tabs say "Wire Dispatch"/"Chronicle"/"Dialectic" — deliberately
+  distinct from internal titles ("THE WIRE") to avoid duplicate-text collisions.
+
+### Phase V watch item (Lane G root cause, environment not code)
+
+Vite dev server stopped serving non-root routes during the wave: `@tailwindcss/vite`
+candidate scan goes pathological under concurrent heavy file writes + load
+(load avg 18+; bare curl hangs, same routes <200ms with the plugin removed).
+Pre-existing specs affected too. Re-verify e2e once writes settle / load drops.
 
 NOTE: the "Juice Pass" inventory below predates DESIGN_BIBLE §9b (The Installer,
 owner ruling) — §9b's re-aim SUPERSEDES the gradient/glow items; the performance

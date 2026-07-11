@@ -175,6 +175,48 @@ describe("DeckGLMap", () => {
       ),
     ).not.toThrow();
   });
+
+  // Phase V live-run regression (spec-113): the hex InspectionCard resolves
+  // via GET /api/games/:id/hex/:h3_index/ (web/game/urls.py inspector-hex),
+  // so the click must surface the picked territory's H3 INDEX — feeding the
+  // territory row id produced an unresolvable ref (HTTP 403/404 card).
+  it("passes the picked territory's h3_index (not its row id) to onTerritoryClick", () => {
+    const snapshot = makeSnapshot({
+      territories: [makeTerritory({ id: "terr-1", h3_index: "882a100d2bfffff" })],
+    });
+    const onTerritoryClick = vi.fn();
+    render(
+      <DeckGLMap
+        snapshot={snapshot}
+        lens={{ kind: "stance" }}
+        onTerritoryClick={onTerritoryClick}
+      />,
+    );
+    const deckProps = vi.mocked(DeckGL).mock.calls.at(-1)?.[0] as {
+      onClick?: (info: { object?: unknown }) => void;
+    };
+    deckProps.onClick?.({ object: { id: "terr-1", h3_index: "882a100d2bfffff" } });
+    expect(onTerritoryClick).toHaveBeenCalledWith("882a100d2bfffff");
+  });
+
+  it("falls back to the territory row id when the picked territory has no h3_index", () => {
+    const snapshot = makeSnapshot({
+      territories: [makeTerritory({ id: "terr-1", h3_index: undefined })],
+    });
+    const onTerritoryClick = vi.fn();
+    render(
+      <DeckGLMap
+        snapshot={snapshot}
+        lens={{ kind: "stance" }}
+        onTerritoryClick={onTerritoryClick}
+      />,
+    );
+    const deckProps = vi.mocked(DeckGL).mock.calls.at(-1)?.[0] as {
+      onClick?: (info: { object?: unknown }) => void;
+    };
+    deckProps.onClick?.({ object: { id: "terr-1" } });
+    expect(onTerritoryClick).toHaveBeenCalledWith("terr-1");
+  });
 });
 
 describe("DeckGLMap — region framing (spec-112 C5)", () => {

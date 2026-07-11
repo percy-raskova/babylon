@@ -37,6 +37,10 @@ test.describe("event popup on tick advance (cockpit, spec-113 Lane G)", () => {
   test.describe.configure({ mode: "serial" });
 
   test("stepping the tick eventually pops a toast for an urgent event", async ({ page }) => {
+    // Live budget: each engine resolve runs 10-30s, and the bounded loop
+    // below may need all MAX_STEPS of them before an urgent event fires.
+    test.setTimeout(MAX_STEPS * 30_000 + 60_000);
+
     await page.goto("/lobby");
     const gameId = await createWayneCountyGame(page);
     expect(gameId, "session creation must return a session_id").toBeTruthy();
@@ -44,8 +48,11 @@ test.describe("event popup on tick advance (cockpit, spec-113 Lane G)", () => {
     await page.goto(`/game/${gameId}`);
     await expect(page.getByTestId("tick-value")).toHaveText("0", { timeout: 15000 });
 
+    // Attached, not visible: the always-mounted toast rail is an empty
+    // flex container until the first toast lands, and an empty container
+    // has a zero-size box (Playwright reports it hidden).
     const toastContainer = page.getByTestId("event-toasts");
-    await expect(toastContainer).toBeVisible({ timeout: 15000 });
+    await expect(toastContainer).toBeAttached({ timeout: 15000 });
 
     let sawToast = false;
     for (let i = 0; i < MAX_STEPS; i++) {

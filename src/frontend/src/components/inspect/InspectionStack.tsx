@@ -41,14 +41,21 @@ export function InspectionStack(_props: InspectionStackProps): React.JSX.Element
   const clear = useStore((s) => s.inspect.clear);
   const togglePin = useStore((s) => s.inspect.togglePin);
 
+  // Subscribe ONCE on the stable `pop` reference — never keyed on
+  // stack.length. Re-subscribing on every stack change made real-browser
+  // Escape presses pop TWICE: pop() mutates the stack mid-dispatch, React
+  // flushes this effect synchronously (keydown is a discrete event), and
+  // Chrome invokes the freshly re-added document listener for the SAME
+  // in-flight event (jsdom snapshots the listener list at dispatch start,
+  // so unit tests can't see it — found live in spec-113 Phase V). pop()
+  // already no-ops safely on an empty stack and on a pinned top frame.
   useEffect(() => {
-    if (stack.length === 0) return;
     function onKeyDown(e: KeyboardEvent): void {
       if (e.key === "Escape") pop();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [stack.length, pop]);
+  }, [pop]);
 
   if (stack.length === 0) return null;
   const current = stack[stack.length - 1];

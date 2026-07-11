@@ -200,6 +200,11 @@ async function mockRoutes(page: import("@playwright/test").Page, mapData: unknow
 
 test.describe("Map lens cycling (backend-free, spec-110 B6/spec-113 Lane B)", () => {
   test("cycles all 9 registered lenses with no uncaught page error", async ({ page }) => {
+    // 9 sequential lens switches = 9 full deck.gl attribute rebuilds — an
+    // order of magnitude more GPU work than this file's other tests. Under
+    // software GL (headless CI/SwiftShader) each rebuild costs seconds, so
+    // this one legitimately needs Playwright's slow-test budget (3×).
+    test.slow();
     await mockRoutes(page, MAP_DATA);
 
     const pageErrors: string[] = [];

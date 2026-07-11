@@ -148,7 +148,22 @@ async function clickTheHex(page: import("@playwright/test").Page): Promise<void>
   const mapRegion = page.getByTestId("region-map");
   const box = await mapRegion.boundingBox();
   if (!box) throw new Error("region-map has no bounding box — did the shell fail to mount?");
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+  // deck.gl picking is WebGL-side — there is no DOM element for Playwright
+  // to auto-wait on, and under software GL the first hex render takes
+  // seconds. Poll-click (fixed upper bound) until the stack mounts instead
+  // of trusting one blind click against an unascertainable render state.
+  const MAX_CLICK_ATTEMPTS = 15;
+  for (let attempt = 0; attempt < MAX_CLICK_ATTEMPTS; attempt++) {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const mounted = await page
+      .getByTestId("inspection-stack")
+      .isVisible()
+      .catch(() => false);
+    if (mounted) return;
+    await page.waitForTimeout(1000);
+  }
+  throw new Error(`hex click never mounted the inspection stack (${MAX_CLICK_ATTEMPTS} attempts)`);
 }
 
 test.describe("InspectionStack progressive disclosure (backend-free, spec-113 Lane G)", () => {

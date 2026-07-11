@@ -105,6 +105,25 @@ PERFORMANCE BUDGET (hard rules):
 - [ ] ds-sync: new chrome components → barrel + componentSrcMap; re-sync to
       "Babylon Cockpit" project; grade renders.
 
+## Vision-doc audit (owner re-affirmed the end-state doc 2026-07-11; gaps enumerated)
+
+Checked `desired-end-state-for-ui.md` clause-by-clause against the Wave-3 build:
+map-first shell, TIGER cartography, Φ default lens, lens groups + Q/E, register
+zoom, click-pin InspectionStack→FormulaCard, wages-never-naked adapters, two-stream
+events, MIM voice, self-hosted basemap, Installer feel (§9b refined the doc's
+phosphor paragraph) — ALL LIVE. Remaining distance:
+
+- [ ] Map-anchored pulse channel for critical events (third channel, bible §5.2 —
+      same item as "Three-channel critical events" above).
+- [ ] Contested-claim TRUE striping (Phase D queue item, FillStyleExtension).
+- [ ] Verb predicted-delta arrows before commit: cost labels render
+      (`VerbGrid.cost_label`); `lib/verbs/types.ts.predictedEffect` exists but no
+      surface renders it ("Phase 5 renders this" comment) — owner item.
+- [ ] `claim-shimmer` keyframe shipped (index.css) but the map-side border-redraw
+      consumer isn't wired (Lane B/Carto territory).
+- [ ] Endgame "never neutral scoreboard text": epitaph mount exists; substance
+      arrives with the AI narrator backend (BABYLON_LLM_NARRATOR).
+
 ## Owner items raised en route
 
 - bridge_county_h3 res-5/res-7 vs Constitution II.13 res-8 (Program 11 flag) —

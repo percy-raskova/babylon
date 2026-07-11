@@ -116,7 +116,10 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
     // orchestrator.ts's useSpacebarShortcut) — same stop-request semantics
     // as clicking Pause (the serialized loop only stops once its current
     // in-flight resolve settles), so assert eventual PAUSED, not instant.
+    // Budget: one full live engine tick can run 20-30s (the Step test above
+    // allots 30s for a single resolve) — 45s covers a resolve that had just
+    // started when Space landed, without masking a stuck loop.
     await page.keyboard.press("Space");
-    await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 20000 });
+    await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 45000 });
   });
 });

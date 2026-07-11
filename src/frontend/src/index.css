@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Exclude the vendored cartography from Tailwind v4's auto source
+   detection (spec-113 Lane Carto ships multi-MB single-line TopoJSON in
+   public/geo/; the class-candidate scanner goes pathological on it —
+   the dev server's main thread spins at 100% and every module
+   transform hangs; root-caused Wave 3, Lane G + orchestrator). */
+@source not "../public/geo";
+
 /* ================================================================
    Constitution VIII — Cold Collapse Design System (spec-090)
    Ported from design/mockups/colors_and_type.css (the ratified canon)

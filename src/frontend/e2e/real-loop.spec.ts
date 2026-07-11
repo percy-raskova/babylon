@@ -62,7 +62,9 @@ test.describe("real core loop (cockpit, spec-110 B6)", () => {
 
   test("creating a wayne_county operation provisions a fresh session", async ({ page }) => {
     await page.goto("/lobby");
-    await page.locator("select").selectOption("wayne_county");
+    // The scenario picker is a Guix-style listbox since Wave 3 SKIN-MENUS
+    // (LobbyRoute.SelectionList) — the native <select> is gone.
+    await page.getByTestId("scenario-option-wayne_county").click();
 
     const [createResp] = await Promise.all([
       page.waitForResponse(

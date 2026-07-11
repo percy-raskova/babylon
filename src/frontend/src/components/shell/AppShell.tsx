@@ -41,8 +41,13 @@ export function AppShell({ gameId }: AppShellProps): React.JSX.Element {
 
       {/* Layer 1 — chrome. Individual FloatingPanel instances re-enable
           pointer-events-auto; everything else in this container passes
-          clicks/drags straight through to the map underneath. */}
-      <div data-testid="chrome-layer" className="pointer-events-none absolute inset-0">
+          clicks/drags straight through to the map underneath.
+          z-20: the HUD stratum must hit-test ABOVE MapStage's in-map
+          controls (MapControls' clusters carry z-10 inside layer 0) —
+          as a z-auto sibling this layer lost to them and the lens bar
+          swallowed clicks aimed at the TopBar (Phase V live finding:
+          every Step/speed/verb e2e click was intercepted). */}
+      <div data-testid="chrome-layer" className="pointer-events-none absolute inset-0 z-20">
         <TopBar gameId={gameId} />
         <OutlinerOverlay gameId={gameId} />
 
@@ -60,7 +65,10 @@ export function AppShell({ gameId }: AppShellProps): React.JSX.Element {
           </div>
         </div>
 
-        <div className="pointer-events-auto absolute bottom-2 left-1/2 -translate-x-1/2">
+        {/* z-10: the dock/composer must hit-test above BottomDrawer's
+            full-width bottom strip (later DOM sibling) — without it the
+            drawer intercepted the composer's Submit clicks (Phase V). */}
+        <div className="pointer-events-auto absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
           <ActionDock gameId={gameId} />
         </div>
 

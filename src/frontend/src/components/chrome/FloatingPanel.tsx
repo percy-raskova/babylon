@@ -37,8 +37,11 @@ interface FloatingPanelProps {
 }
 
 const ANCHOR_CLASSES: Record<FloatingPanelProps["anchor"], string> = {
-  left: "absolute left-0 top-0 bottom-0 border-r",
-  right: "absolute right-0 top-0 bottom-0 border-l",
+  // left/right rails start at top-14, BELOW the anchor="top" HUD strip —
+  // at top-0 the outliner buried the TopBar's left segment (Phase V live
+  // finding); 14 matches AppShell's right-rail offset for the same reason.
+  left: "absolute left-0 top-14 bottom-0 border-r",
+  right: "absolute right-0 top-14 bottom-0 border-l",
   top: "absolute inset-x-0 top-0 border-b",
   bottom: "absolute inset-x-0 bottom-0 border-t",
   free: "relative",

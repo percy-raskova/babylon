@@ -61,7 +61,10 @@ export function MapControls({
 
   return (
     <>
-      <div className="absolute left-3 top-3 z-10 flex flex-col gap-2 border-2 border-ksbc-muted-1 bg-plate/85 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm">
+      {/* top-14 clears the TopBar strip (FloatingPanel anchor="top") and
+          left-[250px] clears the open outliner rail (OPEN_WIDTH 240) — at
+          left-3 top-3 this cluster sat UNDER the HUD band and outliner. */}
+      <div className="absolute left-[250px] top-14 z-10 flex flex-col gap-2 border-2 border-ksbc-muted-1 bg-plate/85 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm">
         <MapLegend legend={legend} label={label} currentValue={currentValue} flash={flash} />
         {legendStatusText && (
           <span
@@ -73,7 +76,9 @@ export function MapControls({
         )}
       </div>
 
-      <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
+      {/* right-[300px] clears the EventTray/Objectives rail (280 wide at
+          right-2, same clearance InspectionStack uses). */}
+      <div className="absolute right-[300px] top-14 z-10 flex flex-col items-end gap-2">
         <MapLensBar
           lens={lens}
           onLensChange={onLensChange}

@@ -450,7 +450,13 @@ function handleMapClick(
   onTerritoryClick: ((territoryId: string) => void) | undefined,
 ): void {
   if (info.object && framing === "hex") {
-    onTerritoryClick?.((info.object as TerritoryState).id);
+    const territory = info.object as TerritoryState;
+    // Hex inspection refs resolve via GET /api/games/:id/hex/:h3_index/
+    // (web/game/urls.py inspector-hex) — the h3 index is the key, not the
+    // territory row id (found live in Phase V: id-keyed refs render an
+    // unresolvable-card error). Scatter-fallback territories (no h3_index)
+    // keep the row id so the click still surfaces something inspectable.
+    onTerritoryClick?.(territory.h3_index ?? territory.id);
   }
 }
 

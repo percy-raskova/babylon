@@ -17,10 +17,10 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines, TerritoryDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType, TerritoryType
+from babylon.topology.graph import BabylonGraph
 
 # =============================================================================
 # BASIC SYSTEM TESTS

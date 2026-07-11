@@ -12,12 +12,12 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines, OrganizationDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType, OrgType
 from babylon.ooda.lifecycle_capacity import (
     compute_lifecycle_modifier,
     elder_legitimacy_bonus,
 )
+from babylon.topology.graph import BabylonGraph
 
 
 def _build_lifecycle_graph(

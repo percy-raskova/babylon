@@ -37,10 +37,10 @@ from babylon.bifurcation.resilience import (
     find_critical_singletons,
 )
 from babylon.bifurcation.types import BifurcationResult
-from babylon.engine.graph import BabylonUGraph
+from babylon.topology.graph import BabylonUGraph
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 from babylon.config.defines import BifurcationDefines
 from babylon.models.entities.community import (
     MARGINALIZED_COMMUNITIES,

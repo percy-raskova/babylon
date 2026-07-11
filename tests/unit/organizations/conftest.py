@@ -9,7 +9,6 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
@@ -25,6 +24,7 @@ from babylon.models.enums import (
     JurisdictionLevel,
     ServiceType,
 )
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.fixture

@@ -23,7 +23,7 @@ from babylon.config.defines import BifurcationDefines
 from babylon.models.enums import CommunityType, EdgeType
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 # Bonus per shared marginalized community membership
 _COMMUNITY_BONUS_PER_SHARED: float = 0.05

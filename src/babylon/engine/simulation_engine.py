@@ -91,8 +91,8 @@ from babylon.models.world_state import WorldState
 from babylon.utils.log import log_context_scope
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
     from babylon.kernel.services import ServicesProtocol
+    from babylon.topology.graph import BabylonGraph
 
 logger = logging.getLogger(__name__)
 

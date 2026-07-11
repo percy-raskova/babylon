@@ -18,8 +18,8 @@ from datetime import datetime
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.persistence import RuntimeDatabase
+from babylon.topology.graph import BabylonGraph
 
 
 class TestRuntimeDatabaseCreation:

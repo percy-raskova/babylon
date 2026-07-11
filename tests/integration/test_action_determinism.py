@@ -29,7 +29,7 @@ from uuid import uuid4
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
 

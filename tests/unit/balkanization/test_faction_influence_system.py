@@ -11,9 +11,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines.balkanization import BalkanizationDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.models.enums import EventType
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.unit
 

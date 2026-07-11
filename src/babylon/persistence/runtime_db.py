@@ -37,7 +37,7 @@ from babylon.persistence.serialization import canonical_event_json, json_default
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 
 # Paths relative to repository root
@@ -311,7 +311,7 @@ class RuntimeDatabase:
         Returns:
             BabylonGraph with state at the specified tick (Amendment L).
         """
-        from babylon.engine.graph import BabylonGraph
+        from babylon.topology.graph import BabylonGraph
 
         graph = BabylonGraph()
 

@@ -26,11 +26,11 @@ from uuid import UUID
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 from babylon.persistence import RuntimeDatabase
 from babylon.persistence.postgres_runtime import PostgresRuntime
+from babylon.topology.graph import BabylonGraph
 
 if TYPE_CHECKING:
     from collections.abc import Generator

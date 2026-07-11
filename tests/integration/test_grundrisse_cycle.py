@@ -36,10 +36,10 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.models.enums import EdgeType, EventType
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
 

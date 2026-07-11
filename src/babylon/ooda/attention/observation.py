@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 from babylon.models.entities.attention_thread import AttentionThread
 from babylon.models.enums import SurveillanceMethod
@@ -35,7 +35,7 @@ def build_g_observed(
     Returns:
         DiGraph containing only observed nodes/edges with potential distortions.
     """
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
     observed = BabylonGraph()
 

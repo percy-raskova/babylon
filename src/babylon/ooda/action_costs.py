@@ -19,7 +19,7 @@ from babylon.ooda._helpers import _compute_membership_overlap
 from babylon.ooda.types import ActionCostModifier
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 
 # Contradiction axes: (hegemonic, marginalized) pairs

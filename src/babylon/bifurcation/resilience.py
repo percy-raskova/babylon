@@ -9,7 +9,7 @@ an undirected solidarity subgraph:
 4. **Critical cutsets**: Minimum edge cuts bounded by configurable size
 5. **Purge resilience**: Targeted removal of high-degree nodes
 
-All functions operate on :class:`~babylon.engine.graph.BabylonUGraph`
+All functions operate on :class:`~babylon.topology.graph.BabylonUGraph`
 (undirected), which is the output of
 :func:`babylon.engine.topology_monitor.extract_solidarity_subgraph`.
 
@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from babylon.engine.graph_algorithms import (
+from babylon.topology.graph_algorithms import (
     articulation_point_set,
     component_count,
     component_sets,
@@ -31,7 +31,7 @@ from babylon.engine.graph_algorithms import (
 )
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonUGraph
+    from babylon.topology.graph import BabylonUGraph
 
 
 def compute_betti_numbers(subgraph: BabylonUGraph) -> tuple[int, int]:
@@ -46,7 +46,7 @@ def compute_betti_numbers(subgraph: BabylonUGraph) -> tuple[int, int]:
         - beta_1: Cycle rank = |E| - |V| + beta_0
 
     Example:
-        >>> from babylon.engine.graph import BabylonUGraph
+        >>> from babylon.topology.graph import BabylonUGraph
         >>> G = BabylonUGraph()
         >>> G.add_edges_from([("0", "1"), ("1", "2"), ("2", "3"), ("3", "0")])
         >>> compute_betti_numbers(G)
@@ -79,7 +79,7 @@ def compute_equivalence_classes(subgraph: BabylonUGraph) -> dict[int, int]:
         means one equivalence class containing 5 nodes.
 
     Example:
-        >>> from babylon.engine.graph import BabylonUGraph
+        >>> from babylon.topology.graph import BabylonUGraph
         >>> G = BabylonUGraph()
         >>> G.add_edges_from([("hub", "a"), ("hub", "b")])
         >>> compute_equivalence_classes(G)  # pendants {a, b} share a class
@@ -106,7 +106,7 @@ def compute_equivalence_classes(subgraph: BabylonUGraph) -> dict[int, int]:
 def find_critical_singletons(subgraph: BabylonUGraph) -> list[str]:
     """Find articulation points whose removal disconnects the graph.
 
-    Wraps :func:`babylon.engine.graph_algorithms.articulation_point_set`
+    Wraps :func:`babylon.topology.graph_algorithms.articulation_point_set`
     and returns a sorted list for deterministic output.
 
     Args:
@@ -116,7 +116,7 @@ def find_critical_singletons(subgraph: BabylonUGraph) -> list[str]:
         Sorted list of node IDs that are articulation points.
 
     Example:
-        >>> from babylon.engine.graph import BabylonUGraph
+        >>> from babylon.topology.graph import BabylonUGraph
         >>> G = BabylonUGraph()
         >>> G.add_edges_from([("0", "1"), ("1", "2")])
         >>> find_critical_singletons(G)
@@ -136,7 +136,7 @@ def find_critical_cutsets(
     """Find minimum edge cuts per connected component, bounded by size.
 
     For each connected component with >= 2 nodes, computes the minimum
-    edge cut via :func:`babylon.engine.graph_algorithms.min_edge_cut_edges`.
+    edge cut via :func:`babylon.topology.graph_algorithms.min_edge_cut_edges`.
     If the cut size
     is <= ``max_cutset_size``, the unique node IDs from the cut edges
     are collected into a frozenset and included in the result.
@@ -151,7 +151,7 @@ def find_critical_cutsets(
         involved in the minimum edge cut of a component.
 
     Example:
-        >>> from babylon.engine.graph import BabylonUGraph
+        >>> from babylon.topology.graph import BabylonUGraph
         >>> G = BabylonUGraph()
         >>> G.add_edges_from([("0", "1"), ("1", "2")])
         >>> cutsets = find_critical_cutsets(G, max_cutset_size=3)
@@ -203,7 +203,7 @@ def compute_purge_resilience(
         Returns 1.0 for empty graphs (vacuously resilient).
 
     Example:
-        >>> from babylon.engine.graph import BabylonUGraph
+        >>> from babylon.topology.graph import BabylonUGraph
         >>> nodes = ["0", "1", "2", "3", "4"]
         >>> G = BabylonUGraph()
         >>> G.add_edges_from([(a, b) for i, a in enumerate(nodes) for b in nodes[i + 1 :]])

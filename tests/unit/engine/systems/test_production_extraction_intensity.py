@@ -33,11 +33,11 @@ from collections.abc import Generator
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.production import ProductionSystem
 from babylon.models.enums import EdgeType, SocialRole
+from babylon.topology.graph import BabylonGraph
 from tests.constants import TestConstants
 
 TC = TestConstants

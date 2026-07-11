@@ -15,8 +15,8 @@ from typing import Any
 
 import xgi  # type: ignore[import-untyped, unused-ignore]
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType
+from babylon.topology.graph import BabylonGraph
 
 
 class DyadicGraph:

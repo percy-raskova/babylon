@@ -16,10 +16,10 @@ from collections.abc import Generator
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.models.enums import EdgeType, EventType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.fixture

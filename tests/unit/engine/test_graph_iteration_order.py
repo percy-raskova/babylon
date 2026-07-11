@@ -23,7 +23,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.unit, pytest.mark.topology]
 

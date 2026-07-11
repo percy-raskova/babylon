@@ -5,7 +5,6 @@ from collections import defaultdict
 import networkx as nx
 import xgi
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import (
     CommunityConsciousness,
     CommunityState,
@@ -16,6 +15,7 @@ from babylon.models.enums import (
     EdgeType,
 )
 from babylon.models.types import Probability
+from babylon.topology.graph import BabylonGraph
 
 
 def make_community_state(

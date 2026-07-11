@@ -24,7 +24,7 @@ import pytest
 
 from babylon.bifurcation.legitimation import compute_legitimation_amplifier
 from babylon.config.defines import BifurcationDefines
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

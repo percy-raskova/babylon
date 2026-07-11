@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType, TopologyType
 from babylon.organizations.topology import classify_topology
+from babylon.topology.graph import BabylonGraph
 
 
 class TestClassifyTopologyStar:

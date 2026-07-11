@@ -9,7 +9,6 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import OODADefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import JurisdictionLevel
 from babylon.ooda.initiative import (
     compute_community_embeddedness,
@@ -18,6 +17,7 @@ from babylon.ooda.initiative import (
     update_momentum,
 )
 from babylon.ooda.types import InitiativeScore
+from babylon.topology.graph import BabylonGraph
 
 
 class TestWorkedExamples:

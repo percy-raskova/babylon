@@ -22,10 +22,10 @@ from babylon.economics.boundary_flow_register import (
     NodeKind,
 )
 from babylon.economics.lodes_commute_matrix import LODESYearMatrix
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.vol2_circulation import (
     Vol2CirculationStep,
 )
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.unit, pytest.mark.topology]
 

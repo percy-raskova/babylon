@@ -26,10 +26,10 @@ from typing import Any
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, EventType
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

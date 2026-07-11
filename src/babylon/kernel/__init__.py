@@ -14,15 +14,19 @@ Layering law (enforced by import-linter): ``kernel`` < ``models``/``formulas``
 
 from babylon.kernel.event_bus import Event, EventBus
 from babylon.kernel.graph_protocol import GraphProtocol
+from babylon.kernel.interceptor import BlockedEvent, EventInterceptor, InterceptResult
 from babylon.kernel.services import ServicesProtocol
 from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.system_protocol import ContextType, System
 
 __all__ = [
+    "BlockedEvent",
     "ContextType",
     "Event",
     "EventBus",
+    "EventInterceptor",
     "GraphProtocol",
+    "InterceptResult",
     "ServicesProtocol",
     "System",
     "SystemBase",

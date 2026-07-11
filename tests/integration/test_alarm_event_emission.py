@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.cross_scale, pytest.mark.integration]
 

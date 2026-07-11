@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING, Any
 from babylon.ooda.action_effects import resolve_action
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
     from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action, ActionResult
+    from babylon.topology.graph import BabylonGraph
 
 
 def resolve_campaign(

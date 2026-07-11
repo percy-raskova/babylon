@@ -44,7 +44,7 @@ from babylon.models.events import EVENT_CLASS_MAP, SimulationEvent, TickEventAda
 from babylon.models.types import Currency
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 logger = logging.getLogger(__name__)
 
@@ -492,7 +492,7 @@ class WorldState(BaseModel):
     def to_graph(self) -> BabylonGraph:
         """Convert state to a BabylonGraph for formula application.
 
-        The rustworkx-backed :class:`~babylon.engine.graph.BabylonGraph`
+        The rustworkx-backed :class:`~babylon.topology.graph.BabylonGraph`
         (Amendment L) replaces the former NetworkX DiGraph; its nx-compat
         authoring surface keeps this method's body and all downstream
         readers unchanged, and it satisfies ``GraphProtocol`` directly so
@@ -527,7 +527,7 @@ class WorldState(BaseModel):
         """
         # Runtime-local import: models MUST NOT import engine at module
         # level (layering; engine.__init__ imports models back).
-        from babylon.engine.graph import BabylonGraph
+        from babylon.topology.graph import BabylonGraph
 
         G = BabylonGraph()
 

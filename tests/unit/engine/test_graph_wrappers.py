@@ -6,9 +6,9 @@ are accessed through typed wrapper services, not raw data structures.
 
 from __future__ import annotations
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.graph_wrappers import CommunityHypergraph, DyadicGraph
 from babylon.models.enums import EdgeType
+from babylon.topology.graph import BabylonGraph
 
 
 class TestDyadicGraph:

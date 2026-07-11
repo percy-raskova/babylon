@@ -22,9 +22,9 @@ from babylon.ooda.action_effects import compute_consciousness_delta
 from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
     from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
+    from babylon.topology.graph import BabylonGraph
 
 #: Fraction of a transferred amount that reaches the target (rest is overhead).
 _AID_EFFICIENCY = 1.0

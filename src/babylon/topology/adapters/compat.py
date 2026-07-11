@@ -3,7 +3,7 @@
 ``CompatGraph`` is the read/write surface the adapter mixins and
 subgraph helpers require of a backing graph.
 It is satisfied structurally by BOTH ``networkx.DiGraph`` and
-:class:`babylon.engine.graph.BabylonGraph`, which is what lets
+:class:`babylon.topology.graph.BabylonGraph`, which is what lets
 ``QueryMixin`` / ``AggregationMixin`` / ``SubgraphFilterBuilder`` /
 ``SubgraphView`` run unchanged on either backend during the Amendment L
 substrate migration.

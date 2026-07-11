@@ -12,11 +12,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from babylon.engine import graph_algorithms as ga
 from babylon.models.entities.attention_thread import SparrowAnalysis
+from babylon.topology import graph_algorithms as ga
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph, BabylonUGraph
+    from babylon.topology.graph import BabylonGraph, BabylonUGraph
 
 
 def analyze_network(

@@ -11,7 +11,6 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import BifurcationDefines
-from babylon.engine.graph import BabylonUGraph
 from babylon.models.entities.community import (
     CommunityState,
 )
@@ -19,6 +18,7 @@ from babylon.models.enums import (
     CommunityType,
     ConsciousnessTendency,
 )
+from babylon.topology.graph import BabylonUGraph
 
 from .factories import make_community_state
 

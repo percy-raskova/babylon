@@ -31,7 +31,7 @@ from babylon.models.events import BifurcationTendencyEvent, SimulationEvent
 
 if TYPE_CHECKING:
     from babylon.engine.community_state_store import CommunityStateStore
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 
 class BifurcationMonitor:

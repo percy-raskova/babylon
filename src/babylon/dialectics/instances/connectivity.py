@@ -57,7 +57,7 @@ import rustworkx as rx
 from babylon.dialectics.core.cylinder import AdjointCylinder
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonUGraph
+    from babylon.topology.graph import BabylonUGraph
 
 __all__ = ["atomization_index", "connectivity_cylinder", "pieces"]
 
@@ -66,7 +66,7 @@ NodeSet = frozenset[str]
 
 def _edgeless(nodes: NodeSet) -> BabylonUGraph:
     """:math:`\\Delta` — the edgeless graph on ``nodes`` (skeleton pole)."""
-    from babylon.engine.graph import BabylonUGraph
+    from babylon.topology.graph import BabylonUGraph
 
     graph = BabylonUGraph()
     graph.add_nodes_from(sorted(nodes))
@@ -101,7 +101,7 @@ def connectivity_cylinder() -> AdjointCylinder[NodeSet, BabylonUGraph]:
     Returns:
         An :class:`AdjointCylinder` with base carrier ``S`` = frozenset
         of node ids and ambient carrier ``X`` = undirected
-        :class:`~babylon.engine.graph.BabylonUGraph`: ``embed_left`` is the edgeless graph
+        :class:`~babylon.topology.graph.BabylonUGraph`: ``embed_left`` is the edgeless graph
         (:math:`\\Delta`), ``embed_right`` is the complete graph
         (:math:`\\nabla`), ``project`` is the node set (:math:`\\Gamma`),
         and ``metric`` is the size of the edge-set symmetric difference.
@@ -136,7 +136,7 @@ def pieces(graph: BabylonUGraph) -> tuple[NodeSet, ...]:
         traversal or insertion order.
 
     Example:
-        >>> from babylon.engine.graph import BabylonUGraph
+        >>> from babylon.topology.graph import BabylonUGraph
         >>> g = BabylonUGraph()
         >>> g.add_nodes_from(["b", "a", "c"])
         >>> g.add_edge("b", "c")
@@ -165,7 +165,7 @@ def atomization_index(graph: BabylonUGraph) -> float:
         The atomization index in [0, 1].
 
     Example:
-        >>> from babylon.engine.graph import BabylonUGraph
+        >>> from babylon.topology.graph import BabylonUGraph
         >>> g = BabylonUGraph()
         >>> g.add_nodes_from(["a", "b", "c"])
         >>> atomization_index(g)

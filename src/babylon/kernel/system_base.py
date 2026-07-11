@@ -20,7 +20,6 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
     from babylon.kernel.event_bus import Event
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
@@ -81,7 +80,7 @@ class SystemBase(ABC):
 
         The signature matches :class:`babylon.kernel.system_protocol.System`
         exactly. The engine (and all test fixtures) pass a
-        :class:`~babylon.engine.graph.BabylonGraph`, which satisfies
+        :class:`~babylon.topology.graph.BabylonGraph`, which satisfies
         ``GraphProtocol``.
         """
 
@@ -92,7 +91,7 @@ class SystemBase(ABC):
         Raw NetworkX graphs are no longer supported — the NetworkXAdapter
         seam closed when Amendment L made BabylonGraph the sole
         implementation. Construct a
-        :class:`~babylon.engine.graph.BabylonGraph` instead.
+        :class:`~babylon.topology.graph.BabylonGraph` instead.
 
         Raises:
             TypeError: If ``graph`` does not satisfy :class:`GraphProtocol`.
@@ -102,29 +101,9 @@ class SystemBase(ABC):
         if not isinstance(graph, GraphProtocol):
             raise TypeError(
                 "raw networkx graphs are no longer supported; construct "
-                f"babylon.engine.graph.BabylonGraph (got {type(graph).__name__})"
+                f"babylon.topology.graph.BabylonGraph (got {type(graph).__name__})"
             )
         return graph
-
-    @staticmethod
-    def _compat_graph(
-        graph: GraphProtocol,
-    ) -> BabylonGraph:
-        """Narrow a ``step()`` graph argument to the nx-compat world surface.
-
-        Helper (Amendment L) for systems whose subsystem helpers read/write
-        raw payload dicts (``graph.nodes(data=True)``,
-        ``graph.edges[u, v][...]``) rather than protocol methods —
-        BabylonGraph's permanent authoring surface (constitution II.12).
-
-        Raises:
-            TypeError: If the backend does not expose that surface.
-        """
-        from babylon.engine.graph import BabylonGraph
-
-        if isinstance(graph, BabylonGraph):
-            return graph
-        raise TypeError(f"Unsupported graph backend: {type(graph).__name__}")
 
     @staticmethod
     def _read(

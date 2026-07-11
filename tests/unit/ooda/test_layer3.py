@@ -12,10 +12,10 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import ActionType, EdgeType, EventType
 from babylon.ooda.layer3 import process_layer3
 from babylon.ooda.types import Action, ActionResult
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_result(

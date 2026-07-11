@@ -30,7 +30,7 @@ from babylon.models.enums import EventType, SocialRole
 if TYPE_CHECKING:
     from babylon.kernel.event_bus import Event
 
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 from tests.constants import TestConstants
 
 TC = TestConstants.Attrition

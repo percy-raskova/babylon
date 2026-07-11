@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 
 __all__ = ["_compute_membership_overlap"]

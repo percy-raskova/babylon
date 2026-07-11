@@ -133,8 +133,8 @@ def test_partial_buffer_never_reaches_postgres_when_step_raises(runtime, session
     from babylon.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.economics.lodes_commute_matrix import build_year_matrix
     from babylon.economics.node_kinds import NodeKind
-    from babylon.engine.graph import BabylonGraph
     from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
+    from babylon.topology.graph import BabylonGraph
 
     sid = session_ids["part1"]
     # One origin, TWO external dests → the classifier is called twice; it

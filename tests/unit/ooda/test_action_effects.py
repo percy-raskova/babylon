@@ -13,7 +13,6 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines, OrganizationDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import (
     ActionType,
     ConsciousnessTendency,
@@ -26,6 +25,7 @@ from babylon.ooda.action_effects import (
     resolve_action,
 )
 from babylon.ooda.types import Action
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_graph_with_org_and_community(

@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.models.enums import EdgeType, EventType
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.unit
 

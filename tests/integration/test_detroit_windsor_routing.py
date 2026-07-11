@@ -122,7 +122,7 @@ def runtime(pg_pool, apply_migrations, tiger_geometries_ingested):  # type: igno
 
 def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
     """Tick-0 hex frame → BabylonGraph (full frame per spec-089; never MAX(tick))."""
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
     graph = BabylonGraph()
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001

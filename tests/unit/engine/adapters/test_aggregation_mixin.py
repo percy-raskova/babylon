@@ -15,13 +15,13 @@ from babylon.models.entity_registry import (
 
 # Import will fail until we implement the mixin (RED)
 try:
-    from babylon.engine.adapters.aggregation_mixin import AggregationMixin
+    from babylon.topology.adapters.aggregation_mixin import AggregationMixin
 except ImportError:
     AggregationMixin = None  # type: ignore[misc, assignment]
 
 import networkx as nx
 
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 
 class TestAggregationMixinExists:

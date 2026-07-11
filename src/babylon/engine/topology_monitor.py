@@ -34,10 +34,10 @@ import random
 from typing import TYPE_CHECKING
 
 from babylon.dialectics.instances.connectivity import pieces
-from babylon.engine.graph import BabylonUGraph
 from babylon.models.enums import EdgeType
 from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
+from babylon.topology.graph import BabylonUGraph
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol

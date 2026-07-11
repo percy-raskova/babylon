@@ -10,12 +10,12 @@ from typing import Any
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import (
     CommunityMembership,
     CommunityState,
 )
 from babylon.models.enums import CommunityType, LegalStatus, MembershipRole
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

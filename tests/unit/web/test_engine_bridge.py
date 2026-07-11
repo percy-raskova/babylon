@@ -16,9 +16,9 @@ from unittest.mock import MagicMock, patch
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
+from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
     EngineBridge,
     _build_initial_state_for_scenario,

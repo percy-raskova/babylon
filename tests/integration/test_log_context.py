@@ -19,10 +19,10 @@ from typing import Any
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import SimulationEngine
 from babylon.kernel.system_protocol import ContextType, System
+from babylon.topology.graph import BabylonGraph
 
 
 class LogCapturingHandler(logging.Handler):

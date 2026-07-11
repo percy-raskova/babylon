@@ -33,7 +33,7 @@ def _ensure_protocol(graph: GraphProtocol) -> GraphProtocol:
         return graph
     raise TypeError(
         "raw networkx graphs are no longer supported; construct "
-        f"babylon.engine.graph.BabylonGraph (got {type(graph).__name__})"
+        f"babylon.topology.graph.BabylonGraph (got {type(graph).__name__})"
     )
 
 

@@ -13,11 +13,11 @@ from unittest.mock import MagicMock
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.field_derivative import (
     _collect_neighbor_fields,
     _compute_node_derivatives,
 )
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_graph_protocol(g: nx.DiGraph) -> MagicMock:  # type: ignore[type-arg]

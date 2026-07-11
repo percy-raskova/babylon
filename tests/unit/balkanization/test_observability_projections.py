@@ -6,7 +6,6 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.observers.balkanization_projections import (
     SovereignProjection,
     TerritoryProjection,
@@ -14,6 +13,7 @@ from babylon.engine.observers.balkanization_projections import (
     observe_territory,
 )
 from babylon.models.enums import ExtractionPolicy
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.unit
 

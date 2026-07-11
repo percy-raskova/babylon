@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.attention_thread import AttentionThread, SparrowAnalysis
 from babylon.models.entities.state_apparatus_ai import (
     FactionBalance,
@@ -19,6 +18,7 @@ from babylon.models.enums import (
     SurveillanceMethod,
     ThreadPhase,
 )
+from babylon.topology.graph import BabylonGraph
 
 
 def make_faction_balance(**overrides: Any) -> FactionBalance:

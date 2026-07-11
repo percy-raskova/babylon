@@ -16,7 +16,7 @@ from babylon.models.enums import EdgeType, JurisdictionLevel
 from babylon.ooda.types import InitiativeScore
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 
 def compute_initiative_score(

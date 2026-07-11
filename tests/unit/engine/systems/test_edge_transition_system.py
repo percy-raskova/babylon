@@ -12,7 +12,6 @@ import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
 from babylon.models.enums import (
@@ -21,6 +20,7 @@ from babylon.models.enums import (
     EdgeType,
     EventType,
 )
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_graph_with_edge_mode() -> nx.DiGraph[str]:

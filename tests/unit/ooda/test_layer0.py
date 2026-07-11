@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import ActionType, OrgType
 from babylon.ooda.layer0 import process_layer0
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_services() -> MagicMock:

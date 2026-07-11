@@ -24,7 +24,7 @@ from babylon.economics.tick.types import (
     CrisisPhase,
     CrisisState,
 )
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_dist(

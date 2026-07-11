@@ -25,8 +25,8 @@ from babylon.economics.tick.types import (
     CountyEconomicState,
     CrisisState,
 )
-from babylon.engine.graph import BabylonGraph
 from babylon.models.types import Currency
+from babylon.topology.graph import BabylonGraph
 
 # =============================================================================
 # Fixtures

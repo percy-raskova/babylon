@@ -19,10 +19,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.sovereignty import SovereigntySystem
 from babylon.models.enums import ExtractionPolicy
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
 

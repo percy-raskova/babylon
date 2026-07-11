@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType, OrgType
 from babylon.organizations.composition import (
     class_composition,
@@ -17,6 +16,7 @@ from babylon.organizations.composition import (
     lifecycle_composition,
 )
 from babylon.organizations.types import CompositionResult
+from babylon.topology.graph import BabylonGraph
 
 
 class TestClassComposition:

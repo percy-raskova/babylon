@@ -23,9 +23,9 @@ from babylon.models.enums import EventType
 from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
     from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
+    from babylon.topology.graph import BabylonGraph
 
 #: State attention the acting org draws for a sabotage action.
 _ATTACK_SELF_HEAT_GAIN = 0.1

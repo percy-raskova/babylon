@@ -10,9 +10,9 @@ from unittest.mock import MagicMock
 import networkx as nx
 
 from babylon.config.defines import GameDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.ooda import OODASystem
 from babylon.models.enums import OrgType
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_services() -> MagicMock:

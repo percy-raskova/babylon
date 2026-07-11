@@ -19,10 +19,10 @@ Epoch 1→2 bridge pattern.
 
 **Key Components:**
 
-- :py:mod:`babylon.engine.interceptor` - Interceptor base classes
-- :py:class:`~babylon.engine.interceptor.EventInterceptor` - Abstract base
-- :py:class:`~babylon.engine.interceptor.InterceptResult` - Allow/block/modify result
-- :py:class:`~babylon.engine.interceptor.WorldContext` - Read-only state protocol
+- :py:mod:`babylon.kernel.interceptor` - Interceptor base classes
+- :py:class:`~babylon.kernel.interceptor.EventInterceptor` - Abstract base
+- :py:class:`~babylon.kernel.interceptor.InterceptResult` - Allow/block/modify result
+- :py:class:`~babylon.kernel.interceptor.WorldContext` - Read-only state protocol
 
 InterceptResult Actions
 -----------------------
@@ -50,7 +50,7 @@ Interceptors return one of three outcomes:
 
 .. code-block:: python
 
-   from babylon.engine.interceptor import InterceptResult
+   from babylon.kernel.interceptor import InterceptResult
 
    # Allow an event to pass through unchanged
    result = InterceptResult.allow(event)
@@ -118,7 +118,7 @@ To create a custom interceptor, subclass :class:`EventInterceptor`:
 
 .. code-block:: python
 
-   from babylon.engine.interceptor import EventInterceptor, InterceptResult
+   from babylon.kernel.interceptor import EventInterceptor, InterceptResult
    from babylon.kernel.event_bus import Event
 
    class SecurityInterceptor(EventInterceptor):
@@ -179,4 +179,4 @@ See Also
 
 - :doc:`/concepts/event-system` - Event system architecture
 - :doc:`/reference/events` - Event types and lifecycle
-- :py:mod:`babylon.engine.interceptor` - Source code
+- :py:mod:`babylon.kernel.interceptor` - Source code

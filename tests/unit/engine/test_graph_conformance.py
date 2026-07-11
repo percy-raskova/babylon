@@ -18,13 +18,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entity_registry import (
     COMPRADOR_ID,
     CORE_BOURGEOISIE_ID,
     LABOR_ARISTOCRACY_ID,
     PERIPHERY_WORKER_ID,
 )
+from babylon.topology.graph import BabylonGraph
 
 if TYPE_CHECKING:
     pass

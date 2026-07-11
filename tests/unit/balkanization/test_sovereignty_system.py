@@ -10,9 +10,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.sovereignty import SovereigntySystem
 from babylon.models.enums import EventType
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.unit
 

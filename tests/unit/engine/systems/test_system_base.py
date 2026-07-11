@@ -15,10 +15,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import System
 from babylon.models.graph import GraphNode
+from babylon.topology.graph import BabylonGraph
 
 
 class _StubSystem(SystemBase):

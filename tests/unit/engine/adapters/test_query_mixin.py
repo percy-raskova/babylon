@@ -15,13 +15,13 @@ from babylon.models.entity_registry import (
 
 # Import will fail until we implement the mixin (RED)
 try:
-    from babylon.engine.adapters.query_mixin import QueryMixin
+    from babylon.topology.adapters.query_mixin import QueryMixin
 except ImportError:
     QueryMixin = None  # type: ignore[misc, assignment]
 
 import networkx as nx
 
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 
 class TestQueryMixinExists:

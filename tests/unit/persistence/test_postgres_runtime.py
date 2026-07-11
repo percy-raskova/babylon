@@ -18,8 +18,8 @@ from uuid import UUID, uuid4
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.persistence.postgres_runtime import PostgresRuntime
+from babylon.topology.graph import BabylonGraph
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

@@ -13,10 +13,10 @@ from collections.abc import Generator
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.decomposition import DecompositionSystem, _find_entity_by_role
 from babylon.models.enums import EventType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.unit
 

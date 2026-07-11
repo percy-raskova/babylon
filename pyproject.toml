@@ -491,3 +491,28 @@ name = "formulas are pure math — no engine imports"
 type = "forbidden"
 source_modules = ["babylon.formulas"]
 forbidden_modules = ["babylon.engine"]
+
+[[tool.importlinter.contracts]]
+name = "kernel is layer 0 — imports nothing above itself"
+type = "forbidden"
+source_modules = ["babylon.kernel"]
+forbidden_modules = [
+    "babylon.engine",
+    "babylon.topology",
+    "babylon.persistence",
+    "babylon.economics",
+    "babylon.models",
+    "babylon.formulas",
+    "babylon.config",
+    "babylon.ooda",
+    "babylon.ai",
+    "babylon.rag",
+    "babylon.dialectics",
+    "babylon.infrastructure",
+]
+
+[[tool.importlinter.contracts]]
+name = "topology (graph substrate) must not import the engine"
+type = "forbidden"
+source_modules = ["babylon.topology"]
+forbidden_modules = ["babylon.engine"]

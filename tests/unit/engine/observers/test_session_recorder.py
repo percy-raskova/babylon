@@ -300,7 +300,7 @@ class TestPersistTickDelegation:
         # tick keyword arg
         assert call_args.kwargs.get("tick") == state.tick
         # graph keyword arg should be the BabylonGraph from to_graph (Amendment L)
-        from babylon.engine.graph import BabylonGraph
+        from babylon.topology.graph import BabylonGraph
 
         assert isinstance(call_args.kwargs.get("graph"), BabylonGraph)
 

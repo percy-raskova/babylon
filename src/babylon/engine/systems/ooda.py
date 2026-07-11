@@ -29,9 +29,28 @@ from babylon.ooda.npc_stub import select_npc_actions
 from babylon.ooda.types import ActionResult, InitiativeScore, OODAProfile, TurnResolution
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
+    from babylon.topology.graph import BabylonGraph
+
+
+def _compat_graph(graph: GraphProtocol) -> BabylonGraph:
+    """Narrow a ``step()`` graph argument to the nx-compat world surface.
+
+    Helper (Amendment L) for subsystem helpers that read/write raw payload
+    dicts (``graph.nodes(data=True)``, ``graph.edges[u, v][...]``) —
+    BabylonGraph's permanent authoring surface (constitution II.12). Lives
+    engine-side because it downcasts to the concrete topology substrate,
+    which the kernel base class must not import (Program 14 layering).
+
+    Raises:
+        TypeError: If the backend does not expose that surface.
+    """
+    from babylon.topology.graph import BabylonGraph
+
+    if isinstance(graph, BabylonGraph):
+        return graph
+    raise TypeError(f"Unsupported graph backend: {type(graph).__name__}")
 
 
 class OODASystem(SystemBase):
@@ -66,7 +85,7 @@ class OODASystem(SystemBase):
 
         # Amendment L transition: subsystem helpers (layer0/layer3/effects)
         # still speak the nx-compat payload surface; narrow once here.
-        graph = self._compat_graph(graph)
+        graph = _compat_graph(graph)
 
         # --- Phase 1: Layer 0 (automatic metabolism) ---
         layer0_results = process_layer0(graph, services)

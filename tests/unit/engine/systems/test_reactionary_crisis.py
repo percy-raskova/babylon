@@ -13,11 +13,11 @@ from __future__ import annotations
 import pytest
 
 from babylon.engine.context import TickContext
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
 from babylon.models import SocialClass, WorldState
 from babylon.models.enums import EventType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.unit
 

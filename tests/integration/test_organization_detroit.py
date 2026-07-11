@@ -12,7 +12,6 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.config.defines import OrganizationDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
@@ -42,6 +41,7 @@ from babylon.organizations.topology import (
     cohesion_loss_on_removal,
     identify_key_figures,
 )
+from babylon.topology.graph import BabylonGraph
 
 # =========================================================================
 # Shared Detroit Fixtures

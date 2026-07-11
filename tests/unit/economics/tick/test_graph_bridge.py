@@ -22,7 +22,7 @@ from babylon.economics.tick.types import (
     SimulationTickState,
     SmoothedCoefficients,
 )
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 from tests.unit.economics.tick.conftest import WAYNE_FIPS, build_territory_graph
 
 

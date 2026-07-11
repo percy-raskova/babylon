@@ -17,13 +17,13 @@ to develop consciousness from their material exploitation.
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.models.entity_registry import (
     LABOR_ARISTOCRACY_ID,
     PERIPHERY_WORKER_ID,
 )
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

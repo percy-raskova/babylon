@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from babylon.engine.adapters.compat import CompatGraph
+    from babylon.topology.adapters.compat import CompatGraph
 
 from babylon.models.graph import GraphEdge, GraphNode
 
@@ -19,7 +19,7 @@ class QueryMixin:
     """Mixin providing query operations for graph adapters.
 
     Requires the class using this mixin to have a `_graph` attribute
-    satisfying :class:`~babylon.engine.adapters.compat.CompatGraph`
+    satisfying :class:`~babylon.topology.adapters.compat.CompatGraph`
     (BabylonGraph does, structurally).
 
     Example:

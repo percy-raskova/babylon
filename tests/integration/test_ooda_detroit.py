@@ -11,7 +11,6 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ooda import OODASystem
 from babylon.models.enums import (
@@ -29,6 +28,7 @@ from babylon.ooda.initiative import (
     compute_initiative_score,
 )
 from babylon.ooda.types import OODAProfile
+from babylon.topology.graph import BabylonGraph
 
 # =========================================================================
 # Shared Detroit Graph Builder

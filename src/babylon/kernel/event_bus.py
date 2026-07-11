@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
 
 if TYPE_CHECKING:
-    from babylon.engine.interceptor import (
+    from babylon.kernel.interceptor import (
         BlockedEvent,
         EventInterceptor,
         WorldContext,
@@ -114,7 +114,7 @@ class EventBus:
             interceptor: The interceptor to register.
 
         Example:
-            >>> from babylon.engine.interceptor import EventInterceptor
+            >>> from babylon.kernel.interceptor import EventInterceptor
             >>> bus = EventBus()
             >>> bus.register_interceptor(my_security_interceptor)
         """
@@ -170,7 +170,7 @@ class EventBus:
             The (possibly modified) event if allowed, None if blocked.
         """
         # Import here to avoid circular import at module level
-        from babylon.engine.interceptor import BlockedEvent
+        from babylon.kernel.interceptor import BlockedEvent
 
         current_event: Event = event
 
@@ -270,7 +270,7 @@ class EventBus:
             List of BlockedEvent records in chronological order.
         """
         # Import here to satisfy type checker when called
-        from babylon.engine.interceptor import BlockedEvent  # noqa: F401
+        from babylon.kernel.interceptor import BlockedEvent  # noqa: F401
 
         return list(self._blocked_events)
 

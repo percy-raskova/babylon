@@ -23,7 +23,7 @@ from babylon.economics.substrate.hex_graph_bridge import (
     write_hex_state_to_graph,
 )
 from babylon.economics.substrate.types import HexGrid
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 # Fixtures are inherited from conftest.py in the substrate directory
 

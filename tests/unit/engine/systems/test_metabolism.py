@@ -30,10 +30,10 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.metabolism import MetabolismSystem  # Will fail - doesn't exist
 from babylon.models.enums import EventType
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.state_finance import StateFinance
@@ -29,6 +28,7 @@ from babylon.models.events import (
     UprisingEvent,
 )
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 
 # EventType members with no TickEvent leaf class (no ``kind`` literal in the
 # discriminated union). Sorted for deterministic parametrize ids.

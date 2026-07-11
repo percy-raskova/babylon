@@ -16,9 +16,9 @@ from datetime import datetime
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.persistence import MonotonicityViolationError
 from babylon.persistence.postgres_runtime import PostgresRuntime
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
 

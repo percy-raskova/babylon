@@ -16,7 +16,7 @@ from babylon.models.enums import ActionType, EdgeType
 from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 
 def process_layer3(

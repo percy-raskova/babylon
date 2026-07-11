@@ -16,10 +16,10 @@ Test Intent:
 import pytest
 
 from babylon.config.defines import GameDefines, SolidarityDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.models.enums import EdgeType, EventType
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

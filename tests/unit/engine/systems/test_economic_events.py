@@ -17,7 +17,6 @@ PPP Model Tests (Sprint PPP):
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
 from babylon.engine.systems.economic import ImperialRentSystem
@@ -27,6 +26,7 @@ from babylon.models.enums import EdgeType, EventType, SocialRole
 
 # RED Phase imports - these don't exist yet and will cause import errors
 from babylon.models.events import ExtractionEvent
+from babylon.topology.graph import BabylonGraph
 from tests.assertions import Assert
 from tests.factories.domain import DomainFactory
 

@@ -13,13 +13,13 @@ from uuid import UUID
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.persistence.protocols import (
     RuntimePersistence,
     TraceCollector,
     TraceLevel,
     VectorStoreProtocol,
 )
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

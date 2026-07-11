@@ -31,8 +31,8 @@ from babylon.economics.tick.types import (
     SmoothedCoefficients,
 )
 from babylon.engine.context import TickContext
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
+from babylon.topology.graph import BabylonGraph
 from tests.unit.economics.tick.conftest import (
     WAYNE_FIPS,
     CapturingTransitionEngine,

@@ -18,8 +18,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines import GameDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import EdgeType
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

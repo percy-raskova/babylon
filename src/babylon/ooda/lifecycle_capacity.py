@@ -16,7 +16,7 @@ from babylon.config.defines import OODADefines, OrganizationDefines
 from babylon.organizations.composition import effective_capacity, lifecycle_composition
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 
 def compute_lifecycle_modifier(

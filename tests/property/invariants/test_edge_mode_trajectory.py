@@ -22,7 +22,6 @@ import networkx as nx
 import pytest
 from hypothesis import HealthCheck, given, settings
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.simulation_engine import SimulationEngine
 from babylon.engine.systems.edge_transition import (
     _VALID_TRANSITIONS,
@@ -30,6 +29,7 @@ from babylon.engine.systems.edge_transition import (
 )
 from babylon.models.enums import EdgeMode
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 from tests.property.harness.system_registry import all_systems
 from tests.property.strategies.edge_mode_evidence import edge_mode_trajectory_strategy
 from tests.property.strategies.worldstate import worldstate_strategy

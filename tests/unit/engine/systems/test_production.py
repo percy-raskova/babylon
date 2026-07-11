@@ -18,10 +18,10 @@ import networkx as nx
 import pytest
 
 from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.production import ProductionSystem
 from babylon.models.enums import EdgeType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.fixture

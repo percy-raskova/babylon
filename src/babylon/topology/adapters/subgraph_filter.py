@@ -11,8 +11,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from babylon.engine.adapters.compat import CompatGraph
     from babylon.models.graph import TraversalQuery
+    from babylon.topology.adapters.compat import CompatGraph
 
 
 class SubgraphFilterBuilder:

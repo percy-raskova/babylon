@@ -20,7 +20,7 @@ from babylon.economics.dynamics.crisis import PhasedCrisisAmplifier
 from babylon.economics.dynamics.types import ClassDistribution, TransitionRates
 from babylon.economics.tick.crisis_detector import MultiPeriodCrisisDetector
 from babylon.economics.tick.types import CrisisPhase, CrisisState
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

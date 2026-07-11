@@ -13,8 +13,8 @@ import uuid
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.persistence.postgres_runtime import PostgresRuntime
+from babylon.topology.graph import BabylonGraph
 
 # Mark all tests in this module as requiring the pg_pool fixture,
 # which skips testing if PostgreSQL is unavailable.

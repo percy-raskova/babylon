@@ -14,8 +14,8 @@ from babylon.models.enums import ActionType, EventType, OrgType
 from babylon.ooda.types import Action, ActionResult
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
     from babylon.kernel.services import ServicesProtocol
+    from babylon.topology.graph import BabylonGraph
 
 
 def process_layer0(

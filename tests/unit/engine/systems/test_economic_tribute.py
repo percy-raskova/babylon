@@ -9,10 +9,10 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_tribute_graph(

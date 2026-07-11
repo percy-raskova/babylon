@@ -22,12 +22,12 @@ from babylon.config.defines import (
     SurvivalDefines,
     TensionDefines,
 )
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.models.enums import EdgeType
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

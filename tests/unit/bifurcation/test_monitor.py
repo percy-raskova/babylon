@@ -15,7 +15,6 @@ from babylon.bifurcation.types import BifurcationSnapshot
 from babylon.config.defines import BifurcationDefines
 from babylon.engine.bifurcation_monitor import BifurcationMonitor
 from babylon.engine.community_state_store import InMemoryCommunityStateStore
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import CommunityState
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import (
@@ -27,6 +26,7 @@ from babylon.models.enums import (
     EventType,
 )
 from babylon.models.events import BifurcationTendencyEvent
+from babylon.topology.graph import BabylonGraph
 
 from .factories import (
     build_test_hypergraph,

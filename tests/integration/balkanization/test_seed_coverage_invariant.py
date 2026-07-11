@@ -25,7 +25,7 @@ from babylon.data.game.balkanization import (
     load_seed_factions,
     load_seed_sovereigns_raw,
 )
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
 

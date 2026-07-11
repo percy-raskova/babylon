@@ -20,7 +20,7 @@ import random
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 import xgi  # type: ignore[import-untyped, unused-ignore]
 
 from babylon.bifurcation.types import WeightedSolidarityResult

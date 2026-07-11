@@ -12,12 +12,12 @@ import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.models.enums import ContradictionCharacter, EdgeMode, EdgeType
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_detroit_metro_graph() -> nx.DiGraph[str]:

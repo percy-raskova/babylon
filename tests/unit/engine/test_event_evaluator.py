@@ -23,7 +23,6 @@ from babylon.engine.event_evaluator import (
     get_matching_nodes_for_resolution,
     get_nested_value,
 )
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.event_template import (
     EdgeCondition,
     EventTemplate,
@@ -40,6 +39,7 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import EdgeType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.fixture

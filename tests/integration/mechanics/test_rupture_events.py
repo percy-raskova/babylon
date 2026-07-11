@@ -26,13 +26,13 @@ from babylon.engine.factories import (
     create_labor_aristocracy,
     create_proletariat,
 )
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation import Simulation
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import EventType
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
 

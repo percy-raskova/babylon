@@ -15,7 +15,6 @@ import xgi  # type: ignore[import-untyped]
 
 from babylon.bifurcation.consciousness import consciousness_weighted_solidarity
 from babylon.config.defines import BifurcationDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import CommunityState
 from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import (
@@ -26,6 +25,7 @@ from babylon.models.enums import (
     EdgeType,
 )
 from babylon.models.types import Probability
+from babylon.topology.graph import BabylonGraph
 
 from .factories import build_test_hypergraph, make_community_state
 

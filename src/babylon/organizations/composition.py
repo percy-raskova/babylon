@@ -13,7 +13,7 @@ from babylon.models.enums import EdgeType, resolve_edge_type
 from babylon.organizations.types import CompositionResult
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 
 def _membership_targets(org_id: str, G: BabylonGraph) -> list[tuple[str, float]]:

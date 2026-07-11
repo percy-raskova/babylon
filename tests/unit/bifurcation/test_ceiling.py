@@ -13,8 +13,8 @@ import pytest
 
 from babylon.bifurcation.ceiling import compute_solidarity_ceiling
 from babylon.config.defines import BifurcationDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import CommunityType, EdgeType
+from babylon.topology.graph import BabylonGraph
 
 from .factories import (
     assign_communities_to_graph,

@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonUGraph
 from babylon.formulas.curvature import compute_ollivier_ricci
+from babylon.topology.graph import BabylonUGraph
 
 
 def _complete_graph(n: int) -> BabylonUGraph:

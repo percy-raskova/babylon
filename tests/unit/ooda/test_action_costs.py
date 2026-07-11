@@ -12,10 +12,10 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.enums import ActionType, CommunityType, EdgeType, OrgType
 from babylon.ooda.action_costs import compute_action_cost
 from babylon.ooda.types import ActionCostModifier
+from babylon.topology.graph import BabylonGraph
 
 
 def _build_graph(

@@ -8,9 +8,9 @@ multiplier from incoming SOLIDARITY edges in the graph.
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.survival import _calculate_solidarity_multiplier
 from babylon.models.enums import EdgeType
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.unit

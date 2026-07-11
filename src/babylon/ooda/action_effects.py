@@ -20,7 +20,7 @@ from babylon.organizations.consciousness import tendency_modifier
 from babylon.organizations.types import ConsciousnessDelta
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 # The fascist action verbs (spec-071) and their emitted event types.
 _FASCIST_VERBS: dict[ActionType, EventType] = {

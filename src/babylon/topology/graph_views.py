@@ -8,7 +8,7 @@ contract is what keeps event ordering byte-identical across the
 NetworkX -> rustworkx substrate swap (constitution III.7, Amendment L).
 
 See Also:
-    :class:`babylon.engine.graph.BabylonGraph`: The host graph.
+    :class:`babylon.topology.graph.BabylonGraph`: The host graph.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import _GraphCore
+    from babylon.topology.graph import _GraphCore
 
 
 class NodesView:
@@ -28,7 +28,7 @@ class NodesView:
     the complete node read surface the babylon codebase uses.
 
     Example:
-        >>> from babylon.engine.graph import BabylonGraph
+        >>> from babylon.topology.graph import BabylonGraph
         >>> g = BabylonGraph()
         >>> g.add_node("C001", "social_class", wealth=10.0)
         >>> list(g.nodes)
@@ -93,7 +93,7 @@ class EdgesView:
     hash exposure).
 
     Example:
-        >>> from babylon.engine.graph import BabylonGraph
+        >>> from babylon.topology.graph import BabylonGraph
         >>> g = BabylonGraph()
         >>> g.add_edge("A", "B", "SOLIDARITY", weight=0.5)
         >>> g.edges[("A", "B")]["weight"]

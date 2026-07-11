@@ -15,10 +15,10 @@ from typing import TYPE_CHECKING
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.vitality import VitalitySystem
 from babylon.models.enums import EventType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 if TYPE_CHECKING:
     from babylon.kernel.event_bus import Event

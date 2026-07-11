@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from babylon.economics.working_day.classifier import DefaultWorkingDayClassifier
 from babylon.economics.working_day.types import WorkingDayState
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
@@ -18,6 +17,7 @@ from babylon.kernel.event_bus import Event
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EventType, ExploitationMode, SectorType
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_detroit_graph() -> BabylonGraph:

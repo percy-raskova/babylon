@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -280,7 +280,7 @@ class PostgresRuntime:
             msg = "session_id is required for PostgresRuntime.hydrate_graph"
             raise ValueError(msg)
 
-        from babylon.engine.graph import BabylonGraph
+        from babylon.topology.graph import BabylonGraph
 
         graph = BabylonGraph()
 

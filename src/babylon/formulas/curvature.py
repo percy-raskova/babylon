@@ -26,7 +26,7 @@ import numpy as np
 from scipy.optimize import linprog  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonUGraph
+    from babylon.topology.graph import BabylonUGraph
 
 
 def compute_ollivier_ricci(
@@ -172,7 +172,7 @@ def _graph_distance(
     # Function-local import: formulas are imported during babylon.models
     # init (sovereign -> balkanization); a module-level engine import here
     # closes an import cycle (models -> formulas -> engine -> ... -> models).
-    from babylon.engine.graph_algorithms import shortest_path_length_between
+    from babylon.topology.graph_algorithms import shortest_path_length_between
 
     return shortest_path_length_between(graph, u, v, weight_attr=weight_attr)
 

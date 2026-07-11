@@ -23,10 +23,10 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import GameDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 # =============================================================================
 # WEEKLY CONVERSION TESTS (RED PHASE)

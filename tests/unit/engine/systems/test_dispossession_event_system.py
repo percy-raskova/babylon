@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.kernel.event_bus import Event
@@ -10,6 +9,7 @@ from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EventType, SectorType, SocialRole
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_territory_graph(

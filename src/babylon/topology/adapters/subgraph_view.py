@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from babylon.engine.adapters.compat import CompatGraph
+    from babylon.topology.adapters.compat import CompatGraph
 
 from babylon.models.graph import GraphEdge, GraphNode
 
@@ -25,7 +25,7 @@ class SubgraphView:
         _subgraph: The underlying NetworkX subgraph.
 
     Example:
-        >>> from babylon.engine.graph import BabylonGraph
+        >>> from babylon.topology.graph import BabylonGraph
         >>> adapter = BabylonGraph()
         >>> adapter.add_node("C001", "social_class", wealth=100.0)
         >>> adapter.add_node("C002", "social_class", wealth=50.0)

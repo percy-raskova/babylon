@@ -3,8 +3,8 @@
 Analytics modules (bifurcation resilience/analysis, organizations
 topology, sparrow, curvature, topology monitor) call these helpers
 instead of graph-library functions directly. Each helper runs
-rustworkx-native over :class:`~babylon.engine.graph.BabylonGraph` /
-:class:`~babylon.engine.graph.BabylonUGraph`; the transitional NetworkX
+rustworkx-native over :class:`~babylon.topology.graph.BabylonGraph` /
+:class:`~babylon.topology.graph.BabylonUGraph`; the transitional NetworkX
 fallback arms retired with the Phase-6/7 fixture sweep (ADR052).
 """
 
@@ -14,7 +14,7 @@ from typing import Any
 
 import rustworkx as rx
 
-from babylon.engine.graph import BabylonGraph, BabylonUGraph
+from babylon.topology.graph import BabylonGraph, BabylonUGraph
 
 __all__ = [
     "articulation_point_set",

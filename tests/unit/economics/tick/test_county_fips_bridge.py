@@ -23,10 +23,10 @@ from babylon.economics.tick.graph_bridge import (
 )
 from babylon.economics.tick.system import TickDynamicsSystem
 from babylon.economics.tick.types import SimulationTickState
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import SectorType
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 from tests.unit.economics.tick.conftest import WAYNE_FIPS
 
 # A graph-local territory label distinct from the real county FIPS — the shape the

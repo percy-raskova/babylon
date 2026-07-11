@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
 from babylon.engine.systems.substrate import SubstrateSystem
+from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.cross_scale

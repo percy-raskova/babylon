@@ -16,7 +16,7 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonUGraph
+from babylon.topology.graph import BabylonUGraph
 
 # =============================================================================
 # TEST: BETTI NUMBERS

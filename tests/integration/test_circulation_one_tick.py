@@ -124,7 +124,7 @@ def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyp
     Tick 0 is a full frame per spec-089, so ``WHERE tick = 0`` is safe
     (never ``MAX(tick)`` — dynamic_hex_state is sparse from tick 1 on).
     """
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
     graph = BabylonGraph()
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001

@@ -20,10 +20,10 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 
 from babylon.engine.context import TickContext
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 from tests.property.harness.causal_harness import (
     DBIONotPermittedError,
     no_db_io_during_tick,

@@ -8,14 +8,14 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from babylon.engine.interceptor import (
+from babylon.kernel.event_bus import Event, EventBus
+from babylon.kernel.interceptor import (
     BlockedEvent,
     EventInterceptor,
     InterceptResult,
     SimpleWorldContext,
     WorldContext,
 )
-from babylon.kernel.event_bus import Event, EventBus
 
 # =============================================================================
 # TEST FIXTURES: Sample Interceptors

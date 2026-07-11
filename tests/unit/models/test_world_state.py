@@ -11,12 +11,12 @@ Sprint 3.5.3: Territory integration for Layer 0.
 import pytest
 from pydantic import ValidationError
 
-from babylon.engine.graph import BabylonGraph
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
 from babylon.models.entities.territory import Territory
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import OperationalProfile, SectorType
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 from tests.constants import TestConstants
 
 # Aliases for readability
@@ -175,8 +175,8 @@ class TestWorldStateToGraph:
 
     def test_to_graph_returns_babylon_graph(self, two_node_state: WorldState) -> None:
         """to_graph() returns a BabylonGraph satisfying GraphProtocol (Amendment L)."""
-        from babylon.engine.graph import BabylonGraph
         from babylon.kernel.graph_protocol import GraphProtocol
+        from babylon.topology.graph import BabylonGraph
 
         G = two_node_state.to_graph()
         assert isinstance(G, BabylonGraph)

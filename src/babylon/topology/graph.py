@@ -43,12 +43,12 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast, overload
 
 import rustworkx as rx
 
-from babylon.engine.adapters.aggregation_mixin import AggregationMixin
-from babylon.engine.adapters.query_mixin import QueryMixin
-from babylon.engine.adapters.subgraph_filter import SubgraphFilterBuilder
-from babylon.engine.adapters.subgraph_view import SubgraphView
-from babylon.engine.graph_views import EdgesView, NodesView
 from babylon.models.graph import GraphEdge, GraphNode, TraversalResult
+from babylon.topology.adapters.aggregation_mixin import AggregationMixin
+from babylon.topology.adapters.query_mixin import QueryMixin
+from babylon.topology.adapters.subgraph_filter import SubgraphFilterBuilder
+from babylon.topology.adapters.subgraph_view import SubgraphView
+from babylon.topology.graph_views import EdgesView, NodesView
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator

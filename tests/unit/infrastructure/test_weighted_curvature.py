@@ -11,12 +11,12 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonUGraph
 from babylon.formulas.curvature import (
     _graph_distance,
     _probability_measure,
     compute_ollivier_ricci,
 )
+from babylon.topology.graph import BabylonUGraph
 
 
 def _make_weighted_graph() -> nx.Graph:  # type: ignore[type-arg]

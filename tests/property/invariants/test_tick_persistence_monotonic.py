@@ -28,8 +28,8 @@ import networkx as nx
 import pytest
 from hypothesis import HealthCheck, given, settings
 
-from babylon.engine.graph import BabylonGraph
 from babylon.persistence import MonotonicityViolationError, RuntimeDatabase
+from babylon.topology.graph import BabylonGraph
 from tests.property.strategies.multi_tick_sequence import (
     different_payload_pair_strategy,
     multi_tick_sequence_strategy,

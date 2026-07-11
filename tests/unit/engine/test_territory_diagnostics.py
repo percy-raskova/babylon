@@ -7,12 +7,12 @@ import math
 import networkx as nx
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.territory_diagnostics import (
     HexCountyRollup,
     aggregate_counties_by_state,
     aggregate_hexes_by_county,
 )
+from babylon.topology.graph import BabylonGraph
 
 
 def _add_hex(

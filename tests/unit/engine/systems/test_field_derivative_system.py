@@ -12,11 +12,11 @@ import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.models.enums import EdgeType, EventType
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_two_node_graph() -> nx.DiGraph[str]:

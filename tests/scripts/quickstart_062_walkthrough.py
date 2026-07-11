@@ -27,7 +27,7 @@ import warnings
 from pathlib import Path
 from uuid import uuid4
 
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 DETROIT_TRI_COUNTY = ["26163", "26125", "26099"]
 SQLITE_PATH = Path("data/sqlite/marxist-data-3NF.sqlite").resolve()

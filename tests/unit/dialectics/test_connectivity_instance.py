@@ -27,9 +27,9 @@ from babylon.dialectics.instances.connectivity import (
     connectivity_cylinder,
     pieces,
 )
-from babylon.engine.graph import BabylonGraph, BabylonUGraph
 from babylon.engine.topology_monitor import calculate_component_metrics, extract_solidarity_subgraph
 from babylon.models.enums import EdgeType
+from babylon.topology.graph import BabylonGraph, BabylonUGraph
 
 pytestmark = [pytest.mark.unit, pytest.mark.topology]
 

@@ -23,8 +23,8 @@ import pytest
 
 from babylon.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
-from babylon.engine.graph import BabylonGraph
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
+from babylon.topology.graph import BabylonGraph
 from tests.unit.economics.tick.conftest import WAYNE_FIPS
 from tests.unit.economics.tick.test_system import _make_graph_with_state, _make_services
 

@@ -12,11 +12,11 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.kernel.event_bus import Event
 from babylon.models.enums import EdgeType, EventType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 
 def _make_wages_graph(

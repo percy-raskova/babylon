@@ -23,7 +23,7 @@ from babylon.models.entities.contradiction import Contradiction
 from babylon.models.enums import CommunityType, EdgeType
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 # Antagonistic edge types: value extraction, state violence, market rivalry
 _ANTAGONISTIC_EDGE_TYPES: frozenset[EdgeType] = frozenset(

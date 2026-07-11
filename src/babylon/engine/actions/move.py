@@ -19,9 +19,9 @@ from babylon.models.enums import EventType
 from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
     from babylon.kernel.services import ServicesProtocol
     from babylon.ooda.types import Action
+    from babylon.topology.graph import BabylonGraph
 
 
 def resolve_move(

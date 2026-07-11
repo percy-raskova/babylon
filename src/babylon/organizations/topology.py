@@ -9,19 +9,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from babylon.engine.graph import BabylonUGraph
-from babylon.engine.graph_algorithms import (
+from babylon.models.entities.organization import KeyFigure
+from babylon.models.enums import EdgeType, TopologyType, resolve_edge_type
+from babylon.organizations.types import TopologyClassification
+from babylon.topology.graph import BabylonUGraph
+from babylon.topology.graph_algorithms import (
     articulation_point_set,
     component_count,
     density,
 )
-from babylon.models.entities.organization import KeyFigure
-from babylon.models.enums import EdgeType, TopologyType, resolve_edge_type
-from babylon.organizations.types import TopologyClassification
 
 if TYPE_CHECKING:
     from babylon.config.defines import OrganizationDefines
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 # Density threshold for MESH classification
 _MESH_DENSITY_THRESHOLD = 0.6

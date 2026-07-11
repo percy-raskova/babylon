@@ -23,7 +23,7 @@ from babylon.economics.tick.types import (
     SimulationTickState,
     SmoothedCoefficients,
 )
-from babylon.engine.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph
 
 # Wayne County MI
 WAYNE_FIPS: str = "26163"

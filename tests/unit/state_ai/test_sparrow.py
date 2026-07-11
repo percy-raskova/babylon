@@ -6,8 +6,8 @@ identification, and cutset detection on known graph structures.
 
 from __future__ import annotations
 
-from babylon.engine.graph import BabylonGraph
 from babylon.ooda.attention.sparrow import analyze_network
+from babylon.topology.graph import BabylonGraph
 from tests.unit.state_ai.conftest import (
     make_directed_complete,
     make_directed_cycle,

@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
 from babylon.config.defines import GameDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
@@ -31,6 +30,7 @@ from babylon.models.vanguard_resources import VanguardResources, check_can_affor
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
+from babylon.topology.graph import BabylonGraph
 
 from .map_contract import MAP_METRIC_PROPERTIES
 
@@ -4026,7 +4026,7 @@ def _carry_tick_dynamics_flows(
     alone across two separate ``resolve_tick`` calls. Chosen fix: sanction
     (i) from the lane brief — persist-and-reapply at the bridge layer,
     zero ``Territory``/engine changes. Concretely: this function mutates
-    ``new_graph`` (the raw :class:`~babylon.engine.graph.BabylonGraph`
+    ``new_graph`` (the raw :class:`~babylon.topology.graph.BabylonGraph`
     the bridge is about to persist) directly — graph nodes are plain
     dicts, not Pydantic, so this is not the ``extra="forbid"`` landmine —
     right before ``persist_tick``, so the injected attrs (a) show up in
@@ -5002,7 +5002,7 @@ def _territory_graph_attr(graph: Any, territory_id: str, key: str) -> Any:
 
     Args:
         graph: A graph exposing ``.nodes`` (mapping of node id -> attrs
-            dict), e.g. :class:`~babylon.engine.graph.BabylonGraph`, or
+            dict), e.g. :class:`~babylon.topology.graph.BabylonGraph`, or
             ``None`` when no live graph is available at the call site.
         territory_id: The territory's node id.
         key: The graph-only attribute name.

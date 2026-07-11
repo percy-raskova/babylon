@@ -22,7 +22,6 @@ import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines, StruggleDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.models.entity_registry import (
@@ -31,6 +30,7 @@ from babylon.models.entity_registry import (
     PERIPHERY_WORKER_ID,
 )
 from babylon.models.enums import EventType, SocialRole
+from babylon.topology.graph import BabylonGraph
 
 if TYPE_CHECKING:
     from babylon.kernel.event_bus import Event

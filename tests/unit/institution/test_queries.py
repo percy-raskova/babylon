@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.graph import BabylonGraph
 from babylon.institution.queries import community_embeddedness
+from babylon.topology.graph import BabylonGraph
 
 from .conftest import make_institution
 

@@ -2,7 +2,7 @@
 
 Builds a small, fully-valid :class:`~babylon.models.world_state.WorldState`
 (one revolutionary PoliticalFaction, a rival faction, two territories, one
-SocialClass) and exposes it as a :class:`~babylon.engine.graph.BabylonGraph`.
+SocialClass) and exposes it as a :class:`~babylon.topology.graph.BabylonGraph`.
 Because it is assembled from real entity models, ``WorldState.from_graph``
 reconstructs it cleanly — which is exactly what ``test_roundtrip`` asserts the
 resolvers preserve.
@@ -27,7 +27,7 @@ from babylon.models.enums import (
 from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
-    from babylon.engine.graph import BabylonGraph
+    from babylon.topology.graph import BabylonGraph
 
 #: Canonical node ids used throughout the verb contract suite.
 ORG_ID = "ORGP"

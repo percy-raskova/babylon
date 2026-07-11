@@ -20,8 +20,8 @@ from babylon.economics.boundary_flow_register import (
     NodeKind,
 )
 from babylon.engine.context import TickContext
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.economic import ImperialRentSystem
+from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.unit]
 

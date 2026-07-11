@@ -15,9 +15,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines import GameDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.engine.systems.reactionary import FascistFactionSystem
 from babylon.models.enums import EdgeType, EventType
+from babylon.topology.graph import BabylonGraph
 
 
 class _AlwaysDefect(random.Random):

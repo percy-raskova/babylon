@@ -13,7 +13,6 @@ from pydantic import ValidationError
 
 from babylon.bifurcation.analysis import bifurcation_tendency
 from babylon.config.defines import BifurcationDefines
-from babylon.engine.graph import BabylonGraph
 from babylon.models.entities.community import (
     CommunityState,
 )
@@ -25,6 +24,7 @@ from babylon.models.enums import (
     EdgeMode,
     EdgeType,
 )
+from babylon.topology.graph import BabylonGraph
 
 from .factories import (
     assign_communities_to_graph,

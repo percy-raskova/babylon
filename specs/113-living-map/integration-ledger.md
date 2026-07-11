@@ -49,12 +49,33 @@ owner item.
 - TakeoverOverlay title tabs say "Wire Dispatch"/"Chronicle"/"Dialectic" — deliberately
   distinct from internal titles ("THE WIRE") to avoid duplicate-text collisions.
 
-### Phase V watch item (Lane G root cause, environment not code)
+### Phase V results (2026-07-11 evening — commits `2eae6d5a`, `a49c5598`)
 
-Vite dev server stopped serving non-root routes during the wave: `@tailwindcss/vite`
-candidate scan goes pathological under concurrent heavy file writes + load
-(load avg 18+; bare curl hangs, same routes <200ms with the plugin removed).
-Pre-existing specs affected too. Re-verify e2e once writes settle / load drops.
+Live e2e vs real Django+engine: **27/30 green**. The three reds:
+- 9-lens cycle: green solo; times out only under 4-concurrent-agent CPU load —
+  re-verify post-wave-4, not a code defect.
+- end-turn spacebar + event-popup: PINNED ENGINE DEFECTS (red by design, see
+  owner items below).
+
+Root causes found & fixed en route (full detail: HANDOFF-PHASE-V.md):
+tailwind-scan spin on vendored TopoJSON (`@source not`), SwiftShader picking
+wedge (GPU launch flags), chrome z-strata (lens bar over TopBar, drawer over
+composer Submit), hex clicks passing row-ids not h3, Escape double-pop
+(effect re-subscription mid-dispatch — jsdom can't see it), formula-card
+testid was never a metric discriminator.
+
+### Owner items from Phase V (engine-side, charter forbids fixing here)
+
+- **P1: UniqueViolation `ux_simulation_event_session_tick_natural`** — two
+  same-tick events serialize as `event_type=UNKNOWN` + empty entity →
+  natural-key collision → resolve 500 → session dies mid-play (~tick 17-18,
+  wayne_county, reproduced twice). `postgres_runtime/_legacy.py:2344`.
+- **P1: events reach the web layer as UNKNOWN type** → nothing classifies
+  urgent → zero toasts in 20 live ticks → the game never speaks (event-popup
+  spec pins this; ties into owner item 25's static early economy).
+- `engine_bridge.get_inspector_hex` returns `{}` (stub) — hex InspectionCards
+  render honest nulls live; when implemented, note event deep-links push
+  TERRITORY ids at the h3-keyed endpoint (id↔h3 mapping needed).
 
 NOTE: the "Juice Pass" inventory below predates DESIGN_BIBLE §9b (The Installer,
 owner ruling) — §9b's re-aim SUPERSEDES the gradient/glow items; the performance

@@ -378,7 +378,14 @@ jobs:
       - name: Build documentation (advisory — manual bundled at release time)
         continue-on-error: true
         working-directory: docs
-        run: poetry run sphinx-build -b html . _build/html
+        # Cap the advisory build at 8 min. Without this the huge doc tree
+        # (item-44's 2.4k-warning wall) can run past the job's 15-min
+        # timeout-minutes, which CANCELS the whole job — and a job-level
+        # cancellation is NOT swallowed by continue-on-error, so the docs job
+        # showed "cancelled" instead of green (proving run #4, 2026-07-11).
+        # coreutils `timeout` turns "too slow" into a swallowed step failure
+        # (exit 124) well under the job cap; real sphinx errors still show red.
+        run: timeout 480 poetry run sphinx-build -b html . _build/html
 
   gitleaks:
     name: Secret Scan (gitleaks, full history)

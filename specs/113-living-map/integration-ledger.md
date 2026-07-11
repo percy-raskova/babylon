@@ -52,8 +52,8 @@ owner item.
 ### Phase V results (2026-07-11 evening — commits `2eae6d5a`, `a49c5598`)
 
 Live e2e vs real Django+engine: **27/30 green**. The three reds:
-- 9-lens cycle: green solo; times out only under 4-concurrent-agent CPU load —
-  re-verify post-wave-4, not a code defect.
+- 9-lens cycle: **was NOT load-flaky — a real structural defect** (see the
+  Wave-4-close update below; FIXED in `704eb9a9`).
 - end-turn spacebar + event-popup: PINNED ENGINE DEFECTS (red by design, see
   owner items below).
 
@@ -76,6 +76,52 @@ testid was never a metric discriminator.
 - `engine_bridge.get_inspector_hex` returns `{}` (stub) — hex InspectionCards
   render honest nulls live; when implemented, note event deep-links push
   TERRITORY ids at the h3-keyed endpoint (id↔h3 mapping needed).
+
+### Wave 4 + Phase-V close (2026-07-11 late — commits `67caa3ab`, `704eb9a9`, `50ceda02`)
+
+Wave-4 fan-out was stopped mid-cleanup (4 Opus/Sonnet lanes thrashing on
+`tsc --noEmit` — each saw the OTHER lanes' in-progress files in the shared
+worktree and could never reach a clean tree; the classic contention hazard).
+Orchestrator finished all four inline (the code was ~90% there, only 9 real
+tsc errors + lint):
+- **PULSE** (`67caa3ab`): critical-event map pulse — one-shot crimson ring per
+  new critical w/ resolvable geography, wired above the base map, stable-empty
+  at rest (stability contract intact), reduced-motion static ring.
+- **STRIPE**: TRUE diagonal-hatch contested fill via FillStyleExtension + a
+  hand-rolled regenerable PNG atlas (no binary asset); claim-redraw seam on
+  polity membership deltas.
+- **DELTA**: verb predicted-delta ▲/▼ chips in VerbForm pre-commit, honest-null.
+- **DS-SYNC** (`50ceda02`): barrel + 19 previews + config (49→68 srcMap, 42→54
+  overrides), verified by a real esbuild bundle. NOT uploaded to claude.ai/design
+  yet — that's the interactive Phase-D step.
+
+**Structural fix — chrome layout SoT (`704eb9a9`).** The 9-lens red was a REAL
+z-strata pointer-interception, not load-flakiness: the grouped lens bar
+(flex-wrap) was anchored only by its right edge, so its wrapping row extended
+LEFT under the outliner rail (measured live: button at x:87 under the outliner
+header). Owner-approved fix: new `chrome/layout.ts` single source of truth —
+rail widths declared once, every map-control offset DERIVES from it, controls
+bounded to a `MAP_SAFE_*` inter-rail box so a wide control can't reach a rail
+by construction. Consumers rewired: MapControls (right-anchored + max-width
+cap), OutlinerOverlay/EventTray/ObjectivesTray/InspectionStack. Guard: new
+MapControls unit test + the live 9-lens e2e (1-fail-90s-timeout → 4-pass-11.5s).
+
+**Final live e2e: 28/30.** The only 2 reds are the engine-pinned owner items
+below (red by design). 796 vitest, tsc/eslint/prettier green.
+
+**New owner / polish items raised this close:**
+- **P2 (real app bug, DS-SYNC agent found it):** `BottomDrawer` (FloatingPanel
+  anchor="bottom") is shrink-to-fit height with no definite pixel height in the
+  `h-full → recharts ResponsiveContainer height="100%"` chain → `TimeseriesChart`
+  renders at ~0 height in the REAL app (AppShell mounts it with no height
+  constraint either), not just the design preview. The "Trends" header still
+  renders.
+- **Polish:** the keyhints strip (`KeyHints`) renders 3× simultaneously
+  (Outliner + EventTray + BottomDrawer) — declutter to one home.
+- **Phase D remaining:** upload the 19 registered previews to the "Babylon
+  Cockpit" design project (interactive); the map shows only county borders w/o
+  a live engine session (fills need real `/map/` data — the mock screenshots
+  render the chrome, not fills).
 
 NOTE: the "Juice Pass" inventory below predates DESIGN_BIBLE §9b (The Installer,
 owner ruling) — §9b's re-aim SUPERSEDES the gradient/glow items; the performance
@@ -134,14 +180,15 @@ zoom, click-pin InspectionStack→FormulaCard, wages-never-naked adapters, two-s
 events, MIM voice, self-hosted basemap, Installer feel (§9b refined the doc's
 phosphor paragraph) — ALL LIVE. Remaining distance:
 
-- [ ] Map-anchored pulse channel for critical events (third channel, bible §5.2 —
-      same item as "Three-channel critical events" above).
-- [ ] Contested-claim TRUE striping (Phase D queue item, FillStyleExtension).
-- [ ] Verb predicted-delta arrows before commit: cost labels render
-      (`VerbGrid.cost_label`); `lib/verbs/types.ts.predictedEffect` exists but no
-      surface renders it ("Phase 5 renders this" comment) — owner item.
-- [ ] `claim-shimmer` keyframe shipped (index.css) but the map-side border-redraw
-      consumer isn't wired (Lane B/Carto territory).
+- [x] Map-anchored pulse channel for critical events (third channel, bible §5.2)
+      — Wave-4 PULSE lane, `67caa3ab`.
+- [x] Contested-claim TRUE striping (FillStyleExtension + PNG atlas) — Wave-4
+      STRIPE lane, `67caa3ab`.
+- [x] Verb predicted-delta arrows before commit — Wave-4 DELTA lane, `67caa3ab`
+      (`evaluatePredictedEffect` → ▲/▼ chip in VerbForm, honest-null).
+- [~] `claim-shimmer`: STRIPE exposed the cause-attributable claim-redraw seam on
+      polity membership deltas; the wire-headline consumer is still out of scope
+      (documented in `political.ts`).
 - [ ] Endgame "never neutral scoreboard text": epitaph mount exists; substance
       arrives with the AI narrator backend (BABYLON_LLM_NARRATOR).
 

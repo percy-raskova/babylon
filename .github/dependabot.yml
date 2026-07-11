@@ -54,6 +54,21 @@ updates:
           - "*"
         update-types:
           - "major"
+    # Deferred majors (OWNER ITEM 55 — django 6 + mypy 2 modernization). This is
+    # a deliberate railed batch (manage.py check + web suites + typecheck across
+    # 567 files), not a drive-by bump: django-stubs 6 + drf-stubs cap `mypy<2.2`
+    # via the compatible-mypy extras, so django 6 and mypy 2 are UNSATISFIABLE
+    # together on the current stubs. Hold the three majors until item 55 ships.
+    # `ignore` suppresses both version- and security-update PRs for the pinned
+    # MAJOR only — minor/patch security fixes within 5.x / 1.x still flow.
+    # UNBLOCK: delete these three entries when item 55 is executed.
+    ignore:
+      - dependency-name: "django"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "django-stubs"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mypy"
+        update-types: ["version-update:semver-major"]
 
   # ==========================================================================
   # GitHub Actions
@@ -118,6 +133,14 @@ updates:
           - "*"
         update-types:
           - "major"
+    # Deferred major: TypeScript 7. It removed `baseUrl` (our tsconfig relies on
+    # it) and `typescript-eslint ^8` has no TS7 support yet — taking it breaks
+    # both the tsc build and the eslint typecheck. Hold the major until
+    # typescript-eslint ships TS7 support; 5.x patches still flow.
+    # UNBLOCK: delete this entry once typescript-eslint supports TypeScript 7.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # ==========================================================================
   # Postgres base image (Docker) — monthly: base-image bumps are deliberate,

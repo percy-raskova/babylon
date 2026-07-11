@@ -20,7 +20,7 @@ class TestDatabaseConnection:
 
     def test_default_creates_sqlite_connection(self) -> None:
         """Default constructor creates a SQLite connection."""
-        from babylon.engine.database import DatabaseConnection
+        from babylon.persistence.database import DatabaseConnection
 
         db = DatabaseConnection()
 
@@ -34,7 +34,7 @@ class TestDatabaseConnection:
 
     def test_custom_url_creates_connection(self) -> None:
         """Can create connection with custom URL."""
-        from babylon.engine.database import DatabaseConnection
+        from babylon.persistence.database import DatabaseConnection
 
         db = DatabaseConnection(url="sqlite:///:memory:")
 
@@ -45,7 +45,7 @@ class TestDatabaseConnection:
 
     def test_session_context_manager_yields_valid_session(self) -> None:
         """Session context manager yields a usable SQLAlchemy session."""
-        from babylon.engine.database import DatabaseConnection
+        from babylon.persistence.database import DatabaseConnection
 
         db = DatabaseConnection(url="sqlite:///:memory:")
 
@@ -60,7 +60,7 @@ class TestDatabaseConnection:
 
     def test_session_auto_closes(self) -> None:
         """Session is closed after context manager exits."""
-        from babylon.engine.database import DatabaseConnection
+        from babylon.persistence.database import DatabaseConnection
 
         db = DatabaseConnection(url="sqlite:///:memory:")
         captured_session: Session | None = None
@@ -78,7 +78,7 @@ class TestDatabaseConnection:
 
     def test_session_rollback_on_exception(self) -> None:
         """Session rolls back uncommitted DML on exception."""
-        from babylon.engine.database import DatabaseConnection
+        from babylon.persistence.database import DatabaseConnection
 
         db = DatabaseConnection(url="sqlite:///:memory:")
 
@@ -103,7 +103,7 @@ class TestDatabaseConnection:
 
     def test_close_disposes_engine(self) -> None:
         """close() disposes the underlying engine's connection pool."""
-        from babylon.engine.database import DatabaseConnection
+        from babylon.persistence.database import DatabaseConnection
 
         db = DatabaseConnection(url="sqlite:///:memory:")
 
@@ -119,7 +119,7 @@ class TestDatabaseConnection:
 
     def test_memory_database_for_testing(self) -> None:
         """In-memory database works correctly for tests."""
-        from babylon.engine.database import DatabaseConnection
+        from babylon.persistence.database import DatabaseConnection
 
         db = DatabaseConnection(url="sqlite:///:memory:")
 
@@ -138,7 +138,7 @@ class TestDatabaseConnection:
 
     def test_multiple_sessions_share_connection(self) -> None:
         """Multiple sessions can be created from the same connection."""
-        from babylon.engine.database import DatabaseConnection
+        from babylon.persistence.database import DatabaseConnection
 
         db = DatabaseConnection(url="sqlite:///:memory:")
 

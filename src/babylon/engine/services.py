@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import GameDefines
-from babylon.engine.database import DatabaseConnection
 from babylon.engine.formula_registry import FormulaRegistry
+from babylon.kernel.database import DatabaseProtocol
 from babylon.kernel.event_bus import EventBus
 from babylon.models.config import SimulationConfig
 
@@ -142,7 +142,7 @@ class ServiceContainer:
     """
 
     config: SimulationConfig
-    database: DatabaseConnection
+    database: DatabaseProtocol
     event_bus: EventBus
     formulas: FormulaRegistry
     defines: GameDefines
@@ -307,6 +307,12 @@ class ServiceContainer:
             opposition_registry = build_default_registry(
                 rate_weight=resolved_defines.tension.principal_rate_weight
             )
+
+        # Lazy import: the concrete SQLAlchemy connection lives in the
+        # persistence layer; the engine names only the kernel protocol
+        # (Program 14 — Constitution II.6). Engine->persistence is a legal
+        # downward edge, confined to this composition factory.
+        from babylon.persistence.database import DatabaseConnection
 
         return cls(
             config=config if config is not None else SimulationConfig(),

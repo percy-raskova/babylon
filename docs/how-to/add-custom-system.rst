@@ -188,7 +188,7 @@ Systems are designed for isolated testing:
    def services():
        from babylon.models import SimulationConfig
        from babylon.config.defines import GameDefines
-       from babylon.engine.database import DatabaseConnection
+       from babylon.persistence.database import DatabaseConnection
 
        return ServiceContainer(
            config=SimulationConfig(),

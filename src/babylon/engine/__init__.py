@@ -16,7 +16,6 @@ Sprint 9: Integration proof with Simulation facade
 # Slice 1.7: Graph Abstraction Layer
 from typing import Any
 
-from babylon.engine.database import DatabaseConnection
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.engine.formula_registry import FormulaRegistry
 from babylon.engine.history_formatter import format_class_struggle_history
@@ -74,7 +73,6 @@ __all__ = [
     "create_labor_aristocracy_scenario",
     # Dependency Injection (Sprint 3). Event/EventBus/GraphProtocol moved to
     # babylon.kernel (Program 14 Phase 1) — import them from there directly.
-    "DatabaseConnection",
     "FormulaRegistry",
     "ServiceContainer",
     # Observer Pattern (Sprint 3.1)

@@ -41,3 +41,17 @@ class TestServicesProtocolConformance:
             f"ServiceContainer grew fields the kernel protocol does not mirror: "
             f"{unmirrored} — add them to babylon.kernel.services.ServicesProtocol"
         )
+
+
+@pytest.mark.unit
+class TestDatabaseProtocolConformance:
+    """The persistence DatabaseConnection satisfies the kernel protocol."""
+
+    def test_connection_satisfies_protocol(self) -> None:
+        from babylon.kernel.database import DatabaseProtocol
+        from babylon.persistence.database import DatabaseConnection
+
+        conn: DatabaseProtocol = DatabaseConnection(url="sqlite:///:memory:")
+        with conn.session() as session:
+            assert session is not None
+        conn.close()

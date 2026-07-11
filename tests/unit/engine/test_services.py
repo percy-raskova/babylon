@@ -53,11 +53,11 @@ class TestServiceContainer:
 
     def test_all_services_accessible_as_attributes(self) -> None:
         """All services are accessible as named attributes."""
-        from babylon.engine.database import DatabaseConnection
         from babylon.engine.formula_registry import FormulaRegistry
         from babylon.engine.services import ServiceContainer
         from babylon.kernel.event_bus import EventBus
         from babylon.models.config import SimulationConfig
+        from babylon.persistence.database import DatabaseConnection
 
         container = ServiceContainer.create()
 

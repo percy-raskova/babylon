@@ -290,7 +290,7 @@ The engine uses dependency injection via ``ServiceContainer``:
 
    from babylon.engine import ServiceContainer, EventBus
    from babylon.engine.formula_registry import FormulaRegistry
-   from babylon.engine.database import DatabaseConnection
+   from babylon.persistence.database import DatabaseConnection
    from babylon.config.defines import GameDefines
    from babylon.models import SimulationConfig
 

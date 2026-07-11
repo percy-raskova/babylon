@@ -73,6 +73,7 @@ def wayne_county_2010_handle(post_067_session: Session) -> tuple[int, int]:
 
 
 # T038 — Wayne County 2010 via hex_hydrator (post-067 SUM-of-leaves path).
+@pytest.mark.requires_reference_db
 def test_post_067_wayne_2010_via_hex_hydrator_within_bls_band(
     post_067_session: Session,
 ) -> None:
@@ -101,6 +102,7 @@ def test_post_067_wayne_2010_via_hex_hydrator_within_bls_band(
 
 
 # T039 — Per-county-year statistical floor (SC-007 within QCEW-suppression bound).
+@pytest.mark.requires_reference_db
 def test_post_067_michigan_county_years_have_non_zero_employment(
     post_067_session: Session,
 ) -> None:

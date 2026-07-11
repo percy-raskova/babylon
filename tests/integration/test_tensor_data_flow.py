@@ -12,6 +12,9 @@ import pytest
 
 from babylon.domain.economics.tensor import NoDataSentinel, ValueTensor4x3
 
+# Needs the reference SQLite DB — excluded on CI until the item-40 subset artifact lands.
+pytestmark = pytest.mark.requires_reference_db
+
 
 class TestTensorDataFlow:
     """Integration tests for SQLite → TensorRegistry → Simulation flow.

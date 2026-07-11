@@ -35,6 +35,9 @@ from babylon.domain.economics.throughput.adapters_lodes import SQLiteLODESCommut
 from babylon.domain.economics.throughput.types import CommuterAdjustedMetrics
 from babylon.reference.database import get_normalized_session_factory
 
+# Needs the reference SQLite DB — excluded on CI until the item-40 subset artifact lands.
+pytestmark = pytest.mark.requires_reference_db
+
 # Test constants - Detroit metro area
 WAYNE_FIPS = "26163"  # Wayne County, MI (Detroit)
 OAKLAND_FIPS = "26125"  # Oakland County, MI (Detroit suburbs)

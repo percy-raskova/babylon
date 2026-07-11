@@ -30,6 +30,9 @@ from babylon.persistence.county_state import (
 )
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 
+# Needs the reference SQLite DB — excluded on CI until the item-40 subset artifact lands.
+pytestmark = pytest.mark.requires_reference_db
+
 SQLITE_REF = Path("data/sqlite/marxist-data-3NF.sqlite")
 _DETERMINISM_HASH = "0" * 64
 _SESSION_ID = UUID("00000000-0000-0000-0000-000000000001")

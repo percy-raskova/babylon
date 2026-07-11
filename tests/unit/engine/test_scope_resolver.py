@@ -35,6 +35,7 @@ class TestPredefinedScopes:
         assert scope.scope_fips == DETROIT_TRI_COUNTY_FIPS
         assert scope.external_node_ids == frozenset({"canada"})
 
+    @pytest.mark.requires_reference_db
     def test_national_yields_at_least_3000_fips(self) -> None:
         scope = resolve_scope("national")
         assert len(scope.scope_fips) >= 3000

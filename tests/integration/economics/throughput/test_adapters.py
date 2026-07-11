@@ -27,7 +27,8 @@ from babylon.reference.database import get_normalized_session_factory
 from babylon.reference.schema import DimIndustry
 
 # Mark all tests in this module as integration tests (require actual database)
-pytestmark = pytest.mark.integration
+# Needs the reference SQLite DB — excluded on CI until the item-40 subset artifact lands.
+pytestmark = [pytest.mark.integration, pytest.mark.requires_reference_db]
 
 # Test constants - validated values from data exploration
 WAYNE_FIPS = "26163"  # Wayne County, MI (Detroit)

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
+
 from babylon.engine.hydration.reference import hydrate_industry_hyperedges
 from babylon.engine.simulation import Simulation
 from babylon.models.world_state import WorldState
+
+# Needs the reference SQLite DB — excluded on CI until the item-40 subset artifact lands.
+pytestmark = pytest.mark.requires_reference_db
 
 # Detroit test case
 WAYNE_FIPS = "26163"

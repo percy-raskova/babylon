@@ -1,0 +1,57 @@
+# TEMPORARY — Program 15 Phase 0 determinism probe. DELETE in the Phase-1 ci.yml rewrite.
+#
+# The one question this answers: do the 5 qa:regression scenarios reproduce the
+# committed dense goldens BYTE-IDENTICALLY on a hosted ubuntu-latest runner
+# (different CPU family + glibc/libm than the machine that authored the baselines)?
+#   GO    → qa-regression becomes a blocking dev-tier gate (Phase 1).
+#   NO-GO → escalate to owner with pinned-container options (Constitution III.12
+#           float-honesty territory) before any CI gate depends on it.
+name: Determinism Probe (temp)
+
+on:
+  push:
+    branches: [ci/two-tier-refactor]
+    paths: [".github/workflows/determinism-probe.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa-regression:
+    name: qa:regression on hosted runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up tools with mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: true
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        uses: actions/cache@v5
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      # Fingerprint the float environment so a NO-GO verdict is diagnosable.
+      - name: CPU + libm fingerprint
+        run: |
+          grep -m1 "model name" /proc/cpuinfo || true
+          ldd --version | head -1
+          poetry run python -c "import platform, sys; print(platform.platform(), sys.version)"
+
+      - name: qa:regression (byte-identical dense goldens)
+        run: mise run qa:regression

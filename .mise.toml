@@ -101,6 +101,10 @@ run = "poetry run python tools/check_repo_hygiene.py"
 description = "Import-boundary contracts: kernel < models/formulas < domain < engine (program 14)"
 run = "poetry run lint-imports"
 
+[tasks."ci:local"]
+description = "Run a GitHub Actions job locally via gh-act (program 15) — e.g. mise run ci:local -- -W .github/workflows/ci.yml -j fast-gate. Install once: gh extension install https://github.com/nektos/gh-act"
+run = "gh act -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest --container-architecture linux/amd64"
+
 [tasks.commit]
 description = "Hook-safe commit: pre-run hooks on staged files, re-stage their fixes, commit, verify HEAD moved"
 usage = 'arg "<message>" help="Conventional commit message"'

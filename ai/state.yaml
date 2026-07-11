@@ -2,9 +2,39 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.23.0"
+  version: "2.24.0"
   updated: "2026-07-11"
   truth_status: |
+    (2026-07-11 evening) PROGRAM 15 (THE GAUNTLET) EXECUTED — CI/CD IS REAL
+    NOW. Two tiers: push to dev = the 4-minute fast lane (fast-gate, unit
+    shard w/ xdist + full-tree coverage artifacts + engine/systems>=80 gate,
+    qa:regression AS A BLOCKING CI GATE for the first time ever — dense
+    goldens byte-identical on hosted runners, probe-proven 3x — frontend +
+    npm audit, gitleaks full-history, trivy-config, pip-audit policy
+    wrapper, all BLOCKING); push to main = the whole nine yards (test-rest,
+    postgres-integration, playwright-e2e on the real stack, the spec-064
+    strict bundle + storage budget, refdata-tests vs the ci-data-v1 subset,
+    docs, trivy-image [advisory: bullseye residue is upstream's],
+    infra-validate [terraform/tflint/ansible/compose/hadolint]); nightly
+    deep legs + weekly py3.13/sim-artifacts/mutation; infra-live.yml =
+    dispatch/weekly ephemeral Hetzner apply->smoke->destroy (secrets are an
+    operator console task). ITEM 40 CLOSED: 391MiB Michigan-scoped subset
+    (93% smaller, deterministic, sha-pinned, FIPS-01011 regression-guard
+    carve-out) released as ci-data-v1, fetched + verified BEFORE first open
+    (WAL checkpoint-settling footgun documented); CI_REFDB_READY=true.
+    ITEM 41 CLOSED: 73 CVEs -> 5 expiring evidenced ignores across six
+    byte-identity-railed batches; security job BLOCKING fleet-wide, green.
+    Also: ruff S repo-wide (13 load-bearing asserts -> raises, byte-
+    identical), the years-old pre-commit double-run killed, complexity
+    theater (xenon/radon-metrics) deleted for the single ruff C90-15 gate,
+    1,574 lines of dead infra deleted + live infra bugs fixed, terraform
+    CI-gated (manage_cloudflare + server_name_prefix, prod-invariance
+    proven vs live state), postgis 16-3.5 + build-time security upgrades
+    (qa:e2e-regression green on the new image), releases now TAG-driven
+    (mise run bump; promote via tools/promote.sh: ff-ancestry + all-checks-
+    green + operator confirm). Records: ADR064 +
+    project/programs/15-the-gauntlet.md. PR #155.
+
     (2026-07-11) PROGRAM 14 (CORRESPONDENCE) COMPLETE — THE TREE NOW STATES
     THE CONSTITUTION. Layering law enforced by import-linter (pre-commit +
     mise check + CI): kernel < models/formulas < topology < domain <

@@ -1,0 +1,94 @@
+ADR064_program15_gauntlet:
+  status: "accepted"
+  date: "2026-07-11"
+  title: "Program 15 (The Gauntlet): two-tier CI/CD — dev fast lane (4 min, determinism-gated) vs main full pipeline; security stack (ruff S, gitleaks, trivy, pip-audit expiring-ignores); pre-commit surgery; infra validation + ephemeral Hetzner; items 40+41 closed; tag-driven releases + ff promotion"
+  context: |
+    Percy's directive: push to main runs the whole thing including a test
+    build of the live cloud infrastructure; push to dev runs sane fast
+    checks; audit every pre-commit hook; add SAST, secret scanning, trivy,
+    caching. Discovery (2026-07-11) found the inverse of the goal: one
+    9-job monolith firing identically on both branches, 100% red since the
+    Jul-10 Actions resurrection (stable reds = the missing 5.7GB reference
+    DB, item 40, and 73 pip-audit CVEs, item 41), the full pytest suite
+    silently running TWICE per push (a pytest-cov addopts interaction later
+    root-caused: the clear-reports special case only fires when
+    --cov-report= is the SOLE occurrence, so every CI run also wrote
+    htmlcov/), the determinism gates running NOWHERE in CI, main frozen
+    since Apr 28 with dev 762 commits ahead (Dependabot reporting ~59
+    phantom alerts against deleted manifests), zero branch protection,
+    zero secret scanning despite the Jul-8 Cloudflare token leak, three
+    complexity gates enforcing three contradictory thresholds (all three
+    measured to be theater), and stage-less pre-commit hooks running twice
+    per commit because all three hook types were installed.
+  decision: |
+    Owner rulings (2026-07-11): (1) infra depth = secretless static
+    validation on every main push + ephemeral Hetzner provision-and-destroy
+    behind workflow_dispatch + weekly cron; (2) items 40 AND 41 fixed
+    in-program; (3) promotion = direct ff-push guarded by tools/promote.sh
+    (GitHub cannot require checks on direct pushes — the script is the
+    gate: ff ancestry + all dev-HEAD checks green via API + operator
+    confirm) with light no-force-push/no-deletion rulesets; (4) releases
+    are TAG-driven (mise run bump on dev; the v* tag fires release.yml) —
+    the push-to-main auto-bump is retired BEFORE promotion because the
+    762-commit ff would have auto-published a surprise release; (5,
+    mid-program) CI output is agent-read: maximum verbosity
+    (-vv -ra -l --tb=long --durations=0, no forced ANSI) and full metrics
+    (whole-tree coverage xml/json + junit artifacts on every shard; the
+    coverage GATE stays scoped to engine/systems >= 80 via a report-time
+    --include on the same data).
+    Architecture: ci.yml = dev fast lane (fast-gate, unit shard w/ xdist,
+    qa:regression as a BLOCKING CI gate for the first time — the Phase-0
+    probe proved dense-golden byte-identity on hosted runners across
+    CPU/glibc/Python/poetry 3x, gitleaks full-history, trivy-config,
+    pip-audit policy wrapper, frontend + npm audit); main.yml adds
+    test-rest, postgres-integration, playwright-e2e on the real stack,
+    the spec-064 Postgres determinism bundle + storage budget,
+    refdata-tests against the ci-data-v1 subset, docs, trivy-image
+    (advisory until the base migration), infra-validate (terraform fmt/
+    validate/tflint, ansible syntax + lint floor at profile-min-blocking,
+    compose config, hadolint); nightly.yml daily deep legs on dev HEAD +
+    weekly py3.13/sim-artifacts/mutation; infra-live.yml ephemeral
+    apply->configure->smoke->destroy with fail-loud secret preflight and
+    a 2h orphan sweeper. Item 40: tools/make_reference_subset.py (TDD,
+    policy-as-data, loud-fail on unclassified tables, deterministic,
+    journal_mode=DELETE with the WAL checkpoint-settling footgun
+    documented; FIPS-01011 carve-out preserves the spec-098 regression
+    guard) -> 391MiB ci-data-v1 release asset, fetched + sha-verified
+    BEFORE first open. Item 41: six serial batches each railed by
+    qa:regression byte-identity, 73 CVEs -> 5 no-fix/parent-pinned
+    expiring ignores (2026-10-01, wrapper hard-fails on expiry); security
+    job BLOCKING fleet-wide. Complexity policy: ruff C90 max-complexity=15
+    is the single gate; xenon/radon-metrics/complexity-check hooks deleted
+    (measured theater). Pre-commit: default_stages kills the double-run;
+    mypy is the local venv (CI parity); gitleaks/actionlint/shellcheck/
+    hadolint(threshold-aligned)/poetry-check/no-commit-to-branch/LFS-fsck
+    added; mise setup installs all three hook types.
+  consequences: |
+    Dev lane measured at 4 minutes wall (target 8-10): fast-gate 2.5,
+    unit 3.9 (9,099 tests, xdist -n4, full coverage), determinism 1.2,
+    frontend 1.4, gitleaks/trivy 0.2 each. Every gate that cannot be green
+    is explicitly labeled (ai-tests advisory: non-deterministic;
+    trivy-image advisory: postgis ships bullseye — 90 no-fix HIGH/CRIT are
+    upstream's even after the 16-3.5 bump + build-time security upgrades
+    cut 184->139; the alpine/PG17 migration is owner-queued because
+    PostGIS-on-musl can alter geometry float behavior under the
+    byte-identical bundle). Standing owner items spawned: base-image
+    migration; sentence-transformers <5.0.0 pin blocks two transformers
+    fixes; three spec-064 retired-contract tests xfail pending ruling;
+    three Oakland-LODES hypothesis tests xfail per their own deliberate-
+    failure docstring; sshd_config.j2 authoring for bootstrap.yml's
+    pre-existing broken task; stale deploy docs; complexity ratchet 15->10
+    (39 offenders); infra-live secrets are an operator console task;
+    local venv python 3.13.5 vs pinned 3.12 drift. Full record:
+    project/programs/15-the-gauntlet.md.
+  verification: |
+    qa:regression 5/5 byte-identical at every phase boundary, after the 13
+    assert->raise conversions, after each of six CVE batches, and on hosted
+    runners (3x probe + every PR-155 run). qa:e2e-regression green on both
+    the plain 16-3.5 image and the final upgraded image. gitleaks clean
+    across all 4,209 commits. Subset proven: 3 national-coverage blockers
+    by SQL, adapter suites via BABYLON_NORMALIZED_DB_PATH, the two
+    hardcoded-path files via isolated worktree (44 pass + 1 intentional
+    xfail). Full ruff (incl. S) zero findings; mypy strict green (567
+    files); pip-audit wrapper exit 0; npm audit 0.
+  file: ADR064_program15_gauntlet.yaml

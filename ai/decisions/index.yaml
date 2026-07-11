@@ -294,3 +294,8 @@ decisions:
     status: accepted
     date: '2026-07-11'
     file: ADR063_program14_correspondence.yaml
+  ADR064_program15_gauntlet:
+    title: 'Program 15 (The Gauntlet): two-tier CI/CD — 4-min determinism-gated dev lane vs full main pipeline; security stack; hooks surgery; infra validation + ephemeral Hetzner; items 40+41 closed; tag-driven releases'
+    status: accepted
+    date: '2026-07-11'
+    file: ADR064_program15_gauntlet.yaml

@@ -2,6 +2,10 @@
 # Provisions VPS servers on Hetzner Cloud with proper configuration
 
 terraform {
+  # Floor matches what validates in CI (setup-terraform 1.15.x) while staying
+  # permissive for the operator's local binary (tflint terraform_required_version).
+  required_version = ">= 1.9.0"
+
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"

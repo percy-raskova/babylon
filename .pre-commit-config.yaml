@@ -9,7 +9,7 @@ repos:
   # RUFF - Linting and Formatting
   # ==========================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.12
+    rev: v0.15.21
     hooks:
       - id: ruff
         name: ruff (lint)
@@ -89,7 +89,9 @@ repos:
       - id: prettier
         name: prettier (cockpit format)
         files: ^src/frontend/src/.*\.(ts|tsx|css)$
-        additional_dependencies: ["prettier@3.8.1"]
+        # Version must track src/frontend/package.json's prettier (CI checks
+        # with that one) — a mismatch makes this hook fight `npm run check`.
+        additional_dependencies: ["prettier@3.9.5"]
 
   - repo: local
     hooks:

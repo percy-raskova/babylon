@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -42,7 +42,7 @@ jobs:
       # a fresh snapshot; restore-keys fall back to the newest same-lock cache.
       # Speed only — mypy's verdict is identical warm or cold.
       - name: Cache mypy incremental state
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .mypy_cache
           key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-${{ github.sha }}
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -75,7 +75,7 @@ jobs:
         run: mise run test:unit-ci
       - name: Upload test results + coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-ci-results
           path: reports/test-results/unit-ci/
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
       - name: qa:regression (5 scenarios vs committed baselines)
         run: mise run qa:regression
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-node
       - name: Check (tsc + eslint + prettier + vitest)
         working-directory: src/frontend
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
       - name: pip-audit (policy wrapper — ignores carry reason + expiry)
         run: mise run security:pip-audit
@@ -122,9 +122,11 @@ jobs:
   test-rest:
     name: Non-Unit Tests (integration, scenarios, property, contract)
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Maiden run was cancelled at 35 while still serial; the shard now runs
+    # xdist (test:rest-ci -n 4 loadscope) — 45 is the bounded first-measure.
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -132,7 +134,7 @@ jobs:
         run: mise run test:rest-ci
       - name: Upload test results + coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rest-ci-results
           path: reports/test-results/rest-ci/
@@ -149,12 +151,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
+      # Maiden-run finding (2026-07-11): the engine runtime schema
+      # (node_state et al.) is NOT created by Django migrate — every local
+      # dev DB already has it, so the gap only shows on a fresh CI Postgres
+      # (UndefinedTable: node_state). Idempotent canonical DDL apply.
+      - name: Apply engine schema (canonical DDL)
+        run: mise run db:bootstrap
       - name: Django migrate (fresh compose DB)
         working-directory: web
         env:
@@ -187,7 +195,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -196,7 +204,7 @@ jobs:
       # resolved version). install --with-deps still runs for OS packages;
       # on a warm cache it skips the browser download.
       - name: Cache Playwright browsers
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('src/frontend/package-lock.json') }}
@@ -267,7 +275,7 @@ jobs:
           e2e/map-lens-cycling.spec.ts
       - name: Upload Playwright report + Django log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: |
@@ -286,13 +294,21 @@ jobs:
     if: ${{ vars.CI_REFDB_READY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Maiden-run finding (2026-07-11): the headless runner reads its DSN from
+    # BABYLON_TEST_PG_DSN — without it the job dies POSTGRES_UNREACHABLE
+    # before ever touching the container postgres-up just started. Same DSN
+    # the db:bootstrap task targets (compose babylon-pg on :5433).
+    env:
+      BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
+      - name: Apply engine schema (canonical DDL)
+        run: mise run db:bootstrap
       - name: qa:e2e-regression (strict 5-tick bundle vs baseline)
         run: mise run qa:e2e-regression
       - name: qa:storage-budget (rows/tick vs committed baseline)
@@ -311,7 +327,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -328,7 +344,7 @@ jobs:
     timeout-minutes: 15
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -340,10 +356,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
         with:
           docs: "true"
+          # Maiden-run finding (2026-07-11): pytest loads the root conftest,
+          # which initializes Django -> contrib.gis -> libgdal, so even the
+          # formulas-scoped doctest run needs the system GDAL package.
+          gdal: "true"
       - name: Run doctest examples
         run: poetry run pytest --doctest-modules src/babylon/formulas -o addopts="" -vv -ra --tb=long
       - name: Build documentation
@@ -355,7 +375,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v3
@@ -367,7 +387,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
@@ -389,7 +409,7 @@ jobs:
     timeout-minutes: 15
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - name: Build babylon-pg (shared GHA layer cache)
         uses: docker/bake-action@v7
@@ -415,7 +435,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
       - uses: hashicorp/setup-terraform@v4
         with:

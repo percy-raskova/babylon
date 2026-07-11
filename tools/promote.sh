@@ -40,14 +40,24 @@ echo "==> Fast-forward OK: dev is ${AHEAD} commit(s) ahead of main."
 echo "==> Checking CI verdicts on dev HEAD..."
 CHECKS_JSON=$(gh api "repos/{owner}/{repo}/commits/${DEV_SHA}/check-runs" --paginate)
 
-TOTAL=$(echo "$CHECKS_JSON" | jq '[.check_runs[]] | length')
+# GitHub's own "Dependabot Updates" workflow (a `dynamic` event, NOT one of our
+# CI jobs) attaches a check run named exactly "Dependabot" to whatever SHA is
+# dev HEAD. It is a dependency *scan*, not a CI verdict: it can grind 30+
+# minutes after a manifest-heavy push (lockfile/pyproject churn), and it recurs
+# on GitHub's own schedule — so it may sit PENDING, or re-run, long after our
+# real CI has gone green. Today it blocked a promotion for exactly that reason.
+# Filter it out of the check-run set ONCE here so the three evaluations below
+# (TOTAL / PENDING / BAD) reason only about our actual CI jobs.
+CI_CHECKS=$(echo "$CHECKS_JSON" | jq '[.check_runs[] | select(.name != "Dependabot")]')
+
+TOTAL=$(echo "$CI_CHECKS" | jq 'length')
 if [ "$TOTAL" -eq 0 ]; then
     echo "ERROR: no check runs found on dev HEAD ${DEV_SHA} — push dev and let" >&2
     echo "       the fast lane finish before promoting." >&2
     exit 1
 fi
 
-PENDING=$(echo "$CHECKS_JSON" | jq -r '[.check_runs[] | select(.status != "completed")] | .[].name')
+PENDING=$(echo "$CI_CHECKS" | jq -r '.[] | select(.status != "completed") | .name')
 if [ -n "$PENDING" ]; then
     echo "ERROR: checks still running on dev HEAD:" >&2
     while IFS= read -r line; do echo "       - $line" >&2; done <<< "$PENDING"
@@ -55,7 +65,7 @@ if [ -n "$PENDING" ]; then
 fi
 
 # neutral/skipped are acceptable conclusions (gated jobs); failures are not.
-BAD=$(echo "$CHECKS_JSON" | jq -r '[.check_runs[] | select(.conclusion as $c | ["success","neutral","skipped"] | index($c) | not)] | .[] | "\(.name): \(.conclusion)"')
+BAD=$(echo "$CI_CHECKS" | jq -r '.[] | select(.conclusion as $c | ["success","neutral","skipped"] | index($c) | not) | "\(.name): \(.conclusion)"')
 if [ -n "$BAD" ]; then
     echo "ERROR: non-green checks on dev HEAD:" >&2
     while IFS= read -r line; do echo "       - $line" >&2; done <<< "$BAD"

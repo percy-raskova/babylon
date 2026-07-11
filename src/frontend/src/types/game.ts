@@ -222,11 +222,7 @@ export interface InstitutionState {
 
 /** Permitted edge mode values (Spec 052 §10). */
 export type EdgeMode =
-  | "EXTRACTIVE"
-  | "TRANSACTIONAL"
-  | "SOLIDARISTIC"
-  | "ANTAGONISTIC"
-  | "CO_OPTIVE";
+  "EXTRACTIVE" | "TRANSACTIONAL" | "SOLIDARISTIC" | "ANTAGONISTIC" | "CO_OPTIVE";
 
 /** Dyadic edge between two nodes (Spec 052 §10). */
 export interface EdgeState {
@@ -241,9 +237,7 @@ export interface EdgeState {
 
 /** Hyperedge category (Spec 052 §9). */
 export type HyperedgeCategory =
-  | "contradiction_pair"
-  | "institutional_exclusion"
-  | "lifecycle_phase";
+  "contradiction_pair" | "institutional_exclusion" | "lifecycle_phase";
 
 /** XGI hyperedge — community membership (Spec 052 §9). */
 export interface HyperedgeState {

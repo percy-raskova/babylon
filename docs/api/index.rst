@@ -79,12 +79,12 @@ RAG System
 
    babylon.intelligence.rag
 
-Utilities
-^^^^^^^^^
+Kernel & Utilities
+^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   babylon.utils
+   babylon.kernel
    babylon.metrics

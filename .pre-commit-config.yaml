@@ -83,6 +83,14 @@ repos:
         always_run: true
         stages: [pre-push]
 
+      - id: import-boundaries
+        name: import-linter (layer boundaries, program 14)
+        entry: poetry run lint-imports
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: xenon-complexity
         name: xenon (module/function complexity budget)
         entry: poetry run xenon --max-absolute B --max-modules A --max-average A src/babylon

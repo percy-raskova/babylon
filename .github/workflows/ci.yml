@@ -72,6 +72,11 @@ jobs:
       - name: Lint with Ruff
         run: poetry run ruff --version && poetry run ruff check .
 
+      # Import-boundary contracts (Program 14): kernel < models/formulas <
+      # domain < engine; nothing imports the engine backward.
+      - name: Import-boundary contracts
+        run: poetry run lint-imports
+
       - name: Type check with MyPy
         run: poetry run mypy src
 

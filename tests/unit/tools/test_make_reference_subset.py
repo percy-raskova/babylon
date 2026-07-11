@@ -803,8 +803,11 @@ class TestProductionPolicyShape:
         ):
             assert TABLE[name].scope == "full", f"{name} must be BLOCKED-FULL"
 
-    def test_faf_and_pre086_qcew_are_skipped(self) -> None:
-        assert TABLE["fact_faf_commodity_flow"].scope == "skip"
+    def test_faf_is_full_and_pre086_qcew_is_skipped(self) -> None:
+        # FAF flipped skip -> full for ci-data-v2: sqlite_hydrator (the headless
+        # runner's hydration path) reads it — the Determinism Bundle CI job died
+        # ENGINE_FAILURE without it on the ci-data-v1 proving run (2026-07-11).
+        assert TABLE["fact_faf_commodity_flow"].scope == "full"
         assert TABLE["fact_qcew_annual__pre_086"].scope == "skip"
 
     def test_known_michigan_tables(self) -> None:

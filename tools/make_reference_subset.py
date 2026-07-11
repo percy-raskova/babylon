@@ -368,13 +368,15 @@ TABLE: dict[str, TablePolicy] = {
     ),
     # -- fact_* — explicit SKIP (recon-confirmed zero real-DB test coverage). --
     "fact_faf_commodity_flow": TablePolicy(
-        "skip",
-        "Read only by production ingestion (sqlite_hydrator.py) and "
-        "domain/economics/tensor_hierarchy/geographic_flow.py, whose tests "
-        "(test_geographic_flow.py, test_scale.py, test_validation.py) all "
-        "use MagicMock(session_factory) — zero real-DB test coverage. Its "
-        "county bridge (bridge_cfs_county) is itself empty, so no "
-        "county-scoping is even possible. SKIP (102.1 MB removed).",
+        "full",
+        "Read by sqlite_hydrator.py — which IS the headless runner's "
+        "hydration path: qa:e2e-regression's strict 5-tick bundle dies "
+        "ENGINE_FAILURE 'no such table: fact_faf_commodity_flow' without it "
+        "(proven on the ci-data-v1 proving run, 2026-07-11). The original "
+        "skip reasoning ('zero real-DB test coverage') missed that the "
+        "Determinism Bundle CI job exercises the real engine. Its county "
+        "bridge (bridge_cfs_county) is empty, so FAF-zone rows cannot be "
+        "Michigan-scoped — FULL copy (~97 MiB, 2.49M rows).",
     ),
     "fact_qcew_annual__pre_086": TablePolicy(
         "skip",

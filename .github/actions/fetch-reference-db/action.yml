@@ -12,15 +12,18 @@ inputs:
   tag:
     description: Data-release tag holding the subset asset
     required: false
-    default: ci-data-v1
+    # v2 (2026-07-11): + fact_faf_commodity_flow FULL — the headless runner's
+    # hydration path reads it (Determinism Bundle died without it on the v1
+    # proving run).
+    default: ci-data-v2
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260711.sqlite
+    default: reference-subset-20260711b.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: dea98cc417bb984491e6a5c14dee53988181194c1426b9f842a0cdfb326a761d
+    default: 922b5a660306006d04ec1d322795d975c33638c59cb1278fbefb555db363b339
 
 runs:
   using: composite

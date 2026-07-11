@@ -96,6 +96,33 @@ describe("regionFillForLens", () => {
     });
   });
 
+  describe("solidarity_index metric (spec-113 Lane B)", () => {
+    it("samples the dedicated solidarity ramp, distinct from habitability's", () => {
+      const properties: RegionFillProperties = { solidarity_index: 0.6 };
+      const lens: Lens = { kind: "metric", metric: "solidarity_index" };
+      const result = regionFillForLens(lens, properties, DOMAIN);
+      expect(result).toEqual(sampleRampStops(lensRampStops(lens)!, 0.6));
+    });
+  });
+
+  describe("class_composition lens (spec-113 Lane B/D)", () => {
+    it("colors by dominant_class via the shared SOCIAL_ROLE_COLOR palette", () => {
+      const properties: RegionFillProperties = { dominant_class: "core_bourgeoisie" };
+      expect(regionFillForLens({ kind: "class_composition" }, properties, DOMAIN)).toEqual([
+        212, 160, 44, 220,
+      ]);
+    });
+
+    it("is null-honest when dominant_class is absent", () => {
+      expect(regionFillForLens({ kind: "class_composition" }, {}, DOMAIN)).toBeNull();
+    });
+
+    it("is null-honest for an unrecognized role string", () => {
+      const properties: RegionFillProperties = { dominant_class: "not_a_real_role" };
+      expect(regionFillForLens({ kind: "class_composition" }, properties, DOMAIN)).toBeNull();
+    });
+  });
+
   it("a zero-width domain does not divide by zero", () => {
     const properties: RegionFillProperties = { heat: 5 };
     const domain = { min: 5, max: 5 };

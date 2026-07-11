@@ -77,6 +77,13 @@ export interface GameSnapshot {
  */
 export interface MapSnapshotMetadata {
   balkanization?: import("@/components/map/mapLensLayers").BalkanizationBlock | null;
+  /**
+   * `web/game/map_contract.py`'s `MAP_METRIC_PROPERTIES` — the full list of
+   * metric names this `/map/` response's features carry (spec-113 Lane B's
+   * `lib/lenses/registry.ts` `availableWhen` reads this to degrade starred
+   * lenses honestly before/without a given backend property).
+   */
+  available_metrics?: string[];
   [key: string]: unknown;
 }
 
@@ -750,4 +757,14 @@ export interface AdminFeatureProperties {
   occ: number;
   imperial_rent: number;
   org_presence: number;
+  /**
+   * Spec-113 Lane D additions (`_aggregate_hex_features`'s `dominant_class_pop`
+   * vote / `solidarity_index_sum`/`solidarity_index_pop` mean) — optional
+   * because they postdate this interface's other fields and older/stubbed
+   * `/map/` fixtures may not carry them yet. `null` is the real backend's
+   * honest "no TENANCY-linked coverage this tick" value (Constitution
+   * III.11), never fabricated.
+   */
+  dominant_class?: string | null;
+  solidarity_index?: number | null;
 }

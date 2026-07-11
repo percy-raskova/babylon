@@ -32,6 +32,16 @@ import type { MapLayer } from "@/types/game";
  * of truth on the frontend side, the same way ``map_contract.py`` is on the
  * backend side.
  */
+/**
+ * Spec-113 Lane D added two more `MAP_METRIC_PROPERTIES` entries to the
+ * backend contract (`web/game/map_contract.py`): `dominant_class` (a
+ * categorical `SocialRole` string) and `solidarity_index` (numeric,
+ * SOLIDARITY-edge density). `solidarity_index` joins this numeric list —
+ * `dominant_class` deliberately does NOT (this array is numeric-ramp
+ * metrics only): it drives the dedicated categorical `class_composition`
+ * `Lens` kind instead, the same way `heat`/`habitability` get dedicated
+ * kinds rather than a `{kind:"metric"}` sub-select.
+ */
 export const MAP_METRICS = [
   "profit_rate",
   "exploitation_rate",
@@ -41,6 +51,7 @@ export const MAP_METRICS = [
   "org_presence",
   "population",
   "habitability",
+  "solidarity_index",
 ] as const;
 
 export type MapMetric = (typeof MAP_METRICS)[number];
@@ -68,10 +79,30 @@ export type LensMode = (typeof LENS_MODES)[number];
 // Lens — the discriminated union
 // ---------------------------------------------------------------------------
 
-export type Lens = { kind: LensMode } | { kind: "metric"; metric: MapMetric };
+/**
+ * `class_composition` (spec-113 Lane B, bible §9's `dominant_class`
+ * addition): the population-weighted-majority `SocialRole` per
+ * hex/territory. Categorical like stance/faction/collapse, but NOT
+ * balkanization-derived (it reads `hex_latest`'s own `dominant_class`
+ * column via TENANCY membership, not the spec-070 factions/sovereigns
+ * block) — so it gets its own top-level kind rather than joining
+ * `LensMode`, whose `RING_AND_HULL_KINDS`/`BALKANIZATION_LENSES` sets in
+ * `mapLensLayers.ts` are keyed to the balkanization block specifically.
+ */
+export type Lens =
+  | { kind: LensMode }
+  | { kind: "metric"; metric: MapMetric }
+  | { kind: "class_composition" };
 
-/** Matches the old `mapStore` default (`lensMode: "stance"`). */
-export const DEFAULT_LENS: Lens = { kind: "stance" };
+/**
+ * DESIGN_BIBLE.md §9 amendment 1 (binding): the default lens is Imperial
+ * Rent Φ, not the political-topology "stance" lens — a GDP-style/political
+ * default would reproduce the "backwardness" ideology the game refutes
+ * (Amin). Political claims remain the layer-2 substrate under every lens
+ * (`layers/political.ts`), so switching away from "stance" loses nothing —
+ * the claims/borders are always drawn, independent of the active lens.
+ */
+export const DEFAULT_LENS: Lens = { kind: "metric", metric: "imperial_rent" };
 
 /** Structural equality — two lenses are the same lens. */
 export function isSameLens(a: Lens, b: Lens): boolean {
@@ -114,39 +145,45 @@ const METRIC_LABELS: Record<MapMetric, string> = {
   org_presence: "Organizational Presence",
   population: "Population",
   habitability: "Habitability · Metabolic Rift",
+  solidarity_index: "Solidarity · SOLIDARITY-Edge Density",
 };
 
 /** Human-readable legend text for a lens (mode label or metric name). */
 export function lensLegendLabel(lens: Lens): string {
-  return lens.kind === "metric" ? METRIC_LABELS[lens.metric] : MODE_LEGEND_LABELS[lens.kind];
+  if (lens.kind === "metric") return METRIC_LABELS[lens.metric];
+  if (lens.kind === "class_composition") return "Class Composition · Dominant Social Role";
+  return MODE_LEGEND_LABELS[lens.kind];
 }
 
 /**
  * The `MapLayer` a metric name reuses for its data ramp. `MapMetric` and
- * `MapLayer` overlap on every metric except `habitability` (a spec-109 A2
- * addition that predates `MapLayer` and has no ramp of its own — it reuses
- * the diverging biocapacity ramp, matching the old `habitabilityFill`).
+ * `MapLayer` overlap on every metric except `habitability`/`solidarity_index`
+ * (spec-109 A2 / spec-113 Lane B additions that predate/sit outside
+ * `MapLayer` and have no ramp of their own there) — both resolve their real
+ * ramp directly in `lensRampStops` instead of through `rampForLayer`.
  */
 function metricToMapLayer(metric: MapMetric): MapLayer | null {
-  return metric === "habitability" ? null : (metric as MapLayer);
+  return metric === "habitability" || metric === "solidarity_index" ? null : (metric as MapLayer);
 }
 
 /**
- * Resolve the canon ramp (hex stops) for a lens, or `null` for the three
- * balkanization-derived modes (stance/faction/collapse) whose fill is a
- * per-faction stance color, not a single continuous ramp.
+ * Resolve the canon ramp (hex stops) for a lens, or `null` for the
+ * categorical kinds (stance/faction/collapse/class_composition) whose fill
+ * is a discrete per-entity color, not a single continuous ramp.
  */
 export function lensRampStops(lens: Lens): string[] | null {
   switch (lens.kind) {
     case "stance":
     case "faction":
     case "collapse":
+    case "class_composition":
       return null;
     case "habitability":
       return DATA_RAMPS.biocapacity;
     case "heat":
       return DATA_RAMPS.heat;
     case "metric": {
+      if (lens.metric === "solidarity_index") return DATA_RAMPS.solidarity;
       const layer = metricToMapLayer(lens.metric);
       return layer === null ? DATA_RAMPS.biocapacity : rampForLayer(layer);
     }

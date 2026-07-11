@@ -63,4 +63,12 @@ describe("FramingSelector", () => {
     render(<FramingSelector framing="hex" />);
     expect(() => fireEvent.click(screen.getByTestId("framing-county"))).not.toThrow();
   });
+
+  it("county/state are primary (rendered before hex) — DESIGN_BIBLE.md §9.2's cartography inversion", () => {
+    render(<ControlledSelector />);
+    const buttons = screen.getAllByRole("button").map((b) => b.getAttribute("data-testid"));
+    expect(buttons.indexOf("framing-county")).toBeLessThan(buttons.indexOf("framing-hex"));
+    expect(buttons.indexOf("framing-state")).toBeLessThan(buttons.indexOf("framing-hex"));
+    expect(buttons[buttons.length - 1]).toBe("framing-hex");
+  });
 });

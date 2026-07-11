@@ -5,6 +5,11 @@
  * `FloatingPanel` (anchor="left") wrapping `Outliner` verbatim — its
  * internals are Lane F's territory, not restructured here.
  *
+ * Collapses to an icon rail rather than a same-width empty strip: since
+ * `FloatingPanel`'s `width`/`title` are caller-supplied props (its internals
+ * are Lane A's, frozen here), the rail effect is achieved entirely from this
+ * call site — a narrow width + a glyph title when collapsed.
+ *
  * Deliberately does NOT repeat `Outliner`'s own `region-outliner` testid on
  * this wrapper (that would create two elements matching the same testid);
  * `Outliner`'s inner `<nav>` stays the single frozen `region-outliner`
@@ -19,6 +24,9 @@ interface OutlinerOverlayProps {
   gameId: string;
 }
 
+const OPEN_WIDTH = 240;
+const RAIL_WIDTH = 44;
+
 export function OutlinerOverlay({ gameId }: OutlinerOverlayProps): React.JSX.Element {
   const outlinerOpen = useStore((s) => s.ui.chrome.outlinerOpen);
   const toggleOutliner = useStore((s) => s.ui.toggleOutliner);
@@ -26,10 +34,10 @@ export function OutlinerOverlay({ gameId }: OutlinerOverlayProps): React.JSX.Ele
   return (
     <FloatingPanel
       anchor="left"
-      title="Outliner"
+      title={outlinerOpen ? "Outliner" : "☰"}
       collapsed={!outlinerOpen}
       onToggle={toggleOutliner}
-      width={240}
+      width={outlinerOpen ? OPEN_WIDTH : RAIL_WIDTH}
       testId="outliner-overlay"
     >
       <Outliner gameId={gameId} />

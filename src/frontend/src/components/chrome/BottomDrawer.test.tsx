@@ -35,4 +35,12 @@ describe("BottomDrawer", () => {
     useStore.getState().ui.setBottomDrawer("none");
     expect(useStore.getState().panels.timeseries.mounted).toBe(true);
   });
+
+  it("the 'events' mode points to the tray in-register, never the admin-voice fallback", () => {
+    useStore.getState().ui.setBottomDrawer("events");
+    render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
+
+    expect(screen.queryByText(/No events loaded yet\./)).not.toBeInTheDocument();
+    expect(screen.getByText(/dispatch already runs in the tray/i)).toBeInTheDocument();
+  });
 });

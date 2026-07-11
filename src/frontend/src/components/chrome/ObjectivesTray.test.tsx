@@ -20,4 +20,10 @@ describe("ObjectivesTray", () => {
     expect(screen.getByTestId("objectives-tray")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Revolutionary Victory")).toBeInTheDocument());
   });
+
+  it("badges the header with the active objective count", async () => {
+    render(<ObjectivesTray gameId={DEFAULT_GAME_ID} />);
+    // Default mock fixture (makeObjectivesTracker) ships one active objective.
+    await waitFor(() => expect(screen.getByText("Objectives (1)")).toBeInTheDocument());
+  });
 });

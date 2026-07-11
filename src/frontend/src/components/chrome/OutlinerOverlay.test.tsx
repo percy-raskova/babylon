@@ -32,4 +32,17 @@ describe("OutlinerOverlay", () => {
     // Still in the DOM (CSS-hidden), never unmounted.
     expect(screen.getByTestId("region-outliner")).toBeInTheDocument();
   });
+
+  it("shrinks to an icon rail when collapsed (Stellaris outliner idiom)", async () => {
+    render(<OutlinerOverlay gameId={DEFAULT_GAME_ID} />);
+    const panel = screen.getByTestId("outliner-overlay");
+    expect(panel).toHaveStyle({ width: "240px" });
+    expect(screen.getByText("Outliner")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /[▾▸]/ }));
+
+    expect(panel).toHaveStyle({ width: "44px" });
+    expect(screen.getByText("☰")).toBeInTheDocument();
+    expect(screen.queryByText("Outliner")).not.toBeInTheDocument();
+  });
 });

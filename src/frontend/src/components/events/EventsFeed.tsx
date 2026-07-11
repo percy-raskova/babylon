@@ -35,17 +35,19 @@ export function EventsFeed(): React.JSX.Element {
   // The honest empty states carry the same testid as the populated feed —
   // "renders classified events OR the honest empty copy" is one surface
   // (Constitution III.11), and e2e asserts on the container either way.
+  // Copy is in-register (DESIGN_BIBLE §7's "purge the admin voice" — "the
+  // wire is silent", not "No events loaded yet.").
   if (!events) {
     return (
       <div className="flex flex-col gap-1 p-2" data-testid="events-feed">
-        <p className="p-3 text-[11px] italic text-shroud">No world state loaded yet.</p>
+        <p className="p-3 text-[11px] italic text-shroud">The wire is silent — no dispatch yet.</p>
       </div>
     );
   }
   if (classified.length === 0) {
     return (
       <div className="flex flex-col gap-1 p-2" data-testid="events-feed">
-        <p className="p-3 text-[11px] italic text-shroud">No events this tick.</p>
+        <p className="p-3 text-[11px] italic text-shroud">The wire is quiet this tick.</p>
       </div>
     );
   }

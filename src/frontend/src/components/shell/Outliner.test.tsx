@@ -90,4 +90,46 @@ describe("Outliner", () => {
     unmount();
     expect(useStore.getState().panels.communities.mounted).toBe(false);
   });
+
+  it("filters org rows by the filter box and shows a loud no-match state", async () => {
+    useStore.setState((s) => ({
+      world: {
+        ...s.world,
+        snapshot: makeSnapshot({
+          organizations: [makeOrg(), makeOrg({ id: "org-2", name: "Tenant Council" })],
+        }),
+      },
+    }));
+    render(<Outliner gameId={DEFAULT_GAME_ID} />);
+
+    expect(screen.getByText("Workers Union")).toBeInTheDocument();
+    expect(screen.getByText("Tenant Council")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId("outliner-filter"), "tenant");
+
+    expect(screen.queryByText("Workers Union")).not.toBeInTheDocument();
+    expect(screen.getByText("Tenant Council")).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByTestId("outliner-filter"));
+    await userEvent.type(screen.getByTestId("outliner-filter"), "no-such-org");
+    expect(screen.getByText(/No organizations match/)).toBeInTheDocument();
+  });
+
+  it("toggles compact density, hiding sublabels without unmounting rows", async () => {
+    useStore.setState((s) => ({
+      world: { ...s.world, snapshot: makeSnapshot({ organizations: [makeOrg()] }) },
+    }));
+    render(<Outliner gameId={DEFAULT_GAME_ID} />);
+
+    expect(screen.getByText("Workers Union")).toBeInTheDocument();
+    expect(screen.getByText("civil_society_org")).toBeInTheDocument();
+
+    const toggle = screen.getByTestId("outliner-density-toggle");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Workers Union")).toBeInTheDocument();
+    expect(screen.queryByText("civil_society_org")).not.toBeInTheDocument();
+  });
 });

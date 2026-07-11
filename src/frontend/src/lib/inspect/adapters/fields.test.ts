@@ -1,5 +1,11 @@
+/**
+ * Ported from the legacy `lib/inspectorFields.test.ts` verbatim (spec-113
+ * Lane C absorbs `lib/inspectorFields.ts` into `lib/inspect/adapters/fields.ts`
+ * — same behavior, same null-honesty guarantees).
+ */
+
 import { describe, it, expect } from "vitest";
-import { readNumberField, readStringField, readConsciousness } from "./inspectorFields";
+import { readNumberField, readStringField, readConsciousness } from "./fields";
 
 describe("readNumberField", () => {
   it("returns the number when present with the right type", () => {

@@ -20,6 +20,7 @@
 import { MapStage } from "./MapStage";
 import { TopBar } from "@/components/chrome/TopBar";
 import { OutlinerOverlay } from "@/components/chrome/OutlinerOverlay";
+import { InspectionStack } from "@/components/inspect/InspectionStack";
 import { EventTray } from "@/components/chrome/EventTray";
 import { ObjectivesTray } from "@/components/chrome/ObjectivesTray";
 import { ActionDock } from "@/components/chrome/ActionDock";
@@ -45,8 +46,10 @@ export function AppShell({ gameId }: AppShellProps): React.JSX.Element {
         <TopBar gameId={gameId} />
         <OutlinerOverlay gameId={gameId} />
 
-        {/* InspectionStack (Lane C) mounts here, anchored left-of-tray,
-            once components/inspect/InspectionStack.tsx exists. */}
+        {/* InspectionStack (Lane C) — anchored left-of-tray; it renders
+            nothing (returns null) when the stack is empty, so it needs
+            no visibility-toggling wrapper here. */}
+        <InspectionStack gameId={gameId} />
 
         <div className="pointer-events-none absolute bottom-2 right-2 top-14 flex flex-col gap-2">
           <div className="pointer-events-auto min-h-0 flex-1">

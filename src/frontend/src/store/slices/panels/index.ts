@@ -2,14 +2,17 @@
  * Panels slice — one docked-panel state per endpoint (spec-110 B3).
  *
  * `summary`/`timeseries`/`economy`/`communities`/`map` are the 5 tick-driven
- * panels the fetch orchestrator fans out to on `onTickAdvanced`. `inspector`
- * is selection-driven (see `mapSlice.setSelection`), not tick-driven, so it
- * is deliberately excluded from `PANEL_KEYS`.
+ * panels the fetch orchestrator fans out to on `onTickAdvanced`.
  *
  * `wire`/`contradiction`/`endgame`/`objectives`/`tradeFlows` back the
  * takeover surfaces + Objectives dock tab (spec-110 B5) — same
  * fetch/loading/error/mounted shape, fanned out separately via
  * `TAKEOVER_PANEL_KEYS` since they mount on takeover-open, not shell-mount.
+ *
+ * `inspector` (the selection-driven `InspectorPanel` fetch) is RETIRED
+ * (spec-113 Lane C) — `store/slices/inspectSlice.ts` now owns
+ * selection-driven fetch/loading/error via `mapSlice.setSelection`'s
+ * `inspect.clear()+push()` fan-out.
  */
 
 import type { StateCreator } from "zustand";
@@ -25,11 +28,14 @@ import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/t
 import type { TradeFlowsPayload } from "@/types/trade";
 import type { RootState } from "../../types";
 import { createPanel, type Panel } from "./panelFactory";
-import { createInspectorPanel, type InspectorPanel } from "./inspectorPanel";
 
 export type { PanelKey, TakeoverPanelKey } from "./panelFactory";
 export { PANEL_KEYS, TAKEOVER_PANEL_KEYS } from "./panelFactory";
-export type { InspectorKind } from "./inspectorPanel";
+// Re-exported from mapSlice (not the deleted inspectorPanel.ts) so
+// `store/index.ts`'s `export type { ... InspectorKind } from
+// "./slices/panels"` line keeps working with zero edits to that
+// off-limits file (spec-113 Lane C).
+export type { InspectorKind } from "../mapSlice";
 
 export interface PanelsSlice {
   panels: {
@@ -38,7 +44,6 @@ export interface PanelsSlice {
     economy: Panel<EconomyDashboardPayload>;
     communities: Panel<CommunitiesDashboardPayload>;
     map: Panel<FeatureCollection>;
-    inspector: InspectorPanel;
     wire: Panel<WireFeed>;
     contradiction: Panel<ContradictionSnapshot>;
     endgame: Panel<EndgameState>;
@@ -74,9 +79,6 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
     (gameId, getRoot) => `/api/games/${gameId}/map/?zoom=${getRoot().map.framing}`,
     (updater) => set((s) => ({ panels: { ...s.panels, map: updater(s.panels.map) } })),
     get,
-  );
-  const inspector = createInspectorPanel((updater) =>
-    set((s) => ({ panels: { ...s.panels, inspector: updater(s.panels.inspector) } })),
   );
 
   const wire = createPanel<WireFeed>(
@@ -115,7 +117,6 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
       economy,
       communities,
       map: mapPanel,
-      inspector,
       wire,
       contradiction,
       endgame,

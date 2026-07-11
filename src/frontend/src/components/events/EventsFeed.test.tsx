@@ -13,17 +13,17 @@ beforeEach(() => {
 });
 
 describe("EventsFeed", () => {
-  it("shows a loud empty state before any world state has loaded", () => {
+  it("shows a loud, in-register empty state before any world state has loaded", () => {
     render(<EventsFeed />);
-    expect(screen.getByText("No world state loaded yet.")).toBeInTheDocument();
+    expect(screen.getByText("The wire is silent — no dispatch yet.")).toBeInTheDocument();
   });
 
-  it("shows a distinct empty state for a tick with zero events (not a failure)", () => {
+  it("shows a distinct in-register empty state for a tick with zero events (not a failure)", () => {
     useStore.setState((s) => ({
       world: { ...s.world, snapshot: makeSnapshot({ events: [] }) },
     }));
     render(<EventsFeed />);
-    expect(screen.getByText("No events this tick.")).toBeInTheDocument();
+    expect(screen.getByText("The wire is quiet this tick.")).toBeInTheDocument();
   });
 
   it("renders one row per current-tick event with severity coloring", () => {

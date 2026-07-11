@@ -293,3 +293,126 @@ describe("time slice — spacebar", () => {
     expect(pauseSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("time slice — speed (spec-113 architecture §4.1)", () => {
+  it("defaults to speed 5 (zero injected delay — current behavior)", () => {
+    expect(useStore.getState().time.speed).toBe(5);
+  });
+
+  it("setSpeed updates the speed field and is valid in any status", () => {
+    useStore.getState().time.setSpeed(1);
+    expect(useStore.getState().time.speed).toBe(1);
+
+    useStore.setState((s) => ({ time: { ...s.time, status: "resolving" } }));
+    useStore.getState().time.setSpeed(2);
+    expect(useStore.getState().time.speed).toBe(2);
+  });
+
+  // These use real timers rather than vitest's fake timers deliberately:
+  // `resolveOnce`'s loop races real `msw`-resolved promises against the
+  // injected `setTimeout` delay, and fake-timer/real-promise interleaving
+  // (`advanceTimersByTimeAsync` vs. an unbounded default mock resolver that
+  // always returns "ok") proved to under-flush the promise chain and hang
+  // the loop. A short real 800ms delay keeps these tests fast and safe.
+
+  it("at speed 1, injects a real inter-resolve delay before the next resolve fires", async () => {
+    useStore.getState().time.setSpeed(1); // 800ms delay
+    const playPromise = useStore.getState().time.play(DEFAULT_GAME_ID);
+
+    await new Promise((r) => setTimeout(r, 50)); // first resolve + refetch should have landed
+    expect(requestLog.filter((r) => r === "POST resolve")).toHaveLength(1);
+
+    await new Promise((r) => setTimeout(r, 300)); // still well inside the 800ms delay
+    expect(requestLog.filter((r) => r === "POST resolve")).toHaveLength(1);
+
+    useStore.getState().time.pause();
+    await playPromise;
+  });
+
+  it("pause() requested during the injected delay stops the loop before the next resolve fires", async () => {
+    useStore.getState().time.setSpeed(1); // 800ms delay
+    const playPromise = useStore.getState().time.play(DEFAULT_GAME_ID);
+
+    await new Promise((r) => setTimeout(r, 50)); // first resolve + refetch lands
+    expect(requestLog.filter((r) => r === "POST resolve")).toHaveLength(1);
+
+    useStore.getState().time.pause(); // fired while inside the 800ms delay
+    await playPromise;
+
+    // No second resolve was ever scheduled — pause() during the delay wins.
+    expect(requestLog.filter((r) => r === "POST resolve")).toHaveLength(1);
+    expect(useStore.getState().time.status).toBe("paused");
+
+    // Give any (incorrect) further scheduling a chance to happen.
+    await new Promise((r) => setTimeout(r, 900));
+    expect(requestLog.filter((r) => r === "POST resolve")).toHaveLength(1);
+  });
+
+  it("a speed change mid-loop applies to the very next delay, not the in-flight one", async () => {
+    useStore.getState().time.setSpeed(1); // 800ms delay
+    const playPromise = useStore.getState().time.play(DEFAULT_GAME_ID);
+
+    await new Promise((r) => setTimeout(r, 50)); // first resolve lands, now inside delay #1
+    expect(requestLog.filter((r) => r === "POST resolve")).toHaveLength(1);
+
+    useStore.getState().time.setSpeed(5); // must NOT shorten the in-flight delay
+    await new Promise((r) => setTimeout(r, 300));
+    expect(requestLog.filter((r) => r === "POST resolve")).toHaveLength(1);
+
+    // Let delay #1 (800ms total) finish — resolve #2 fires, and its own
+    // delay is now 0ms (5x), so the loop races ahead; stop it and confirm
+    // it did advance past a single resolve.
+    await new Promise((r) => setTimeout(r, 550));
+    useStore.getState().time.pause();
+    await playPromise;
+
+    expect(requestLog.filter((r) => r === "POST resolve").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("autopause still fires with no delay involved regardless of speed", async () => {
+    server.use(
+      http.post("/api/games/:id/resolve/", () =>
+        HttpResponse.json({ status: "ok", data: { resolved: true }, tick: 2 }),
+      ),
+      http.get("/api/games/:id/state/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: {
+            tick: 2,
+            session_id: DEFAULT_GAME_ID,
+            organizations: [],
+            institutions: [],
+            territories: [],
+            hyperedges: [],
+            edges: [],
+            events: [makeEvent({ type: "rupture", tick: 2 })],
+            derived: {
+              value_tensor: {
+                departments: [],
+                components: [],
+                values: [],
+                conservation_residual: 0,
+              },
+              imperial_rent: {
+                unequal_exchange: 0,
+                externalized_reproductive: 0,
+                domestic_shadow: 0,
+                total: 0,
+              },
+              dept_iii_visibility: { g33: 0 },
+              class_aggregates: {},
+              economy: { gdp: 0, gini: 0, profit_rate: 0, exploitation_rate: 0 },
+              predictions: { per_hyperedge: {} },
+            },
+          },
+        }),
+      ),
+    );
+
+    useStore.getState().time.setSpeed(1);
+    await useStore.getState().time.step(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().time.status).toBe("autopaused");
+    expect(useStore.getState().time.autopauseEventIds).toEqual(["2-0"]);
+  });
+});

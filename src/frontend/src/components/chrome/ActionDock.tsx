@@ -41,7 +41,6 @@ import { FloatingPanel } from "./FloatingPanel";
 import { ActionComposer } from "@/components/action/ActionComposer";
 import { SUPPORTED_VERBS } from "@/lib/verb-config";
 import { keyButtonClass } from "./installerKit";
-import { KeyHints } from "./KeyHints";
 
 interface ActionDockProps {
   gameId: string;
@@ -97,7 +96,6 @@ export function ActionDock({ gameId }: ActionDockProps): React.JSX.Element {
         testId="action-composer-panel"
       >
         <ActionComposer gameId={gameId} />
-        <KeyHints />
       </FloatingPanel>
     </div>
   );

@@ -19,7 +19,6 @@ import { EVENT_CATEGORIES } from "@/lib/eventClassifier";
 import { NarrationBlock } from "@/components/narration/NarrationBlock";
 import { useNarration } from "@/hooks/useNarration";
 import { keyButtonClass } from "./installerKit";
-import { KeyHints } from "./KeyHints";
 
 interface EventTrayProps {
   gameId: string;
@@ -124,8 +123,6 @@ export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
             </div>
           </div>
         )}
-
-        <KeyHints />
       </div>
     </FloatingPanel>
   );

@@ -23,7 +23,6 @@ import { FloatingPanel } from "./FloatingPanel";
 import { RAIL_RIGHT_W } from "./layout";
 import { ObjectivesTracker } from "@/components/objectives/ObjectivesTracker";
 import { useObjectives } from "@/hooks/useObjectives";
-import { KeyHints } from "./KeyHints";
 
 interface ObjectivesTrayProps {
   gameId: string;
@@ -45,7 +44,6 @@ export function ObjectivesTray({ gameId }: ObjectivesTrayProps): React.JSX.Eleme
       testId="objectives-tray"
     >
       <ObjectivesTracker gameId={gameId} />
-      <KeyHints />
     </FloatingPanel>
   );
 }

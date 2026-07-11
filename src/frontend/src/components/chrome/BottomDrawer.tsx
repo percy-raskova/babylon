@@ -18,7 +18,6 @@
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
 import { TimeseriesChart } from "@/components/timeseries/TimeseriesChart";
-import { KeyHints } from "./KeyHints";
 
 interface BottomDrawerProps {
   gameId: string;
@@ -36,7 +35,11 @@ export function BottomDrawer({ gameId }: BottomDrawerProps): React.JSX.Element {
       onToggle={() => setBottomDrawer(bottomDrawer === "none" ? "trends" : "none")}
       testId="region-bottomstrip"
     >
-      <div className={bottomDrawer === "events" ? "hidden" : "h-full"}>
+      {/* h-48 (not h-full): the anchor="bottom" panel is shrink-to-fit (no
+          `top`), so an h-full child + recharts ResponsiveContainer height="100%"
+          resolves to 0 and the chart vanishes. A definite pixel height gives the
+          ResponsiveContainer something to measure (spec-113 Phase V). */}
+      <div className={bottomDrawer === "events" ? "hidden" : "h-48"}>
         <TimeseriesChart gameId={gameId} />
       </div>
       {bottomDrawer === "events" && (
@@ -44,7 +47,6 @@ export function BottomDrawer({ gameId }: BottomDrawerProps): React.JSX.Element {
           The dispatch already runs in the tray, top right.
         </p>
       )}
-      {bottomDrawer !== "none" && <KeyHints />}
     </FloatingPanel>
   );
 }

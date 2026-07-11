@@ -4,7 +4,7 @@
 # integration testcontainers use (tests/integration/web/conftest.py uses the
 # alpine variant; debian here so pgvector installs from PGDG apt).
 # spec-037 requires PostgreSQL 16+ with PostGIS, pgvector, and uuid-ossp.
-FROM postgis/postgis:16-3.5
+FROM postgis/postgis:17-3.5
 
 # upgrade: postgis's 16.x line ships bullseye and rebuilds irregularly —
 # pulling bullseye-security at build time cures the fixable CVE set (94 of

@@ -38,7 +38,7 @@ Source = "https://github.com/bogdanscarwash/babylon"
 [tool.poetry.dependencies]
 pydantic = ">=2.10.3"
 numpy = ">=1.26.4"
-rustworkx = "^0.17.1"
+rustworkx = "^0.18.0"
 sqlalchemy = ">=2.0.36"
 pandas = ">=2.2.3"
 jsonschema = "^4.25.1"

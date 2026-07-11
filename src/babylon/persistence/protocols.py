@@ -376,39 +376,6 @@ class PostgresRuntimeExtensions(Protocol):
         """
         ...
 
-    def persist_traces(
-        self,
-        session_id: UUID,
-        tick: int,
-        trace_events: list[dict[str, Any]],
-    ) -> None:
-        """Bulk insert trace events to trace_log.
-
-        Called by TraceRecorder.flush() after tick completion.
-
-        Args:
-            session_id: Session scope.
-            tick: The tick number.
-            trace_events: List of structured trace event dicts.
-        """
-        ...
-
-    def create_session_partition(self, session_id: UUID) -> None:
-        """Create a trace_log partition for a new session.
-
-        Args:
-            session_id: Session to partition.
-        """
-        ...
-
-    def drop_session_partition(self, session_id: UUID) -> None:
-        """Drop a trace_log partition for a completed/archived session.
-
-        Args:
-            session_id: Session to clean up.
-        """
-        ...
-
     def export_session_to_parquet(
         self,
         session_id: UUID,
@@ -423,58 +390,6 @@ class PostgresRuntimeExtensions(Protocol):
         Returns:
             List of generated Parquet file paths.
         """
-        ...
-
-
-@runtime_checkable
-class TraceCollector(Protocol):
-    """Protocol for collecting execution trace events during tick computation.
-
-    Systems access the tracer through ServiceContainer or TickContext.
-    When trace_level is NONE, the implementation is a no-op stub.
-    """
-
-    def trace(
-        self,
-        system: str,
-        event: str,
-        data: dict[str, Any],
-        *,
-        level: TraceLevel = TraceLevel.DEBUG,
-        node_id: str | None = None,
-    ) -> None:
-        """Buffer a trace event (called during tick execution).
-
-        Events accumulate in memory. No I/O occurs.
-
-        Args:
-            system: Name of the engine system producing the event.
-            event: Event type (e.g., 'formula_eval', 'edge_mode_transition').
-            data: Structured event payload.
-            level: Minimum verbosity level required for this event.
-            node_id: Optional node reference for node-specific events.
-        """
-        ...
-
-    def flush(self, session_id: UUID, tick: int) -> None:
-        """Write buffered events to persistent storage.
-
-        Called AFTER tick computation completes.
-
-        Args:
-            session_id: Session scope for the trace data.
-            tick: The tick number.
-        """
-        ...
-
-    @property
-    def level(self) -> TraceLevel:
-        """The configured verbosity level for this collector."""
-        ...
-
-    @property
-    def buffer_size(self) -> int:
-        """Number of events currently buffered (for monitoring)."""
         ...
 
 
@@ -536,7 +451,6 @@ __all__ = [
     "PostgresRuntimeExtensions",
     "RuntimePersistence",
     "TickAlreadyResolved",
-    "TraceCollector",
     "TraceLevel",
     "VectorStoreProtocol",
 ]

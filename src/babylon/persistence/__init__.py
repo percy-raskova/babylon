@@ -29,13 +29,11 @@ from babylon.persistence.protocols import (
     MonotonicityViolationError,
     PostgresRuntimeExtensions,
     RuntimePersistence,
-    TraceCollector,
     TraceLevel,
     VectorStoreProtocol,
 )
 from babylon.persistence.runtime_db import RuntimeDatabase
 from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
-from babylon.persistence.trace_recorder import TraceRecorder
 
 __all__ = [
     "MonotonicityViolationError",
@@ -45,9 +43,7 @@ __all__ = [
     "RUNTIME_SCHEMA_DDL",
     "RuntimeDatabase",
     "RuntimePersistence",
-    "TraceCollector",
     "TraceLevel",
-    "TraceRecorder",
     "VectorStoreProtocol",
     "export_session_to_parquet",
     "purge_session",

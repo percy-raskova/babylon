@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import networkx as nx
 import pytest
@@ -1096,75 +1096,6 @@ class TestMetadata:
 
         result = runtime.get_metadata("scenario_name")
         assert result == "detroit_collapse"
-
-
-# ══════════════════════════════════════════════════════════════════════
-# T025: PersistenceObserver
-# ══════════════════════════════════════════════════════════════════════
-
-
-class TestPersistenceObserver:
-    """Tests for PersistenceObserver integration.
-
-    Uses pytest.importorskip to gracefully skip if the engine import chain
-    has issues unrelated to the persistence module.
-    """
-
-    @staticmethod
-    def _import_observer() -> type:
-        """Import PersistenceObserver, skipping on unrelated import errors."""
-        try:
-            from babylon.engine.observers.persistence_observer import (
-                PersistenceObserver,
-            )
-
-            return PersistenceObserver
-        except ImportError as e:
-            pytest.skip(f"PersistenceObserver import chain broken: {e}")
-
-    def test_observer_calls_persist_tick(self) -> None:
-        """PersistenceObserver.on_tick calls persist_tick on backend."""
-        PersistenceObserver = self._import_observer()
-        from babylon.persistence.protocols import RuntimePersistence
-
-        mock_persistence = MagicMock(spec=RuntimePersistence)
-        observer = PersistenceObserver(
-            persistence=mock_persistence,
-            session_id=uuid4(),
-        )
-
-        from tests.factories import DomainFactory
-
-        factory = DomainFactory()
-        state = factory.create_world_state()
-
-        observer.on_tick(previous_state=state, new_state=state)
-
-        mock_persistence.persist_tick.assert_called_once()
-
-    def test_observer_flushes_tracer(self) -> None:
-        """PersistenceObserver flushes TraceRecorder after persist."""
-        PersistenceObserver = self._import_observer()
-        from babylon.persistence.protocols import RuntimePersistence, TraceCollector
-
-        mock_persistence = MagicMock(spec=RuntimePersistence)
-        mock_tracer = MagicMock(spec=TraceCollector)
-        sid = uuid4()
-
-        observer = PersistenceObserver(
-            persistence=mock_persistence,
-            session_id=sid,
-            tracer=mock_tracer,
-        )
-
-        from tests.factories import DomainFactory
-
-        factory = DomainFactory()
-        state = factory.create_world_state()
-
-        observer.on_tick(previous_state=state, new_state=state)
-
-        mock_tracer.flush.assert_called_once_with(sid, state.tick)
 
 
 # ══════════════════════════════════════════════════════════════════════

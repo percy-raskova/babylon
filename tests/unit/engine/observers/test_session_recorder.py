@@ -7,12 +7,12 @@ queries (ADR030 + Feature 037).
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 from uuid import UUID
 
 from babylon.engine.observers.session_recorder import SessionRecorder
 from babylon.models.config import SimulationConfig
-from babylon.persistence.protocols import RuntimePersistence, TraceCollector, TraceLevel
+from babylon.persistence.protocols import RuntimePersistence
 from tests.factories import DomainFactory
 
 _TEST_SESSION_ID = UUID("12345678-1234-5678-1234-567812345678")
@@ -244,26 +244,6 @@ class TestOnSimulationEnd:
             if c[0] == ("status", "completed")
         ]
         assert len(completed_calls) == 1
-
-    def test_flushes_tracer_on_end(self) -> None:
-        """Should flush tracer when simulation ends."""
-        mock_persistence = _create_mock_persistence()
-        mock_tracer = MagicMock(spec=TraceCollector)
-        type(mock_tracer).level = PropertyMock(return_value=TraceLevel.DEBUG)
-        type(mock_tracer).buffer_size = PropertyMock(return_value=0)
-
-        recorder = SessionRecorder(
-            persistence=mock_persistence,
-            session_id=_TEST_SESSION_ID,
-            tracer=mock_tracer,
-        )
-        initial = _create_world_state()
-        config = _create_config()
-
-        recorder.on_simulation_start(initial, config)
-        recorder.on_simulation_end(initial)
-
-        assert mock_tracer.flush.called
 
 
 class TestPersistTickDelegation:

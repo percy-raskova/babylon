@@ -94,28 +94,6 @@ class TestCreateSession:
         assert "INSERT INTO game_session" in sql
         assert "RETURNING id" in sql
 
-    def test_creates_trace_partition_when_enabled(
-        self,
-        runtime: PostgresRuntime,
-        mock_cursor: MagicMock,
-        mock_conn: MagicMock,
-    ) -> None:
-        """create_session creates trace partition when trace_level != NONE."""
-        new_id = uuid4()
-        mock_cursor.fetchone.return_value = {"id": new_id}
-
-        runtime.create_session(
-            scenario="test",
-            config_json={},
-            game_defines_json={},
-            rng_seed=1,
-            trace_level="DEBUG",
-        )
-
-        # The second conn.execute call is for the partition DDL
-        # (first is the INSERT game_session)
-        assert mock_conn.execute.call_count >= 1
-
     def test_no_partition_when_trace_none(
         self,
         runtime: PostgresRuntime,

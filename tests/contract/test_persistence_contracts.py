@@ -15,8 +15,6 @@ import pytest
 
 from babylon.persistence.protocols import (
     RuntimePersistence,
-    TraceCollector,
-    TraceLevel,
     VectorStoreProtocol,
 )
 from babylon.topology.graph import BabylonGraph
@@ -69,25 +67,6 @@ class TestRuntimePersistenceCompliance:
                 system_timings={"ImperialRentSystem": 12},
                 session_id=session_id,
             )
-
-
-@pytest.mark.unit
-class TestTraceCollectorCompliance:
-    """Verify TraceCollector implementations via isinstance()."""
-
-    def test_trace_recorder_satisfies_protocol(self) -> None:
-        """TraceRecorder satisfies TraceCollector protocol."""
-        from babylon.persistence.trace_recorder import TraceRecorder
-
-        recorder = TraceRecorder(level=TraceLevel.DEBUG)
-        assert isinstance(recorder, TraceCollector)
-
-    def test_noop_tracer_satisfies_protocol(self) -> None:
-        """NoopTracer (level=NONE) satisfies TraceCollector protocol."""
-        from babylon.persistence.trace_recorder import TraceRecorder
-
-        noop = TraceRecorder(level=TraceLevel.NONE)
-        assert isinstance(noop, TraceCollector)
 
 
 @pytest.mark.unit

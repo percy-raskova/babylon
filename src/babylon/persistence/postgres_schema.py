@@ -352,22 +352,6 @@ CREATE TABLE IF NOT EXISTS infrastructure_link_state (
 )
 """
 
-# ─── Layer 5: Trace Logging ─────────────────────────────────────────
-
-TRACE_LOG_DDL = """
-CREATE TABLE IF NOT EXISTS trace_log (
-    id              BIGSERIAL,
-    session_id      UUID NOT NULL,
-    tick            INTEGER NOT NULL,
-    system_name     VARCHAR(48) NOT NULL,
-    level           VARCHAR(8) NOT NULL,
-    event           VARCHAR(48) NOT NULL,
-    node_id         VARCHAR(64),
-    data            JSONB NOT NULL DEFAULT '{}'::jsonb,
-    ts              TIMESTAMPTZ NOT NULL DEFAULT now()
-) PARTITION BY LIST (session_id)
-"""
-
 # ─── Layer 6: Semantic Search (pgvector) ────────────────────────────
 
 DOCUMENT_CHUNK_DDL = """
@@ -1026,8 +1010,6 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     HEX_R8_LINEAR_FEATURES_REFERENCE_DDL,
     # Layer 4: Infrastructure
     INFRASTRUCTURE_LINK_STATE_DDL,
-    # Layer 5: Trace
-    TRACE_LOG_DDL,
     # Layer 6: Semantic
     DOCUMENT_CHUNK_DDL,
     # Layer 7: Spec 037 Domain (static)
@@ -1055,36 +1037,9 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     *SPEC037_INDEXES_DDL,
 ]
 
-# Partition management DDL templates
-
-TRACE_PARTITION_CREATE_TEMPLATE = """
-CREATE UNLOGGED TABLE IF NOT EXISTS trace_log_{session_hex}
-    PARTITION OF trace_log
-    FOR VALUES IN ('{session_id}')
-"""
-
-TRACE_PARTITION_DROP_TEMPLATE = """
-DROP TABLE IF EXISTS trace_log_{session_hex}
-"""
-
-
-def get_trace_partition_name(session_id_hex: str) -> str:
-    """Return the partition table name for a given session.
-
-    Args:
-        session_id_hex: Session UUID as hex string (no dashes).
-
-    Returns:
-        Partition table name like ``trace_log_abc123...``.
-    """
-    return f"trace_log_{session_id_hex}"
-
 
 __all__ = [
     "INDEXES_DDL",
     "POSTGRES_SCHEMA_DDL",
     "SPEC037_INDEXES_DDL",
-    "TRACE_PARTITION_CREATE_TEMPLATE",
-    "TRACE_PARTITION_DROP_TEMPLATE",
-    "get_trace_partition_name",
 ]

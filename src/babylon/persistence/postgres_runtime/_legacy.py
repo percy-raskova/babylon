@@ -28,11 +28,7 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from babylon.persistence.postgres_schema import (
-    POSTGRES_SCHEMA_DDL,
-    TRACE_PARTITION_CREATE_TEMPLATE,
-    TRACE_PARTITION_DROP_TEMPLATE,
-)
+from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL
 from babylon.persistence.protocols import MonotonicityViolationError, TickAlreadyResolved
 from babylon.persistence.serialization import (
     canonical_event_json,
@@ -927,60 +923,6 @@ class PostgresRuntime:
             )
             return [dict(row) for row in cur.fetchall()]
 
-    def persist_traces(
-        self,
-        session_id: UUID,
-        tick: int,
-        trace_events: list[dict[str, Any]],
-    ) -> None:
-        """Bulk insert trace events to trace_log."""
-        if not trace_events:
-            return
-
-        with self._pool.connection() as conn, conn.cursor() as cur:
-            for i in range(0, len(trace_events), _BATCH_SIZE):
-                batch = trace_events[i : i + _BATCH_SIZE]
-                cur.executemany(
-                    """
-                        INSERT INTO trace_log
-                            (session_id, tick, system_name, level, event, node_id, data)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """,
-                    [
-                        (
-                            session_id,
-                            tick,
-                            t["system"],
-                            t.get("level", "DEBUG"),
-                            t["event"],
-                            t.get("node_id"),
-                            json.dumps(t.get("data", {})),
-                        )
-                        for t in batch
-                    ],
-                )
-
-    def create_session_partition(self, session_id: UUID) -> None:
-        """Create a trace_log partition for a new session."""
-        session_hex = session_id.hex
-        ddl = TRACE_PARTITION_CREATE_TEMPLATE.format(
-            session_hex=session_hex,
-            session_id=session_id,
-        )
-        with self._pool.connection() as conn:
-            conn.autocommit = True
-            conn.execute(ddl)
-        logger.info("Created trace partition for session %s", session_id)
-
-    def drop_session_partition(self, session_id: UUID) -> None:
-        """Drop a trace_log partition for a completed session."""
-        session_hex = session_id.hex
-        ddl = TRACE_PARTITION_DROP_TEMPLATE.format(session_hex=session_hex)
-        with self._pool.connection() as conn:
-            conn.autocommit = True
-            conn.execute(ddl)
-        logger.info("Dropped trace partition for session %s", session_id)
-
     def export_session_to_parquet(
         self,
         session_id: UUID,
@@ -1057,9 +999,8 @@ class PostgresRuntime:
                 raise RuntimeError(msg)
             session_id: UUID = result["id"]
 
-        if trace_level != "NONE":
-            self.create_session_partition(session_id)
-
+        # trace_level is stored on the row as inert metadata; the trace_log
+        # partition machinery it once gated was retired (fork ledger F10).
         return session_id
 
     def ensure_session(self, session_id: UUID, *, scenario: str = "headless") -> None:

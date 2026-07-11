@@ -40,7 +40,6 @@ from uuid import UUID
 from babylon.persistence.protocols import (
     PostgresRuntimeExtensions,
     RuntimePersistence,
-    TraceCollector,
 )
 
 if TYPE_CHECKING:
@@ -67,7 +66,6 @@ class SessionRecorder:
     Attributes:
         _persistence: Backend implementing RuntimePersistence.
         _session_id: Session UUID for data scoping.
-        _tracer: Optional trace collector for execution tracing.
         _started: Whether simulation has started (for lifecycle validation).
     """
 
@@ -75,18 +73,15 @@ class SessionRecorder:
         self,
         persistence: RuntimePersistence,
         session_id: UUID,
-        tracer: TraceCollector | None = None,
     ) -> None:
         """Initialize the session recorder.
 
         Args:
             persistence: Backend implementing RuntimePersistence protocol.
             session_id: Session UUID for data scoping.
-            tracer: Optional trace collector for execution tracing.
         """
         self._persistence = persistence
         self._session_id = session_id
-        self._tracer = tracer
         self._started = False
 
     @property
@@ -147,8 +142,6 @@ class SessionRecorder:
         self._persistence.set_metadata("status", "completed")
 
         # Flush any remaining traces
-        if self._tracer is not None:
-            self._tracer.flush(self._session_id, final_state.tick)
 
         logger.debug(
             "SessionRecorder ended: session=%s, final_tick=%d",
@@ -175,10 +168,6 @@ class SessionRecorder:
         # Persist extended subsystem state if backend supports it
         if isinstance(self._persistence, PostgresRuntimeExtensions):
             self._persist_extended_state(state, graph)
-
-        # Flush tracer after persist
-        if self._tracer is not None:
-            self._tracer.flush(self._session_id, state.tick)
 
         logger.debug("SessionRecorder recorded tick %d", state.tick)
 

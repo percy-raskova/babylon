@@ -1,0 +1,19 @@
+# pip-audit ignore policy (Constitution III.11 — Loud Failure).
+#
+# Every entry in [[ignore]] MUST carry:
+#   id       - the vulnerability identifier (e.g. a CVE or GHSA id) passed to
+#              `pip-audit --ignore-vuln`
+#   reason   - non-empty justification for why the finding is suppressed
+#   expires  - an ISO date (YYYY-MM-DD); the last day the ignore is valid
+#
+# tools/run_pip_audit.py HARD-FAILS (exit 2) on any entry missing id/reason,
+# any entry with an unparseable expires date, and any entry that has expired
+# relative to today's date. This is deliberate: ignores can never rot
+# silently. When an entry expires, the quarterly re-review either renews it
+# (bump expires, keep or update reason) or removes it because the
+# vulnerability is now fixed upstream.
+
+[[ignore]]
+id = "CVE-2026-3219"
+reason = "torch/transformers dependency chain — no fixed release exists yet (verified 2026-07-11); quarterly re-review forced by expiry"
+expires = "2026-10-01"

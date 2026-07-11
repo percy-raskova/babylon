@@ -1,9 +1,13 @@
 # Dependabot configuration for Babylon
 # Docs: https://docs.github.com/en/code-security/dependabot
 #
-# Workflow: Dependabot PRs target `dev` branch. After CI passes,
-# minor/patch updates auto-merge. Major updates require manual review.
-# BD squash-merges `dev` to `main` for releases.
+# Promotion model (Program 15, Phase 3): Dependabot never opens PRs against
+# `main`. Every ecosystem below targets `dev`. `dev`'s required-checks
+# ruleset is what makes `.github/workflows/dependabot-automerge.yml`
+# truthful — a PR can only auto-merge once it has actually satisfied the
+# checks the ruleset requires, not merely because the workflow ran.
+# `main` never receives a Dependabot PR directly; it only receives changes
+# via the fast-forward promotion (`tools/promote.sh`) once `dev` is green.
 
 version: 2
 updates:
@@ -71,3 +75,68 @@ updates:
       github-actions-all:
         patterns:
           - "*"
+
+  # ==========================================================================
+  # Frontend dependencies (npm)
+  # ==========================================================================
+  - package-ecosystem: "npm"
+    directory: "/src/frontend"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "fix(deps)"
+      prefix-development: "chore(deps-dev)"
+    labels:
+      - "dependencies"
+      - "frontend"
+    groups:
+      # Group all minor/patch updates into a single PR (reduces noise)
+      frontend-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Security updates get their own group (higher priority)
+      frontend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ==========================================================================
+  # Postgres base image (Docker) — monthly: base-image bumps are deliberate,
+  # engine-adjacent events (see the Phase-3 postgis bump protocol).
+  # ==========================================================================
+  - package-ecosystem: "docker"
+    directory: "/docker/postgres"
+    target-branch: "dev"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # ==========================================================================
+  # Ansible deploy tooling (pip) — monthly: infra tooling, not runtime deps.
+  # ==========================================================================
+  - package-ecosystem: "pip"
+    directory: "/deploy/ansible"
+    target-branch: "dev"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "America/Chicago"
+    labels:
+      - "dependencies"
+      - "infra"

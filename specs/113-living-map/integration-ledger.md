@@ -6,28 +6,29 @@ owner item.
 
 ## After Wave 2
 
-- [ ] VERIFY Lane C unwraps the explain envelope: live payload is
-      `{status, data: {metric, scope, value, formula, inputs, constants}, tick, session_id}`
-      (verified live 2026-07-11 vs session 5ad0c6ae, tick 0: exploitation_rate 0.0,
-      recursive value_extraction_ratio ref present). MSW fixtures must mirror the
-      envelope.
+- [x] Lane C unwraps the explain envelope — ExplainResponse types mirror
+      `_explain_result_to_dict` + MSW fixtures; live payload confirmed 2026-07-11 vs
+      session 5ad0c6ae (exploitation_rate 0.0 @ tick 0, recursive
+      value_extraction_ratio ref).
+- [x] `narrationPanel` registered (TAKEOVER_PANEL_KEYS + PanelsSlice) + `useNarration`
+      hook + EventTray narrator strip — commit `0cc2f38a`.
+- [~] `NarrationBlock` mounts: EventTray ✓; chronicle/endgame + wire strip → Wave 3
+      SKIN-MENUS; county InspectionCard section → deferred (needs fips↔beat adapter,
+      queue for Phase D/owner).
+- [ ] Three-channel critical events (bible §5.2): map-anchored cue for criticals —
+      post-Wave-3 polish (event→geo ref data exists; cue layer is map-side).
+- [x] `inspectSlice` tick refetch: C used `api.subscribe` from its own slice file;
+      unit-tested.
+- [x] mapSlice default-framing flip residue: MapStage test fixed by orchestrator in
+      the wave-2 commit; C decoupled mapSlice.test from B's DEFAULT_LENS.
+- [~] `region-dock` / `region-bottomstrip` placements → Lane G rewriting real-loop
+      assertions in Wave 3; live validation in Phase V.
+- [~] TopBar StatChip metric props → Wave 3 SKIN-CHROME (chips click-ready).
+- [ ] `lib/inspectorMapping.ts` absorb → Wave 3 Lane G.
 
-- [ ] Register `narrationPanel` in `store/slices/panels/index.ts` + expose via store
-      (Lane N ships the file unregistered by design).
-- [ ] Mount `NarrationBlock` slots: wire cards (`takeovers/wire`), `EventToasts`,
-      county `InspectionCard` (via a narration section), `ChronicleTakeover` endgame.
-      Slot is props-driven, so each mount is a small local edit.
-- [ ] Three-channel critical events (bible §5.2): map-anchored visual cue for
-      critical events — Lane E ships the event→geo ref; the map cue layer belongs
-      with Lane B's files; wire in Wave 3/polish.
-- [ ] `worldSlice` ↔ `inspectSlice` top-frame refetch on tick: verify Lane C's
-      chosen mechanism (subscribe vs fan-out) actually fires under the orchestrator.
-- [ ] Confirm Lane C's mapSlice default-framing flip didn't strand Lane B tests
-      that assumed 'hex' (both lanes told; verify anyway).
-- [ ] `region-dock` / `region-bottomstrip` testid placements (Lane A best-effort)
-      re-validated against real-loop.spec.ts on a live backend (Phase V), then Lane G
-      rewrites the spec's dispersal-dependent assertions (Events button now opens
-      EventTray, not BottomStrip).
+NOTE: the "Juice Pass" inventory below predates DESIGN_BIBLE §9b (The Installer,
+owner ruling) — §9b's re-aim SUPERSEDES the gradient/glow items; the performance
+budget remains binding law.
 
 ## Phase D (design/reskin) queue
 

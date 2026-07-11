@@ -32,9 +32,15 @@ revolution, liberation movements, political collapse, instability.
 | 0 | Worktree isolation, branch, deps | ✅ 2026-07-11 |
 | R | 21-agent research fan-out + Design Bible synthesis | ✅ 2026-07-11 (2.65M tokens, 0 errors) |
 | A | Architecture (map-first recomposition, 8 lanes) | ✅ spec committed `012dcea3` |
-| D | ds-sync design loop: game chrome designed-in-code, synced to "Babylon Cockpit" design project, graded, iterated | pending |
-| I | Implementation lanes: Carto → A → {B,C,E,F} ∥ D → G | pending |
-| V | Verification: npm check, Playwright vs live backend, bible §10 gates, qa:regression certify | pending |
+| I wave 1 | Carto + A(shell) + D(backend) | ✅ `577f62ec`/`0d7b269f`/`ae2c5fb4`; explain verified LIVE vs seeded session |
+| I wave 2 | B(lenses+political map) + C(InspectionStack) + E(time/events) + F(outliner/dock) + N(narration) | ✅ one wave commit; 706/706 vitest; narration integrated `0cc2f38a` |
+| I wave 3 | SKIN-CHROME + SKIN-MENUS (bible §9b The Installer) + G(consolidation) | ⏳ running |
+| D | ds-sync: new chrome → "Babylon Cockpit" project, graded renders | pending (post-skin) |
+| V | Live backend run + screenshots, Playwright vs live, bible §10 gates, wrap-up docs | env READY (db migrated, session 5ad0c6ae seeded) |
+
+**Owner aesthetic ruling (2026-07-11): DESIGN_BIBLE §9b "The Installer"** — Guix-installer
+TUI dialog anatomy in the ksbc-new Kitty palette (crimson/gold on `#1a0000`); juice pass
+inventory + performance budget in the integration ledger.
 
 ## Key decisions (Percy-delegated, recorded)
 

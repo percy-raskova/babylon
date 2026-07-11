@@ -46,9 +46,20 @@ CHECKS_JSON=$(gh api "repos/{owner}/{repo}/commits/${DEV_SHA}/check-runs" --pagi
 # minutes after a manifest-heavy push (lockfile/pyproject churn), and it recurs
 # on GitHub's own schedule — so it may sit PENDING, or re-run, long after our
 # real CI has gone green. Today it blocked a promotion for exactly that reason.
-# Filter it out of the check-run set ONCE here so the three evaluations below
-# (TOTAL / PENDING / BAD) reason only about our actual CI jobs.
-CI_CHECKS=$(echo "$CHECKS_JSON" | jq '[.check_runs[] | select(.name != "Dependabot")]')
+#
+# Advisory jobs are the second class we must drop. main.yml's `continue-on-error`
+# jobs (AI Tests, Image Scan) are DESIGNED not to gate — but GitHub still records
+# their failing outcome as a `failure` check-run conclusion. When main.yml is
+# dispatched on dev for a pre-promotion proving run, those check-runs land on dev
+# HEAD, and a permanently-red advisory (e.g. Image Scan's postgis-bullseye CVEs,
+# owner item 45) would wedge gate 2 forever. Our Loud Failure convention puts the
+# word "advisory" in every such job name ("AI Tests (advisory — non-deterministic)",
+# "Image Scan (trivy — advisory until postgis bump)"), so that word is a reliable,
+# self-documenting filter — exactly parallel to the Dependabot case. No blocking
+# job name contains it; every advisory one does.
+CI_CHECKS=$(echo "$CHECKS_JSON" | jq '[.check_runs[]
+  | select(.name != "Dependabot")
+  | select(.name | ascii_downcase | contains("advisory") | not)]')
 
 TOTAL=$(echo "$CI_CHECKS" | jq 'length')
 if [ "$TOTAL" -eq 0 ]; then

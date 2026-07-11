@@ -18,7 +18,20 @@ vi.mock("@deck.gl/layers", () => {
   return { GeoJsonLayer };
 });
 
+// Hermetic double for the FillStyleExtension so the unit test never loads @deck.gl/core
+// (no WebGL device). tsc still checks political.ts against the real extension types.
+vi.mock("@deck.gl/extensions", () => {
+  class FillStyleExtension {
+    opts: Record<string, unknown>;
+    constructor(opts: Record<string, unknown> = {}) {
+      this.opts = opts;
+    }
+  }
+  return { FillStyleExtension };
+});
+
 import { buildPoliticalLayers, type PolityClaim } from "./political";
+import { STRIPE_PATTERN_NAME, STRIPE_PATTERN_SCALE } from "./stripePattern";
 import type { CountyTopology } from "@/lib/geo/topology";
 import miniCounties from "@/lib/geo/__fixtures__/mini-counties.topojson.json";
 import { countyFeatures } from "@/lib/geo/topology";
@@ -148,5 +161,108 @@ describe("buildPoliticalLayers", () => {
   it("no claims and no states/counties data still returns exactly the two base layers", () => {
     const layers = buildPoliticalLayers({ topology, counties, states, claims: [] });
     expect(layers).toHaveLength(2);
+  });
+});
+
+// --- STRIPE lane: TRUE diagonal-stripe contested fill (bible §2.1 layer 3) ---------------
+
+describe("buildPoliticalLayers — contested TRUE striping", () => {
+  const twoClaimsOneContested: PolityClaim[] = [
+    { polityId: "polity-a", name: "A", color: [255, 0, 0, 200], memberFips: ["00001", "00002"] },
+    { polityId: "polity-b", name: "B", color: [0, 255, 0, 200], memberFips: ["00002", "00003"] },
+  ];
+
+  function contestedLayer() {
+    const layers = buildPoliticalLayers({
+      topology,
+      counties,
+      states,
+      claims: twoClaimsOneContested,
+    });
+    return asMock(layers.find((l) => asMock(l).id === "political-contested-counties"));
+  }
+
+  it("applies a FillStyleExtension configured for pattern fill", () => {
+    const extensions = contestedLayer().props.extensions as { opts: { pattern: boolean } }[];
+    expect(extensions).toHaveLength(1);
+    expect(extensions[0]?.opts.pattern).toBe(true);
+  });
+
+  it("supplies a generated PNG atlas, mapping, and mask (not a checked-in sprite)", () => {
+    const props = contestedLayer().props;
+    expect(props.fillPatternAtlas).toMatch(/^data:image\/png;base64,/);
+    expect(props.fillPatternMask).toBe(true);
+    const mapping = props.fillPatternMapping as Record<string, unknown>;
+    expect(mapping[STRIPE_PATTERN_NAME]).toBeDefined();
+  });
+
+  it("names the stripe pattern for every contested feature at the tuned world scale", () => {
+    const props = contestedLayer().props;
+    const getFillPattern = props.getFillPattern as () => string;
+    expect(getFillPattern()).toBe(STRIPE_PATTERN_NAME);
+    expect(props.getFillPatternScale).toBe(STRIPE_PATTERN_SCALE);
+    const triggers = props.updateTriggers as Record<string, unknown>;
+    expect(triggers.getFillPattern).toBeDefined();
+  });
+});
+
+// --- SHIMMER lane: deck-native claim-redraw transition + attributable cause (bible §2.2) -
+
+describe("buildPoliticalLayers — claim-redraw shimmer", () => {
+  const claim: PolityClaim = {
+    polityId: "polity-a",
+    name: "A",
+    color: [255, 0, 0, 200],
+    memberFips: ["00001", "00002"],
+  };
+
+  function layerProps(claims: PolityClaim[], id: string) {
+    const layers = buildPoliticalLayers({ topology, counties, states, claims });
+    return asMock(layers.find((l) => asMock(l).id === id)).props;
+  }
+
+  it("gives the polity fill a deck-native color transition of >= 600ms", () => {
+    const transitions = layerProps([claim], "political-polity-fill-polity-a").transitions as Record<
+      string,
+      number
+    >;
+    expect(transitions.getFillColor).toBeGreaterThanOrEqual(600);
+  });
+
+  it("gives the claim border deck-native color + width transitions of >= 600ms", () => {
+    const transitions = layerProps([claim], "political-polity-border-polity-a")
+      .transitions as Record<string, number>;
+    expect(transitions.getLineColor).toBeGreaterThanOrEqual(600);
+    expect(transitions.getLineWidth).toBeGreaterThanOrEqual(600);
+  });
+
+  it("renders a settled claim border in the claim's own colour (no redrawCause)", () => {
+    const props = layerProps([claim], "political-polity-border-polity-a");
+    expect(props.getLineColor).toEqual(claim.color);
+  });
+
+  it("renders the border in a distinct redraw accent while a redrawCause is live", () => {
+    const redrawing: PolityClaim = { ...claim, redrawCause: "liberation:detroit" };
+    const props = layerProps([redrawing], "political-polity-border-polity-a");
+    expect(props.getLineColor).not.toEqual(claim.color);
+  });
+
+  it("threads the redrawCause into updateTriggers so a wire headline can name the cause", () => {
+    const redrawing: PolityClaim = { ...claim, redrawCause: "liberation:detroit" };
+    const triggers = layerProps([redrawing], "political-polity-border-polity-a").updateTriggers as {
+      getLineColor: unknown[];
+    };
+    expect(triggers.getLineColor).toContain("liberation:detroit");
+  });
+
+  it("changes the fill updateTrigger signature when membership changes (fires the redraw)", () => {
+    const before = layerProps([claim], "political-polity-fill-polity-a").updateTriggers as {
+      getFillColor: unknown[];
+    };
+    const grown: PolityClaim = { ...claim, memberFips: ["00001", "00002", "00003"] };
+    const after = layerProps([grown], "political-polity-fill-polity-a").updateTriggers as {
+      getFillColor: unknown[];
+    };
+    expect(after.getFillColor).not.toEqual(before.getFillColor);
   });
 });

@@ -23,8 +23,14 @@ function isCountyPolygon(g: TopoGeometryObject<CountyProperties>): g is CountyGe
   return g.type === "Polygon" || g.type === "MultiPolygon";
 }
 
-/** Stable, order-independent cache key for a polity's county membership. */
-function membershipKey(fipsList: string[]): string {
+/**
+ * Stable, order-independent cache key for a polity's county membership. Also the canonical
+ * membership *signature* the political layer feeds into deck.gl `updateTriggers` (STRIPE
+ * lane): because it is sorted + de-duplicated + string-valued, two snapshots with the same
+ * membership compare equal by `===` (no spurious redraw), and any county changing hands
+ * produces a different string (fires the border-redraw transition).
+ */
+export function membershipKey(fipsList: string[]): string {
   return Array.from(new Set(fipsList)).sort().join(",");
 }
 

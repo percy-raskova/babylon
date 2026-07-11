@@ -26,33 +26,50 @@ export * from "@/components/bbl/BblData";
 export * from "@/components/bbl/BblLabel";
 export * from "@/components/bbl/Sparkline";
 
+// chrome — spec-113 Living Map floating chrome (Installer/newt anatomy).
+// installerKit is a util, not a component — deliberately not exported.
+export * from "@/components/chrome/ActionDock";
+export * from "@/components/chrome/BottomDrawer";
+export * from "@/components/chrome/CriticalEventModal";
+export * from "@/components/chrome/EventToasts";
+export * from "@/components/chrome/EventTray";
+export * from "@/components/chrome/FloatingPanel";
+export * from "@/components/chrome/KeyHints";
+export * from "@/components/chrome/ObjectivesTray";
+export * from "@/components/chrome/OutlinerOverlay";
+export * from "@/components/chrome/SpeedControls";
+export * from "@/components/chrome/TopBar";
+
 // events
 export * from "@/components/events/EventsFeed";
 
-// inspector
-export * from "@/components/inspector/ConsciousnessBreakdown";
-export * from "@/components/inspector/InspectorPanel";
-export * from "@/components/inspector/Stat";
+// inspect — spec-113 InspectionStack drill-down family (replaces inspector/)
+export * from "@/components/inspect/FormulaCard";
+export * from "@/components/inspect/InspectionCard";
+export * from "@/components/inspect/InspectionStack";
+export * from "@/components/inspect/ValueRow";
 
-// map furniture
-export * from "@/components/map/DeckGLMap";
+// map furniture — DeckGLMap/MapStage stay OUT (WebGL doesn't render in the
+// design tool); the spec-113 control cluster syncs instead.
+export * from "@/components/map/FramingSelector";
 export * from "@/components/map/HexTooltip";
+export * from "@/components/map/MapControls";
 export * from "@/components/map/MapLegend";
-export * from "@/components/map/MapModeSelector";
+export * from "@/components/map/MapLensBar";
+
+// narration — the one reusable AI-narration slot (Program 16 Lane N)
+export * from "@/components/narration/NarrationBlock";
 
 // objectives
 export * from "@/components/objectives/ObjectivesTracker";
 
-// shell — the cockpit chrome
+// shell — the cockpit chrome (AppShell embeds MapStage/DeckGLMap — WebGL
+// renders blank in headless capture; the surrounding chrome is what syncs)
 export * from "@/components/shell/AppShell";
-export * from "@/components/shell/BottomStrip";
-export * from "@/components/shell/MapPanel";
 export * from "@/components/shell/Outliner";
 export * from "@/components/shell/OutlinerRow";
 export * from "@/components/shell/OutlinerSection";
-export * from "@/components/shell/RightDock";
 export * from "@/components/shell/StatChip";
-export * from "@/components/shell/StatusBar";
 export * from "@/components/shell/TimeControls";
 
 // takeovers — full-screen overlays over the persistent shell

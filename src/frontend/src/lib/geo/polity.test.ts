@@ -6,7 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { mergePolity, mergePolityOutline, resetPolityCache } from "./polity";
+import { membershipKey, mergePolity, mergePolityOutline, resetPolityCache } from "./polity";
 import type { CountyTopology } from "./topology";
 import miniCounties from "./__fixtures__/mini-counties.topojson.json";
 
@@ -74,6 +74,18 @@ describe("mergePolityOutline", () => {
     const a = mergePolityOutline(topo, ["00001", "00002"]);
     const b = mergePolityOutline(topo, ["00001", "00002"]);
     expect(b).toBe(a);
+  });
+});
+
+describe("membershipKey", () => {
+  it("is order- and duplicate-independent (the same membership yields the same signature)", () => {
+    expect(membershipKey(["00002", "00001", "00001"])).toBe(membershipKey(["00001", "00002"]));
+  });
+
+  it("changes when a county joins or leaves — the border-redraw trigger the map keys on", () => {
+    const before = membershipKey(["00001", "00002"]);
+    const after = membershipKey(["00001", "00002", "00003"]);
+    expect(after).not.toBe(before);
   });
 });
 

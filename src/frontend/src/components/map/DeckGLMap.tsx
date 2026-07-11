@@ -45,6 +45,8 @@ import {
 } from "@/components/map/mapLensLayers";
 import { hullPolygonForTerritories } from "@/components/map/mapLensGeometry";
 import { buildPoliticalLayers, type PolityClaim } from "@/components/map/layers/political";
+import { resolvePulseTargets, useCriticalPulses } from "@/components/map/layers/criticalPulse";
+import { useStore } from "@/store";
 import {
   loadCountyTopology,
   loadStateTopology,
@@ -758,6 +760,21 @@ export function DeckGLMap({
   const balkanization = mapData?.metadata?.balkanization ?? null;
   const availableMetrics = useMemo(() => availableMetricsFromMapData(mapData ?? null), [mapData]);
 
+  // Critical-event map pulse (Lane PULSE, DESIGN_BIBLE.md §5.2's third
+  // channel). This is the ONE place DeckGLMap reaches into the store — it is
+  // otherwise a controlled/presentational component (spec-110 B2/B3) — because
+  // MapStage's DeckGLMap contract is frozen (architecture §3.3, so it can't
+  // thread a new prop) yet the live classified critical stream lives on
+  // eventsSlice. Each new critical event with a resolvable geography fires a
+  // one-shot crimson ring; `useCriticalPulses` owns the lifetime and holds a
+  // stable-empty layer list while nothing is rupturing (stability contract).
+  const criticalToasts = useStore((s) => s.events.toasts);
+  const pulseTargets = useMemo(
+    () => resolvePulseTargets(criticalToasts, territories),
+    [criticalToasts, territories],
+  );
+  const pulseLayers = useCriticalPulses(pulseTargets);
+
   // Political cartography base layer (Lane Carto, spec-113 §7) — de jure
   // county hairlines + state borders, de facto polity fills — see
   // `usePoliticalLayers`'s docstring.
@@ -885,6 +902,13 @@ export function DeckGLMap({
     politicalLayers,
   ]);
 
+  // Critical-event pulses ride ABOVE the base map so the rupture cue is never
+  // occluded by fills/hulls. `pulseLayers` is a stable-empty array at rest
+  // (memoized in `useCriticalPulses`), so this memo — and the deck.gl layer
+  // list it feeds — is referentially unchanged while nothing is rupturing
+  // (DeckGLMap's render/stability contract, architecture §3.3).
+  const allLayers = useMemo(() => [...layers, ...pulseLayers], [layers, pulseLayers]);
+
   return (
     <div className="relative flex h-full flex-col">
       <MapControls
@@ -906,7 +930,7 @@ export function DeckGLMap({
         <DeckGL
           initialViewState={INITIAL_VIEW_STATE}
           controller={true}
-          layers={layers}
+          layers={allLayers}
           onHover={(info) => setHoverInfo(resolveHoverInfo(info, framing))}
           onClick={(info) => handleMapClick(info, framing, onTerritoryClick)}
           style={{ position: "relative", width: "100%", height: "100%" }}

@@ -22,23 +22,46 @@
  * it, and Lane B already has the topology in hand (it drives `MapLensBar`'s framing and
  * therefore already loads `lib/geo/topology.ts`).
  *
- * DEVIATION (noted per the architecture's own escape hatch — "true striping deferred to
- * the design phase — note it"): contested counties render as a distinct desaturated fill
- * + differently-colored border, not a true dashed/hatched stroke — `GeoJsonLayer` has no
- * native dash support (that needs `@deck.gl/extensions`' `PathStyleExtension`, a new
- * dependency outside this lane's package.json ownership, which is scoped to
- * `topojson-client` only). Also DEVIATION: "de facto != de jure" contest detection has no
- * de jure baseline available to a pure function with these inputs, so a county is treated
- * as contested when it appears in more than one claim's `memberFips` (an overlap proxy
- * computable purely from the given claims) — Lane B/D may replace this with a real
- * de-jure-baseline signal once that data reaches the client; the caller can always pass
- * `showContested: false` to suppress this layer entirely in the meantime.
+ * STRIPE lane (Wave 4, DESIGN_BIBLE.md §2.1 layer 3 + §6): contested counties now render
+ * with a TRUE diagonal-stripe fill (the CK3 hatch convention), replacing the earlier
+ * desaturated-fill-plus-outline proxy. The hatch is drawn by `@deck.gl/extensions`'
+ * `FillStyleExtension` — already a dependency — masked against a generated PNG atlas from
+ * `./stripePattern` (no binary asset). A gold contest border is kept over the hatch.
+ *
+ * SHIMMER lane (Wave 4, DESIGN_BIBLE.md §2.2 "geometry never animates; claims do"): the
+ * polity fill + claim-border layers carry a deck-native attribute `transitions` block, so
+ * when a claim's `memberFips` changes between snapshots the re-dissolved fill/border
+ * settles over `BORDER_REDRAW_MS` (≥600 ms) instead of snapping. This is the only
+ * render-path animation the integration ledger's performance budget permits ("nothing
+ * animates on the deck.gl render path except deck-native layer transitions") — there is no
+ * per-frame time uniform and no CSS over the canvas (the `.claim-shimmer` keyframe in
+ * index.css stays for DOM chrome / the wire toast only). The redraw is made ATTRIBUTABLE
+ * via `PolityClaim.redrawCause`: when set, the border renders in the gold redraw accent and
+ * the cause is threaded into the layer `updateTriggers`, so a future wire headline can name
+ * WHY a border moved (the wire wiring itself is out of this lane's scope — see the
+ * `redrawCause` seam comment at the border layer). `DeckGLMap`'s existing call site is
+ * unchanged: `redrawCause` is optional and absent claims render exactly as before.
+ *
+ * DEVIATION: "de facto != de jure" contest detection has no de jure baseline available to
+ * a pure function with these inputs, so a county is treated as contested when it appears in
+ * more than one claim's `memberFips` (an overlap proxy computable purely from the given
+ * claims) — Lane B/D may replace this with a real de-jure-baseline signal once that data
+ * reaches the client; the caller can always pass `showContested: false` to suppress this
+ * layer entirely in the meantime.
  */
 
 import { GeoJsonLayer } from "@deck.gl/layers";
-import { mergePolity, mergePolityOutline } from "@/lib/geo/polity";
+import { FillStyleExtension, type FillStyleExtensionProps } from "@deck.gl/extensions";
+import { membershipKey, mergePolity, mergePolityOutline } from "@/lib/geo/polity";
+import {
+  STRIPE_PATTERN_MAPPING,
+  STRIPE_PATTERN_NAME,
+  STRIPE_PATTERN_SCALE,
+  stripePatternAtlas,
+} from "./stripePattern";
 import type {
   CountyFeatureCollection,
+  CountyProperties,
   CountyTopology,
   StateFeatureCollection,
 } from "@/lib/geo/topology";
@@ -50,6 +73,13 @@ export interface PolityClaim {
   name: string;
   color: RGBAColor;
   memberFips: string[];
+  /**
+   * Optional cause of the most recent membership change (e.g. `"liberation:detroit"`),
+   * for the SHIMMER seam (see module docstring). When set, the claim border renders in the
+   * gold redraw accent and the cause is threaded into `updateTriggers` so a future wire
+   * headline can name why the border moved. Absent/null ⇒ a settled claim, rendered plain.
+   */
+  redrawCause?: string | null;
 }
 
 export interface BuildPoliticalLayersOptions {
@@ -75,9 +105,27 @@ const STATE_BORDER_ALPHA = 115; // ~45% of 255 — "heavier" than county hairlin
 const COUNTY_HAIRLINE_COLOR: RGBAColor = [180, 184, 196, COUNTY_HAIRLINE_ALPHA];
 const STATE_BORDER_COLOR: RGBAColor = [180, 184, 196, STATE_BORDER_ALPHA];
 
-// Contested-county proxy styling (dash deferred — see module docstring).
-const CONTESTED_FILL: RGBAColor = [90, 90, 96, 90];
+// Contested-county styling: the diagonal hatch is masked from `stripePattern`, so
+// CONTESTED_FILL supplies only the hatch COLOUR (a warm warning grey-gold) — the
+// FillStyleExtension mask carves the stripes out of it. The alpha is raised vs the old
+// flat-fill proxy because ~half the pixels are now transparent gaps. CONTESTED_BORDER is
+// the gold contest outline kept over the hatch.
+const CONTESTED_FILL: RGBAColor = [140, 120, 70, 150];
 const CONTESTED_BORDER: RGBAColor = [220, 200, 90, 200];
+
+// SHIMMER lane. Deck-native transition duration for a claim re-dissolve; ≥600 ms per
+// DESIGN_BIBLE.md §2.2 / §6 ("600ms+ for meaning-bearing transitions").
+const BORDER_REDRAW_MS = 650;
+// Gold redraw accent — the map-side echo of the index.css `.claim-shimmer` gold sweep,
+// applied to a border whose claim carries a `redrawCause` (see module docstring).
+const CLAIM_REDRAW_ACCENT: RGBAColor = [230, 200, 96, 255];
+
+/** Border colour for a claim: the gold redraw accent while a redraw cause is live, else
+ * the claim's own colour. The `transitions` block below tweens between them, so clearing
+ * `redrawCause` on the next snapshot produces the ≥650 ms gold-to-claim shimmer settle. */
+function borderColor(claim: PolityClaim): RGBAColor {
+  return claim.redrawCause ? CLAIM_REDRAW_ACCENT : claim.color;
+}
 
 /** Counties claimed by more than one polity — the computable proxy for "contested". */
 function computeContestedFips(claims: PolityClaim[]): Set<string> {
@@ -128,6 +176,11 @@ function buildStateBorderLayer(states: StateFeatureCollection): GeoJsonLayer {
 
 function buildPolityFillLayer(topology: CountyTopology, claim: PolityClaim): GeoJsonLayer {
   const fill = mergePolity(topology, claim.memberFips);
+  // SHIMMER: `membershipKey` is the stable signature of who this polity holds — when a
+  // county changes hands the string changes, deck.gl re-evaluates the fill accessor, and
+  // the `transitions` block below settles the re-dissolved fill over ≥650 ms. `redrawCause`
+  // rides along so the trigger fires (and is inspectable) even when only the cause changes.
+  const membershipSig = membershipKey(claim.memberFips);
   return new GeoJsonLayer({
     id: `political-polity-fill-${claim.polityId}`,
     data: fill,
@@ -135,23 +188,32 @@ function buildPolityFillLayer(topology: CountyTopology, claim: PolityClaim): Geo
     filled: true,
     stroked: false,
     getFillColor: claim.color,
-    updateTriggers: { getFillColor: claim.color },
+    updateTriggers: { getFillColor: [claim.color, membershipSig, claim.redrawCause ?? null] },
+    transitions: { getFillColor: BORDER_REDRAW_MS },
   });
 }
 
 function buildPolityBorderLayer(topology: CountyTopology, claim: PolityClaim): GeoJsonLayer {
   const outline = mergePolityOutline(topology, claim.memberFips);
+  const membershipSig = membershipKey(claim.memberFips);
+  // SHIMMER SEAM (wire integration OUT of scope): `redrawCause` is exposed in this layer's
+  // `updateTriggers` so a future WireHeadline consumer can read the cause of a border move
+  // and name it ("Detroit liberated"). When set, `borderColor` returns the gold accent; the
+  // `getLineColor` transition then tweens gold → claim colour as the cause clears next tick.
   return new GeoJsonLayer({
     id: `political-polity-border-${claim.polityId}`,
     data: outline,
     pickable: false,
     filled: false,
     stroked: true,
-    getLineColor: claim.color,
+    getLineColor: borderColor(claim),
     lineWidthUnits: "pixels",
     getLineWidth: 3,
     lineWidthMinPixels: 2,
-    updateTriggers: { getLineColor: claim.color },
+    updateTriggers: {
+      getLineColor: [borderColor(claim), membershipSig, claim.redrawCause ?? null],
+    },
+    transitions: { getLineColor: BORDER_REDRAW_MS, getLineWidth: BORDER_REDRAW_MS },
   });
 }
 
@@ -160,7 +222,11 @@ function buildContestedLayer(
   contestedFips: Set<string>,
 ): GeoJsonLayer {
   const contestedFeatures = counties.features.filter((f) => contestedFips.has(f.properties.GEOID));
-  return new GeoJsonLayer({
+  // STRIPE: FillStyleExtension tiles the fill with the generated diagonal-hatch atlas.
+  // `fillPatternMask` (default true) uses the atlas ALPHA as a stencil and keeps
+  // `getFillColor` for the hatch colour, so the stripes read in the warning grey-gold over
+  // whatever polity fill lies beneath (see stripePattern.ts for the mask/world-size proof).
+  return new GeoJsonLayer<CountyProperties, FillStyleExtensionProps>({
     id: "political-contested-counties",
     data: { type: "FeatureCollection", features: contestedFeatures },
     pickable: false,
@@ -171,7 +237,17 @@ function buildContestedLayer(
     lineWidthUnits: "pixels",
     getLineWidth: 2,
     lineWidthMinPixels: 1.5,
-    updateTriggers: { getFillColor: contestedFips.size, getLineColor: contestedFips.size },
+    extensions: [new FillStyleExtension({ pattern: true })],
+    fillPatternAtlas: stripePatternAtlas(),
+    fillPatternMapping: STRIPE_PATTERN_MAPPING,
+    fillPatternMask: true,
+    getFillPattern: () => STRIPE_PATTERN_NAME,
+    getFillPatternScale: STRIPE_PATTERN_SCALE,
+    updateTriggers: {
+      getFillColor: contestedFips.size,
+      getLineColor: contestedFips.size,
+      getFillPattern: contestedFips.size,
+    },
   });
 }
 

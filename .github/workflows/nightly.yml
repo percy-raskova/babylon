@@ -72,8 +72,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
-      - name: Start isolated Postgres (compose, port 5433)
-        run: docker compose up -d --wait babylon-pg
+      - uses: ./.github/actions/postgres-up
       - name: Django migrate (fresh compose DB)
         working-directory: web
         env:

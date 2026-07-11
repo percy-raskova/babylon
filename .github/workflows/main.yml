@@ -38,6 +38,17 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+      # Incremental mypy state. Key ends in the commit SHA so every run saves
+      # a fresh snapshot; restore-keys fall back to the newest same-lock cache.
+      # Speed only — mypy's verdict is identical warm or cold.
+      - name: Cache mypy incremental state
+        uses: actions/cache@v5
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-
+
       - name: Repo hygiene gate
         run: mise run check:hygiene
       - name: Lint (ruff check)
@@ -139,8 +150,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
-      - name: Start isolated Postgres (compose, port 5433)
-        run: docker compose up -d --wait babylon-pg
+      - uses: ./.github/actions/postgres-up
       - name: Django migrate (fresh compose DB)
         working-directory: web
         env:
@@ -178,11 +188,18 @@ jobs:
         with:
           gdal: "true"
       - uses: ./.github/actions/bootstrap-node
+      # Browser binaries keyed on the lockfile (carries @playwright/test's
+      # resolved version). install --with-deps still runs for OS packages;
+      # on a warm cache it skips the browser download.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('src/frontend/package-lock.json') }}
       - name: Install Playwright Chromium
         working-directory: src/frontend
         run: npx playwright install --with-deps chromium
-      - name: Start isolated Postgres (compose, port 5433)
-        run: docker compose up -d --wait babylon-pg
+      - uses: ./.github/actions/postgres-up
       - name: Django migrate
         working-directory: web
         env:
@@ -269,8 +286,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
-      - name: Start isolated Postgres (compose, port 5433)
-        run: docker compose up -d --wait babylon-pg
+      - uses: ./.github/actions/postgres-up
       - name: qa:e2e-regression (strict 5-tick bundle vs baseline)
         run: mise run qa:e2e-regression
       - name: qa:storage-budget (rows/tick vs committed baseline)

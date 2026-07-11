@@ -24,6 +24,7 @@ jobs:
   release:
     name: Bump Version & Release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Only run on main branch, skip if commit is from this workflow
     if: |
       github.ref == 'refs/heads/main' &&
@@ -41,8 +42,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Pinned to the version poetry.lock resolves (bare pip install would
+      # silently pull whatever is latest on PyPI at run time).
       - name: Install Commitizen
-        run: pip install commitizen
+        run: pip install commitizen==4.15.1
 
       - name: Configure Git
         run: |

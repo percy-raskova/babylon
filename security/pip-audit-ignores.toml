@@ -12,33 +12,12 @@
 # silently. When an entry expires, the quarterly re-review either renews it
 # (bump expires, keep or update reason) or removes it because the
 # vulnerability is now fixed upstream.
-
-[[ignore]]
-id = "CVE-2026-3219"
-reason = "torch/transformers dependency chain — no fixed release exists yet (verified 2026-07-11); quarterly re-review forced by expiry"
-expires = "2026-10-01"
-
-[[ignore]]
-id = "PYSEC-2026-139"
-reason = "torch 2.10.0 — pip-audit lists no fixed version (verified 2026-07-11)"
-expires = "2026-10-01"
-
-[[ignore]]
-id = "CVE-2025-3000"
-reason = "torch 2.10.0 — pip-audit lists no fixed version (verified 2026-07-11)"
-expires = "2026-10-01"
-
-[[ignore]]
-id = "PYSEC-2025-217"
-reason = "transformers 4.57.6 — pip-audit lists no fixed version (verified 2026-07-11)"
-expires = "2026-10-01"
-
-[[ignore]]
-id = "CVE-2026-1839"
-reason = "transformers fix is 5.0.0rc3, blocked by sentence-transformers' <5.0.0 parent pin — bumping sentence-transformers is an owner decision (item-41 residue, program 15)"
-expires = "2026-10-01"
-
-[[ignore]]
-id = "CVE-2026-4372"
-reason = "transformers fix is 5.3.0, blocked by sentence-transformers' <5.0.0 parent pin — bumping sentence-transformers is an owner decision (item-41 residue, program 15)"
-expires = "2026-10-01"
+#
+# 2026-07-11 — POLICY EMPTIED. The dependabot-wave-20260711 batch unblocked the
+# item-41 residue: bumping sentence-transformers ^3.0 -> ^5.6 pulled transformers
+# 4.57.6 -> 5.13.1 (fixing CVE-2026-1839 @ 5.0.0rc3, CVE-2026-4372 @ 5.3.0, and
+# PYSEC-2025-217) and the resolver moved torch 2.10.0 -> 2.13.0 (clearing
+# CVE-2026-3219, PYSEC-2026-139, CVE-2025-3000). A raw `pip-audit` over the new
+# environment reports zero known vulnerabilities, so the minimal passing policy
+# carries no [[ignore]] entries. Any new suppression added below must re-justify
+# itself and will trip the exact-pin test in tests/unit/tools/test_run_pip_audit.py.

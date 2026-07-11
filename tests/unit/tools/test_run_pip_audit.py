@@ -304,20 +304,17 @@ class TestRealPolicyFile:
         assert main(["--check-only"]) == 0
 
     def test_real_policy_pins_the_item41_residue_exactly(self) -> None:
-        """The shipped policy is the item-41 no-fix residue — nothing more.
+        """The shipped policy carries no ignores — the item-41 residue is cleared.
 
-        A new ignore appearing here without review must fail this pin.
+        The dependabot-wave-20260711 batch bumped sentence-transformers ^3.0 ->
+        ^5.6 (pulling transformers 5.13.1 and torch 2.13.0), which fixed every
+        entry the policy previously suppressed; a raw ``pip-audit`` now reports
+        zero vulnerabilities. This pin is intentionally empty: any new ignore
+        appearing without review must fail it.
         """
         entries = get_ignore_entries(load_ignores_file(DEFAULT_IGNORES_FILE))
         ids = sorted(e["id"] for e in entries)
-        assert ids == [
-            "CVE-2025-3000",
-            "CVE-2026-1839",
-            "CVE-2026-3219",
-            "CVE-2026-4372",
-            "PYSEC-2025-217",
-            "PYSEC-2026-139",
-        ]
+        assert ids == []
         for entry in entries:
             assert entry["reason"]
             assert entry["expires"] == "2026-10-01"

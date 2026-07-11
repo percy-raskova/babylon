@@ -13,11 +13,11 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import ClassSystemDefines
-from babylon.economics.substrate.transitions import (
+from babylon.domain.economics.substrate.transitions import (
     check_equity_threshold,
     evaluate_class_shares,
 )
-from babylon.economics.substrate.types import HexEconomicState, HexTenureComposition
+from babylon.domain.economics.substrate.types import HexEconomicState, HexTenureComposition
 from babylon.models.enums import SocialRole
 
 

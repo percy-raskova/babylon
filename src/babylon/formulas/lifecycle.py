@@ -4,7 +4,7 @@ Pure functions for population flow, legitimation index, Pareto inheritance,
 ideology transmission, and shadow subsidy computation.
 
 See Also:
-    :mod:`babylon.economics.lifecycle.types`: Data models consuming these formulas.
+    :mod:`babylon.domain.economics.lifecycle.types`: Data models consuming these formulas.
     ``specs/030-dpd-lifecycle-circuit/quickstart.md``: Scenario test values.
 """
 

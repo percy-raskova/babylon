@@ -101,7 +101,7 @@ def test_canada_carries_real_bilateral_trade(runtime, pg_pool, hydrated_session)
 
 def test_boundary_register_round_trip(runtime, pg_pool):  # type: ignore[no-untyped-def]
     """A DRAIN_EDGE row from external→county persists and round-trips."""
-    from babylon.economics.boundary_flow_register import (
+    from babylon.domain.economics.boundary_flow_register import (
         BoundaryEdgeKind,
         BoundaryFlowRegisterRow,
         NodeKind,

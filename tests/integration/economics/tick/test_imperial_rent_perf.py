@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from babylon.economics.tick.system.imperial_rent import compute
+from babylon.domain.economics.tick.system.imperial_rent import compute
 from tests.integration.economics.tick.test_imperial_rent_pipeline import (
     _county,
     _wired_services,
@@ -35,7 +35,7 @@ def perf_county_states() -> dict[str, Any]:
 
 @pytest.fixture
 def perf_national_params() -> Any:
-    from babylon.economics.tick.types import NationalTickParameters
+    from babylon.domain.economics.tick.types import NationalTickParameters
 
     return NationalTickParameters(
         year=2015,

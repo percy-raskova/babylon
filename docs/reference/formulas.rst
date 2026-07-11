@@ -660,8 +660,8 @@ materials), :math:`v` = variable capital (wages). Rising OCC is the
 mechanism behind the tendential fall in the profit rate.
 
 **Implementation:** the live path derives both from the QCEW-fed 4×3
-reproduction schema — :py:attr:`~babylon.economics.tensor.ValueTensor4x3.profit_rate`
-and :py:attr:`~babylon.economics.tensor.ValueTensor4x3.organic_composition` —
+reproduction schema — :py:attr:`~babylon.domain.economics.tensor.ValueTensor4x3.profit_rate`
+and :py:attr:`~babylon.domain.economics.tensor.ValueTensor4x3.organic_composition` —
 rather than taking bare floats. (The standalone Epoch-2 placeholder
 functions were retired by the fork-reconciliation ledger, F12; the planned
 per-node wiring lives in ``ai/epochs/epoch3/epoch2-trpf.yaml``.)

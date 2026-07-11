@@ -37,7 +37,7 @@ def main() -> None:
     from psycopg_pool import ConnectionPool
 
     from babylon.config.defines import GameDefines
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.engine.context import TickContext
     from babylon.engine.headless_runner.bridge import WorldStateBridge
     from babylon.engine.headless_runner.runner import EventCapture

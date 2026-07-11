@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.circulation.circuit import (
+from babylon.domain.economics.circulation.circuit import (
     advance_circuit,
     initialize_circuit_state,
 )
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.types import (
     CircuitState,
     TurnoverProfile,
 )

@@ -12,8 +12,8 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import RentCircuitDefines
-from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
-from babylon.economics.substrate.types import (
+from babylon.domain.economics.substrate.equalization import DefaultHexEqualizationComputer
+from babylon.domain.economics.substrate.types import (
     HexEconomicState,
     HexGrid,
     HexTenureComposition,

@@ -9,9 +9,9 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import GameDefines
-from babylon.economics.lifecycle.dual_circuit import DefaultDualCircuitCalculator
-from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculator
-from babylon.economics.lifecycle.types import LegitimationState
+from babylon.domain.economics.lifecycle.dual_circuit import DefaultDualCircuitCalculator
+from babylon.domain.economics.lifecycle.legitimation import DefaultLegitimationCalculator
+from babylon.domain.economics.lifecycle.types import LegitimationState
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.lifecycle import LifecycleSystem

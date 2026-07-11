@@ -15,12 +15,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.throughput.calculator import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.throughput.calculator import (
     HOURS_PER_YEAR,
     DefaultThroughputCalculator,
 )
-from babylon.economics.throughput.types import CommuterAdjustedMetrics
+from babylon.domain.economics.throughput.types import CommuterAdjustedMetrics
 
 # =============================================================================
 # FIXTURES

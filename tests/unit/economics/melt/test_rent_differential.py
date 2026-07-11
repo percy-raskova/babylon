@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import NoDataSentinel
 from babylon.models.enums import CommunityType
 from tests.constants import ClassSystemDefaults
 
@@ -27,7 +27,7 @@ class TestRentDifferentialResult:
     @pytest.mark.unit
     def test_valid_result(self) -> None:
         """Valid RentDifferentialResult creates without error."""
-        from babylon.economics.melt.rent_differential import RentDifferentialResult
+        from babylon.domain.economics.melt.rent_differential import RentDifferentialResult
 
         result = RentDifferentialResult(
             fips="26163",
@@ -45,7 +45,7 @@ class TestRentDifferentialResult:
     @pytest.mark.unit
     def test_frozen_immutability(self) -> None:
         """RentDifferentialResult must be frozen."""
-        from babylon.economics.melt.rent_differential import RentDifferentialResult
+        from babylon.domain.economics.melt.rent_differential import RentDifferentialResult
 
         result = RentDifferentialResult(
             fips="26163",
@@ -61,7 +61,7 @@ class TestRentDifferentialResult:
     @pytest.mark.unit
     def test_fips_pattern(self) -> None:
         """FIPS must be a 5-digit string."""
-        from babylon.economics.melt.rent_differential import RentDifferentialResult
+        from babylon.domain.economics.melt.rent_differential import RentDifferentialResult
 
         result = RentDifferentialResult(
             fips="26163",
@@ -76,7 +76,7 @@ class TestRentDifferentialResult:
     @pytest.mark.unit
     def test_naics_plus_suppressed_positive(self) -> None:
         """naics_count + suppressed_count must be > 0."""
-        from babylon.economics.melt.rent_differential import RentDifferentialResult
+        from babylon.domain.economics.melt.rent_differential import RentDifferentialResult
 
         with pytest.raises(ValidationError):
             RentDifferentialResult(
@@ -95,7 +95,7 @@ class TestComputeDifferential:
     @pytest.mark.unit
     def test_positive_differential(self) -> None:
         """BC-016: Settler earnings > nation earnings -> positive result."""
-        from babylon.economics.melt.rent_differential import (
+        from babylon.domain.economics.melt.rent_differential import (
             DefaultRentDifferentialCalculator,
         )
 
@@ -107,7 +107,7 @@ class TestComputeDifferential:
     @pytest.mark.unit
     def test_suppressed_returns_sentinel(self) -> None:
         """BC-015: Suppressed ACS data returns NoDataSentinel."""
-        from babylon.economics.melt.rent_differential import (
+        from babylon.domain.economics.melt.rent_differential import (
             DefaultRentDifferentialCalculator,
         )
 
@@ -119,7 +119,7 @@ class TestComputeDifferential:
     @pytest.mark.unit
     def test_settler_self_differential_zero(self) -> None:
         """BC-019: SETTLER vs SETTLER = 0.0 (no differential)."""
-        from babylon.economics.melt.rent_differential import (
+        from babylon.domain.economics.melt.rent_differential import (
             DefaultRentDifferentialCalculator,
         )
 
@@ -131,7 +131,7 @@ class TestComputeDifferential:
     @pytest.mark.unit
     def test_unknown_fips_returns_sentinel(self) -> None:
         """Unknown FIPS code returns NoDataSentinel."""
-        from babylon.economics.melt.rent_differential import (
+        from babylon.domain.economics.melt.rent_differential import (
             DefaultRentDifferentialCalculator,
         )
 
@@ -146,7 +146,7 @@ class TestComputeCountyAggregate:
     @pytest.mark.unit
     def test_employment_weighted(self) -> None:
         """BC-017: Employment-weighted average across NAICS codes."""
-        from babylon.economics.melt.rent_differential import (
+        from babylon.domain.economics.melt.rent_differential import (
             DefaultRentDifferentialCalculator,
         )
 
@@ -158,7 +158,7 @@ class TestComputeCountyAggregate:
     @pytest.mark.unit
     def test_all_suppressed_returns_sentinel(self) -> None:
         """BC-018: All NAICS suppressed returns NoDataSentinel."""
-        from babylon.economics.melt.rent_differential import (
+        from babylon.domain.economics.melt.rent_differential import (
             DefaultRentDifferentialCalculator,
         )
 
@@ -174,7 +174,7 @@ class TestComputeCountyAggregate:
         Internal colony thesis: wage gap is wider where extractive
         relationship is most direct (urban core vs suburbs).
         """
-        from babylon.economics.melt.rent_differential import (
+        from babylon.domain.economics.melt.rent_differential import (
             DefaultRentDifferentialCalculator,
         )
 
@@ -188,7 +188,7 @@ class TestComputeCountyAggregate:
     @pytest.mark.unit
     def test_settler_aggregate_zero(self) -> None:
         """SETTLER county aggregate is always 0.0."""
-        from babylon.economics.melt.rent_differential import (
+        from babylon.domain.economics.melt.rent_differential import (
             DefaultRentDifferentialCalculator,
         )
 

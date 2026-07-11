@@ -10,19 +10,19 @@ import logging
 
 import pytest
 
-from babylon.economics.dynamics.accumulation import DefaultAccumulationCalculator
-from babylon.economics.dynamics.crisis import DefaultCrisisAmplifier
-from babylon.economics.dynamics.dispossession import DefaultDispossessionCalculator
-from babylon.economics.dynamics.hardcoded_data import (
+from babylon.domain.economics.dynamics.accumulation import DefaultAccumulationCalculator
+from babylon.domain.economics.dynamics.crisis import DefaultCrisisAmplifier
+from babylon.domain.economics.dynamics.dispossession import DefaultDispossessionCalculator
+from babylon.domain.economics.dynamics.hardcoded_data import (
     HardcodedNationalDispossessionSource,
 )
-from babylon.economics.dynamics.savings_schedule import DefaultSavingsRateSchedule
-from babylon.economics.dynamics.transition_engine import DefaultClassTransitionEngine
-from babylon.economics.dynamics.types import (
+from babylon.domain.economics.dynamics.savings_schedule import DefaultSavingsRateSchedule
+from babylon.domain.economics.dynamics.transition_engine import DefaultClassTransitionEngine
+from babylon.domain.economics.dynamics.types import (
     ClassDistribution,
     EconomicConditions,
 )
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import NoDataSentinel
 from tests.unit.economics.dynamics.conftest import (
     MockCrisisAmplifier,
     MockDispossessionDataSource,
@@ -324,7 +324,7 @@ class TestClassTransitionEngine:
     def test_no_data_sentinel_propagation(self) -> None:
         """Edge: Missing dispossession data -> NoDataSentinel propagated."""
         savings = MockSavingsRateSource()
-        from babylon.economics.dynamics.accumulation import DefaultAccumulationCalculator
+        from babylon.domain.economics.dynamics.accumulation import DefaultAccumulationCalculator
 
         acc_calc = DefaultAccumulationCalculator(savings)
         # Empty data source for dispossession
@@ -412,7 +412,7 @@ class TestClassTransitionEngine:
 
     def test_protocol_compliance(self) -> None:
         """DefaultClassTransitionEngine satisfies ClassTransitionEngine protocol."""
-        from babylon.economics.dynamics.data_sources import ClassTransitionEngine
+        from babylon.domain.economics.dynamics.data_sources import ClassTransitionEngine
 
         engine: ClassTransitionEngine = _make_engine()
         dist = ClassDistribution(
@@ -655,7 +655,7 @@ class TestValidationLogging:
             crisis=True,
         )
 
-        with caplog.at_level(logging.WARNING, logger="babylon.economics.dynamics"):
+        with caplog.at_level(logging.WARNING, logger="babylon.domain.economics.dynamics"):
             engine.simulate_transitions(dist, crisis_cond)
 
         # Should have logged at least one validation warning
@@ -674,7 +674,7 @@ class TestValidationLogging:
         """FR-011: Normal conditions produce no validation warnings."""
         engine = _make_engine()
 
-        with caplog.at_level(logging.WARNING, logger="babylon.economics.dynamics"):
+        with caplog.at_level(logging.WARNING, logger="babylon.domain.economics.dynamics"):
             engine.simulate_transitions(stable_distribution, stable_conditions)
 
         # Should have no validation warnings for stable conditions

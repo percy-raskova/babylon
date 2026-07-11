@@ -9,12 +9,15 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.class_transition import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.class_transition import (
     DefaultClassTransitionComputer,
     DefaultClassTransitionSource,
 )
-from babylon.economics.tensor_hierarchy.types import ClassTransitionMatrix, StationaryDistribution
+from babylon.domain.economics.tensor_hierarchy.types import (
+    ClassTransitionMatrix,
+    StationaryDistribution,
+)
 
 # =============================================================================
 # Helpers

@@ -40,8 +40,8 @@ try:
 except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
-from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-from babylon.economics.county_exposure import load_county_exposure_map
+from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.domain.economics.county_exposure import load_county_exposure_map
 from babylon.engine.context import TickContext
 from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
@@ -894,8 +894,8 @@ def _build_economics_overrides(
         Dict of service overrides suitable for ``**``-unpacking into
         :meth:`ServiceContainer.create`.
     """
-    from babylon.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
-    from babylon.economics.gamma.gamma_iii import DefaultGammaIIICalculator
+    from babylon.domain.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
+    from babylon.domain.economics.gamma.gamma_iii import DefaultGammaIIICalculator
 
     unpaid_care = MVPUnpaidCareHoursSource()
     paid_care = QCEWCareAdapter()
@@ -904,8 +904,8 @@ def _build_economics_overrides(
     overrides: dict[str, Any] = {"gamma_calculator": gamma}
 
     if session_factory is not None:
-        from babylon.economics.melt import DefaultMELTCalculator
-        from babylon.economics.melt.adapters import (
+        from babylon.domain.economics.melt import DefaultMELTCalculator
+        from babylon.domain.economics.melt.adapters import (
             SQLiteBEANationalGDPSource,
             SQLiteQCEWNationalEmploymentSource,
         )

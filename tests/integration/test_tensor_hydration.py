@@ -20,11 +20,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from babylon.economics.adapters import SQLiteQCEWSource
-from babylon.economics.department_mapper import DepartmentMapper
-from babylon.economics.hydrator import MarxianHydrator
-from babylon.economics.tensor import NoDataSentinel, ValueTensor4x3
-from babylon.economics.tensor_registry import TensorRegistry
+from babylon.domain.economics.adapters import SQLiteQCEWSource
+from babylon.domain.economics.department_mapper import DepartmentMapper
+from babylon.domain.economics.hydrator import MarxianHydrator
+from babylon.domain.economics.tensor import NoDataSentinel, ValueTensor4x3
+from babylon.domain.economics.tensor_registry import TensorRegistry
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -43,7 +43,7 @@ _DB_PATH_CANDIDATES = [
 ]
 
 _MAPPER_CONFIG_PATH = Path(__file__).parent.parent.parent / (
-    "src/babylon/economics/data/naics_to_dept.yaml"
+    "src/babylon/domain/economics/data/naics_to_dept.yaml"
 )
 
 

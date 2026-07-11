@@ -116,7 +116,7 @@ class TestInterIndustryFlowPipeline:
 
     def test_bea_loader_ingests_xlsx(self, populated_session_factory) -> None:  # type: ignore[no-untyped-def]
         """BEAIOLoader successfully ingests the IO Use XLSX into the 3NF schema."""
-        from babylon.economics.tensor_hierarchy.inter_industry import (
+        from babylon.domain.economics.tensor_hierarchy.inter_industry import (
             DefaultInterIndustryFlowSource,
         )
 
@@ -129,10 +129,10 @@ class TestInterIndustryFlowPipeline:
         populated_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """DefaultInterIndustryFlowSource reads SQLite and returns InterIndustryFlow."""
-        from babylon.economics.tensor_hierarchy.inter_industry import (
+        from babylon.domain.economics.tensor_hierarchy.inter_industry import (
             DefaultInterIndustryFlowSource,
         )
-        from babylon.economics.tensor_hierarchy.types import InterIndustryFlow
+        from babylon.domain.economics.tensor_hierarchy.types import InterIndustryFlow
 
         source = DefaultInterIndustryFlowSource(populated_session_factory)
         year = min(source.available_years())
@@ -146,11 +146,11 @@ class TestInterIndustryFlowPipeline:
         populated_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """Leontief inverse has non-negative elements (Perron-Frobenius)."""
-        from babylon.economics.tensor_hierarchy.inter_industry import (
+        from babylon.domain.economics.tensor_hierarchy.inter_industry import (
             DefaultInterIndustryFlowSource,
             DefaultLeontiefComputer,
         )
-        from babylon.economics.tensor_hierarchy.types import LeontiefInverse
+        from babylon.domain.economics.tensor_hierarchy.types import LeontiefInverse
 
         source = DefaultInterIndustryFlowSource(populated_session_factory)
         flow = source.get_direct_requirements(min(source.available_years()))
@@ -165,11 +165,11 @@ class TestInterIndustryFlowPipeline:
         populated_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """Department aggregation reduces ~70 industries to 4x4 matrix."""
-        from babylon.economics.tensor_hierarchy.inter_industry import (
+        from babylon.domain.economics.tensor_hierarchy.inter_industry import (
             DefaultDepartmentAggregator,
             DefaultInterIndustryFlowSource,
         )
-        from babylon.economics.tensor_hierarchy.types import InterIndustryFlow
+        from babylon.domain.economics.tensor_hierarchy.types import InterIndustryFlow
 
         source = DefaultInterIndustryFlowSource(populated_session_factory)
         flow = source.get_direct_requirements(min(source.available_years()))
@@ -187,12 +187,15 @@ class TestInterIndustryFlowPipeline:
         populated_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """Full pipeline: SQLite → InterIndustryFlow → Leontief → Departments."""
-        from babylon.economics.tensor_hierarchy.inter_industry import (
+        from babylon.domain.economics.tensor_hierarchy.inter_industry import (
             DefaultDepartmentAggregator,
             DefaultInterIndustryFlowSource,
             DefaultLeontiefComputer,
         )
-        from babylon.economics.tensor_hierarchy.types import InterIndustryFlow, LeontiefInverse
+        from babylon.domain.economics.tensor_hierarchy.types import (
+            InterIndustryFlow,
+            LeontiefInverse,
+        )
 
         source = DefaultInterIndustryFlowSource(populated_session_factory)
         flow = source.get_direct_requirements(min(source.available_years()))
@@ -227,8 +230,8 @@ class TestVisibilityPipeline:
         """DefaultVisibilitySource returns NoDataSentinel when gamma has no data."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.tensor import NoDataSentinel
-        from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
+        from babylon.domain.economics.tensor import NoDataSentinel
+        from babylon.domain.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
         # Mock gamma calculator that returns NoDataSentinel
         mock_gamma = MagicMock()
@@ -246,9 +249,9 @@ class TestVisibilityPipeline:
         """DefaultVisibilitySource constructs VisibilityMetric from gamma output."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.gamma.types import GammaIII
-        from babylon.economics.tensor_hierarchy.types import VisibilityMetric
-        from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
+        from babylon.domain.economics.gamma.types import GammaIII
+        from babylon.domain.economics.tensor_hierarchy.types import VisibilityMetric
+        from babylon.domain.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
         # Mock a valid GammaIIIResult
         mock_result = MagicMock(spec=GammaIII)
@@ -273,9 +276,9 @@ class TestVisibilityPipeline:
         """ShadowSubsidy computed correctly from visibility via gamma module."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.gamma.types import GammaIII, ShadowSubsidy
-        from babylon.economics.tensor_hierarchy.types import ShadowSubsidyTensor
-        from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
+        from babylon.domain.economics.gamma.types import GammaIII, ShadowSubsidy
+        from babylon.domain.economics.tensor_hierarchy.types import ShadowSubsidyTensor
+        from babylon.domain.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
         mock_result = MagicMock(spec=GammaIII)
         mock_result.gamma_iii = 0.5
@@ -306,9 +309,9 @@ class TestVisibilityPipeline:
         """VisibilityMetric maintains g_33 < g_11 constraint."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.gamma.types import GammaIII
-        from babylon.economics.tensor_hierarchy.types import VisibilityMetric
-        from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
+        from babylon.domain.economics.gamma.types import GammaIII
+        from babylon.domain.economics.tensor_hierarchy.types import VisibilityMetric
+        from babylon.domain.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
         mock_result = MagicMock(spec=GammaIII)
         mock_result.gamma_iii = 0.333

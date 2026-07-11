@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tick.crisis_detector import MultiPeriodCrisisDetector
-from babylon.economics.tick.types import CrisisPhase, CrisisState
+from babylon.domain.economics.tick.crisis_detector import MultiPeriodCrisisDetector
+from babylon.domain.economics.tick.types import CrisisPhase, CrisisState
 
 # =============================================================================
 # Helpers

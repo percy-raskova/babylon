@@ -21,7 +21,7 @@ class TestRegressionResult:
 
     def test_regression_result_has_required_fields(self) -> None:
         """RegressionResult has slope, intercept, r_value, p_value, std_err."""
-        from babylon.economics.validation.regression import RegressionResult
+        from babylon.domain.economics.validation.regression import RegressionResult
 
         result = RegressionResult(
             slope=0.5,
@@ -40,7 +40,7 @@ class TestRegressionResult:
         """RegressionResult should be frozen."""
         from pydantic import ValidationError
 
-        from babylon.economics.validation.regression import RegressionResult
+        from babylon.domain.economics.validation.regression import RegressionResult
 
         result = RegressionResult(
             slope=0.5,
@@ -64,7 +64,7 @@ class TestDomesticHoursRegression:
         unpaid reproductive labor. This means domestic_hours increases as
         1/income increases, producing a positive coefficient.
         """
-        from babylon.economics.validation.regression import (
+        from babylon.domain.economics.validation.regression import (
             validate_domestic_hours_regression,
         )
 
@@ -78,7 +78,7 @@ class TestDomesticHoursRegression:
     # T028: Regression uses scipy.stats.linregress
     def test_regression_returns_valid_statistics(self) -> None:
         """Regression returns valid statistical measures."""
-        from babylon.economics.validation.regression import (
+        from babylon.domain.economics.validation.regression import (
             validate_domestic_hours_regression,
         )
 
@@ -102,7 +102,7 @@ class TestDomesticHoursRegression:
 
     def test_regression_uses_seed_data(self) -> None:
         """Regression uses occupation multipliers from ATUS seed data."""
-        from babylon.economics.validation.regression import (
+        from babylon.domain.economics.validation.regression import (
             validate_domestic_hours_regression,
         )
 
@@ -119,7 +119,7 @@ class TestRegressionWithCustomData:
 
     def test_regression_with_explicit_positive_relationship(self) -> None:
         """Regression detects known positive relationship."""
-        from babylon.economics.validation.regression import run_linear_regression
+        from babylon.domain.economics.validation.regression import run_linear_regression
 
         # Create data with explicit positive relationship: y = 2x + 1
         x_values = [1.0, 2.0, 3.0, 4.0, 5.0]
@@ -133,7 +133,7 @@ class TestRegressionWithCustomData:
 
     def test_regression_with_negative_relationship(self) -> None:
         """Regression detects negative relationship."""
-        from babylon.economics.validation.regression import run_linear_regression
+        from babylon.domain.economics.validation.regression import run_linear_regression
 
         # Create data with negative relationship: y = -2x + 10
         x_values = [1.0, 2.0, 3.0, 4.0, 5.0]
@@ -146,7 +146,7 @@ class TestRegressionWithCustomData:
 
     def test_regression_requires_minimum_data_points(self) -> None:
         """Regression requires at least 2 data points."""
-        from babylon.economics.validation.regression import run_linear_regression
+        from babylon.domain.economics.validation.regression import run_linear_regression
 
         with pytest.raises(ValueError, match="at least 2"):
             run_linear_regression([1.0], [2.0])

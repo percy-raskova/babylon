@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from babylon.economics.factory import create_economics_services
-from babylon.economics.tensor_registry import TensorRegistry
+from babylon.domain.economics.factory import create_economics_services
+from babylon.domain.economics.tensor_registry import TensorRegistry
 
 # Expected keys that must be present in the factory output
 _EXPECTED_KEYS = frozenset(
@@ -89,8 +89,10 @@ class TestCreateEconomicsServices:
 
     def test_basket_calculator_has_hydration_source_wired(self) -> None:
         """Spec-102: basket_calculator is data-adapter-injected, not registry-parameterless."""
-        from babylon.economics.melt.basket_visibility import DefaultBasketVisibilityCalculator
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.basket_visibility import (
+            DefaultBasketVisibilityCalculator,
+        )
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         mock_session_factory = MagicMock()
         tensor_registry = TensorRegistry()

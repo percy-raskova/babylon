@@ -25,10 +25,10 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.adapters import SQLiteQCEWSource
-from babylon.economics.department_mapper import Department
-from babylon.economics.hydrator import MarxianHydrator
-from babylon.economics.tensor import ValueTensor4x3
+from babylon.domain.economics.adapters import SQLiteQCEWSource
+from babylon.domain.economics.department_mapper import Department
+from babylon.domain.economics.hydrator import MarxianHydrator
+from babylon.domain.economics.tensor import ValueTensor4x3
 
 from .conftest import (
     DETROIT_METRO_COUNTIES,

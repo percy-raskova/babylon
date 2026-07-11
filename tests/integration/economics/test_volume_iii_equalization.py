@@ -7,7 +7,7 @@ inter-sectoral variance of the profit rate must MONOTONICALLY DECREASE
 This is the operational form of Marx's Volume III claim that capital
 migrates from low-profit-rate sectors to high-profit-rate sectors,
 equalizing the rate of profit over time. ``DefaultHexEqualizationComputer``
-in ``src/babylon/economics/substrate/equalization.py`` implements this
+in ``src/babylon/domain/economics/substrate/equalization.py`` implements this
 mechanism with a documented conservation proof.
 
 Gated by ``skip_unless_active`` (transformation must be redistribution-

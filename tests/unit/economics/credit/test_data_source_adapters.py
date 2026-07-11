@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.credit.data_sources import (
+from babylon.domain.economics.credit.data_sources import (
     CreditAggregateSource,
     FredCreditAggregateAdapter,
     FredInterestRateAdapter,

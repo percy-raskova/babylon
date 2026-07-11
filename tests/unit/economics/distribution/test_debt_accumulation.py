@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.distribution.types import DebtAccumulation
+from babylon.domain.economics.distribution.types import DebtAccumulation
 
 
 @pytest.mark.unit

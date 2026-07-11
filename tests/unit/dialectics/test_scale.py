@@ -205,10 +205,10 @@ class TestGeographicAggregatorAgreement:
     """ScaleAdjunction.aggregate agrees with DefaultGeographicAggregator (bind, not rewrite)."""
 
     def test_agrees_with_default_geographic_aggregator(self) -> None:
-        from babylon.economics.tensor_hierarchy.geographic_flow import (
+        from babylon.domain.economics.tensor_hierarchy.geographic_flow import (
             DefaultGeographicAggregator,
         )
-        from babylon.economics.tensor_hierarchy.types import GeographicFlow
+        from babylon.domain.economics.tensor_hierarchy.types import GeographicFlow
 
         areas = ["A1", "A2", "B1"]
         matrix = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]], dtype=np.float64)

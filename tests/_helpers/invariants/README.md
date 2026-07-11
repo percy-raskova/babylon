@@ -52,7 +52,7 @@ The bundle's value depends on its sensitivity. Each helper supports a
 specific bug-injection recipe from `quickstart.md`:
 
 1. **Numeraire** — Add `1.0` to a profit-rate computation in
-   `src/babylon/economics/derived_metrics.py` → the numeraire test
+   `src/babylon/domain/economics/derived_metrics.py` → the numeraire test
    fails because ratios now depend on money scale.
 1. **MELT consistency** — Multiply τ by `0.9` in
    `DefaultMELTCalculator.get_melt` → the per-entity test fails with

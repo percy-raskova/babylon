@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
+from babylon.domain.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
 
 
 class TestDepartmentRow:

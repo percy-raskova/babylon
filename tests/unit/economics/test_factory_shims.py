@@ -53,8 +53,8 @@ class TestFactoryShimsBacked:
         — a real DB context is too heavy for a unit test, so the FR-006
         verification here is shifted to the registry surface itself.
         """
-        from babylon.economics.factory import _get_builtin_registry
-        from babylon.economics.melt.basket_visibility import (
+        from babylon.domain.economics.factory import _get_builtin_registry
+        from babylon.domain.economics.melt.basket_visibility import (
             BasketVisibilityCalculator,
             DefaultBasketVisibilityCalculator,
         )
@@ -73,7 +73,7 @@ class TestFactoryShimsBacked:
         (per contracts/source_registry.md §"Per-call construction"); the
         registry is what's cached.
         """
-        from babylon.economics.factory import _get_builtin_registry
+        from babylon.domain.economics.factory import _get_builtin_registry
 
         r1 = _get_builtin_registry()
         r2 = _get_builtin_registry()

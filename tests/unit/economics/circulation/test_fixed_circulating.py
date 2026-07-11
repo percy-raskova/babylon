@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.circulation.fixed_circulating import (
+from babylon.domain.economics.circulation.fixed_circulating import (
     compute_moral_depreciation,
     decompose_constant_capital,
     update_depreciation_fund,
 )
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.types import (
     DepreciationFundState,
     ReplacementCyclePosition,
 )

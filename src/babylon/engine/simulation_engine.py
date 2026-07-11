@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 
 from babylon.config.defines import GameDefines
-from babylon.economics.tick.system import TickDynamicsSystem
+from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem

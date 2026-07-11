@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from babylon.economics.border_commute_synthesis import (
+from babylon.domain.economics.border_commute_synthesis import (
     BorderCommuteFlow,
     BorderCommuteSynthesisLoader,
     _month_for_iso_week,
@@ -168,15 +168,15 @@ def _enabled_loader(tmp_path: Path) -> BorderCommuteSynthesisLoader:
 
 def test_default_tri_county_aggregate_hex_pins_detroit_centroid_cell() -> None:
     """The production centroid helper resolves the canonical res-7 cell."""
-    from babylon.economics.border_commute_synthesis import default_tri_county_aggregate_hex
+    from babylon.domain.economics.border_commute_synthesis import default_tri_county_aggregate_hex
 
     assert default_tri_county_aggregate_hex() == _TRI_COUNTY_AGGREGATE_HEX
 
 
 def test_merge_disabled_returns_input_unchanged() -> None:
     """A disabled loader returns the exact input matrix object (`is` identity)."""
-    from babylon.economics.lodes_commute_matrix import build_year_matrix
-    from babylon.economics.node_kinds import NodeKind
+    from babylon.domain.economics.lodes_commute_matrix import build_year_matrix
+    from babylon.domain.economics.node_kinds import NodeKind
 
     loader = BorderCommuteSynthesisLoader(
         bts_csv_path=None,
@@ -196,8 +196,8 @@ def test_merge_disabled_returns_input_unchanged() -> None:
 
 def test_merge_adds_canada_column_with_mean_weekly_magnitude(tmp_path: Path) -> None:
     """FR-035: canada enters as an EXTERNAL column at the mean weekly count."""
-    from babylon.economics.lodes_commute_matrix import build_year_matrix
-    from babylon.economics.node_kinds import NodeKind
+    from babylon.domain.economics.lodes_commute_matrix import build_year_matrix
+    from babylon.domain.economics.node_kinds import NodeKind
 
     loader = _enabled_loader(tmp_path)
     base = build_year_matrix(
@@ -223,8 +223,8 @@ def test_merge_creates_origin_row_when_aggregate_hex_absent(tmp_path: Path) -> N
     """When the aggregate hex is not already an origin, the merge adds its row."""
     import numpy as np
 
-    from babylon.economics.lodes_commute_matrix import build_year_matrix
-    from babylon.economics.node_kinds import NodeKind
+    from babylon.domain.economics.lodes_commute_matrix import build_year_matrix
+    from babylon.domain.economics.node_kinds import NodeKind
 
     loader = _enabled_loader(tmp_path)
     # Base matrix whose only origin is a DIFFERENT hex — the aggregate hex is absent.

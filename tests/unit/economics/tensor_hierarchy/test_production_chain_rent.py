@@ -8,7 +8,7 @@ condition and testing the accurate computation of the import necessity matrix.
 import numpy as np
 import pytest
 
-from babylon.economics.tensor_hierarchy.production_chain_rent import (
+from babylon.domain.economics.tensor_hierarchy.production_chain_rent import (
     ProductionChainDecomposer,
     ProductionChainRentCalculator,
 )
@@ -22,7 +22,10 @@ class TestProductionChainDecomposer:
         # A simple valid A matrix where sum of column elements < 1 (viable economy)
         a_matrix = np.array([[0.1, 0.2], [0.3, 0.1]])
         m_vector = np.array([0.2, 0.5])
-        from babylon.economics.tensor_hierarchy.types import ImportShareVector, InterIndustryFlow
+        from babylon.domain.economics.tensor_hierarchy.types import (
+            ImportShareVector,
+            InterIndustryFlow,
+        )
 
         flow = InterIndustryFlow(
             year=2022, industries=["1", "2"], table_type="USE", coefficients=a_matrix
@@ -42,7 +45,10 @@ class TestProductionChainDecomposer:
     def test_compute_import_content_matrix(self) -> None:
         a_matrix = np.array([[0.1, 0.2], [0.3, 0.1]])
         m_vector = np.array([0.2, 0.5])
-        from babylon.economics.tensor_hierarchy.types import ImportShareVector, InterIndustryFlow
+        from babylon.domain.economics.tensor_hierarchy.types import (
+            ImportShareVector,
+            InterIndustryFlow,
+        )
 
         flow = InterIndustryFlow(
             year=2022, industries=["1", "2"], table_type="USE", coefficients=a_matrix
@@ -69,7 +75,7 @@ class TestProductionChainRentCalculator:
 
         # Let's say w_ratio (core/periphery wage ratio) is [5.0, 5.0]
         # and y (final demand) is [100.0, 200.0]
-        from babylon.economics.tensor_hierarchy.types import (
+        from babylon.domain.economics.tensor_hierarchy.types import (
             DecomposedFlow,
             PeripheryLaborCoefficients,
         )
@@ -111,7 +117,7 @@ class TestRentCalibration:
         y = np.array([50.0, 100.0])  # Billions USD
         m_matrix = np.array([[0.4, 0.2], [0.3, 0.5]])
 
-        from babylon.economics.tensor_hierarchy.types import (
+        from babylon.domain.economics.tensor_hierarchy.types import (
             DecomposedFlow,
             PeripheryLaborCoefficients,
         )

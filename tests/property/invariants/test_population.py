@@ -28,7 +28,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from babylon.economics.lifecycle.types import DPDState
+from babylon.domain.economics.lifecycle.types import DPDState
 from tests.property.strategies.dpd_state import dpd_state_grid_strategy
 
 _TOL = 1e-9  # float-arithmetic tolerance for cohort sums

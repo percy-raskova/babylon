@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
-from babylon.economics.tick.initializer import DefaultTickInitializer
-from babylon.economics.tick.types import SimulationTickState
+from babylon.domain.economics.tick.initializer import DefaultTickInitializer
+from babylon.domain.economics.tick.types import SimulationTickState
 from babylon.engine.services import ServiceContainer
 from tests.unit.economics.tick.conftest import (
     WAYNE_FIPS,

@@ -9,11 +9,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from babylon.economics.tensor_hierarchy.inter_industry import (
+from babylon.domain.economics.tensor_hierarchy.inter_industry import (
     DefaultDepartmentAggregator,
     DefaultLeontiefComputer,
 )
-from babylon.economics.tensor_hierarchy.types import (
+from babylon.domain.economics.tensor_hierarchy.types import (
     Department,
     InterIndustryFlow,
     IOTableType,

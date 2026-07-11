@@ -28,7 +28,7 @@ import h3
 from hypothesis import strategies as st
 from hypothesis.strategies import SearchStrategy
 
-from babylon.economics.substrate.types import HexEconomicState, HexGrid
+from babylon.domain.economics.substrate.types import HexEconomicState, HexGrid
 
 # Anchor cells from the existing tri-county fixtures. Each anchor's county
 # applies to every cell in its grid_disk.

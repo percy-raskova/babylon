@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import DispossessionDefines
-from babylon.economics.dispossession.intensity import DispossessionIntensityCalculator
-from babylon.economics.dispossession.types import TerritoryDispossessionState
+from babylon.domain.economics.dispossession.intensity import DispossessionIntensityCalculator
+from babylon.domain.economics.dispossession.types import TerritoryDispossessionState
 
 
 def _make_state(

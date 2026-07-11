@@ -145,11 +145,11 @@ class TestMeltConsistencyNoDataSentinel:
 
         Constructs the sentinel and verifies that a downstream consumer
         recognizes its falsy-ness (the documented pattern from
-        ``src/babylon/economics/tensor.py:NoDataSentinel.__bool__``).
+        ``src/babylon/domain/economics/tensor.py:NoDataSentinel.__bool__``).
         The skip-on-NoData behavior is then *the consumer's
         responsibility* and this test enforces the boolean contract.
         """
-        from babylon.economics.tensor import NoDataSentinel
+        from babylon.domain.economics.tensor import NoDataSentinel
 
         sentinel = NoDataSentinel(
             fips="99999",

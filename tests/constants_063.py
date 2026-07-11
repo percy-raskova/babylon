@@ -27,7 +27,7 @@ from functools import lru_cache
 
 import h3
 
-from babylon.economics.border_commute_synthesis import DETROIT_PORT_CODES
+from babylon.domain.economics.border_commute_synthesis import DETROIT_PORT_CODES
 
 # Canonical Detroit tri-county FIPS codes (Wayne, Oakland, Macomb).
 DETROIT_TRI_COUNTY_FIPS: frozenset[str] = frozenset({"26163", "26125", "26099"})

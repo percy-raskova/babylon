@@ -14,8 +14,8 @@ actually produced (:func:`phi_class`, the §6 contract form ``(W_c − V_c)/V_c`
 :func:`phi_hour`, the §9.3 sorting form ``wage_hourly − τ_eff``).
 
 **Re-consumed orphan.** The typed poles reuse the C1.7-orphaned
-:mod:`babylon.economics.value` models: :class:`~babylon.economics.value.AbstractLabor`
-(pole A, hours) ⇄ :class:`~babylon.economics.value.ExchangeValue` (pole B,
+:mod:`babylon.domain.economics.value` models: :class:`~babylon.domain.economics.value.AbstractLabor`
+(pole A, hours) ⇄ :class:`~babylon.domain.economics.value.ExchangeValue` (pole B,
 dollars). Before this module those models had no non-dormant consumer; the
 adjunction re-consumes them as its genuine pole types.
 
@@ -23,7 +23,7 @@ adjunction re-consumes them as its genuine pole types.
 *separately measured* defects whose SUM is Φ — never a stored scalar:
 
 - ``phi_unequal_exchange`` (Emmanuel/Amin) — kernel
-  :meth:`~babylon.economics.gamma.shadow_subsidy.DefaultShadowSubsidyCalculator.compute_phi_imperial`
+  :meth:`~babylon.domain.economics.gamma.shadow_subsidy.DefaultShadowSubsidyCalculator.compute_phi_imperial`
   (``(1 − γ_basket)·Consumption``);
 - ``phi_reproduction`` (Meillassoux) — kernel
   :func:`babylon.formulas.lifecycle.compute_shadow_subsidy` (the honest
@@ -32,7 +32,7 @@ adjunction re-consumes them as its genuine pole types.
 - ``phi_domestic`` (Fortunati) — ``τ · L_unpaid``, computed directly here.
 
 **D2 kernel-fork resolution (recorded per the design's D2 instruction).**
-:meth:`~babylon.economics.gamma.shadow_subsidy.DefaultShadowSubsidyCalculator.compute_phi_iii`
+:meth:`~babylon.domain.economics.gamma.shadow_subsidy.DefaultShadowSubsidyCalculator.compute_phi_iii`
 (``shadow_subsidy.py`` lines 116, 128-129) computes
 ``phi_labor_hours = (1 − γ_III)·L_unpaid`` and then ``· τ`` — i.e. it returns
 ``(1 − γ_III)·L_unpaid·τ``, which is **quadratic** in ``L_unpaid`` (since
@@ -54,7 +54,7 @@ any Φ component here (pinned by ``test_value_form.py::TestPiIsNotVisibility``).
 **Two decoupled class axes.** :func:`class_position_by_phi_hour` sorts by the
 FLOW defect Φ_hour. This is deliberately distinct from the canonical
 STOCK axis (wealth-percentile) in
-:class:`babylon.economics.melt.class_position` (``melt/types.py`` lines 9-18):
+:class:`babylon.domain.economics.melt.class_position` (``melt/types.py`` lines 9-18):
 a proletarian can have Φ_hour > 0 (cheap imports) yet hold no wealth. Do NOT
 conflate them — this function does not touch the wealth-percentile classifier.
 
@@ -84,10 +84,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from babylon.economics.gamma.shadow_subsidy import DefaultShadowSubsidyCalculator
-from babylon.economics.gamma.types import GammaBasket, GammaIII
-from babylon.economics.melt.types import ClassPosition
-from babylon.economics.value import AbstractLabor, ExchangeValue
+from babylon.domain.economics.gamma.shadow_subsidy import DefaultShadowSubsidyCalculator
+from babylon.domain.economics.gamma.types import GammaBasket, GammaIII
+from babylon.domain.economics.melt.types import ClassPosition
+from babylon.domain.economics.value import AbstractLabor, ExchangeValue
 from babylon.formulas.lifecycle import compute_shadow_subsidy
 
 __all__ = [
@@ -110,8 +110,8 @@ class ValueFormAdjunction(BaseModel):
     A pure isomorphism with **zero defect**: it is the categorical unit/counit
     of the value form, not the site of exploitation. ``τ`` (MELT) and
     ``γ_basket`` are supplied by the caller's injected
-    :class:`~babylon.economics.melt.melt_calculator.MELTCalculator` and
-    :class:`~babylon.economics.melt.basket_visibility.BasketVisibilityCalculator`
+    :class:`~babylon.domain.economics.melt.melt_calculator.MELTCalculator` and
+    :class:`~babylon.domain.economics.melt.basket_visibility.BasketVisibilityCalculator`
     (dependency injection — this model stores plain floats and never hardwires
     a ``Default*`` calculator).
 
@@ -247,18 +247,18 @@ def class_position_by_phi_hour(
 ) -> ClassPosition:
     """Sort a class on the FLOW axis by its hourly imperial-rent defect (§9.3).
 
-    - ``Φ_hour ≥ 0`` → :attr:`~babylon.economics.melt.types.ClassPosition.LABOR_ARISTOCRACY`
+    - ``Φ_hour ≥ 0`` → :attr:`~babylon.domain.economics.melt.types.ClassPosition.LABOR_ARISTOCRACY`
       (the wage exceeds value produced — pacified by the imperial bribe);
     - ``Φ_hour < 0 ∧ W ≥ V_repro`` →
-      :attr:`~babylon.economics.melt.types.ClassPosition.PROLETARIAT`
+      :attr:`~babylon.domain.economics.melt.types.ClassPosition.PROLETARIAT`
       (super-exploited but above the reproduction floor);
     - ``W < V_repro`` →
-      :attr:`~babylon.economics.melt.types.ClassPosition.LUMPENPROLETARIAT`
+      :attr:`~babylon.domain.economics.melt.types.ClassPosition.LUMPENPROLETARIAT`
       (below reproduction; a.k.a. ``SUBPROLETARIAT``, ``melt/types.py`` line 230).
 
     This is the FLOW axis (extraction rate), deliberately decoupled from the
     canonical STOCK axis (wealth percentile) in
-    :class:`babylon.economics.melt.class_position` — the two are separate
+    :class:`babylon.domain.economics.melt.class_position` — the two are separate
     concerns (``melt/types.py`` lines 9-18) and this function does NOT touch the
     wealth-percentile classifier.
 
@@ -268,7 +268,7 @@ def class_position_by_phi_hour(
         v_reproduction: The reproduction / subsistence floor in dollars/hour.
 
     Returns:
-        The :class:`~babylon.economics.melt.types.ClassPosition` on the flow axis.
+        The :class:`~babylon.domain.economics.melt.types.ClassPosition` on the flow axis.
     """
     if phi_hour(wage_hourly, tau_effective) >= 0.0:
         return ClassPosition.LABOR_ARISTOCRACY
@@ -311,7 +311,7 @@ def phi_unequal_exchange(gamma_basket: GammaBasket, consumption: float) -> float
     """Emmanuel/Amin unequal exchange: ``(1 − γ_basket) · Consumption``.
 
     Reuses
-    :meth:`~babylon.economics.gamma.shadow_subsidy.DefaultShadowSubsidyCalculator.compute_phi_imperial`
+    :meth:`~babylon.domain.economics.gamma.shadow_subsidy.DefaultShadowSubsidyCalculator.compute_phi_imperial`
     verbatim (``gamma/shadow_subsidy.py``). The flow-level derivation in
     ``formulas/unequal_exchange`` (``exchange_ratio`` → ``value_transfer``) is
     the cross-check: both must agree in sign and order of magnitude.
@@ -353,7 +353,7 @@ def phi_iii_report(gamma_iii: GammaIII, tau: float) -> float:
     """The kernel's narrower Φ_III: ``(1 − γ_III) · L_unpaid · τ`` (report only).
 
     Reuses
-    :meth:`~babylon.economics.gamma.shadow_subsidy.DefaultShadowSubsidyCalculator.compute_phi_iii`
+    :meth:`~babylon.domain.economics.gamma.shadow_subsidy.DefaultShadowSubsidyCalculator.compute_phi_iii`
     (called with ``melt=None`` to obtain its ``phi_iii_labor_hours =
     (1 − γ_III)·L_unpaid``, then scaled by ``τ`` in the instance's own units,
     avoiding the kernel's billions/1e9 assumption).

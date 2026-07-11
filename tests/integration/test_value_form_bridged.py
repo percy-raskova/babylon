@@ -58,7 +58,7 @@ def _asymmetry(w: float, v: float) -> tuple[float, float]:
 def bridged_run():  # type: ignore[no-untyped-def]
     """Hydrate a single-county bridged world and run 30 ticks, capturing Φ."""
     from babylon.config.defines import GameDefines
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.engine.context import TickContext
     from babylon.engine.headless_runner.bridge import WorldStateBridge
     from babylon.engine.headless_runner.runner import EventCapture

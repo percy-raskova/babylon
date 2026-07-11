@@ -96,7 +96,7 @@ def mock_county_rental_source() -> MockCountyRentalIncomeSource:
 
 
 def _check_protocol_compliance() -> None:
-    from babylon.economics.rent.data_sources import (
+    from babylon.domain.economics.rent.data_sources import (
         CountyRentalIncomeSource,
         HousingDataSource,
     )

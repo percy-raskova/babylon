@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
-from babylon.economics.tensor_registry import GeoLevel, TensorRegistry
+from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
+from babylon.domain.economics.tensor_registry import GeoLevel, TensorRegistry
 
 if TYPE_CHECKING:
     pass

@@ -29,7 +29,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, ClassVar
 
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import NoDataSentinel
 from babylon.models.enums import EdgeType, SocialRole
 
 if TYPE_CHECKING:

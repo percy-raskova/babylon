@@ -11,8 +11,8 @@ CHK030: Tests verify distinct error messages for GDP vs employment data.
 
 from __future__ import annotations
 
-from babylon.economics.melt import DefaultMELTCalculator
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.melt import DefaultMELTCalculator
+from babylon.domain.economics.tensor import NoDataSentinel
 
 from .conftest import MockBEADataSource, MockQCEWDataSource
 

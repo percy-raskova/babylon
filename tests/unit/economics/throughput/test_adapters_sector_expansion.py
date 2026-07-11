@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.throughput.adapters import (
+from babylon.domain.economics.throughput.adapters import (
     NAICS_2DIGIT_SECTORS,
     _sector_codes_for,
 )

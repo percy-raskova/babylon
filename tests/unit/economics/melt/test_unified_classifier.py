@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.melt.types import ClassPosition, PrecarityStatus
+from babylon.domain.economics.melt.types import ClassPosition, PrecarityStatus
 from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()
@@ -26,7 +26,7 @@ class TestDualCriteriaResult:
     @pytest.mark.unit
     def test_agreement_case(self) -> None:
         """When agrees=True, magnitude must be 0.0 and classes must match."""
-        from babylon.economics.melt.unified_classifier import DualCriteriaResult
+        from babylon.domain.economics.melt.unified_classifier import DualCriteriaResult
 
         result = DualCriteriaResult(
             wealth_class=ClassPosition.PROLETARIAT,
@@ -41,7 +41,7 @@ class TestDualCriteriaResult:
     @pytest.mark.unit
     def test_disagreement_case(self) -> None:
         """When agrees=False, classes must differ and magnitude > 0."""
-        from babylon.economics.melt.unified_classifier import DualCriteriaResult
+        from babylon.domain.economics.melt.unified_classifier import DualCriteriaResult
 
         result = DualCriteriaResult(
             wealth_class=ClassPosition.LABOR_ARISTOCRACY,
@@ -56,7 +56,7 @@ class TestDualCriteriaResult:
     @pytest.mark.unit
     def test_frozen_immutability(self) -> None:
         """DualCriteriaResult must be frozen (immutable)."""
-        from babylon.economics.melt.unified_classifier import DualCriteriaResult
+        from babylon.domain.economics.melt.unified_classifier import DualCriteriaResult
 
         result = DualCriteriaResult(
             wealth_class=ClassPosition.PROLETARIAT,
@@ -70,7 +70,7 @@ class TestDualCriteriaResult:
     @pytest.mark.unit
     def test_agrees_true_but_classes_differ_raises(self) -> None:
         """Validator rejects agrees=True when classes differ."""
-        from babylon.economics.melt.unified_classifier import DualCriteriaResult
+        from babylon.domain.economics.melt.unified_classifier import DualCriteriaResult
 
         with pytest.raises(ValidationError):
             DualCriteriaResult(
@@ -83,7 +83,7 @@ class TestDualCriteriaResult:
     @pytest.mark.unit
     def test_agrees_false_but_classes_match_raises(self) -> None:
         """Validator rejects agrees=False when classes match."""
-        from babylon.economics.melt.unified_classifier import DualCriteriaResult
+        from babylon.domain.economics.melt.unified_classifier import DualCriteriaResult
 
         with pytest.raises(ValidationError):
             DualCriteriaResult(
@@ -96,7 +96,7 @@ class TestDualCriteriaResult:
     @pytest.mark.unit
     def test_agrees_true_nonzero_magnitude_raises(self) -> None:
         """Validator rejects nonzero magnitude when agrees=True."""
-        from babylon.economics.melt.unified_classifier import DualCriteriaResult
+        from babylon.domain.economics.melt.unified_classifier import DualCriteriaResult
 
         with pytest.raises(ValidationError):
             DualCriteriaResult(
@@ -109,7 +109,7 @@ class TestDualCriteriaResult:
     @pytest.mark.unit
     def test_negative_magnitude_raises(self) -> None:
         """Magnitude must be >= 0.0."""
-        from babylon.economics.melt.unified_classifier import DualCriteriaResult
+        from babylon.domain.economics.melt.unified_classifier import DualCriteriaResult
 
         with pytest.raises(ValidationError):
             DualCriteriaResult(
@@ -130,7 +130,7 @@ class TestClassifyWithFiltrationNoFiltration:
     @pytest.mark.unit
     def test_75th_percentile_returns_la(self) -> None:
         """Scenario 1: 75th percentile -> LABOR_ARISTOCRACY."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         result = classifier.classify_with_filtration(CS.WEALTH_LA, PrecarityStatus.STABLE)
@@ -139,7 +139,7 @@ class TestClassifyWithFiltrationNoFiltration:
     @pytest.mark.unit
     def test_25th_stable_returns_proletariat(self) -> None:
         """Scenario 2: 25th percentile + STABLE -> PROLETARIAT."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         result = classifier.classify_with_filtration(CS.WEALTH_PROLETARIAT, PrecarityStatus.STABLE)
@@ -148,7 +148,7 @@ class TestClassifyWithFiltrationNoFiltration:
     @pytest.mark.unit
     def test_10th_excluded_returns_lumpen(self) -> None:
         """Scenario 3: 10th percentile + EXCLUDED -> LUMPENPROLETARIAT."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         result = classifier.classify_with_filtration(CS.WEALTH_LUMPEN, PrecarityStatus.EXCLUDED)
@@ -157,7 +157,7 @@ class TestClassifyWithFiltrationNoFiltration:
     @pytest.mark.unit
     def test_95th_returns_petit_bourgeoisie(self) -> None:
         """Scenario 4: 95th percentile -> PETIT_BOURGEOISIE."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         result = classifier.classify_with_filtration(CS.WEALTH_PB, PrecarityStatus.STABLE)
@@ -166,7 +166,7 @@ class TestClassifyWithFiltrationNoFiltration:
     @pytest.mark.unit
     def test_99_5th_returns_bourgeoisie(self) -> None:
         """Scenario 5: 99.5th percentile -> BOURGEOISIE."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         result = classifier.classify_with_filtration(CS.WEALTH_BOURGEOISIE, PrecarityStatus.STABLE)
@@ -175,7 +175,7 @@ class TestClassifyWithFiltrationNoFiltration:
     @pytest.mark.unit
     def test_55th_excluded_returns_la(self) -> None:
         """Scenario 6: 55th percentile + EXCLUDED -> LA (wealth overrides)."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         result = classifier.classify_with_filtration(
@@ -186,10 +186,10 @@ class TestClassifyWithFiltrationNoFiltration:
     @pytest.mark.unit
     def test_backward_compatibility_with_base_classifier(self) -> None:
         """No-filtration path matches DefaultClassPositionClassifier exactly."""
-        from babylon.economics.melt.class_position import (
+        from babylon.domain.economics.melt.class_position import (
             DefaultClassPositionClassifier,
         )
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         base = DefaultClassPositionClassifier()
         unified = DefaultUnifiedClassifier()
@@ -214,7 +214,7 @@ class TestClassifyDualCriteria:
     @pytest.mark.unit
     def test_agreement_both_criteria_match(self) -> None:
         """When accounting and wealth agree, result.agrees=True."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         # V_produced ~ V_reproduction (ratio ~1.0) -> PROLETARIAT
@@ -232,7 +232,7 @@ class TestClassifyDualCriteria:
     @pytest.mark.unit
     def test_disagreement_different_criteria(self) -> None:
         """When accounting and wealth disagree, result.agrees=False."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         # Low V_produced suggests proletarian, but high wealth says LA
@@ -249,7 +249,7 @@ class TestClassifyDualCriteria:
     @pytest.mark.unit
     def test_wealth_class_is_primary(self) -> None:
         """Wealth class is always the primary classification result."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         result = classifier.classify_dual_criteria(
@@ -286,7 +286,7 @@ class TestClassifyWithFiltrationPath:
     @pytest.mark.unit
     def test_first_nations_shifts_to_proletariat(self) -> None:
         """60th percentile + FIRST_NATIONS -> PROLETARIAT (60*0.5=30th)."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
         from babylon.models.enums import CommunityType
 
         classifier = DefaultUnifiedClassifier()
@@ -301,7 +301,7 @@ class TestClassifyWithFiltrationPath:
     @pytest.mark.unit
     def test_incarcerated_shifts_to_lumpen(self) -> None:
         """45th + INCARCERATED -> LUMPEN (precarity EXCLUDED, below 50th)."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
         from babylon.models.enums import CommunityType
 
         classifier = DefaultUnifiedClassifier()
@@ -316,7 +316,7 @@ class TestClassifyWithFiltrationPath:
     @pytest.mark.unit
     def test_undocumented_shifts_classification(self) -> None:
         """55th + UNDOCUMENTED -> shifted downward (55*0.6=33rd)."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
         from babylon.models.enums import CommunityType
 
         classifier = DefaultUnifiedClassifier()
@@ -332,7 +332,7 @@ class TestClassifyWithFiltrationPath:
     @pytest.mark.unit
     def test_disabled_shifts_classification(self) -> None:
         """65th + DISABLED (modifier=1.3) -> shifted (65/1.3=50th)."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
         from babylon.models.enums import CommunityType
 
         classifier = DefaultUnifiedClassifier()
@@ -353,7 +353,7 @@ class TestClassifyWithFiltrationPath:
     @pytest.mark.unit
     def test_no_memberships_unchanged(self) -> None:
         """No memberships -> same as base classifier."""
-        from babylon.economics.melt.unified_classifier import DefaultUnifiedClassifier
+        from babylon.domain.economics.melt.unified_classifier import DefaultUnifiedClassifier
 
         classifier = DefaultUnifiedClassifier()
         result = classifier.classify_with_filtration(

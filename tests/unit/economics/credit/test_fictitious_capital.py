@@ -16,7 +16,7 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.credit.types import FictitiousCapitalStock
+from babylon.domain.economics.credit.types import FictitiousCapitalStock
 
 # =============================================================================
 # Frozen (Immutability)

@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.snlt import SNLTConfig
-from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
-from babylon.economics.tensor_registry import CountyHydrator, GeoLevel, TensorRegistry
+from babylon.domain.economics.snlt import SNLTConfig
+from babylon.domain.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
+from babylon.domain.economics.tensor_registry import CountyHydrator, GeoLevel, TensorRegistry
 from tests.constants import TestConstants
 
 TC = TestConstants

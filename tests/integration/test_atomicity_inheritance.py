@@ -102,8 +102,8 @@ class _RaisingClassifier:
 
 
 def _boundary_row(session_id: object, tick: int, magnitude: float):  # type: ignore[no-untyped-def]
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegisterRow
-    from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegisterRow
+    from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 
     return BoundaryFlowRegisterRow(
         session_id=session_id,  # type: ignore[arg-type]
@@ -130,9 +130,9 @@ def _count_boundary_rows(runtime, session_id: object, tick: int) -> int:  # type
 
 def test_partial_buffer_never_reaches_postgres_when_step_raises(runtime, session_ids) -> None:  # type: ignore[no-untyped-def]
     """Part 1 (FR-022): a mid-step raise leaves a partial buffer, zero DB rows."""
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-    from babylon.economics.lodes_commute_matrix import build_year_matrix
-    from babylon.economics.node_kinds import NodeKind
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.lodes_commute_matrix import build_year_matrix
+    from babylon.domain.economics.node_kinds import NodeKind
     from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
     from babylon.topology.graph import BabylonGraph
 

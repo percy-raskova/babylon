@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.counter_tendencies.calculator import (
+from babylon.domain.economics.counter_tendencies.calculator import (
     DefaultCounterTendencyCalculator,
 )
-from babylon.economics.counter_tendencies.types import CounterTendencyStrength
+from babylon.domain.economics.counter_tendencies.types import CounterTendencyStrength
 
 from .conftest import CounterTendencyInputs
 

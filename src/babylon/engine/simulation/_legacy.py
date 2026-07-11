@@ -42,7 +42,7 @@ from babylon.models.snapshots import (
 from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
-    from babylon.economics.tensor_registry import TensorRegistry
+    from babylon.domain.economics.tensor_registry import TensorRegistry
     from babylon.engine.observer import SimulationObserver
     from babylon.protocols import ObserverCallback
 
@@ -191,10 +191,10 @@ class Simulation:
         """
         from pathlib import Path
 
-        from babylon.economics.adapters import SQLiteQCEWSource
-        from babylon.economics.department_mapper import DepartmentMapper
-        from babylon.economics.hydrator import MarxianHydrator
-        from babylon.economics.tensor_registry import TensorRegistry
+        from babylon.domain.economics.adapters import SQLiteQCEWSource
+        from babylon.domain.economics.department_mapper import DepartmentMapper
+        from babylon.domain.economics.hydrator import MarxianHydrator
+        from babylon.domain.economics.tensor_registry import TensorRegistry
         from babylon.engine.hydration.reference import (
             StubBEASource,
             hydrate_economy_constants,
@@ -221,7 +221,11 @@ class Simulation:
         # additional package directory (now: simulation/_legacy.py → simulation/
         # → engine/ → babylon/ → economics/data/naics_to_dept.yaml).
         economics_path = (
-            Path(__file__).parent.parent.parent / "economics" / "data" / "naics_to_dept.yaml"
+            Path(__file__).parent.parent.parent
+            / "domain"
+            / "economics"
+            / "data"
+            / "naics_to_dept.yaml"
         )
 
         with get_reference_session() as session:
@@ -269,14 +273,14 @@ class Simulation:
         # Wire calculator factory if multi-year mode requested
         calculator_overrides: dict[str, Any] | None = None
         if years is not None:
-            from babylon.economics.factory import create_economics_services
+            from babylon.domain.economics.factory import create_economics_services
             from babylon.reference.database import get_normalized_session_factory
 
             calc_session_factory = get_normalized_session_factory()
             calculator_overrides = create_economics_services(calc_session_factory, tensor_registry)
 
             # Feature 024: Wire Volume III financial calculators with real data
-            from babylon.economics.factory import (
+            from babylon.domain.economics.factory import (
                 create_financial_services,
                 load_fred_series_from_db,
             )
@@ -286,7 +290,7 @@ class Simulation:
             calculator_overrides.update(financial_overrides)
 
             # Feature 023: Wire Volume II circulation calculators
-            from babylon.economics.factory import (
+            from babylon.domain.economics.factory import (
                 create_circulation_services,
                 load_circulation_series_from_db,
             )
@@ -299,7 +303,10 @@ class Simulation:
             calculator_overrides.update(circulation_overrides)
 
             # Feature 021: Wire Volume I production layer (reserve army, productivity, dispossession)
-            from babylon.economics.factory import create_vol1_services, load_vol1_series_from_db
+            from babylon.domain.economics.factory import (
+                create_vol1_services,
+                load_vol1_series_from_db,
+            )
 
             vol1_cache = load_vol1_series_from_db(calc_session_factory)
             vol1_overrides = create_vol1_services(
@@ -668,8 +675,8 @@ class Simulation:
             >>> for record in ts:
             ...     print(f"{record['year']} {record['fips']}: LA={record['la_share']:.2f}")
         """
-        from babylon.economics.tick.derived_rates import DerivedRateCalculator
-        from babylon.economics.tick.graph_bridge import (
+        from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
+        from babylon.domain.economics.tick.graph_bridge import (
             _reconstruct_tick_state,
         )
 

@@ -12,8 +12,8 @@ import math
 import pytest
 
 from babylon.config.defines import LifecycleDefines
-from babylon.economics.lifecycle.cohort_dynamics import DefaultCohortDynamicsCalculator
-from babylon.economics.lifecycle.types import DPDState
+from babylon.domain.economics.lifecycle.cohort_dynamics import DefaultCohortDynamicsCalculator
+from babylon.domain.economics.lifecycle.types import DPDState
 
 
 class TestCohortDynamicsCalculator:

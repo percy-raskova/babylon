@@ -1,4 +1,4 @@
-"""Validation tests for the Marxian value poles in :mod:`babylon.economics.value`.
+"""Validation tests for the Marxian value poles in :mod:`babylon.domain.economics.value`.
 
 Provenance (C1.7 test-migration ledger): these construction/validation
 intents were previously pinned only inside the dormant dialectics layer's
@@ -8,7 +8,7 @@ suites — ``UseValue``/``ExchangeValue`` in
 ``tests/unit/engine/dialectics/test_production.py``. Those files were retired
 with ``babylon.engine.dialectics`` (``project/06-lawverian-dialectics.md`` §5
 item 6), but the four pole types themselves live on in
-``babylon.economics.value`` and had no other coverage, so their field
+``babylon.domain.economics.value`` and had no other coverage, so their field
 contracts are migrated here verbatim.
 """
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.value import AbstractLabor, ConcreteLabor, ExchangeValue, UseValue
+from babylon.domain.economics.value import AbstractLabor, ConcreteLabor, ExchangeValue, UseValue
 
 pytestmark = pytest.mark.math
 

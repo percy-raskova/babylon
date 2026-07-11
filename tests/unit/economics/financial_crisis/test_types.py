@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.financial_crisis.types import (
+from babylon.domain.economics.financial_crisis.types import (
     CreditCrisisIndicator,
     FinancialCrisisAssessment,
 )

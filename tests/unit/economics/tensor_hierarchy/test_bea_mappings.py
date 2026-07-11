@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tensor_hierarchy.mappings import (
+from babylon.domain.economics.tensor_hierarchy.mappings import (
     BEA_TO_DEPARTMENT,
     VALID_DEPARTMENTS,
     BEAMappings,
@@ -96,7 +96,7 @@ class TestLegacyEquivalence:
     def test_as_flat_dict_matches_legacy_aggregator(self) -> None:
         """Drop-in replacement check: BEA_TO_DEPARTMENT.as_flat_dict() ==
         DefaultDepartmentAggregator().get_default_mapping()."""
-        from babylon.economics.tensor_hierarchy.inter_industry import (
+        from babylon.domain.economics.tensor_hierarchy.inter_industry import (
             DefaultDepartmentAggregator,
         )
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.snlt import DEFAULT_SNLT_CONFIG, SNLTConfig
+from babylon.domain.economics.snlt import DEFAULT_SNLT_CONFIG, SNLTConfig
 
 
 class TestSNLTConfig:

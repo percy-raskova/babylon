@@ -12,8 +12,8 @@ inventory tracking, and integrated crisis detection.
    :local:
    :depth: 2
 
-Module: ``babylon.economics.circulation``
------------------------------------------
+Module: ``babylon.domain.economics.circulation``
+------------------------------------------------
 
 Enums
 ~~~~~

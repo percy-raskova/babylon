@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.economics.throughput.data_sources import LODESCommuterFlowSource
+from babylon.domain.economics.throughput.data_sources import LODESCommuterFlowSource
 
 # =============================================================================
 # PROTOCOL CONFORMANCE TESTS

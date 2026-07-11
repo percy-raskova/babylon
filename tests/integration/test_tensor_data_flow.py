@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel, ValueTensor4x3
+from babylon.domain.economics.tensor import NoDataSentinel, ValueTensor4x3
 
 
 class TestTensorDataFlow:

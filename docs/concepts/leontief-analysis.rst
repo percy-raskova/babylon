@@ -251,4 +251,4 @@ Related Documentation
 - :ref:`bea-io-tables` — BEA I-O data format, file inventory, and loader API
 - :ref:`bea-department-mapping` — Full BEA-to-Marxian department mapping
 - :ref:`tensor-hierarchy-reference` — Complete API and data dictionary
-- :mod:`babylon.economics.tensor_hierarchy.inter_industry` — Implementation
+- :mod:`babylon.domain.economics.tensor_hierarchy.inter_industry` — Implementation

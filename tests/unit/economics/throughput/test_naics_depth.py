@@ -6,7 +6,7 @@ TDD Phase: Red/Green
 
 from __future__ import annotations
 
-from babylon.economics.throughput.naics_depth import (
+from babylon.domain.economics.throughput.naics_depth import (
     NAICS_DEPTH_MAPPING,
     get_depth,
     validate_depth,

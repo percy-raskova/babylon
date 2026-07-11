@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.reserve_army.types import ReserveArmyDynamics, ReserveArmyState
+from babylon.domain.economics.reserve_army.types import ReserveArmyDynamics, ReserveArmyState
 
 
 class TestReserveArmyState:

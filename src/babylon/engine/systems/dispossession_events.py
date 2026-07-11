@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar, Union
 
-from babylon.economics.dispossession.intensity import DispossessionIntensityCalculator
+from babylon.domain.economics.dispossession.intensity import DispossessionIntensityCalculator
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.models.enums import EventType
@@ -74,7 +74,7 @@ class DispossessionEventSystem(SystemBase):
                 continue
 
             # Build a lightweight state for intensity computation
-            from babylon.economics.dispossession.types import TerritoryDispossessionState
+            from babylon.domain.economics.dispossession.types import TerritoryDispossessionState
 
             state = TerritoryDispossessionState(
                 fips_code=str(data.get("fips_code", "00000"))[:5].ljust(5, "0"),

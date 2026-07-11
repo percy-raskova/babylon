@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.dynamics.types import TransitionRates
-from babylon.economics.dynamics.validation import (
+from babylon.domain.economics.dynamics.types import TransitionRates
+from babylon.domain.economics.dynamics.validation import (
     validate_class_shares,
     validate_transition_rates,
 )

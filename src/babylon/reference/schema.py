@@ -2551,7 +2551,7 @@ class FactBEAFinalDemandAnnual(NormalizedBase):
     ``/media/user/data/babylon-data/input-output/make-use/IOUse_Before_Redefinitions_PRO_Summary.xlsx``
     via ``tools/ingest/bea_final_demand.py``. Provides the final-demand
     vector ``y`` consumed by ``DefaultFinalDemandSource`` and (downstream)
-    by :func:`babylon.economics.tensor_hierarchy.production_chain_rent.ProductionChainRentCalculator.calculate`.
+    by :func:`babylon.domain.economics.tensor_hierarchy.production_chain_rent.ProductionChainRentCalculator.calculate`.
 
     Constitutional III.4: the BEA Use Table source is covered by the existing
     BEA_GDP / BEA_TiVA catalog entries (under ``Federal Economic``); no

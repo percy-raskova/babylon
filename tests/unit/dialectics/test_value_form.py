@@ -30,9 +30,9 @@ from babylon.domain.dialectics.instances.value_form import (
     phi_unequal_exchange,
     visible_value,
 )
-from babylon.economics.gamma.types import GammaBasket, GammaIII
-from babylon.economics.melt.types import ClassPosition
-from babylon.economics.value import AbstractLabor, ExchangeValue
+from babylon.domain.economics.gamma.types import GammaBasket, GammaIII
+from babylon.domain.economics.melt.types import ClassPosition
+from babylon.domain.economics.value import AbstractLabor, ExchangeValue
 from babylon.formulas.unequal_exchange import (
     calculate_exchange_ratio,
     calculate_value_transfer,
@@ -50,7 +50,7 @@ class TestTauEffective:
 
     def test_matches_national_parameters_semantics(self) -> None:
         # parameters.py:232 — expected_tau_effective = tau * gamma_basket.
-        from babylon.economics.melt.parameters import NationalParameters
+        from babylon.domain.economics.melt.parameters import NationalParameters
 
         params = NationalParameters(
             year=2022,

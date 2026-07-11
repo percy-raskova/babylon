@@ -181,13 +181,13 @@ def compute_initial_profit_rate(
     # Lazy import to avoid circular dependencies
     from pathlib import Path
 
-    from babylon.economics.adapters import SQLiteQCEWSource
-    from babylon.economics.department_mapper import DepartmentMapper
-    from babylon.economics.hydrator import MarxianHydrator
+    from babylon.domain.economics.adapters import SQLiteQCEWSource
+    from babylon.domain.economics.department_mapper import DepartmentMapper
+    from babylon.domain.economics.hydrator import MarxianHydrator
 
     # Locate NAICS-to-department mapping YAML
     economics_path = (
-        Path(__file__).parent.parent.parent / "economics" / "data" / "naics_to_dept.yaml"
+        Path(__file__).parent.parent.parent / "domain" / "economics" / "data" / "naics_to_dept.yaml"
     )
 
     # Create data sources
@@ -405,12 +405,16 @@ def hydrate_economy_constants(
         # Compute extraction efficiency from MarxianHydrator
         from pathlib import Path
 
-        from babylon.economics.adapters import SQLiteQCEWSource
-        from babylon.economics.department_mapper import DepartmentMapper
-        from babylon.economics.hydrator import MarxianHydrator
+        from babylon.domain.economics.adapters import SQLiteQCEWSource
+        from babylon.domain.economics.department_mapper import DepartmentMapper
+        from babylon.domain.economics.hydrator import MarxianHydrator
 
         economics_path = (
-            Path(__file__).parent.parent.parent / "economics" / "data" / "naics_to_dept.yaml"
+            Path(__file__).parent.parent.parent
+            / "domain"
+            / "economics"
+            / "data"
+            / "naics_to_dept.yaml"
         )
 
         with get_reference_session() as session:
@@ -644,7 +648,7 @@ def hydrate_industry_hyperedges(
 
     from sqlalchemy import func, select
 
-    from babylon.economics.department_mapper import DepartmentMapper
+    from babylon.domain.economics.department_mapper import DepartmentMapper
     from babylon.models.entities.industry import IndustryHyperedge
     from babylon.reference.database import get_reference_session
     from babylon.reference.schema import (
@@ -655,7 +659,7 @@ def hydrate_industry_hyperedges(
     )
 
     economics_path = (
-        Path(__file__).parent.parent.parent / "economics" / "data" / "naics_to_dept.yaml"
+        Path(__file__).parent.parent.parent / "domain" / "economics" / "data" / "naics_to_dept.yaml"
     )
 
     industries: dict[str, IndustryHyperedge] = {}

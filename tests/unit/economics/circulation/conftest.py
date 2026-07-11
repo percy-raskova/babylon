@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tensor import DepartmentRow
+from babylon.domain.economics.tensor import DepartmentRow
 from babylon.models.types import Currency, LaborHours
 
 # =============================================================================

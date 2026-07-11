@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.reproduction import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.reproduction import (
     DefaultReproductionRequirementsComputer,
     DefaultReproductionSource,
 )
-from babylon.economics.tensor_hierarchy.types import ReproductionRequirements
+from babylon.domain.economics.tensor_hierarchy.types import ReproductionRequirements
 
 # =============================================================================
 # Helpers

@@ -11,13 +11,13 @@ from __future__ import annotations
 
 import math
 
-from babylon.economics.gamma.gamma_iii import (
+from babylon.domain.economics.gamma.gamma_iii import (
     MAX_YEAR,
     MIN_YEAR,
     DefaultGammaIIICalculator,
 )
-from babylon.economics.gamma.types import GammaIII
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.gamma.types import GammaIII
+from babylon.domain.economics.tensor import NoDataSentinel
 
 from .conftest import MockPaidCareHoursSource, MockUnpaidCareHoursSource
 

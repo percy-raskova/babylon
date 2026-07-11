@@ -11,8 +11,8 @@ import uuid
 
 import pytest
 
-from babylon.economics.boundary_flow_register import BoundaryFlowRegisterRow
-from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegisterRow
+from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 from babylon.persistence.audit_models import AuditSeverity
 from babylon.persistence.conservation_audit import (
     ConservationAuditor,

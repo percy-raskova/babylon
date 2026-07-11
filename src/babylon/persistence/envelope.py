@@ -10,7 +10,7 @@ See Also:
     :mod:`babylon.persistence.audit_models`: :class:`ConservationAuditRow`.
     :mod:`babylon.persistence.hex_state`: :class:`DynamicHexState`.
     :mod:`babylon.persistence.external_node`: :class:`ExternalNode`.
-    :mod:`babylon.economics.boundary_flow_register`:
+    :mod:`babylon.domain.economics.boundary_flow_register`:
         :class:`BoundaryFlowRegisterRow`.
 """
 
@@ -20,7 +20,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.economics.boundary_flow_register import BoundaryFlowRegisterRow
+from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegisterRow
 from babylon.persistence.audit_models import ConservationAuditRow
 from babylon.persistence.county_state import (
     DynamicConsciousnessState,

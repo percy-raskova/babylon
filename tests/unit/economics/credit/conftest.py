@@ -111,7 +111,7 @@ def mock_z1_source() -> MockZ1Source:
 
 
 def _check_protocol_compliance() -> None:
-    from babylon.economics.credit.data_sources import (
+    from babylon.domain.economics.credit.data_sources import (
         CreditAggregateSource,
         InterestRateSource,
         Z1FinancialAccountsSource,

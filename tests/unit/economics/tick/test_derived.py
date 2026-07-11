@@ -6,9 +6,9 @@ Task: T029
 
 from __future__ import annotations
 
-from babylon.economics.dynamics.types import ClassDistribution
-from babylon.economics.tick.derived_rates import DerivedRateCalculator
-from babylon.economics.tick.types import CountyEconomicState, NationalTickParameters
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
+from babylon.domain.economics.tick.types import CountyEconomicState, NationalTickParameters
 
 WAYNE_FIPS = "26163"
 

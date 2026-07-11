@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.lifecycle.inheritance import DefaultInheritanceCalculator
-from babylon.economics.lifecycle.types import DPDState, InheritanceFlow
+from babylon.domain.economics.lifecycle.inheritance import DefaultInheritanceCalculator
+from babylon.domain.economics.lifecycle.types import DPDState, InheritanceFlow
 
 
 class TestInheritanceCalculator:

@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.monetary.types import MonetaryAdjustment
+from babylon.domain.economics.monetary.types import MonetaryAdjustment
 
 # =============================================================================
 # MonetaryAdjustment

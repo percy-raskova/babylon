@@ -313,5 +313,5 @@ Related Documentation
 - :ref:`tensor-hierarchy-reference` — ``GeographicFlow`` and
   ``ImperialRentField`` tensor types
 - :mod:`babylon.data.bts.faf_loader` — FAFLoader implementation
-- :mod:`babylon.economics.tensor_hierarchy.geographic_flow` — Geographic flow
+- :mod:`babylon.domain.economics.tensor_hierarchy.geographic_flow` — Geographic flow
   computation (``DefaultImperialRentComputer``)

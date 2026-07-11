@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from babylon.economics.capital_stock import CapitalStockCalculator
-from babylon.economics.depreciation import DepreciationConfig
-from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
+from babylon.domain.economics.capital_stock import CapitalStockCalculator
+from babylon.domain.economics.depreciation import DepreciationConfig
+from babylon.domain.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
 from babylon.models.types import LaborHours, Probability
 
 if TYPE_CHECKING:
@@ -263,7 +263,7 @@ class TestGetMetrics:
 
     def test_returns_derived_tensor_metrics(self, wayne_county_data: MockRegistry) -> None:
         """T040: get_metrics should return DerivedTensorMetrics."""
-        from babylon.economics.derived_metrics import DerivedTensorMetrics
+        from babylon.domain.economics.derived_metrics import DerivedTensorMetrics
 
         calculator = CapitalStockCalculator(wayne_county_data)  # type: ignore[arg-type]
 
@@ -362,7 +362,7 @@ class TestGetKAggregate:
 
     def test_state_aggregate_returns_sum_of_county_K(self, mock_registry: MockRegistry) -> None:
         """T061: get_K_aggregate STATE should return sum of county K values."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         # Add data for 3 Michigan counties (state 26)
         for fips in ["26163", "26125", "26099"]:
@@ -385,7 +385,7 @@ class TestGetKAggregate:
 
     def test_nation_aggregate_returns_sum_of_all_K(self, mock_registry: MockRegistry) -> None:
         """T062: get_K_aggregate NATION should return sum of all county K values."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         # Add data for counties in different states
         for fips in ["26163", "26125", "17031", "06037"]:
@@ -409,7 +409,7 @@ class TestGetKAggregate:
         self, mock_registry: MockRegistry
     ) -> None:
         """T063: get_K_aggregate should return NoDataSentinel when <50% coverage."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         # Add data for only 2 of 5 counties (40% coverage)
         mock_registry.put("26163", 2020, create_test_tensor("26163", 2020))
@@ -434,7 +434,7 @@ class TestGetKAggregate:
         """T063a: get_K_aggregate should log warning when partial coverage."""
         import logging
 
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         # This test would require mocking internal county list
         # For now, we test that the method works correctly with available data
@@ -491,7 +491,7 @@ class TestGetKAggregateTargeted:
 
     def test_county_level_delegates_to_get_K(self, mock_registry: MockRegistry) -> None:
         """GeoLevel.COUNTY should call get_K directly, returning single county K."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         mock_registry.put("26163", 2020, create_test_tensor("26163", 2020, total_c=70.0))
         calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
@@ -505,7 +505,7 @@ class TestGetKAggregateTargeted:
 
     def test_state_level_aggregates_matching_counties(self, mock_registry: MockRegistry) -> None:
         """GeoLevel.STATE should sum K for counties with matching state prefix."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         # Michigan counties (state 26) with different total_c
         mock_registry.put("26163", 2020, create_test_tensor("26163", 2020, total_c=70.0))
@@ -526,7 +526,7 @@ class TestGetKAggregateTargeted:
 
     def test_national_level_aggregates_all_counties(self, mock_registry: MockRegistry) -> None:
         """GeoLevel.NATION should sum K for all cached counties."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         for fips in ["26163", "17031", "06037"]:
             mock_registry.put(fips, 2020, create_test_tensor(fips, 2020, total_c=70.0))
@@ -543,7 +543,7 @@ class TestGetKAggregateTargeted:
 
     def test_returns_sentinel_when_coverage_below_50pct(self, mock_registry: MockRegistry) -> None:
         """Coverage < 50% should return NoDataSentinel."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         # All 5 counties have data for year 2010 (puts them in cache),
         # but only 2 have data for year 2020
@@ -566,7 +566,7 @@ class TestGetKAggregateTargeted:
 
     def test_returns_value_at_exactly_50pct_coverage(self, mock_registry: MockRegistry) -> None:
         """Coverage == 50% should pass threshold (not sentinel)."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         # All 4 counties have data for year 2010 (puts them in cache),
         # only 2 have data for year 2020 (50% exactly)
@@ -586,7 +586,7 @@ class TestGetKAggregateTargeted:
 
     def test_filters_out_sentinel_county_results(self, mock_registry: MockRegistry) -> None:
         """Only float K values should be summed; NoDataSentinel filtered out."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         # 3 counties, 2 with data, 1 without
         mock_registry.put("26163", 2020, create_test_tensor("26163", 2020, total_c=70.0))
@@ -606,7 +606,7 @@ class TestGetKAggregateTargeted:
 
     def test_year_boundary_returns_sentinel(self, mock_registry: MockRegistry) -> None:
         """Year outside MIN_YEAR..MAX_YEAR should return NoDataSentinel."""
-        from babylon.economics.tensor_registry import GeoLevel
+        from babylon.domain.economics.tensor_registry import GeoLevel
 
         calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
 

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 class EconomicsFallbackTally:
     """Loud observability for economics-calculator fallbacks (C.8 / spec 2.R).
 
-    :class:`~babylon.economics.tick.system.TickDynamicsSystem` substitutes a
+    :class:`~babylon.domain.economics.tick.system.TickDynamicsSystem` substitutes a
     hardcoded coefficient whenever an economics calculator is unwired
     (``None``) or returns no data. Historically these substitutions were
     *silent* — a fully-unwired run reported gamma_III = 0.33 forever with no

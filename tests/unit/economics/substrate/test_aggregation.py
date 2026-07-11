@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.substrate.aggregation import DefaultResolutionAggregator
-from babylon.economics.substrate.production import DefaultHexProductionComputer
-from babylon.economics.substrate.types import HexGrid
+from babylon.domain.economics.substrate.aggregation import DefaultResolutionAggregator
+from babylon.domain.economics.substrate.production import DefaultHexProductionComputer
+from babylon.domain.economics.substrate.types import HexGrid
 
 
 def _sum_total_capital(grid: HexGrid) -> float:

@@ -193,7 +193,7 @@ class TestGetAlpha:
     def test_hydrated_year_returns_import_share(
         self, seeded_session_factory: sessionmaker[Session]
     ) -> None:
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         source = SQLiteGammaHydrationSource(seeded_session_factory)
 
@@ -205,7 +205,7 @@ class TestGetAlpha:
     def test_year_without_trade_data_returns_none(
         self, seeded_session_factory: sessionmaker[Session]
     ) -> None:
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         source = SQLiteGammaHydrationSource(seeded_session_factory)
 
@@ -225,7 +225,7 @@ class TestGetAlpha:
         - ATP (id=20, commodity category): not a geography
         Disjoint set {1,7,9,12} = 1_600_000 → alpha=0.16.
         """
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         source = SQLiteGammaHydrationSource(overlapping_bloc_session_factory)
 
@@ -241,7 +241,7 @@ class TestGetAlpha:
         self, reference_sqlite_session_factory: sessionmaker[Session]
     ) -> None:
         """Trade data present but no BEA final-demand rows -> None (no div-by-zero)."""
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         with reference_sqlite_session_factory() as session:
             t2013 = DimTime(year=2013, is_annual=True)
@@ -270,7 +270,7 @@ class TestGetGammaImport:
     def test_hydrated_year_returns_inverse_erdi(
         self, seeded_session_factory: sessionmaker[Session]
     ) -> None:
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         source = SQLiteGammaHydrationSource(seeded_session_factory)
 
@@ -286,7 +286,7 @@ class TestGetGammaImport:
         self, seeded_session_factory: sessionmaker[Session]
     ) -> None:
         """2020 has no fact_hickel_erdi_annual row (data gap, spec.md FR-102-2)."""
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         source = SQLiteGammaHydrationSource(seeded_session_factory)
 
@@ -296,7 +296,7 @@ class TestGetGammaImport:
         self, seeded_session_factory: sessionmaker[Session]
     ) -> None:
         """Only 'Intensive' is seeded for 2012 -> 'Extensive' lookup misses."""
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         source = SQLiteGammaHydrationSource(seeded_session_factory)
 
@@ -305,7 +305,7 @@ class TestGetGammaImport:
     def test_default_scale_type_is_intensive(
         self, seeded_session_factory: sessionmaker[Session]
     ) -> None:
-        from babylon.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
+        from babylon.domain.economics.melt.gamma_hydration import SQLiteGammaHydrationSource
 
         source = SQLiteGammaHydrationSource(seeded_session_factory)
 

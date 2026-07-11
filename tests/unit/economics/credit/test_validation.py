@@ -8,7 +8,7 @@ validate_interest_burden_ratio.
 
 from __future__ import annotations
 
-from babylon.economics.credit.validation import (
+from babylon.domain.economics.credit.validation import (
     validate_financialization_index,
     validate_interest_burden_ratio,
 )

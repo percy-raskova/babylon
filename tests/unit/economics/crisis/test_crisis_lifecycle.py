@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
-from babylon.economics.crisis.wage_compression import (
+from babylon.domain.economics.crisis.bifurcation import BifurcationRiskCalculator
+from babylon.domain.economics.crisis.wage_compression import (
     apply_wage_compression,
 )
-from babylon.economics.dynamics.crisis import PhasedCrisisAmplifier
-from babylon.economics.dynamics.types import ClassDistribution, TransitionRates
-from babylon.economics.tick.crisis_detector import MultiPeriodCrisisDetector
-from babylon.economics.tick.types import CrisisPhase, CrisisState
+from babylon.domain.economics.dynamics.crisis import PhasedCrisisAmplifier
+from babylon.domain.economics.dynamics.types import ClassDistribution, TransitionRates
+from babylon.domain.economics.tick.crisis_detector import MultiPeriodCrisisDetector
+from babylon.domain.economics.tick.types import CrisisPhase, CrisisState
 from babylon.topology.graph import BabylonGraph
 
 
@@ -303,7 +303,7 @@ class TestCrossSystemIntegration:
         assert metric.legitimation < 1.0  # Agitation = 0.6 -> legitimation = 0.4
 
         # --- Test wage compression ---
-        from babylon.economics.tick.types import CountyEconomicState
+        from babylon.domain.economics.tick.types import CountyEconomicState
 
         county = CountyEconomicState(
             fips="26163",
@@ -331,7 +331,7 @@ class TestCrossSystemIntegration:
         The crisis boolean should be True for any non-NORMAL phase
         and False for NORMAL.
         """
-        from babylon.economics.dynamics.types import EconomicConditions
+        from babylon.domain.economics.dynamics.types import EconomicConditions
 
         for phase in CrisisPhase:
             crisis_bool = phase != CrisisPhase.NORMAL
@@ -429,10 +429,10 @@ class TestSC008Performance:
         """
         import time
 
-        from babylon.economics.crisis.wage_compression import (
+        from babylon.domain.economics.crisis.wage_compression import (
             apply_wage_compression,
         )
-        from babylon.economics.dynamics.types import ClassDistribution
+        from babylon.domain.economics.dynamics.types import ClassDistribution
 
         n_counties = 50
         n_years = 20
@@ -525,7 +525,7 @@ class TestSC008Performance:
                 # Wage compression (only during DEEP)
                 if phase == CrisisPhase.DEEP:
                     # Create minimal county for compression
-                    from babylon.economics.tick.types import CountyEconomicState
+                    from babylon.domain.economics.tick.types import CountyEconomicState
 
                     county = CountyEconomicState(
                         fips=fips,

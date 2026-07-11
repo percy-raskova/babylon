@@ -6,7 +6,7 @@ contracts/capital_recurrence.md).
 
 The recurrence under test is ``K_{t+1} = (1 − δ) K_t + I_t``, implemented
 in the codebase by ``DepreciationConfig.next_K(K_prev, c)`` (see
-``src/babylon/economics/depreciation.py``). The "investment" term ``I_t``
+``src/babylon/domain/economics/depreciation.py``). The "investment" term ``I_t``
 corresponds to the ``c`` (constant capital flow) argument.
 
 Bounds:

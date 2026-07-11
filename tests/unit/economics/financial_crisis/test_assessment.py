@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.financial_crisis.assessment import DefaultFinancialCrisisAssessor
-from babylon.economics.financial_crisis.types import FinancialCrisisAssessment
+from babylon.domain.economics.financial_crisis.assessment import DefaultFinancialCrisisAssessor
+from babylon.domain.economics.financial_crisis.types import FinancialCrisisAssessment
 from tests.unit.economics.financial_crisis.conftest import CrisisScenario
 
 # =============================================================================

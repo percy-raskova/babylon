@@ -8,9 +8,9 @@ TDD Red Phase: These tests define the expected behavior for gamma_basket computa
 
 from __future__ import annotations
 
-from babylon.economics.gamma.gamma_basket import DefaultGammaBasketCalculator
-from babylon.economics.gamma.types import GammaBasket
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.gamma.gamma_basket import DefaultGammaBasketCalculator
+from babylon.domain.economics.gamma.types import GammaBasket
+from babylon.domain.economics.tensor import NoDataSentinel
 
 
 class TestGammaBasketFormula:

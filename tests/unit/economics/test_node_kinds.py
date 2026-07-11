@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 
 # These are the canonical schema constants from
 # specs/062-cross-scale-integration/contracts/boundary_register.yaml.

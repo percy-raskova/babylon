@@ -22,7 +22,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 from tests.constants_063 import (
     DETROIT_TRI_COUNTY_FIPS,
     DETROIT_TRI_COUNTY_HEXES_RES7,
@@ -149,8 +149,8 @@ def _run_readback_tick(runtime, session_id: UUID, graph):  # type: ignore[no-unt
     A fresh loader per call — ``load_year_from_postgres`` caches by year on
     the instance, so reuse would mask the post-injection matrix.
     """
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-    from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
     from babylon.engine.systems.cross_border_commute import CrossBorderCommuteClassifier
     from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
 

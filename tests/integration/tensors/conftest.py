@@ -24,9 +24,9 @@ import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from babylon.economics.adapters import SQLiteQCEWSource
-from babylon.economics.department_mapper import DepartmentMapper
-from babylon.economics.hydrator import MarxianHydrator
+from babylon.domain.economics.adapters import SQLiteQCEWSource
+from babylon.domain.economics.department_mapper import DepartmentMapper
+from babylon.domain.economics.hydrator import MarxianHydrator
 
 # =============================================================================
 # DATABASE PATH CANDIDATES
@@ -176,7 +176,7 @@ def qcew_session(qcew_engine: Engine) -> Generator[Session, None, None]:
 
 # Path to production NAICS-to-department mapping configuration
 _PRODUCTION_MAPPER_PATH = Path(__file__).parent.parent.parent.parent / (
-    "src/babylon/economics/data/naics_to_dept.yaml"
+    "src/babylon/domain/economics/data/naics_to_dept.yaml"
 )
 
 
@@ -184,7 +184,7 @@ _PRODUCTION_MAPPER_PATH = Path(__file__).parent.parent.parent.parent / (
 def production_mapper() -> DepartmentMapper:
     """Load production DepartmentMapper from YAML config.
 
-    Uses the actual production configuration from src/babylon/economics/data/
+    Uses the actual production configuration from src/babylon/domain/economics/data/
     to ensure tests validate against real mapping rules.
 
     Returns:

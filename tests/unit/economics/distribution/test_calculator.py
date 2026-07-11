@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.distribution.calculator import DefaultDistributionCalculator
-from babylon.economics.distribution.types import (
+from babylon.domain.economics.distribution.calculator import DefaultDistributionCalculator
+from babylon.domain.economics.distribution.types import (
     DebtAccumulation,
     SurplusValueDistribution,
 )
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import NoDataSentinel
 
 from .conftest import (
     MockInterestIncomeSource,

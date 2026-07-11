@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.melt.types import ClassPosition, PrecarityStatus
+from babylon.domain.economics.melt.types import ClassPosition, PrecarityStatus
 from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()
@@ -54,7 +54,7 @@ class TestFractalConsistency:
 
     def test_same_class_position_enum_at_sub_scale(self) -> None:
         """Same ClassPosition enum applies at county sub-scale."""
-        from babylon.economics.melt.unified_classifier import (
+        from babylon.domain.economics.melt.unified_classifier import (
             DefaultUnifiedClassifier,
         )
 
@@ -82,7 +82,7 @@ class TestFractalConsistency:
         This validates the internal colony thesis: extraction is concentrated
         where the colonial relationship is most direct (urban core).
         """
-        from babylon.economics.melt.unified_classifier import (
+        from babylon.domain.economics.melt.unified_classifier import (
             validate_fractal_consistency,
         )
 
@@ -99,7 +99,7 @@ class TestFractalConsistency:
 
     def test_four_node_pattern_at_each_county(self) -> None:
         """Each county has all five class positions represented."""
-        from babylon.economics.melt.unified_classifier import (
+        from babylon.domain.economics.melt.unified_classifier import (
             validate_fractal_consistency,
         )
 
@@ -117,7 +117,7 @@ class TestFractalConsistency:
 
     def test_distributions_sum_to_one(self) -> None:
         """All county distributions must sum to approximately 1.0."""
-        from babylon.economics.melt.unified_classifier import (
+        from babylon.domain.economics.melt.unified_classifier import (
             validate_fractal_consistency,
         )
 
@@ -131,7 +131,7 @@ class TestFractalConsistency:
 
     def test_metro_aggregate_preserves_pattern(self) -> None:
         """Metro-level aggregate maintains same class hierarchy as sub-counties."""
-        from babylon.economics.melt.unified_classifier import (
+        from babylon.domain.economics.melt.unified_classifier import (
             validate_fractal_consistency,
         )
 
@@ -158,7 +158,7 @@ class TestFractalConsistency:
         """FractalConsistencyResult is immutable."""
         from pydantic import ValidationError
 
-        from babylon.economics.melt.unified_classifier import (
+        from babylon.domain.economics.melt.unified_classifier import (
             validate_fractal_consistency,
         )
 

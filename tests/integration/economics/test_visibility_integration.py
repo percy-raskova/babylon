@@ -39,8 +39,8 @@ class TestShadowLaborVisibilityIntegration:
 
     def test_service_works_without_visibility_computer(self) -> None:
         """Service still works when no VisibilityComputer is provided."""
-        from babylon.economics.atus_compat import MockReproductionLoader
-        from babylon.economics.shadow_labor import ShadowLaborService
+        from babylon.domain.economics.atus_compat import MockReproductionLoader
+        from babylon.domain.economics.shadow_labor import ShadowLaborService
 
         loader = MockReproductionLoader()
         service = ShadowLaborService(loader=loader)

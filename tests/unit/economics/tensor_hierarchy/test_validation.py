@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from babylon.economics.tensor_hierarchy.validation import (
+from babylon.domain.economics.tensor_hierarchy.validation import (
     validate_g33,
     validate_g_productive,
     validate_io_column_sums,
@@ -283,11 +283,11 @@ class TestGeographicFlowCommutativity:
         1. Aggregate CFS area flows to state → compute imperial rent per state
         2. Compute imperial rent per CFS area → aggregate rent to state level
         """
-        from babylon.economics.tensor_hierarchy.geographic_flow import (
+        from babylon.domain.economics.tensor_hierarchy.geographic_flow import (
             DefaultGeographicAggregator,
             DefaultImperialRentComputer,
         )
-        from babylon.economics.tensor_hierarchy.types import GeographicFlow
+        from babylon.domain.economics.tensor_hierarchy.types import GeographicFlow
 
         # 4-area flow matrix (areas 0-3)
         areas = ["11", "12", "119", "120"]
@@ -334,11 +334,11 @@ class TestGeographicFlowCommutativity:
     @pytest.mark.math
     def test_commutativity_conservation_preserved(self) -> None:
         """sum(phi) == 0 holds at both CFS area and aggregated state level."""
-        from babylon.economics.tensor_hierarchy.geographic_flow import (
+        from babylon.domain.economics.tensor_hierarchy.geographic_flow import (
             DefaultGeographicAggregator,
             DefaultImperialRentComputer,
         )
-        from babylon.economics.tensor_hierarchy.types import GeographicFlow
+        from babylon.domain.economics.tensor_hierarchy.types import GeographicFlow
 
         areas = ["11", "12", "119"]
         flow_matrix = np.array(
@@ -371,10 +371,10 @@ class TestClassTransitionCommutativity:
     @pytest.mark.math
     def test_aggregated_stationary_is_valid(self) -> None:
         """Stationary distribution of aggregated matrix sums to 1.0."""
-        from babylon.economics.tensor_hierarchy.class_transition import (
+        from babylon.domain.economics.tensor_hierarchy.class_transition import (
             DefaultClassTransitionComputer,
         )
-        from babylon.economics.tensor_hierarchy.types import ClassTransitionMatrix
+        from babylon.domain.economics.tensor_hierarchy.types import ClassTransitionMatrix
 
         classes = ["proletariat", "lumpen", "petit_bourgeois", "bourgeoisie"]
         mat = np.array(
@@ -421,10 +421,10 @@ class TestClassTransitionCommutativity:
         - aggregate_classes produces a valid ClassTransitionMatrix
         - stationary_distribution of the coarse matrix is self-consistent
         """
-        from babylon.economics.tensor_hierarchy.class_transition import (
+        from babylon.domain.economics.tensor_hierarchy.class_transition import (
             DefaultClassTransitionComputer,
         )
-        from babylon.economics.tensor_hierarchy.types import ClassTransitionMatrix
+        from babylon.domain.economics.tensor_hierarchy.types import ClassTransitionMatrix
 
         # 4-class mixing matrix with unique stationary distribution
         mat = np.array(

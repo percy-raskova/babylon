@@ -2,13 +2,13 @@
 
 import pytest
 
-from babylon.economics.substrate.transitions import (
+from babylon.domain.economics.substrate.transitions import (
     apply_abandonment,
     apply_foreclosure,
     apply_purchase,
     evaluate_class_shares,
 )
-from babylon.economics.substrate.types import HexEconomicState, HexTenureComposition
+from babylon.domain.economics.substrate.types import HexEconomicState, HexTenureComposition
 from babylon.models.enums import SocialRole
 
 

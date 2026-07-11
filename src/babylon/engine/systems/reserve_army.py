@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar, Union
 
-from babylon.economics.reserve_army.calculator import DefaultWagePressureCalculator
+from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.models.enums import EventType

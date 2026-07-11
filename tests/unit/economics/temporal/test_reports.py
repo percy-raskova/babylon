@@ -14,7 +14,7 @@ from datetime import datetime
 
 import pytest
 
-from babylon.economics.temporal.models import (
+from babylon.domain.economics.temporal.models import (
     AnomalyFlag,
     AnomalyThresholdConfig,
     DeindustrializationSignal,
@@ -188,21 +188,21 @@ class TestReportGeneratorImpl:
 
     def test_report_generator_impl_exists(self) -> None:
         """ReportGeneratorImpl can be imported and instantiated."""
-        from babylon.economics.temporal.reports import ReportGeneratorImpl
+        from babylon.domain.economics.temporal.reports import ReportGeneratorImpl
 
         generator = ReportGeneratorImpl(hydrator=None)  # type: ignore[arg-type]
         assert hasattr(generator, "generate_report")
 
     def test_generate_report_returns_validation_report(self) -> None:
         """generate_report returns TemporalValidationReport."""
-        from babylon.economics.temporal.reports import ReportGeneratorImpl
+        from babylon.domain.economics.temporal.reports import ReportGeneratorImpl
 
         generator = ReportGeneratorImpl(hydrator=None)  # type: ignore[arg-type]
         assert callable(generator.generate_report)
 
     def test_generate_report_requires_minimum_years(self) -> None:
         """generate_report with <2 years raises ValueError."""
-        from babylon.economics.temporal.reports import ReportGeneratorImpl
+        from babylon.domain.economics.temporal.reports import ReportGeneratorImpl
 
         generator = ReportGeneratorImpl(hydrator=None)  # type: ignore[arg-type]
         config = AnomalyThresholdConfig()
@@ -275,7 +275,7 @@ class TestReportWithAnnotations:
 
     def test_report_includes_annotations(self) -> None:
         """Report can contain analyst annotations."""
-        from babylon.economics.temporal.models import TransitionAnnotation
+        from babylon.domain.economics.temporal.models import TransitionAnnotation
 
         annotation = TransitionAnnotation(
             transition_key="26163_2019_2020",

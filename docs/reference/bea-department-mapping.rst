@@ -471,4 +471,4 @@ Related Documentation
 - :ref:`leontief-analysis` — How ~70 industries aggregate to 4 departments
 - :ref:`bea-io-tables` — BEA I-O data format and file inventory
 - :ref:`tensor-hierarchy-reference` — ``InterIndustryFlow`` tensor type
-- :mod:`babylon.economics.tensor_hierarchy.inter_industry` — ``DefaultDepartmentAggregator``
+- :mod:`babylon.domain.economics.tensor_hierarchy.inter_industry` — ``DefaultDepartmentAggregator``

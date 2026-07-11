@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.credit.credit_cycle import DefaultCreditCycleDetector
-from babylon.economics.credit.types import (
+from babylon.domain.economics.credit.credit_cycle import DefaultCreditCycleDetector
+from babylon.domain.economics.credit.types import (
     OVEREXTENSION_DEFAULT_RATE,
     RECOVERY_CONSECUTIVE_PERIODS,
     STAGNATION_CREDIT_GROWTH,

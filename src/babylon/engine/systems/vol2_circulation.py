@@ -27,7 +27,7 @@ Constitution constraints:
 See also:
     ``specs/063-vol-ii-circulation/spec.md`` FR-008 .. FR-016, FR-030a/b/c.
     ``specs/063-vol-ii-circulation/data-model.md`` §1.3.
-    :mod:`babylon.economics.lodes_commute_matrix`:
+    :mod:`babylon.domain.economics.lodes_commute_matrix`:
         :class:`LODESCommuteMatrixLoader`, :class:`LODESYearMatrix`.
 """
 
@@ -40,7 +40,7 @@ from uuid import UUID
 
 import numpy as np
 
-from babylon.economics.boundary_flow_register import (
+from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
     NodeKind,
@@ -48,7 +48,7 @@ from babylon.economics.boundary_flow_register import (
 from babylon.kernel.system_base import SystemBase
 
 if TYPE_CHECKING:
-    from babylon.economics.lodes_commute_matrix import (
+    from babylon.domain.economics.lodes_commute_matrix import (
         LODESCommuteMatrixLoader,
     )
     from babylon.engine.systems.cross_border_commute import (

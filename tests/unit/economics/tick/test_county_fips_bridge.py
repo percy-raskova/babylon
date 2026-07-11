@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tick.graph_bridge import (
+from babylon.domain.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
     write_tick_state_to_graph,
 )
-from babylon.economics.tick.system import TickDynamicsSystem
-from babylon.economics.tick.types import SimulationTickState
+from babylon.domain.economics.tick.system import TickDynamicsSystem
+from babylon.domain.economics.tick.types import SimulationTickState
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import SectorType
 from babylon.models.world_state import WorldState
@@ -175,7 +175,7 @@ class TestGetTerritoryFips:
         ``fips``, violating ClassDistribution's ``min_length=5``. With the fix the
         readers return the real 5-char FIPS instead, so the crash cannot recur.
         """
-        from babylon.economics.dynamics.types import ClassDistribution
+        from babylon.domain.economics.dynamics.types import ClassDistribution
 
         graph = BabylonGraph()
         graph.add_node(T_LABEL, _node_type="territory", county_fips=WAYNE_FIPS)

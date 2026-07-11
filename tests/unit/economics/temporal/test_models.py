@@ -18,7 +18,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.temporal.models import (
+from babylon.domain.economics.temporal.models import (
     AnomalyFlag,
     AnomalyThresholdConfig,
     DeindustrializationSignal,

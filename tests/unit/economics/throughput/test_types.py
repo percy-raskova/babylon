@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.throughput.types import ThroughputMetrics, WageShareEstimate
+from babylon.domain.economics.throughput.types import ThroughputMetrics, WageShareEstimate
 
 
 class TestThroughputMetrics:

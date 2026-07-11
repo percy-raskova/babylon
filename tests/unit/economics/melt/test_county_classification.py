@@ -20,7 +20,11 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.melt import ClassPosition, DefaultClassPositionClassifier, NationalParameters
+from babylon.domain.economics.melt import (
+    ClassPosition,
+    DefaultClassPositionClassifier,
+    NationalParameters,
+)
 
 
 class TestCountyDistributionAggregation:
@@ -308,7 +312,7 @@ class TestDetroitMetroWealthBased:
         Oakland County has higher home ownership rate (78%) vs Wayne (52%),
         which translates to higher estimated LA share.
         """
-        from babylon.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
+        from babylon.domain.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
 
         calculator = DefaultWealthProxyCalculator()
 

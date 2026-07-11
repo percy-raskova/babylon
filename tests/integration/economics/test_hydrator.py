@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from babylon.economics.department_mapper import Department, DepartmentMapper
-from babylon.economics.hydrator import MarxianHydrator
-from babylon.economics.tensor import ValueTensor4x3
+from babylon.domain.economics.department_mapper import Department, DepartmentMapper
+from babylon.domain.economics.hydrator import MarxianHydrator
+from babylon.domain.economics.tensor import ValueTensor4x3
 
 # =============================================================================
 # MOCK DATA SOURCES FOR TESTING

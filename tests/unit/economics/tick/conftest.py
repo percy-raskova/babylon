@@ -13,11 +13,11 @@ from typing import Any
 import networkx as nx
 import pytest
 
-from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
-from babylon.economics.gamma.types import GammaIII
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.throughput.types import ThroughputMetrics
-from babylon.economics.tick.types import (
+from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
+from babylon.domain.economics.gamma.types import GammaIII
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.throughput.types import ThroughputMetrics
+from babylon.domain.economics.tick.types import (
     CountyEconomicState,
     NationalTickParameters,
     SimulationTickState,

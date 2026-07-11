@@ -20,11 +20,11 @@ import numpy as np
 import pytest
 from sqlalchemy.orm import Session
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.leontief_rent.final_demand import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.leontief_rent.final_demand import (
     DefaultFinalDemandSource,
 )
-from babylon.economics.tensor_hierarchy.production_chain_rent import (
+from babylon.domain.economics.tensor_hierarchy.production_chain_rent import (
     FinalDemandSource as FinalDemandSourceProtocol,
 )
 from babylon.reference.schema import (

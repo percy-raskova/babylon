@@ -10,12 +10,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.types import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.types import (
     ShadowSubsidyTensor,
     VisibilityMetric,
 )
-from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
+from babylon.domain.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
 # =============================================================================
 # Helpers

@@ -7,7 +7,7 @@ Tests for three-tier validation: validate_rentier_share.
 
 from __future__ import annotations
 
-from babylon.economics.distribution.validation import (
+from babylon.domain.economics.distribution.validation import (
     validate_rentier_share,
 )
 

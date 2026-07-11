@@ -65,7 +65,7 @@ def run_pipeline(
     lodes_year: int = 2021,
 ) -> None:
     """Run the substrate pipeline with or without MarxianHydrator."""
-    from babylon.economics.substrate import (
+    from babylon.domain.economics.substrate import (
         DefaultHexCirculationComputer,
         DefaultHexEqualizationComputer,
         DefaultHexProductionComputer,
@@ -98,9 +98,9 @@ def run_pipeline(
     # ── Step 2: Hydration ──
     marxian_hydrator = None
     if use_marxian_hydrator:
-        from babylon.economics.adapters import SQLiteQCEWSource
-        from babylon.economics.department_mapper import get_default_mapper
-        from babylon.economics.hydrator import MarxianHydrator
+        from babylon.domain.economics.adapters import SQLiteQCEWSource
+        from babylon.domain.economics.department_mapper import get_default_mapper
+        from babylon.domain.economics.hydrator import MarxianHydrator
 
         class _NoBEASource:
             """InterpolatingBEASource was retired (fork ledger F2); the

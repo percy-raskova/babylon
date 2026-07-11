@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.monetary.converter import DefaultValueBasisConverter
-from babylon.economics.monetary.types import MonetaryAdjustment
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.monetary.converter import DefaultValueBasisConverter
+from babylon.domain.economics.monetary.types import MonetaryAdjustment
+from babylon.domain.economics.tensor import NoDataSentinel
 from tests.unit.economics.monetary.conftest import MockPriceIndexSource
 
 # =============================================================================

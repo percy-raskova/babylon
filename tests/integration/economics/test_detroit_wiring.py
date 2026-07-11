@@ -69,7 +69,7 @@ class TestDetroitWiring:
 
     def test_year_boundary_produces_tick_state(self) -> None:
         """After 52 ticks, TickDynamicsSystem writes state to persistent context."""
-        from babylon.economics.tick.graph_bridge import _reconstruct_tick_state
+        from babylon.domain.economics.tick.graph_bridge import _reconstruct_tick_state
         from babylon.engine.simulation import Simulation
 
         sim = Simulation.from_sqlite(

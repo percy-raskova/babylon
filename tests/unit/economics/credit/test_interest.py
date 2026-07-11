@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.credit.interest import DefaultInterestCalculator
-from babylon.economics.credit.types import InterestRateState
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.credit.interest import DefaultInterestCalculator
+from babylon.domain.economics.credit.types import InterestRateState
+from babylon.domain.economics.tensor import NoDataSentinel
 from tests.unit.economics.credit.conftest import MockInterestRateSource
 
 # =============================================================================

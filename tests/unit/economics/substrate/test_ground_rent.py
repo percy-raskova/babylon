@@ -16,11 +16,11 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import RentCircuitDefines
-from babylon.economics.substrate.ground_rent import (
+from babylon.domain.economics.substrate.ground_rent import (
     GroundRentResult,
     compute_ground_rent,
 )
-from babylon.economics.substrate.types import (
+from babylon.domain.economics.substrate.types import (
     HexEconomicState,
     HexTenureComposition,
 )

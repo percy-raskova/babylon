@@ -6,7 +6,7 @@ the full predicate specification.
 The c+v+s state lives ONLY in :class:`HexEconomicState` inside :class:`HexGrid`.
 Engine systems operate on ``nx.DiGraph[str]`` with ``wealth`` attributes —
 they never touch hex c+v+s. Substrate computers (under
-``babylon.economics.substrate``) own all c+v+s mutations.
+``babylon.domain.economics.substrate``) own all c+v+s mutations.
 
 INV-001 splits into three predicates:
 
@@ -39,7 +39,7 @@ import scipy.sparse as sp
 from hypothesis import HealthCheck, example, given, settings
 
 import babylon.engine.systems as engine_systems_pkg
-from babylon.economics.substrate.types import HexEconomicState, HexGrid
+from babylon.domain.economics.substrate.types import HexEconomicState, HexGrid
 from babylon.kernel.system_protocol import System
 from tests.property.strategies.hex_grid import hex_grid_strategy
 
@@ -110,9 +110,9 @@ def _substrate_computer_dispatch() -> list[tuple[type, Callable[[HexGrid], HexGr
     rather than a ``HexGrid``, so its conservation is tested by INV-002
     (test_h3_hierarchical.py) instead of INV-001.
     """
-    from babylon.economics.substrate.circulation import DefaultHexCirculationComputer
-    from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
-    from babylon.economics.substrate.production import DefaultHexProductionComputer
+    from babylon.domain.economics.substrate.circulation import DefaultHexCirculationComputer
+    from babylon.domain.economics.substrate.equalization import DefaultHexEqualizationComputer
+    from babylon.domain.economics.substrate.production import DefaultHexProductionComputer
 
     classes: list[tuple[type, Callable[[HexGrid], HexGrid]]] = []
 
@@ -294,8 +294,8 @@ class TestSubstratePipelineConservation:
     @example(grid=_SINGLE_HEX_GRID)
     def test_production_then_equalization_conserves(self, grid: HexGrid) -> None:
         """Production → Equalization composes conservation-preservingly."""
-        from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
-        from babylon.economics.substrate.production import DefaultHexProductionComputer
+        from babylon.domain.economics.substrate.equalization import DefaultHexEqualizationComputer
+        from babylon.domain.economics.substrate.production import DefaultHexProductionComputer
 
         n = len(grid.hexes)
         pre = _sum_cvs(grid)
@@ -317,9 +317,9 @@ class TestSubstratePipelineConservation:
     @settings(suppress_health_check=[HealthCheck.too_slow])
     def test_full_substrate_pipeline_conserves(self, grid: HexGrid) -> None:
         """Production → Equalization → Circulation preserves total value."""
-        from babylon.economics.substrate.circulation import DefaultHexCirculationComputer
-        from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
-        from babylon.economics.substrate.production import DefaultHexProductionComputer
+        from babylon.domain.economics.substrate.circulation import DefaultHexCirculationComputer
+        from babylon.domain.economics.substrate.equalization import DefaultHexEqualizationComputer
+        from babylon.domain.economics.substrate.production import DefaultHexProductionComputer
 
         n = len(grid.hexes)
         pre = _sum_cvs(grid)

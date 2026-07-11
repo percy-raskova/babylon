@@ -16,11 +16,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from babylon.economics.capital_stock import CapitalStockCalculator
-from babylon.economics.depreciation import DepreciationConfig
-from babylon.economics.derived_metrics import DerivedTensorMetrics
-from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
-from babylon.economics.tensor_registry import GeoLevel, TensorRegistry
+from babylon.domain.economics.capital_stock import CapitalStockCalculator
+from babylon.domain.economics.depreciation import DepreciationConfig
+from babylon.domain.economics.derived_metrics import DerivedTensorMetrics
+from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
+from babylon.domain.economics.tensor_registry import GeoLevel, TensorRegistry
 from babylon.models.types import LaborHours, Probability
 
 if TYPE_CHECKING:

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.credit.types import (
+from babylon.domain.economics.credit.types import (
     CreditCyclePhase,
     CreditState,
     InterestRateState,

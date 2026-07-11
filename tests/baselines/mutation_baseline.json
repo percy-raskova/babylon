@@ -8,212 +8,212 @@
     "score": 65.2
   },
   "files": {
-    "src/babylon/economics/calibration/thresholds.py": {
+    "src/babylon/domain/economics/calibration/thresholds.py": {
       "killed": 48,
       "survived": 29,
       "score": 62.3
     },
-    "src/babylon/economics/capital_stock.py": {
+    "src/babylon/domain/economics/capital_stock.py": {
       "killed": 172,
       "survived": 98,
       "score": 63.7
     },
-    "src/babylon/economics/crisis/bifurcation.py": {
+    "src/babylon/domain/economics/crisis/bifurcation.py": {
       "killed": 150,
       "survived": 33,
       "score": 82.0
     },
-    "src/babylon/economics/crisis/wage_compression.py": {
+    "src/babylon/domain/economics/crisis/wage_compression.py": {
       "killed": 31,
       "survived": 1,
       "score": 96.9
     },
-    "src/babylon/economics/department_mapper.py": {
+    "src/babylon/domain/economics/department_mapper.py": {
       "killed": 43,
       "survived": 12,
       "score": 78.2
     },
-    "src/babylon/economics/dynamics/accumulation.py": {
+    "src/babylon/domain/economics/dynamics/accumulation.py": {
       "killed": 37,
       "survived": 3,
       "score": 92.5
     },
-    "src/babylon/economics/dynamics/crisis.py": {
+    "src/babylon/domain/economics/dynamics/crisis.py": {
       "killed": 81,
       "survived": 4,
       "score": 95.3
     },
-    "src/babylon/economics/dynamics/dispossession.py": {
+    "src/babylon/domain/economics/dynamics/dispossession.py": {
       "killed": 60,
       "survived": 8,
       "score": 88.2
     },
-    "src/babylon/economics/dynamics/savings_schedule.py": {
+    "src/babylon/domain/economics/dynamics/savings_schedule.py": {
       "killed": 11,
       "survived": 2,
       "score": 84.6
     },
-    "src/babylon/economics/dynamics/transition_engine.py": {
+    "src/babylon/domain/economics/dynamics/transition_engine.py": {
       "killed": 175,
       "survived": 48,
       "score": 78.5
     },
-    "src/babylon/economics/dynamics/validation.py": {
+    "src/babylon/domain/economics/dynamics/validation.py": {
       "killed": 110,
       "survived": 33,
       "score": 76.9
     },
-    "src/babylon/economics/gamma/gamma_basket.py": {
+    "src/babylon/domain/economics/gamma/gamma_basket.py": {
       "killed": 43,
       "survived": 33,
       "score": 56.6
     },
-    "src/babylon/economics/gamma/gamma_iii.py": {
+    "src/babylon/domain/economics/gamma/gamma_iii.py": {
       "killed": 49,
       "survived": 44,
       "score": 52.7
     },
-    "src/babylon/economics/gamma/gamma_import.py": {
+    "src/babylon/domain/economics/gamma/gamma_import.py": {
       "killed": 38,
       "survived": 34,
       "score": 52.8
     },
-    "src/babylon/economics/gamma/shadow_subsidy.py": {
+    "src/babylon/domain/economics/gamma/shadow_subsidy.py": {
       "killed": 47,
       "survived": 15,
       "score": 75.8
     },
-    "src/babylon/economics/gamma/validation.py": {
+    "src/babylon/domain/economics/gamma/validation.py": {
       "killed": 24,
       "survived": 2,
       "score": 92.3
     },
-    "src/babylon/economics/hydrator.py": {
+    "src/babylon/domain/economics/hydrator.py": {
       "killed": 0,
       "survived": 6,
       "score": 0.0
     },
-    "src/babylon/economics/melt/basket_visibility.py": {
+    "src/babylon/domain/economics/melt/basket_visibility.py": {
       "killed": 27,
       "survived": 1,
       "score": 96.4
     },
-    "src/babylon/economics/melt/class_position.py": {
+    "src/babylon/domain/economics/melt/class_position.py": {
       "killed": 79,
       "survived": 32,
       "score": 71.2
     },
-    "src/babylon/economics/melt/imperial_rent.py": {
+    "src/babylon/domain/economics/melt/imperial_rent.py": {
       "killed": 33,
       "survived": 3,
       "score": 91.7
     },
-    "src/babylon/economics/melt/melt_calculator.py": {
+    "src/babylon/domain/economics/melt/melt_calculator.py": {
       "killed": 40,
       "survived": 18,
       "score": 69.0
     },
-    "src/babylon/economics/melt/wealth_proxy.py": {
+    "src/babylon/domain/economics/melt/wealth_proxy.py": {
       "killed": 71,
       "survived": 53,
       "score": 57.3
     },
-    "src/babylon/economics/reproduction.py": {
+    "src/babylon/domain/economics/reproduction.py": {
       "killed": 28,
       "survived": 0,
       "score": 100.0
     },
-    "src/babylon/economics/shadow_labor.py": {
+    "src/babylon/domain/economics/shadow_labor.py": {
       "killed": 28,
       "survived": 4,
       "score": 87.5
     },
-    "src/babylon/economics/snlt.py": {
+    "src/babylon/domain/economics/snlt.py": {
       "killed": 4,
       "survived": 0,
       "score": 100.0
     },
-    "src/babylon/economics/temporal/anomaly.py": {
+    "src/babylon/domain/economics/temporal/anomaly.py": {
       "killed": 58,
       "survived": 140,
       "score": 29.3
     },
-    "src/babylon/economics/temporal/signals.py": {
+    "src/babylon/domain/economics/temporal/signals.py": {
       "killed": 37,
       "survived": 59,
       "score": 38.5
     },
-    "src/babylon/economics/temporal/smoothing.py": {
+    "src/babylon/domain/economics/temporal/smoothing.py": {
       "killed": 23,
       "survived": 64,
       "score": 26.4
     },
-    "src/babylon/economics/temporal/transitions.py": {
+    "src/babylon/domain/economics/temporal/transitions.py": {
       "killed": 13,
       "survived": 65,
       "score": 16.7
     },
-    "src/babylon/economics/tensor.py": {
+    "src/babylon/domain/economics/tensor.py": {
       "killed": 10,
       "survived": 1,
       "score": 90.9
     },
-    "src/babylon/economics/tensor_registry.py": {
+    "src/babylon/domain/economics/tensor_registry.py": {
       "killed": 260,
       "survived": 97,
       "score": 72.8
     },
-    "src/babylon/economics/throughput/analysis.py": {
+    "src/babylon/domain/economics/throughput/analysis.py": {
       "killed": 0,
       "survived": 0,
       "score": 100.0
     },
-    "src/babylon/economics/throughput/calculator.py": {
+    "src/babylon/domain/economics/throughput/calculator.py": {
       "killed": 165,
       "survived": 133,
       "score": 55.4
     },
-    "src/babylon/economics/throughput/naics_depth.py": {
+    "src/babylon/domain/economics/throughput/naics_depth.py": {
       "killed": 5,
       "survived": 0,
       "score": 100.0
     },
-    "src/babylon/economics/throughput/supply_chain.py": {
+    "src/babylon/domain/economics/throughput/supply_chain.py": {
       "killed": 91,
       "survived": 63,
       "score": 59.1
     },
-    "src/babylon/economics/tick/crisis_detector.py": {
+    "src/babylon/domain/economics/tick/crisis_detector.py": {
       "killed": 159,
       "survived": 81,
       "score": 66.2
     },
-    "src/babylon/economics/tick/derived_rates.py": {
+    "src/babylon/domain/economics/tick/derived_rates.py": {
       "killed": 33,
       "survived": 8,
       "score": 80.5
     },
-    "src/babylon/economics/tick/graph_bridge.py": {
+    "src/babylon/domain/economics/tick/graph_bridge.py": {
       "killed": 184,
       "survived": 122,
       "score": 60.1
     },
-    "src/babylon/economics/tick/initializer.py": {
+    "src/babylon/domain/economics/tick/initializer.py": {
       "killed": 141,
       "survived": 43,
       "score": 76.6
     },
-    "src/babylon/economics/tick/precarity.py": {
+    "src/babylon/domain/economics/tick/precarity.py": {
       "killed": 38,
       "survived": 2,
       "score": 95.0
     },
-    "src/babylon/economics/tick/smoothing.py": {
+    "src/babylon/domain/economics/tick/smoothing.py": {
       "killed": 13,
       "survived": 0,
       "score": 100.0
     },
-    "src/babylon/economics/tick/system.py": {
+    "src/babylon/domain/economics/tick/system.py": {
       "killed": 452,
       "survived": 409,
       "score": 52.5

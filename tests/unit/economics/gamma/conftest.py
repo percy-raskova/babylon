@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.gamma.data_sources import (
+from babylon.domain.economics.gamma.data_sources import (
     ERDISource,
     PaidCareHoursSource,
     UnpaidCareHoursSource,
 )
-from babylon.economics.gamma.types import GammaBasket, GammaIII
+from babylon.domain.economics.gamma.types import GammaBasket, GammaIII
 
 # =============================================================================
 # Mock Data Sources

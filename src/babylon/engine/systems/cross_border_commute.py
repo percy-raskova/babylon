@@ -24,7 +24,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-from babylon.economics.node_kinds import NodeKind
+from babylon.domain.economics.node_kinds import NodeKind
 
 logger = logging.getLogger(__name__)
 

@@ -118,7 +118,7 @@ lifecycle phases.
 - ``dependency_ratio`` -- ``(pop_d + pop_d_prime) / pop_p``.
   Returns ``inf`` if ``pop_p`` is zero.
 
-Defined in :py:class:`~babylon.economics.lifecycle.types.DPDState`.
+Defined in :py:class:`~babylon.domain.economics.lifecycle.types.DPDState`.
 
 LegitimationState
 ~~~~~~~~~~~~~~~~~
@@ -150,7 +150,7 @@ Frozen Pydantic model. Weighted legitimation index components per county.
 
 All fields required. No defaults.
 
-Defined in :py:class:`~babylon.economics.lifecycle.types.LegitimationState`.
+Defined in :py:class:`~babylon.domain.economics.lifecycle.types.LegitimationState`.
 
 InheritanceFlow
 ~~~~~~~~~~~~~~~
@@ -179,7 +179,7 @@ Frozen Pydantic model. Intergenerational wealth transfer at D' terminus.
 
 **Validation:** ``care_consumed`` cannot exceed ``total_transferred``.
 
-Defined in :py:class:`~babylon.economics.lifecycle.types.InheritanceFlow`.
+Defined in :py:class:`~babylon.domain.economics.lifecycle.types.InheritanceFlow`.
 
 ClassMobilityParams
 ~~~~~~~~~~~~~~~~~~~
@@ -239,7 +239,7 @@ per county. Static after initialization; read-only during simulation.
 **Validation:** ``mobility_base_rate_p75 >= mobility_base_rate``;
 ``mobility_racial_gap <= mobility_base_rate``.
 
-Defined in :py:class:`~babylon.economics.lifecycle.types.ClassMobilityParams`.
+Defined in :py:class:`~babylon.domain.economics.lifecycle.types.ClassMobilityParams`.
 
 Formulas
 --------
@@ -372,7 +372,7 @@ Protocol + Default pattern used across the economics module.
      - ``DefaultClassMobilityCalculator``
      - Premature exit rates, carceral/mortality modifiers
 
-Defined in :py:mod:`babylon.economics.lifecycle`.
+Defined in :py:mod:`babylon.domain.economics.lifecycle`.
 
 LifecycleSystem
 ---------------
@@ -680,17 +680,17 @@ Module Structure
 
    * - Module
      - Contents
-   * - :py:mod:`babylon.economics.lifecycle.types`
+   * - :py:mod:`babylon.domain.economics.lifecycle.types`
      - DPDState, LegitimationState, InheritanceFlow, ClassMobilityParams
-   * - :py:mod:`babylon.economics.lifecycle.cohort_dynamics`
+   * - :py:mod:`babylon.domain.economics.lifecycle.cohort_dynamics`
      - CohortDynamicsCalculator protocol + default implementation
-   * - :py:mod:`babylon.economics.lifecycle.legitimation`
+   * - :py:mod:`babylon.domain.economics.lifecycle.legitimation`
      - LegitimationCalculator protocol + default implementation
-   * - :py:mod:`babylon.economics.lifecycle.inheritance`
+   * - :py:mod:`babylon.domain.economics.lifecycle.inheritance`
      - InheritanceCalculator protocol + default implementation
-   * - :py:mod:`babylon.economics.lifecycle.mobility`
+   * - :py:mod:`babylon.domain.economics.lifecycle.mobility`
      - ClassMobilityCalculator protocol + default implementation
-   * - :py:mod:`babylon.economics.lifecycle.dual_circuit`
+   * - :py:mod:`babylon.domain.economics.lifecycle.dual_circuit`
      - DualCircuitCalculator protocol + default implementation
    * - :py:mod:`babylon.formulas.lifecycle`
      - Six pure formula functions

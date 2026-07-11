@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.dynamics.savings_schedule import DefaultSavingsRateSchedule
-from babylon.economics.melt.types import ClassPosition
+from babylon.domain.economics.dynamics.savings_schedule import DefaultSavingsRateSchedule
+from babylon.domain.economics.melt.types import ClassPosition
 
 
 class TestDefaultSavingsRateSchedule:
@@ -76,7 +76,7 @@ class TestDefaultSavingsRateSchedule:
 
     def test_protocol_compliance(self) -> None:
         """DefaultSavingsRateSchedule satisfies SavingsRateSource protocol."""
-        from babylon.economics.dynamics.data_sources import SavingsRateSource
+        from babylon.domain.economics.dynamics.data_sources import SavingsRateSource
 
         source: SavingsRateSource = DefaultSavingsRateSchedule()
         assert source.get_savings_rate(ClassPosition.PROLETARIAT) is not None

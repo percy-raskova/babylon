@@ -19,8 +19,8 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from babylon.economics.substrate.circulation import DefaultHexCirculationComputer
-from babylon.economics.substrate.types import HexGrid
+from babylon.domain.economics.substrate.circulation import DefaultHexCirculationComputer
+from babylon.domain.economics.substrate.types import HexGrid
 from tests.property.strategies.hex_grid import hex_grid_strategy
 from tests.property.strategies.od_matrix import od_matrix_strategy
 

@@ -4,7 +4,7 @@ Acceptance criteria from
 ``specs/057-leontief-rent-integration/contracts/imperial_rent_pipeline.md``.
 
 These tests use synthetic in-memory fixtures (Mock-everything pattern) to
-verify the orchestration logic in :mod:`babylon.economics.tick.system.imperial_rent`
+verify the orchestration logic in :mod:`babylon.domain.economics.tick.system.imperial_rent`
 without hitting the 8.8GB reference SQLite. The Wayne County baseline
 integration test (SC-002) lives in a separate file (test_wayne_baseline.py)
 which DOES hit real data; AC1 + AC2 in this file use mock sources.
@@ -18,16 +18,16 @@ from typing import Any
 import numpy as np
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.types import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.types import (
     DecomposedFlow,
     ImportShareVector,
     InterIndustryFlow,
     PeripheryLaborCoefficients,
     ProductionChainRentResult,
 )
-from babylon.economics.tick.system.imperial_rent import compute
-from babylon.economics.tick.types import CountyEconomicState
+from babylon.domain.economics.tick.system.imperial_rent import compute
+from babylon.domain.economics.tick.types import CountyEconomicState
 from babylon.kernel.event_bus import EventBus
 
 # =============================================================================
@@ -37,8 +37,8 @@ from babylon.kernel.event_bus import EventBus
 
 def _county(fips: str, phi_hour: float = 0.0) -> CountyEconomicState:
     """Build a minimal CountyEconomicState fixture."""
-    from babylon.economics.dynamics.types import ClassDistribution
-    from babylon.economics.tick.types import CountyEconomicState
+    from babylon.domain.economics.dynamics.types import ClassDistribution
+    from babylon.domain.economics.tick.types import CountyEconomicState
 
     return CountyEconomicState(
         fips=fips,
@@ -75,7 +75,7 @@ def county_states() -> dict[str, CountyEconomicState]:
 
 @pytest.fixture
 def national_params() -> Any:
-    from babylon.economics.tick.types import NationalTickParameters
+    from babylon.domain.economics.tick.types import NationalTickParameters
 
     return NationalTickParameters(
         year=2015,
@@ -220,7 +220,7 @@ def _wired_services(
     )
     alloc = allocation if allocation is not None else {"11111": 0.5, "22222": 0.3}
 
-    from babylon.economics.tensor_hierarchy.types import IOTableType
+    from babylon.domain.economics.tensor_hierarchy.types import IOTableType
 
     flow = InterIndustryFlow(
         year=2015,

@@ -79,7 +79,7 @@ def mock_interest_source() -> MockInterestIncomeSource:
 
 
 def _check_protocol_compliance() -> None:
-    from babylon.economics.distribution.data_sources import (
+    from babylon.domain.economics.distribution.data_sources import (
         InterestIncomeSource,
         RentalIncomeSource,
         TaxOnSurplusSource,

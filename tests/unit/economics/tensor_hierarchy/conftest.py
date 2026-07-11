@@ -9,12 +9,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.protocols import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.protocols import (
     InterIndustryFlowSource,
     VisibilitySource,
 )
-from babylon.economics.tensor_hierarchy.types import (
+from babylon.domain.economics.tensor_hierarchy.types import (
     InterIndustryFlow,
     IOTableType,
     VisibilityMetric,
@@ -137,7 +137,7 @@ class MockVisibilitySource:
             return NoDataSentinel("national", year, f"No visibility data for year {year}")
         metric = self._by_year[year]
         phi_hours = dept_iii_value * (1.0 - metric.g_33)
-        from babylon.economics.tensor_hierarchy.types import ShadowSubsidyTensor
+        from babylon.domain.economics.tensor_hierarchy.types import ShadowSubsidyTensor
 
         return ShadowSubsidyTensor(
             year=year,

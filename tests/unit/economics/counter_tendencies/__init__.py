@@ -1,1 +1,1 @@
-"""Tests for babylon.economics.counter_tendencies module."""
+"""Tests for babylon.domain.economics.counter_tendencies module."""

@@ -14,7 +14,7 @@ morphism + R2 hex-pair schema).
 
 See Also:
     ``specs/062-cross-scale-integration/spec.md`` FR-034 / FR-035.
-    :mod:`babylon.economics.boundary_flow_register`:
+    :mod:`babylon.domain.economics.boundary_flow_register`:
         :class:`BoundaryFlowRegister`.
 """
 
@@ -24,7 +24,7 @@ import logging
 from collections.abc import Mapping
 from uuid import UUID
 
-from babylon.economics.boundary_flow_register import (
+from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
     NodeKind,

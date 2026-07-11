@@ -43,16 +43,16 @@ class TestFacadePublicSurface:
     """The TickDynamicsSystem facade contract — pinned at commit 7."""
 
     def test_class_imports_from_canonical_path(self) -> None:
-        """The import path ``babylon.economics.tick.system.TickDynamicsSystem``
+        """The import path ``babylon.domain.economics.tick.system.TickDynamicsSystem``
         is preserved across the package-relocation refactor."""
-        from babylon.economics.tick.system import TickDynamicsSystem
+        from babylon.domain.economics.tick.system import TickDynamicsSystem
 
         assert TickDynamicsSystem.__name__ == "TickDynamicsSystem"
 
     def test_step_signature_pinned(self) -> None:
         """``TickDynamicsSystem.step`` signature MUST NOT drift across the
         decomposition. Drift here implies a facade contract violation."""
-        from babylon.economics.tick.system import TickDynamicsSystem
+        from babylon.domain.economics.tick.system import TickDynamicsSystem
 
         sig = inspect.signature(TickDynamicsSystem.step)
         # Pin the parameter names + order; type annotations may be string
@@ -65,7 +65,7 @@ class TestFacadePublicSurface:
     def test_name_property_returns_canonical_string(self) -> None:
         """The ``name`` property's value is part of the public contract used
         by the SimulationEngine to identify systems in logs / events."""
-        from babylon.economics.tick.system import TickDynamicsSystem
+        from babylon.domain.economics.tick.system import TickDynamicsSystem
 
         # Construct with no required args (TickDynamicsSystem.__init__ takes
         # no required parameters per the existing test_system.py fixtures)
@@ -89,7 +89,7 @@ class TestSpec057QuarantinePreserved:
         """``_compute_imperial_rent`` is still a method on TickDynamicsSystem
         (per FR-008 — the decomposition does not delete or rename the stub;
         spec 057 will replace its body with a real Leontief implementation)."""
-        from babylon.economics.tick.system import TickDynamicsSystem
+        from babylon.domain.economics.tick.system import TickDynamicsSystem
 
         assert hasattr(TickDynamicsSystem, "_compute_imperial_rent"), (
             "Spec 058 / FR-008: _compute_imperial_rent stub MUST remain "

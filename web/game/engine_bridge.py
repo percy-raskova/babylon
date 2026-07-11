@@ -3976,7 +3976,7 @@ def _bridge_economics_overrides() -> dict[str, Any]:
     ``industry_county_allocator``/``production_chain_calculator``/
     ``bea_industries``) is unwired in BOTH the headless runner and this
     bridge — a much larger, separate data-pipeline task, out of this
-    lane's scope (see ``babylon.economics.tick.system.imperial_rent
+    lane's scope (see ``babylon.domain.economics.tick.system.imperial_rent
     ._spec_057_pipeline_wired``). ``phi_hour`` therefore stays ``0.0``
     for web sessions exactly as it does for the headless canonical run;
     ``median_wage``/``employment`` (Vol I's ``DefaultWagePressureCalculator``
@@ -3990,10 +3990,10 @@ def _bridge_economics_overrides() -> dict[str, Any]:
     Returns:
         Dict of service overrides for ``step()``'s ``calculator_overrides``.
     """
-    from babylon.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
-    from babylon.economics.gamma.gamma_iii import DefaultGammaIIICalculator
-    from babylon.economics.melt import DefaultMELTCalculator
-    from babylon.economics.melt.adapters import (
+    from babylon.domain.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
+    from babylon.domain.economics.gamma.gamma_iii import DefaultGammaIIICalculator
+    from babylon.domain.economics.melt import DefaultMELTCalculator
+    from babylon.domain.economics.melt.adapters import (
         SQLiteBEANationalGDPSource,
         SQLiteQCEWNationalEmploymentSource,
     )

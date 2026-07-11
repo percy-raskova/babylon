@@ -21,12 +21,12 @@ from typing import Any
 
 import pytest
 
-from babylon.economics.tick.graph_bridge import (
+from babylon.domain.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
     write_tick_state_to_graph,
 )
-from babylon.economics.tick.initializer import DefaultTickInitializer
-from babylon.economics.tick.system import TickDynamicsSystem
+from babylon.domain.economics.tick.initializer import DefaultTickInitializer
+from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from tests.unit.economics.tick.conftest import (

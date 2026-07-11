@@ -20,7 +20,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.engine.systems.distribution import split_surplus_to_pirt
 from babylon.engine.systems.phi_distribution import distribute_phi_week_to_counties
 
@@ -99,8 +99,8 @@ def test_phi_annual_conservation_property(phi_year: float, weights: list[float])
 @settings(max_examples=20, deadline=2000)
 def test_equalization_conserves_total_capital(cs: list[float], vs: list[float]):
     """Vol III Pt I (FR-029/FR-030): sum(c) preserved across all hexes."""
-    from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
-    from babylon.economics.substrate.types import HexEconomicState, HexGrid
+    from babylon.domain.economics.substrate.equalization import DefaultHexEqualizationComputer
+    from babylon.domain.economics.substrate.types import HexEconomicState, HexGrid
 
     n = min(len(cs), len(vs))
     if n < 2:

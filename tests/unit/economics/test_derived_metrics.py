@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.derived_metrics import DerivedTensorMetrics
-from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
+from babylon.domain.economics.derived_metrics import DerivedTensorMetrics
+from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
 from babylon.models.types import LaborHours, Probability
 
 

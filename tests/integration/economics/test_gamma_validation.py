@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.gamma import (
+from babylon.domain.economics.gamma import (
     DefaultGammaBasketCalculator,
     DefaultGammaIIICalculator,
     DefaultGammaImportCalculator,

@@ -105,7 +105,7 @@ Filtration Predicates
 Community-specific filtration predicates modify classification inputs
 based on hyperedge memberships (FR-003, FR-004).
 
-Defined in :py:mod:`babylon.economics.melt.filtration`.
+Defined in :py:mod:`babylon.domain.economics.melt.filtration`.
 
 FiltrationResult
 ~~~~~~~~~~~~~~~~
@@ -201,7 +201,7 @@ Protocol for unified class position classification. Wraps the
 existing ``DefaultClassPositionClassifier`` with filtration and
 dual-criteria validation.
 
-Defined in :py:mod:`babylon.economics.melt.unified_classifier`.
+Defined in :py:mod:`babylon.domain.economics.melt.unified_classifier`.
 
 classify_with_filtration
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -303,7 +303,7 @@ Module-level constants: ``_SURPLUS_THRESHOLD = 1.5``,
 ``_DEPENDENT_THRESHOLD = 0.5``.
 
 Defined in ``_accounting_criterion()`` within
-:py:mod:`babylon.economics.melt.unified_classifier`.
+:py:mod:`babylon.domain.economics.melt.unified_classifier`.
 
 Fractal Consistency
 -------------------
@@ -311,7 +311,7 @@ Fractal Consistency
 Validates that classification produces coherent results across
 geographic resolutions (FR-009).
 
-Defined in :py:mod:`babylon.economics.melt.unified_classifier`.
+Defined in :py:mod:`babylon.domain.economics.melt.unified_classifier`.
 
 validate_fractal_consistency
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -357,7 +357,7 @@ Rent Differential Calculator
 Protocol for computing nation-specific imperial rent differentials
 from ACS earnings data by race x NAICS at county level (FR-007).
 
-Defined in :py:mod:`babylon.economics.melt.rent_differential`.
+Defined in :py:mod:`babylon.domain.economics.melt.rent_differential`.
 
 RentDifferentialCalculator Protocol
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -392,7 +392,7 @@ employment counts provide the weights.
 
 **NoDataSentinel propagation:** Suppressed ACS data (missing county,
 NAICS, or nation earnings) returns ``NoDataSentinel`` rather than
-imputing values. See :py:class:`~babylon.economics.tensor.NoDataSentinel`.
+imputing values. See :py:class:`~babylon.domain.economics.tensor.NoDataSentinel`.
 
 RentDifferentialResult
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -433,7 +433,7 @@ Class-Aware Inheritance
 Extension to the existing ``InheritanceCalculator`` protocol
 (Feature 030) that scales inheritance by class position.
 
-Defined in :py:mod:`babylon.economics.lifecycle.inheritance`.
+Defined in :py:mod:`babylon.domain.economics.lifecycle.inheritance`.
 
 compute_class_aware_inheritance
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -488,7 +488,7 @@ Crisis Dispossession
 Models crisis-driven wealth destruction events (foreclosure, eviction)
 with community-modifiable targeting (FR-010).
 
-Defined in :py:mod:`babylon.economics.lifecycle.dispossession`.
+Defined in :py:mod:`babylon.domain.economics.lifecycle.dispossession`.
 
 compute_crisis_dispossession
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -563,18 +563,18 @@ Module Structure
 
    * - Module
      - Public Exports
-   * - ``babylon.economics.melt.filtration``
+   * - ``babylon.domain.economics.melt.filtration``
      - ``FiltrationResult``, ``apply_filtration``, ``precarity_severity``
-   * - ``babylon.economics.melt.unified_classifier``
+   * - ``babylon.domain.economics.melt.unified_classifier``
      - ``DefaultUnifiedClassifier``, ``DualCriteriaResult``,
        ``FractalConsistencyResult``, ``UnifiedClassifier``,
        ``validate_fractal_consistency``
-   * - ``babylon.economics.melt.rent_differential``
+   * - ``babylon.domain.economics.melt.rent_differential``
      - ``DefaultRentDifferentialCalculator``,
        ``RentDifferentialCalculator``, ``RentDifferentialResult``
-   * - ``babylon.economics.lifecycle.inheritance``
+   * - ``babylon.domain.economics.lifecycle.inheritance``
      - ``DefaultInheritanceCalculator``, ``InheritanceCalculator``
-   * - ``babylon.economics.lifecycle.dispossession``
+   * - ``babylon.domain.economics.lifecycle.dispossession``
      - ``DispossessionResult``, ``compute_crisis_dispossession``
    * - ``babylon.config.defines``
      - ``ClassSystemDefines`` (sub-model of ``GameDefines``)

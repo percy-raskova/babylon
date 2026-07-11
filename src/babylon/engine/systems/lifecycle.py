@@ -6,7 +6,7 @@ inheritance, dual-circuit interference, and ideology transmission for
 each county territory node.
 
 See Also:
-    :mod:`babylon.economics.lifecycle`: Calculator implementations.
+    :mod:`babylon.domain.economics.lifecycle`: Calculator implementations.
     ``specs/030-dpd-lifecycle-circuit/contracts/lifecycle-system-contract.md``
 """
 
@@ -15,11 +15,15 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, ClassVar
 
-from babylon.economics.lifecycle.cohort_dynamics import DefaultCohortDynamicsCalculator
-from babylon.economics.lifecycle.inheritance import DefaultInheritanceCalculator
-from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculator
-from babylon.economics.lifecycle.mobility import DefaultClassMobilityCalculator
-from babylon.economics.lifecycle.types import ClassMobilityParams, DPDState, LegitimationState
+from babylon.domain.economics.lifecycle.cohort_dynamics import DefaultCohortDynamicsCalculator
+from babylon.domain.economics.lifecycle.inheritance import DefaultInheritanceCalculator
+from babylon.domain.economics.lifecycle.legitimation import DefaultLegitimationCalculator
+from babylon.domain.economics.lifecycle.mobility import DefaultClassMobilityCalculator
+from babylon.domain.economics.lifecycle.types import (
+    ClassMobilityParams,
+    DPDState,
+    LegitimationState,
+)
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType

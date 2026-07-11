@@ -264,5 +264,5 @@ Related Documentation
 - :ref:`faf-freight-data` — BTS FAF5 data format, file inventory, and loader API
 - :ref:`tensor-hierarchy-reference` — Complete tensor and protocol data dictionary
 - :ref:`tensor-hierarchy-schema` — SQLite table definitions
-- :mod:`babylon.economics.tensor_hierarchy.geographic_flow` — Implementation
+- :mod:`babylon.domain.economics.tensor_hierarchy.geographic_flow` — Implementation
 - :doc:`imperial-rent` — The broader MLM-TW imperial rent concept (Φ = W\ :sub:`c` − V\ :sub:`c`)

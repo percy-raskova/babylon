@@ -12,13 +12,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.throughput.calculator import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.throughput.calculator import (
     HOURS_PER_YEAR,
     MINIMUM_EMPLOYMENT_THRESHOLD,
     DefaultThroughputCalculator,
 )
-from babylon.economics.throughput.types import ThroughputMetrics
+from babylon.domain.economics.throughput.types import ThroughputMetrics
 
 # =============================================================================
 # FIXTURES
@@ -834,7 +834,7 @@ class TestCommuterAdjustedMetricsMutationKillers:
         mock_melt_calculator: MagicMock,
     ) -> None:
         """Without commuter source, returns workplace metrics + commuter defaults."""
-        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+        from babylon.domain.economics.throughput.types import CommuterAdjustedMetrics
 
         mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
         mock_qcew_source.get_county_total_employment.return_value = 200_000
@@ -879,7 +879,7 @@ class TestCommuterAdjustedMetricsMutationKillers:
         mock_melt_calculator: MagicMock,
     ) -> None:
         """Positive net balance → is_job_importer=True."""
-        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+        from babylon.domain.economics.throughput.types import CommuterAdjustedMetrics
 
         mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
         mock_qcew_source.get_county_total_employment.return_value = 200_000
@@ -910,7 +910,7 @@ class TestCommuterAdjustedMetricsMutationKillers:
         mock_melt_calculator: MagicMock,
     ) -> None:
         """Negative net balance → is_job_importer=False."""
-        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+        from babylon.domain.economics.throughput.types import CommuterAdjustedMetrics
 
         mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
         mock_qcew_source.get_county_total_employment.return_value = 200_000
@@ -939,7 +939,7 @@ class TestCommuterAdjustedMetricsMutationKillers:
         mock_supply_chain: MagicMock,
     ) -> None:
         """commuter_ratio = residence_emp / workplace_emp."""
-        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+        from babylon.domain.economics.throughput.types import CommuterAdjustedMetrics
 
         mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
         mock_qcew_source.get_county_total_employment.return_value = 200_000
@@ -967,7 +967,7 @@ class TestCommuterAdjustedMetricsMutationKillers:
         mock_supply_chain: MagicMock,
     ) -> None:
         """None balance from commuter source → has_commuter_data=False."""
-        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+        from babylon.domain.economics.throughput.types import CommuterAdjustedMetrics
 
         mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
         mock_qcew_source.get_county_total_employment.return_value = 200_000

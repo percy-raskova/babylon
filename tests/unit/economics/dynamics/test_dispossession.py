@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.dynamics.dispossession import DefaultDispossessionCalculator
-from babylon.economics.dynamics.hardcoded_data import (
+from babylon.domain.economics.dynamics.dispossession import DefaultDispossessionCalculator
+from babylon.domain.economics.dynamics.hardcoded_data import (
     HardcodedNationalDispossessionSource,
 )
-from babylon.economics.dynamics.types import DispossessionRisk
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.dynamics.types import DispossessionRisk
+from babylon.domain.economics.tensor import NoDataSentinel
 from tests.unit.economics.dynamics.conftest import MockDispossessionDataSource
 
 
@@ -135,7 +135,7 @@ class TestDefaultDispossessionCalculator:
 
     def test_protocol_compliance(self) -> None:
         """DefaultDispossessionCalculator satisfies DispossessionCalculator protocol."""
-        from babylon.economics.dynamics.data_sources import DispossessionCalculator
+        from babylon.domain.economics.dynamics.data_sources import DispossessionCalculator
 
         source = HardcodedNationalDispossessionSource()
         calc: DispossessionCalculator = DefaultDispossessionCalculator(source)

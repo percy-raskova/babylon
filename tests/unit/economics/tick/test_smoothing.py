@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tick.smoothing import CoefficientSmoother
+from babylon.domain.economics.tick.smoothing import CoefficientSmoother
 
 
 class TestCoefficientSmoother:

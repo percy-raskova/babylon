@@ -27,8 +27,8 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from babylon.economics.tick.smoothing import CoefficientSmoother
-from babylon.economics.tick.types import CrisisPhase
+from babylon.domain.economics.tick.smoothing import CoefficientSmoother
+from babylon.domain.economics.tick.types import CrisisPhase
 from tests.property.harness import tol
 from tests.property.harness.alpha_discovery import (
     AlphaCoefficient,

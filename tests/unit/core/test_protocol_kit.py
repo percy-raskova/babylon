@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.core.protocol_kit import CachedSource, DataSource, SourceRegistry
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.protocol_kit import CachedSource, DataSource, SourceRegistry
+from babylon.domain.economics.tensor import NoDataSentinel
 
 # ---------------------------------------------------------------------------
 # CachedSource[T] — 8 contract tests

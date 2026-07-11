@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from babylon.config.defines import ReserveArmyDefines
-from babylon.economics.reserve_army.calculator import DefaultWagePressureCalculator
+from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
 
 
 class TestDefaultWagePressureCalculator:

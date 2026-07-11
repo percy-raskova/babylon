@@ -14,7 +14,7 @@ from __future__ import annotations
 from hypothesis import strategies as st
 from hypothesis.strategies import SearchStrategy
 
-from babylon.economics.substrate.types import HexGrid
+from babylon.domain.economics.substrate.types import HexGrid
 from babylon.models.world_state import WorldState
 from tests.property.strategies.hex_grid import hex_grid_strategy
 from tests.property.strategies.primitives import (

@@ -22,13 +22,13 @@ import numpy as np
 import pytest
 from sqlalchemy.orm import Session
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients import (
     DefaultPeripheryLaborCoefficientsSource,
     PeripheryLaborCoefficientsSource,
     PeripheryWageMetadata,
 )
-from babylon.economics.tensor_hierarchy.types import PeripheryLaborCoefficients
+from babylon.domain.economics.tensor_hierarchy.types import PeripheryLaborCoefficients
 from babylon.reference.schema import DimTime, FactHickelERDIAnnual
 from tests.unit.economics.tensor_hierarchy.leontief_rent.conftest import FakeEventBus
 

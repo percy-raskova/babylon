@@ -52,7 +52,7 @@ if not _pg_available():  # pragma: no cover - environment guard
 def bridged():  # type: ignore[no-untyped-def]
     """One hydrated single-county bridged world + engine harness."""
     from babylon.config.defines import GameDefines
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.engine.headless_runner.bridge import WorldStateBridge
     from babylon.engine.headless_runner.runner import EventCapture
     from babylon.engine.services import ServiceContainer

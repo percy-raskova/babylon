@@ -267,7 +267,7 @@ class SimulationSnapshot(BaseModel):
         description="List of EdgeState relationships (empty for MVP)",
     )
     # Note: Using Any here to avoid circular import issues. At runtime,
-    # this will hold a TensorRegistry instance from babylon.economics.tensor_registry.
+    # this will hold a TensorRegistry instance from babylon.domain.economics.tensor_registry.
     # TYPE_CHECKING provides the proper type hint for static analysis.
     tensor_registry: Any = Field(
         default=None,

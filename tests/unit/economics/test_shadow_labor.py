@@ -26,7 +26,7 @@ Where:
     - g_33 = 0.0 → All care work unpaid (full-time homemaker) → v_market = 0
 
 See Also:
-    :mod:`babylon.economics.shadow_labor`: Shadow labor implementation.
+    :mod:`babylon.domain.economics.shadow_labor`: Shadow labor implementation.
     :mod:`babylon.data.atus`: ATUS data loading infrastructure.
 """
 
@@ -35,12 +35,12 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.atus_compat import (
+from babylon.domain.economics.atus_compat import (
     ATUSActivityRecord,
     ATUSHouseholdSummary,
     MockReproductionLoader,
 )
-from babylon.economics.shadow_labor import (
+from babylon.domain.economics.shadow_labor import (
     ReproductionLoaderProtocol,
     ShadowLaborConfig,
     ShadowLaborResult,

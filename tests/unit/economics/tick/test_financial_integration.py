@@ -12,19 +12,19 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.counter_tendencies.types import CounterTendencyStrength
-from babylon.economics.credit.types import (
+from babylon.domain.economics.counter_tendencies.types import CounterTendencyStrength
+from babylon.domain.economics.credit.types import (
     CreditCyclePhase,
     CreditState,
     FictitiousCapitalStock,
     InterestRateState,
 )
-from babylon.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
-from babylon.economics.dynamics.types import ClassDistribution
-from babylon.economics.financial_crisis.types import FinancialCrisisAssessment
-from babylon.economics.monetary.types import MonetaryAdjustment
-from babylon.economics.rent.types import HousingValueDecomposition, RentExtraction
-from babylon.economics.tick.types import (
+from babylon.domain.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.financial_crisis.types import FinancialCrisisAssessment
+from babylon.domain.economics.monetary.types import MonetaryAdjustment
+from babylon.domain.economics.rent.types import HousingValueDecomposition, RentExtraction
+from babylon.domain.economics.tick.types import (
     CountyEconomicState,
     NationalFinancialParameters,
 )

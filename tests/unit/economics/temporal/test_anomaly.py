@@ -12,7 +12,7 @@ TDD: These tests are written FIRST and should FAIL until implementation.
 
 import pytest
 
-from babylon.economics.temporal.models import (
+from babylon.domain.economics.temporal.models import (
     AnomalyFlag,
     AnomalyThresholdConfig,
     DetectionMethod,
@@ -24,7 +24,7 @@ class TestRollingZScore:
 
     def test_rolling_zscore_returns_float(self) -> None:
         """rolling_zscore returns float for valid input."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         # 5 values with known statistics
         values = [0.10, 0.12, 0.11, 0.13, 0.25]  # Last is outlier
@@ -38,7 +38,7 @@ class TestRollingZScore:
 
     def test_rolling_zscore_insufficient_history_returns_none(self) -> None:
         """rolling_zscore returns None for insufficient history."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         # Only 3 values, but window_size is 5
         values = [0.10, 0.12, 0.11]
@@ -49,7 +49,7 @@ class TestRollingZScore:
 
     def test_rolling_zscore_exact_window_size(self) -> None:
         """rolling_zscore works with exactly window_size values."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         values = [0.10, 0.12, 0.11, 0.13, 0.12]  # 5 values
 
@@ -61,7 +61,7 @@ class TestRollingZScore:
 
     def test_rolling_zscore_negative_outlier(self) -> None:
         """rolling_zscore detects negative outliers."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         values = [0.10, 0.12, 0.11, 0.13, 0.02]  # Last is low outlier
 
@@ -72,7 +72,7 @@ class TestRollingZScore:
 
     def test_rolling_zscore_zero_std_returns_zero(self) -> None:
         """rolling_zscore returns 0 when all values are identical."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         values = [0.10, 0.10, 0.10, 0.10, 0.10]  # All same
 
@@ -87,7 +87,7 @@ class TestDetectionMethodSelection:
 
     def test_z_score_method_when_sufficient_history(self) -> None:
         """Z_SCORE method selected when ≥5 years of history."""
-        from babylon.economics.temporal.anomaly import select_detection_method
+        from babylon.domain.economics.temporal.anomaly import select_detection_method
 
         config = AnomalyThresholdConfig(rolling_window_years=5)
 
@@ -100,7 +100,7 @@ class TestDetectionMethodSelection:
 
     def test_empirical_threshold_when_insufficient_history_with_p95(self) -> None:
         """EMPIRICAL_THRESHOLD when <5 years but national p95 available."""
-        from babylon.economics.temporal.anomaly import select_detection_method
+        from babylon.domain.economics.temporal.anomaly import select_detection_method
 
         config = AnomalyThresholdConfig(
             rolling_window_years=5,
@@ -116,7 +116,7 @@ class TestDetectionMethodSelection:
 
     def test_bootstrap_when_no_calibration(self) -> None:
         """BOOTSTRAP method when insufficient history AND no p95 calibration."""
-        from babylon.economics.temporal.anomaly import select_detection_method
+        from babylon.domain.economics.temporal.anomaly import select_detection_method
 
         config = AnomalyThresholdConfig(
             rolling_window_years=5,
@@ -136,7 +136,7 @@ class TestAnomalyFlagCreation:
 
     def test_flag_created_when_z_score_exceeds_k(self) -> None:
         """Flag created when Z-score exceeds k standard deviations."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(z_score_k=2.5)
 
@@ -156,7 +156,7 @@ class TestAnomalyFlagCreation:
 
     def test_no_flag_when_z_score_within_k(self) -> None:
         """No flag when Z-score is within k standard deviations."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(z_score_k=2.5)
 
@@ -173,7 +173,7 @@ class TestAnomalyFlagCreation:
 
     def test_flag_created_with_bootstrap_threshold(self) -> None:
         """Flag created when delta exceeds bootstrap threshold."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(bootstrap_threshold=0.15)
 
@@ -192,7 +192,7 @@ class TestAnomalyFlagCreation:
 
     def test_flag_created_with_empirical_threshold(self) -> None:
         """Flag created when delta exceeds empirical p95 threshold."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(national_p95_threshold=0.12)
 
@@ -214,14 +214,14 @@ class TestAnomalyDetectorImpl:
 
     def test_detect_anomalies_returns_transitions(self) -> None:
         """detect_anomalies returns list of TemporalTransition."""
-        from babylon.economics.temporal.anomaly import AnomalyDetectorImpl
+        from babylon.domain.economics.temporal.anomaly import AnomalyDetectorImpl
 
         detector = AnomalyDetectorImpl(hydrator=None)  # type: ignore[arg-type]
         assert hasattr(detector, "detect_anomalies")
 
     def test_detect_anomalies_insufficient_years_raises(self) -> None:
         """detect_anomalies with <2 years raises ValueError."""
-        from babylon.economics.temporal.anomaly import AnomalyDetectorImpl
+        from babylon.domain.economics.temporal.anomaly import AnomalyDetectorImpl
 
         detector = AnomalyDetectorImpl(hydrator=None)  # type: ignore[arg-type]
         config = AnomalyThresholdConfig()
@@ -235,7 +235,7 @@ class TestAnomalyDetectorImpl:
 
     def test_compute_z_scores_returns_dict(self) -> None:
         """compute_z_scores returns dict mapping year to Z-score."""
-        from babylon.economics.temporal.anomaly import AnomalyDetectorImpl
+        from babylon.domain.economics.temporal.anomaly import AnomalyDetectorImpl
 
         detector = AnomalyDetectorImpl(hydrator=None)  # type: ignore[arg-type]
         assert hasattr(detector, "compute_z_scores")
@@ -246,7 +246,7 @@ class TestRollingZscoreMutationKillers:
 
     def test_zscore_exact_computation(self) -> None:
         """Verify exact Z-score for known distribution."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         # values = [10, 10, 10, 10, 20], window=5
         # mean = 12, variance = (4+4+4+4+64)/5 = 16, std = 4
@@ -256,7 +256,7 @@ class TestRollingZscoreMutationKillers:
 
     def test_zscore_negative_outlier_exact(self) -> None:
         """Verify negative Z-score for below-mean outlier."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         # values = [10, 10, 10, 10, 0], window=5
         # mean = 8, variance = (4+4+4+4+64)/5 = 16, std = 4
@@ -266,7 +266,7 @@ class TestRollingZscoreMutationKillers:
 
     def test_zscore_uses_last_value(self) -> None:
         """Z-score is computed for the LAST value in window."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         # Outlier in middle, normal at end — should not flag
         z = rolling_zscore([10.0, 10.0, 100.0, 10.0, 10.0], window_size=5)
@@ -276,21 +276,21 @@ class TestRollingZscoreMutationKillers:
 
     def test_zscore_window_size_exact_match(self) -> None:
         """Exactly window_size values returns valid z-score."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         z = rolling_zscore([1.0, 2.0, 3.0], window_size=3)
         assert z is not None
 
     def test_zscore_below_window_size_returns_none(self) -> None:
         """Fewer than window_size values returns None."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         z = rolling_zscore([1.0, 2.0], window_size=3)
         assert z is None
 
     def test_zscore_uses_last_n_values(self) -> None:
         """When len(values) > window_size, only last window_size used."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         # First 5 values are noise, last 3 are [10, 10, 20]
         values = [999.0, 888.0, 777.0, 666.0, 555.0, 10.0, 10.0, 20.0]
@@ -302,14 +302,14 @@ class TestRollingZscoreMutationKillers:
 
     def test_zscore_zero_std_returns_zero(self) -> None:
         """All identical values produces zero std, returns 0.0."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         z = rolling_zscore([5.0, 5.0, 5.0], window_size=3)
         assert z == 0.0
 
     def test_zscore_mean_computation_correct(self) -> None:
         """Verify mean is computed as sum/n, not sum/(n-1)."""
-        from babylon.economics.temporal.anomaly import rolling_zscore
+        from babylon.domain.economics.temporal.anomaly import rolling_zscore
 
         # [0, 10] window=2: mean = 5, variance = (25+25)/2=25, std=5
         # z = (10-5)/5 = 1.0
@@ -322,7 +322,7 @@ class TestSelectDetectionMethodMutationKillers:
 
     def test_z_score_at_exact_boundary(self) -> None:
         """Exactly rolling_window_years returns Z_SCORE."""
-        from babylon.economics.temporal.anomaly import select_detection_method
+        from babylon.domain.economics.temporal.anomaly import select_detection_method
 
         config = AnomalyThresholdConfig(rolling_window_years=5)
         method = select_detection_method(years_of_history=5, config=config)
@@ -330,7 +330,7 @@ class TestSelectDetectionMethodMutationKillers:
 
     def test_z_score_above_boundary(self) -> None:
         """Above rolling_window_years returns Z_SCORE."""
-        from babylon.economics.temporal.anomaly import select_detection_method
+        from babylon.domain.economics.temporal.anomaly import select_detection_method
 
         config = AnomalyThresholdConfig(rolling_window_years=5)
         method = select_detection_method(years_of_history=10, config=config)
@@ -338,7 +338,7 @@ class TestSelectDetectionMethodMutationKillers:
 
     def test_below_boundary_no_p95_returns_bootstrap(self) -> None:
         """Below threshold without p95 returns BOOTSTRAP."""
-        from babylon.economics.temporal.anomaly import select_detection_method
+        from babylon.domain.economics.temporal.anomaly import select_detection_method
 
         config = AnomalyThresholdConfig(rolling_window_years=5, national_p95_threshold=None)
         method = select_detection_method(years_of_history=4, config=config)
@@ -346,7 +346,7 @@ class TestSelectDetectionMethodMutationKillers:
 
     def test_below_boundary_with_p95_returns_empirical(self) -> None:
         """Below threshold with p95 returns EMPIRICAL_THRESHOLD."""
-        from babylon.economics.temporal.anomaly import select_detection_method
+        from babylon.domain.economics.temporal.anomaly import select_detection_method
 
         config = AnomalyThresholdConfig(rolling_window_years=5, national_p95_threshold=0.12)
         method = select_detection_method(years_of_history=4, config=config)
@@ -354,7 +354,7 @@ class TestSelectDetectionMethodMutationKillers:
 
     def test_one_below_boundary_without_p95(self) -> None:
         """One less than required window: still BOOTSTRAP when no p95."""
-        from babylon.economics.temporal.anomaly import select_detection_method
+        from babylon.domain.economics.temporal.anomaly import select_detection_method
 
         config = AnomalyThresholdConfig(rolling_window_years=5, national_p95_threshold=None)
         method = select_detection_method(years_of_history=4, config=config)
@@ -366,7 +366,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_z_score_exactly_at_k_no_flag(self) -> None:
         """Z-score exactly at k does NOT flag (uses > not >=)."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(z_score_k=2.5)
         flag = check_threshold_violation(
@@ -380,7 +380,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_z_score_just_above_k_flags(self) -> None:
         """Z-score slightly above k produces flag."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(z_score_k=2.5)
         flag = check_threshold_violation(
@@ -395,7 +395,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_z_score_negative_outlier_flags(self) -> None:
         """Negative Z-score below -k also flags (uses abs)."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(z_score_k=2.0)
         flag = check_threshold_violation(
@@ -409,7 +409,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_z_score_none_returns_none(self) -> None:
         """Z_SCORE method with None z_score returns None."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(z_score_k=2.0)
         flag = check_threshold_violation(
@@ -423,7 +423,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_bootstrap_exactly_at_threshold_no_flag(self) -> None:
         """Bootstrap delta exactly at threshold does NOT flag (uses >)."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(bootstrap_threshold=0.15)
         flag = check_threshold_violation(
@@ -437,7 +437,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_bootstrap_above_threshold_flags(self) -> None:
         """Bootstrap delta above threshold produces flag."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(bootstrap_threshold=0.15)
         flag = check_threshold_violation(
@@ -452,7 +452,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_bootstrap_negative_delta_uses_abs(self) -> None:
         """Bootstrap checks absolute delta, not signed."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(bootstrap_threshold=0.15)
         flag = check_threshold_violation(
@@ -466,7 +466,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_empirical_uses_p95_threshold(self) -> None:
         """EMPIRICAL_THRESHOLD uses national_p95 value."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(national_p95_threshold=0.10, bootstrap_threshold=0.15)
         # Delta 0.12 exceeds p95 (0.10) but not bootstrap (0.15)
@@ -482,7 +482,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_empirical_fallback_to_bootstrap_when_no_p95(self) -> None:
         """EMPIRICAL_THRESHOLD falls back to bootstrap_threshold when p95 is None."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(national_p95_threshold=None, bootstrap_threshold=0.15)
         flag = check_threshold_violation(
@@ -497,7 +497,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_flag_stores_component_name(self) -> None:
         """Flag correctly stores the component name."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(bootstrap_threshold=0.01)
         flag = check_threshold_violation(
@@ -512,7 +512,7 @@ class TestCheckThresholdViolationMutationKillers:
 
     def test_flag_stores_delta_value(self) -> None:
         """Flag stores the original delta value (not absolute)."""
-        from babylon.economics.temporal.anomaly import check_threshold_violation
+        from babylon.domain.economics.temporal.anomaly import check_threshold_violation
 
         config = AnomalyThresholdConfig(bootstrap_threshold=0.01)
         flag = check_threshold_violation(

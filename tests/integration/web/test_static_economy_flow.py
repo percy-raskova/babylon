@@ -5,7 +5,7 @@ TickDynamicsSystem's annual pipeline previously only touched territory
 boundaries every county-level economic figure was frozen. This lane adds
 per-tick FLOW accrual (``flow_phi_accrued`` / ``flow_wage_accrued``) that
 moves every tick, at ``annual_value / WEEKS_PER_YEAR`` — see
-``babylon.economics.tick.system.TickDynamicsSystem._accrue_flows``.
+``babylon.domain.economics.tick.system.TickDynamicsSystem._accrue_flows``.
 
 Structural finding (verified by reading ``babylon.engine.simulation_engine
 .step`` end to end, not inferred): ``EngineBridge.resolve_tick`` advances the
@@ -67,8 +67,8 @@ import os
 
 import pytest
 
-from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
-from babylon.economics.tick.types import (
+from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
+from babylon.domain.economics.tick.types import (
     ClassDistribution,
     CountyEconomicState,
     NationalTickParameters,

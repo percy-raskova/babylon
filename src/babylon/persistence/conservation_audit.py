@@ -186,7 +186,7 @@ def phi_week_conservation_evaluator(
         One ``_InvariantResult`` per bloc with positive Φ, plus (when
         ``national_phi_reference > 0``) one aggregate-coverage result.
     """
-    from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+    from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 
     if context is None:
         return []
@@ -265,7 +265,7 @@ class PairedCrossBorderEmissionEvaluator:
 
     def __call__(self, _pre_state: Any, _post_state: Any, context: Any) -> list[_InvariantResult]:
         """Return one missing-pair-count result per affected external dest."""
-        from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+        from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 
         if context is None:
             return []

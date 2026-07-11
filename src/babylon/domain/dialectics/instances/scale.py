@@ -36,7 +36,7 @@ with no-op evaluators today; **Phase D does NOT wire ``register_invariant``**
 auditor will later enforce, not the wiring.
 
 See Also:
-    :class:`babylon.economics.tensor_hierarchy.geographic_flow.DefaultGeographicAggregator`:
+    :class:`babylon.domain.economics.tensor_hierarchy.geographic_flow.DefaultGeographicAggregator`:
     the CFS-flow kernel; ``test_scale.py`` proves it agrees with
     :meth:`ScaleAdjunction.aggregate` on a shared fixture (bind, don't rewrite).
 """

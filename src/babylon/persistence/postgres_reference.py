@@ -113,7 +113,7 @@ class ImmutableReferenceLookup:
                 supplies a provider so the policy dispatch can be exercised
                 without a live database.
         """
-        from babylon.economics.coefficient_lookup import LookupPolicy
+        from babylon.domain.economics.coefficient_lookup import LookupPolicy
 
         simulated_year, week_index = self._tick_to_year_and_week(tick)
         resolved_policy = self._resolve_policy(series_id, policy)
@@ -141,7 +141,7 @@ class ImmutableReferenceLookup:
         return self._start_year + (tick // 52), tick % 52
 
     def _resolve_policy(self, series_id: str, override: str | None) -> Any:
-        from babylon.economics.coefficient_lookup import LookupPolicy
+        from babylon.domain.economics.coefficient_lookup import LookupPolicy
 
         if override is not None:
             return LookupPolicy(override)

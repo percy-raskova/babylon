@@ -22,13 +22,13 @@ import warnings
 
 import pytest
 
-from babylon.economics.melt import (
+from babylon.domain.economics.melt import (
     ClassPosition,
     DefaultClassPositionClassifier,
     NationalParameters,
     PrecarityStatus,
 )
-from babylon.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
+from babylon.domain.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
 
 
 class TestClassPositionEnum:

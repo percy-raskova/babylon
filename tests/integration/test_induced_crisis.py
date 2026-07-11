@@ -61,7 +61,7 @@ def _regime(graph: object) -> str:
 def crisis_arc():  # type: ignore[no-untyped-def]
     """One bridged county driven 20 pacified + 20 crisis ticks; records the arc."""
     from babylon.config.defines import GameDefines
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.engine.context import TickContext
     from babylon.engine.headless_runner.bridge import WorldStateBridge
     from babylon.engine.headless_runner.runner import EventCapture

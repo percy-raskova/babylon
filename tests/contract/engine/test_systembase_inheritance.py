@@ -41,8 +41,8 @@ SYSTEMS: list[tuple[str, str]] = [
     ("babylon.engine.systems.survival", "SurvivalSystem"),
     ("babylon.engine.systems.territory", "TerritorySystem"),
     ("babylon.engine.systems.vitality", "VitalitySystem"),
-    # 1 in src/babylon/economics/tick/system/
-    ("babylon.economics.tick.system", "TickDynamicsSystem"),
+    # 1 in src/babylon/domain/economics/tick/system/
+    ("babylon.domain.economics.tick.system", "TickDynamicsSystem"),
 ]
 
 

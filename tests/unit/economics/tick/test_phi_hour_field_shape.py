@@ -19,8 +19,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.dynamics.types import ClassDistribution
-from babylon.economics.tick.types import CountyEconomicState
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.tick.types import CountyEconomicState
 
 
 def _county(phi_hour: float) -> CountyEconomicState:

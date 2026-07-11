@@ -6,7 +6,7 @@ Task: T015
 
 from __future__ import annotations
 
-from babylon.economics.tick.precarity import PrecarityDeriver
+from babylon.domain.economics.tick.precarity import PrecarityDeriver
 
 
 class TestPrecarityDeriver:

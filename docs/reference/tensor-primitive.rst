@@ -243,7 +243,7 @@ extraction).
 Tensor Registry
 ---------------
 
-:py:class:`babylon.economics.tensor_registry.TensorRegistry` is the
+:py:class:`babylon.domain.economics.tensor_registry.TensorRegistry` is the
 cache and aggregation layer that provides tensor access to the
 simulation engine.
 
@@ -322,7 +322,7 @@ Thread-safe via RLock on both county and aggregate caches.
 Hydration Pipeline
 ------------------
 
-:py:class:`babylon.economics.hydrator.MarxianHydrator` transforms
+:py:class:`babylon.domain.economics.hydrator.MarxianHydrator` transforms
 raw QCEW wage data into ValueTensor4x3 using BEA ratios and
 department mappings.
 
@@ -371,7 +371,7 @@ For both s/v and c/v ratios, the system tries three sources
 SNLT Configuration
 ~~~~~~~~~~~~~~~~~~
 
-:py:class:`babylon.economics.snlt.SNLTConfig` provides year-specific
+:py:class:`babylon.domain.economics.snlt.SNLTConfig` provides year-specific
 labor-hour conversion factors.
 
 .. list-table::
@@ -396,7 +396,7 @@ require SNLT calibration.
 Department Mapping
 ~~~~~~~~~~~~~~~~~~
 
-:py:class:`babylon.economics.department_mapper.DepartmentMapper`
+:py:class:`babylon.domain.economics.department_mapper.DepartmentMapper`
 maps NAICS codes to departments with allocation weights.
 
 **NAICS lookup hierarchy** (most specific first):

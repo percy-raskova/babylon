@@ -15,7 +15,7 @@ TDD: These tests are written FIRST and should FAIL until implementation.
 
 import pytest
 
-from babylon.economics.temporal.models import SmoothedCoefficientSeries
+from babylon.domain.economics.temporal.models import SmoothedCoefficientSeries
 
 
 class TestEwmaFormula:
@@ -23,7 +23,7 @@ class TestEwmaFormula:
 
     def test_ewma_basic_computation(self) -> None:
         """EWMA computes correctly with α=0.3."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         # Raw values: 4%, 6%, 5%
         # Expected with α=0.3:
@@ -42,7 +42,7 @@ class TestEwmaFormula:
 
     def test_ewma_dampens_oscillation(self) -> None:
         """EWMA dampens oscillating values."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         # Oscillating values: 4%, 6%, 4%, 6%, 4%
         raw_values = [0.04, 0.06, 0.04, 0.06, 0.04]
@@ -59,7 +59,7 @@ class TestEwmaFormula:
 
     def test_ewma_empty_list_returns_empty(self) -> None:
         """EWMA returns empty list for empty input."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         smoothed = ewma([], 0.3)
         assert smoothed == []
@@ -70,7 +70,7 @@ class TestAlphaBoundaryZero:
 
     def test_alpha_zero_full_smoothing(self) -> None:
         """α=0 means full smoothing: output equals first value."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         raw_values = [0.04, 0.10, 0.20, 0.05]
         alpha = 0.0
@@ -87,7 +87,7 @@ class TestAlphaBoundaryOne:
 
     def test_alpha_one_no_smoothing(self) -> None:
         """α=1 means no smoothing: output equals raw values."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         raw_values = [0.04, 0.10, 0.20, 0.05]
         alpha = 1.0
@@ -104,7 +104,7 @@ class TestSingleYearEdgeCase:
 
     def test_single_value_returns_same(self) -> None:
         """Single value series returns that value."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         raw_values = [0.04]
         alpha = 0.3
@@ -120,14 +120,14 @@ class TestCoefficientSmootherImpl:
 
     def test_smooth_coefficients_returns_series(self) -> None:
         """smooth_coefficients returns SmoothedCoefficientSeries."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         assert hasattr(smoother, "smooth_coefficients")
 
     def test_smooth_coefficients_invalid_alpha_raises(self) -> None:
         """smooth_coefficients with alpha outside [0, 1] raises ValueError."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
 
@@ -145,7 +145,7 @@ class TestVarianceReduction:
 
     def test_smoothing_reduces_variance(self) -> None:
         """Smoothing with α=0.3 reduces variance."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         # High-variance raw values
         raw_values = [0.02, 0.08, 0.03, 0.07, 0.04, 0.06, 0.03, 0.07]
@@ -188,7 +188,7 @@ class TestEwmaMutationKillers:
 
     def test_ewma_second_value_uses_alpha_weight(self) -> None:
         """Verify S_1 = α * X_1 + (1-α) * S_0 exactly."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         result = ewma([10.0, 20.0], alpha=0.4)
         # S_0 = 10.0
@@ -198,7 +198,7 @@ class TestEwmaMutationKillers:
 
     def test_ewma_third_value_chains_correctly(self) -> None:
         """Verify S_2 chains from S_1 (not S_0 or X_1)."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         result = ewma([10.0, 20.0, 30.0], alpha=0.5)
         # S_0 = 10.0
@@ -208,14 +208,14 @@ class TestEwmaMutationKillers:
 
     def test_ewma_alpha_half_midpoint(self) -> None:
         """α=0.5 gives exact midpoint between current and previous smoothed."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         result = ewma([0.0, 100.0], alpha=0.5)
         assert result[1] == pytest.approx(50.0)
 
     def test_ewma_preserves_length(self) -> None:
         """Output length equals input length exactly."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         for n in (1, 2, 5, 10):
             values = [float(i) for i in range(n)]
@@ -223,7 +223,7 @@ class TestEwmaMutationKillers:
 
     def test_ewma_first_element_always_equals_input(self) -> None:
         """S_0 = X_0 regardless of alpha."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         for alpha in (0.0, 0.1, 0.5, 0.9, 1.0):
             result = ewma([42.0, 100.0], alpha=alpha)
@@ -231,7 +231,7 @@ class TestEwmaMutationKillers:
 
     def test_ewma_negative_values(self) -> None:
         """EWMA handles negative values correctly."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         result = ewma([-10.0, -20.0], alpha=0.3)
         # S_1 = 0.3 * (-20) + 0.7 * (-10) = -6 + (-7) = -13
@@ -239,7 +239,7 @@ class TestEwmaMutationKillers:
 
     def test_ewma_large_alpha_tracks_input_closely(self) -> None:
         """α close to 1.0 tracks raw input closely."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         raw = [0.0, 100.0, 0.0, 100.0]
         result = ewma(raw, alpha=0.99)
@@ -248,7 +248,7 @@ class TestEwmaMutationKillers:
 
     def test_ewma_small_alpha_resists_change(self) -> None:
         """α close to 0.0 resists change from initial value."""
-        from babylon.economics.temporal.smoothing import ewma
+        from babylon.domain.economics.temporal.smoothing import ewma
 
         raw = [1.0, 100.0, 100.0, 100.0]
         result = ewma(raw, alpha=0.01)
@@ -286,7 +286,7 @@ class TestExtractCoefficientMutationKillers:
 
     def test_extract_profit_rate(self) -> None:
         """Extracts profit_rate correctly."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         tensor = self._make_mock_tensor(profit_rate=0.25)
@@ -294,7 +294,7 @@ class TestExtractCoefficientMutationKillers:
 
     def test_extract_exploitation_rate(self) -> None:
         """Extracts exploitation_rate correctly (distinct from profit_rate)."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         tensor = self._make_mock_tensor(profit_rate=0.1, exploitation_rate=0.8)
@@ -302,7 +302,7 @@ class TestExtractCoefficientMutationKillers:
 
     def test_extract_dept_I_share(self) -> None:
         """Extracts dept_I share = dept_I.v / total_v."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         tensor = self._make_mock_tensor(total_v=200.0, dept_I_v=50.0)
@@ -310,7 +310,7 @@ class TestExtractCoefficientMutationKillers:
 
     def test_extract_dept_IIa_share(self) -> None:
         """Extracts dept_IIa share distinctly from other departments."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         tensor = self._make_mock_tensor(total_v=100.0, dept_IIa_v=45.0)
@@ -318,7 +318,7 @@ class TestExtractCoefficientMutationKillers:
 
     def test_extract_dept_IIb_share(self) -> None:
         """Extracts dept_IIb share distinctly."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         tensor = self._make_mock_tensor(total_v=100.0, dept_IIb_v=35.0)
@@ -326,7 +326,7 @@ class TestExtractCoefficientMutationKillers:
 
     def test_extract_dept_III_share(self) -> None:
         """Extracts dept_III share distinctly."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         tensor = self._make_mock_tensor(total_v=100.0, dept_III_v=15.0)
@@ -334,7 +334,7 @@ class TestExtractCoefficientMutationKillers:
 
     def test_extract_dept_share_zero_total_v_returns_zero(self) -> None:
         """When total_v is 0, all dept shares return 0.0."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         tensor = self._make_mock_tensor(total_v=0.0)
@@ -342,7 +342,7 @@ class TestExtractCoefficientMutationKillers:
 
     def test_extract_unknown_coefficient_raises(self) -> None:
         """Unknown coefficient raises ValueError."""
-        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+        from babylon.domain.economics.temporal.smoothing import CoefficientSmootherImpl
 
         smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
         tensor = self._make_mock_tensor()

@@ -475,9 +475,9 @@ root_packages = ["babylon"]
 exclude_type_checking_imports = true
 
 [[tool.importlinter.contracts]]
-name = "economics must not import the engine (kernel abstractions only)"
+name = "the domain must not import the engine (kernel abstractions only)"
 type = "forbidden"
-source_modules = ["babylon.economics"]
+source_modules = ["babylon.domain"]
 forbidden_modules = ["babylon.engine"]
 
 [[tool.importlinter.contracts]]
@@ -500,7 +500,6 @@ forbidden_modules = [
     "babylon.engine",
     "babylon.topology",
     "babylon.persistence",
-    "babylon.economics",
     "babylon.models",
     "babylon.formulas",
     "babylon.config",

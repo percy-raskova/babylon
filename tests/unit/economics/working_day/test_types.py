@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.working_day.types import WorkingDayState
+from babylon.domain.economics.working_day.types import WorkingDayState
 
 
 class TestWorkingDayState:

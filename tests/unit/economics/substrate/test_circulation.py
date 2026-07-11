@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from babylon.economics.substrate.circulation import DefaultHexCirculationComputer
-from babylon.economics.substrate.types import (
+from babylon.domain.economics.substrate.circulation import DefaultHexCirculationComputer
+from babylon.domain.economics.substrate.types import (
     HexGrid,
 )
 

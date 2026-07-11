@@ -11,13 +11,13 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.geographic_flow import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.geographic_flow import (
     DefaultGeographicAggregator,
     DefaultGeographicFlowSource,
     DefaultImperialRentComputer,
 )
-from babylon.economics.tensor_hierarchy.types import (
+from babylon.domain.economics.tensor_hierarchy.types import (
     GeographicFlow,
     ImperialRentField,
 )

@@ -54,7 +54,7 @@ InterIndustryFlow
 
    **Constraints:** ``coefficients.shape == (n, n)`` where ``n = len(industries)``.
 
-   **Source:** :class:`~babylon.economics.tensor_hierarchy.inter_industry.DefaultInterIndustryFlowSource`
+   **Source:** :class:`~babylon.domain.economics.tensor_hierarchy.inter_industry.DefaultInterIndustryFlowSource`
    reads from ``fact_bea_io_coefficient`` populated by
    :class:`~babylon.data.bea.io_loader.BEAIOLoader`.
 
@@ -123,8 +123,8 @@ VisibilityMetric
         - ``True`` if values are estimated/MVP rather than computed from ATUS.
           Default: ``False``.
 
-   **Source:** :class:`~babylon.economics.tensor_hierarchy.visibility.DefaultVisibilitySource`
-   wraps :class:`~babylon.economics.gamma.gamma_iii.DefaultGammaIIICalculator`.
+   **Source:** :class:`~babylon.domain.economics.tensor_hierarchy.visibility.DefaultVisibilitySource`
+   wraps :class:`~babylon.domain.economics.gamma.gamma_iii.DefaultGammaIIICalculator`.
 
 
 GeographicFlow
@@ -162,7 +162,7 @@ GeographicFlow
 
    **Constraints:** ``flow_matrix.shape == (n, n)`` where ``n = len(areas)``.
 
-   **Source:** :class:`~babylon.economics.tensor_hierarchy.geographic_flow.DefaultGeographicFlowSource`
+   **Source:** :class:`~babylon.domain.economics.tensor_hierarchy.geographic_flow.DefaultGeographicFlowSource`
    reads from ``fact_faf_commodity_flow`` populated by
    :class:`~babylon.data.bts.faf_loader.FAFLoader`.
 
@@ -197,10 +197,10 @@ ReproductionRequirements
    .. note::
 
       Production loader deferred (US4). ``DefaultReproductionSource`` returns
-      :class:`~babylon.economics.tensor.NoDataSentinel` for all queries.
+      :class:`~babylon.domain.economics.tensor.NoDataSentinel` for all queries.
       All tests use synthetic data.
 
-   **Source:** :class:`~babylon.economics.tensor_hierarchy.reproduction.DefaultReproductionSource` (stub).
+   **Source:** :class:`~babylon.domain.economics.tensor_hierarchy.reproduction.DefaultReproductionSource` (stub).
 
 
 ClassTransitionMatrix
@@ -238,10 +238,10 @@ ClassTransitionMatrix
    .. note::
 
       Production loader deferred (US5). ``DefaultClassTransitionSource`` returns
-      :class:`~babylon.economics.tensor.NoDataSentinel`. Computation engine
+      :class:`~babylon.domain.economics.tensor.NoDataSentinel`. Computation engine
       (``DefaultClassTransitionComputer``) is fully implemented.
 
-   **Source:** :class:`~babylon.economics.tensor_hierarchy.class_transition.DefaultClassTransitionSource` (stub).
+   **Source:** :class:`~babylon.domain.economics.tensor_hierarchy.class_transition.DefaultClassTransitionSource` (stub).
 
 Level 2 Tensor Types
 ====================
@@ -279,7 +279,7 @@ LeontiefInverse
    **Mathematical guarantee:** If Hawkins-Simon holds (all column sums of A < 1),
    then: all ``inverse_matrix`` elements ≥ 0, all diagonal elements ≥ 1.0.
 
-   **Computed by:** :class:`~babylon.economics.tensor_hierarchy.inter_industry.DefaultLeontiefComputer`.
+   **Computed by:** :class:`~babylon.domain.economics.tensor_hierarchy.inter_industry.DefaultLeontiefComputer`.
 
 
 ImperialRentField
@@ -313,7 +313,7 @@ ImperialRentField
 
    - ``n_areas`` → ``int``: Number of CFS areas.
 
-   **Computed by:** :class:`~babylon.economics.tensor_hierarchy.geographic_flow.DefaultImperialRentComputer`.
+   **Computed by:** :class:`~babylon.domain.economics.tensor_hierarchy.geographic_flow.DefaultImperialRentComputer`.
 
 
 ShadowSubsidyTensor
@@ -345,7 +345,7 @@ ShadowSubsidyTensor
         - ``bool``
         - Whether MELT was used for the dollar conversion. Default: ``False``.
 
-   **Computed by:** :class:`~babylon.economics.tensor_hierarchy.visibility.DefaultVisibilitySource`.
+   **Computed by:** :class:`~babylon.domain.economics.tensor_hierarchy.visibility.DefaultVisibilitySource`.
 
 
 StationaryDistribution
@@ -378,7 +378,7 @@ StationaryDistribution
 
    - ``n_classes`` → ``int``: Number of classes.
 
-   **Computed by:** :class:`~babylon.economics.tensor_hierarchy.class_transition.DefaultClassTransitionComputer`.
+   **Computed by:** :class:`~babylon.domain.economics.tensor_hierarchy.class_transition.DefaultClassTransitionComputer`.
 
 Source Protocols
 ================
@@ -569,4 +569,4 @@ Related Documentation
 - :ref:`leontief-analysis` — I-O economics theory
 - :ref:`imperial-rent-field` — Spatial value extraction theory
 - :ref:`class-mobility` — Markov chain class transition theory
-- :mod:`babylon.economics.tensor_hierarchy` — Python module
+- :mod:`babylon.domain.economics.tensor_hierarchy` — Python module

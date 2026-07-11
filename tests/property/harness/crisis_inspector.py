@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from babylon.economics.tick.types import CrisisPhase
+from babylon.domain.economics.tick.types import CrisisPhase
 
 
 class CrisisStateInspector:

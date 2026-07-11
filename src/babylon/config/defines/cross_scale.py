@@ -1,11 +1,11 @@
 """Cross-scale lookup-policy model (Spec 062).
 
-Lives in :mod:`babylon.config.defines` (not :mod:`babylon.economics`) so that
+Lives in :mod:`babylon.config.defines` (not :mod:`babylon.domain.economics`) so that
 :class:`babylon.config.defines.economy_basic.EconomyDefines` can import it
-without triggering the heavy ``babylon.economics/__init__.py`` import chain
+without triggering the heavy ``babylon.domain.economics/__init__.py`` import chain
 (which itself depends on ``GameDefines``, producing a circular import).
 
-Re-exported via :mod:`babylon.economics.coefficient_lookup` for downstream
+Re-exported via :mod:`babylon.domain.economics.coefficient_lookup` for downstream
 callsites that conceptually treat the policy as an economics primitive.
 
 See Also:

@@ -17,9 +17,9 @@ from __future__ import annotations
 import networkx as nx
 import pytest
 
-from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
-from babylon.economics.dynamics.types import ClassDistribution
-from babylon.economics.tick.types import (
+from babylon.domain.economics.crisis.bifurcation import BifurcationRiskCalculator
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.tick.types import (
     BifurcationRiskMetric,
     CrisisPhase,
     CrisisState,

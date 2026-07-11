@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.circulation.reproduction import (
+from babylon.domain.economics.circulation.reproduction import (
     check_extended_reproduction,
     check_simple_reproduction,
     combine_departments_ii,
     compute_disproportionality,
 )
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.types import (
     DisproportionalityCrisis,
 )
-from babylon.economics.tensor import DepartmentRow
+from babylon.domain.economics.tensor import DepartmentRow
 from babylon.models.types import Currency, LaborHours
 
 # =============================================================================

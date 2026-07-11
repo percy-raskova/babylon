@@ -41,7 +41,7 @@ See Also:
     ``specs/065-engine-bridging/contracts/hex_hydrator_input.yaml``
     ``specs/065-engine-bridging/research.md`` §R7
     :class:`babylon.persistence.hex_state.DynamicHexState`
-    :func:`babylon.economics.substrate.h3_utils.generate_h3_cells`
+    :func:`babylon.domain.economics.substrate.h3_utils.generate_h3_cells`
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from babylon.economics.substrate.h3_utils import generate_h3_cells
+from babylon.domain.economics.substrate.h3_utils import generate_h3_cells
 from babylon.formulas.constants import WEEKS_PER_YEAR as _WEEKS_PER_YEAR
 from babylon.persistence.hex_state import DynamicHexState
 from babylon.persistence.state_fips_to_region import region_for_state_fips

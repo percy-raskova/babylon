@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.counter_tendencies.types import (
+from babylon.domain.economics.counter_tendencies.types import (
     COUNTER_TENDENCY_WEIGHTS,
     CounterTendencyStrength,
 )
@@ -151,7 +151,7 @@ class TestCounterTendencyStrengthComputed:
 
     def test_net_counter_tendency_weighted_sum(self) -> None:
         """net_counter_tendency uses COUNTER_TENDENCY_WEIGHTS in correct order."""
-        from babylon.economics.counter_tendencies.types import IMPERIAL_RENT_REFERENCE_SCALE
+        from babylon.domain.economics.counter_tendencies.types import IMPERIAL_RENT_REFERENCE_SCALE
 
         ct = CounterTendencyStrength(
             year=2020,
@@ -199,7 +199,7 @@ class TestCounterTendencyStrengthComputed:
 
     def test_imperial_rent_caps_at_reference_scale(self) -> None:
         """Imperial rent normalization caps at 1.0 at the reference scale."""
-        from babylon.economics.counter_tendencies.types import IMPERIAL_RENT_REFERENCE_SCALE
+        from babylon.domain.economics.counter_tendencies.types import IMPERIAL_RENT_REFERENCE_SCALE
 
         ct_at_scale = CounterTendencyStrength(
             year=2020,

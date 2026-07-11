@@ -151,7 +151,7 @@ def test_distribution_split_conserves_county_surplus():  # type: ignore[no-untyp
 
 def test_imperial_rent_inflow_records_drain_edge():  # type: ignore[no-untyped-def]
     """FR-034/FR-035: weekly Φ inflow recorded as DRAIN_EDGE row in register."""
-    from babylon.economics.boundary_flow_register import (
+    from babylon.domain.economics.boundary_flow_register import (
         BoundaryEdgeKind,
         BoundaryFlowRegister,
         NodeKind,
@@ -178,8 +178,8 @@ def test_imperial_rent_inflow_records_drain_edge():  # type: ignore[no-untyped-d
 
 def test_equalization_preserves_total_capital():  # type: ignore[no-untyped-def]
     """Vol III equalization conserves sum(c) — proof from substrate.equalization."""
-    from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
-    from babylon.economics.substrate.types import HexEconomicState, HexGrid
+    from babylon.domain.economics.substrate.equalization import DefaultHexEqualizationComputer
+    from babylon.domain.economics.substrate.types import HexEconomicState, HexGrid
 
     # Two hexes with different profit rates → capital migrates but sum(c) unchanged.
     h1 = HexEconomicState(

@@ -15,12 +15,12 @@ import scipy.sparse as sp
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from babylon.economics.boundary_flow_register import (
+from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
     NodeKind,
 )
-from babylon.economics.lodes_commute_matrix import LODESYearMatrix
+from babylon.domain.economics.lodes_commute_matrix import LODESYearMatrix
 from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
 from babylon.topology.graph import BabylonGraph
 

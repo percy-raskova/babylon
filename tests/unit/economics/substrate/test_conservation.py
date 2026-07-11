@@ -13,8 +13,8 @@ import logging
 
 import pytest
 
-from babylon.economics.substrate.conservation import DefaultConservationChecker
-from babylon.economics.substrate.types import (
+from babylon.domain.economics.substrate.conservation import DefaultConservationChecker
+from babylon.domain.economics.substrate.types import (
     HexEconomicState,
     HexGrid,
 )

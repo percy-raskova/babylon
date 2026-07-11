@@ -14,7 +14,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from babylon.economics.geometric_depreciation import alpha_weekly, delta_weekly
+from babylon.domain.economics.geometric_depreciation import alpha_weekly, delta_weekly
 
 
 @pytest.mark.cross_scale

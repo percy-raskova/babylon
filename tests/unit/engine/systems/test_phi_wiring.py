@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import pytest
 
-from babylon.economics.boundary_flow_register import (
+from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
     NodeKind,

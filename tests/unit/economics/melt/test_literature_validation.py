@@ -18,7 +18,7 @@ Literature Sources:
 
 from __future__ import annotations
 
-from babylon.economics.melt import DefaultBasketVisibilityCalculator, DefaultMELTCalculator
+from babylon.domain.economics.melt import DefaultBasketVisibilityCalculator, DefaultMELTCalculator
 
 from .conftest import MockBEADataSource, MockQCEWDataSource
 

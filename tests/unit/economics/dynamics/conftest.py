@@ -8,17 +8,17 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.dynamics.data_sources import (
+from babylon.domain.economics.dynamics.data_sources import (
     CrisisAmplifier,
     DispossessionDataSource,
     SavingsRateSource,
 )
-from babylon.economics.dynamics.types import (
+from babylon.domain.economics.dynamics.types import (
     ClassDistribution,
     EconomicConditions,
     TransitionRates,
 )
-from babylon.economics.melt.types import ClassPosition
+from babylon.domain.economics.melt.types import ClassPosition
 
 # =============================================================================
 # Mock Data Sources

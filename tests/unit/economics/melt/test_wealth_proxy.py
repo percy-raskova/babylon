@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
+from babylon.domain.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
 from tests.constants import ClassSystemDefaults
 
 CS = ClassSystemDefaults()

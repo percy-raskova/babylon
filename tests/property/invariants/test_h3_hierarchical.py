@@ -19,8 +19,8 @@ from __future__ import annotations
 import pytest
 from hypothesis import HealthCheck, given, settings
 
-from babylon.economics.substrate.aggregation import DefaultResolutionAggregator
-from babylon.economics.substrate.types import HexGrid
+from babylon.domain.economics.substrate.aggregation import DefaultResolutionAggregator
+from babylon.domain.economics.substrate.types import HexGrid
 from tests.property.strategies.hex_grid import hex_grid_strategy
 
 

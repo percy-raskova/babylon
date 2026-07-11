@@ -19,7 +19,7 @@ class TestAnnotationManagerImpl:
 
     def test_annotation_manager_impl_exists(self) -> None:
         """AnnotationManagerImpl can be imported and instantiated."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
         assert hasattr(manager, "annotate_transition")
@@ -28,8 +28,8 @@ class TestAnnotationManagerImpl:
 
     def test_annotate_transition_creates_annotation(self) -> None:
         """annotate_transition creates TransitionAnnotation with correct fields."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
-        from babylon.economics.temporal.models import TransitionAnnotation
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.models import TransitionAnnotation
 
         manager = AnnotationManagerImpl()
 
@@ -51,7 +51,7 @@ class TestAnnotationManagerImpl:
 
     def test_annotate_transition_validates_type(self) -> None:
         """annotate_transition rejects invalid annotation_type."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 
@@ -67,7 +67,7 @@ class TestAnnotationManagerImpl:
 
     def test_get_annotations_returns_all(self) -> None:
         """get_annotations with no filters returns all annotations."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 
@@ -94,7 +94,7 @@ class TestAnnotationManagerImpl:
 
     def test_get_annotations_filters_by_fips(self) -> None:
         """get_annotations filters by county FIPS code."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 
@@ -122,7 +122,7 @@ class TestAnnotationManagerImpl:
 
     def test_get_annotations_filters_by_year(self) -> None:
         """get_annotations filters by year_to of transition."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 
@@ -150,7 +150,7 @@ class TestAnnotationManagerImpl:
 
     def test_get_annotations_filters_by_fips_and_year(self) -> None:
         """get_annotations filters by both fips and year."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 
@@ -187,7 +187,7 @@ class TestAnnotationManagerImpl:
 
     def test_delete_annotation_removes_annotation(self) -> None:
         """delete_annotation removes annotation and returns True."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 
@@ -212,7 +212,7 @@ class TestAnnotationManagerImpl:
 
     def test_delete_annotation_returns_false_if_not_found(self) -> None:
         """delete_annotation returns False if annotation not found."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 
@@ -225,7 +225,7 @@ class TestAnnotationTypes:
 
     def test_valid_annotation_types(self) -> None:
         """All valid annotation types are accepted."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
         valid_types = ["documented_shock", "data_quality_issue", "structural_shift", "other"]
@@ -247,7 +247,7 @@ class TestTransitionKeyGeneration:
 
     def test_transition_key_format(self) -> None:
         """Transition key follows format '{fips}_{year_from}_{year_to}'."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 
@@ -264,7 +264,7 @@ class TestTransitionKeyGeneration:
 
     def test_transition_key_uniqueness(self) -> None:
         """Creating annotation with same key overwrites previous."""
-        from babylon.economics.temporal.annotations import AnnotationManagerImpl
+        from babylon.domain.economics.temporal.annotations import AnnotationManagerImpl
 
         manager = AnnotationManagerImpl()
 

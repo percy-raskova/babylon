@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import LifecycleDefines
-from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculator
-from babylon.economics.lifecycle.types import LegitimationState
+from babylon.domain.economics.lifecycle.legitimation import DefaultLegitimationCalculator
+from babylon.domain.economics.lifecycle.types import LegitimationState
 from babylon.models.enums import LegitimationClassification
 
 

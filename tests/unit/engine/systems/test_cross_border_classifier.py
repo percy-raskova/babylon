@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.node_kinds import NodeKind
+from babylon.domain.economics.node_kinds import NodeKind
 from babylon.engine.systems.cross_border_commute import (
     CrossBorderClassification,
     CrossBorderCommuteClassifier,

@@ -214,7 +214,7 @@ class TestDefinesYamlSingleSourceOfTruth:
         A re-declaration anywhere else re-forks the constant the sweep centralized.
         """
         src_root = _REPO_ROOT / "src" / "babylon"
-        allowed = {"formulas/constants.py", "sim_clock.py"}
+        allowed = {"formulas/constants.py", "kernel/sim_clock.py"}
         pattern = re.compile(r"^\s*_?(?:HOURS_PER_YEAR|WEEKS_PER_YEAR)\s*[:=]")
         offenders: list[str] = []
         for py in src_root.rglob("*.py"):

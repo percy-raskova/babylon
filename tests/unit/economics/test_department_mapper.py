@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 # These imports will fail until we implement the module (RED phase)
-from babylon.economics.department_mapper import (
+from babylon.domain.economics.department_mapper import (
     Department,
     DepartmentAllocation,
     DepartmentMapper,
@@ -450,7 +450,7 @@ class TestDepartmentMapperMutationKillers:
 
     def test_get_sector_sv_ratio_known_sector(self) -> None:
         """get_sector_sv_ratio returns ratio for configured sector."""
-        from babylon.economics.department_mapper import DefaultRatios
+        from babylon.domain.economics.department_mapper import DefaultRatios
 
         mapper = DepartmentMapper(
             defaults={},
@@ -467,7 +467,7 @@ class TestDepartmentMapperMutationKillers:
 
     def test_get_sector_cv_ratio_known_sector(self) -> None:
         """get_sector_cv_ratio returns ratio for configured sector."""
-        from babylon.economics.department_mapper import DefaultRatios
+        from babylon.domain.economics.department_mapper import DefaultRatios
 
         mapper = DepartmentMapper(
             defaults={},

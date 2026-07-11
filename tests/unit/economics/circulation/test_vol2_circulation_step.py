@@ -16,12 +16,12 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-from babylon.economics.boundary_flow_register import (
+from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
     NodeKind,
 )
-from babylon.economics.lodes_commute_matrix import LODESYearMatrix
+from babylon.domain.economics.lodes_commute_matrix import LODESYearMatrix
 from babylon.engine.systems.vol2_circulation import (
     Vol2CirculationStep,
 )

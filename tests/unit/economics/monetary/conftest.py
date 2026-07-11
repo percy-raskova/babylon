@@ -44,7 +44,7 @@ def mock_price_index_source() -> MockPriceIndexSource:
 
 
 def _check_protocol_compliance() -> None:
-    from babylon.economics.monetary.data_sources import PriceIndexSource
+    from babylon.domain.economics.monetary.data_sources import PriceIndexSource
 
     _p: PriceIndexSource = MockPriceIndexSource()
 

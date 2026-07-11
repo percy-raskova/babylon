@@ -20,8 +20,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.throughput import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.throughput import (
     CorrelationResult,
     DefaultSupplyChainAnalyzer,
     DefaultThroughputCalculator,
@@ -31,8 +31,8 @@ from babylon.economics.throughput import (
     compute_high_pi_wage_correlation,
     correlate_throughput_with_class,
 )
-from babylon.economics.throughput.adapters_lodes import SQLiteLODESCommuterFlowSource
-from babylon.economics.throughput.types import CommuterAdjustedMetrics
+from babylon.domain.economics.throughput.adapters_lodes import SQLiteLODESCommuterFlowSource
+from babylon.domain.economics.throughput.types import CommuterAdjustedMetrics
 from babylon.reference.database import get_normalized_session_factory
 
 # Test constants - Detroit metro area
@@ -394,7 +394,7 @@ class TestDepthRankingValidation:
 
     def test_finance_depth_greater_than_manufacturing(self):
         """Test that finance (NAICS 52) has higher depth than manufacturing."""
-        from babylon.economics.throughput import get_depth
+        from babylon.domain.economics.throughput import get_depth
 
         finance_depth = get_depth("52")  # Finance and Insurance
         manufacturing_depth = get_depth("31")  # Manufacturing
@@ -408,7 +408,7 @@ class TestDepthRankingValidation:
 
     def test_manufacturing_depth_greater_than_extraction(self):
         """Test that manufacturing has higher depth than extraction."""
-        from babylon.economics.throughput import get_depth
+        from babylon.domain.economics.throughput import get_depth
 
         manufacturing_depth = get_depth("31")  # Manufacturing
         mining_depth = get_depth("21")  # Mining
@@ -422,7 +422,7 @@ class TestDepthRankingValidation:
 
     def test_complete_depth_ordering(self):
         """Test complete depth ordering: finance > services > logistics > manufacturing > extraction."""
-        from babylon.economics.throughput import get_depth
+        from babylon.domain.economics.throughput import get_depth
 
         finance = get_depth("52")  # Finance: 5.0
         services = get_depth("44")  # Retail: 4.0

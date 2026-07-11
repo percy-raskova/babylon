@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.dynamics.crisis import DefaultCrisisAmplifier
-from babylon.economics.dynamics.types import TransitionRates
+from babylon.domain.economics.dynamics.crisis import DefaultCrisisAmplifier
+from babylon.domain.economics.dynamics.types import TransitionRates
 
 
 class TestDefaultCrisisAmplifier:
@@ -127,7 +127,7 @@ class TestDefaultCrisisAmplifier:
 
     def test_protocol_compliance(self) -> None:
         """DefaultCrisisAmplifier satisfies CrisisAmplifier protocol."""
-        from babylon.economics.dynamics.data_sources import CrisisAmplifier
+        from babylon.domain.economics.dynamics.data_sources import CrisisAmplifier
 
         amp: CrisisAmplifier = DefaultCrisisAmplifier()
         rates = TransitionRates(

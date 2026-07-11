@@ -16,13 +16,13 @@ import pydantic
 import pytest
 
 # These imports will fail in RED phase (module doesn't exist yet)
-from babylon.economics.substrate.hex_graph_bridge import (
+from babylon.domain.economics.substrate.hex_graph_bridge import (
     R6TerritoryState,
     aggregate_r7_to_r6,
     read_hex_state_from_graph,
     write_hex_state_to_graph,
 )
-from babylon.economics.substrate.types import HexGrid
+from babylon.domain.economics.substrate.types import HexGrid
 from babylon.topology.graph import BabylonGraph
 
 # Fixtures are inherited from conftest.py in the substrate directory
@@ -367,7 +367,7 @@ class TestFeedbackStubs:
 
     def test_feedback_protocol_exists(self) -> None:
         """GraphFeedback protocol is importable."""
-        from babylon.economics.substrate.hex_graph_bridge import GraphFeedback
+        from babylon.domain.economics.substrate.hex_graph_bridge import GraphFeedback
 
         # Protocol should be a class
         assert isinstance(GraphFeedback, type)
@@ -375,7 +375,7 @@ class TestFeedbackStubs:
     def test_read_organizational_pressure_stub(self) -> None:
         """read_organizational_pressure returns empty dict stub."""
 
-        from babylon.economics.substrate.hex_graph_bridge import (
+        from babylon.domain.economics.substrate.hex_graph_bridge import (
             read_organizational_pressure,
         )
 

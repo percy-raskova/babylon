@@ -23,7 +23,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from babylon.economics.node_kinds import BoundaryEdgeKind
+from babylon.domain.economics.node_kinds import BoundaryEdgeKind
 from tests.constants_063 import (
     DETROIT_TRI_COUNTY_FIPS,
     DETROIT_TRI_COUNTY_HEXES_RES7,
@@ -147,8 +147,8 @@ def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyp
 
 def _run_one_circulation_tick(session_id: UUID, graph, *, tick: int = 1):  # type: ignore[no-untyped-def]
     """One Vol2CirculationStep tick against the on-disk LODES matrix."""
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-    from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
     from babylon.engine.systems.cross_border_commute import CrossBorderCommuteClassifier
     from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
 

@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from hypothesis import strategies as st
 from hypothesis.strategies import SearchStrategy
 
-from babylon.economics.lifecycle.types import DPDState
+from babylon.domain.economics.lifecycle.types import DPDState
 from tests.property.strategies.hex_grid import MICHIGAN_RES7_SEED_CELLS
 
 

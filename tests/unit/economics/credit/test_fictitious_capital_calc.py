@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.credit.fictitious_capital import (
+from babylon.domain.economics.credit.fictitious_capital import (
     DefaultFictitiousCapitalCalculator,
 )
-from babylon.economics.credit.types import (
+from babylon.domain.economics.credit.types import (
     FINANCIALIZATION_BUBBLE,
     FictitiousCapitalStock,
 )
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import NoDataSentinel
 
 from .conftest import MockCreditAggregateSource, MockZ1Source
 

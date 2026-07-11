@@ -24,7 +24,7 @@ The Three Levels
 Level 0: The Primitive
 -----------------------
 
-The :class:`~babylon.economics.tensor.ValueTensor4x3` (Feature 011) is the
+The :class:`~babylon.domain.economics.tensor.ValueTensor4x3` (Feature 011) is the
 simulation's foundational type. It represents the 4×3 Marxian reproduction
 schema for a single county-year: four departments each decomposed into constant
 capital (*c*), variable capital (*v*), and surplus value (*s*). Level 0 is the
@@ -106,7 +106,7 @@ computer protocol, not changes to data loading or schema.
 **Incremental buildout.** Each Level 1 tensor can be present or absent
 independently. US3 (geographic flows, requiring FAF data download) can be
 absent without blocking US1 (inter-industry flows, from XLSX already present).
-The :class:`~babylon.economics.tensor.NoDataSentinel` makes absence explicit.
+The :class:`~babylon.domain.economics.tensor.NoDataSentinel` makes absence explicit.
 
 **Testability.** Level 2 computations are unit-tested with synthetic Level 1
 tensors, without requiring real federal data to be present. The stub pattern
@@ -238,7 +238,7 @@ The NoDataSentinel Pattern
 --------------------------
 
 When a data source cannot provide data (missing file, deferred loader, or
-absent year), it returns a :class:`~babylon.economics.tensor.NoDataSentinel`
+absent year), it returns a :class:`~babylon.domain.economics.tensor.NoDataSentinel`
 rather than raising an exception. The sentinel is falsy and carries a
 human-readable reason:
 
@@ -306,4 +306,4 @@ Related Documentation
 - :ref:`bea-io-tables` — BEA I-O data format and loader API
 - :ref:`faf-freight-data` — BTS FAF5 freight data format and loader API
 - :ref:`bea-department-mapping` — Full industry-to-department mapping table
-- :mod:`babylon.economics.tensor` — Level 0 ValueTensor4x3 primitive
+- :mod:`babylon.domain.economics.tensor` — Level 0 ValueTensor4x3 primitive

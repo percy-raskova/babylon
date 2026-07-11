@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.lifecycle.mobility import DefaultClassMobilityCalculator
-from babylon.economics.lifecycle.types import ClassMobilityParams
+from babylon.domain.economics.lifecycle.mobility import DefaultClassMobilityCalculator
+from babylon.domain.economics.lifecycle.types import ClassMobilityParams
 
 
 class TestClassMobilityCalculator:

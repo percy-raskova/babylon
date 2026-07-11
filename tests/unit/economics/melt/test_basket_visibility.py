@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import math
 
-from babylon.economics.melt import DefaultBasketVisibilityCalculator
-from babylon.economics.melt.gamma_hydration import GammaHydrationSource
+from babylon.domain.economics.melt import DefaultBasketVisibilityCalculator
+from babylon.domain.economics.melt.gamma_hydration import GammaHydrationSource
 
 
 class TestBasketVisibilityFormula:

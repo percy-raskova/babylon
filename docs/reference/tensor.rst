@@ -15,7 +15,7 @@ The ``ValueTensor4x3`` is the core data structure for Marxian economic analysis
 in Babylon. It represents the 4x3 reproduction schema: 4 departments × 3 value
 categories (constant capital, variable capital, surplus value).
 
-.. module:: babylon.economics.tensor
+.. module:: babylon.domain.economics.tensor
    :synopsis: Marxian value tensor models
 
 Classes
@@ -76,7 +76,7 @@ DepartmentRow
 
    .. code-block:: python
 
-      >>> from babylon.economics.tensor import DepartmentRow
+      >>> from babylon.domain.economics.tensor import DepartmentRow
       >>> row = DepartmentRow(c=100.0, v=50.0, s=75.0)
       >>> row.total_value
       225.0
@@ -233,7 +233,7 @@ ValueTensor4x3
 
    .. code-block:: python
 
-      >>> from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
+      >>> from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
       >>> tensor = ValueTensor4x3(
       ...     fips_code="26163",
       ...     year=2022,
@@ -312,7 +312,7 @@ Related Documentation
 =====================
 
 - :ref:`reproductive-labor` - Theoretical foundation
-- :mod:`babylon.economics.hydrator` - Transforms QCEW data into tensors
-- :mod:`babylon.economics.department_mapper` - Maps NAICS codes to departments
+- :mod:`babylon.domain.economics.hydrator` - Transforms QCEW data into tensors
+- :mod:`babylon.domain.economics.department_mapper` - Maps NAICS codes to departments
 - ``ai/marxian-tensor-spec.yaml`` - Machine-readable specification
 - ``ai/shadow-labor-spec.yaml`` - Shadow labor specification

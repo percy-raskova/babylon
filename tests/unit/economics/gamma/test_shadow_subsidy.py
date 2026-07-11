@@ -9,8 +9,8 @@ computation (Phi_III and Phi_imperial).
 
 from __future__ import annotations
 
-from babylon.economics.gamma.shadow_subsidy import DefaultShadowSubsidyCalculator
-from babylon.economics.gamma.types import GammaBasket, GammaIII, ShadowSubsidy
+from babylon.domain.economics.gamma.shadow_subsidy import DefaultShadowSubsidyCalculator
+from babylon.domain.economics.gamma.types import GammaBasket, GammaIII, ShadowSubsidy
 
 # =============================================================================
 # User Story 2: Phi_III (Reproductive Shadow Subsidy)

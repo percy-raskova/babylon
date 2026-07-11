@@ -1,7 +1,7 @@
 """Integration tests for MELT national-level SQLite adapters (spec-098 fix).
 
 ``SQLiteQCEWNationalEmploymentSource`` is a sibling of
-``babylon.economics.throughput.adapters.SQLiteQCEWCountyNAICSSource`` that was
+``babylon.domain.economics.throughput.adapters.SQLiteQCEWCountyNAICSSource`` that was
 NOT patched during the spec-086 QCEW-schema-drift remediation: it still reads
 ``fact_qcew_annual`` with ``own_code='0'`` + ``naics_code='10'`` (the pre-086
 "total" row convention), but spec-086 normalized ``fact_qcew_annual`` to
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.melt.adapters import (
+from babylon.domain.economics.melt.adapters import (
     SQLiteBEANationalGDPSource,
     SQLiteQCEWNationalEmploymentSource,
 )

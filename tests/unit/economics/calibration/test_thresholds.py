@@ -22,7 +22,7 @@ class TestThresholdCalibratorImpl:
 
     def test_threshold_calibrator_impl_exists(self) -> None:
         """ThresholdCalibratorImpl can be imported and instantiated."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         # Create with temp directory for persistence
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -40,7 +40,7 @@ class TestThresholdPersistence:
 
     def test_persist_threshold_creates_file(self) -> None:
         """persist_threshold creates calibration artifact JSON file."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibration_dir = Path(tmpdir)
@@ -63,7 +63,7 @@ class TestThresholdPersistence:
 
     def test_load_threshold_returns_persisted_value(self) -> None:
         """load_threshold returns previously persisted threshold."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibration_dir = Path(tmpdir)
@@ -81,7 +81,7 @@ class TestThresholdPersistence:
 
     def test_load_threshold_returns_none_when_not_calibrated(self) -> None:
         """load_threshold returns None if no calibration artifact exists."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibration_dir = Path(tmpdir)
@@ -96,7 +96,7 @@ class TestThresholdPersistence:
 
     def test_persist_overwrites_previous_calibration(self) -> None:
         """Persisting a new threshold overwrites the previous one."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibration_dir = Path(tmpdir)
@@ -119,7 +119,7 @@ class TestCalibrationArtifactFormat:
 
     def test_artifact_contains_metadata(self) -> None:
         """Calibration artifact includes metadata fields."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibration_dir = Path(tmpdir)
@@ -150,7 +150,7 @@ class TestCalibrateNationalThreshold:
 
     def test_calibrate_requires_hydrator(self) -> None:
         """calibrate_national_threshold requires functional hydrator."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibrator = ThresholdCalibratorImpl(
@@ -164,7 +164,7 @@ class TestCalibrateNationalThreshold:
 
     def test_calibrate_requires_minimum_counties(self) -> None:
         """calibrate_national_threshold raises if insufficient counties."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibrator = ThresholdCalibratorImpl(
@@ -185,7 +185,7 @@ class TestThresholdValues:
 
     def test_threshold_must_be_positive(self) -> None:
         """persist_threshold rejects negative thresholds."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibrator = ThresholdCalibratorImpl(
@@ -198,7 +198,7 @@ class TestThresholdValues:
 
     def test_threshold_must_be_reasonable(self) -> None:
         """persist_threshold rejects unreasonably large thresholds."""
-        from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
+        from babylon.domain.economics.calibration.thresholds import ThresholdCalibratorImpl
 
         with tempfile.TemporaryDirectory() as tmpdir:
             calibrator = ThresholdCalibratorImpl(

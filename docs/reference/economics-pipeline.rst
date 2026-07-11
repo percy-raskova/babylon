@@ -101,7 +101,7 @@ DerivedTensorMetrics
      - Source tensor
 
 **Implementation:**
-:py:class:`babylon.economics.capital_stock.CapitalStockCalculator`
+:py:class:`babylon.domain.economics.capital_stock.CapitalStockCalculator`
 
 Year range: 2010–2025. Thread-safe via RLock.
 
@@ -610,7 +610,7 @@ Dependency Chain
      └── Feature 015 (γ_III, γ_import → γ_basket, Φ_III)
 
 All features share ``NoDataSentinel`` from
-:py:mod:`babylon.economics.tensor` as the universal missing-data
+:py:mod:`babylon.domain.economics.tensor` as the universal missing-data
 carrier.
 
 See Also

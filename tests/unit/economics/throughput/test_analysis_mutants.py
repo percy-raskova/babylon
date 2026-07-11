@@ -6,7 +6,7 @@ algorithmic paths in analysis.py (correlation functions are pragma'd).
 
 from __future__ import annotations
 
-from babylon.economics.throughput.analysis import CorrelationResult
+from babylon.domain.economics.throughput.analysis import CorrelationResult
 
 
 class TestCorrelationResultMutationKillers:

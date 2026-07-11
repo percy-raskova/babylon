@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 import numpy as np
 import pytest
 
-from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 from tests.constants_063 import (
     DETROIT_TRI_COUNTY_FIPS,
     DETROIT_TRI_COUNTY_HEXES_RES7,
@@ -157,8 +157,8 @@ def _snapshot_v(graph) -> list[tuple[str, float]]:  # type: ignore[no-untyped-de
 def emission_run(runtime) -> dict[str, Any]:  # type: ignore[no-untyped-def]
     """Session + Canadian injection + one circulation tick + envelope persist."""
     from babylon.config.defines import GameDefines
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-    from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
     from babylon.engine.systems.cross_border_commute import CrossBorderCommuteClassifier
     from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
     from babylon.persistence.envelope import PerTickTransactionEnvelope

@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.rent.calculator import (
+from babylon.domain.economics.rent.calculator import (
     DefaultHousingDecompositionCalculator,
     DefaultRentCalculator,
 )
-from babylon.economics.rent.types import HousingValueDecomposition, RentExtraction
-from babylon.economics.tensor import NoDataSentinel
+from babylon.domain.economics.rent.types import HousingValueDecomposition, RentExtraction
+from babylon.domain.economics.tensor import NoDataSentinel
 
 from .conftest import MockCountyRentalIncomeSource, MockHousingDataSource
 

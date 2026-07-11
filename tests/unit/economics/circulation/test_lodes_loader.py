@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from babylon.economics.lodes_commute_matrix import (
+from babylon.domain.economics.lodes_commute_matrix import (
     LODESCommuteMatrixLoader,
     LODESYearMatrix,
 )

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.lifecycle.types import DPDState
-from babylon.economics.melt.types import ClassPosition
+from babylon.domain.economics.lifecycle.types import DPDState
+from babylon.domain.economics.melt.types import ClassPosition
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ class TestClassDifferentiatedInheritance:
     @pytest.mark.math
     def test_la_transfers_equity(self, base_dpd_state: DPDState) -> None:
         """LA households transfer substantial equity (home ownership wealth)."""
-        from babylon.economics.lifecycle.inheritance import (
+        from babylon.domain.economics.lifecycle.inheritance import (
             DefaultInheritanceCalculator,
         )
 
@@ -56,7 +56,7 @@ class TestClassDifferentiatedInheritance:
     @pytest.mark.math
     def test_proletariat_transfers_near_zero(self, base_dpd_state: DPDState) -> None:
         """PROLETARIAT households transfer near-zero (no accumulated wealth)."""
-        from babylon.economics.lifecycle.inheritance import (
+        from babylon.domain.economics.lifecycle.inheritance import (
             DefaultInheritanceCalculator,
         )
 
@@ -82,7 +82,7 @@ class TestClassDifferentiatedInheritance:
     @pytest.mark.math
     def test_foreclosed_la_transfers_zero(self, base_dpd_state: DPDState) -> None:
         """Foreclosed LA household transfers zero (inheritance mechanism severed)."""
-        from babylon.economics.lifecycle.inheritance import (
+        from babylon.domain.economics.lifecycle.inheritance import (
             DefaultInheritanceCalculator,
         )
 
@@ -101,7 +101,7 @@ class TestClassDifferentiatedInheritance:
     @pytest.mark.math
     def test_bourgeoisie_transfers_most(self, base_dpd_state: DPDState) -> None:
         """BOURGEOISIE transfers the most inheritance (full capital estate)."""
-        from babylon.economics.lifecycle.inheritance import (
+        from babylon.domain.economics.lifecycle.inheritance import (
             DefaultInheritanceCalculator,
         )
 
@@ -126,7 +126,7 @@ class TestClassDifferentiatedInheritance:
     @pytest.mark.math
     def test_lumpen_transfers_zero(self, base_dpd_state: DPDState) -> None:
         """LUMPENPROLETARIAT transfers zero (fully excluded, no wealth)."""
-        from babylon.economics.lifecycle.inheritance import (
+        from babylon.domain.economics.lifecycle.inheritance import (
             DefaultInheritanceCalculator,
         )
 
@@ -144,7 +144,7 @@ class TestClassDifferentiatedInheritance:
     @pytest.mark.math
     def test_class_ordering_preserves_monotonicity(self, base_dpd_state: DPDState) -> None:
         """Inheritance ordering: BOURG > PB > LA > PROL > LUMPEN."""
-        from babylon.economics.lifecycle.inheritance import (
+        from babylon.domain.economics.lifecycle.inheritance import (
             DefaultInheritanceCalculator,
         )
 
@@ -168,7 +168,7 @@ class TestClassDifferentiatedInheritance:
     @pytest.mark.math
     def test_existing_compute_inheritance_flow_unchanged(self, base_dpd_state: DPDState) -> None:
         """Existing compute_inheritance_flow method still works (backward compat)."""
-        from babylon.economics.lifecycle.inheritance import (
+        from babylon.domain.economics.lifecycle.inheritance import (
             DefaultInheritanceCalculator,
         )
 
@@ -189,7 +189,7 @@ class TestCrisisDispossession:
     @pytest.mark.math
     def test_foreclosure_destroys_wealth(self) -> None:
         """Foreclosure event destroys household wealth."""
-        from babylon.economics.lifecycle.dispossession import (
+        from babylon.domain.economics.lifecycle.dispossession import (
             compute_crisis_dispossession,
         )
 
@@ -204,7 +204,7 @@ class TestCrisisDispossession:
     @pytest.mark.math
     def test_community_modifiable_rate(self) -> None:
         """Community membership modifies dispossession rate (racialized targeting)."""
-        from babylon.economics.lifecycle.dispossession import (
+        from babylon.domain.economics.lifecycle.dispossession import (
             compute_crisis_dispossession,
         )
 
@@ -225,7 +225,7 @@ class TestCrisisDispossession:
     @pytest.mark.math
     def test_full_foreclosure_zeroes_wealth(self) -> None:
         """100% foreclosure rate zeroes out wealth."""
-        from babylon.economics.lifecycle.dispossession import (
+        from babylon.domain.economics.lifecycle.dispossession import (
             compute_crisis_dispossession,
         )
 
@@ -239,7 +239,7 @@ class TestCrisisDispossession:
     @pytest.mark.math
     def test_zero_foreclosure_preserves_wealth(self) -> None:
         """Zero foreclosure rate preserves all wealth."""
-        from babylon.economics.lifecycle.dispossession import (
+        from babylon.domain.economics.lifecycle.dispossession import (
             compute_crisis_dispossession,
         )
 
@@ -254,7 +254,7 @@ class TestCrisisDispossession:
     @pytest.mark.math
     def test_la_to_proletariat_transition(self) -> None:
         """Crisis dispossession can move LA household below 50th percentile threshold."""
-        from babylon.economics.lifecycle.dispossession import (
+        from babylon.domain.economics.lifecycle.dispossession import (
             compute_crisis_dispossession,
         )
 
@@ -273,7 +273,7 @@ class TestCrisisDispossession:
         """DispossessionResult model is immutable."""
         from pydantic import ValidationError
 
-        from babylon.economics.lifecycle.dispossession import (
+        from babylon.domain.economics.lifecycle.dispossession import (
             compute_crisis_dispossession,
         )
 

@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.dynamics.accumulation import DefaultAccumulationCalculator
-from babylon.economics.dynamics.savings_schedule import DefaultSavingsRateSchedule
-from babylon.economics.melt.types import ClassPosition
+from babylon.domain.economics.dynamics.accumulation import DefaultAccumulationCalculator
+from babylon.domain.economics.dynamics.savings_schedule import DefaultSavingsRateSchedule
+from babylon.domain.economics.melt.types import ClassPosition
 
 
 class TestDefaultAccumulationCalculator:
@@ -137,7 +137,7 @@ class TestDefaultAccumulationCalculator:
 
     def test_protocol_compliance(self) -> None:
         """DefaultAccumulationCalculator satisfies AccumulationCalculator protocol."""
-        from babylon.economics.dynamics.data_sources import AccumulationCalculator
+        from babylon.domain.economics.dynamics.data_sources import AccumulationCalculator
 
         schedule = DefaultSavingsRateSchedule()
         calc: AccumulationCalculator = DefaultAccumulationCalculator(schedule)

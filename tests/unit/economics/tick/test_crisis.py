@@ -7,11 +7,11 @@ Tasks: T014, T033
 
 from __future__ import annotations
 
-from babylon.economics.tick.crisis_detector import (
+from babylon.domain.economics.tick.crisis_detector import (
     MultiPeriodCrisisDetector,
     ThresholdCrisisDetector,
 )
-from babylon.economics.tick.types import CrisisPhase, CrisisState
+from babylon.domain.economics.tick.types import CrisisPhase, CrisisState
 
 
 class TestThresholdCrisisDetector:
@@ -206,7 +206,7 @@ class TestMultiPeriodCrisisDetectorBasic:
 
     def test_exports_from_module(self) -> None:
         """Verify both detectors are exported from crisis_detector module."""
-        from babylon.economics.tick import crisis_detector
+        from babylon.domain.economics.tick import crisis_detector
 
         assert hasattr(crisis_detector, "ThresholdCrisisDetector")
         assert hasattr(crisis_detector, "MultiPeriodCrisisDetector")

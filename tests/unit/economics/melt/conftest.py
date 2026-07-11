@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from babylon.economics.melt import NationalParameters
-from babylon.economics.melt.data_sources import BEADataSource, CPIDataSource, QCEWDataSource
+from babylon.domain.economics.melt import NationalParameters
+from babylon.domain.economics.melt.data_sources import BEADataSource, CPIDataSource, QCEWDataSource
 
 if TYPE_CHECKING:
     pass

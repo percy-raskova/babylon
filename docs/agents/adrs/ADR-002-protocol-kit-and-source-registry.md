@@ -58,7 +58,7 @@ Introduce a small core kit at `src/babylon/core/protocol_kit.py` and a `SourceRe
 
 ```python
 from typing import Protocol, runtime_checkable, TypeVar, Generic, Callable
-from babylon.economics.tensor import NoDataSentinel  # falsy sentinel, already exists
+from babylon.domain.economics.tensor import NoDataSentinel  # falsy sentinel, already exists
 
 T = TypeVar("T")
 
@@ -113,8 +113,8 @@ class SourceRegistry:
 
     def builtin_economics(self) -> "SourceRegistry":
         """Register all builtin Default* implementations. Mirrors current factory.py."""
-        from babylon.economics.melt.data_sources import BEADataSource, QCEWDataSource, CPIDataSource
-        from babylon.economics.melt.adapters import DefaultBEASource, DefaultQCEWSource, DefaultCPISource
+        from babylon.domain.economics.melt.data_sources import BEADataSource, QCEWDataSource, CPIDataSource
+        from babylon.domain.economics.melt.adapters import DefaultBEASource, DefaultQCEWSource, DefaultCPISource
         self.register(BEADataSource, DefaultBEASource)
         self.register(QCEWDataSource, DefaultQCEWSource)
         self.register(CPIDataSource, DefaultCPISource)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import GameDefines, LifecycleDefines
-from babylon.economics.lifecycle.types import DPDState, LegitimationState
+from babylon.domain.economics.lifecycle.types import DPDState, LegitimationState
 
 
 @pytest.fixture

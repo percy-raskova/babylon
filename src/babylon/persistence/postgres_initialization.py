@@ -810,7 +810,9 @@ def initialize_session(
     # the injection is meaningful for sessions that pass no lodes_root.
     # Idempotent via the OD table's composite PK.
     if synthetic_lodes_canadian_rows:
-        from babylon.economics.border_commute_synthesis import default_tri_county_aggregate_hex
+        from babylon.domain.economics.border_commute_synthesis import (
+            default_tri_county_aggregate_hex,
+        )
 
         with (
             runtime._pool.connection() as pg,  # noqa: SLF001
@@ -874,7 +876,7 @@ def initialize_session(
         and lodes_study_area_hexes is not None
         and lodes_study_area_states is not None
     ):
-        from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+        from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
 
         loader = LODESCommuteMatrixLoader(
             lodes_root=lodes_root,
@@ -904,7 +906,7 @@ def initialize_session(
         # gate deliberately: synthesis without LODES hydration would merge
         # into an OD table the session never reads.
         if defines.economy.enable_border_commute_synthesis:
-            from babylon.economics.border_commute_synthesis import (
+            from babylon.domain.economics.border_commute_synthesis import (
                 DEFAULT_BTS_CSV,
                 DEFAULT_STATCAN_CSV,
                 DETROIT_PORT_CODES,

@@ -293,7 +293,7 @@ Usage Example
 
 .. code-block:: python
 
-   from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
+   from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
    from babylon.models import Currency
 
    # Create a tensor with partial shadow labor visibility

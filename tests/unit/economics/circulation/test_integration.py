@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.types import (
     CircuitState,
     CirculationCrisisAssessment,
     CirculationCrisisState,
@@ -19,8 +19,8 @@ from babylon.economics.circulation.types import (
     InventoryState,
     ReplacementCyclePosition,
 )
-from babylon.economics.dynamics.types import ClassDistribution
-from babylon.economics.tick.types import (
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.tick.types import (
     BifurcationRiskMetric,
     CountyEconomicState,
     CrisisState,
@@ -162,8 +162,8 @@ class TestGraphBridgeSerialization:
     def test_write_circulation_attributes(self) -> None:
         """write_tick_state_to_graph writes tick_liquidity_ratio etc."""
 
-        from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
-        from babylon.economics.tick.types import (
+        from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
+        from babylon.domain.economics.tick.types import (
             NationalTickParameters,
             SimulationTickState,
             SmoothedCoefficients,
@@ -217,8 +217,8 @@ class TestGraphBridgeSerialization:
     def test_write_circulation_values_correct(self) -> None:
         """Written circulation attribute values match the source state."""
 
-        from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
-        from babylon.economics.tick.types import (
+        from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
+        from babylon.domain.economics.tick.types import (
             NationalTickParameters,
             SimulationTickState,
             SmoothedCoefficients,

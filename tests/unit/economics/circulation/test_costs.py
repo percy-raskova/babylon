@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.circulation.costs import (
+from babylon.domain.economics.circulation.costs import (
     LaborClassification,
     classify_labor,
 )
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.types import (
     PureCirculationCosts,
     TransportationValue,
 )

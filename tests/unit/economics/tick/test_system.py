@@ -15,13 +15,13 @@ from typing import Any
 import networkx as nx
 import pytest
 
-from babylon.economics.dynamics.types import ClassDistribution
-from babylon.economics.tick.system import (
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.tick.system import (
     DEFAULT_V_REPRODUCTION,
     WEEKS_PER_YEAR,
     TickDynamicsSystem,
 )
-from babylon.economics.tick.types import (
+from babylon.domain.economics.tick.types import (
     BifurcationRiskMetric,
     CountyEconomicState,
     CrisisPhase,
@@ -134,7 +134,7 @@ def _make_graph_with_state(year: int = 2015) -> nx.DiGraph[str]:
         county_states={WAYNE_FIPS: county},
         coefficients=coeff,
     )
-    from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
+    from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
 
     write_tick_state_to_graph(graph, state)
     return graph
@@ -1103,7 +1103,7 @@ class TestSimulateTransitionsMutationKillers:
 
     def test_sentinel_result_preserves_county(self) -> None:
         """NoDataSentinel result (falsy) preserves original county."""
-        from babylon.economics.tensor import NoDataSentinel
+        from babylon.domain.economics.tensor import NoDataSentinel
 
         system = TickDynamicsSystem()
         county = _make_county()
@@ -2077,7 +2077,7 @@ class TestWriteHexSubstrate:
     def test_hex_grid_writes_hex_attributes(self) -> None:
         """When hex_grid is provided, hex_ attributes appear on territory nodes."""
 
-        from babylon.economics.substrate.types import HexEconomicState
+        from babylon.domain.economics.substrate.types import HexEconomicState
 
         system = TickDynamicsSystem()
 
@@ -2097,7 +2097,7 @@ class TestWriteHexSubstrate:
                 dept_shares=(0.20, 0.35, 0.25, 0.20),
             )
 
-        from babylon.economics.substrate.types import HexGrid
+        from babylon.domain.economics.substrate.types import HexGrid
 
         # Use WAYNE_FIPS as the R6 parent so it matches the territory node ID
         grid = HexGrid(
@@ -2131,7 +2131,7 @@ class TestWriteHexSubstrate:
 
     def test_hex_and_tick_attributes_coexist(self) -> None:
         """Both hex_ and tick_ attributes present on same territory node."""
-        from babylon.economics.substrate.types import HexEconomicState, HexGrid
+        from babylon.domain.economics.substrate.types import HexEconomicState, HexGrid
 
         system = TickDynamicsSystem()
 

@@ -39,7 +39,7 @@ def runtime(pg_pool, apply_062_migrations):  # type: ignore[no-untyped-def]
 
 def test_annual_phi_distribution_sums_to_phi_year(runtime, pg_pool):  # type: ignore[no-untyped-def]
     """52 weeks × phi_year/52 × exposure_weights == phi_year (FR-035)."""
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.engine.systems.phi_distribution import distribute_phi_week_to_counties
     from babylon.persistence.envelope import PerTickTransactionEnvelope
 
@@ -85,7 +85,7 @@ def test_annual_phi_distribution_sums_to_phi_year(runtime, pg_pool):  # type: ig
 
 def test_per_county_share_matches_exposure_weight(runtime, pg_pool):  # type: ignore[no-untyped-def]
     """Wayne (60%) gets 60% of annual phi; Oakland (25%) gets 25%; Macomb (15%) gets 15%."""
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.engine.systems.phi_distribution import distribute_phi_week_to_counties
     from babylon.persistence.envelope import PerTickTransactionEnvelope
 

@@ -8,11 +8,11 @@ TDD Red Phase: These tests define the expected behavior for gamma_import computa
 
 from __future__ import annotations
 
-from babylon.economics.gamma.gamma_import import (
+from babylon.domain.economics.gamma.gamma_import import (
     MVP_IMPORT_SHARES,
     DefaultGammaImportCalculator,
 )
-from babylon.economics.gamma.types import (
+from babylon.domain.economics.gamma.types import (
     CORE_DEFAULT_ERDI,
     MVP_ERDI_VALUES,
     PERIPHERY_DEFAULT_ERDI,

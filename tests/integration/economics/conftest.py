@@ -8,7 +8,7 @@ pipeline, including:
 - MarxianHydrator instances
 - Real QCEW database fixtures for end-to-end validation
 
-Spec 057 unquarantine: the original ``babylon.economics.reproduction``
+Spec 057 unquarantine: the original ``babylon.domain.economics.reproduction``
 module was removed in commit ``a5f73139``. The ``ImperialRentCalculator`` /
 ``PeripheryReproductionBasket`` fixtures + ``hydrate_with_rent`` paths that
 depended on it have been removed; the orphan test files
@@ -28,9 +28,9 @@ import pytest
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
-from babylon.economics.adapters import SQLiteQCEWSource
-from babylon.economics.department_mapper import DepartmentMapper
-from babylon.economics.hydrator import MarxianHydrator
+from babylon.domain.economics.adapters import SQLiteQCEWSource
+from babylon.domain.economics.department_mapper import DepartmentMapper
+from babylon.domain.economics.hydrator import MarxianHydrator
 
 # =============================================================================
 # DATABASE PATH CANDIDATES (mirrors tests/integration/tensors/conftest.py)
@@ -173,7 +173,7 @@ def real_qcew_source(qcew_session: Session) -> SQLiteQCEWSource:
 
 # Path to production NAICS-to-department mapping configuration
 _PRODUCTION_MAPPER_PATH = Path(__file__).parent.parent.parent.parent / (
-    "src/babylon/economics/data/naics_to_dept.yaml"
+    "src/babylon/domain/economics/data/naics_to_dept.yaml"
 )
 
 
@@ -467,7 +467,7 @@ def mock_bea_source() -> MockBEADataSource:
 # =============================================================================
 # The ``periphery_basket``, ``rent_calculator``, ``hydrator_with_rent``, and
 # ``hydrator_session`` fixtures depended on the deleted
-# ``babylon.economics.reproduction`` module. The new Leontief pipeline is
+# ``babylon.domain.economics.reproduction`` module. The new Leontief pipeline is
 # tested separately via ``tests/integration/economics/tick/
 # test_imperial_rent_pipeline.py`` which uses synthetic Mock fixtures for
 # the Spec 057 Protocol surfaces (PeripheryLaborCoefficientsSource,

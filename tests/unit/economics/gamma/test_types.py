@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.gamma.types import (
+from babylon.domain.economics.gamma.types import (
     CORE_DEFAULT_ERDI,
     MVP_ERDI_VALUES,
     PERIPHERY_DEFAULT_ERDI,

@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.substrate.hydrator import (
+from babylon.domain.economics.substrate.hydrator import (
     DEFAULT_COUNTY_ECONOMICS,
     hydrate_hex_grid,
 )
-from babylon.economics.substrate.types import (
+from babylon.domain.economics.substrate.types import (
     TRI_COUNTY_FIPS,
     HexGrid,
 )
@@ -336,7 +336,7 @@ class TestHydrateWithMarxianHydrator:
         sample_hex_grid: HexGrid,
     ) -> None:
         """Test fallback to defaults when MarxianHydrator returns zero tensor."""
-        from babylon.economics.tensor import DepartmentRow
+        from babylon.domain.economics.tensor import DepartmentRow
 
         # Create hydrator that returns zero for all counties
         zero_row = DepartmentRow(c=0.0, v=0.0, s=0.0)

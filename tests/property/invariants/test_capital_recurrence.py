@@ -6,8 +6,8 @@ See ``specs/053-conservation-invariants/contracts/capital_recurrence.md``.
 Recurrence under test: ``K_{t+1} = (1 - δ) K_t + I_t``, implemented in the
 codebase by ``DepreciationConfig.next_K(K_prev, c)`` (the ``c`` argument is
 the constant-capital flow, which corresponds to the ``I_t`` investment term
-in the perpetual-inventory model). See ``src/babylon/economics/depreciation.py``
-and ``src/babylon/economics/capital_stock.py:263``.
+in the perpetual-inventory model). See ``src/babylon/domain/economics/depreciation.py``
+and ``src/babylon/domain/economics/capital_stock.py:263``.
 
 The general recurrence test goes through the validated ``DepreciationConfig``
 calculator (δ ∈ [0.01, 0.20] per BEA fixed-asset bounds).
@@ -27,7 +27,7 @@ import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from babylon.economics.depreciation import DepreciationConfig
+from babylon.domain.economics.depreciation import DepreciationConfig
 from tests.property.strategies.capital_stock import capital_stock_triple_strategy
 
 _TOL = 1e-10

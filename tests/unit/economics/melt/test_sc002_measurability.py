@@ -33,11 +33,11 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.melt import (
+from babylon.domain.economics.melt import (
     ClassPosition,
     NationalParameters,
 )
-from babylon.economics.melt.class_position import DefaultClassPositionClassifier
+from babylon.domain.economics.melt.class_position import DefaultClassPositionClassifier
 
 
 class TestSC002WealthBased:

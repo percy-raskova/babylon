@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from babylon.economics.tick.initializer import DefaultTickInitializer
-from babylon.economics.tick.system import TickDynamicsSystem
+from babylon.domain.economics.tick.initializer import DefaultTickInitializer
+from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from tests.unit.economics.tick.conftest import (
@@ -53,7 +53,7 @@ class TestMultiTickSimulation:
         state = initializer.initialize(2015, [WAYNE_FIPS], services)
         graph = build_territory_graph()
 
-        from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
+        from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
 
         write_tick_state_to_graph(graph, state)
 
@@ -83,7 +83,7 @@ class TestMultiTickSimulation:
         state = initializer.initialize(2015, [WAYNE_FIPS], services)
         graph = build_territory_graph()
 
-        from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
+        from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
 
         write_tick_state_to_graph(graph, state)
 
@@ -112,7 +112,7 @@ class TestMultiTickSimulation:
             state = initializer.initialize(2015, [WAYNE_FIPS], services)
             graph = build_territory_graph()
 
-            from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
+            from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
 
             write_tick_state_to_graph(graph, state)
 
@@ -140,7 +140,7 @@ class TestMultiTickSimulation:
         state = initializer.initialize(2015, [WAYNE_FIPS], services)
         graph = build_territory_graph()
 
-        from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
+        from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
 
         write_tick_state_to_graph(graph, state)
 
@@ -167,7 +167,7 @@ class TestMultiTickSimulation:
         state = initializer.initialize(2015, [WAYNE_FIPS], services)
         graph = build_territory_graph()
 
-        from babylon.economics.tick.graph_bridge import write_tick_state_to_graph
+        from babylon.domain.economics.tick.graph_bridge import write_tick_state_to_graph
 
         write_tick_state_to_graph(graph, state)
 

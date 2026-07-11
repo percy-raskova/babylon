@@ -166,7 +166,7 @@ Babylon's ``DefaultClassTransitionComputer.stationary_distribution`` implements:
 6. **Degenerate case**: if after clipping the sum is 0 (all-zero eigenvector),
    fall back to a uniform distribution over classes.
 
-The result is a :class:`~babylon.economics.tensor_hierarchy.types.StationaryDistribution`
+The result is a :class:`~babylon.domain.economics.tensor_hierarchy.types.StationaryDistribution`
 with ``distribution`` summing to 1.0 within tolerance 1e-6.
 
 ----
@@ -247,7 +247,7 @@ The Deferred Loader
 ====================
 
 The ``DefaultClassTransitionSource`` is a **stub** that returns
-:class:`~babylon.economics.tensor.NoDataSentinel` for all queries. The
+:class:`~babylon.domain.economics.tensor.NoDataSentinel` for all queries. The
 production implementation requires PSID (Panel Study of Income Dynamics)
 data from the University of Michigan, which requires a restricted-use data
 agreement.
@@ -265,4 +265,4 @@ Related Documentation
 - :ref:`tensor-hierarchy-concept` — Three-level tensor hierarchy overview
 - :ref:`leontief-analysis` — Input-output economics and the Leontief inverse
 - :ref:`tensor-hierarchy-reference` — Complete tensor and protocol data dictionary
-- :mod:`babylon.economics.tensor_hierarchy.class_transition` — Implementation
+- :mod:`babylon.domain.economics.tensor_hierarchy.class_transition` — Implementation

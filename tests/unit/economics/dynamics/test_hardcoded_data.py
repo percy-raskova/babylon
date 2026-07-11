@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.dynamics.hardcoded_data import (
+from babylon.domain.economics.dynamics.hardcoded_data import (
     HardcodedNationalDispossessionSource,
 )
 
@@ -101,7 +101,7 @@ class TestHardcodedNationalDispossessionSource:
 
     def test_protocol_compliance(self) -> None:
         """HardcodedNationalDispossessionSource satisfies DispossessionDataSource protocol."""
-        from babylon.economics.dynamics.data_sources import DispossessionDataSource
+        from babylon.domain.economics.dynamics.data_sources import DispossessionDataSource
 
         source: DispossessionDataSource = HardcodedNationalDispossessionSource()
         assert source.get_foreclosure_rate("00000", 2015) is not None

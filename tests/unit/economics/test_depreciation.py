@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.depreciation import (
+from babylon.domain.economics.depreciation import (
     DEFAULT_DEPRECIATION_RATE,
     FAST_DEPRECIATION_RATE,
     MAX_DEPRECIATION_RATE,

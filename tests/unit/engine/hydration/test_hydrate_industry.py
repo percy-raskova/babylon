@@ -89,7 +89,9 @@ def test_hydrate_industry_hyperedges_with_data(monkeypatch):
     # Mock the session factory
     monkeypatch.setattr("babylon.reference.database.get_reference_session", lambda: MockSession())
 
-    monkeypatch.setattr("babylon.economics.department_mapper.DepartmentMapper", MockDeptMapper)
+    monkeypatch.setattr(
+        "babylon.domain.economics.department_mapper.DepartmentMapper", MockDeptMapper
+    )
 
     industries = hydrate_industry_hyperedges(["26163"])
 

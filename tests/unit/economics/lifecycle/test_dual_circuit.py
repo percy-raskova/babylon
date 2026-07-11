@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.lifecycle.dual_circuit import DefaultDualCircuitCalculator
+from babylon.domain.economics.lifecycle.dual_circuit import DefaultDualCircuitCalculator
 
 
 class TestDualCircuitCalculator:

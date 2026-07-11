@@ -1,1 +1,1 @@
-"""Tests for babylon.economics.distribution module."""
+"""Tests for babylon.domain.economics.distribution module."""

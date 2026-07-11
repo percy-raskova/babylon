@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.substrate.types import (
+from babylon.domain.economics.substrate.types import (
     TRI_COUNTY_FIPS,
     BoundaryFlowRegister,
     HexEconomicState,
@@ -16,7 +16,7 @@ from babylon.economics.substrate.types import (
     SubstrateConfig,
     TractWeight,
 )
-from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
+from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
 
 # =============================================================================
 # Default Test Constants

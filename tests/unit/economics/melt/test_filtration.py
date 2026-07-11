@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.melt.types import PrecarityStatus
+from babylon.domain.economics.melt.types import PrecarityStatus
 from babylon.models.enums import CommunityType
 from tests.constants import ClassSystemDefaults
 
@@ -47,7 +47,7 @@ class TestFiltrationResult:
     @pytest.mark.unit
     def test_identity_filtration(self) -> None:
         """No filtration: effective equals original."""
-        from babylon.economics.melt.filtration import FiltrationResult
+        from babylon.domain.economics.melt.filtration import FiltrationResult
 
         result = FiltrationResult(
             original_wealth_percentile=60.0,
@@ -61,7 +61,7 @@ class TestFiltrationResult:
     @pytest.mark.unit
     def test_effective_wealth_less_than_original(self) -> None:
         """Filtration reduces effective wealth."""
-        from babylon.economics.melt.filtration import FiltrationResult
+        from babylon.domain.economics.melt.filtration import FiltrationResult
 
         result = FiltrationResult(
             original_wealth_percentile=60.0,
@@ -75,7 +75,7 @@ class TestFiltrationResult:
     @pytest.mark.unit
     def test_effective_wealth_exceeds_original_raises(self) -> None:
         """Filtration cannot increase effective wealth."""
-        from babylon.economics.melt.filtration import FiltrationResult
+        from babylon.domain.economics.melt.filtration import FiltrationResult
 
         with pytest.raises(ValidationError):
             FiltrationResult(
@@ -88,7 +88,7 @@ class TestFiltrationResult:
     @pytest.mark.unit
     def test_precarity_severity_cannot_decrease(self) -> None:
         """Filtration cannot reduce precarity severity (make less precarious)."""
-        from babylon.economics.melt.filtration import FiltrationResult
+        from babylon.domain.economics.melt.filtration import FiltrationResult
 
         # EXCLUDED -> STABLE is a decrease in severity -> should fail
         with pytest.raises(ValidationError):
@@ -102,7 +102,7 @@ class TestFiltrationResult:
     @pytest.mark.unit
     def test_frozen_immutability(self) -> None:
         """FiltrationResult must be frozen."""
-        from babylon.economics.melt.filtration import FiltrationResult
+        from babylon.domain.economics.melt.filtration import FiltrationResult
 
         result = FiltrationResult(
             original_wealth_percentile=60.0,
@@ -120,7 +120,7 @@ class TestFiltrationPredicates:
     @pytest.mark.unit
     def test_first_nations_trust_land_discount(self) -> None:
         """FIRST_NATIONS applies trust_land_discount to wealth."""
-        from babylon.economics.melt.filtration import apply_filtration
+        from babylon.domain.economics.melt.filtration import apply_filtration
 
         membership = _make_membership(CommunityType.FIRST_NATIONS)
         result = apply_filtration(
@@ -136,7 +136,7 @@ class TestFiltrationPredicates:
     @pytest.mark.unit
     def test_incarcerated_overrides_to_excluded(self) -> None:
         """INCARCERATED overrides precarity to EXCLUDED."""
-        from babylon.economics.melt.filtration import apply_filtration
+        from babylon.domain.economics.melt.filtration import apply_filtration
 
         membership = _make_membership(CommunityType.INCARCERATED)
         result = apply_filtration(
@@ -151,7 +151,7 @@ class TestFiltrationPredicates:
     @pytest.mark.unit
     def test_undocumented_discount_and_precarity_floor(self) -> None:
         """UNDOCUMENTED applies doc_exclusion_factor and precarity floor."""
-        from babylon.economics.melt.filtration import apply_filtration
+        from babylon.domain.economics.melt.filtration import apply_filtration
 
         membership = _make_membership(CommunityType.UNDOCUMENTED)
         result = apply_filtration(
@@ -173,7 +173,7 @@ class TestFiltrationPredicates:
     @pytest.mark.unit
     def test_disabled_reproduction_cost_modifier(self) -> None:
         """DISABLED applies reproduction_cost_modifier from CommunityState."""
-        from babylon.economics.melt.filtration import apply_filtration
+        from babylon.domain.economics.melt.filtration import apply_filtration
 
         membership = _make_membership(CommunityType.DISABLED)
         state = _make_community_state(
@@ -193,7 +193,7 @@ class TestFiltrationPredicates:
     @pytest.mark.unit
     def test_settler_no_filtration(self) -> None:
         """SETTLER membership produces no filtration (identity)."""
-        from babylon.economics.melt.filtration import apply_filtration
+        from babylon.domain.economics.melt.filtration import apply_filtration
 
         membership = _make_membership(CommunityType.SETTLER)
         result = apply_filtration(
@@ -213,7 +213,7 @@ class TestMultiMembershipComposition:
     @pytest.mark.unit
     def test_most_restrictive_wins(self) -> None:
         """Multiple memberships: most restrictive effective values used."""
-        from babylon.economics.melt.filtration import apply_filtration
+        from babylon.domain.economics.melt.filtration import apply_filtration
 
         memberships = [
             _make_membership(CommunityType.FIRST_NATIONS),
@@ -240,7 +240,7 @@ class TestMultiMembershipComposition:
     @pytest.mark.unit
     def test_order_independence(self) -> None:
         """Filtration result is the same regardless of membership order."""
-        from babylon.economics.melt.filtration import apply_filtration
+        from babylon.domain.economics.melt.filtration import apply_filtration
 
         m1 = _make_membership(CommunityType.FIRST_NATIONS)
         m2 = _make_membership(CommunityType.INCARCERATED)
@@ -263,7 +263,7 @@ class TestMultiMembershipComposition:
     @pytest.mark.unit
     def test_first_nations_overrides_settler(self) -> None:
         """FIRST_NATIONS membership takes precedence over SETTLER."""
-        from babylon.economics.melt.filtration import apply_filtration
+        from babylon.domain.economics.melt.filtration import apply_filtration
 
         memberships = [
             _make_membership(CommunityType.SETTLER),

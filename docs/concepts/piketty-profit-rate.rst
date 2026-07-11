@@ -350,7 +350,7 @@ For crisis detection, the simulation uses Piketty's formulation because:
 
 The Marxist profit rate remains central to the simulation's
 :doc:`imperial-rent` calculations via
-:py:attr:`~babylon.economics.tensor.ValueTensor4x3.profit_rate`.
+:py:attr:`~babylon.domain.economics.tensor.ValueTensor4x3.profit_rate`.
 The two rates are complementary: Piketty's *r* detects macro-level
 crisis onset, while the Marxist *r'* drives micro-level class dynamics.
 
@@ -358,7 +358,7 @@ crisis onset, while the Marxist *r'* drives micro-level class dynamics.
 
    The historical Marxist range (12--22%) cited above is from academic
    studies using BEA data with different decomposition methods. Babylon's
-   :class:`~babylon.economics.tensor.ValueTensor4x3` produces lower rates
+   :class:`~babylon.domain.economics.tensor.ValueTensor4x3` produces lower rates
    (3--8%) because its BEA-calibrated ``sv_ratio`` values (0.10--0.15 at
    the department level) allocate less surplus value per unit of variable
    capital than classical Marxist estimates. This is not an error --- it
@@ -390,7 +390,7 @@ identical. The 5% threshold derived from dollar-denominated WID data
 applies equally to an hours-denominated tensor --- **provided all
 components of the formula use the same unit system**.
 
-The :class:`~babylon.economics.tensor.ValueTensor4x3` computes
+The :class:`~babylon.domain.economics.tensor.ValueTensor4x3` computes
 ``profit_rate = total_s / (total_c + total_v)`` entirely in labor-hours,
 and its integration tests assert results fall within Piketty's 3--8%
 bounds (``PIKETTY_R_MIN = 0.03``, ``PIKETTY_R_MAX = 0.08``). However,
@@ -414,12 +414,12 @@ formulas and different denominators:
    * - **Flow-based**
      - :math:`r' = s / (c + v)`
      - All labor-hours
-     - :class:`~babylon.economics.tensor.ValueTensor4x3`
+     - :class:`~babylon.domain.economics.tensor.ValueTensor4x3`
        (``tensor.py:349``)
    * - **Stock-based**
      - :math:`r = s / (K + v)`
      - Mixed (see below)
-     - :class:`~babylon.economics.tick.derived_rates.DerivedRateCalculator`
+     - :class:`~babylon.domain.economics.tick.derived_rates.DerivedRateCalculator`
        (``derived_rates.py:71``)
 
 The **flow-based** rate uses constant capital *consumed in one period*
@@ -465,7 +465,7 @@ The data flow in ``DerivedRateCalculator.compute_county_rates()``
                                              #   ← dimensional inconsistency
 
 The ``capital_stock`` field in ``CountyEconomicState`` is seeded from
-:meth:`~babylon.economics.capital_stock.CapitalStockCalculator.get_K`,
+:meth:`~babylon.domain.economics.capital_stock.CapitalStockCalculator.get_K`,
 which computes *K* via the perpetual inventory method on ``total_c`` from
 ValueTensor4x3 --- all in **labor-hours**. But ``s`` and ``v`` are
 computed as ``tau × hours`` and ``v_reproduction × hours`` ---
@@ -715,9 +715,9 @@ See Also
 - :doc:`terminal-crisis` -- The endgame when crisis mechanics resolve
 - :doc:`theory` -- MLM-TW theoretical foundation
 - :doc:`/reference/formulas` -- Formula reference including TRPF
-- :class:`~babylon.economics.tensor.ValueTensor4x3` -- Flow-based
+- :class:`~babylon.domain.economics.tensor.ValueTensor4x3` -- Flow-based
   profit rate (dimensionally consistent, Piketty-validated)
-- :class:`~babylon.economics.tick.derived_rates.DerivedRateCalculator`
+- :class:`~babylon.domain.economics.tick.derived_rates.DerivedRateCalculator`
   -- Stock-based profit rate (dimensional reconciliation pending)
-- :class:`~babylon.economics.capital_stock.CapitalStockCalculator`
+- :class:`~babylon.domain.economics.capital_stock.CapitalStockCalculator`
   -- Capital stock K in labor-hours (perpetual inventory method)

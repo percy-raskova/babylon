@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.circulation.inventory import (
+from babylon.domain.economics.circulation.inventory import (
     compute_realization_metrics,
     detect_realization_crisis,
 )
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.types import (
     CrisisSeverity,
     InventoryState,
 )

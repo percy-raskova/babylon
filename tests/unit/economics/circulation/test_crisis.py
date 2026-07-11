@@ -16,8 +16,8 @@ Tests cover:
 
 from __future__ import annotations
 
-from babylon.economics.circulation.crisis import assess_circulation_crisis
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.crisis import assess_circulation_crisis
+from babylon.domain.economics.circulation.types import (
     CircuitState,
     CirculationCrisisAssessment,
     InventoryState,

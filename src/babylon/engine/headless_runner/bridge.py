@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.engine.factories import create_bourgeoisie, create_labor_aristocracy
 from babylon.engine.headless_runner.reference_data_cache import (
     ReferenceDataCache,

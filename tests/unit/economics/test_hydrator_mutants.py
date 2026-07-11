@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.department_mapper import Department, DepartmentAllocation
-from babylon.economics.hydrator import MarxianHydrator
-from babylon.economics.snlt import SNLTConfig
-from babylon.economics.tensor import ValueTensor4x3
+from babylon.domain.economics.department_mapper import Department, DepartmentAllocation
+from babylon.domain.economics.hydrator import MarxianHydrator
+from babylon.domain.economics.snlt import SNLTConfig
+from babylon.domain.economics.tensor import ValueTensor4x3
 
 # =============================================================================
 # Mock data sources implementing Protocol interfaces

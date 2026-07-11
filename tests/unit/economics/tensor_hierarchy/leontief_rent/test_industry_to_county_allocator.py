@@ -21,8 +21,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from babylon.config.defines import LeontiefRentDefines
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator import (
     HOURS_PER_YEAR,
     DefaultIndustryToCountyAllocator,
 )
@@ -335,7 +335,7 @@ def test_determinism_dict_and_event_order(fake_db: Session) -> None:
 
 @pytest.mark.unit
 def test_default_implements_protocol(fake_db: Session, fake_event_bus: FakeEventBus) -> None:
-    from babylon.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator import (
+    from babylon.domain.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator import (
         IndustryToCountyAllocator,
     )
 

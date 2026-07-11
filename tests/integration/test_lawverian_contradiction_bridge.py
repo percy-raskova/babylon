@@ -56,7 +56,7 @@ if not _pg_available():  # pragma: no cover - environment guard
 def bridged_run():  # type: ignore[no-untyped-def]
     """One hydrated single-county bridged world, driven engine+persist for 50 ticks."""
     from babylon.config.defines import GameDefines
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.engine.context import TickContext
     from babylon.engine.headless_runner.bridge import WorldStateBridge
     from babylon.engine.headless_runner.runner import EventCapture

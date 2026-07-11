@@ -8,8 +8,8 @@ Tests that the three Volume I mechanisms produce verified feedback loops:
 
 from __future__ import annotations
 
-from babylon.economics.working_day.classifier import DefaultWorkingDayClassifier
-from babylon.economics.working_day.types import WorkingDayState
+from babylon.domain.economics.working_day.classifier import DefaultWorkingDayClassifier
+from babylon.domain.economics.working_day.types import WorkingDayState
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem

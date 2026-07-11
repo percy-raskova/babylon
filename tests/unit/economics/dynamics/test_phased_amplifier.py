@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.dynamics.crisis import PhasedCrisisAmplifier
-from babylon.economics.dynamics.types import TransitionRates
-from babylon.economics.tick.types import CrisisPhase
+from babylon.domain.economics.dynamics.crisis import PhasedCrisisAmplifier
+from babylon.domain.economics.dynamics.types import TransitionRates
+from babylon.domain.economics.tick.types import CrisisPhase
 
 
 def _make_rates(
@@ -246,7 +246,7 @@ class TestBackwardCompatibility:
 
     def test_satisfies_crisis_amplifier_protocol(self) -> None:
         """PhasedCrisisAmplifier satisfies CrisisAmplifier protocol."""
-        from babylon.economics.dynamics.data_sources import CrisisAmplifier
+        from babylon.domain.economics.dynamics.data_sources import CrisisAmplifier
 
         amp: CrisisAmplifier = PhasedCrisisAmplifier()
         rates = _make_rates()
@@ -279,8 +279,8 @@ class TestPhasedAmplificationInTransitionEngine:
         """Engine calls amplify_phased when crisis_phase is passed."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.dynamics.transition_engine import DefaultClassTransitionEngine
-        from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+        from babylon.domain.economics.dynamics.transition_engine import DefaultClassTransitionEngine
+        from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
 
         # Create mocks
         acc_calc = MagicMock()
@@ -329,8 +329,8 @@ class TestPhasedAmplificationInTransitionEngine:
         """Engine uses amplify() when crisis_phase is None."""
         from unittest.mock import MagicMock, patch
 
-        from babylon.economics.dynamics.transition_engine import DefaultClassTransitionEngine
-        from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+        from babylon.domain.economics.dynamics.transition_engine import DefaultClassTransitionEngine
+        from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
 
         acc_calc = MagicMock()
         acc_calc.compute.return_value = MagicMock(annual_accumulation=5000.0)
@@ -380,8 +380,8 @@ class TestPhasedAmplificationInTransitionEngine:
         """EARLY amplification produces less LA decline than DEEP."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.dynamics.transition_engine import DefaultClassTransitionEngine
-        from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+        from babylon.domain.economics.dynamics.transition_engine import DefaultClassTransitionEngine
+        from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
 
         acc_calc = MagicMock()
         acc_calc.compute.return_value = MagicMock(annual_accumulation=5000.0)

@@ -49,9 +49,9 @@ PROHIBITED_IMPORTS: Final[frozenset[str]] = frozenset(
 # Allowed imports - these are tensor layer, not database layer
 ALLOWED_TENSOR_IMPORTS: Final[frozenset[str]] = frozenset(
     {
-        "babylon.economics.tensor",
-        "babylon.economics.tensor_registry",
-        "babylon.economics.snlt",
+        "babylon.domain.economics.tensor",
+        "babylon.domain.economics.tensor_registry",
+        "babylon.domain.economics.snlt",
     }
 )
 
@@ -245,9 +245,9 @@ Prohibited imports:
     - sqlite3                 (raw database access)
 
 Allowed imports:
-    - babylon.economics.tensor         (tensor primitives)
-    - babylon.economics.tensor_registry (tensor cache)
-    - babylon.economics.snlt           (SNLT configuration)
+    - babylon.domain.economics.tensor         (tensor primitives)
+    - babylon.domain.economics.tensor_registry (tensor cache)
+    - babylon.domain.economics.snlt           (SNLT configuration)
 """,
     )
     parser.add_argument(

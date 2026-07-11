@@ -12,11 +12,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.throughput.supply_chain import (
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.throughput.supply_chain import (
     DefaultSupplyChainAnalyzer,
 )
-from babylon.economics.throughput.types import WageShareEstimate
+from babylon.domain.economics.throughput.types import WageShareEstimate
 
 # =============================================================================
 # FIXTURES

@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.substrate.aggregation import DefaultResolutionAggregator
-from babylon.economics.substrate.types import HexGrid
+from babylon.domain.economics.substrate.aggregation import DefaultResolutionAggregator
+from babylon.domain.economics.substrate.types import HexGrid
 
 
 @pytest.mark.unit
@@ -50,7 +50,7 @@ class TestAggregatorExploitationRate:
 
     def test_exploitation_rate_zero_variable(self) -> None:
         """Exploitation rate is 0.0 when variable capital is zero."""
-        from babylon.economics.substrate.types import HexEconomicState
+        from babylon.domain.economics.substrate.types import HexEconomicState
 
         hexes = {
             "872830828ffffff": HexEconomicState(

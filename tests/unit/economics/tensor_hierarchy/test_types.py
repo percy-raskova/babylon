@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.tensor_hierarchy.types import (
+from babylon.domain.economics.tensor_hierarchy.types import (
     ClassTransitionMatrix,
     Department,
     GeographicFlow,

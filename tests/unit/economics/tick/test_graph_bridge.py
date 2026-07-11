@@ -6,15 +6,15 @@ Task: T008
 
 from __future__ import annotations
 
-from babylon.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
-from babylon.economics.financial_crisis.types import FinancialCrisisAssessment
-from babylon.economics.rent.types import HousingValueDecomposition, RentExtraction
-from babylon.economics.tick.graph_bridge import (
+from babylon.domain.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
+from babylon.domain.economics.financial_crisis.types import FinancialCrisisAssessment
+from babylon.domain.economics.rent.types import HousingValueDecomposition, RentExtraction
+from babylon.domain.economics.tick.graph_bridge import (
     TICK_DYNAMICS_KEY,
     read_tick_state_from_graph,
     write_tick_state_to_graph,
 )
-from babylon.economics.tick.types import (
+from babylon.domain.economics.tick.types import (
     BifurcationRiskMetric,
     CrisisPhase,
     CrisisState,

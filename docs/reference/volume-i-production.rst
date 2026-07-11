@@ -137,7 +137,7 @@ The wage is then modified:
      - Minimum fraction that must remain employed
 
 **Implementation:**
-:py:class:`babylon.economics.reserve_army.calculator.DefaultWagePressureCalculator`
+:py:class:`babylon.domain.economics.reserve_army.calculator.DefaultWagePressureCalculator`
 
 **System:**
 :py:class:`babylon.engine.systems.reserve_army.ReserveArmySystem`
@@ -272,7 +272,7 @@ Transfers are clamped to available wealth — a territory's
 wealth cannot go negative.
 
 **Implementation:**
-:py:class:`babylon.economics.dispossession.intensity.DispossessionIntensityCalculator`
+:py:class:`babylon.domain.economics.dispossession.intensity.DispossessionIntensityCalculator`
 
 **System:**
 :py:class:`babylon.engine.systems.dispossession_events.DispossessionEventSystem`
@@ -374,7 +374,8 @@ while relative exploitation is *invisible* (productivity gains are abstract):
 
 Where :math:`t = \frac{h - h_r}{h_a - h_r}`, clamped to [0, 1].
 
-**Implementation:** :py:class:`babylon.economics.working_day.classifier.DefaultWorkingDayClassifier`
+**Implementation:**
+:py:class:`babylon.domain.economics.working_day.classifier.DefaultWorkingDayClassifier`
 
 Data Sources (3NF Schema)
 -------------------------

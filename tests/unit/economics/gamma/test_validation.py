@@ -9,7 +9,7 @@ validate_gamma_basket.
 
 from __future__ import annotations
 
-from babylon.economics.gamma.validation import (
+from babylon.domain.economics.gamma.validation import (
     validate_gamma_basket,
     validate_gamma_iii,
     validate_gamma_import,

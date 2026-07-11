@@ -26,7 +26,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from babylon.economics.node_kinds import BoundaryEdgeKind, NodeKind
+from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 from tests.constants_063 import (
     DETROIT_TRI_COUNTY_AGGREGATE_HEX,
     DETROIT_TRI_COUNTY_FIPS,
@@ -204,8 +204,8 @@ def _run_circulation_readback(runtime, session_id: UUID, graph):  # type: ignore
     node ids (``canada`` / ``rest_of_usa``) which classify() Rule 4 would
     reroute to rest_of_usa (see module docstring).
     """
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-    from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
     from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
 
     real_loader = LODESCommuteMatrixLoader(
@@ -233,7 +233,7 @@ def _run_circulation_readback(runtime, session_id: UUID, graph):  # type: ignore
 
 def test_enabled_session_synthesizes_and_merges(runtime, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     """SC-011: enabled session synthesizes 52 weekly rows + merges canada OD."""
-    from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+    from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
 
     bts = tmp_path / "bts_border_crossings.csv"
     _write_minimal_bts_csv(bts, year=_YEAR)
@@ -290,7 +290,7 @@ def test_enabled_session_synthesizes_and_merges(runtime, tmp_path: Path) -> None
 def test_disabled_session_produces_no_canada_rows(runtime) -> None:  # type: ignore[no-untyped-def]
     """SC-012: default defines produce zero canada rows at every layer."""
     from babylon.config.defines import GameDefines
-    from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+    from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
 
     sid, report = _init_session(
         runtime,

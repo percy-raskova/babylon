@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.rent.types import RentExtraction
+from babylon.domain.economics.rent.types import RentExtraction
 
 # =============================================================================
 # Frozen Model Invariants

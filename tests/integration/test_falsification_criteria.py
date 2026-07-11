@@ -12,9 +12,9 @@ empirical data — that requires the full data pipeline to be wired).
 
 from __future__ import annotations
 
-from babylon.economics.dispossession.intensity import DispossessionIntensityCalculator
-from babylon.economics.dispossession.types import TerritoryDispossessionState
-from babylon.economics.reserve_army.calculator import DefaultWagePressureCalculator
+from babylon.domain.economics.dispossession.intensity import DispossessionIntensityCalculator
+from babylon.domain.economics.dispossession.types import TerritoryDispossessionState
+from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
 
 
 class TestSC001WagePressureCorrelation:

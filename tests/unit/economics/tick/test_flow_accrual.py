@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tick.system import TickDynamicsSystem
+from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.topology.graph import BabylonGraph

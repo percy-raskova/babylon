@@ -1,1 +1,1 @@
-"""Tests for babylon.economics.financial_crisis module."""
+"""Tests for babylon.domain.economics.financial_crisis module."""

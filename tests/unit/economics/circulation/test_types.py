@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.types import (
     AnnualSurplusValue,
     CapitalForm,
     CircuitState,

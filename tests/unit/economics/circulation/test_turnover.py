@@ -10,17 +10,17 @@ get_weighted_turnover_profile.
 
 from __future__ import annotations
 
-from babylon.economics.circulation.defaults import (
+from babylon.domain.economics.circulation.defaults import (
     DEFAULT_TURNOVER_PROFILES,
     FALLBACK_PROFILE,
 )
-from babylon.economics.circulation.turnover import (
+from babylon.domain.economics.circulation.turnover import (
     DefaultTurnoverProfileSource,
     compare_turnover_advantage,
     compute_annual_surplus_value,
     get_weighted_turnover_profile,
 )
-from babylon.economics.circulation.types import (
+from babylon.domain.economics.circulation.types import (
     AnnualSurplusValue,
     TurnoverProfile,
 )

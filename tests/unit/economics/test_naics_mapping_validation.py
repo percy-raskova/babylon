@@ -9,8 +9,8 @@ Test Categories:
     - Mapping Coherence: Related industries have consistent mappings
 
 See Also:
-    :mod:`babylon.economics.department_mapper`: DepartmentMapper implementation.
-    :mod:`src.babylon.economics.data.naics_to_dept`: YAML configuration.
+    :mod:`babylon.domain.economics.department_mapper`: DepartmentMapper implementation.
+    :mod:`src.babylon.domain.economics.data.naics_to_dept`: YAML configuration.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from babylon.economics.department_mapper import (
+from babylon.domain.economics.department_mapper import (
     Department,
     DepartmentMapper,
 )
@@ -37,6 +37,7 @@ def production_yaml_path() -> Path:
         Path(__file__).parent.parent.parent.parent
         / "src"
         / "babylon"
+        / "domain"
         / "economics"
         / "data"
         / "naics_to_dept.yaml"

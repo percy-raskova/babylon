@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
-from babylon.economics.substrate.production import DefaultHexProductionComputer
-from babylon.economics.substrate.types import (
+from babylon.domain.economics.substrate.equalization import DefaultHexEqualizationComputer
+from babylon.domain.economics.substrate.production import DefaultHexProductionComputer
+from babylon.domain.economics.substrate.types import (
     HexEconomicState,
     HexGrid,
 )

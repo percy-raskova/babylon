@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from babylon.config.defines import WorkingDayDefines
-from babylon.economics.working_day.classifier import DefaultWorkingDayClassifier
-from babylon.economics.working_day.types import WorkingDayState
+from babylon.domain.economics.working_day.classifier import DefaultWorkingDayClassifier
+from babylon.domain.economics.working_day.types import WorkingDayState
 from babylon.models.enums import ExploitationMode
 
 

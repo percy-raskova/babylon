@@ -15,7 +15,7 @@ Sources:
     - https://www.marxists.org/archive/marx/works/1885-c2/ch21_01.htm
 
 See Also:
-    :mod:`babylon.economics.tensor`: ValueTensor4x3 implementation.
+    :mod:`babylon.domain.economics.tensor`: ValueTensor4x3 implementation.
     :mod:`tests.constants`: MarxReproductionExamples constants.
 """
 
@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.department_mapper import DefaultRatios, Department, DepartmentMapper
-from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
+from babylon.domain.economics.department_mapper import DefaultRatios, Department, DepartmentMapper
+from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
 from tests.constants import TestConstants
 
 TC = TestConstants

@@ -146,8 +146,8 @@ def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyp
 def _one_fresh_run(runtime) -> dict[str, Any]:  # type: ignore[no-untyped-def]
     """Initialize a fresh session + run one circulation tick with a fresh loader."""
     from babylon.config.defines import GameDefines
-    from babylon.economics.boundary_flow_register import BoundaryFlowRegister
-    from babylon.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
+    from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
     from babylon.engine.systems.cross_border_commute import CrossBorderCommuteClassifier
     from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
     from babylon.persistence.postgres_initialization import initialize_session

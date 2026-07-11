@@ -51,7 +51,7 @@ class CrisisDefines(BaseModel):
     bifurcation risk assessment, and wage compression mechanics.
 
     See Also:
-        :mod:`babylon.economics.tick.types`: CrisisPhase, CrisisState
+        :mod:`babylon.domain.economics.tick.types`: CrisisPhase, CrisisState
         ``specs/018-crisis-devaluation-mechanics/spec.md``: FR-023
     """
 
@@ -475,7 +475,7 @@ class EconomyDefines(BaseModel):
         compounding 52 weekly applications reproduces the annual rate.
         Required to satisfy FR-029a startup invariant ``alpha_weekly < 1/52``.
         """
-        from babylon.economics.geometric_depreciation import alpha_weekly
+        from babylon.domain.economics.geometric_depreciation import alpha_weekly
 
         return alpha_weekly(self.alpha_annual)
 
@@ -506,7 +506,7 @@ class LeontiefRentDefines(BaseModel):
         ),
     ] = 5
     """Maximum look-back window (in years) for QCEW carry-forward fallback in
-    :class:`babylon.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator.IndustryToCountyAllocator`
+    :class:`babylon.domain.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator.IndustryToCountyAllocator`
     (per Spec 057 / FR-004 + Clarifications 2026-05-08). ``0`` disables
     carry-forward (strict no-data semantics).
     """

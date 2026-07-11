@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.economics.tick.types import (
+from babylon.domain.economics.tick.types import (
     CountyEconomicState,
     CrisisPhase,
     CrisisState,
@@ -39,7 +39,7 @@ def _make_county(
         crisis_duration: Crisis duration in periods.
         cumulative_wage_compression: Previously applied compression.
     """
-    from babylon.economics.dynamics.types import ClassDistribution
+    from babylon.domain.economics.dynamics.types import ClassDistribution
 
     dist = ClassDistribution(
         fips=fips,
@@ -88,7 +88,7 @@ class TestWageCompression:
 
     def test_deep_crisis_compresses_wage(self) -> None:
         """One DEEP period reduces median_wage by wage_compression_rate."""
-        from babylon.economics.crisis.wage_compression import apply_wage_compression
+        from babylon.domain.economics.crisis.wage_compression import apply_wage_compression
 
         county = _make_county(median_wage=25.0, phase=CrisisPhase.DEEP)
         rate = 0.02  # 2% per period
@@ -100,7 +100,7 @@ class TestWageCompression:
 
     def test_multiple_periods_compound(self) -> None:
         """Wage compression compounds over multiple DEEP periods."""
-        from babylon.economics.crisis.wage_compression import apply_wage_compression
+        from babylon.domain.economics.crisis.wage_compression import apply_wage_compression
 
         county = _make_county(
             median_wage=25.0,
@@ -126,7 +126,7 @@ class TestWageCompression:
 
     def test_non_deep_phase_no_compression(self) -> None:
         """ONSET, EARLY, and RECOVERY do not apply wage compression."""
-        from babylon.economics.crisis.wage_compression import apply_wage_compression
+        from babylon.domain.economics.crisis.wage_compression import apply_wage_compression
 
         for phase in [CrisisPhase.ONSET, CrisisPhase.EARLY, CrisisPhase.RECOVERY]:
             county = _make_county(median_wage=25.0, phase=phase)
@@ -136,7 +136,7 @@ class TestWageCompression:
 
     def test_normal_phase_no_compression(self) -> None:
         """NORMAL phase is passthrough."""
-        from babylon.economics.crisis.wage_compression import apply_wage_compression
+        from babylon.domain.economics.crisis.wage_compression import apply_wage_compression
 
         county = _make_county(median_wage=25.0, phase=CrisisPhase.NORMAL)
         # Override crisis_state to NORMAL
@@ -156,7 +156,7 @@ class TestAccumulationHalt:
 
     def test_wages_below_floor_flags_accumulation_halt(self) -> None:
         """When compressed wage < floor_ratio * subsistence, accumulation should halt."""
-        from babylon.economics.crisis.wage_compression import (
+        from babylon.domain.economics.crisis.wage_compression import (
             should_halt_accumulation,
         )
 
@@ -165,7 +165,7 @@ class TestAccumulationHalt:
 
     def test_wages_above_floor_allows_accumulation(self) -> None:
         """Wages above the floor allow normal accumulation."""
-        from babylon.economics.crisis.wage_compression import (
+        from babylon.domain.economics.crisis.wage_compression import (
             should_halt_accumulation,
         )
 
@@ -173,7 +173,7 @@ class TestAccumulationHalt:
 
     def test_wages_at_floor_boundary(self) -> None:
         """Wages exactly at the floor do not halt accumulation."""
-        from babylon.economics.crisis.wage_compression import (
+        from babylon.domain.economics.crisis.wage_compression import (
             should_halt_accumulation,
         )
 
@@ -182,7 +182,7 @@ class TestAccumulationHalt:
 
     def test_sustained_compression_eventually_halts(self) -> None:
         """Enough DEEP periods compress wages below the floor."""
-        from babylon.economics.crisis.wage_compression import (
+        from babylon.domain.economics.crisis.wage_compression import (
             apply_wage_compression,
             should_halt_accumulation,
         )
@@ -217,7 +217,7 @@ class TestCrisisTrap:
         The crisis trap: deep crisis -> wage compression -> accumulation halt ->
         no recovery of class composition -> conditions remain below threshold.
         """
-        from babylon.economics.crisis.wage_compression import (
+        from babylon.domain.economics.crisis.wage_compression import (
             apply_wage_compression,
             should_halt_accumulation,
         )
@@ -256,7 +256,7 @@ class TestCrisisTrap:
 
         After sufficient compression, accumulation should effectively halt.
         """
-        from babylon.economics.crisis.wage_compression import (
+        from babylon.domain.economics.crisis.wage_compression import (
             apply_wage_compression,
             should_halt_accumulation,
         )
@@ -291,7 +291,7 @@ class TestCumulativeWageCompressionTracking:
 
     def test_only_increases_during_deep(self) -> None:
         """Compression only accumulates during DEEP phase."""
-        from babylon.economics.crisis.wage_compression import apply_wage_compression
+        from babylon.domain.economics.crisis.wage_compression import apply_wage_compression
 
         county = _make_county(median_wage=25.0, phase=CrisisPhase.DEEP)
         result = apply_wage_compression(county, 0.02)
@@ -299,7 +299,7 @@ class TestCumulativeWageCompressionTracking:
 
     def test_preserved_during_non_deep(self) -> None:
         """Previously accumulated compression is preserved (not reset) in non-DEEP."""
-        from babylon.economics.crisis.wage_compression import apply_wage_compression
+        from babylon.domain.economics.crisis.wage_compression import apply_wage_compression
 
         # County with existing compression but now in RECOVERY
         county = _make_county(
@@ -314,7 +314,7 @@ class TestCumulativeWageCompressionTracking:
 
     def test_cumulative_bounded_by_one(self) -> None:
         """Cumulative wage compression never exceeds 1.0."""
-        from babylon.economics.crisis.wage_compression import apply_wage_compression
+        from babylon.domain.economics.crisis.wage_compression import apply_wage_compression
 
         # Start with 95% compression already applied
         county = _make_county(

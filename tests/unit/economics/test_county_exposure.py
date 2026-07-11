@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from babylon.economics.county_exposure import (
+from babylon.domain.economics.county_exposure import (
     CountyExposureUnavailableError,
     load_county_exposure_map,
 )

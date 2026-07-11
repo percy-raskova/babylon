@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 import networkx as nx
 import pytest
 
-from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
+from babylon.domain.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.production import ProductionSystem
 from babylon.models.enums import EdgeType, SocialRole

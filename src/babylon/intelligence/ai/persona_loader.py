@@ -32,10 +32,12 @@ from babylon.intelligence.ai.persona import Persona, VoiceConfig
 from babylon.kernel.schema_registry import build_schema_registry
 
 # Constants
-_SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"
+# One extra .parent since the ai/ package moved under intelligence/
+# (Program 14 Phase 3b); the data lives at the babylon package root.
+_SCHEMAS_DIR = Path(__file__).parent.parent.parent / "schemas"
 _PERSONA_SCHEMA_PATH = _SCHEMAS_DIR / "entities" / "persona.schema.json"
 
-PERSONAS_DIR = Path(__file__).parent.parent / "data" / "game" / "personas"
+PERSONAS_DIR = Path(__file__).parent.parent.parent / "data" / "game" / "personas"
 DEFAULT_PERSONA_PATH = PERSONAS_DIR / "persephone_raskova.json"
 
 

@@ -50,14 +50,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from rich.console import Console
 from rich.table import Table
 
-from babylon.ai import (
+from babylon.intelligence.ai import (
     DeepSeekClient,
     MockLLM,
     NarrativeCommissar,
     NarrativeDirector,
     load_default_persona,
 )
-from babylon.ai.judge import JudgmentResult, MetaphorFamily
+from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 from babylon.models.events import CrisisEvent
 
 # Configure logging

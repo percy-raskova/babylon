@@ -201,7 +201,7 @@ def mock_llm_provider() -> MagicMock:
             assert "Custom" in director.narrate(state)
     """
     # Lazy import for mutmut compatibility
-    from babylon.ai.llm_provider import LLMProvider
+    from babylon.intelligence.ai.llm_provider import LLMProvider
 
     mock = MagicMock(spec=LLMProvider)
     mock.name = "MockLLM"

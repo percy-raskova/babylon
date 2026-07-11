@@ -11,7 +11,7 @@ Personas are:
 Design follows the SimulationEvent pattern from babylon.models.events.
 
 Example:
-    >>> from babylon.ai.persona import Persona, VoiceConfig
+    >>> from babylon.intelligence.ai.persona import Persona, VoiceConfig
     >>> voice = VoiceConfig(
     ...     tone="Clinical, Dialectical",
     ...     style="Marxist analysis",
@@ -28,8 +28,8 @@ Example:
     >>> print(persona.render_system_prompt())
 
 See Also:
-    :mod:`babylon.ai.persona_loader`: Functions to load personas from JSON files.
-    :class:`babylon.ai.prompt_builder.DialecticalPromptBuilder`: Uses personas.
+    :mod:`babylon.intelligence.ai.persona_loader`: Functions to load personas from JSON files.
+    :class:`babylon.intelligence.ai.prompt_builder.DialecticalPromptBuilder`: Uses personas.
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ class Persona(BaseModel):
         restrictions: Topics or behaviors to avoid (default empty).
 
     Example:
-        >>> from babylon.ai.persona import Persona, VoiceConfig
+        >>> from babylon.intelligence.ai.persona import Persona, VoiceConfig
         >>> voice = VoiceConfig(
         ...     tone="Clinical",
         ...     style="Marxist",

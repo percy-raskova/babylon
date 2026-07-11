@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from babylon.rag.chunker import DocumentChunk
-from babylon.rag.retrieval import QueryResponse, QueryResult
+from babylon.intelligence.rag.chunker import DocumentChunk
+from babylon.intelligence.rag.retrieval import QueryResponse, QueryResult
 
 # =============================================================================
 # QueryResult and QueryResponse Tests
@@ -85,8 +85,8 @@ class TestRetrieverWithProtocol:
 
     def test_retriever_returns_results(self) -> None:
         """Retriever returns results from VectorStoreProtocol."""
-        from babylon.rag.embeddings import EmbeddingManager
-        from babylon.rag.retrieval import Retriever
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.retrieval import Retriever
 
         # Mock vector store implementing VectorStoreProtocol
         mock_store = MagicMock()
@@ -119,8 +119,8 @@ class TestRetrieverWithProtocol:
 
     def test_retriever_filters_by_similarity_threshold(self) -> None:
         """Retriever filters results below similarity_threshold."""
-        from babylon.rag.embeddings import EmbeddingManager
-        from babylon.rag.retrieval import Retriever
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.retrieval import Retriever
 
         mock_store = MagicMock()
         mock_store.query_similar.return_value = (

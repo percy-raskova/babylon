@@ -7,7 +7,7 @@ Unlike ``game/narrator.py`` (which stays import-pure per Constitution III —
 see its module docstring), this module sits AT the bridge boundary and MAY
 import ``babylon.*``. It is the upgrade path from the template-based
 :class:`~game.narrator.DeterministicNarrator` to the engine-side
-``babylon.ai.director.NarrativeDirector`` (+ RAG), gated behind the
+``babylon.intelligence.ai.director.NarrativeDirector`` (+ RAG), gated behind the
 ``BABYLON_LLM_NARRATOR`` feature flag (default OFF).
 
 Design:
@@ -53,13 +53,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from babylon.ai.director import NarrativeDirector
-from babylon.ai.llm_provider import DeepSeekClient, LLMProvider
 from babylon.config.llm_config import LLMConfig
+from babylon.intelligence.ai.director import NarrativeDirector
+from babylon.intelligence.ai.llm_provider import DeepSeekClient, LLMProvider
 
 if TYPE_CHECKING:
+    from babylon.intelligence.rag.rag_pipeline import RagPipeline
     from babylon.models.world_state import WorldState
-    from babylon.rag.rag_pipeline import RagPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ FEATURE_FLAG_ENV = "BABYLON_LLM_NARRATOR"
 
 # The prompt version pinned alongside every stored NarrativeResult
 # (Constitution III.6). Bump when CORPORATE_SYSTEM_PROMPT / LIBERATED_SYSTEM_PROMPT
-# in babylon.ai.director change materially.
+# in babylon.intelligence.ai.director change materially.
 PROMPT_VERSION = "v1"
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -181,7 +181,7 @@ class _ErrorTrackingLLM:
 class NarrativeService:
     """Post-tick, non-blocking LLM narrative generation for the Wire feed.
 
-    Wraps :class:`babylon.ai.director.NarrativeDirector`. Generation is
+    Wraps :class:`babylon.intelligence.ai.director.NarrativeDirector`. Generation is
     submitted to a background thread pool so callers (``EngineBridge.resolve_tick``)
     never block on network I/O; results land in an in-process cache read
     lazily by :meth:`augment_feed`.

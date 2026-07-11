@@ -212,8 +212,8 @@ Babylon uses ChromaDB as a vector database:
 
 .. code-block:: python
 
-   from babylon.rag.retrieval import VectorStore, Retriever
-   from babylon.rag.chunker import DocumentChunk
+   from babylon.intelligence.rag.retrieval import VectorStore, Retriever
+   from babylon.intelligence.rag.chunker import DocumentChunk
 
    # Initialize store
    store = VectorStore(collection_name="events")

@@ -5,7 +5,7 @@ This is the **ONLY** file in ``web/`` that imports from ``babylon.engine``,
 ``babylon.persistence``.  Django views and serializers call this bridge;
 they never see engine internals. (Spec-111 exception: ``game/narrative_service.py``
 also sits at this boundary — see its module docstring — because the LLM
-narrator upgrade path needs ``babylon.ai``/``babylon.rag``/model config.)
+narrator upgrade path needs ``babylon.intelligence.ai``/``babylon.intelligence.rag``/model config.)
 
 All methods return plain Python dicts / lists / scalars that are
 JSON-serializable, suitable for DRF serializer consumption.

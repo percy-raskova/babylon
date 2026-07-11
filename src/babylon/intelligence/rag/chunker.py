@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from babylon.rag.exceptions import ChunkingError, PreprocessingError
+from babylon.intelligence.rag.exceptions import ChunkingError, PreprocessingError
 
 logger = logging.getLogger(__name__)
 

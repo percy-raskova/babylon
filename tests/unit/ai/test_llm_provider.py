@@ -136,14 +136,14 @@ class TestLLMProviderProtocol:
 
     def test_mock_llm_is_llm_provider(self) -> None:
         """MockLLM satisfies LLMProvider protocol."""
-        from babylon.ai.llm_provider import LLMProvider, MockLLM
+        from babylon.intelligence.ai.llm_provider import LLMProvider, MockLLM
 
         mock = MockLLM()
         assert isinstance(mock, LLMProvider)
 
     def test_deepseek_client_is_llm_provider(self) -> None:
         """DeepSeekClient satisfies LLMProvider protocol."""
-        from babylon.ai.llm_provider import DeepSeekClient, LLMProvider
+        from babylon.intelligence.ai.llm_provider import DeepSeekClient, LLMProvider
 
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
             # Need to reload config to pick up patched env
@@ -171,7 +171,7 @@ class TestMockLLM:
 
     def test_returns_default_response(self) -> None:
         """MockLLM returns default response when no queue."""
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock = MockLLM(default_response="Test response")
         result = mock.generate("prompt")
@@ -179,7 +179,7 @@ class TestMockLLM:
 
     def test_returns_queued_responses_in_order(self) -> None:
         """MockLLM returns responses from queue in FIFO order."""
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock = MockLLM(responses=["First", "Second", "Third"])
 
@@ -189,7 +189,7 @@ class TestMockLLM:
 
     def test_falls_back_to_default_after_queue_empty(self) -> None:
         """MockLLM uses default after queue exhausted."""
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock = MockLLM(responses=["Queued"], default_response="Default")
 
@@ -198,7 +198,7 @@ class TestMockLLM:
 
     def test_tracks_call_count(self) -> None:
         """MockLLM tracks number of generate calls."""
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock = MockLLM()
         assert mock.call_count == 0
@@ -211,7 +211,7 @@ class TestMockLLM:
 
     def test_records_call_history(self) -> None:
         """MockLLM records arguments of each call."""
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock = MockLLM()
         mock.generate("user prompt", system_prompt="system", temperature=0.5)
@@ -223,14 +223,14 @@ class TestMockLLM:
 
     def test_has_name_property(self) -> None:
         """MockLLM has name for logging."""
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock = MockLLM()
         assert mock.name == "MockLLM"
 
     def test_default_response_value(self) -> None:
         """MockLLM has sensible default response."""
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock = MockLLM()
         result = mock.generate("prompt")
@@ -238,7 +238,7 @@ class TestMockLLM:
 
     def test_call_history_is_copy(self) -> None:
         """MockLLM call_history returns a copy, not internal list."""
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock = MockLLM()
         mock.generate("prompt")
@@ -269,7 +269,7 @@ class TestDeepSeekClientInstantiation:
         try:
             llm_config.LLMConfig.API_KEY = ""
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             with pytest.raises(LLMGenerationError) as exc:
                 DeepSeekClient()
@@ -287,7 +287,7 @@ class TestDeepSeekClientInstantiation:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
             assert client.name == "DeepSeek"
@@ -302,7 +302,7 @@ class TestDeepSeekClientInstantiation:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
             assert client.name == "DeepSeek"
@@ -325,7 +325,7 @@ class TestDeepSeekClientErrorHandling:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -353,7 +353,7 @@ class TestDeepSeekClientErrorHandling:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -385,7 +385,7 @@ class TestDeepSeekClientErrorHandling:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -414,7 +414,7 @@ class TestDeepSeekClientErrorHandling:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -446,7 +446,7 @@ class TestDeepSeekClientGeneration:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -470,7 +470,7 @@ class TestDeepSeekClientGeneration:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -502,7 +502,7 @@ class TestDeepSeekClientGeneration:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -531,20 +531,20 @@ class TestModuleExports:
     """Tests for module-level exports."""
 
     def test_llm_provider_exports_from_ai_module(self) -> None:
-        """LLMProvider can be imported from babylon.ai."""
-        from babylon.ai import LLMProvider
+        """LLMProvider can be imported from babylon.intelligence.ai."""
+        from babylon.intelligence.ai import LLMProvider
 
         assert LLMProvider is not None
 
     def test_mock_llm_exports_from_ai_module(self) -> None:
-        """MockLLM can be imported from babylon.ai."""
-        from babylon.ai import MockLLM
+        """MockLLM can be imported from babylon.intelligence.ai."""
+        from babylon.intelligence.ai import MockLLM
 
         assert MockLLM is not None
 
     def test_deepseek_client_exports_from_ai_module(self) -> None:
-        """DeepSeekClient can be imported from babylon.ai."""
-        from babylon.ai import DeepSeekClient
+        """DeepSeekClient can be imported from babylon.intelligence.ai."""
+        from babylon.intelligence.ai import DeepSeekClient
 
         assert DeepSeekClient is not None
 
@@ -579,7 +579,7 @@ class TestDeepSeekClientSyncBehavior:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -600,7 +600,7 @@ class TestDeepSeekClientSyncBehavior:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -637,7 +637,7 @@ class TestDeepSeekClientSyncBehavior:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 
@@ -670,7 +670,7 @@ class TestDeepSeekClientSyncBehavior:
         try:
             llm_config.LLMConfig.API_KEY = "sk-test-key"
 
-            from babylon.ai.llm_provider import DeepSeekClient
+            from babylon.intelligence.ai.llm_provider import DeepSeekClient
 
             client = DeepSeekClient()
 

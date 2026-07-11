@@ -7,12 +7,12 @@ is what Draft 2020-12 validators consult to resolve ``$ref`` references
 between schema files.
 
 This helper was extracted from two byte-identical private copies
-(``babylon.ai.persona_loader`` and
+(``babylon.intelligence.ai.persona_loader`` and
 ``babylon.engine.observers.schema_validator``) so both call sites share one
 implementation. Each call site passes its own schemas directory.
 
 See Also:
-    :mod:`babylon.ai.persona_loader`: Persona loading call site.
+    :mod:`babylon.intelligence.ai.persona_loader`: Persona loading call site.
     :mod:`babylon.engine.observers.schema_validator`: Observer-output call site.
 """
 

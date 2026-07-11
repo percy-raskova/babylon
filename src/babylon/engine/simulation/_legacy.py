@@ -78,7 +78,7 @@ class Simulation:
         >>> print(f"Worker wealth after 100 ticks: {sim.current_state.entities[worker.id].wealth}")
 
     With observers:
-        >>> from babylon.ai import NarrativeDirector
+        >>> from babylon.intelligence.ai import NarrativeDirector
         >>> director = NarrativeDirector()
         >>> sim = Simulation(state, config, observers=[director])
         >>> sim.run(10)

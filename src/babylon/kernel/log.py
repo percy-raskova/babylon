@@ -62,7 +62,7 @@ class JSONFormatter(logging.Formatter):
     Each log record becomes a single JSON object on one line.
 
     Output format:
-        {"ts":"2025-01-09T14:23:45.123Z","level":"ERROR","logger":"babylon.rag",...}
+        {"ts":"2025-01-09T14:23:45.123Z","level":"ERROR","logger":"babylon.intelligence.rag",...}
 
     Extra fields (tick, correlation_id, exception, etc.) are automatically
     included from the LogRecord's __dict__.

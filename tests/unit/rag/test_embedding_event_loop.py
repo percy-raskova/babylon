@@ -32,7 +32,7 @@ import pytest
 @pytest.fixture
 def mock_llm_config() -> MagicMock:
     """Mock LLMConfig to avoid needing real config."""
-    with patch("babylon.rag.embeddings.LLMConfig") as mock:
+    with patch("babylon.intelligence.rag.embeddings.LLMConfig") as mock:
         mock.validate_embeddings.return_value = None
         mock.get_model_dimensions.return_value = 768
         mock.BATCH_SIZE = 10
@@ -80,7 +80,7 @@ class TestEmbeddingManagerEventLoop:
         Creating asyncio.Semaphore in __init__ without a running event loop
         causes issues when asyncio.run() creates a new loop later.
         """
-        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
 
         manager = EmbeddingManager()
 
@@ -105,8 +105,8 @@ class TestEmbeddingManagerEventLoop:
         If the event loop bug exists, this will hang indefinitely.
         We use a timeout to detect the hang.
         """
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.chunker import DocumentChunk
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
 
         manager = EmbeddingManager()
         chunk = DocumentChunk(id="test", content="Test content for embedding")
@@ -163,8 +163,8 @@ class TestEmbeddingManagerEventLoop:
         Each asyncio.run() creates a new event loop. If the semaphore
         is bound to the first loop, subsequent calls will deadlock.
         """
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.chunker import DocumentChunk
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
 
         manager = EmbeddingManager()
 
@@ -200,8 +200,8 @@ class TestEmbeddingManagerEventLoop:
 
     def test_sync_embed_batch_completes_within_timeout(self) -> None:
         """Sync embed_batch() should complete within reasonable timeout."""
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.chunker import DocumentChunk
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
 
         manager = EmbeddingManager()
         chunks = [DocumentChunk(id=f"test{i}", content=f"Test content {i}") for i in range(5)]
@@ -237,7 +237,7 @@ class TestEmbeddingManagerSessionLifecycle:
         Creating session in __init__ and using it in asyncio.run() causes
         'attached to a different loop' errors.
         """
-        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
 
         manager = EmbeddingManager()
 
@@ -253,8 +253,8 @@ class TestEmbeddingManagerSessionLifecycle:
         Each asyncio.run() creates a new event loop. The session must
         either be recreated per loop or handle this gracefully.
         """
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.chunker import DocumentChunk
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
 
         manager = EmbeddingManager()
 
@@ -286,8 +286,8 @@ class TestRetrievalEventLoop:
 
     def test_retriever_query_sync_completes_within_timeout(self) -> None:
         """Retriever.query() sync wrapper should complete without hanging."""
-        from babylon.rag.embeddings import EmbeddingManager
-        from babylon.rag.retrieval import Retriever
+        from babylon.intelligence.rag.embeddings import EmbeddingManager
+        from babylon.intelligence.rag.retrieval import Retriever
 
         # Create mocks
         mock_vector_store = MagicMock()
@@ -331,7 +331,7 @@ class TestRagPipelineEventLoop:
 
     def test_rag_pipeline_query_sync_completes_within_timeout(self) -> None:
         """RagPipeline.query() sync wrapper should complete without hanging."""
-        from babylon.rag.rag_pipeline import RagConfig, RagPipeline
+        from babylon.intelligence.rag.rag_pipeline import RagConfig, RagPipeline
 
         # Mock vector store implementing VectorStoreProtocol
         mock_vector_store = MagicMock()
@@ -345,7 +345,9 @@ class TestRagPipelineEventLoop:
         )
 
         # Mock embedding generation
-        with patch("babylon.rag.embeddings.EmbeddingManager._generate_embedding_api") as mock_embed:
+        with patch(
+            "babylon.intelligence.rag.embeddings.EmbeddingManager._generate_embedding_api"
+        ) as mock_embed:
 
             async def mock_generate(_content: str) -> list[float]:
                 return [0.1] * 768

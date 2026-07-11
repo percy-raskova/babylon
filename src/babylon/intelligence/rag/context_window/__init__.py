@@ -1,9 +1,9 @@
 """Context window management for the RAG system."""
 
-from babylon.rag.context_window.config import ContextWindowConfig
-from babylon.rag.context_window.manager import ContextWindowManager
-from babylon.rag.context_window.token_counter import count_tokens
-from babylon.rag.exceptions import RagError
+from babylon.intelligence.rag.context_window.config import ContextWindowConfig
+from babylon.intelligence.rag.context_window.manager import ContextWindowManager
+from babylon.intelligence.rag.context_window.token_counter import count_tokens
+from babylon.intelligence.rag.exceptions import RagError
 
 # Backward compatibility aliases - all context window errors are now RagError
 ContextWindowError = RagError

@@ -14,7 +14,7 @@ Configuration class for the Context Window Management system.
 
 .. code-block:: python
 
-   from babylon.rag.context_window import ContextWindowConfig
+   from babylon.intelligence.rag.context_window import ContextWindowConfig
 
    class ContextWindowConfig:
        """Configuration for Context Window Management."""
@@ -165,7 +165,7 @@ Central class for managing the context window.
 
 .. code-block:: python
 
-   from babylon.rag.context_window import ContextWindowManager, ContextWindowConfig
+   from babylon.intelligence.rag.context_window import ContextWindowManager, ContextWindowConfig
    from babylon.metrics.collector import MetricsCollector
 
    # Initialize
@@ -270,7 +270,7 @@ Basic Content Management
 
 .. code-block:: python
 
-   from babylon.rag.context_window import ContextWindowManager, ContextWindowConfig
+   from babylon.intelligence.rag.context_window import ContextWindowManager, ContextWindowConfig
 
    # Create manager
    config = ContextWindowConfig(
@@ -302,7 +302,7 @@ Handling Capacity Errors
 
 .. code-block:: python
 
-   from babylon.rag.context_window import CapacityExceededError
+   from babylon.intelligence.rag.context_window import CapacityExceededError
 
    try:
        manager.add_content("large_doc", "..." * 10000, 30000, 0.5)

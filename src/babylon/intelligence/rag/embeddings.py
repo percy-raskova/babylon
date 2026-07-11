@@ -19,8 +19,8 @@ import backoff
 from ratelimit import limits, sleep_and_retry
 
 from babylon.config.llm_config import LLMConfig
+from babylon.intelligence.rag.exceptions import RagError
 from babylon.kernel.metrics import MetricsCollectorProtocol
-from babylon.rag.exceptions import RagError
 
 logger = logging.getLogger(__name__)
 

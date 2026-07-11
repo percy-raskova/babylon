@@ -23,7 +23,7 @@ import pytest
 from pydantic import ValidationError
 
 if TYPE_CHECKING:
-    from babylon.ai.judge import NarrativeCommissar
+    from babylon.intelligence.ai.judge import NarrativeCommissar
 
 
 # =============================================================================
@@ -40,8 +40,8 @@ def mock_json_response() -> str:
 @pytest.fixture
 def commissar_with_mock(mock_json_response: str) -> NarrativeCommissar:
     """NarrativeCommissar with MockLLM returning valid JSON."""
-    from babylon.ai import MockLLM
-    from babylon.ai.judge import NarrativeCommissar
+    from babylon.intelligence.ai import MockLLM
+    from babylon.intelligence.ai.judge import NarrativeCommissar
 
     mock_llm = MockLLM(responses=[mock_json_response])
     return NarrativeCommissar(llm=mock_llm)
@@ -58,31 +58,31 @@ class TestMetaphorFamilyEnum:
 
     def test_biological_value(self) -> None:
         """MetaphorFamily.BIOLOGICAL has value 'biological'."""
-        from babylon.ai.judge import MetaphorFamily
+        from babylon.intelligence.ai.judge import MetaphorFamily
 
         assert MetaphorFamily.BIOLOGICAL.value == "biological"
 
     def test_physics_value(self) -> None:
         """MetaphorFamily.PHYSICS has value 'physics'."""
-        from babylon.ai.judge import MetaphorFamily
+        from babylon.intelligence.ai.judge import MetaphorFamily
 
         assert MetaphorFamily.PHYSICS.value == "physics"
 
     def test_mechanical_value(self) -> None:
         """MetaphorFamily.MECHANICAL has value 'mechanical'."""
-        from babylon.ai.judge import MetaphorFamily
+        from babylon.intelligence.ai.judge import MetaphorFamily
 
         assert MetaphorFamily.MECHANICAL.value == "mechanical"
 
     def test_none_value(self) -> None:
         """MetaphorFamily.NONE has value 'none'."""
-        from babylon.ai.judge import MetaphorFamily
+        from babylon.intelligence.ai.judge import MetaphorFamily
 
         assert MetaphorFamily.NONE.value == "none"
 
     def test_invalid_family_raises(self) -> None:
         """Invalid string raises ValueError when converting to MetaphorFamily."""
-        from babylon.ai.judge import MetaphorFamily
+        from babylon.intelligence.ai.judge import MetaphorFamily
 
         with pytest.raises(ValueError):
             MetaphorFamily("invalid_family")
@@ -99,7 +99,7 @@ class TestJudgmentResultModel:
 
     def test_valid_judgment_result_construction(self) -> None:
         """JudgmentResult accepts valid values within bounds."""
-        from babylon.ai.judge import JudgmentResult, MetaphorFamily
+        from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 
         result = JudgmentResult(
             ominousness=7,
@@ -115,7 +115,7 @@ class TestJudgmentResultModel:
 
     def test_ominousness_below_minimum_raises(self) -> None:
         """ominousness < 1 raises ValidationError."""
-        from babylon.ai.judge import JudgmentResult, MetaphorFamily
+        from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 
         with pytest.raises(ValidationError) as exc_info:
             JudgmentResult(
@@ -131,7 +131,7 @@ class TestJudgmentResultModel:
 
     def test_ominousness_above_maximum_raises(self) -> None:
         """ominousness > 10 raises ValidationError."""
-        from babylon.ai.judge import JudgmentResult, MetaphorFamily
+        from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 
         with pytest.raises(ValidationError) as exc_info:
             JudgmentResult(
@@ -146,7 +146,7 @@ class TestJudgmentResultModel:
 
     def test_certainty_bounds_validation(self) -> None:
         """certainty must be 1-10, values outside raise ValidationError."""
-        from babylon.ai.judge import JudgmentResult, MetaphorFamily
+        from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 
         # Below minimum
         with pytest.raises(ValidationError):
@@ -168,7 +168,7 @@ class TestJudgmentResultModel:
 
     def test_drama_bounds_validation(self) -> None:
         """drama must be 1-10, values outside raise ValidationError."""
-        from babylon.ai.judge import JudgmentResult, MetaphorFamily
+        from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 
         # Below minimum
         with pytest.raises(ValidationError):
@@ -190,7 +190,7 @@ class TestJudgmentResultModel:
 
     def test_judgment_result_is_immutable(self) -> None:
         """JudgmentResult is frozen (immutable)."""
-        from babylon.ai.judge import JudgmentResult, MetaphorFamily
+        from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 
         result = JudgmentResult(
             ominousness=5,
@@ -215,8 +215,8 @@ class TestNarrativeCommissarProtocol:
 
     def test_commissar_has_name_property(self) -> None:
         """NarrativeCommissar has name property returning 'NarrativeCommissar'."""
-        from babylon.ai import MockLLM
-        from babylon.ai.judge import NarrativeCommissar
+        from babylon.intelligence.ai import MockLLM
+        from babylon.intelligence.ai.judge import NarrativeCommissar
 
         mock_llm = MockLLM()
         commissar = NarrativeCommissar(llm=mock_llm)
@@ -225,8 +225,8 @@ class TestNarrativeCommissarProtocol:
 
     def test_commissar_accepts_llm_provider(self) -> None:
         """NarrativeCommissar constructor takes LLMProvider."""
-        from babylon.ai import MockLLM
-        from babylon.ai.judge import NarrativeCommissar
+        from babylon.intelligence.ai import MockLLM
+        from babylon.intelligence.ai.judge import NarrativeCommissar
 
         mock_llm = MockLLM()
         # Should not raise
@@ -247,7 +247,7 @@ class TestNarrativeCommissarEvaluation:
         self, commissar_with_mock: NarrativeCommissar
     ) -> None:
         """evaluate() returns a JudgmentResult instance."""
-        from babylon.ai.judge import JudgmentResult
+        from babylon.intelligence.ai.judge import JudgmentResult
 
         result = commissar_with_mock.evaluate("The proletariat rises.")
 
@@ -261,7 +261,7 @@ class TestNarrativeCommissarEvaluation:
 
     def test_evaluate_parses_metaphor_family(self, commissar_with_mock: NarrativeCommissar) -> None:
         """evaluate() correctly extracts MetaphorFamily from LLM response."""
-        from babylon.ai.judge import MetaphorFamily
+        from babylon.intelligence.ai.judge import MetaphorFamily
 
         result = commissar_with_mock.evaluate("Test narrative text.")
 
@@ -269,8 +269,8 @@ class TestNarrativeCommissarEvaluation:
 
     def test_evaluate_passes_text_to_llm(self) -> None:
         """evaluate() passes the input text to the LLM provider."""
-        from babylon.ai import MockLLM
-        from babylon.ai.judge import NarrativeCommissar
+        from babylon.intelligence.ai import MockLLM
+        from babylon.intelligence.ai.judge import NarrativeCommissar
 
         json_response = '{"ominousness": 5, "certainty": 5, "drama": 5, "metaphor_family": "none"}'
         mock_llm = MockLLM(responses=[json_response])
@@ -285,8 +285,8 @@ class TestNarrativeCommissarEvaluation:
 
     def test_evaluate_uses_system_prompt(self) -> None:
         """evaluate() provides a system prompt to the LLM."""
-        from babylon.ai import MockLLM
-        from babylon.ai.judge import NarrativeCommissar
+        from babylon.intelligence.ai import MockLLM
+        from babylon.intelligence.ai.judge import NarrativeCommissar
 
         json_response = '{"ominousness": 5, "certainty": 5, "drama": 5, "metaphor_family": "none"}'
         mock_llm = MockLLM(responses=[json_response])
@@ -309,8 +309,8 @@ class TestJSONExtraction:
 
     def test_extracts_json_from_markdown_block(self) -> None:
         """Handles LLM response wrapped in ```json ... ``` block."""
-        from babylon.ai import MockLLM
-        from babylon.ai.judge import NarrativeCommissar
+        from babylon.intelligence.ai import MockLLM
+        from babylon.intelligence.ai.judge import NarrativeCommissar
 
         markdown_response = """```json
 {"ominousness": 3, "certainty": 9, "drama": 2, "metaphor_family": "physics"}
@@ -325,8 +325,8 @@ class TestJSONExtraction:
 
     def test_extracts_plain_json(self) -> None:
         """Handles raw JSON response without markdown."""
-        from babylon.ai import MockLLM
-        from babylon.ai.judge import NarrativeCommissar
+        from babylon.intelligence.ai import MockLLM
+        from babylon.intelligence.ai.judge import NarrativeCommissar
 
         plain_response = (
             '{"ominousness": 8, "certainty": 4, "drama": 9, "metaphor_family": "mechanical"}'
@@ -341,8 +341,8 @@ class TestJSONExtraction:
 
     def test_handles_json_with_whitespace(self) -> None:
         """Handles JSON with leading/trailing whitespace."""
-        from babylon.ai import MockLLM
-        from babylon.ai.judge import NarrativeCommissar
+        from babylon.intelligence.ai import MockLLM
+        from babylon.intelligence.ai.judge import NarrativeCommissar
 
         whitespace_response = """
 
@@ -365,22 +365,22 @@ class TestJSONExtraction:
 
 @pytest.mark.unit
 class TestJudgeModuleExports:
-    """Tests for module-level exports from babylon.ai."""
+    """Tests for module-level exports from babylon.intelligence.ai."""
 
     def test_narrative_commissar_exports_from_ai_module(self) -> None:
-        """NarrativeCommissar can be imported from babylon.ai."""
-        from babylon.ai import NarrativeCommissar
+        """NarrativeCommissar can be imported from babylon.intelligence.ai."""
+        from babylon.intelligence.ai import NarrativeCommissar
 
         assert NarrativeCommissar is not None
 
     def test_judgment_result_exports_from_ai_module(self) -> None:
-        """JudgmentResult can be imported from babylon.ai."""
-        from babylon.ai import JudgmentResult
+        """JudgmentResult can be imported from babylon.intelligence.ai."""
+        from babylon.intelligence.ai import JudgmentResult
 
         assert JudgmentResult is not None
 
     def test_metaphor_family_exports_from_ai_module(self) -> None:
-        """MetaphorFamily can be imported from babylon.ai."""
-        from babylon.ai import MetaphorFamily
+        """MetaphorFamily can be imported from babylon.intelligence.ai."""
+        from babylon.intelligence.ai import MetaphorFamily
 
         assert MetaphorFamily is not None

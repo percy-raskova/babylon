@@ -164,7 +164,7 @@ Basic Usage
 
 .. code-block:: python
 
-   from babylon.rag.context_window import ContextWindowManager, ContextWindowConfig
+   from babylon.intelligence.rag.context_window import ContextWindowManager, ContextWindowConfig
    from babylon.metrics.collector import MetricsCollector
 
    # Create configuration

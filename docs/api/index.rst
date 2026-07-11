@@ -50,7 +50,7 @@ AI & Language Models
    :toctree: _autosummary
    :recursive:
 
-   babylon.ai
+   babylon.intelligence.ai
 
 Configuration
 ^^^^^^^^^^^^^
@@ -77,7 +77,7 @@ RAG System
    :toctree: _autosummary
    :recursive:
 
-   babylon.rag
+   babylon.intelligence.rag
 
 Utilities
 ^^^^^^^^^

@@ -23,16 +23,16 @@ Sprint 4.2: Added Persona system for customizable narrative voices.
 Sprint 4.3: Added NarrativeCommissar for automated narrative evaluation.
 """
 
-from babylon.ai.director import NarrativeDirector
-from babylon.ai.judge import JudgmentResult, MetaphorFamily, NarrativeCommissar
-from babylon.ai.llm_provider import DeepSeekClient, LLMProvider, MockLLM
-from babylon.ai.persona import Persona, VoiceConfig
-from babylon.ai.persona_loader import (
+from babylon.intelligence.ai.director import NarrativeDirector
+from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily, NarrativeCommissar
+from babylon.intelligence.ai.llm_provider import DeepSeekClient, LLMProvider, MockLLM
+from babylon.intelligence.ai.persona import Persona, VoiceConfig
+from babylon.intelligence.ai.persona_loader import (
     PersonaLoadError,
     load_default_persona,
     load_persona,
 )
-from babylon.ai.prompt_builder import DialecticalPromptBuilder
+from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
 __all__ = [
     "NarrativeDirector",

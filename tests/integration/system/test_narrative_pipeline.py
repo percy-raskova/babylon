@@ -28,8 +28,8 @@ import pytest
 if TYPE_CHECKING:
     pass
 
-from babylon.ai.director import NarrativeDirector
-from babylon.ai.llm_provider import MockLLM
+from babylon.intelligence.ai.director import NarrativeDirector
+from babylon.intelligence.ai.llm_provider import MockLLM
 from babylon.models import (
     SimulationConfig,
     SocialClass,
@@ -1107,7 +1107,7 @@ class TestPersonaIntegration:
         When a persona is provided, the NarrativeDirector should use
         the persona's render_system_prompt() output as the LLM system prompt.
         """
-        from babylon.ai import load_default_persona
+        from babylon.intelligence.ai import load_default_persona
 
         # Arrange - load Percy Raskova persona
         percy = load_default_persona()
@@ -1175,7 +1175,7 @@ class TestPersonaIntegration:
         The persona's behavioral directives should be part of the
         system prompt to guide LLM output style.
         """
-        from babylon.ai import load_default_persona
+        from babylon.intelligence.ai import load_default_persona
 
         # Arrange
         percy = load_default_persona()
@@ -1234,7 +1234,7 @@ class TestPersonaIntegration:
 
         The persona's thematic obsessions should guide the narrative focus.
         """
-        from babylon.ai import load_default_persona
+        from babylon.intelligence.ai import load_default_persona
 
         # Arrange
         percy = load_default_persona()
@@ -1352,7 +1352,7 @@ class TestPersonaIntegration:
         Economic crisis events should still use the persona's voice
         and analytical style.
         """
-        from babylon.ai import load_default_persona
+        from babylon.intelligence.ai import load_default_persona
         from babylon.models.events import CrisisEvent
 
         # Arrange
@@ -1414,7 +1414,7 @@ class TestPersonaIntegration:
         Phase transitions (gaseous -> liquid -> solid) are core to Percy's
         analytical framework and should be narrated in her voice.
         """
-        from babylon.ai import load_default_persona
+        from babylon.intelligence.ai import load_default_persona
         from babylon.models.events import PhaseTransitionEvent
 
         # Arrange
@@ -1479,7 +1479,7 @@ class TestPersonaIntegration:
         This end-to-end test runs multiple ticks with different events
         and verifies the persona voice is consistent throughout.
         """
-        from babylon.ai import load_default_persona
+        from babylon.intelligence.ai import load_default_persona
         from babylon.models.events import CrisisEvent, UprisingEvent
 
         # Arrange - Full simulation scenario

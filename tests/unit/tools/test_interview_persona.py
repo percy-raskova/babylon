@@ -8,10 +8,10 @@ Tests use MockLLM to verify the full flow without external dependencies.
 
 from __future__ import annotations
 
-from babylon.ai.director import NarrativeDirector
-from babylon.ai.llm_provider import MockLLM
-from babylon.ai.persona_loader import load_default_persona
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
+from babylon.intelligence.ai.director import NarrativeDirector
+from babylon.intelligence.ai.llm_provider import MockLLM
+from babylon.intelligence.ai.persona_loader import load_default_persona
 from babylon.models.entities.relationship import Relationship
 from babylon.models.enums import EdgeType, EventType
 from babylon.models.events import CrisisEvent, ExtractionEvent, PhaseTransitionEvent

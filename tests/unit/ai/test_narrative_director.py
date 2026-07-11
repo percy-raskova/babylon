@@ -109,15 +109,15 @@ class TestNarrativeDirectorProtocol:
 
     def test_narrative_director_satisfies_observer_protocol(self) -> None:
         """NarrativeDirector satisfies SimulationObserver protocol."""
-        from babylon.ai.director import NarrativeDirector
         from babylon.engine.observer import SimulationObserver
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
         assert isinstance(director, SimulationObserver)
 
     def test_narrative_director_has_name_property(self) -> None:
         """NarrativeDirector has name property for identification."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
         assert director.name == "NarrativeDirector"
@@ -134,14 +134,14 @@ class TestNarrativeDirectorConfig:
 
     def test_narrative_director_init_default_no_llm(self) -> None:
         """NarrativeDirector defaults to no LLM usage."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
         assert director.use_llm is False
 
     def test_narrative_director_init_with_use_llm_flag(self) -> None:
         """NarrativeDirector accepts use_llm flag."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(use_llm=True)
         assert director.use_llm is True
@@ -164,7 +164,7 @@ class TestNarrativeDirectorEvents:
 
         Sprint 4.1: Updated to use typed events.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -207,7 +207,7 @@ class TestNarrativeDirectorEvents:
         Sprint 4.1: Updated to use typed ExtractionEvent and check
         for formatted event text in logs.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -244,7 +244,7 @@ class TestNarrativeDirectorEvents:
 
         Sprint 4.1: Updated to use typed events.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -280,7 +280,7 @@ class TestNarrativeDirectorLifecycle:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """on_simulation_start logs initialization."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -296,7 +296,7 @@ class TestNarrativeDirectorLifecycle:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """on_simulation_end logs summary."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -329,7 +329,7 @@ class TestNarrativeDirectorErrorHandling:
         initial_state: WorldState,
     ) -> None:
         """on_tick handles internal errors gracefully (no exception propagation)."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -357,8 +357,8 @@ class TestNarrativeDirectorIntegration:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """NarrativeDirector integrated with Simulation receives all events."""
-        from babylon.ai.director import NarrativeDirector
         from babylon.engine.simulation import Simulation
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
         sim = Simulation(initial_state, config, observers=[director])
@@ -407,7 +407,7 @@ class TestNarrativeDirectorPerTickEvents:
         Regression test: Verifies the fix for negative event count bug.
         Previous code gave negative count when prev had more events than new.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -442,7 +442,7 @@ class TestNarrativeDirectorPerTickEvents:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """All events in new_state should be processed as new events."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -490,7 +490,7 @@ class TestNarrativeDirectorPerTickEvents:
         prev_state.events had length 3, new_state.events had length 1.
         Old code: 1 - 3 = -2, then sliced [-(-2):] = last 2 events.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -545,7 +545,7 @@ class TestNarrativeDirectorDualNarratives:
         initial_state: WorldState,
     ) -> None:
         """Significant events trigger dual narrative generation."""
-        from babylon.ai import MockLLM, NarrativeDirector
+        from babylon.intelligence.ai import MockLLM, NarrativeDirector
         from babylon.models.events import SparkEvent
 
         llm = MockLLM(responses=["Corporate view", "Liberated view"])
@@ -578,7 +578,7 @@ class TestNarrativeDirectorDualNarratives:
         initial_state: WorldState,
     ) -> None:
         """Non-significant events don't trigger LLM calls for dual narratives."""
-        from babylon.ai import MockLLM, NarrativeDirector
+        from babylon.intelligence.ai import MockLLM, NarrativeDirector
 
         llm = MockLLM(responses=["Should not be called"])
         director = NarrativeDirector(use_llm=True, llm=llm)
@@ -605,7 +605,7 @@ class TestNarrativeDirectorDualNarratives:
 
     def test_significant_event_types_constant(self) -> None:
         """SIGNIFICANT_EVENT_TYPES contains expected event types."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
         from babylon.models.enums import EventType
 
         expected = frozenset(
@@ -632,7 +632,7 @@ class TestNarrativeDirectorDualNarratives:
         for RAG retrieval. ENDGAME_REACHED needs a mapping to enable historical
         context retrieval for endgame narratives.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
         from babylon.models.enums import EventType
 
         assert EventType.ENDGAME_REACHED in NarrativeDirector.SEMANTIC_MAP
@@ -645,7 +645,7 @@ class TestNarrativeDirectorDualNarratives:
         initial_state: WorldState,
     ) -> None:
         """Dual narratives contain both corporate and liberated text."""
-        from babylon.ai import MockLLM, NarrativeDirector
+        from babylon.intelligence.ai import MockLLM, NarrativeDirector
         from babylon.models.events import UprisingEvent
 
         llm = MockLLM(
@@ -686,7 +686,7 @@ class TestNarrativeDirectorDualNarratives:
         corporate (status quo) and liberated (revolutionary) perspectives
         for the game's conclusion.
         """
-        from babylon.ai import MockLLM, NarrativeDirector
+        from babylon.intelligence.ai import MockLLM, NarrativeDirector
         from babylon.models.enums import GameOutcome
         from babylon.models.events import EndgameEvent
 
@@ -723,7 +723,7 @@ class TestNarrativeDirectorDualNarratives:
         contrasting perspectives. When no LLM is provided, the system
         correctly skips dual narrative generation entirely.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
         from babylon.models.events import RuptureEvent
 
         # No LLM provided, use_llm=True but _llm=None
@@ -748,7 +748,7 @@ class TestNarrativeDirectorDualNarratives:
         Phase 2 Dashboard: SUPERWAGE_CRISIS and TERMINAL_DECISION events
         should trigger narrative generation for the narrative feed.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
         from babylon.models.enums import EventType
 
         # Terminal Crisis events should be significant

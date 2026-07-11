@@ -134,7 +134,7 @@ class TestSystemPrompt:
 
     def test_build_system_prompt_returns_marxist_identity(self) -> None:
         """System prompt establishes Marxist game master identity."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         prompt = builder.build_system_prompt()
@@ -144,7 +144,7 @@ class TestSystemPrompt:
 
     def test_system_prompt_includes_dialectical_materialism(self) -> None:
         """System prompt references dialectical materialism analysis."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         prompt = builder.build_system_prompt()
@@ -153,7 +153,7 @@ class TestSystemPrompt:
 
     def test_system_prompt_includes_class_analysis(self) -> None:
         """System prompt mentions class interests and power relations."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         prompt = builder.build_system_prompt()
@@ -180,7 +180,7 @@ class TestContextBlock:
         state_with_entities: WorldState,
     ) -> None:
         """Context block includes material conditions section."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
 
@@ -208,7 +208,7 @@ class TestContextBlock:
         state_with_entities: WorldState,
     ) -> None:
         """Context block includes RAG-retrieved historical context."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         rag_docs = [
@@ -242,7 +242,7 @@ class TestContextBlock:
 
         Sprint 4.1: Updated to use typed events - check for event type info.
         """
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
 
@@ -279,7 +279,7 @@ class TestContextBlock:
         EndgameEvent should appear in the RECENT EVENTS section with the
         outcome type clearly displayed for AI narrative generation.
         """
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
         from babylon.models.enums import GameOutcome
         from babylon.models.events import EndgameEvent
 
@@ -304,7 +304,7 @@ class TestContextBlock:
         state_with_entities: WorldState,
     ) -> None:
         """Context block handles empty RAG results gracefully."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
 
@@ -332,7 +332,7 @@ class TestContextBlock:
         state_with_entities: WorldState,
     ) -> None:
         """Context block handles empty events list gracefully."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         context = builder.build_context_block(
@@ -361,7 +361,7 @@ class TestTensionCalculation:
         state_with_high_tension: WorldState,
     ) -> None:
         """Tension calculation aggregates from all relationships."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         # The state has tension=0.8, which should be "High"
@@ -377,7 +377,7 @@ class TestTensionCalculation:
         state_with_entities: WorldState,
     ) -> None:
         """Tension calculation handles state with no relationships."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         # state_with_entities has empty relationships
@@ -392,7 +392,7 @@ class TestTensionCalculation:
         owner: SocialClass,
     ) -> None:
         """Tension calculation returns Medium for mid-range tension."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         # Create medium tension relationship (0.4-0.7 range)
         medium_edge = Relationship(
@@ -418,7 +418,7 @@ class TestTensionCalculation:
         state_with_low_tension: WorldState,
     ) -> None:
         """Tension calculation returns Low for low tension."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         # state_with_low_tension has tension=0.2
@@ -442,7 +442,7 @@ class TestEventFormatting:
 
     def test_format_endgame_event_contains_outcome(self) -> None:
         """_format_event(EndgameEvent) includes outcome in output."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
         from babylon.models.enums import GameOutcome
         from babylon.models.events import EndgameEvent
 
@@ -460,7 +460,7 @@ class TestEventFormatting:
 
     def test_format_endgame_event_ecological_collapse(self) -> None:
         """_format_event handles ECOLOGICAL_COLLAPSE outcome."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
         from babylon.models.enums import GameOutcome
         from babylon.models.events import EndgameEvent
 
@@ -477,7 +477,7 @@ class TestEventFormatting:
 
     def test_format_endgame_event_fascist_consolidation(self) -> None:
         """_format_event handles FASCIST_CONSOLIDATION outcome."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
         from babylon.models.enums import GameOutcome
         from babylon.models.events import EndgameEvent
 

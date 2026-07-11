@@ -16,7 +16,7 @@ LLMProvider protocol for swappable LLM backends (MockLLM for testing,
 DeepSeekClient for production).
 
 Example:
-    >>> from babylon.ai import MockLLM, NarrativeCommissar
+    >>> from babylon.intelligence.ai import MockLLM, NarrativeCommissar
     >>> mock = MockLLM(responses=['{"ominousness": 7, "certainty": 8, "drama": 6, "metaphor_family": "biological"}'])
     >>> commissar = NarrativeCommissar(llm=mock)
     >>> result = commissar.evaluate("The empire crumbles...")
@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any, Final
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
-    from babylon.ai.llm_provider import LLMProvider
+    from babylon.intelligence.ai.llm_provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class JudgmentResult(BaseModel):
         metaphor_family: Dominant metaphorical domain used.
 
     Example:
-        >>> from babylon.ai.judge import JudgmentResult, MetaphorFamily
+        >>> from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
         >>> result = JudgmentResult(
         ...     ominousness=8,
         ...     certainty=9,
@@ -134,8 +134,8 @@ class NarrativeCommissar:
         name: Identifier for logging ("NarrativeCommissar").
 
     Example:
-        >>> from babylon.ai import MockLLM
-        >>> from babylon.ai.judge import NarrativeCommissar
+        >>> from babylon.intelligence.ai import MockLLM
+        >>> from babylon.intelligence.ai.judge import NarrativeCommissar
         >>> mock = MockLLM(responses=['{"ominousness": 5, "certainty": 5, "drama": 5, "metaphor_family": "none"}'])
         >>> commissar = NarrativeCommissar(llm=mock)
         >>> result = commissar.evaluate("The workers unite.")
@@ -179,8 +179,8 @@ class NarrativeCommissar:
             pydantic.ValidationError: If JSON values are out of bounds.
 
         Example:
-            >>> from babylon.ai import MockLLM
-            >>> from babylon.ai.judge import NarrativeCommissar
+            >>> from babylon.intelligence.ai import MockLLM
+            >>> from babylon.intelligence.ai.judge import NarrativeCommissar
             >>> mock = MockLLM(responses=['{"ominousness": 7, "certainty": 8, "drama": 6, "metaphor_family": "biological"}'])
             >>> commissar = NarrativeCommissar(llm=mock)
             >>> result = commissar.evaluate("The crisis deepens.")

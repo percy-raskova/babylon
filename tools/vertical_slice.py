@@ -35,17 +35,17 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from babylon.ai.director import NarrativeDirector
-from babylon.ai.llm_provider import DeepSeekClient, MockLLM
-from babylon.ai.prompt_builder import DialecticalPromptBuilder
 from babylon.config.llm_config import LLMConfig
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
+from babylon.intelligence.ai.director import NarrativeDirector
+from babylon.intelligence.ai.llm_provider import DeepSeekClient, MockLLM
+from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
 if TYPE_CHECKING:
-    from babylon.ai.llm_provider import LLMProvider
+    from babylon.intelligence.ai.llm_provider import LLMProvider
+    from babylon.intelligence.rag.rag_pipeline import RagPipeline
     from babylon.models.world_state import WorldState
-    from babylon.rag.rag_pipeline import RagPipeline
 
 # Constants
 MAX_TICKS: int = 10
@@ -480,8 +480,8 @@ def setup_logging(verbose: bool, logger: StructuredLogger) -> None:
 
     # Enable specific loggers for verbose mode
     if verbose:
-        logging.getLogger("babylon.ai").setLevel(logging.DEBUG)
-        logging.getLogger("babylon.rag").setLevel(logging.DEBUG)
+        logging.getLogger("babylon.intelligence.ai").setLevel(logging.DEBUG)
+        logging.getLogger("babylon.intelligence.rag").setLevel(logging.DEBUG)
         logging.getLogger("babylon.engine").setLevel(logging.DEBUG)
 
     logger.log_config("logging", {"level": level, "verbose": verbose})

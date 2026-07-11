@@ -35,7 +35,7 @@ from babylon.models.events import (
 )
 
 if TYPE_CHECKING:
-    from babylon.ai.persona import Persona
+    from babylon.intelligence.ai.persona import Persona
     from babylon.models.world_state import WorldState
 
 
@@ -59,7 +59,7 @@ class DialecticalPromptBuilder:
         >>> context = builder.build_context_block(state, rag_docs, events)
         >>>
         >>> # With persona (Sprint 4.2)
-        >>> from babylon.ai.persona_loader import load_default_persona
+        >>> from babylon.intelligence.ai.persona_loader import load_default_persona
         >>> percy = load_default_persona()
         >>> builder = DialecticalPromptBuilder(persona=percy)
         >>> system_prompt = builder.build_system_prompt()

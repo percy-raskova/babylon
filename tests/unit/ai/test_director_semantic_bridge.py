@@ -135,14 +135,14 @@ class TestSemanticMapExists:
 
     def test_semantic_map_is_class_constant(self) -> None:
         """NarrativeDirector has SEMANTIC_MAP class constant."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         assert hasattr(NarrativeDirector, "SEMANTIC_MAP")
         assert isinstance(NarrativeDirector.SEMANTIC_MAP, dict)
 
     def test_semantic_map_contains_surplus_extraction(self) -> None:
         """SEMANTIC_MAP contains SURPLUS_EXTRACTION mapping."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         assert EventType.SURPLUS_EXTRACTION in NarrativeDirector.SEMANTIC_MAP
         query = NarrativeDirector.SEMANTIC_MAP[EventType.SURPLUS_EXTRACTION]
@@ -150,7 +150,7 @@ class TestSemanticMapExists:
 
     def test_semantic_map_contains_imperial_subsidy(self) -> None:
         """SEMANTIC_MAP contains IMPERIAL_SUBSIDY mapping."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         assert EventType.IMPERIAL_SUBSIDY in NarrativeDirector.SEMANTIC_MAP
         query = NarrativeDirector.SEMANTIC_MAP[EventType.IMPERIAL_SUBSIDY]
@@ -158,7 +158,7 @@ class TestSemanticMapExists:
 
     def test_semantic_map_contains_economic_crisis(self) -> None:
         """SEMANTIC_MAP contains ECONOMIC_CRISIS mapping."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         assert EventType.ECONOMIC_CRISIS in NarrativeDirector.SEMANTIC_MAP
         query = NarrativeDirector.SEMANTIC_MAP[EventType.ECONOMIC_CRISIS]
@@ -169,7 +169,7 @@ class TestSemanticMapExists:
 
         Sprint 4.1: SOLIDARITY_AWAKENING renamed to CONSCIOUSNESS_TRANSMISSION.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         assert EventType.CONSCIOUSNESS_TRANSMISSION in NarrativeDirector.SEMANTIC_MAP
         query = NarrativeDirector.SEMANTIC_MAP[EventType.CONSCIOUSNESS_TRANSMISSION]
@@ -177,7 +177,7 @@ class TestSemanticMapExists:
 
     def test_semantic_map_contains_mass_awakening(self) -> None:
         """SEMANTIC_MAP contains MASS_AWAKENING mapping."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         assert EventType.MASS_AWAKENING in NarrativeDirector.SEMANTIC_MAP
         query = NarrativeDirector.SEMANTIC_MAP[EventType.MASS_AWAKENING]
@@ -188,7 +188,7 @@ class TestSemanticMapExists:
 
         Sprint 4.1: Critical change from string keys to EventType enum.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         for key in NarrativeDirector.SEMANTIC_MAP:
             assert isinstance(key, EventType), f"Key {key} should be EventType, not {type(key)}"
@@ -212,7 +212,7 @@ class TestSingleEventTranslation:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """ExtractionEvent is translated to surplus value theory query."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -248,7 +248,7 @@ class TestSingleEventTranslation:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """SubsidyEvent is translated to repression theory query."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -281,7 +281,7 @@ class TestSingleEventTranslation:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """CrisisEvent is translated to crisis theory query."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -324,7 +324,7 @@ class TestSemanticQueryDeduplication:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """Multiple events with same type produce single query term."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -367,7 +367,7 @@ class TestMultipleEventTypesCombination:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """Multiple different event types produce combined query."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -408,7 +408,7 @@ class TestMultipleEventTypesCombination:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """Three different event types produce combined query with all terms."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -471,7 +471,7 @@ class TestSemanticFallback:
         Sprint 4.1: TransmissionEvent is in SEMANTIC_MAP, so using
         SOLIDARITY_SPIKE which might not be mapped to test fallback.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
         from babylon.models.events import SolidaritySpikeEvent
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
@@ -508,7 +508,7 @@ class TestSemanticFallback:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """Empty events list skips RAG query entirely."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -526,7 +526,7 @@ class TestSemanticFallback:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """Mixed mapped/unmapped events uses mapped query translations."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
         from babylon.models.events import SolidaritySpikeEvent
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)

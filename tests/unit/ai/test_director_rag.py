@@ -137,7 +137,7 @@ def mock_rag_pipeline() -> MagicMock:
 @pytest.fixture
 def mock_prompt_builder() -> MagicMock:
     """Create mock DialecticalPromptBuilder."""
-    from babylon.ai.prompt_builder import DialecticalPromptBuilder
+    from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
     mock = MagicMock(spec=DialecticalPromptBuilder)
     mock.build_system_prompt.return_value = "System prompt"
@@ -159,7 +159,7 @@ class TestDirectorRAGConstructor:
         mock_rag_pipeline: MagicMock,
     ) -> None:
         """NarrativeDirector accepts optional RAG pipeline."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -167,7 +167,7 @@ class TestDirectorRAGConstructor:
 
     def test_director_works_without_rag_pipeline(self) -> None:
         """NarrativeDirector works without RAG pipeline (backward compat)."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
@@ -178,7 +178,7 @@ class TestDirectorRAGConstructor:
         mock_prompt_builder: MagicMock,
     ) -> None:
         """NarrativeDirector accepts custom prompt builder."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(prompt_builder=mock_prompt_builder)
 
@@ -188,8 +188,8 @@ class TestDirectorRAGConstructor:
 
     def test_director_creates_default_prompt_builder(self) -> None:
         """NarrativeDirector creates default prompt builder if not provided."""
-        from babylon.ai.director import NarrativeDirector
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         director = NarrativeDirector()
 
@@ -214,7 +214,7 @@ class TestDirectorRAGQueryBehavior:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -250,7 +250,7 @@ class TestDirectorRAGQueryBehavior:
         Note: WorldState.events is per-tick (not cumulative), so "no events"
         means new_state.events is empty.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -282,7 +282,7 @@ class TestDirectorRAGQueryBehavior:
         SURPLUS_EXTRACTION into theoretical queries like 'surplus value'.
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -322,7 +322,7 @@ class TestDirectorRAGQueryBehavior:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
@@ -361,7 +361,7 @@ class TestDirectorRAGQueryBehavior:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(
             rag_pipeline=mock_rag_pipeline,
@@ -415,7 +415,7 @@ class TestDirectorRAGErrorHandling:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         mock_rag = MagicMock()
         mock_rag.query.side_effect = Exception("RAG service unavailable")
@@ -450,7 +450,7 @@ class TestDirectorRAGErrorHandling:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         mock_rag = MagicMock()
         mock_rag.query.side_effect = Exception("Connection timeout")
@@ -487,7 +487,7 @@ class TestDirectorRAGErrorHandling:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         mock_rag = MagicMock()
         mock_rag.query.side_effect = TimeoutError("Query timed out")
@@ -532,8 +532,8 @@ class TestDirectorFullContext:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         # Use real prompt builder to test full assembly
         real_builder = DialecticalPromptBuilder()
@@ -575,7 +575,7 @@ class TestDirectorFullContext:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector(
             rag_pipeline=mock_rag_pipeline,
@@ -614,7 +614,7 @@ class TestDirectorFullContext:
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         director = NarrativeDirector()  # No RAG
 

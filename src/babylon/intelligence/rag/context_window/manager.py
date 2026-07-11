@@ -13,7 +13,7 @@ The manager is designed for high-throughput scenarios where context must
 be continuously optimized as new content arrives and old content ages.
 
 Example:
-    >>> from babylon.rag.context_window import ContextWindowManager
+    >>> from babylon.intelligence.rag.context_window import ContextWindowManager
     >>> manager = ContextWindowManager()
     >>> manager.add_content("key1", "Some text content", importance=0.8)
     >>> manager.current_usage
@@ -26,9 +26,9 @@ from datetime import datetime
 from heapq import heappop, heappush
 from typing import Any
 
+from babylon.intelligence.rag.context_window.config import ContextWindowConfig
+from babylon.intelligence.rag.exceptions import RagError
 from babylon.metrics.collector import MetricsCollector
-from babylon.rag.context_window.config import ContextWindowConfig
-from babylon.rag.exceptions import RagError
 
 # Backward compatibility aliases for context window errors
 CapacityExceededError = RagError

@@ -21,7 +21,7 @@ Usage:
     Basic usage with the main pipeline:
 
     ```python
-    from babylon.rag import RagPipeline, RagConfig
+    from babylon.intelligence.rag import RagPipeline, RagConfig
     from babylon.persistence.pgvector_store import PgVectorStore
 
     # Initialize with a vector store backend
@@ -42,7 +42,7 @@ Usage:
     Or use individual components:
 
     ```python
-    from babylon.rag import DocumentProcessor, EmbeddingManager
+    from babylon.intelligence.rag import DocumentProcessor, EmbeddingManager
 
     # Process documents
     processor = DocumentProcessor()

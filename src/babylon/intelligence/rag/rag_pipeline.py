@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.rag.chunker import DocumentProcessor
-from babylon.rag.embeddings import EmbeddingManager
-from babylon.rag.exceptions import RagError
-from babylon.rag.retrieval import QueryResponse, Retriever
+from babylon.intelligence.rag.chunker import DocumentProcessor
+from babylon.intelligence.rag.embeddings import EmbeddingManager
+from babylon.intelligence.rag.exceptions import RagError
+from babylon.intelligence.rag.retrieval import QueryResponse, Retriever
 
 if TYPE_CHECKING:
     from babylon.persistence.protocols import VectorStoreProtocol

@@ -33,10 +33,10 @@ from typing import TextIO
 
 from dotenv import load_dotenv
 
-from babylon.ai.director import NarrativeDirector
-from babylon.ai.llm_provider import DeepSeekClient
-from babylon.ai.persona_loader import PersonaLoadError, load_default_persona
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
+from babylon.intelligence.ai.director import NarrativeDirector
+from babylon.intelligence.ai.llm_provider import DeepSeekClient
+from babylon.intelligence.ai.persona_loader import PersonaLoadError, load_default_persona
 from babylon.models.events import CrisisEvent, ExtractionEvent, PhaseTransitionEvent
 from babylon.models.world_state import WorldState
 

@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from babylon.ai.director import NarrativeDirector
     from babylon.engine.observers.metrics import TickStateRecorder
+    from babylon.intelligence.ai.director import NarrativeDirector
     from babylon.models.config import SimulationConfig
     from babylon.models.world_state import WorldState
 

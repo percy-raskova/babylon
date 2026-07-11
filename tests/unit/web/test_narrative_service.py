@@ -4,7 +4,7 @@ Constitution II.5 (AI narrates, never adjudicates) + III.6 (model pinning)
 + III.11 (loud failure, no fabricated values).
 
 No live LLM calls anywhere in this file — the provider is always a mock
-(``babylon.ai.llm_provider.MockLLM`` for the DRY-reuse happy path, or
+(``babylon.intelligence.ai.llm_provider.MockLLM`` for the DRY-reuse happy path, or
 ``MagicMock(spec=LLMProvider)`` for the degradation path per tests/README.md).
 """
 
@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.ai.llm_provider import LLMProvider, MockLLM
+from babylon.intelligence.ai.llm_provider import LLMProvider, MockLLM
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole, WorldState
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.events import TransmissionEvent, UprisingEvent

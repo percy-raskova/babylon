@@ -2,7 +2,7 @@
 
 This module tests the exception hierarchy defined in:
 - babylon.kernel.exceptions (core hierarchy)
-- babylon.rag.exceptions (RagError + aliases)
+- babylon.intelligence.rag.exceptions (RagError + aliases)
 - babylon.engine.history.io (CheckpointIOError + children)
 
 The tests verify:
@@ -43,7 +43,7 @@ class TestExceptionHierarchy:
             "babylon.kernel.exceptions.TopologyError",
             "babylon.kernel.exceptions.ObserverError",
             "babylon.kernel.exceptions.LLMError",
-            "babylon.rag.exceptions.RagError",
+            "babylon.intelligence.rag.exceptions.RagError",
         ],
     )
     def test_all_exceptions_inherit_from_babylon_error(self, exception_class_path: str) -> None:
@@ -93,8 +93,8 @@ class TestExceptionHierarchy:
 
     def test_rag_error_inherits_from_observer_error(self) -> None:
         """RagError (from rag.exceptions) is a child of ObserverError."""
+        from babylon.intelligence.rag.exceptions import RagError
         from babylon.kernel.exceptions import ObserverError
-        from babylon.rag.exceptions import RagError
 
         assert issubclass(RagError, ObserverError)
 
@@ -155,7 +155,7 @@ class TestDefaultErrorCodes:
             ("babylon.kernel.exceptions.TopologyError", "TOP_001"),
             ("babylon.kernel.exceptions.ObserverError", "OBS_001"),
             ("babylon.kernel.exceptions.LLMError", "LLM_001"),
-            ("babylon.rag.exceptions.RagError", "RAG_001"),
+            ("babylon.intelligence.rag.exceptions.RagError", "RAG_001"),
         ],
     )
     def test_default_error_code(self, exception_import_path: str, expected_code: str) -> None:
@@ -217,7 +217,7 @@ class TestCustomErrorCodes:
             "babylon.kernel.exceptions.TopologyError",
             "babylon.kernel.exceptions.ObserverError",
             "babylon.kernel.exceptions.LLMError",
-            "babylon.rag.exceptions.RagError",
+            "babylon.intelligence.rag.exceptions.RagError",
         ],
     )
     def test_custom_error_code_accepted(self, exception_import_path: str) -> None:
@@ -416,10 +416,10 @@ class TestBackwardsCompatibilityAliases:
     )
     def test_rag_aliases_are_rag_error(self, alias_name: str) -> None:
         """All RAG exception aliases point to RagError."""
-        from babylon import rag
+        from babylon.intelligence import rag
 
         alias = getattr(rag.exceptions, alias_name)
-        from babylon.rag.exceptions import RagError
+        from babylon.intelligence.rag.exceptions import RagError
 
         assert alias is RagError
 
@@ -437,8 +437,8 @@ class TestBackwardsCompatibilityAliases:
     )
     def test_context_window_aliases_are_rag_error(self, alias_name: str) -> None:
         """All context window exception aliases point to RagError."""
-        from babylon.rag import context_window
-        from babylon.rag.exceptions import RagError
+        from babylon.intelligence.rag import context_window
+        from babylon.intelligence.rag.exceptions import RagError
 
         alias = getattr(context_window, alias_name)
         assert alias is RagError
@@ -455,6 +455,7 @@ class TestExceptionPropagation:
 
     def test_except_babylon_error_catches_all_children(self) -> None:
         """except BabylonError catches all exceptions in the hierarchy."""
+        from babylon.intelligence.rag.exceptions import RagError
         from babylon.kernel.exceptions import (
             BabylonError,
             ConfigurationError,
@@ -467,7 +468,6 @@ class TestExceptionPropagation:
             TopologyError,
             ValidationError,
         )
-        from babylon.rag.exceptions import RagError
 
         exception_classes = [
             InfrastructureError,
@@ -516,8 +516,8 @@ class TestExceptionPropagation:
 
     def test_except_observer_error_catches_llm_and_rag(self) -> None:
         """except ObserverError catches LLMError and RagError."""
+        from babylon.intelligence.rag.exceptions import RagError
         from babylon.kernel.exceptions import LLMError, ObserverError
-        from babylon.rag.exceptions import RagError
 
         # Test LLMError
         caught_llm = False
@@ -637,8 +637,8 @@ class TestImportPaths:
         )
 
     def test_import_from_rag_exceptions(self) -> None:
-        """RagError and aliases can be imported from babylon.rag.exceptions."""
-        from babylon.rag.exceptions import (
+        """RagError and aliases can be imported from babylon.intelligence.rag.exceptions."""
+        from babylon.intelligence.rag.exceptions import (
             CacheError,
             ChunkingError,
             CorruptStateError,

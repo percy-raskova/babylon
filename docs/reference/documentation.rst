@@ -327,7 +327,7 @@ The autosummary extension generates stub files in:
 .. code-block:: text
 
    docs/api/_autosummary/
-   ├── babylon.ai.rst
+   ├── babylon.intelligence.ai.rst
    ├── babylon.config.rst
    ├── babylon.engine.rst
    ├── babylon.models.rst

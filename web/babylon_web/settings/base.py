@@ -277,7 +277,7 @@ LOGGING = {
 # Spec-111: LLM narrator at the bridge boundary (Constitution II.5 + III.6).
 # OFF by default — DeterministicNarrator (web/game/narrator.py) serves the
 # Wire feed unchanged. ON routes post-tick narrative generation through
-# babylon.ai.director.NarrativeDirector + RAG (see game/narrative_service.py).
+# babylon.intelligence.ai.director.NarrativeDirector + RAG (see game/narrative_service.py).
 BABYLON_LLM_NARRATOR = os.environ.get("BABYLON_LLM_NARRATOR", "").strip().lower() in (
     "1",
     "true",

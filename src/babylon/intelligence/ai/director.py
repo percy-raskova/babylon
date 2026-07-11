@@ -23,16 +23,16 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
-from babylon.ai.llm_provider import LLMProvider
-from babylon.ai.prompt_builder import DialecticalPromptBuilder
+from babylon.intelligence.ai.llm_provider import LLMProvider
+from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 
 if TYPE_CHECKING:
-    from babylon.ai.persona import Persona
+    from babylon.intelligence.ai.persona import Persona
+    from babylon.intelligence.rag.rag_pipeline import RagPipeline
     from babylon.models.config import SimulationConfig
     from babylon.models.world_state import WorldState
-    from babylon.rag.rag_pipeline import RagPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -93,9 +93,9 @@ class NarrativeDirector:
         SEMANTIC_MAP: Class constant mapping event keywords to theory queries.
 
     Example:
-        >>> from babylon.ai import NarrativeDirector
+        >>> from babylon.intelligence.ai import NarrativeDirector
         >>> from babylon.engine import Simulation
-        >>> from babylon.rag import RagPipeline
+        >>> from babylon.intelligence.rag import RagPipeline
         >>>
         >>> # With RAG integration
         >>> rag = RagPipeline()

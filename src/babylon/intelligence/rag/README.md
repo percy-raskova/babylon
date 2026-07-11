@@ -20,7 +20,7 @@ The RAG system integrates ChromaDB as a vector database with OpenAI embeddings t
 The main orchestrator that provides high-level APIs for ingestion and querying.
 
 ```python
-from babylon.rag import RagPipeline, RagConfig
+from babylon.intelligence.rag import RagPipeline, RagConfig
 
 # Initialize with custom configuration
 config = RagConfig(chunk_size=1000, default_top_k=5)
@@ -39,7 +39,7 @@ context = response.get_combined_context(max_length=2000)
 Handles text preprocessing and intelligent chunking.
 
 ```python
-from babylon.rag import DocumentProcessor
+from babylon.intelligence.rag import DocumentProcessor
 
 processor = DocumentProcessor()
 chunks = processor.process_text("Your content", "source_id")
@@ -51,7 +51,7 @@ chunks = processor.process_file("path/to/document.txt")
 Generates embeddings using OpenAI API with caching and rate limiting.
 
 ```python
-from babylon.rag import EmbeddingManager
+from babylon.intelligence.rag import EmbeddingManager
 
 embedding_manager = EmbeddingManager()
 embedded_chunks = await embedding_manager.aembed_batch(chunks)
@@ -62,7 +62,7 @@ embedded_chunks = await embedding_manager.aembed_batch(chunks)
 ChromaDB-based storage with similarity search capabilities.
 
 ```python
-from babylon.rag import VectorStore, Retriever
+from babylon.intelligence.rag import VectorStore, Retriever
 
 vector_store = VectorStore("my_collection")
 retriever = Retriever(vector_store, embedding_manager)
@@ -124,7 +124,7 @@ The system supports both persistent and in-memory storage:
 
 ```python
 import asyncio
-from babylon.rag import RagPipeline
+from babylon.intelligence.rag import RagPipeline
 
 async def main():
     pipeline = RagPipeline()
@@ -289,7 +289,7 @@ from babylon.config.chromadb_config import ChromaDBConfig
 
 ```python
 import logging
-logging.getLogger('babylon.rag').setLevel(logging.DEBUG)
+logging.getLogger('babylon.intelligence.rag').setLevel(logging.DEBUG)
 ```
 
 ## Future Enhancements

@@ -153,7 +153,7 @@ class TestPersonaModel:
     ) -> None:
         """Persona model should be constructable from valid data."""
         # Import will fail until implementation exists (RED phase)
-        from babylon.ai.persona import Persona, VoiceConfig
+        from babylon.intelligence.ai.persona import Persona, VoiceConfig
 
         voice = VoiceConfig(
             tone=valid_persona_data["voice"]["tone"],
@@ -181,7 +181,7 @@ class TestPersonaModel:
         """Persona model should be immutable (frozen)."""
         from pydantic import ValidationError as PydanticValidationError
 
-        from babylon.ai.persona import Persona, VoiceConfig
+        from babylon.intelligence.ai.persona import Persona, VoiceConfig
 
         voice = VoiceConfig(
             tone=valid_persona_data["voice"]["tone"],
@@ -206,7 +206,7 @@ class TestPersonaModel:
         valid_persona_data: dict[str, Any],
     ) -> None:
         """Persona restrictions should default to empty list."""
-        from babylon.ai.persona import Persona, VoiceConfig
+        from babylon.intelligence.ai.persona import Persona, VoiceConfig
 
         voice = VoiceConfig(
             tone=valid_persona_data["voice"]["tone"],
@@ -237,7 +237,7 @@ class TestRenderSystemPrompt:
     @pytest.fixture
     def percy_persona(self, valid_persona_data: dict[str, Any]) -> Any:
         """Create Percy persona for rendering tests."""
-        from babylon.ai.persona import Persona, VoiceConfig
+        from babylon.intelligence.ai.persona import Persona, VoiceConfig
 
         voice = VoiceConfig(
             tone=valid_persona_data["voice"]["tone"],
@@ -299,7 +299,7 @@ class TestRenderSystemPrompt:
         valid_persona_data: dict[str, Any],
     ) -> None:
         """Rendered prompt should include restrictions when present."""
-        from babylon.ai.persona import Persona, VoiceConfig
+        from babylon.intelligence.ai.persona import Persona, VoiceConfig
 
         voice = VoiceConfig(
             tone=valid_persona_data["voice"]["tone"],
@@ -344,7 +344,7 @@ class TestPersonaLoader:
         valid_persona_data: dict[str, Any],
     ) -> None:
         """load_persona() should load and validate a valid JSON file."""
-        from babylon.ai.persona_loader import load_persona
+        from babylon.intelligence.ai.persona_loader import load_persona
 
         # Create temp file with valid data
         with tempfile.NamedTemporaryFile(
@@ -365,7 +365,7 @@ class TestPersonaLoader:
 
     def test_load_persona_raises_on_missing_file(self) -> None:
         """load_persona() should raise on missing file."""
-        from babylon.ai.persona_loader import PersonaLoadError, load_persona
+        from babylon.intelligence.ai.persona_loader import PersonaLoadError, load_persona
 
         nonexistent_path = Path("/nonexistent/path/persona.json")
 
@@ -376,7 +376,7 @@ class TestPersonaLoader:
 
     def test_load_persona_raises_on_invalid_json(self) -> None:
         """load_persona() should raise on invalid JSON."""
-        from babylon.ai.persona_loader import PersonaLoadError, load_persona
+        from babylon.intelligence.ai.persona_loader import PersonaLoadError, load_persona
 
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -395,7 +395,7 @@ class TestPersonaLoader:
 
     def test_load_persona_raises_on_schema_violation(self) -> None:
         """load_persona() should raise on schema violation."""
-        from babylon.ai.persona_loader import PersonaLoadError, load_persona
+        from babylon.intelligence.ai.persona_loader import PersonaLoadError, load_persona
 
         invalid_data = {
             "id": "Invalid-ID",  # Invalid pattern
@@ -429,7 +429,7 @@ class TestPersonaLoader:
 
     def test_load_default_persona_returns_percy(self) -> None:
         """load_default_persona() should return Percy Raskova."""
-        from babylon.ai.persona_loader import load_default_persona
+        from babylon.intelligence.ai.persona_loader import load_default_persona
 
         persona = load_default_persona()
 
@@ -451,7 +451,7 @@ class TestPromptBuilderPersonaIntegration:
     @pytest.fixture
     def percy_persona(self, valid_persona_data: dict[str, Any]) -> Any:
         """Create Percy persona for integration tests."""
-        from babylon.ai.persona import Persona, VoiceConfig
+        from babylon.intelligence.ai.persona import Persona, VoiceConfig
 
         voice = VoiceConfig(
             tone=valid_persona_data["voice"]["tone"],
@@ -472,7 +472,7 @@ class TestPromptBuilderPersonaIntegration:
         percy_persona: Any,
     ) -> None:
         """PromptBuilder should use persona for system prompt when provided."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder(persona=percy_persona)
         system_prompt = builder.build_system_prompt()
@@ -483,7 +483,7 @@ class TestPromptBuilderPersonaIntegration:
 
     def test_prompt_builder_uses_default_without_persona(self) -> None:
         """PromptBuilder should use default system prompt without persona."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()  # No persona
         system_prompt = builder.build_system_prompt()
@@ -497,7 +497,7 @@ class TestPromptBuilderPersonaIntegration:
         percy_persona: Any,
     ) -> None:
         """PromptBuilder should expose persona via property."""
-        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder(persona=percy_persona)
 
@@ -516,7 +516,7 @@ class TestNarrativeDirectorPersonaIntegration:
     @pytest.fixture
     def percy_persona(self, valid_persona_data: dict[str, Any]) -> Any:
         """Create Percy persona for integration tests."""
-        from babylon.ai.persona import Persona, VoiceConfig
+        from babylon.intelligence.ai.persona import Persona, VoiceConfig
 
         voice = VoiceConfig(
             tone=valid_persona_data["voice"]["tone"],
@@ -537,7 +537,7 @@ class TestNarrativeDirectorPersonaIntegration:
         percy_persona: Any,
     ) -> None:
         """NarrativeDirector should accept persona parameter."""
-        from babylon.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.director import NarrativeDirector
 
         # Should not raise
         director = NarrativeDirector(persona=percy_persona)
@@ -550,8 +550,8 @@ class TestNarrativeDirectorPersonaIntegration:
         percy_persona: Any,
     ) -> None:
         """NarrativeDirector with persona should use persona's system prompt."""
-        from babylon.ai.director import NarrativeDirector
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock_llm = MockLLM(default_response="Mock narrative response")
         director = NarrativeDirector(
@@ -569,8 +569,8 @@ class TestNarrativeDirectorPersonaIntegration:
 
     def test_director_without_persona_uses_default_prompt(self) -> None:
         """NarrativeDirector without persona should use default prompt."""
-        from babylon.ai.director import NarrativeDirector
-        from babylon.ai.llm_provider import MockLLM
+        from babylon.intelligence.ai.director import NarrativeDirector
+        from babylon.intelligence.ai.llm_provider import MockLLM
 
         mock_llm = MockLLM(default_response="Mock narrative response")
         director = NarrativeDirector(

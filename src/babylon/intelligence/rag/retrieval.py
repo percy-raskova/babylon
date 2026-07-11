@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from babylon.rag.chunker import DocumentChunk
-from babylon.rag.embeddings import EmbeddingManager
-from babylon.rag.exceptions import RagError
+from babylon.intelligence.rag.chunker import DocumentChunk
+from babylon.intelligence.rag.embeddings import EmbeddingManager
+from babylon.intelligence.rag.exceptions import RagError
 
 if TYPE_CHECKING:
     from babylon.persistence.protocols import VectorStoreProtocol

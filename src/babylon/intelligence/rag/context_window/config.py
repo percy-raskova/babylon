@@ -12,7 +12,7 @@ The config can be instantiated with defaults or loaded from BaseConfig
 for integration with the broader Babylon configuration system.
 
 See Also:
-    :class:`~babylon.rag.context_window.manager.ContextWindowManager`:
+    :class:`~babylon.intelligence.rag.context_window.manager.ContextWindowManager`:
         The manager that uses this configuration.
     :class:`~babylon.config.base.BaseConfig`:
         Source of default values when using :meth:`from_base_config`.

@@ -6,7 +6,7 @@ against the persona.schema.json definition.
 Follows the pattern established in schema_validator.py for the observer layer.
 
 Usage:
-    >>> from babylon.ai.persona_loader import load_persona, load_default_persona
+    >>> from babylon.intelligence.ai.persona_loader import load_persona, load_default_persona
     >>>
     >>> # Load specific persona
     >>> percy = load_persona(Path("path/to/persona.json"))
@@ -15,7 +15,7 @@ Usage:
     >>> default = load_default_persona()
 
 See Also:
-    :class:`babylon.ai.persona.Persona`: The Pydantic model for personas.
+    :class:`babylon.intelligence.ai.persona.Persona`: The Pydantic model for personas.
     :mod:`babylon.engine.observers.schema_validator`: Pattern reference.
 """
 
@@ -28,7 +28,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from babylon.ai.persona import Persona, VoiceConfig
+from babylon.intelligence.ai.persona import Persona, VoiceConfig
 from babylon.kernel.schema_registry import build_schema_registry
 
 # Constants
@@ -117,7 +117,7 @@ def load_persona(path: Path) -> Persona:
 
     Example:
         >>> from pathlib import Path
-        >>> from babylon.ai.persona_loader import load_persona
+        >>> from babylon.intelligence.ai.persona_loader import load_persona
         >>> persona = load_persona(Path("path/to/persona.json"))
         >>> persona.name
         "Persephone 'Percy' Raskova"
@@ -176,7 +176,7 @@ def load_default_persona() -> Persona:
         PersonaLoadError: If the default persona file is missing or invalid.
 
     Example:
-        >>> from babylon.ai.persona_loader import load_default_persona
+        >>> from babylon.intelligence.ai.persona_loader import load_default_persona
         >>> percy = load_default_persona()
         >>> percy.id
         'persephone_raskova'

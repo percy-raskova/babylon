@@ -240,7 +240,7 @@ class TestServiceContainer:
         from unittest.mock import MagicMock
 
         from babylon.engine.services import ServiceContainer
-        from babylon.metrics.interfaces import MetricsCollectorProtocol
+        from babylon.kernel.metrics import MetricsCollectorProtocol
 
         # Create a mock that satisfies the protocol
         mock_metrics = MagicMock(spec=MetricsCollectorProtocol)

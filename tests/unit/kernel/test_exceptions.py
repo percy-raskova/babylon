@@ -1,10 +1,9 @@
 """Comprehensive test suite for Babylon's unified exception hierarchy.
 
 This module tests the exception hierarchy defined in:
-- babylon.utils.exceptions (core hierarchy)
+- babylon.kernel.exceptions (core hierarchy)
 - babylon.rag.exceptions (RagError + aliases)
 - babylon.engine.history.io (CheckpointIOError + children)
-- babylon.exceptions (top-level re-exports)
 
 The tests verify:
 1. Inheritance structure
@@ -34,22 +33,22 @@ class TestExceptionHierarchy:
     @pytest.mark.parametrize(
         "exception_class_path",
         [
-            "babylon.utils.exceptions.BabylonError",
-            "babylon.utils.exceptions.InfrastructureError",
-            "babylon.utils.exceptions.StorageError",
-            "babylon.utils.exceptions.DatabaseError",
-            "babylon.utils.exceptions.ValidationError",
-            "babylon.utils.exceptions.ConfigurationError",
-            "babylon.utils.exceptions.SimulationError",
-            "babylon.utils.exceptions.TopologyError",
-            "babylon.utils.exceptions.ObserverError",
-            "babylon.utils.exceptions.LLMError",
+            "babylon.kernel.exceptions.BabylonError",
+            "babylon.kernel.exceptions.InfrastructureError",
+            "babylon.kernel.exceptions.StorageError",
+            "babylon.kernel.exceptions.DatabaseError",
+            "babylon.kernel.exceptions.ValidationError",
+            "babylon.kernel.exceptions.ConfigurationError",
+            "babylon.kernel.exceptions.SimulationError",
+            "babylon.kernel.exceptions.TopologyError",
+            "babylon.kernel.exceptions.ObserverError",
+            "babylon.kernel.exceptions.LLMError",
             "babylon.rag.exceptions.RagError",
         ],
     )
     def test_all_exceptions_inherit_from_babylon_error(self, exception_class_path: str) -> None:
         """All exception classes inherit from BabylonError."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         # Dynamic import
         module_path, class_name = exception_class_path.rsplit(".", 1)
@@ -64,45 +63,45 @@ class TestExceptionHierarchy:
 
     def test_database_error_inherits_from_infrastructure_error(self) -> None:
         """DatabaseError is a child of InfrastructureError."""
-        from babylon.utils.exceptions import DatabaseError, InfrastructureError
+        from babylon.kernel.exceptions import DatabaseError, InfrastructureError
 
         assert issubclass(DatabaseError, InfrastructureError)
 
     def test_storage_error_inherits_from_infrastructure_error(self) -> None:
         """StorageError is a child of InfrastructureError."""
-        from babylon.utils.exceptions import InfrastructureError, StorageError
+        from babylon.kernel.exceptions import InfrastructureError, StorageError
 
         assert issubclass(StorageError, InfrastructureError)
 
     def test_configuration_error_inherits_from_validation_error(self) -> None:
         """ConfigurationError is a child of ValidationError."""
-        from babylon.utils.exceptions import ConfigurationError, ValidationError
+        from babylon.kernel.exceptions import ConfigurationError, ValidationError
 
         assert issubclass(ConfigurationError, ValidationError)
 
     def test_topology_error_inherits_from_simulation_error(self) -> None:
         """TopologyError is a child of SimulationError."""
-        from babylon.utils.exceptions import SimulationError, TopologyError
+        from babylon.kernel.exceptions import SimulationError, TopologyError
 
         assert issubclass(TopologyError, SimulationError)
 
     def test_llm_error_inherits_from_observer_error(self) -> None:
         """LLMError is a child of ObserverError."""
-        from babylon.utils.exceptions import LLMError, ObserverError
+        from babylon.kernel.exceptions import LLMError, ObserverError
 
         assert issubclass(LLMError, ObserverError)
 
     def test_rag_error_inherits_from_observer_error(self) -> None:
         """RagError (from rag.exceptions) is a child of ObserverError."""
+        from babylon.kernel.exceptions import ObserverError
         from babylon.rag.exceptions import RagError
-        from babylon.utils.exceptions import ObserverError
 
         assert issubclass(RagError, ObserverError)
 
     def test_checkpoint_io_error_inherits_from_storage_error(self) -> None:
         """CheckpointIOError is a child of StorageError."""
         from babylon.engine.history.io import CheckpointIOError
-        from babylon.utils.exceptions import StorageError
+        from babylon.kernel.exceptions import StorageError
 
         assert issubclass(CheckpointIOError, StorageError)
 
@@ -146,16 +145,16 @@ class TestDefaultErrorCodes:
     @pytest.mark.parametrize(
         ("exception_import_path", "expected_code"),
         [
-            ("babylon.utils.exceptions.BabylonError", "SYS_000"),
-            ("babylon.utils.exceptions.InfrastructureError", "INFRA_001"),
-            ("babylon.utils.exceptions.StorageError", "STOR_001"),
-            ("babylon.utils.exceptions.DatabaseError", "DB_001"),
-            ("babylon.utils.exceptions.ValidationError", "VAL_001"),
-            ("babylon.utils.exceptions.ConfigurationError", "CFG_001"),
-            ("babylon.utils.exceptions.SimulationError", "SIM_001"),
-            ("babylon.utils.exceptions.TopologyError", "TOP_001"),
-            ("babylon.utils.exceptions.ObserverError", "OBS_001"),
-            ("babylon.utils.exceptions.LLMError", "LLM_001"),
+            ("babylon.kernel.exceptions.BabylonError", "SYS_000"),
+            ("babylon.kernel.exceptions.InfrastructureError", "INFRA_001"),
+            ("babylon.kernel.exceptions.StorageError", "STOR_001"),
+            ("babylon.kernel.exceptions.DatabaseError", "DB_001"),
+            ("babylon.kernel.exceptions.ValidationError", "VAL_001"),
+            ("babylon.kernel.exceptions.ConfigurationError", "CFG_001"),
+            ("babylon.kernel.exceptions.SimulationError", "SIM_001"),
+            ("babylon.kernel.exceptions.TopologyError", "TOP_001"),
+            ("babylon.kernel.exceptions.ObserverError", "OBS_001"),
+            ("babylon.kernel.exceptions.LLMError", "LLM_001"),
             ("babylon.rag.exceptions.RagError", "RAG_001"),
         ],
     )
@@ -208,16 +207,16 @@ class TestCustomErrorCodes:
     @pytest.mark.parametrize(
         "exception_import_path",
         [
-            "babylon.utils.exceptions.BabylonError",
-            "babylon.utils.exceptions.InfrastructureError",
-            "babylon.utils.exceptions.StorageError",
-            "babylon.utils.exceptions.DatabaseError",
-            "babylon.utils.exceptions.ValidationError",
-            "babylon.utils.exceptions.ConfigurationError",
-            "babylon.utils.exceptions.SimulationError",
-            "babylon.utils.exceptions.TopologyError",
-            "babylon.utils.exceptions.ObserverError",
-            "babylon.utils.exceptions.LLMError",
+            "babylon.kernel.exceptions.BabylonError",
+            "babylon.kernel.exceptions.InfrastructureError",
+            "babylon.kernel.exceptions.StorageError",
+            "babylon.kernel.exceptions.DatabaseError",
+            "babylon.kernel.exceptions.ValidationError",
+            "babylon.kernel.exceptions.ConfigurationError",
+            "babylon.kernel.exceptions.SimulationError",
+            "babylon.kernel.exceptions.TopologyError",
+            "babylon.kernel.exceptions.ObserverError",
+            "babylon.kernel.exceptions.LLMError",
             "babylon.rag.exceptions.RagError",
         ],
     )
@@ -245,7 +244,7 @@ class TestExceptionConstructor:
 
     def test_babylon_error_full_constructor(self) -> None:
         """BabylonError accepts message, error_code, and details."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError(
             message="Something went wrong",
@@ -259,7 +258,7 @@ class TestExceptionConstructor:
 
     def test_babylon_error_message_only(self) -> None:
         """BabylonError works with just a message."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Simple error")
 
@@ -269,7 +268,7 @@ class TestExceptionConstructor:
 
     def test_babylon_error_inherits_from_exception(self) -> None:
         """BabylonError is a proper Python Exception."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         assert issubclass(BabylonError, Exception)
 
@@ -278,14 +277,14 @@ class TestExceptionConstructor:
 
     def test_exception_args_contains_message(self) -> None:
         """Exception args tuple contains the message for standard handlers."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test message")
         assert error.args == ("Test message",)
 
     def test_details_is_mutable_dict(self) -> None:
         """Details can be modified after construction."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test")
         error.details["added_key"] = "added_value"
@@ -294,7 +293,7 @@ class TestExceptionConstructor:
 
     def test_none_details_becomes_empty_dict(self) -> None:
         """Passing None for details results in empty dict."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test", details=None)
         assert error.details == {}
@@ -312,7 +311,7 @@ class TestExceptionSerialization:
 
     def test_to_dict_returns_correct_structure(self) -> None:
         """to_dict() returns dict with error_type, error_code, message, details."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError(
             message="Test error",
@@ -331,7 +330,7 @@ class TestExceptionSerialization:
 
     def test_to_dict_uses_subclass_name(self) -> None:
         """to_dict() uses the actual subclass name for error_type."""
-        from babylon.utils.exceptions import LLMError
+        from babylon.kernel.exceptions import LLMError
 
         error = LLMError("LLM failed", error_code="LLM_002")
         result = error.to_dict()
@@ -340,7 +339,7 @@ class TestExceptionSerialization:
 
     def test_str_includes_error_code_and_message(self) -> None:
         """str(error) format is '[ERROR_CODE] message'."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Something went wrong", error_code="SYS_999")
 
@@ -348,7 +347,7 @@ class TestExceptionSerialization:
 
     def test_repr_includes_class_name_and_params(self) -> None:
         """repr(error) includes class name, message, and error_code."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test", error_code="SYS_001")
 
@@ -357,7 +356,7 @@ class TestExceptionSerialization:
 
     def test_repr_uses_subclass_name(self) -> None:
         """repr() uses the actual subclass name."""
-        from babylon.utils.exceptions import TopologyError
+        from babylon.kernel.exceptions import TopologyError
 
         error = TopologyError("Graph disconnected")
 
@@ -367,7 +366,7 @@ class TestExceptionSerialization:
         """to_dict() output can be serialized to JSON."""
         import json
 
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError(
             message="Test",
@@ -391,13 +390,13 @@ class TestBackwardsCompatibilityAliases:
 
     def test_llm_generation_error_is_llm_error(self) -> None:
         """LLMGenerationError is an alias for LLMError."""
-        from babylon.utils.exceptions import LLMError, LLMGenerationError
+        from babylon.kernel.exceptions import LLMError, LLMGenerationError
 
         assert LLMGenerationError is LLMError
 
     def test_llm_generation_error_instance_is_llm_error(self) -> None:
         """LLMGenerationError instance is also an LLMError instance."""
-        from babylon.utils.exceptions import LLMError, LLMGenerationError
+        from babylon.kernel.exceptions import LLMError, LLMGenerationError
 
         error = LLMGenerationError("Test")
         assert isinstance(error, LLMError)
@@ -456,8 +455,7 @@ class TestExceptionPropagation:
 
     def test_except_babylon_error_catches_all_children(self) -> None:
         """except BabylonError catches all exceptions in the hierarchy."""
-        from babylon.rag.exceptions import RagError
-        from babylon.utils.exceptions import (
+        from babylon.kernel.exceptions import (
             BabylonError,
             ConfigurationError,
             DatabaseError,
@@ -469,6 +467,7 @@ class TestExceptionPropagation:
             TopologyError,
             ValidationError,
         )
+        from babylon.rag.exceptions import RagError
 
         exception_classes = [
             InfrastructureError,
@@ -493,7 +492,7 @@ class TestExceptionPropagation:
 
     def test_except_infrastructure_error_catches_database_and_storage(self) -> None:
         """except InfrastructureError catches DatabaseError and StorageError."""
-        from babylon.utils.exceptions import (
+        from babylon.kernel.exceptions import (
             DatabaseError,
             InfrastructureError,
             StorageError,
@@ -517,8 +516,8 @@ class TestExceptionPropagation:
 
     def test_except_observer_error_catches_llm_and_rag(self) -> None:
         """except ObserverError catches LLMError and RagError."""
+        from babylon.kernel.exceptions import LLMError, ObserverError
         from babylon.rag.exceptions import RagError
-        from babylon.utils.exceptions import LLMError, ObserverError
 
         # Test LLMError
         caught_llm = False
@@ -544,7 +543,7 @@ class TestExceptionPropagation:
             CheckpointNotFoundError,
             CheckpointSchemaError,
         )
-        from babylon.utils.exceptions import StorageError
+        from babylon.kernel.exceptions import StorageError
 
         checkpoint_errors = [
             CheckpointIOError,
@@ -563,7 +562,7 @@ class TestExceptionPropagation:
 
     def test_error_code_preserved_through_handling(self) -> None:
         """Error codes are preserved when catching and re-raising exceptions."""
-        from babylon.utils.exceptions import BabylonError, LLMError
+        from babylon.kernel.exceptions import BabylonError, LLMError
 
         original_code = "LLM_CUSTOM_999"
         preserved_code: str | None = None
@@ -581,7 +580,7 @@ class TestExceptionPropagation:
 
     def test_details_preserved_through_handling(self) -> None:
         """Details dict is preserved when catching exceptions."""
-        from babylon.utils.exceptions import BabylonError, DatabaseError
+        from babylon.kernel.exceptions import BabylonError, DatabaseError
 
         original_details: dict[str, Any] = {"table": "users", "operation": "insert"}
         preserved_details: dict[str, Any] | None = None
@@ -604,42 +603,8 @@ class TestImportPaths:
     """Tests for import path consistency."""
 
     def test_import_from_utils_exceptions(self) -> None:
-        """Core exceptions can be imported from babylon.utils.exceptions."""
-        from babylon.utils.exceptions import (
-            BabylonError,
-            ConfigurationError,
-            DatabaseError,
-            InfrastructureError,
-            LLMError,
-            LLMGenerationError,
-            ObserverError,
-            SimulationError,
-            StorageError,
-            TopologyError,
-            ValidationError,
-        )
-
-        # All should be classes
-        assert all(
-            isinstance(cls, type)
-            for cls in [
-                BabylonError,
-                InfrastructureError,
-                StorageError,
-                DatabaseError,
-                ValidationError,
-                ConfigurationError,
-                SimulationError,
-                TopologyError,
-                ObserverError,
-                LLMError,
-                LLMGenerationError,
-            ]
-        )
-
-    def test_import_from_babylon_exceptions(self) -> None:
-        """Core exceptions can be imported from babylon.exceptions (top-level)."""
-        from babylon.exceptions import (
+        """Core exceptions can be imported from babylon.kernel.exceptions."""
+        from babylon.kernel.exceptions import (
             BabylonError,
             ConfigurationError,
             DatabaseError,
@@ -702,36 +667,9 @@ class TestImportPaths:
         for alias in aliases:
             assert alias is RagError
 
-    def test_top_level_and_utils_are_same_classes(self) -> None:
-        """Classes from babylon.exceptions are identical to babylon.utils.exceptions."""
-        import babylon.exceptions as top
-        import babylon.utils.exceptions as utils
-
-        assert top.BabylonError is utils.BabylonError
-        assert top.InfrastructureError is utils.InfrastructureError
-        assert top.StorageError is utils.StorageError
-        assert top.DatabaseError is utils.DatabaseError
-        assert top.ValidationError is utils.ValidationError
-        assert top.ConfigurationError is utils.ConfigurationError
-        assert top.SimulationError is utils.SimulationError
-        assert top.TopologyError is utils.TopologyError
-        assert top.ObserverError is utils.ObserverError
-        assert top.LLMError is utils.LLMError
-        assert top.LLMGenerationError is utils.LLMGenerationError
-
-
-# =============================================================================
-# EDGE CASE TESTS
-# =============================================================================
-
-
-@pytest.mark.unit
-class TestEdgeCases:
-    """Tests for edge cases and unusual usage patterns."""
-
     def test_empty_message(self) -> None:
         """Exception can be created with empty message."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("")
         assert error.message == ""
@@ -739,7 +677,7 @@ class TestEdgeCases:
 
     def test_empty_error_code(self) -> None:
         """Empty string error_code is preserved (not replaced by default)."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         # Note: empty string is falsy, so it gets replaced by default
         error = BabylonError("Test", error_code="")
@@ -748,7 +686,7 @@ class TestEdgeCases:
 
     def test_unicode_in_message(self) -> None:
         """Exception handles unicode characters in message."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         message = "Error: Unable to process class solidarity networks"
         error = BabylonError(message)
@@ -758,7 +696,7 @@ class TestEdgeCases:
 
     def test_special_chars_in_details(self) -> None:
         """Exception handles special characters in details."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         details: dict[str, object] = {
             "query": "SELECT * FROM classes WHERE name = 'proletariat'",
@@ -770,7 +708,7 @@ class TestEdgeCases:
 
     def test_nested_exception_chaining(self) -> None:
         """Exceptions support standard Python chaining with __cause__."""
-        from babylon.utils.exceptions import BabylonError, DatabaseError
+        from babylon.kernel.exceptions import BabylonError, DatabaseError
 
         original = ValueError("Original error")
 
@@ -786,7 +724,7 @@ class TestEdgeCases:
         """Exception can be pickled and unpickled (for multiprocessing)."""
         import pickle
 
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError(
             "Test error",
@@ -803,7 +741,7 @@ class TestEdgeCases:
 
     def test_exception_equality_by_identity(self) -> None:
         """Two exceptions with same params are not equal (identity semantics)."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error1 = BabylonError("Test", error_code="SYS_001")
         error2 = BabylonError("Test", error_code="SYS_001")

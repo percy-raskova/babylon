@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
-from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
+from babylon.kernel.sim_clock import UNSET_TIMESTAMP, sim_datetime
 
 if TYPE_CHECKING:
     from babylon.kernel.event_bus import Event

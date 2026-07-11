@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from babylon.config.base import BaseConfig
-from babylon.utils.log import ContextAwareFilter, JSONFormatter
+from babylon.kernel.log import ContextAwareFilter, JSONFormatter
 
 if TYPE_CHECKING:
     pass

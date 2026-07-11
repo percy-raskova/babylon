@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from babylon.config.base import BaseConfig
 
 if TYPE_CHECKING:
-    from babylon.metrics.interfaces import MetricsCollectorProtocol
+    from babylon.kernel.metrics import MetricsCollectorProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +292,7 @@ def _verify_protocol_conformance() -> MetricsCollectorProtocol:
     Returns:
         A MetricsCollector instance typed as the protocol.
     """
-    from babylon.metrics.interfaces import (
+    from babylon.kernel.metrics import (
         MetricsCollectorProtocol as Protocol,
     )
 

@@ -64,7 +64,7 @@ The quantization algorithm uses symmetric rounding where ties round
 
 .. code-block:: python
 
-   from babylon.utils.math import quantize
+   from babylon.kernel.math import quantize
 
    quantize(0.123456789)   # Returns 0.12346
    quantize(-0.123456789)  # Returns -0.12346
@@ -99,7 +99,7 @@ The precision can be adjusted for testing or scenario-specific needs:
 
 .. code-block:: python
 
-   from babylon.utils.math import get_precision, set_precision, quantize
+   from babylon.kernel.math import get_precision, set_precision, quantize
 
    # Check current precision
    get_precision()  # Returns 5
@@ -166,4 +166,4 @@ See Also
 
 - :doc:`/reference/data-models` - Constrained type definitions
 - :doc:`/reference/formulas` - Mathematical formulas using quantized values
-- :py:mod:`babylon.utils.math` - Source code
+- :py:mod:`babylon.kernel.math` - Source code

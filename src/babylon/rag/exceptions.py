@@ -12,7 +12,7 @@ Error Code Ranges:
 - RAG_500 to RAG_599: Context window errors
 """
 
-from babylon.utils.exceptions import ObserverError
+from babylon.kernel.exceptions import ObserverError
 
 
 class RagError(ObserverError):

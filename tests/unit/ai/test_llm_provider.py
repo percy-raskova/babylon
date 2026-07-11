@@ -94,33 +94,33 @@ class TestLLMGenerationError:
 
     def test_llm_generation_error_exists(self) -> None:
         """LLMGenerationError is defined in exceptions module."""
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         assert LLMGenerationError is not None
 
     def test_llm_generation_error_inherits_babylon_error(self) -> None:
         """LLMGenerationError inherits from BabylonError."""
-        from babylon.utils.exceptions import BabylonError, LLMGenerationError
+        from babylon.kernel.exceptions import BabylonError, LLMGenerationError
 
         assert issubclass(LLMGenerationError, BabylonError)
 
     def test_llm_generation_error_default_code(self) -> None:
         """LLMGenerationError has default error code LLM_001."""
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         error = LLMGenerationError("Test error")
         assert error.error_code == "LLM_001"
 
     def test_llm_generation_error_custom_code(self) -> None:
         """LLMGenerationError accepts custom error codes."""
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         error = LLMGenerationError("Timeout", error_code="LLM_002")
         assert error.error_code == "LLM_002"
 
     def test_llm_generation_error_details(self) -> None:
         """LLMGenerationError accepts details dict."""
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         error = LLMGenerationError(
             "Rate limit",
@@ -262,7 +262,7 @@ class TestDeepSeekClientInstantiation:
     def test_raises_without_api_key(self) -> None:
         """DeepSeekClient raises LLMGenerationError without API key."""
         from babylon.config import llm_config
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         # Save original and clear
         original_key = llm_config.LLMConfig.API_KEY
@@ -319,7 +319,7 @@ class TestDeepSeekClientErrorHandling:
         from openai import APITimeoutError
 
         from babylon.config import llm_config
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         original_key = llm_config.LLMConfig.API_KEY
         try:
@@ -347,7 +347,7 @@ class TestDeepSeekClientErrorHandling:
         from openai import RateLimitError
 
         from babylon.config import llm_config
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         original_key = llm_config.LLMConfig.API_KEY
         try:
@@ -379,7 +379,7 @@ class TestDeepSeekClientErrorHandling:
         from openai import APIError
 
         from babylon.config import llm_config
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         original_key = llm_config.LLMConfig.API_KEY
         try:
@@ -408,7 +408,7 @@ class TestDeepSeekClientErrorHandling:
     def test_handles_empty_response(self) -> None:
         """DeepSeekClient raises LLM_001 on empty response content."""
         from babylon.config import llm_config
-        from babylon.utils.exceptions import LLMGenerationError
+        from babylon.kernel.exceptions import LLMGenerationError
 
         original_key = llm_config.LLMConfig.API_KEY
         try:

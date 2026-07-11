@@ -87,7 +87,7 @@ class TestLogContextInRunTick:
         logger = logging.getLogger("test.log_context")
         logger.setLevel(logging.DEBUG)
         # Add ContextAwareFilter to inject context fields
-        from babylon.utils.log import ContextAwareFilter
+        from babylon.kernel.log import ContextAwareFilter
 
         logger.addFilter(ContextAwareFilter())
         return logger

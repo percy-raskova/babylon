@@ -18,9 +18,9 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from babylon.engine.history.models import Checkpoint, CheckpointMetadata
+from babylon.kernel.exceptions import StorageError
 from babylon.models.config import SimulationConfig
 from babylon.models.world_state import WorldState
-from babylon.utils.exceptions import StorageError
 
 # =============================================================================
 # EXCEPTIONS (inherit from StorageError for unified hierarchy)

@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from jsonschema import Draft202012Validator
 
-from babylon.utils.schema_registry import build_schema_registry
+from babylon.kernel.schema_registry import build_schema_registry
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -21,7 +21,7 @@ from babylon.kernel.event_bus import EventBus
 from babylon.models.config import SimulationConfig
 
 if TYPE_CHECKING:
-    from babylon.metrics.interfaces import MetricsCollectorProtocol
+    from babylon.kernel.metrics import MetricsCollectorProtocol
 
 
 @dataclass

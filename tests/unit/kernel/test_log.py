@@ -1,9 +1,9 @@
 """Comprehensive test suite for Babylon's logging utilities.
 
 This module tests the logging infrastructure defined in:
-- babylon.utils.log (JSONFormatter, TRACE level, LogContext)
+- babylon.kernel.log (JSONFormatter, TRACE level, LogContext)
 - babylon.config.logging_config (setup_logging, RotatingFileHandler)
-- babylon.utils.exceptions (BabylonError.log() method)
+- babylon.kernel.exceptions (BabylonError.log() method)
 
 The tests verify:
 1. JSONFormatter produces valid JSONL output
@@ -40,13 +40,13 @@ class TestTraceLevel:
 
     def test_trace_level_value_is_five(self) -> None:
         """TRACE level has numeric value 5."""
-        from babylon.utils.log import TRACE
+        from babylon.kernel.log import TRACE
 
         assert TRACE == 5
 
     def test_trace_level_is_registered(self) -> None:
         """TRACE level is registered with logging module."""
-        from babylon.utils.log import TRACE
+        from babylon.kernel.log import TRACE
 
         assert logging.getLevelName(TRACE) == "TRACE"
         assert logging.getLevelName("TRACE") == TRACE
@@ -59,7 +59,7 @@ class TestTraceLevel:
 
     def test_trace_logs_at_trace_level(self) -> None:
         """trace() method logs messages at TRACE level."""
-        from babylon.utils.log import TRACE
+        from babylon.kernel.log import TRACE
 
         logger = logging.getLogger("test.trace.level")
         logger.setLevel(TRACE)
@@ -101,7 +101,7 @@ class TestTraceLevel:
 
     def test_trace_supports_formatting_args(self) -> None:
         """trace() supports % formatting arguments."""
-        from babylon.utils.log import TRACE
+        from babylon.kernel.log import TRACE
 
         logger = logging.getLogger("test.trace.format")
         logger.setLevel(TRACE)
@@ -135,7 +135,7 @@ class TestJSONFormatter:
 
     def test_format_returns_valid_json(self) -> None:
         """format() returns valid JSON string."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
         record = logging.LogRecord(
@@ -156,7 +156,7 @@ class TestJSONFormatter:
 
     def test_format_includes_required_fields(self) -> None:
         """Output includes ts, level, logger, msg, func, line."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
         record = logging.LogRecord(
@@ -181,7 +181,7 @@ class TestJSONFormatter:
 
     def test_format_timestamp_is_iso8601(self) -> None:
         """Timestamp is in ISO 8601 format with timezone."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
         record = logging.LogRecord(
@@ -205,7 +205,7 @@ class TestJSONFormatter:
 
     def test_format_includes_extra_fields(self) -> None:
         """Extra fields (tick, correlation_id) are included in output."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
         record = logging.LogRecord(
@@ -230,7 +230,7 @@ class TestJSONFormatter:
 
     def test_format_includes_exception_dict(self) -> None:
         """Exception dict from BabylonError.to_dict() is included."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
         record = logging.LogRecord(
@@ -256,7 +256,7 @@ class TestJSONFormatter:
 
     def test_format_handles_exception_info(self) -> None:
         """exc_info is formatted and included."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
 
@@ -285,7 +285,7 @@ class TestJSONFormatter:
 
     def test_format_handles_non_serializable_values(self) -> None:
         """Non-JSON-serializable values are converted to strings."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
         record = logging.LogRecord(
@@ -310,7 +310,7 @@ class TestJSONFormatter:
 
     def test_format_excludes_standard_logrecord_fields(self) -> None:
         """Standard LogRecord fields are not duplicated in output."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
         record = logging.LogRecord(
@@ -334,7 +334,7 @@ class TestJSONFormatter:
 
     def test_format_message_with_args_is_formatted(self) -> None:
         """getMessage() is called to format message with args."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         formatter = JSONFormatter()
         record = logging.LogRecord(
@@ -363,7 +363,7 @@ class TestLogContext:
 
     def test_get_log_context_returns_empty_dict_by_default(self) -> None:
         """get_log_context() returns empty dict when no context set."""
-        from babylon.utils.log import clear_log_context, get_log_context
+        from babylon.kernel.log import clear_log_context, get_log_context
 
         clear_log_context()
         context = get_log_context()
@@ -372,7 +372,7 @@ class TestLogContext:
 
     def test_set_log_context_adds_fields(self) -> None:
         """set_log_context() adds fields to context."""
-        from babylon.utils.log import clear_log_context, get_log_context, set_log_context
+        from babylon.kernel.log import clear_log_context, get_log_context, set_log_context
 
         clear_log_context()
         set_log_context(tick=42, simulation_id="sim_001")
@@ -384,7 +384,7 @@ class TestLogContext:
 
     def test_set_log_context_merges_fields(self) -> None:
         """set_log_context() merges with existing context."""
-        from babylon.utils.log import clear_log_context, get_log_context, set_log_context
+        from babylon.kernel.log import clear_log_context, get_log_context, set_log_context
 
         clear_log_context()
         set_log_context(tick=1)
@@ -397,7 +397,7 @@ class TestLogContext:
 
     def test_clear_log_context_removes_all_fields(self) -> None:
         """clear_log_context() removes all context fields."""
-        from babylon.utils.log import clear_log_context, get_log_context, set_log_context
+        from babylon.kernel.log import clear_log_context, get_log_context, set_log_context
 
         set_log_context(tick=42)
         clear_log_context()
@@ -406,7 +406,7 @@ class TestLogContext:
 
     def test_get_log_context_returns_copy(self) -> None:
         """get_log_context() returns a copy, not the original."""
-        from babylon.utils.log import clear_log_context, get_log_context, set_log_context
+        from babylon.kernel.log import clear_log_context, get_log_context, set_log_context
 
         clear_log_context()
         set_log_context(tick=42)
@@ -424,7 +424,7 @@ class TestLogContextScope:
 
     def test_scope_sets_context_inside(self) -> None:
         """Context is set inside the scope."""
-        from babylon.utils.log import (
+        from babylon.kernel.log import (
             clear_log_context,
             get_log_context,
             log_context_scope,
@@ -439,7 +439,7 @@ class TestLogContextScope:
 
     def test_scope_restores_context_after_exit(self) -> None:
         """Context is restored after exiting scope."""
-        from babylon.utils.log import (
+        from babylon.kernel.log import (
             clear_log_context,
             get_log_context,
             log_context_scope,
@@ -456,7 +456,7 @@ class TestLogContextScope:
 
     def test_scope_restores_on_exception(self) -> None:
         """Context is restored even if exception occurs."""
-        from babylon.utils.log import (
+        from babylon.kernel.log import (
             clear_log_context,
             get_log_context,
             log_context_scope,
@@ -476,7 +476,7 @@ class TestLogContextScope:
 
     def test_nested_scopes(self) -> None:
         """Nested scopes work correctly."""
-        from babylon.utils.log import (
+        from babylon.kernel.log import (
             clear_log_context,
             get_log_context,
             log_context_scope,
@@ -499,7 +499,7 @@ class TestLogContextScope:
 
     def test_scope_merges_with_existing_context(self) -> None:
         """Scope merges with existing context, doesn't replace."""
-        from babylon.utils.log import (
+        from babylon.kernel.log import (
             clear_log_context,
             get_log_context,
             log_context_scope,
@@ -526,7 +526,7 @@ class TestContextAwareFilter:
 
     def test_filter_injects_context_fields(self) -> None:
         """Filter adds context fields to LogRecord."""
-        from babylon.utils.log import (
+        from babylon.kernel.log import (
             ContextAwareFilter,
             clear_log_context,
             set_log_context,
@@ -554,7 +554,7 @@ class TestContextAwareFilter:
 
     def test_filter_does_not_overwrite_existing_fields(self) -> None:
         """Filter does not overwrite fields already on record."""
-        from babylon.utils.log import (
+        from babylon.kernel.log import (
             ContextAwareFilter,
             clear_log_context,
             set_log_context,
@@ -581,7 +581,7 @@ class TestContextAwareFilter:
 
     def test_filter_always_returns_true(self) -> None:
         """Filter always returns True (passes all records)."""
-        from babylon.utils.log import ContextAwareFilter
+        from babylon.kernel.log import ContextAwareFilter
 
         filter_instance = ContextAwareFilter()
         record = logging.LogRecord(
@@ -608,7 +608,7 @@ class TestBabylonErrorLog:
 
     def test_log_method_exists(self) -> None:
         """BabylonError has a log() method."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         assert hasattr(BabylonError, "log")
         assert callable(BabylonError.log)
@@ -617,7 +617,7 @@ class TestBabylonErrorLog:
         """log() method has correct signature."""
         import inspect
 
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         sig = inspect.signature(BabylonError.log)
         params = list(sig.parameters.keys())
@@ -629,7 +629,7 @@ class TestBabylonErrorLog:
 
     def test_log_method_logs_at_error_level_by_default(self) -> None:
         """log() logs at ERROR level by default."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test error", error_code="TEST_001")
         logger = MagicMock(spec=logging.Logger)
@@ -642,7 +642,7 @@ class TestBabylonErrorLog:
 
     def test_log_method_includes_exception_dict(self) -> None:
         """log() includes exception.to_dict() in extra."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test error", error_code="TEST_001", details={"key": "value"})
         logger = MagicMock(spec=logging.Logger)
@@ -656,7 +656,7 @@ class TestBabylonErrorLog:
 
     def test_log_method_accepts_custom_level(self) -> None:
         """log() accepts custom log level."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Warning", error_code="WARN_001")
         logger = MagicMock(spec=logging.Logger)
@@ -668,7 +668,7 @@ class TestBabylonErrorLog:
 
     def test_log_method_includes_exc_info_by_default(self) -> None:
         """log() includes exc_info=True by default."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test error")
         logger = MagicMock(spec=logging.Logger)
@@ -680,7 +680,7 @@ class TestBabylonErrorLog:
 
     def test_log_method_can_disable_exc_info(self) -> None:
         """log() can disable exc_info."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test error")
         logger = MagicMock(spec=logging.Logger)
@@ -692,7 +692,7 @@ class TestBabylonErrorLog:
 
     def test_log_method_uses_str_as_message(self) -> None:
         """log() uses str(self) as the log message."""
-        from babylon.utils.exceptions import BabylonError
+        from babylon.kernel.exceptions import BabylonError
 
         error = BabylonError("Test message", error_code="ERR_001")
         logger = MagicMock(spec=logging.Logger)
@@ -847,7 +847,7 @@ class TestSetupLoggingHandlers:
 
     def test_setup_logging_uses_json_formatter_for_file_handlers(self) -> None:
         """File handlers use JSONFormatter."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
@@ -975,7 +975,7 @@ class TestLoggingYaml:
 
         assert "pythonjsonlogger" not in content, (
             "logging.yaml references pythonjsonlogger which is not in dependencies. "
-            "Use babylon.utils.log.JSONFormatter instead."
+            "Use babylon.kernel.log.JSONFormatter instead."
         )
 
 
@@ -990,7 +990,7 @@ class TestJSONFormatterIntegration:
 
     def test_json_formatter_with_real_logger(self) -> None:
         """JSONFormatter works with a real logger and handler."""
-        from babylon.utils.log import JSONFormatter
+        from babylon.kernel.log import JSONFormatter
 
         logger = logging.getLogger("test.json.integration")
         logger.setLevel(logging.DEBUG)
@@ -1017,7 +1017,7 @@ class TestJSONFormatterIntegration:
 
     def test_context_aware_filter_with_json_formatter(self) -> None:
         """ContextAwareFilter + JSONFormatter work together."""
-        from babylon.utils.log import (
+        from babylon.kernel.log import (
             ContextAwareFilter,
             JSONFormatter,
             clear_log_context,
@@ -1062,14 +1062,14 @@ class TestLogModuleExports:
 
     def test_all_exports_are_defined(self) -> None:
         """All items in __all__ are actually defined in the module."""
-        from babylon.utils import log
+        from babylon.kernel import log
 
         for name in log.__all__:
             assert hasattr(log, name), f"{name} is in __all__ but not defined"
 
     def test_expected_exports_present(self) -> None:
         """Expected exports are present in __all__."""
-        from babylon.utils import log
+        from babylon.kernel import log
 
         expected = [
             "TRACE",

@@ -516,7 +516,7 @@ class TestBlockedEvent:
 
     def test_blocked_at_is_deterministic_function_of_event_tick(self) -> None:
         """III.7: blocked_at derives from the wrapped event's tick."""
-        from babylon.sim_clock import sim_datetime
+        from babylon.kernel.sim_clock import sim_datetime
 
         bus = EventBus()
         bus.register_interceptor(BlockingInterceptor())

@@ -77,7 +77,7 @@ class TestSimulationEvent:
 
     def test_default_timestamp_is_deterministic_function_of_tick(self) -> None:
         """III.7: the default timestamp derives from tick, not wall clock."""
-        from babylon.sim_clock import sim_datetime
+        from babylon.kernel.sim_clock import sim_datetime
 
         event_a = SparkEvent(tick=5, node_id="C001", repression=0.5, spark_probability=0.05)
         event_b = SparkEvent(tick=5, node_id="C001", repression=0.5, spark_probability=0.05)

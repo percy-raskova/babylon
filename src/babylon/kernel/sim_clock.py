@@ -44,7 +44,7 @@ def sim_datetime(tick: int) -> datetime:
         ValueError: If ``tick`` is negative.
 
     Example:
-        >>> from babylon.sim_clock import sim_datetime
+        >>> from babylon.kernel.sim_clock import sim_datetime
         >>> sim_datetime(0).isoformat()
         '2010-01-01T00:00:00+00:00'
         >>> sim_datetime(52).year

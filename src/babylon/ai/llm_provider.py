@@ -22,7 +22,7 @@ from openai import APIError, APITimeoutError, OpenAI, RateLimitError
 from openai.types.chat import ChatCompletionMessageParam
 
 from babylon.config import LLMConfig
-from babylon.utils.exceptions import LLMGenerationError
+from babylon.kernel.exceptions import LLMGenerationError
 
 logger = logging.getLogger(__name__)
 

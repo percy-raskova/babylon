@@ -1,4 +1,4 @@
-"""Tests for babylon.utils.math - Quantization utilities.
+"""Tests for babylon.kernel.math - Quantization utilities.
 
 TDD Red Phase: These tests define the contract for the quantize() function
 that will provide 10^-6 precision quantization for all economic calculations.
@@ -26,8 +26,8 @@ import pytest
 
 # Use pytest.importorskip to gracefully handle missing module during RED phase
 _math_module = pytest.importorskip(
-    "babylon.utils.math",
-    reason="babylon.utils.math not yet implemented (RED phase)",
+    "babylon.kernel.math",
+    reason="babylon.kernel.math not yet implemented (RED phase)",
 )
 
 # Extract functions from module after successful import

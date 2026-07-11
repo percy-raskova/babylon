@@ -112,7 +112,7 @@ class ProductionSystem(SystemBase):
         # Owner item 25 (ProductionSystem staleness bug): the tensor-registry
         # lookup year must climb with tick, not stay pinned at whatever
         # ``base_year`` was hydrated with. Same epoch formula as
-        # TickDynamicsSystem._determine_year / babylon.sim_clock
+        # TickDynamicsSystem._determine_year / babylon.kernel.sim_clock
         # (``base_year + tick // weeks_per_year``) — reconciled here rather
         # than centralized, since those two call sites don't take a
         # ServicesProtocol/weeks_per_year the same way this one does.

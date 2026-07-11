@@ -1,6 +1,6 @@
 """JSON Lines log formatter for the Babylon web application.
 
-Mirrors the engine's ``babylon.utils.log.JSONFormatter`` pattern but
+Mirrors the engine's ``babylon.kernel.log.JSONFormatter`` pattern but
 is self-contained — no dependency on the simulation engine.
 
 Output format (one JSON object per line)::

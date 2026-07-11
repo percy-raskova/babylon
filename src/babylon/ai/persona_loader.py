@@ -29,7 +29,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from babylon.ai.persona import Persona, VoiceConfig
-from babylon.utils.schema_registry import build_schema_registry
+from babylon.kernel.schema_registry import build_schema_registry
 
 # Constants
 _SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"

@@ -45,7 +45,7 @@ class JsonlSessionRecorder:
         base_dir: Base directory for sessions (default: logs/sessions).
 
     Example:
-        >>> from babylon.utils.recorder import JsonlSessionRecorder
+        >>> from babylon.engine.observers.jsonl_recorder import JsonlSessionRecorder
         >>> recorder = JsonlSessionRecorder(metrics_collector=collector)
         >>> # Recorder is registered as observer with Simulation
         >>> # Files written automatically during simulation

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
+from babylon.kernel.sim_clock import UNSET_TIMESTAMP, sim_datetime
 
 if TYPE_CHECKING:
     from babylon.kernel.interceptor import (

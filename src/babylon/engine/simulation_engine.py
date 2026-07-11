@@ -67,6 +67,7 @@ from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.engine.systems.vitality import VitalitySystem
 from babylon.kernel.event_bus import Event
+from babylon.kernel.log import log_context_scope
 from babylon.kernel.system_protocol import ContextType, System
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EventType
@@ -88,7 +89,6 @@ from babylon.models.events import (
     UprisingEvent,
 )
 from babylon.models.world_state import WorldState
-from babylon.utils.log import log_context_scope
 
 if TYPE_CHECKING:
     from babylon.kernel.services import ServicesProtocol

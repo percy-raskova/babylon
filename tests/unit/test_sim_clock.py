@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from babylon.sim_clock import SIM_EPOCH_YEAR, UNSET_TIMESTAMP, WEEKS_PER_YEAR, sim_datetime
+from babylon.kernel.sim_clock import SIM_EPOCH_YEAR, UNSET_TIMESTAMP, WEEKS_PER_YEAR, sim_datetime
 
 pytestmark = pytest.mark.unit
 

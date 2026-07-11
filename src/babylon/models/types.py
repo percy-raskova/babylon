@@ -33,7 +33,7 @@ from typing import Annotated, Protocol, runtime_checkable
 
 from pydantic import AfterValidator, Field
 
-from babylon.utils.math import quantize
+from babylon.kernel.math import quantize
 
 # =============================================================================
 # QUANTIZATION VALIDATOR (Gatekeeper Pattern)

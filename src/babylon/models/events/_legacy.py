@@ -64,9 +64,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from babylon.kernel.sim_clock import UNSET_TIMESTAMP, sim_datetime
 from babylon.models.enums import EventType, GameOutcome
 from babylon.models.types import Currency
-from babylon.sim_clock import UNSET_TIMESTAMP, sim_datetime
 
 
 class SimulationEvent(BaseModel):

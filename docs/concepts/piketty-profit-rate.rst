@@ -349,8 +349,8 @@ For crisis detection, the simulation uses Piketty's formulation because:
    framework for threshold calibration (see :ref:`calibration-epistemology`)
 
 The Marxist profit rate remains central to the simulation's
-:doc:`imperial-rent` calculations and the
-:py:func:`~babylon.formulas.trpf.calculate_rate_of_profit` formula.
+:doc:`imperial-rent` calculations via
+:py:attr:`~babylon.economics.tensor.ValueTensor4x3.profit_rate`.
 The two rates are complementary: Piketty's *r* detects macro-level
 crisis onset, while the Marxist *r'* drives micro-level class dynamics.
 

@@ -27,11 +27,9 @@ Example:
     # Parametrized test with Marx's examples
     @pytest.mark.parametrize("example", MarxCapitalExamples.all())
     def test_rate_of_profit(example):
-        rate = calculate_rate_of_profit(
-            surplus_value=example.s,
-            constant_capital=example.c,
-            variable_capital=example.v,
-        )
+        # p' = s/(c+v) — the reference function was retired (fork ledger
+        # F12); the live path is ValueTensor4x3.profit_rate.
+        rate = example.s / (example.c + example.v)
         assert rate == pytest.approx(example.expected_profit_rate, abs=0.001)
 """
 
@@ -1373,11 +1371,8 @@ class MarxCapitalExamples:
 
         @pytest.mark.parametrize("example", MarxCapitalExamples.all())
         def test_rate_of_profit_falls_with_occ(example):
-            rate = calculate_rate_of_profit(
-                surplus_value=example.s,
-                constant_capital=example.c,
-                variable_capital=example.v,
-            )
+            # p' = s/(c+v) — reference function retired (fork ledger F12)
+            rate = example.s / (example.c + example.v)
             assert rate == pytest.approx(example.expected_profit_rate, abs=0.001)
     """
 

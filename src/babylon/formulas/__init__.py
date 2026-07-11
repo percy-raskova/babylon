@@ -127,8 +127,6 @@ from babylon.formulas.survival_calculus import (
 
 # Re-export TRPF formulas (Marx, Capital Vol. 3)
 from babylon.formulas.trpf import (
-    calculate_organic_composition,
-    calculate_rate_of_profit,
     calculate_rent_pool_decay,
     calculate_trpf_multiplier,
 )
@@ -182,8 +180,6 @@ __all__ = [
     "calculate_biocapacity_delta",
     "calculate_overshoot_ratio",
     # TRPF (Marx, Capital Vol. 3)
-    "calculate_organic_composition",
-    "calculate_rate_of_profit",
     "calculate_rent_pool_decay",
     "calculate_trpf_multiplier",
     # Vitality (Mass Line Refactor)

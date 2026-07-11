@@ -646,43 +646,25 @@ Models imperial rent pool depletion:
        decay_rate=0.002
    )  # Returns 99.8
 
-Rate of Profit (Epoch 2 Placeholder)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Rate of Profit and Organic Composition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Full Marx formula for rate of profit:
-
-.. math::
-
-   r = \frac{s}{c + v}
-
-Where:
-
-- :math:`s` = Surplus value
-- :math:`c` = Constant capital (machinery, materials)
-- :math:`v` = Variable capital (wages)
-
-**Implementation:**
-
-.. code-block:: python
-
-   from babylon.formulas import calculate_rate_of_profit
-
-   rate = calculate_rate_of_profit(
-       surplus_value=100.0,
-       constant_capital=200.0,
-       variable_capital=100.0
-   )  # Returns 0.333
-
-Organic Composition (Epoch 2 Placeholder)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ratio of constant to variable capital:
+Full Marx formulas:
 
 .. math::
 
-   \text{OCC} = \frac{c}{v}
+   r = \frac{s}{c + v} \qquad \text{OCC} = \frac{c}{v}
 
-Rising OCC is the mechanism behind the tendential fall in profit rate.
+Where :math:`s` = surplus value, :math:`c` = constant capital (machinery,
+materials), :math:`v` = variable capital (wages). Rising OCC is the
+mechanism behind the tendential fall in the profit rate.
+
+**Implementation:** the live path derives both from the QCEW-fed 4×3
+reproduction schema — :py:attr:`~babylon.economics.tensor.ValueTensor4x3.profit_rate`
+and :py:attr:`~babylon.economics.tensor.ValueTensor4x3.organic_composition` —
+rather than taking bare floats. (The standalone Epoch-2 placeholder
+functions were retired by the fork-reconciliation ledger, F12; the planned
+per-node wiring lives in ``ai/epochs/epoch3/epoch2-trpf.yaml``.)
 
 Formula-to-System Mapping
 -------------------------

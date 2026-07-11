@@ -16,8 +16,6 @@ Theoretical Basis: Marx, Capital Vol. 3, Chapters 13-15
 import pytest
 
 from babylon.formulas import (
-    calculate_organic_composition,
-    calculate_rate_of_profit,
     calculate_rent_pool_decay,
     calculate_trpf_multiplier,
 )
@@ -122,121 +120,6 @@ class TestRentPoolDecay:
 
 
 @pytest.mark.math
-class TestRateOfProfit:
-    """Rate of Profit: p' = s / (c + v)
-
-    Marx's fundamental formula from Capital Vol. 3.
-    Epoch 2 placeholder - currently implemented for formula completeness.
-    """
-
-    def test_marxs_first_example(self) -> None:
-        """Marx's example: c=50, v=100, s=100 -> p'=66.67%.
-
-        From Capital Vol. 3, Chapter 13.
-        """
-        rate = calculate_rate_of_profit(
-            surplus_value=100.0, constant_capital=50.0, variable_capital=100.0
-        )
-        expected = 100.0 / 150.0  # = 0.6666...
-        assert rate == pytest.approx(expected, abs=0.001)
-
-    def test_marxs_second_example(self) -> None:
-        """Marx's example: c=100, v=100, s=100 -> p'=50%."""
-        rate = calculate_rate_of_profit(
-            surplus_value=100.0, constant_capital=100.0, variable_capital=100.0
-        )
-        expected = 100.0 / 200.0  # = 0.5
-        assert rate == pytest.approx(expected, abs=0.001)
-
-    def test_marxs_third_example(self) -> None:
-        """Marx's example: c=400, v=100, s=100 -> p'=20%.
-
-        Shows TRPF: as OCC rises (c/v from 0.5 to 4.0),
-        profit rate falls (from 66.67% to 20%).
-        """
-        rate = calculate_rate_of_profit(
-            surplus_value=100.0, constant_capital=400.0, variable_capital=100.0
-        )
-        expected = 100.0 / 500.0  # = 0.2
-        assert rate == pytest.approx(expected, abs=0.001)
-
-    def test_zero_total_capital_returns_zero(self) -> None:
-        """If no capital invested, rate of profit is 0 (not infinity)."""
-        rate = calculate_rate_of_profit(
-            surplus_value=100.0, constant_capital=0.0, variable_capital=0.0
-        )
-        assert rate == 0.0
-
-    def test_higher_occ_means_lower_profit_rate(self) -> None:
-        """Verify TRPF: as OCC rises, p' falls (with constant s/v)."""
-        # All have same surplus value and variable capital
-        s = 100.0
-        v = 100.0
-
-        # Different constant capital levels (rising OCC)
-        rate_low_occ = calculate_rate_of_profit(
-            surplus_value=s, constant_capital=50.0, variable_capital=v
-        )
-        rate_mid_occ = calculate_rate_of_profit(
-            surplus_value=s, constant_capital=200.0, variable_capital=v
-        )
-        rate_high_occ = calculate_rate_of_profit(
-            surplus_value=s, constant_capital=500.0, variable_capital=v
-        )
-
-        assert rate_low_occ > rate_mid_occ > rate_high_occ
-
-
-@pytest.mark.math
-class TestOrganicComposition:
-    """Organic Composition of Capital: OCC = c / v
-
-    The ratio of 'dead labor' (machinery) to 'living labor' (wages).
-    As capitalism develops, OCC tends to rise.
-    """
-
-    def test_marxs_first_example(self) -> None:
-        """OCC = 50/100 = 0.5 (early capitalism, labor-intensive)."""
-        occ = calculate_organic_composition(constant_capital=50.0, variable_capital=100.0)
-        assert occ == pytest.approx(0.5, abs=0.001)
-
-    def test_marxs_third_example(self) -> None:
-        """OCC = 400/100 = 4.0 (advanced capitalism, capital-intensive)."""
-        occ = calculate_organic_composition(constant_capital=400.0, variable_capital=100.0)
-        assert occ == pytest.approx(4.0, abs=0.001)
-
-    def test_balanced_composition(self) -> None:
-        """OCC = 1.0 when c = v."""
-        occ = calculate_organic_composition(constant_capital=100.0, variable_capital=100.0)
-        assert occ == pytest.approx(1.0, abs=0.001)
-
-    def test_zero_variable_capital_returns_zero(self) -> None:
-        """If no wages paid, return 0 (not infinity).
-
-        This represents a fully automated process - theoretically
-        impossible under Marx's value theory (no value created).
-        """
-        occ = calculate_organic_composition(constant_capital=500.0, variable_capital=0.0)
-        assert occ == 0.0
-
-    def test_rising_occ_with_automation(self) -> None:
-        """Automation raises c relative to v, increasing OCC."""
-        # Initial state
-        c, v = 100.0, 100.0
-        occ_before = calculate_organic_composition(constant_capital=c, variable_capital=v)
-
-        # After automation: c increases by 100, v decreases by 50
-        # (automation investment partially displaces labor)
-        c_after = c + 100.0
-        v_after = v - 50.0
-        occ_after = calculate_organic_composition(
-            constant_capital=c_after, variable_capital=v_after
-        )
-
-        assert occ_after > occ_before
-
-
-@pytest.mark.math
 class TestTRPFMechanism:
     """Integration tests verifying TRPF mechanism across formulas.
 
@@ -293,7 +176,10 @@ class TestTRPFMechanism:
             s = v * exploitation_rate  # s = 100
             c = v * occ  # c rises with OCC
 
-            rate = calculate_rate_of_profit(surplus_value=s, constant_capital=c, variable_capital=v)
+            # p' = s / (c + v) inlined — the reference function was retired
+            # (fork ledger F12; the live path is ValueTensor4x3.profit_rate)
+            # but the declining-rate LAW this asserts is the durable contract.
+            rate = s / (c + v)
             profit_rates.append(rate)
 
         # Verify profit rates are monotonically declining

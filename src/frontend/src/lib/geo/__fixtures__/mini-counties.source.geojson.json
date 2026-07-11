@@ -1,0 +1,69 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "GEOID": "00001", "NAME": "Alpha", "STATEFP": "99" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+            [0, 0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "GEOID": "00002", "NAME": "Beta", "STATEFP": "99" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [1, 0],
+            [2, 0],
+            [2, 1],
+            [1, 1],
+            [1, 0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "GEOID": "00003", "NAME": "Gamma", "STATEFP": "99" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [0, 1],
+            [1, 1],
+            [1, 2],
+            [0, 2],
+            [0, 1]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "GEOID": "00004", "NAME": "Delta", "STATEFP": "99" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [1, 1],
+            [2, 1],
+            [2, 2],
+            [1, 2],
+            [1, 1]
+          ]
+        ]
+      }
+    }
+  ]
+}

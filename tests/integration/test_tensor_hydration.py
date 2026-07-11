@@ -5,7 +5,7 @@ Implements: T056 from tasks.md
 
 These tests verify the complete tensor hydration pipeline including:
 1. QCEW data extraction via SQLiteQCEWSource
-2. BEA ratio interpolation via InterpolatingBEASource
+2. BEA-ratio fallback semantics (the interpolating source was retired, fork ledger F2)
 3. Department mapping via DepartmentMapper
 4. TensorRegistry population with MarxianHydrator
 5. Fallback to YAML defaults when BEA data unavailable
@@ -20,7 +20,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from babylon.economics.adapters import InterpolatingBEASource, SQLiteQCEWSource
+from babylon.economics.adapters import SQLiteQCEWSource
 from babylon.economics.department_mapper import DepartmentMapper
 from babylon.economics.hydrator import MarxianHydrator
 from babylon.economics.tensor import NoDataSentinel, ValueTensor4x3
@@ -163,14 +163,6 @@ def qcew_source(db_session: Session) -> SQLiteQCEWSource:
     return SQLiteQCEWSource(db_session)
 
 
-@pytest.fixture
-def bea_source(db_session: Session, db_path: Path) -> InterpolatingBEASource | None:
-    """BEA data source with interpolation, or None if tables missing."""
-    if not _has_bea_tables(db_path):
-        return None
-    return InterpolatingBEASource(db_session, max_delta=5)
-
-
 class MockBEASource:
     """Mock BEA data source that returns None for all queries."""
 
@@ -184,12 +176,11 @@ class MockBEASource:
 @pytest.fixture
 def hydrator(
     qcew_source: SQLiteQCEWSource,
-    bea_source: InterpolatingBEASource | None,
     dept_mapper: DepartmentMapper,
 ) -> MarxianHydrator:
-    """MarxianHydrator with real or mock BEA source."""
-    # Use mock if BEA tables not available or schema doesn't match
-    actual_bea_source = bea_source if bea_source is not None else MockBEASource()
+    """MarxianHydrator with the mock BEA source (the interpolating source
+    was retired by fork ledger F2; YAML-default fallback is the live path)."""
+    actual_bea_source = MockBEASource()
 
     return MarxianHydrator(
         qcew_source=qcew_source,
@@ -298,32 +289,7 @@ class TestFullHydrationPipeline:
 
 @pytest.mark.integration
 class TestBEAInterpolationIntegration:
-    """Tests for BEA temporal interpolation in full hydration pipeline."""
-
-    def test_interpolation_produces_reasonable_ratios(
-        self,
-        db_session: Session,
-        db_path: Path,
-    ) -> None:
-        """BEA interpolation produces ratios in economically reasonable range."""
-        if not _has_bea_tables(db_path):
-            pytest.skip("BEA tables not present in database")
-
-        source = InterpolatingBEASource(db_session, max_delta=5)
-
-        # Query a manufacturing NAICS code that likely has BEA data
-        test_naics = "336111"  # Automobile manufacturing
-        year = 2022
-
-        sv_ratio = source.get_sv_ratio(test_naics, year)
-        cv_ratio = source.get_cv_ratio(test_naics, year)
-
-        # If data exists, verify reasonable bounds
-        if sv_ratio is not None:
-            assert 0 <= sv_ratio <= 10, f"s/v ratio {sv_ratio} outside bounds [0, 10]"
-
-        if cv_ratio is not None:
-            assert 0 <= cv_ratio <= 20, f"c/v ratio {cv_ratio} outside bounds [0, 20]"
+    """BEA-ratio fallback semantics in the full hydration pipeline."""
 
     def test_missing_bea_falls_back_to_yaml_defaults(
         self,

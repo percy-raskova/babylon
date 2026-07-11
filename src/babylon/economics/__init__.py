@@ -54,7 +54,6 @@ See Also:
 # Adapters (protocols and implementations)
 from babylon.economics.adapters import (
     BEADataSource,
-    InterpolatingBEASource,
     QCEWDataSource,
     SQLiteQCEWSource,
 )
@@ -182,7 +181,6 @@ from babylon.economics.tick import (
 __all__ = [
     # Protocols and implementations
     "BEADataSource",
-    "InterpolatingBEASource",
     "QCEWDataSource",
     "SQLiteQCEWSource",
     # Exceptions

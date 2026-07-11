@@ -98,15 +98,26 @@ def run_pipeline(
     # ── Step 2: Hydration ──
     marxian_hydrator = None
     if use_marxian_hydrator:
-        from babylon.economics.adapters import InterpolatingBEASource, SQLiteQCEWSource
+        from babylon.economics.adapters import SQLiteQCEWSource
         from babylon.economics.department_mapper import get_default_mapper
         from babylon.economics.hydrator import MarxianHydrator
 
+        class _NoBEASource:
+            """InterpolatingBEASource was retired (fork ledger F2); the
+            hydrator's YAML-default fallback path handles a None-returning
+            source — the same degradation it always used when BEA tables
+            were absent."""
+
+            def get_sv_ratio(self, naics: str, year: int) -> float | None:  # noqa: ARG002 - protocol shape
+                return None
+
+            def get_cv_ratio(self, naics: str, year: int) -> float | None:  # noqa: ARG002 - protocol shape
+                return None
+
         session = session_factory()
         qcew_source = SQLiteQCEWSource(session)
-        bea_source = InterpolatingBEASource(session)
         dept_mapper = get_default_mapper()
-        marxian_hydrator = MarxianHydrator(qcew_source, bea_source, dept_mapper)
+        marxian_hydrator = MarxianHydrator(qcew_source, _NoBEASource(), dept_mapper)
 
     t2 = time.perf_counter()
     grid = hydrate_hex_grid(grid, year=year, marxian_hydrator=marxian_hydrator)

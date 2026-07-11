@@ -15,7 +15,9 @@ from babylon.models.enums import ConsciousnessTendency, TopologyType
 class ConsciousnessDelta(BaseModel):
     """Result of a single organization's consciousness effect on a community.
 
-    Produced by ``consciousness_effect()`` calculator.
+    Historically produced by the Feature-031 ``consciousness_effect()``
+    calculator (retired, fork ledger F7); kept as the typed vocabulary for
+    consciousness deltas.
 
     Attributes:
         collective_identity_delta: Change to target community's CI.
@@ -44,7 +46,8 @@ class ConsciousnessDelta(BaseModel):
 class AggregatedEffect(BaseModel):
     """Result of aggregating multiple organization consciousness effects.
 
-    Produced by ``aggregate_consciousness_effects()`` calculator.
+    Historically produced by the Feature-031 ``aggregate_consciousness_effects()``
+    calculator (retired, fork ledger F7).
 
     Attributes:
         total_ci_delta: Sum of all organization CI deltas.

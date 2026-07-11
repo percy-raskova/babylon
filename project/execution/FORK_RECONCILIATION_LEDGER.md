@@ -138,7 +138,7 @@ its own ruling. The deletion itself is inert and byte-identical. · Cost **S** (
 **Adversarial verdict:** CONFIRMED. II.11 applied correctly this time (location, not raw-SQL). One
 loose label: substrate-immutability is Amendment G / I.20, not "II.6" — a secondary lever, non-load-bearing.
 
-> **— Percy's ruling:** _(pending)_
+> **— Percy's ruling:** APPROVED as recommended (2026-07-10, Program 14 Phase 2 scope ruling). **EXECUTED** 2026-07-11, commit `3ae454e5`. The linear-interpolation salvage + GLOBAL_FALLBACK_SHARE define remain DEFERRED (baseline-moving; separate owner ruling — queued).
 
 ---
 
@@ -331,7 +331,7 @@ differs. · Cost **S** · byte-identical (zero runtime callers).
 **Adversarial verdict:** CONFIRMED. Deleting zero-caller code can't move the hash; the numeric divergence
 confirms a naive swap would *not* be byte-identical, so deletion (not reconcile) is the honest call.
 
-> **— Percy's ruling:** _(pending)_
+> **— Percy's ruling:** APPROVED as recommended (2026-07-10, Program 14 Phase 2 scope ruling). **EXECUTED** 2026-07-11, commit `4bf94053`.
 
 ---
 
@@ -395,7 +395,7 @@ keep an inert duplicate now. · Cost **S** · byte-identical.
 **Adversarial verdict:** CONFIRMED. rg confirms the only external importers are the two named test files;
 the byte-identical duplication and false docstring both verified.
 
-> **— Percy's ruling:** _(pending)_
+> **— Percy's ruling:** APPROVED as recommended (2026-07-10, Program 14 Phase 2 scope ruling). **EXECUTED** 2026-07-11, commit `bc28e1e0`.
 
 ---
 
@@ -429,7 +429,7 @@ readers) · Constitution III.10 / III.7 / III.8 / II.11
 **Adversarial verdict:** CONFIRMED. II.11 used correctly (the migration SQL self-declares the view as the
 cross-subsystem interface); zero live SELECT on `trace_log` confirmed.
 
-> **— Percy's ruling:** _(pending)_
+> **— Percy's ruling:** APPROVED as recommended (2026-07-10, Program 14 Phase 2 scope ruling). **EXECUTED** 2026-07-11, commit `09c7ae03`.
 
 ---
 
@@ -458,7 +458,7 @@ different sink) · `test_postgres_runtime.py:1102-1160` (self-skipping) · Const
 **Adversarial verdict:** CONFIRMED. III.8 honestly declared inapplicable to IO plumbing (no mis-forcing);
 `SessionRecorder` is genuinely the superset.
 
-> **— Percy's ruling:** _(pending)_
+> **— Percy's ruling:** APPROVED as recommended (2026-07-10, Program 14 Phase 2 scope ruling). **EXECUTED** 2026-07-11, commit `09c7ae03`. JsonlSessionRecorder untouched per the row (separate item — queued).
 
 ---
 
@@ -490,7 +490,7 @@ registered) · `tensor.py:350,384,178` · `specs/010-*/spec.md:66` · `ai/epochs
 satisfies Percy's "don't delete working code — keep a Future-Enhancements doc" rule while III.10 removes the
 inert code.
 
-> **— Percy's ruling:** _(pending)_
+> **— Percy's ruling:** APPROVED as recommended (2026-07-10, Program 14 Phase 2 scope ruling). **EXECUTED** 2026-07-11, commit `dfe0479a`.
 
 ---
 

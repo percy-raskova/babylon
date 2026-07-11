@@ -151,6 +151,7 @@ jobs:
         with:
           gdal: "true"
       - uses: ./.github/actions/postgres-up
+      - uses: ./.github/actions/fetch-reference-db
       - name: Django migrate (fresh compose DB)
         working-directory: web
         env:
@@ -200,6 +201,7 @@ jobs:
         working-directory: src/frontend
         run: npx playwright install --with-deps chromium
       - uses: ./.github/actions/postgres-up
+      - uses: ./.github/actions/fetch-reference-db
       - name: Django migrate
         working-directory: web
         env:
@@ -287,6 +289,7 @@ jobs:
         with:
           gdal: "true"
       - uses: ./.github/actions/postgres-up
+      - uses: ./.github/actions/fetch-reference-db
       - name: qa:e2e-regression (strict 5-tick bundle vs baseline)
         run: mise run qa:e2e-regression
       - name: qa:storage-budget (rows/tick vs committed baseline)
@@ -294,6 +297,27 @@ jobs:
       - name: Stop Postgres
         if: always()
         run: docker compose down -v
+
+  # The requires_reference_db suites run here against the ci-data-v1 subset
+  # artifact (item 40) — tests/unit's marked files are excluded from the
+  # dev unit shard and tests outside unit are excluded from test-rest by
+  # the marker, so this job is their ONE home on the main tier.
+  refdata-tests:
+    name: Reference-Data Tests (ci-data-v1 subset)
+    if: ${{ vars.CI_REFDB_READY == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - uses: ./.github/actions/fetch-reference-db
+      - name: Run requires_reference_db suites
+        run: >-
+          poetry run pytest tests -m requires_reference_db
+          --ignore=tests/integration/web
+          -o addopts="" -vv -ra -l --tb=long --durations=0
 
   ai-tests:
     name: AI Tests (advisory — non-deterministic)

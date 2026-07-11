@@ -1,0 +1,59 @@
+# CI reference-data subset (Program 15 Phase 6, owner item 40). Downloads the
+# Michigan-scoped subset release asset and places it where the code expects
+# the reference DB. INTEGRITY CONTRACT: the sha256 is verified BEFORE first
+# open on both the download and cache-restore paths — babylon's readers set
+# journal_mode=WAL on connect, which rewrites the file bytes, so any
+# verification after first use is meaningless (learned the hard way; see the
+# generator's _vacuum_output docstring).
+name: Fetch Reference DB
+description: Download + verify the CI reference-subset SQLite artifact
+
+inputs:
+  tag:
+    description: Data-release tag holding the subset asset
+    required: false
+    default: ci-data-v1
+  asset:
+    description: Asset filename within the release
+    required: false
+    default: reference-subset-20260711.sqlite
+  sha256:
+    description: Expected sha256 of the asset (pin — bump with the tag)
+    required: false
+    default: dea98cc417bb984491e6a5c14dee53988181194c1426b9f842a0cdfb326a761d
+
+runs:
+  using: composite
+  steps:
+    - name: Restore cached subset
+      id: refdb-cache
+      uses: actions/cache@v5
+      with:
+        path: ~/refdb/${{ inputs.asset }}
+        key: refdb-${{ inputs.tag }}-${{ inputs.sha256 }}
+
+    - name: Download release asset (cache miss)
+      if: steps.refdb-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        mkdir -p ~/refdb
+        gh release download '${{ inputs.tag }}' \
+          --repo "$GITHUB_REPOSITORY" \
+          --pattern '${{ inputs.asset }}' \
+          --output ~/refdb/'${{ inputs.asset }}'
+
+    - name: Verify sha256 (hard fail — download AND cache-restore paths)
+      shell: bash
+      run: |
+        echo '${{ inputs.sha256 }}  '"$HOME"'/refdb/${{ inputs.asset }}' | sha256sum -c -
+
+    - name: Install as data/sqlite/marxist-data-3NF.sqlite
+      shell: bash
+      run: |
+        mkdir -p data/sqlite
+        # Copy, not move: the cached original must stay byte-pristine —
+        # the first reader flips it to WAL and rewrites it.
+        cp ~/refdb/'${{ inputs.asset }}' data/sqlite/marxist-data-3NF.sqlite
+        ls -la data/sqlite/

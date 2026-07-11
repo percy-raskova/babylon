@@ -1,21 +1,31 @@
 /**
- * The cockpit shell — CSS-grid AppShell replacing the B1 placeholder
- * regions (spec-110 B3 stage 2). Five persistent regions: StatusBar
- * (col-span-3), Outliner, Map, Dock, BottomStrip (col-span-3). The
- * bottom-strip row collapses to a thin strip via `ui.bottomStripCollapsed`
- * — its content stays mounted (see `BottomStrip.tsx`).
+ * The Living Map shell (spec-113, architecture §0/§1.1) — replaces the
+ * B1-era CSS-grid AppShell that pinned five fixed regions. Three stacked
+ * layers:
  *
- * `TakeoverOverlay` (spec-110 B5) renders last, fixed-positioned, so it
- * escapes the grid and covers the whole viewport when a takeover is open —
- * the five regions above (map included) stay mounted underneath it.
+ * - Layer 0 — `MapStage`: `DeckGLMap` at `absolute inset-0`, always
+ *   mounted, the only scroll/drag surface.
+ * - Layer 1 — Chrome: a `pointer-events-none` full-viewport overlay whose
+ *   children (top bar, outliner, event tray, action dock, ...)
+ *   individually re-enable `pointer-events-auto` (via `FloatingPanel`).
+ *   Map interactions pass through the gaps.
+ * - Layer 2 — `TakeoverOverlay` (unchanged; already renders fixed over
+ *   everything, already map-first-compatible).
+ *
+ * `components/inspect/InspectionStack` (Lane C, not yet built) mounts
+ * inside the chrome layer, anchored left-of-tray, once it exists — see
+ * the comment below for where.
  */
 
-import { useStore } from "@/store";
-import { StatusBar } from "./StatusBar";
-import { Outliner } from "./Outliner";
-import { MapPanel } from "./MapPanel";
-import { RightDock } from "./RightDock";
-import { BottomStrip } from "./BottomStrip";
+import { MapStage } from "./MapStage";
+import { TopBar } from "@/components/chrome/TopBar";
+import { OutlinerOverlay } from "@/components/chrome/OutlinerOverlay";
+import { EventTray } from "@/components/chrome/EventTray";
+import { ObjectivesTray } from "@/components/chrome/ObjectivesTray";
+import { ActionDock } from "@/components/chrome/ActionDock";
+import { BottomDrawer } from "@/components/chrome/BottomDrawer";
+import { EventToasts } from "@/components/chrome/EventToasts";
+import { CriticalEventModal } from "@/components/chrome/CriticalEventModal";
 import { TakeoverOverlay } from "@/components/takeovers/TakeoverOverlay";
 
 interface AppShellProps {
@@ -23,18 +33,41 @@ interface AppShellProps {
 }
 
 export function AppShell({ gameId }: AppShellProps): React.JSX.Element {
-  const bottomStripCollapsed = useStore((s) => s.ui.bottomStripCollapsed);
-
   return (
-    <div
-      className="grid h-screen w-screen grid-cols-[240px_1fr_320px] bg-void text-bone"
-      style={{ gridTemplateRows: `48px 1fr ${bottomStripCollapsed ? "32px" : "200px"}` }}
-    >
-      <StatusBar gameId={gameId} />
-      <Outliner gameId={gameId} />
-      <MapPanel gameId={gameId} />
-      <RightDock gameId={gameId} />
-      <BottomStrip gameId={gameId} />
+    <div className="relative h-screen w-screen overflow-hidden bg-void text-bone">
+      {/* Layer 0 — the persistent map, full-bleed, always mounted. */}
+      <MapStage gameId={gameId} />
+
+      {/* Layer 1 — chrome. Individual FloatingPanel instances re-enable
+          pointer-events-auto; everything else in this container passes
+          clicks/drags straight through to the map underneath. */}
+      <div data-testid="chrome-layer" className="pointer-events-none absolute inset-0">
+        <TopBar gameId={gameId} />
+        <OutlinerOverlay gameId={gameId} />
+
+        {/* InspectionStack (Lane C) mounts here, anchored left-of-tray,
+            once components/inspect/InspectionStack.tsx exists. */}
+
+        <div className="pointer-events-none absolute bottom-2 right-2 top-14 flex flex-col gap-2">
+          <div className="pointer-events-auto min-h-0 flex-1">
+            <EventTray gameId={gameId} />
+          </div>
+          <div className="pointer-events-auto shrink-0">
+            <ObjectivesTray gameId={gameId} />
+          </div>
+        </div>
+
+        <div className="pointer-events-auto absolute bottom-2 left-1/2 -translate-x-1/2">
+          <ActionDock gameId={gameId} />
+        </div>
+
+        <BottomDrawer gameId={gameId} />
+
+        <EventToasts gameId={gameId} />
+        <CriticalEventModal gameId={gameId} />
+      </div>
+
+      {/* Layer 2 — takeovers, unchanged. */}
       <TakeoverOverlay gameId={gameId} />
     </div>
   );

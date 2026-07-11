@@ -1,38 +1,63 @@
 /**
- * UI slice — dock tabs, bottom-strip collapse, focus, takeover overlays
- * (spec-110 B3, takeover field added spec-110 B5).
+ * UI slice — chrome panel visibility, focus, takeover overlays (spec-110
+ * B3, takeover field added spec-110 B5; `ui.chrome` added spec-113 Lane A,
+ * architecture.md §1.4).
  *
  * Deliberately narrow: this is chrome state only. Panel data/loading/error
  * lives in `panels/*`; selection/viewport lives in `mapSlice`.
+ *
+ * `activeDockTab`/`bottomStripCollapsed`/`rightDockTab` (the RightDock/
+ * BottomStrip tab-and-collapse state) are RETIRED — `RightDock.tsx` and
+ * `BottomStrip.tsx` are deleted (architecture §1.2's "disperse" row) and
+ * every consumer of those three fields was owned by this same lane, so the
+ * "subtractive" half of §1.4's "additive then subtractive" happens in this
+ * one commit rather than a later sweep. `DockTab`/`RightDockTab` stay
+ * exported as pure type aliases (unused by state now) only because
+ * `store/index.ts` — outside this lane's ownership — still re-exports
+ * their names; drop them there first if retiring the names too.
  */
 
 import type { StateCreator } from "zustand";
 import type { RootState } from "../types";
 
-/** Mirrors the legacy `BottomTab` union (`web/frontend/src/stores/uiStore.ts`). */
+/** Retained only so `store/index.ts`'s `export type { DockTab, ... }` still resolves. */
 export type DockTab = "timeseries" | "events" | "graph" | "notifications";
-
-/** The three Right Dock tabs (spec-110 B3 stage 2 + B5 Objectives). */
+/** Retained only so `store/index.ts`'s `export type { ..., RightDockTab }` still resolves. */
 export type RightDockTab = "actions" | "inspector" | "objectives";
 
 /** The three full-screen takeover surfaces (spec-110 B5), or none open. */
 export type TakeoverKind = "wire" | "chronicle" | "dialectic";
 
+/** `BottomDrawer`'s three states (architecture §1.4): closed, or one of its two contents. */
+export type BottomDrawerState = "none" | "trends" | "events";
+
+/**
+ * Chrome panel open/collapsed state (architecture §1.4). One field per
+ * floating chrome panel that has a show/hide affordance; `composerOpen`
+ * gates `ActionDock`'s `FloatingPanel` housing `ActionComposer`.
+ */
+export interface ChromeState {
+  outlinerOpen: boolean;
+  eventTrayOpen: boolean;
+  objectivesOpen: boolean;
+  bottomDrawer: BottomDrawerState;
+  composerOpen: boolean;
+}
+
 export interface UiSlice {
   ui: {
-    activeDockTab: DockTab;
-    bottomStripCollapsed: boolean;
+    chrome: ChromeState;
     /** Id of whichever docked panel currently has keyboard/visual focus. */
     focusedPanelId: string | null;
-    /** Which of the Right Dock's three tabs is showing. */
-    rightDockTab: RightDockTab;
     /** Which takeover overlay is open, if any — the map stays mounted underneath. */
     takeover: { active: TakeoverKind | null };
 
-    setActiveDockTab: (tab: DockTab) => void;
-    toggleBottomStrip: () => void;
+    toggleOutliner: () => void;
+    toggleEventTray: () => void;
+    toggleObjectives: () => void;
+    toggleComposer: () => void;
+    setBottomDrawer: (state: BottomDrawerState) => void;
     setFocusedPanel: (id: string | null) => void;
-    setRightDockTab: (tab: RightDockTab) => void;
     openTakeover: (kind: TakeoverKind) => void;
     closeTakeover: () => void;
   };
@@ -40,17 +65,35 @@ export interface UiSlice {
 
 export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => ({
   ui: {
-    activeDockTab: "timeseries",
-    bottomStripCollapsed: false,
+    chrome: {
+      outlinerOpen: true,
+      eventTrayOpen: true,
+      objectivesOpen: true,
+      bottomDrawer: "trends",
+      composerOpen: true,
+    },
     focusedPanelId: null,
-    rightDockTab: "actions",
     takeover: { active: null },
 
-    setActiveDockTab: (tab) => set((s) => ({ ui: { ...s.ui, activeDockTab: tab } })),
-    toggleBottomStrip: () =>
-      set((s) => ({ ui: { ...s.ui, bottomStripCollapsed: !s.ui.bottomStripCollapsed } })),
+    toggleOutliner: () =>
+      set((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, outlinerOpen: !s.ui.chrome.outlinerOpen } },
+      })),
+    toggleEventTray: () =>
+      set((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, eventTrayOpen: !s.ui.chrome.eventTrayOpen } },
+      })),
+    toggleObjectives: () =>
+      set((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, objectivesOpen: !s.ui.chrome.objectivesOpen } },
+      })),
+    toggleComposer: () =>
+      set((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, composerOpen: !s.ui.chrome.composerOpen } },
+      })),
+    setBottomDrawer: (state) =>
+      set((s) => ({ ui: { ...s.ui, chrome: { ...s.ui.chrome, bottomDrawer: state } } })),
     setFocusedPanel: (id) => set((s) => ({ ui: { ...s.ui, focusedPanelId: id } })),
-    setRightDockTab: (tab) => set((s) => ({ ui: { ...s.ui, rightDockTab: tab } })),
     openTakeover: (kind) => set((s) => ({ ui: { ...s.ui, takeover: { active: kind } } })),
     closeTakeover: () => set((s) => ({ ui: { ...s.ui, takeover: { active: null } } })),
   },

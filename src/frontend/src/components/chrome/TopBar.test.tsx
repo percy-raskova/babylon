@@ -1,7 +1,13 @@
+/**
+ * TopBar tests — ports StatusBar.test.tsx's real-/summary/-data assertions
+ * (architecture §1.2's "StatusBar → TopBar, migrate" row) onto the new
+ * chrome component. Keeps `region-statusbar`/`tick-value` testids.
+ */
+
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StatusBar } from "./StatusBar";
+import { TopBar } from "./TopBar";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
 import { resetMockGameState, DEFAULT_GAME_ID } from "@/test/handlers";
@@ -14,9 +20,14 @@ beforeEach(() => {
   resetMockGameState();
 });
 
-describe("StatusBar", () => {
+describe("TopBar", () => {
+  it("renders as the region-statusbar landmark", () => {
+    render(<TopBar gameId={DEFAULT_GAME_ID} />);
+    expect(screen.getByTestId("region-statusbar")).toBeInTheDocument();
+  });
+
   it("fetches and renders real /summary/ fields", async () => {
-    render(<StatusBar gameId={DEFAULT_GAME_ID} />);
+    render(<TopBar gameId={DEFAULT_GAME_ID} />);
 
     await waitFor(() => expect(useStore.getState().panels.summary.data).not.toBeNull());
 
@@ -29,12 +40,12 @@ describe("StatusBar", () => {
     useStore.setState((s) => ({
       world: { ...s.world, snapshot: makeSnapshot({ tick: 7 }), lastTick: 7 },
     }));
-    render(<StatusBar gameId={DEFAULT_GAME_ID} />);
+    render(<TopBar gameId={DEFAULT_GAME_ID} />);
     expect(screen.getByTestId("tick-value")).toHaveTextContent("7");
   });
 
   it("shows 'no data' for tick when no snapshot has loaded yet", () => {
-    render(<StatusBar gameId={DEFAULT_GAME_ID} />);
+    render(<TopBar gameId={DEFAULT_GAME_ID} />);
     expect(screen.getByTestId("tick-value")).toHaveTextContent("no data");
   });
 
@@ -49,21 +60,21 @@ describe("StatusBar", () => {
         }),
       ),
     );
-    render(<StatusBar gameId={DEFAULT_GAME_ID} />);
+    render(<TopBar gameId={DEFAULT_GAME_ID} />);
     await waitFor(() => expect(screen.getByTestId("alert-counts")).toBeInTheDocument());
     expect(screen.getByTitle("2 critical events")).toHaveTextContent("2");
     expect(screen.getByTitle("1 warning events")).toHaveTextContent("1");
   });
 
   it("mounts and unmounts the summary panel", async () => {
-    const { unmount } = render(<StatusBar gameId={DEFAULT_GAME_ID} />);
+    const { unmount } = render(<TopBar gameId={DEFAULT_GAME_ID} />);
     await waitFor(() => expect(useStore.getState().panels.summary.mounted).toBe(true));
     unmount();
     expect(useStore.getState().panels.summary.mounted).toBe(false);
   });
 
-  it("opens each takeover from its StatusBar button (spec-110 B5)", async () => {
-    render(<StatusBar gameId={DEFAULT_GAME_ID} />);
+  it("opens each takeover from its TopBar button (spec-110 B5)", async () => {
+    render(<TopBar gameId={DEFAULT_GAME_ID} />);
 
     await userEvent.click(screen.getByTestId("open-wire"));
     expect(useStore.getState().ui.takeover.active).toBe("wire");
@@ -73,5 +84,10 @@ describe("StatusBar", () => {
 
     await userEvent.click(screen.getByTestId("open-chronicle"));
     expect(useStore.getState().ui.takeover.active).toBe("chronicle");
+  });
+
+  it("hosts SpeedControls (time-status testid survives the TimeControls → SpeedControls migration)", () => {
+    render(<TopBar gameId={DEFAULT_GAME_ID} />);
+    expect(screen.getByTestId("time-status")).toBeInTheDocument();
   });
 });

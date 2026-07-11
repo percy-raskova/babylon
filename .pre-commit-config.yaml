@@ -191,7 +191,11 @@ repos:
       - id: check-toml
       - id: check-added-large-files
         args: ['--maxkb=500']
-        exclude: ^tests/baselines/.*\.json$|^src/babylon/data/game/balkanization/seed_influences\.json$
+        # src/frontend/public/geo/*.topojson: vendored cartography (owner-approved
+        # per-case 2026-07-11) — TIGER 2024 county/state/AIANNH meshes, simplified +
+        # budgeted in public/geo/README.md, regenerable via tools/build_geo_assets.mjs;
+        # served at runtime by Vite, so LFS pointers would break dev/deploy.
+        exclude: ^tests/baselines/.*\.json$|^src/babylon/data/game/balkanization/seed_influences\.json$|^src/frontend/public/geo/.*\.topojson$
       - id: check-merge-conflict
 
   # ==========================================================================

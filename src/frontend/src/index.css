@@ -223,6 +223,24 @@
   --vignette-spread: 60%;
   --flicker-range: 0.05;
   --flicker-speed: 1.5s;
+
+  /* ----------------------------------------------------------------
+     CHROME TOKENS (spec-113 The Living Map, Lane A, architecture §1.3) —
+     ADDITIVE ONLY. Every value here composes existing canon tokens above;
+     none of the canon tokens are edited (tokens.contract.test.ts pins
+     them byte-identical). Backs `FloatingPanel`, the shared primitive
+     every chrome overlay instances — promotes the `bg-void/80
+     backdrop-blur-sm` idiom DeckGLMap's control cluster already used.
+     ---------------------------------------------------------------- */
+  --chrome-bg: rgba(
+    6,
+    7,
+    11,
+    0.8
+  ); /* --babylon-void @ 80%, literal (no CSS relative-color dependency) */
+  --chrome-border: var(--babylon-rebar);
+  --chrome-border-active: var(--babylon-spire);
+  --chrome-shadow: var(--shadow-panel);
 }
 
 /* ================================================================
@@ -306,6 +324,14 @@
   --code-bg: var(--babylon-rebar);
   --code-color: var(--babylon-solidarity);
   --code-border: var(--babylon-wet-steel);
+
+  /* -------- Chrome (spec-113 Lane A, additive — see :root block above) --------
+     Blur reuses Tailwind's built-in `backdrop-blur-sm` (4px) — the exact
+     value the promoted `bg-void/80 backdrop-blur-sm` idiom already used,
+     so no custom blur token is needed. */
+  --color-chrome-bg: var(--chrome-bg);
+  --color-chrome-border: var(--chrome-border);
+  --color-chrome-border-active: var(--chrome-border-active);
 }
 
 /* ================================================================

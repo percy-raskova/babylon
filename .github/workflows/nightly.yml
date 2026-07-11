@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -41,7 +41,7 @@ jobs:
         run: mise run test:rest-ci
       - name: Upload test results + coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nightly-rest-results
           path: reports/test-results/rest-ci/
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -104,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -124,7 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: dev
       # Documented exception to the mise-pinned toolchain: this leg exists
@@ -154,7 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -163,7 +163,7 @@ jobs:
       - name: Parameter sweep
         run: mise run sim:sweep
       - name: Upload results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sim-analysis-${{ github.run_id }}
           path: results/
@@ -178,7 +178,7 @@ jobs:
     timeout-minutes: 120
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python

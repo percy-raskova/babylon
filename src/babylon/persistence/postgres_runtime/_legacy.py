@@ -2341,17 +2341,28 @@ class PostgresRuntime:
     ) -> None:
         """Persist simulation events."""
         with conn.cursor() as cur:
+            # The event key is "event_type" — that is the field name on
+            # SimulationEvent (models/events/_legacy.py) and therefore the key
+            # model_dump(mode="json") emits. Reading "type" here silently
+            # persisted EVERY event as "UNKNOWN", which (a) collapsed distinct
+            # events at one tick onto the same ux_simulation_event_session_tick_
+            # natural key and (b) starved the web layer's urgency classifier.
+            # ON CONFLICT DO NOTHING makes the write retry-safe against that
+            # natural key regardless (mirrors migration 0009's stated intent).
             cur.executemany(
                 """
                 INSERT INTO simulation_event
                     (session_id, tick, event_type, entity_id, community_type, details)
                 VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (session_id, tick, event_type,
+                             COALESCE(entity_id, ''), COALESCE(community_type, ''))
+                DO NOTHING
                 """,
                 [
                     (
                         session_id,
                         tick,
-                        e.get("type", "UNKNOWN"),
+                        e.get("event_type", "UNKNOWN"),
                         e.get("entity_id"),
                         e.get("community_type"),
                         json.dumps(e, default=_json_default),

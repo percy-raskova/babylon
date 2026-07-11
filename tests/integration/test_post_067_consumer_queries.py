@@ -16,7 +16,7 @@ These tests verify:
 
 from __future__ import annotations
 
-import subprocess
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -138,28 +138,28 @@ def test_post_067_michigan_county_years_have_non_zero_employment(
 
 # T040 — Build-time grep enforcement (SC-004).
 def test_post_067_no_filter_lines_remain_in_production_paths() -> None:
-    """No spec-066 hotfix filter remains in the production query paths."""
+    """No spec-066 hotfix filter remains in the production query paths.
 
+    Pure-Python scan (was an ``rg`` subprocess — hosted CI runners have no
+    ripgrep, which made this test FileNotFoundError on its first-ever CI run,
+    2026-07-11).
+    """
+    pattern = re.compile(
+        r"WHERE\s+ownership_id\s*=\s*1|WHERE\s+industry_id\s*=\s*1|"
+        r"AND\s+(?:fq\.)?ownership_id\s*=\s*1|AND\s+(?:fq\.)?industry_id\s*=\s*1"
+    )
     repo_root = Path(__file__).resolve().parents[2]
     target_files = [
-        str(repo_root / "src/babylon/persistence/hex_hydrator.py"),
-        str(repo_root / "src/babylon/persistence/county_aggregation.py"),
+        repo_root / "src/babylon/persistence/hex_hydrator.py",
+        repo_root / "src/babylon/persistence/county_aggregation.py",
     ]
-    # rg returns exit 1 when no match found, which is the success case here.
-    result = subprocess.run(
-        [
-            "rg",
-            "-n",
-            r"WHERE\s+ownership_id\s*=\s*1|WHERE\s+industry_id\s*=\s*1|"
-            r"AND\s+(?:fq\.)?ownership_id\s*=\s*1|AND\s+(?:fq\.)?industry_id\s*=\s*1",
-            *target_files,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 1, (
-        f"spec-066 hotfix filter pattern still present in production code:\n{result.stdout}"
+    hits: list[str] = []
+    for target in target_files:
+        for lineno, line in enumerate(target.read_text().splitlines(), start=1):
+            if pattern.search(line):
+                hits.append(f"{target}:{lineno}: {line.strip()}")
+    assert not hits, (
+        "spec-066 hotfix filter pattern still present in production code:\n" + "\n".join(hits)
     )
     # Sanity: silence unused-variable lint for NORMALIZED_DB_PATH at module
     # scope without actually importing the path during the grep check.

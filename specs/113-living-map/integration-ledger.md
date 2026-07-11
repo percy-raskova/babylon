@@ -109,19 +109,49 @@ MapControls unit test + the live 9-lens e2e (1-fail-90s-timeout → 4-pass-11.5s
 **Final live e2e: 28/30.** The only 2 reds are the engine-pinned owner items
 below (red by design). 796 vitest, tsc/eslint/prettier green.
 
-**New owner / polish items raised this close:**
-- **P2 (real app bug, DS-SYNC agent found it):** `BottomDrawer` (FloatingPanel
-  anchor="bottom") is shrink-to-fit height with no definite pixel height in the
-  `h-full → recharts ResponsiveContainer height="100%"` chain → `TimeseriesChart`
-  renders at ~0 height in the REAL app (AppShell mounts it with no height
-  constraint either), not just the design preview. The "Trends" header still
-  renders.
-- **Polish:** the keyhints strip (`KeyHints`) renders 3× simultaneously
-  (Outliner + EventTray + BottomDrawer) — declutter to one home.
-- **Phase D remaining:** upload the 19 registered previews to the "Babylon
-  Cockpit" design project (interactive); the map shows only county borders w/o
-  a live engine session (fills need real `/map/` data — the mock screenshots
-  render the chrome, not fills).
+**Polish fixes (`79ba9bf0`):**
+- ✅ FIXED `BottomDrawer`→`TimeseriesChart` 0-height: `h-full`→`h-48` gives the
+  recharts ResponsiveContainer a definite parent (Trends chart now renders,
+  confirmed on live data).
+- ✅ FIXED `KeyHints` redundancy: it rendered in SIX hosts (Outliner, EventTray,
+  BottomDrawer, ObjectivesTray, ActionDock, CriticalEventModal) → kept only the
+  Outliner (persistent home) + CriticalEventModal (exclusive take-over dialog).
+
+**Dep-compat + toolchain pre-alignment (`2077db80`):** ultracode audit (empirical
+isolated build + 7 analysts) → branch FULLY COMPATIBLE with dev's wave; adopted
+dev's exact toolchain (vite 8, eslint 10, plugin-react 6, ts 5.9, prettier 3.9.5,
+@tailwindcss/vite 4.3) + reconciled 7 union-type files + pre-commit prettier pin.
+Verified: vite-8 build OK, dev server /game 14ms, 796 vitest green, @source-not
+scanner fix holds. Engine determinism inherits dev's byte-identical qa:regression.
+
+### Live-state audit (2026-07-11 evening, real tick-4 Wayne County session)
+
+Captured every major state against the LIVE engine (fresh admin login → real
+Django/engine; shots in `output/demos/spec-113-living-map/`, gallery published):
+- **Map** (county + HEX framing): real data — Rent Φ 118.94, 4 factions w/ live
+  colonial stances, member-hex hull over TIGER borders, live imperial-rent trend.
+- **InspectionStack drill**: WORKS — Victoria-style breadcrumb; the `/explain/`
+  provenance is a highlight (honest formula + reason-for-null, III.11).
+- **DIALECTIC takeover**: real data (tenant⇄rent principal contradiction,
+  tension 1.00 → reproduction). Polished.
+- **WIRE / CHRONICLE takeovers**: structurally complete, honest-empty (narrator
+  off + events UNKNOWN → no wire stories; no terminal outcome at tick 4).
+
+**New owner items from the live audit:**
+- **P2 (data-source, engine-adjacent):** the hex `InspectionCard` reads all
+  "no data" (County/Population/Habitability/Biocapacity/Heat/Rent/Dominant Class)
+  because it sources the stubbed `get_inspector_hex` (`{}`), while the hover
+  `HexTooltip` shows the SAME hex's real values from the map snapshot (Heat 0.00,
+  Rent 3.50, Pop 8000, Biocapacity 80, Sector residential). Same hex, two
+  readouts. Owner call: (a) implement engine `get_inspector_hex`, or (b) wire the
+  card to source the map-feature data the tooltip already holds. NOT rewired
+  unilaterally (inspection data-architecture decision).
+- **Minor:** an open InspectionStack card overlaps the lens bar's rightmost group
+  (both at the safe-area right edge) — transient, lens bar still usable.
+
+**Phase D remaining:** upload the 19 registered previews to the "Babylon Cockpit"
+design project (interactive); narrator backend (`BABYLON_LLM_NARRATOR`) for wire
+depth; national-run choropleth for a richer map fill.
 
 NOTE: the "Juice Pass" inventory below predates DESIGN_BIBLE §9b (The Installer,
 owner ruling) — §9b's re-aim SUPERSEDES the gradient/glow items; the performance

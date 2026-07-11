@@ -6,6 +6,9 @@ assets/audio/** filter=lfs diff=lfs merge=lfs -text
 *.xlsx filter=lfs diff=lfs merge=lfs -text
 .understand-anything/knowledge-graph.json filter=lfs diff=lfs merge=lfs -text
 .understand-anything/fingerprints.json filter=lfs diff=lfs merge=lfs -text
+# 35MB checkpoint baseline: fails III.12's "small, diffable" test that keeps the
+# dense goldens plain (below), so LFS is correct here (program 14, owner-ruled).
+tests/baselines/michigan-e2e.json filter=lfs diff=lfs merge=lfs -text
 
 # Dense regression goldens are BEHAVIORAL ARTIFACTS (Constitution III.12): small,
 # diffable, byte-compared plain text — never LFS pointers (program 13 item 2).

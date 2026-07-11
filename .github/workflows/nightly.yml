@@ -57,8 +57,8 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
-      - name: pip-audit
-        run: poetry run pip-audit --ignore-vuln CVE-2026-3219
+      - name: pip-audit (policy wrapper — ignores carry reason + expiry)
+        run: mise run security:pip-audit
 
   postgres-integration:
     name: Postgres Integration (dev HEAD)

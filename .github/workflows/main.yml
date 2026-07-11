@@ -112,8 +112,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/bootstrap-python
-      - name: pip-audit
-        run: poetry run pip-audit --ignore-vuln CVE-2026-3219
+      - name: pip-audit (policy wrapper — ignores carry reason + expiry)
+        run: mise run security:pip-audit
 
   # ── The heavy legs ────────────────────────────────────────────────────────
   test-rest:
@@ -322,3 +322,112 @@ jobs:
       - name: Build documentation
         working-directory: docs
         run: poetry run sphinx-build -b html . _build/html
+
+  gitleaks:
+    name: Secret Scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trivy-config:
+    name: IaC Config Scan (trivy, HIGH+CRITICAL blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          skip-dirs: .pre-commit-cache
+          cache: "true"
+
+  trivy-image:
+    # Advisory until the postgis base-image bump lands (Phase-3 protocol:
+    # bump proven by local byte-identical qa:e2e-regression + dated
+    # .trivyignore residue). Upstream postgis:16-3.4 (bullseye) carries
+    # ~141 fixable HIGH/CRITICAL today — a red nobody can act on until
+    # the bump, hence explicitly labeled advisory, never silently hidden.
+    name: Image Scan (trivy — advisory until postgis bump)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build babylon-pg (shared GHA layer cache)
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          files: docker-compose.yml
+          targets: babylon-pg
+          load: true
+          set: |
+            babylon-pg.tags=babylon-pg:ci
+            babylon-pg.cache-from=type=gha,scope=babylon-pg
+      - name: Scan built image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: babylon-pg:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          cache: "true"
+
+  infra-validate:
+    name: Infra Validate (terraform, tflint, ansible, compose, hadolint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/bootstrap-python
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.2"
+      - name: Terraform fmt
+        run: terraform -chdir=deploy/terraform fmt -check -diff
+      - name: Terraform init (backendless — tracked lockfile is the pin)
+        run: terraform -chdir=deploy/terraform init -backend=false -input=false
+      - name: Terraform validate
+        run: terraform -chdir=deploy/terraform validate
+      - uses: terraform-linters/setup-tflint@v6
+      - name: tflint (core ruleset; no hcloud plugin exists)
+        working-directory: deploy/terraform
+        run: |
+          tflint --init --config ../../.tflint.hcl
+          tflint --config ../../.tflint.hcl
+      - name: Install ansible collections
+        run: poetry run ansible-galaxy collection install -r deploy/requirements.yml
+      - name: Ansible syntax check (the 6 live playbooks)
+        working-directory: deploy/ansible
+        run: |
+          for pb in site.yml dbservers.yml webservers.yml \
+                    playbooks/bootstrap.yml playbooks/hetzner.yml \
+                    playbooks/backup-smoke.yml; do
+            poetry run ansible-playbook --syntax-check -i inventory.yml "$pb"
+          done
+      # Blocking floor: profile min passes today. The full-profile report
+      # (79 pre-existing idiom findings; skip_list burn-down is an explicit
+      # program-15 non-goal) stays visible but advisory.
+      - name: ansible-lint (min profile — blocking)
+        working-directory: deploy/ansible
+        run: poetry run ansible-lint --profile min site.yml dbservers.yml webservers.yml playbooks/ roles/
+      - name: ansible-lint full report (advisory — pre-existing idiom findings)
+        working-directory: deploy/ansible
+        continue-on-error: true
+        run: poetry run ansible-lint site.yml dbservers.yml webservers.yml playbooks/ roles/
+      - name: Compose config validation
+        run: docker compose config -q
+      - name: hadolint (pg Dockerfile; warnings visible, errors block)
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: docker/postgres/Dockerfile
+          failure-threshold: error

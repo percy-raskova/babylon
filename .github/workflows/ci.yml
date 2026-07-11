@@ -136,5 +136,32 @@ jobs:
 
       - uses: ./.github/actions/bootstrap-python
 
-      - name: pip-audit
-        run: poetry run pip-audit --ignore-vuln CVE-2026-3219
+      - name: pip-audit (policy wrapper — ignores carry reason + expiry)
+        run: mise run security:pip-audit
+
+  gitleaks:
+    name: Secret Scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trivy-config:
+    name: IaC Config Scan (trivy, HIGH+CRITICAL blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          skip-dirs: .pre-commit-cache
+          cache: "true"

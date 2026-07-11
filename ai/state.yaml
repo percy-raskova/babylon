@@ -2,9 +2,30 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.24.0"
+  version: "2.25.0"
   updated: "2026-07-11"
   truth_status: |
+    (2026-07-11 late afternoon) PROMOTED + THE DEPENDABOT WAVE. main moved
+    1a8c68a6 -> 82a92882 (790 commits, frozen since Apr 28) then took the
+    dependabot wave; rulesets ACTIVE (main: no force-push/deletion; dev:
+    same + 7 required checks per SHA — every dev landing now goes through
+    a green PR). release.yml correctly did NOT fire on promotion (tag-
+    driven held). Maiden main.yml: 10/16 — Playwright E2E passed FIRST TRY
+    on the real stack; all 6 reds were first-run wiring/content, fixed
+    same day. THE WAVE (PR #169, owner-directed, supersedes 23 dependabot
+    PRs): ~50 pkgs bumped; engine solos rustworkx 0.18 / numpy 2.5.1 /
+    scipy 1.18 / h3 4.5 each qa:regression 5/5 byte-identical; pip-audit
+    policy EMPTIED (s-t 5.6 -> transformers 5.13.1 + torch 2.13 resolved
+    all six item-41 residue CVEs; item 46 closed; the pin test guards the
+    empty set); deferred-with-evidence: TS7 (no typescript-eslint support,
+    baseUrl removed), django6+mypy2 (django-stubs caps mypy<2.2, item 55).
+    Fast local gate 23min -> 202s (slow-test taxonomy; deeper pass item
+    54). ci-data-v2 subset (+fact_faf_commodity_flow — the headless
+    runner reads it; v1 proving run died ENGINE_FAILURE without it). Two
+    pre-existing rest-leg test bugs surfaced by first-ever CI execution
+    (rg-subprocess -> pure python; map-api TransactionManagementError =
+    real bridge bug, item 56). Owner items 45-56 live in the queue.
+
     (2026-07-11 evening) PROGRAM 15 (THE GAUNTLET) EXECUTED — CI/CD IS REAL
     NOW. Two tiers: push to dev = the 4-minute fast lane (fast-gate, unit
     shard w/ xdist + full-tree coverage artifacts + engine/systems>=80 gate,

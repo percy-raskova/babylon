@@ -1,6 +1,6 @@
 # Program 15 — The Gauntlet
 
-**Status: EXECUTED 2026-07-11** (promotion + records same day) · Ratified 2026-07-11
+**Status: EXECUTED + PROMOTED 2026-07-11** (promotion, the dependabot wave, and day-one fixes same day) · Ratified 2026-07-11
 (plan-mode approval, 4 owner rulings) · ADR064 · no constitutional amendment (the program
 *operationalizes* III.11 Loud Failure + III.12 behavioral contracts in CI; no primitive changed)
 
@@ -78,3 +78,36 @@ transformers pin (2 transformers CVEs), spec-064 retired-contract tests (3 xfail
 LODES hypothesis (3 xfails), sshd_config.j2 authoring, stale deploy docs, complexity ratchet
 (mccabe 15→10 wants 39 fixes), infra-live secrets (console task), local venv py3.13 vs pinned
 3.12 drift.
+
+## Promotion + day one (2026-07-11 afternoon, same session)
+
+**Promoted:** main `1a8c68a6 -> 82a92882` (790 commits; frozen since Apr 28). Rulesets active —
+main: no force-push/no deletion (18807583); dev: same + **7 required checks per SHA** (18807584;
+the six ruled contexts + Security Audit, which became blocking mid-program). release.yml
+correctly did NOT fire (tag-driven retarget held). promote.sh's gate was blocked 40+ min by
+GitHub's own "Dependabot Updates" scan check-run — now filtered out of gate 2 with cause.
+
+**Maiden main.yml (run 29158383092): 10/16.** Playwright E2E passed FIRST TRY on the real stack;
+dense goldens, unit+coverage, security, gitleaks, trivy-config, frontend, AI all green. All six
+reds were first-run wiring or pre-existing content — none code regressions: missing engine-schema
+bootstrap + DSN (two Postgres legs), serial rest shard vs its timeout, missing GDAL in the docs
+job, missing terraform required_version, and 3 refdata tests that were never green anywhere
+(SQL-verified trove data gaps: zero FIPS-26999 QCEW rows, zero naics_level=2 aggregates).
+
+**The dependabot wave (PR #169, owner-directed):** ~50 packages superseding 23 dependabot PRs.
+Engine solos (rustworkx 0.18, numpy 2.5.1, scipy 1.18, h3 4.5) each byte-identical.
+**pip-audit policy EMPTIED** — sentence-transformers 5.6 unlocked transformers 5.13.1 + torch
+2.13, resolving all six item-41 residue CVEs (item 46 closed; the pin test now guards the empty
+set). Deferred with evidence: TypeScript 7 (removed baseUrl; typescript-eslint caps <6.1) and
+django 6 + mypy 2 (django-stubs 6.0.6 caps mypy<2.2 — item 55). postgis 17 dependabot-ignored
+with cause (item 45). The automerge machinery proved itself mid-wave by squash-merging #158
+into dev and forcing a rebase.
+
+**Day-one findings fixed:** the 23-minute local "unit" gate was ~13 unmarked real-simulation
+tests (slow-marked; fast gate measured 202s; slow tests got a CI home in the rest shard — deeper
+pass is item 54). Six formulas doctests had never executed anywhere and asserted non-IEEE-754
+floats — round()-honest now. ci-data-v2 subset (+fact_faf_commodity_flow FULL: sqlite_hydrator
+IS the headless runner's path; the Determinism Bundle died ENGINE_FAILURE without it). Two
+pre-existing rest-leg failures surfaced by first-ever execution: an `rg` subprocess test (hosted
+runners have no ripgrep — rewritten pure-Python) and a real bridge transaction bug in the map
+view's hex-persist path (item 56, evidence-cited xfail).

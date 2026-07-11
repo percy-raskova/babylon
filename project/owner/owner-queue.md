@@ -498,13 +498,19 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
 | 52 | **infra-live secrets — console task** | infra-live.yml (ephemeral Hetzner, dispatch + Monday cron) fails loud until repo secrets exist: `HCLOUD_TOKEN`, `CI_SSH_PRIVATE_KEY`, `CI_SSH_PUBLIC_KEY` (Settings → Secrets → Actions), plus creating the `infra-ephemeral` environment. Cloudflare vars are NOT needed (CI applies run manage_cloudflare=false). |
 | 53 | **local venv drift** | Your local venv runs Python 3.13.5; CI + .mise.toml pin 3.12. The weekly py3.13 leg covers forward-compat, and the determinism probe passed across both — but local-vs-CI parity would want a `mise install`-driven venv rebuild at your convenience. Not done unilaterally (it rebuilds your working venv). |
 
-**WATCH:** the maiden main.yml full run at promotion (all heavy legs un-gated for the
-first time: postgres-integration, playwright-e2e, qa-e2e-regression, refdata-tests,
-infra-validate); docs.yml Pages redeploy; Dependabot phantom-alert closure (~59
-expected to close when main un-freezes past the deleted manifests).
+**WATCH RESOLVED (2026-07-11, runs 29158383092 + 29162559986):** maiden main.yml went
+10/16 — Playwright E2E green FIRST TRY on the real stack; all six reds were first-run
+wiring/content (schema bootstrap, DSN, GDAL, tflint floor, serial-shard timeout, trove
+data gaps) and were fixed same day; the dev-dispatched proving run then took
+postgres-integration, refdata-tests, and infra-validate GREEN, exposed the ci-data-v1
+FAF gap (fixed as ci-data-v2) and two pre-existing rest-leg test bugs (fixed / item 56).
+Second proving dispatch pending on the fixes branch; docs.yml Pages + phantom-alert
+closure tracked there too.
 
 ## Deps wave 2026-07-11 (branch `deps/dependabot-wave-20260711`)
 
 | # | Item | Context |
 | --- | --- | --- |
 | 54 | **testing-suite pass: slow-test taxonomy + fixture cost** (temporary fix shipped with the 2026-07-11 deps wave; the deeper pass below awaits your ruling) | The local fast gate (`mise run check` → test:unit) took 23 min because multi-minute real-sim tests sat unmarked in tests/unit: `TestRunSweep` (6 methods, 80–290s each, ~1075s total) + `TestSimulationRunner::test_simulation_returns_result_dict` (118s) drive real engine sweeps through the headless runner. **Temporary fix on the deps branch:** both marked `@pytest.mark.slow`; `test:unit` selector now `not red_phase and not slow`; `test:rest-ci` grew a second leg running slow-marked unit tests — before it, slow-marked unit tests ran NOWHERE in CI (unit-ci excludes `slow`, rest-ci `--ignore=tests/unit`). Deferred to the testing-suite pass: (a) ~310s of per-test Postgres fixture SETUP in tests/unit/persistence (test_per_tick_transaction_atomicity + test_trace_view_columns re-create partitions and re-hydrate 5053 QCEW + 1045 hex rows PER TEST — wants module/session-scoped or shared hydration); (b) no CI job that runs the slow leg has Postgres, so the PG-gated slow tests (sweep/tune) SKIP in CI — they need a PG-provisioned home (postgres-up in test-rest, or move to the postgres-integration job); (c) taxonomy: these are integration/scenario tests wearing a unit label — relocate under tests/scenarios or tests/integration; (d) `test:fast` (`-m 'not slow'`) is now a near-duplicate of test:unit and doesn't exclude red_phase — consolidate or fix its selector. |
+| 55 | **django 6 + mypy 2 modernization** (deferred from the deps wave) | django-stubs 6.0.6 and drf-stubs 3.17.0 both cap `mypy<2.2` via the compatible-mypy extras — mypy 2.2 is unsatisfiable alongside them; escapes are structural (drop the extras and forfeit tested-compat, or take mypy 2.0/2.1 with django 6 as a smaller move). Wants its own railed batch: manage.py check + web suites + typecheck across 567 files. |
+| 56 | **map view hex-persist transaction bug** (surfaced by first-ever CI execution of tests/integration/test_map_api.py) | `engine_bridge._persist_hex_state_safe -> bulk_create` raises TransactionManagementError under the sqlite test backend (identical pre-wave at 82a92882 and locally) — an earlier query inside the atomic block fails and the 'safe' wrapper doesn't contain it. Now an evidence-cited xfail; the fix is a real bridge investigation (on_commit/nested-atomic territory), not test cosmetics. |

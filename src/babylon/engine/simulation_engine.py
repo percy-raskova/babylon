@@ -405,22 +405,26 @@ _ALL_PARTITIONED: Final[frozenset[type[System]]] = (
     MATERIAL_BASE_SYSTEMS | ACTION_PHASE_SYSTEMS | CONSEQUENCE_SYSTEMS
 )
 _DEFAULT_SYSTEM_TYPES: Final[frozenset[type[System]]] = frozenset(type(s) for s in _DEFAULT_SYSTEMS)
-assert _ALL_PARTITIONED == _DEFAULT_SYSTEM_TYPES, (
-    f"Spec 056 partition drift: System(s) "
-    f"{_DEFAULT_SYSTEM_TYPES ^ _ALL_PARTITIONED} are in _DEFAULT_SYSTEMS "
-    f"but not classified into MATERIAL_BASE_SYSTEMS / ACTION_PHASE_SYSTEMS "
-    f"/ CONSEQUENCE_SYSTEMS (or vice versa). Add the new System(s) to "
-    f"exactly one of the three sets in simulation_engine.py."
-)
-assert MATERIAL_BASE_SYSTEMS.isdisjoint(ACTION_PHASE_SYSTEMS), (
-    "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and ACTION_PHASE_SYSTEMS overlap"
-)
-assert MATERIAL_BASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS), (
-    "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
-)
-assert ACTION_PHASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS), (
-    "Spec 056 partition violation: ACTION_PHASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
-)
+if _ALL_PARTITIONED != _DEFAULT_SYSTEM_TYPES:
+    raise RuntimeError(
+        f"Spec 056 partition drift: System(s) "
+        f"{_DEFAULT_SYSTEM_TYPES ^ _ALL_PARTITIONED} are in _DEFAULT_SYSTEMS "
+        f"but not classified into MATERIAL_BASE_SYSTEMS / ACTION_PHASE_SYSTEMS "
+        f"/ CONSEQUENCE_SYSTEMS (or vice versa). Add the new System(s) to "
+        f"exactly one of the three sets in simulation_engine.py."
+    )
+if not MATERIAL_BASE_SYSTEMS.isdisjoint(ACTION_PHASE_SYSTEMS):
+    raise RuntimeError(
+        "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and ACTION_PHASE_SYSTEMS overlap"
+    )
+if not MATERIAL_BASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS):
+    raise RuntimeError(
+        "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
+    )
+if not ACTION_PHASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS):
+    raise RuntimeError(
+        "Spec 056 partition violation: ACTION_PHASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
+    )
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)
 

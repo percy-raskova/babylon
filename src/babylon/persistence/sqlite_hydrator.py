@@ -162,7 +162,7 @@ def _copy_bea_io(
         FROM fact_bea_io_coefficient c
         JOIN dim_time dt ON c.time_id = dt.time_id
         WHERE c.time_id IN ({placeholders})
-        """,
+        """,  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
         tuple(year_ids.values()),
     ).fetchall()
     # Group by (year, table_type_id) → list of (src, dst, coef).
@@ -468,7 +468,7 @@ def _copy_qcew(
           {cnty_filter}
           AND q.employment IS NOT NULL AND q.employment > 0
         GROUP BY dt.year, dc.fips, di.naics_code
-    """
+    """  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
     try:
         rows = sqlite_conn.execute(sql, params).fetchall()
     except sqlite3.OperationalError as exc:
@@ -530,7 +530,7 @@ def _copy_rent(
         JOIN dim_county dc ON r.county_id = dc.county_id
         WHERE dt.year BETWEEN ? AND ? {cnty_filter}
         GROUP BY dt.year, dc.fips
-    """
+    """  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
     rows = sqlite_conn.execute(sql, params).fetchall()
     n = 0
     for year, fips, rent in rows:
@@ -575,7 +575,7 @@ def _copy_fred(
         WHERE dfs.series_code IN ({placeholders})
           AND dt.year BETWEEN ? AND ?
         GROUP BY dfs.series_code, dt.year
-        """,
+        """,  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
         (*series_codes, start_year, end_year),
     ).fetchall()
     n = 0

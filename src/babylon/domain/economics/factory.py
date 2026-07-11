@@ -212,7 +212,7 @@ def load_fred_series_from_db(
             WHERE fs.series_code IN ({placeholders})
             GROUP BY fs.series_code, dt.year
             ORDER BY fs.series_code, dt.year
-        """)
+        """)  # noqa: S608 — hardcoded literal FRED series list, not user input
         rows = session.execute(raw_query)
         for row in rows:
             code = str(row[0])
@@ -421,7 +421,7 @@ def load_circulation_series_from_db(
             WHERE fs.series_code IN ({placeholders})
             GROUP BY fs.series_code, dt.year
             ORDER BY fs.series_code, dt.year
-        """)
+        """)  # noqa: S608 — hardcoded literal FRED series list, not user input
         rows = session.execute(raw_query)
         for row in rows:
             code = str(row[0])
@@ -540,7 +540,7 @@ def load_vol1_series_from_db(
             WHERE fs.series_code IN ({placeholders})
             GROUP BY fs.series_code, dt.year
             ORDER BY fs.series_code, dt.year
-        """)
+        """)  # noqa: S608 — hardcoded literal FRED series list, not user input
         rows = session.execute(raw_query)
         for row in rows:
             code = str(row[0])

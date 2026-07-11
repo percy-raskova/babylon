@@ -22,7 +22,7 @@ class TestingConfig:
 
     # === Logging ===
     LOG_LEVEL: Final[str] = "DEBUG"
-    LOG_DIR: Final[Path] = Path("/tmp/babylon_test_logs")
+    LOG_DIR: Final[Path] = Path("/tmp/babylon_test_logs")  # noqa: S108 — test-only log dir, deliberate fixed path
 
     # === Metrics ===
     METRICS_ENABLED: Final[bool] = True

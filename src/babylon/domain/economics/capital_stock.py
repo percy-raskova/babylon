@@ -243,7 +243,10 @@ class CapitalStockCalculator:
                 continue
 
             # Must be ValueTensor4x3 at this point
-            assert isinstance(tensor, ValueTensor4x3)
+            if not isinstance(tensor, ValueTensor4x3):
+                raise TypeError(
+                    f"Expected ValueTensor4x3 for {fips}/{year}, got {type(tensor).__name__}"
+                )
 
             if K_prev is None:
                 # Initial year: steady-state assumption
@@ -432,7 +435,10 @@ class CapitalStockCalculator:
             )
 
         # Type narrowing: at this point tensor_result is ValueTensor4x3
-        assert isinstance(tensor_result, ValueTensor4x3)
+        if not isinstance(tensor_result, ValueTensor4x3):
+            raise TypeError(
+                f"Expected ValueTensor4x3 for {fips}/{year}, got {type(tensor_result).__name__}"
+            )
         tensor: ValueTensor4x3 = tensor_result
 
         # Get capital stock

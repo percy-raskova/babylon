@@ -368,10 +368,12 @@ def query_archived_session(
     try:
         for file in files:
             # DuckDB rejects prepared parameters in DDL; escape the path
-            # literal (single quotes doubled) instead.
+            # literal (single quotes doubled) and the view identifier
+            # (double quotes doubled) instead.
             path_literal = str(file).replace("'", "''")
+            view_identifier = file.stem.replace('"', '""')
             con.execute(
-                f"CREATE VIEW \"{file.stem}\" AS SELECT * FROM read_parquet('{path_literal}')"
+                f"CREATE VIEW \"{view_identifier}\" AS SELECT * FROM read_parquet('{path_literal}')"  # noqa: S608 — local archive dir only; identifier + literal both escaped
             )
         result = con.execute(query)
         columns = [d[0] for d in result.description]

@@ -239,6 +239,7 @@ select = [
     "UP",
     "ARG",
     "SIM",
+    "S",
 ]
 ignore = [
     "E501",
@@ -256,17 +257,45 @@ known-first-party = [
 "tests/**" = [
     "ARG001",
     "ARG002",
+    "S101",  # asserts are pytest's language
+    "S102",  # exec in import-surface tests is the point of the test
+    "S103",  # chmod on fixtures (executable-bit setup)
+    "S105",  # fixture passwords
+    "S106",  # fixture passwords
+    "S108",  # /tmp literals as nonexistent-path/scratch fixtures
+    "S112",  # try/except/continue in property-test harnesses
+    "S301",  # pickle round-trip tests exercise serialization deliberately
+    "S311",  # seeded randomness in strategies
+    "S603",  # subprocess smoke tests invoke our own CLIs with literal args
+    "S607",  # subprocess smoke tests invoke our own CLIs with literal args
+    "S608",  # SQL literals in test fixtures
 ]
 "web/**" = [
     "ARG001",
 ]
+# The DEBUG-mode fake bridge: random fake data + best-effort side writes are
+# its design, not a defect (game/apps.py falls back to it without RUN_MAIN).
+"web/game/stub_bridge.py" = [
+    "S110",
+    "S311",
+]
 "tools/**" = [
     "C901",
     "SIM",
+    "S101",  # asserts in dev tooling (incl. the qa:regression harness)
+    "S108",  # /tmp scratch in bootstrap tooling
+    "S112",  # audit tooling skips unparseable entries by design
+    "S311",  # seeded sim RNG in benches/monte-carlo — same III.7 rationale as src
+    "S603",  # subprocess for dev tooling
+    "S607",  # subprocess for dev tooling
+    "S608",  # SQL literals in local loaders (operator-run, no external input)
 ]
 "scripts/**" = [
     "C901",
     "SIM",
+]
+"src/**" = [
+    "S311",  # seeded determinism IS the product (Constitution III.7) — sim RNG is never a security token
 ]
 
 [tool.ruff.format]

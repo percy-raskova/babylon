@@ -184,7 +184,7 @@ class ReferenceDataCache:
         year_placeholders = ",".join(["?"] * len(year_tuple))
 
         census_sql = (
-            f"SELECT dc.fips, t.year, COALESCE(SUM(fci.household_count), 0) "
+            f"SELECT dc.fips, t.year, COALESCE(SUM(fci.household_count), 0) "  # noqa: S608 — count-only placeholder generation; values bound separately
             f"FROM fact_census_income fci "
             f"JOIN dim_county dc ON dc.county_id = fci.county_id "
             f"JOIN dim_time t ON t.time_id = fci.time_id "
@@ -192,7 +192,7 @@ class ReferenceDataCache:
             f"GROUP BY dc.fips, t.year"
         )
         qcew_sql = (
-            f"SELECT dc.fips, t.year, COALESCE(SUM(fq.employment), 0) "
+            f"SELECT dc.fips, t.year, COALESCE(SUM(fq.employment), 0) "  # noqa: S608 — count-only placeholder generation; values bound separately
             f"FROM fact_qcew_annual fq "
             f"JOIN dim_county dc ON dc.county_id = fq.county_id "
             f"JOIN dim_time t ON t.time_id = fq.time_id "

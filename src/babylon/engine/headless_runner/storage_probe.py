@@ -113,7 +113,7 @@ def query_storage_footprint(
                 # relation size is 0 — data lives in the partitions) and
                 # degenerates to the single relation for plain tables.
                 cur.execute(
-                    "SELECT COALESCE(SUM(pg_total_relation_size(relid)), 0) "
+                    "SELECT COALESCE(SUM(pg_total_relation_size(relid)), 0) "  # noqa: S608
                     f"FROM pg_partition_tree('{table}')"
                 )
                 total_bytes = int(cur.fetchone()[0])

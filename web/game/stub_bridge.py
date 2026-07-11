@@ -321,6 +321,9 @@ def _make_hex_features(tick: int, layer: str | None = None) -> list[dict[str, An
             "imperial_rent": round(r * 80.0, 1),
             "org_presence": round(r * 0.5, 3),
             "dominant_class": "proletariat" if r < 0.6 else "petit_bourgeoisie",
+            # Spec-113 Lane D: deterministic per-cell SOLIDARITY-edge density,
+            # matching the real bridge's population-weighted 0..~a-few range.
+            "solidarity_index": round(r * 1.5, 3),
         }
 
         # Approximate hex boundary as a small polygon near Detroit
@@ -412,11 +415,221 @@ def _make_aggregated_features(zoom: str, tick: int) -> list[dict[str, Any]]:
                     "heat": round(0.1 + r * 0.8, 4),
                     "org_presence": int(r * 500),
                     "population": pop,
+                    # Spec-113 Lane D: matches the real bridge's population-
+                    # weighted-mode categorical / weighted-mean numeric
+                    # aggregation at every non-hex zoom.
+                    "dominant_class": "proletariat" if r < 0.6 else "petit_bourgeoisie",
+                    "solidarity_index": round(r * 1.5, 3),
                 },
             }
         )
 
     return features
+
+
+# Spec-113 Lane D: deterministic mock ``/explain/`` catalog — same 9 metric
+# names + response shape as ``game.provenance.METRIC_PROVENANCE`` (real
+# bridge), so frontend dev against the stub (no Postgres/engine) exercises
+# the exact same InspectionStack FormulaCard code path. Deliberately does
+# NOT import ``game.provenance`` (which pulls in ``game.engine_bridge`` and
+# transitively ``babylon.engine``/``babylon.persistence``) — this whole
+# module's point is to boot Django with zero engine/DB dependency weight,
+# same as every other ``_make_*`` mock builder here.
+_STUB_EXPLAIN_METRICS: dict[str, dict[str, Any]] = {
+    "value_extraction_ratio": {
+        "formula": {
+            "name": None,
+            "expression": "exchange_ratio = (value_produced + rent_extracted) / value_produced",
+            "doc": "Graph-wide extraction proxy behind /economy/'s global exploitation_rate.",
+        },
+        "value": 1.82,
+        "inputs": [
+            {"name": "value_produced", "label": "Value produced", "value": 420.0, "kind": "state"},
+            {"name": "rent_extracted", "label": "Rent extracted", "value": 344.4, "kind": "state"},
+        ],
+    },
+    "exploitation_rate": {
+        "formula": {
+            "name": "exploitation_rate",
+            "expression": "Convert exchange ratio to exploitation rate percentage.",
+            "doc": "Convert exchange ratio to exploitation rate percentage.",
+        },
+        "value": 0.45,
+        "inputs": [
+            {
+                "name": "exchange_ratio",
+                "label": "Exchange ratio",
+                "value": 1.82,
+                "kind": "metric",
+                "ref": "value_extraction_ratio",
+            },
+        ],
+    },
+    "profit_rate": {
+        "formula": {
+            "name": None,
+            "expression": "rate of profit = s / (c + v) — not yet computed by any System",
+            "doc": "No wired engine System computes this yet.",
+        },
+        "value": None,
+        "inputs": [],
+    },
+    "occ": {
+        "formula": {
+            "name": None,
+            "expression": "occ = c / v — not yet computed by any System",
+            "doc": "No wired engine System computes this yet.",
+        },
+        "value": None,
+        "inputs": [],
+    },
+    "imperial_rent": {
+        "formula": {
+            "name": None,
+            "expression": "imperial_rent = state.economy.imperial_rent_pool",
+            "doc": "Raw GlobalEconomy ledger balance, not a derived formula.",
+        },
+        "value": 50.0,
+        "inputs": [],
+    },
+    "labor_aristocracy_ratio": {
+        "formula": {
+            "name": "labor_aristocracy_ratio",
+            "expression": "Wc/Vc ratio. When > 1, worker receives more than produced.",
+            "doc": "Wc/Vc ratio. When > 1, worker receives more than produced.",
+        },
+        "value": 1.2,
+        "inputs": [
+            {
+                "name": "core_wages",
+                "label": "Core wages (incoming WAGES edge flow)",
+                "value": 102.0,
+                "kind": "state",
+            },
+            {
+                "name": "value_produced",
+                "label": "Value produced (entity wealth)",
+                "value": 85.0,
+                "kind": "state",
+            },
+        ],
+    },
+    "revolution_probability": {
+        "formula": {
+            "name": "revolution_probability",
+            "expression": "P(S|R) = Cohesion / (Repression + eps). Capped at 1.0.",
+            "doc": "P(S|R) = Cohesion / (Repression + eps). Capped at 1.0.",
+        },
+        "value": 0.08,
+        "inputs": [
+            {
+                "name": "cohesion",
+                "label": "Cohesion (base class organization)",
+                "value": 0.15,
+                "kind": "state",
+            },
+            {"name": "repression", "label": "Repression faced", "value": 0.3, "kind": "state"},
+        ],
+    },
+    "acquiescence_probability": {
+        "formula": {
+            "name": "acquiescence_probability",
+            "expression": "P(S|A) sigmoid. At threshold, probability = 0.5.",
+            "doc": "P(S|A) sigmoid. At threshold, probability = 0.5.",
+        },
+        "value": None,
+        "inputs": [
+            {"name": "wealth", "label": "Wealth", "value": 15.0, "kind": "state"},
+            {
+                "name": "subsistence_threshold",
+                "label": "Subsistence threshold",
+                "value": 10.0,
+                "kind": "state",
+            },
+            {
+                "name": "steepness_k",
+                "label": "Sigmoid steepness (GameDefines survival.steepness_k)",
+                "value": None,
+                "kind": "constant",
+            },
+        ],
+    },
+    "consciousness_drift": {
+        "formula": {
+            "name": "consciousness_drift",
+            "expression": "dPsi/dt = k(1 - Wc/Vc) - lambda*Psi + bifurcation.",
+            "doc": "dPsi/dt = k(1 - Wc/Vc) - lambda*Psi + bifurcation.",
+        },
+        "value": None,
+        "inputs": [
+            {
+                "name": "core_wages",
+                "label": "Core wages (incoming WAGES edge flow)",
+                "value": 102.0,
+                "kind": "state",
+            },
+            {
+                "name": "value_produced",
+                "label": "Value produced (entity wealth)",
+                "value": 85.0,
+                "kind": "state",
+            },
+            {
+                "name": "current_consciousness",
+                "label": "Current class consciousness",
+                "value": 0.35,
+                "kind": "state",
+            },
+            {
+                "name": "sensitivity_k",
+                "label": "Sensitivity k (GameDefines)",
+                "value": None,
+                "kind": "constant",
+            },
+            {
+                "name": "decay_lambda",
+                "label": "Decay lambda (GameDefines)",
+                "value": None,
+                "kind": "constant",
+            },
+            {
+                "name": "solidarity_pressure",
+                "label": "Solidarity pressure (formula default)",
+                "value": 0.0,
+                "kind": "constant",
+            },
+            {
+                "name": "wage_change",
+                "label": "Wage change (formula default)",
+                "value": 0.0,
+                "kind": "constant",
+            },
+        ],
+    },
+}
+
+
+def _stub_explain_response(metric: str, scope: str) -> dict[str, Any] | None:
+    """Build one ``/explain/`` response body from :data:`_STUB_EXPLAIN_METRICS`.
+
+    Returns ``None`` for an unknown metric (the view turns that into a
+    404). Every known input dict gets a ``ref`` key defaulted to ``None``
+    (matching the real bridge's always-present-key convention) and a
+    ``constants`` list (the ``kind == "constant"`` subset of ``inputs``).
+    """
+    entry = _STUB_EXPLAIN_METRICS.get(metric)
+    if entry is None:
+        return None
+    inputs = [{"ref": None, **row} for row in entry["inputs"]]
+    constants = [row for row in inputs if row["kind"] == "constant"]
+    return {
+        "metric": metric,
+        "scope": scope,
+        "value": entry["value"],
+        "formula": entry["formula"],
+        "inputs": inputs,
+        "constants": constants,
+    }
 
 
 class StubEngineBridge:
@@ -528,10 +741,31 @@ class StubEngineBridge:
                     "occ",
                     "imperial_rent",
                     "org_presence",
+                    # Spec-113 Lane D
+                    "dominant_class",
+                    "solidarity_index",
                 ],
             },
             "features": features,
         }
+
+    def get_explain(self, _session_id: UUID, metric: str, scope: str) -> dict[str, Any] | None:
+        """GET .../explain/ mock (spec-113 Lane D).
+
+        Mirrors ``game.provenance.METRIC_PROVENANCE``'s catalog of 9
+        metric names and the real bridge's response shape, so frontend
+        dev against the stub (no Postgres/engine) exercises the same
+        InspectionStack FormulaCard code path. Unlike the real bridge
+        this does not validate ``scope`` per metric (it is mock data —
+        the same body regardless of which hex/org is asked about); the
+        one honest check is metric membership, matching the real
+        bridge's 404-on-unknown-metric behavior.
+
+        Returns:
+            The response body, or ``None`` for an unknown metric (the
+            view turns that into a 404).
+        """
+        return _stub_explain_response(metric, scope)
 
     # ------------------------------------------------------------------ #
     # Domain Dashboards (Scaffolding for full UI requirements)

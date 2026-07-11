@@ -19,6 +19,15 @@ from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
 from babylon.config.defines import GameDefines
+
+# Spec-113 Lane D: re-exported (not otherwise used in this module) so
+# game/provenance.py can build METRIC_PROVENANCE without its own direct
+# babylon.engine import — tests/unit/web/test_import_boundary.py enforces
+# this file as the *only* web/ gateway to babylon.engine/models/config/
+# ooda/persistence.
+from babylon.engine.formula_registry import (  # noqa: F401 — re-exported, see above
+    FormulaRegistry as FormulaRegistry,
+)
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
@@ -1082,6 +1091,115 @@ def _social_class_stats(
     return avg_consciousness, dominant_role
 
 
+def _tenancy_members_by_territory(graph: BabylonGraph) -> dict[str, list[str]]:
+    """Group ``social_class`` node ids by the territory they hold a live
+    TENANCY edge into (spec-113 Lane D: the ``dominant_class``/
+    ``solidarity_index`` ``/map/`` properties).
+
+    TENANCY is the engine's Occupant -> Territory edge
+    (:class:`~babylon.models.enums.EdgeType`; e.g. ``ProductionSystem``'s
+    ``_find_tenancy_target``) — the one live per-territory link from social
+    classes that exists today. ``_hex_state_row``'s docstring notes no
+    shipped scenario sets ``SocialClass.county_fips``, so a direct
+    county-join was never available; this walks the graph instead.
+
+    Args:
+        graph: The hydrated session graph.
+
+    Returns:
+        Map of territory node id -> list of social_class node ids tenant
+        there. A territory with no TENANCY edges is simply absent
+        (Constitution III.11: absent means no data, never an empty-list
+        stand-in for zero).
+    """
+    members: dict[str, list[str]] = {}
+    for source, target in graph.edges:
+        edge_data = graph.edges[(source, target)]
+        etype = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+        if etype != "tenancy":
+            continue
+        source_data = graph.nodes.get(source, {})
+        if source_data.get("_node_type") != "social_class":
+            continue
+        members.setdefault(target, []).append(source)
+    return members
+
+
+def _dominant_class_by_territory(
+    graph: BabylonGraph, tenancy_members: dict[str, list[str]]
+) -> dict[str, str]:
+    """Per-territory dominant :class:`~babylon.models.enums.SocialRole`
+    (spec-113 Lane D).
+
+    "Dominant" = the tenant class with the greatest total ``population``
+    among a territory's TENANCY-linked social classes (real
+    ``SocialClass.population``, never fabricated). Ties broken by role
+    name for determinism (Constitution III.7).
+
+    Args:
+        graph: The hydrated session graph.
+        tenancy_members: Output of :func:`_tenancy_members_by_territory`.
+
+    Returns:
+        Map of territory node id -> dominant role string. A territory with
+        no TENANCY-linked classes carrying a ``role``/``population`` is
+        absent — callers must treat a missing entry as ``None``, never a
+        fabricated default.
+    """
+    dominant: dict[str, str] = {}
+    for territory_id, member_ids in tenancy_members.items():
+        population_by_role: dict[str, float] = {}
+        for member_id in member_ids:
+            node_data = graph.nodes.get(member_id, {})
+            role = node_data.get("role")
+            if role is None:
+                continue
+            role_val = _enum_val(role)
+            population = float(node_data.get("population") or 0)
+            population_by_role[role_val] = population_by_role.get(role_val, 0.0) + population
+        if population_by_role:
+            dominant[territory_id] = max(population_by_role.items(), key=lambda kv: (kv[1], kv[0]))[
+                0
+            ]
+    return dominant
+
+
+def _solidarity_index_by_territory(
+    graph: BabylonGraph, tenancy_members: dict[str, list[str]]
+) -> dict[str, float]:
+    """Per-territory SOLIDARITY-edge density (spec-113 Lane D).
+
+    Reuses :func:`_collect_solidarity_edges` — the same edge walk
+    ``/communities/`` (:func:`_build_solidarity_communities`) uses — so a
+    territory's index counts live SOLIDARITY edges incident to its
+    TENANCY-linked social_class members, normalized by member count (mean
+    incident-edge count per tenant class).
+
+    Args:
+        graph: The hydrated session graph.
+        tenancy_members: Output of :func:`_tenancy_members_by_territory`.
+
+    Returns:
+        Map of territory node id -> solidarity density (>= 0.0). A
+        territory with TENANCY-linked classes but zero SOLIDARITY edges
+        gets a real ``0.0`` (not missing data); a territory absent from
+        ``tenancy_members`` is simply absent here too.
+    """
+    solidarity_edges = _collect_solidarity_edges(graph)
+    incident_count: dict[str, int] = {}
+    for source, target, _strength in solidarity_edges:
+        incident_count[source] = incident_count.get(source, 0) + 1
+        incident_count[target] = incident_count.get(target, 0) + 1
+
+    index: dict[str, float] = {}
+    for territory_id, member_ids in tenancy_members.items():
+        if not member_ids:
+            continue
+        total_incident = sum(incident_count.get(m, 0) for m in member_ids)
+        index[territory_id] = round(total_incident / len(member_ids), 4)
+    return index
+
+
 def _build_solidarity_communities(graph: BabylonGraph) -> list[dict[str, Any]]:
     """Group nodes into communities via connected SOLIDARITY edges.
 
@@ -1223,6 +1341,7 @@ class EngineBridge:
         # has no prior tick to diff against, so it stays at the column
         # default (0.0).
         initial_orgs = [_serialize_organization(o) for o in initial_state.organizations.values()]
+        initial_tenancy_members = _tenancy_members_by_territory(initial_graph)
         _persist_hex_state_safe(
             session_id,
             initial_state.tick,
@@ -1231,6 +1350,12 @@ class EngineBridge:
                 for t in initial_state.territories.values()
             ],
             org_counts=_org_count_by_territory(initial_orgs),
+            dominant_class_by_territory=_dominant_class_by_territory(
+                initial_graph, initial_tenancy_members
+            ),
+            solidarity_index_by_territory=_solidarity_index_by_territory(
+                initial_graph, initial_tenancy_members
+            ),
         )
         # Spec-109 A1: seed the tick-0 snapshot tables + summary row so
         # timeseries/history surfaces have a baseline point from creation.
@@ -1287,6 +1412,7 @@ class EngineBridge:
                 seeded_orgs = [
                     _serialize_organization(o) for o in seeded_state.organizations.values()
                 ]
+                seeded_tenancy_members = _tenancy_members_by_territory(seeded_graph)
                 _persist_hex_state_safe(
                     session_id,
                     seeded_state.tick,
@@ -1295,6 +1421,12 @@ class EngineBridge:
                         for t in seeded_state.territories.values()
                     ],
                     org_counts=_org_count_by_territory(seeded_orgs),
+                    dominant_class_by_territory=_dominant_class_by_territory(
+                        seeded_graph, seeded_tenancy_members
+                    ),
+                    solidarity_index_by_territory=_solidarity_index_by_territory(
+                        seeded_graph, seeded_tenancy_members
+                    ),
                 )
                 # Spec-109 A1: same backfill for the snapshot/summary tables.
                 _persist_snapshots_safe(self._persistence, session_id, seeded_state)
@@ -1409,6 +1541,15 @@ class EngineBridge:
         features (real polygons are deferred to the frontend, which derives
         them from ``member_h3`` via ``H3ClusterLayer``/``h3-js``), so this is
         the only way a region's shape can be reconstructed at all.
+
+        Spec-113 Lane D: ``solidarity_index`` gets the same partial-coverage-
+        aware population-weighted mean as ``habitability`` (not every hex
+        has TENANCY-linked social_class members). ``dominant_class`` is
+        categorical — its group value is the population-weighted mode
+        across the group's per-hex ``dominant_class`` values, tracked in a
+        separate accumulator (``dominant_class_pop``, mirroring
+        ``member_h3``'s own separate-dict pattern above) since it isn't a
+        scalar sum.
         """
         from collections import defaultdict
 
@@ -1438,6 +1579,10 @@ class EngineBridge:
                 # (a partial-coverage group must not silently read as 0.0).
                 "habitability_sum": 0.0,
                 "habitability_pop": 0,
+                # Spec-113 Lane D: same partial-coverage pattern as
+                # habitability — not every hex has TENANCY-linked members.
+                "solidarity_index_sum": 0.0,
+                "solidarity_index_pop": 0,
                 "count": 0,
             }
         )
@@ -1445,6 +1590,9 @@ class EngineBridge:
         # Spec-112 C5: member h3 indexes per group, kept separate from the
         # numeric accumulator dict above (distinct value type).
         member_h3: dict[str, list[str]] = defaultdict(list)
+        # Spec-113 Lane D: population-weighted vote per group -> role, kept
+        # separate for the same reason (dominant_class is categorical).
+        dominant_class_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
         for state in hex_states:
             key = getattr(state, group_attr, None)
@@ -1467,6 +1615,15 @@ class EngineBridge:
                 acc["habitability_sum"] += float(habitability) * pop
                 acc["habitability_pop"] += pop
 
+            solidarity_index = (getattr(state, "attributes", None) or {}).get("solidarity_index")
+            if solidarity_index is not None:
+                acc["solidarity_index_sum"] += float(solidarity_index) * pop
+                acc["solidarity_index_pop"] += pop
+
+            dominant_class = getattr(state, "dominant_class", None)
+            if dominant_class is not None:
+                dominant_class_pop[key][dominant_class] += pop
+
             # Capture a name for the group
             if key not in group_names:
                 group_names[key] = state.county_name or key
@@ -1475,6 +1632,8 @@ class EngineBridge:
         for key, acc in groups.items():
             total_pop = acc["population_sum"] or 1  # avoid div-by-zero
             habitability_pop = acc["habitability_pop"]
+            solidarity_index_pop = acc["solidarity_index_pop"]
+            role_votes = dominant_class_pop.get(key) or {}
             features.append(
                 {
                     "type": "Feature",
@@ -1496,6 +1655,16 @@ class EngineBridge:
                         "habitability": (
                             round(acc["habitability_sum"] / habitability_pop, 4)
                             if habitability_pop
+                            else None
+                        ),
+                        "solidarity_index": (
+                            round(acc["solidarity_index_sum"] / solidarity_index_pop, 4)
+                            if solidarity_index_pop
+                            else None
+                        ),
+                        "dominant_class": (
+                            max(role_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                            if role_votes
                             else None
                         ),
                     },
@@ -2784,7 +2953,10 @@ class EngineBridge:
         # P0 #7: refresh the hex_latest map cache from this tick's territories
         # (sibling of the tick_event write above; best-effort, never raises).
         # Spec-109 A2: org_count from live territory_ids, heat_delta from the
-        # real pre-step (`graph`) -> post-step (`new_graph`) diff.
+        # real pre-step (`graph`) -> post-step (`new_graph`) diff. Spec-113
+        # Lane D: dominant_class/solidarity_index from the post-step graph
+        # (this tick's live TENANCY/SOLIDARITY topology).
+        new_tenancy_members = _tenancy_members_by_territory(new_graph)
         _persist_hex_state_safe(
             session_id,
             new_state.tick,
@@ -2792,6 +2964,12 @@ class EngineBridge:
             org_counts=_org_count_by_territory(snapshot["organizations"]),
             heat_deltas=_heat_delta_by_territory(
                 graph, new_graph, [t["id"] for t in snapshot["territories"]]
+            ),
+            dominant_class_by_territory=_dominant_class_by_territory(
+                new_graph, new_tenancy_members
+            ),
+            solidarity_index_by_territory=_solidarity_index_by_territory(
+                new_graph, new_tenancy_members
             ),
         )
         # Spec-109 A1: fill the spec-037 snapshot tables + the tick_summary
@@ -4668,9 +4846,10 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     Emits every :data:`MAP_METRIC_PROPERTIES` key (the spec-109 A3 contract —
     ``org_presence`` maps from ``org_count``, ``population`` from
     ``pop_total``, ``habitability`` from the JSONB ``attributes`` column —
-    Spec-109 A2) plus the identity/context columns. Extracted from the
-    ``get_map_snapshot`` loop so the contract is unit-testable without a
-    database.
+    Spec-109 A2; ``solidarity_index`` rides the same JSONB ``attributes``
+    column — spec-113 Lane D) plus the identity/context columns. Extracted
+    from the ``get_map_snapshot`` loop so the contract is unit-testable
+    without a database.
 
     Args:
         state: One ``HexState`` row (or any object carrying its columns).
@@ -4694,6 +4873,7 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "dominant_class": state.dominant_class,
         "population": state.pop_total,
         "habitability": attributes.get("habitability"),
+        "solidarity_index": attributes.get("solidarity_index"),
     }
 
 
@@ -4757,6 +4937,8 @@ def _hex_state_row(
     *,
     org_count: int = 0,
     heat_delta: float = 0.0,
+    dominant_class: str | None = None,
+    solidarity_index: float | None = None,
 ) -> dict[str, Any] | None:
     """Project one :func:`_serialize_territory` dict onto ``hex_latest`` columns.
 
@@ -4780,9 +4962,17 @@ def _hex_state_row(
       (only global aggregates, or orphaned economics/tick/ modules) —
       left at their NULL column default.
     * ``pop_bourgeoisie``/``pop_petit_bourgeoisie``/``pop_labor_aristocracy``/
-      ``pop_proletariat``/``pop_lumpenproletariat``/``dominant_class`` — no
-      shipped scenario sets ``SocialClass.county_fips``, so there is no
-      live per-territory class-population source — left at defaults.
+      ``pop_proletariat``/``pop_lumpenproletariat`` — no shipped scenario
+      sets ``SocialClass.county_fips``, so there is no live per-territory
+      class-population breakdown by these specific buckets — left at
+      defaults.
+    * ``dominant_class``/``attributes["solidarity_index"]`` — spec-113 Lane
+      D: passed in by the caller (see
+      :func:`_dominant_class_by_territory` / :func:`_solidarity_index_by_territory`),
+      both real live sources computed from TENANCY/SOLIDARITY graph edges
+      (not ``SocialClass.county_fips``, which the bullet above still
+      correctly says no scenario sets) — ``None`` when the territory has
+      no TENANCY-linked social_class members.
     * ``faction_finance_capital``/``faction_security_state``/
       ``faction_settler_populist`` — the StateApparatusAI FactionBalance
       module (``babylon.ooda.state_ai.faction_dynamics``) is never called
@@ -4802,6 +4992,12 @@ def _hex_state_row(
         heat_delta: This territory's heat change this tick (see
             :func:`_heat_delta_by_territory`); 0.0 when unknown (e.g. the
             tick-0 seed, which has no prior tick to diff against).
+        dominant_class: This territory's dominant SocialRole this tick
+            (see :func:`_dominant_class_by_territory`); ``None`` when
+            unknown (spec-113 Lane D).
+        solidarity_index: This territory's SOLIDARITY-edge density this
+            tick (see :func:`_solidarity_index_by_territory`); ``None``
+            when unknown (spec-113 Lane D).
 
     Returns:
         Kwargs dict for the :class:`game.models.HexState` constructor, or None.
@@ -4822,6 +5018,8 @@ def _hex_state_row(
     habitability = territory.get("habitability")
     if habitability is not None:
         attributes["habitability"] = float(habitability)
+    if solidarity_index is not None:
+        attributes["solidarity_index"] = float(solidarity_index)
 
     row: dict[str, Any] = {
         "game_id": session_id,
@@ -4837,6 +5035,8 @@ def _hex_state_row(
         "pop_total": int(territory.get("population") or 0),
         "attributes": attributes,
     }
+    if dominant_class is not None:
+        row["dominant_class"] = dominant_class
     if len(county_fips) >= 2:
         row["state_fips"] = county_fips[:2]
     return row
@@ -4849,6 +5049,8 @@ def _persist_hex_state_safe(
     *,
     org_counts: dict[str, int] | None = None,
     heat_deltas: dict[str, float] | None = None,
+    dominant_class_by_territory: dict[str, str] | None = None,
+    solidarity_index_by_territory: dict[str, float] | None = None,
 ) -> None:
     """Best-effort projection of a tick's territories into ``hex_latest``.
 
@@ -4875,11 +5077,21 @@ def _persist_hex_state_safe(
         heat_deltas: Optional map of territory id -> heat delta this tick
             (see :func:`_heat_delta_by_territory`); missing entries
             default to 0.0 (e.g. tick-0 seeding has no prior tick).
+        dominant_class_by_territory: Optional map of territory id ->
+            dominant SocialRole this tick (see
+            :func:`_dominant_class_by_territory`, spec-113 Lane D);
+            missing entries default to ``None``.
+        solidarity_index_by_territory: Optional map of territory id ->
+            SOLIDARITY-edge density this tick (see
+            :func:`_solidarity_index_by_territory`, spec-113 Lane D);
+            missing entries default to ``None``.
     """
     if not serialized_territories:
         return
     org_counts = org_counts or {}
     heat_deltas = heat_deltas or {}
+    dominant_class_by_territory = dominant_class_by_territory or {}
+    solidarity_index_by_territory = solidarity_index_by_territory or {}
     rows = [
         row
         for t in serialized_territories
@@ -4890,6 +5102,8 @@ def _persist_hex_state_safe(
                 t,
                 org_count=org_counts.get(str(t.get("id")), 0),
                 heat_delta=heat_deltas.get(str(t.get("id")), 0.0),
+                dominant_class=dominant_class_by_territory.get(str(t.get("id"))),
+                solidarity_index=solidarity_index_by_territory.get(str(t.get("id"))),
             )
         )
         is not None

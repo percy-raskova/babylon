@@ -294,3 +294,8 @@ decisions:
     status: accepted
     date: '2026-07-11'
     file: ADR063_program14_correspondence.yaml
+  ADR065_program16_living_map:
+    title: 'Program 16 (The Living Map): map-first game UI — TIGER county cartography with redrawable political claims, imperial-rent default lens, recursive InspectionStack over /explain formula provenance, MIM-voiced copy, narration scaffolding; research-derived Design Bible (21-agent fan-out)'
+    status: accepted
+    date: '2026-07-11'
+    file: ADR065_program16_living_map.yaml

@@ -116,8 +116,7 @@ const hexWealth: ScriptValue = {
     if (!scope.this || scope.this.kind !== "hex") return 0;
     const scopeId = scope.this.id;
     const territory = scope.snapshot.territories.find((t) => t.id === scopeId) as
-      | (LooseTerritory & { id: string })
-      | undefined;
+      (LooseTerritory & { id: string }) | undefined;
     return territory?.wealth ?? 0;
   },
   breakdown: (scope: Scope): Breakdown => {
@@ -136,8 +135,7 @@ const hexConsciousness: ScriptValue = {
     if (!scope.this || scope.this.kind !== "hex") return 0;
     const scopeId = scope.this.id;
     const territory = scope.snapshot.territories.find((t) => t.id === scopeId) as
-      | (LooseTerritory & { id: string })
-      | undefined;
+      (LooseTerritory & { id: string }) | undefined;
     return territory?.consciousness ?? 0;
   },
   breakdown: (scope: Scope): Breakdown => {

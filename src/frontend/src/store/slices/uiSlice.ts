@@ -8,22 +8,13 @@
  *
  * `activeDockTab`/`bottomStripCollapsed`/`rightDockTab` (the RightDock/
  * BottomStrip tab-and-collapse state) are RETIRED — `RightDock.tsx` and
- * `BottomStrip.tsx` are deleted (architecture §1.2's "disperse" row) and
- * every consumer of those three fields was owned by this same lane, so the
- * "subtractive" half of §1.4's "additive then subtractive" happens in this
- * one commit rather than a later sweep. `DockTab`/`RightDockTab` stay
- * exported as pure type aliases (unused by state now) only because
- * `store/index.ts` — outside this lane's ownership — still re-exports
- * their names; drop them there first if retiring the names too.
+ * `BottomStrip.tsx` are deleted (architecture §1.2's "disperse" row); the
+ * `DockTab`/`RightDockTab` alias names were dropped from `store/index.ts`
+ * in the same sweep once their last consumers went.
  */
 
 import type { StateCreator } from "zustand";
 import type { RootState } from "../types";
-
-/** Retained only so `store/index.ts`'s `export type { DockTab, ... }` still resolves. */
-export type DockTab = "timeseries" | "events" | "graph" | "notifications";
-/** Retained only so `store/index.ts`'s `export type { ..., RightDockTab }` still resolves. */
-export type RightDockTab = "actions" | "inspector" | "objectives";
 
 /** The three full-screen takeover surfaces (spec-110 B5), or none open. */
 export type TakeoverKind = "wire" | "chronicle" | "dialectic";

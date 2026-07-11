@@ -47,6 +47,7 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         "project",  # long-horizon governance: programs/owner/execution/notes
         "reports",  # tracked audit evidence; run artifacts are gitignored
         "results",  # gitignored output dir; tracked .gitkeep only
+        "security",  # pip-audit expiring-ignores policy (program 15)
         "sources",  # Percy's theory texts (LFS)
         "specs",
         "src",
@@ -62,12 +63,15 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         ".env.example",
         ".gitattributes",
         ".gitignore",
+        ".gitleaks.toml",  # secret-scan policy shared by CI + pre-commit (program 15)
         ".markdownlint.yaml",
         ".markdownlintignore",
         ".mdformat.toml",
         ".mise.toml",
         ".pre-commit-config.yaml",
         ".semgrep.yml",
+        ".tflint.hcl",  # terraform lint config for infra-validate (program 15)
+        ".trivyignore",  # curated IaC-scan ignores, every entry evidenced (program 15)
         ".yamllint.yaml",
         "AGENTS.md",
         "babylon.code-workspace",

@@ -348,6 +348,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           skip-dirs: .pre-commit-cache
+          trivyignores: .trivyignore
           cache: "true"
 
   trivy-image:

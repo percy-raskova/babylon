@@ -299,3 +299,8 @@ decisions:
     status: accepted
     date: '2026-07-11'
     file: ADR065_program16_living_map.yaml
+  ADR066_program16_phase_v:
+    title: 'Program 16 Phase V: waves 1-4 executed + live-verified; chrome layout single-source-of-truth (chrome/layout.ts) resolves recurring z-strata interception; branch pre-aligned to dev dependency wave (vite 8 / eslint 10 / prettier 3.9.5); open owner items (hex-card data source, 2 engine reds, narrator, ds-sync upload)'
+    status: accepted
+    date: '2026-07-11'
+    file: ADR066_program16_phase_v.yaml

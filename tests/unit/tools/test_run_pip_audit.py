@@ -303,9 +303,21 @@ class TestRealPolicyFile:
     def test_real_policy_passes_check_only(self) -> None:
         assert main(["--check-only"]) == 0
 
-    def test_real_policy_seeds_cve_2026_3219(self) -> None:
+    def test_real_policy_pins_the_item41_residue_exactly(self) -> None:
+        """The shipped policy is the item-41 no-fix residue — nothing more.
+
+        A new ignore appearing here without review must fail this pin.
+        """
         entries = get_ignore_entries(load_ignores_file(DEFAULT_IGNORES_FILE))
-        assert len(entries) == 1
-        assert entries[0]["id"] == "CVE-2026-3219"
-        assert entries[0]["reason"]
-        assert entries[0]["expires"] == "2026-10-01"
+        ids = sorted(e["id"] for e in entries)
+        assert ids == [
+            "CVE-2025-3000",
+            "CVE-2026-1839",
+            "CVE-2026-3219",
+            "CVE-2026-4372",
+            "PYSEC-2025-217",
+            "PYSEC-2026-139",
+        ]
+        for entry in entries:
+            assert entry["reason"]
+            assert entry["expires"] == "2026-10-01"

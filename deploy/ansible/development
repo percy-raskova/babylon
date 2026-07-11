@@ -1,9 +1,0 @@
-[webservers]
-dev.example.com nginx_use_letsencrypt=true
-
-[dbservers]
-dev.example.com
-
-[development:children]
-webservers
-dbservers

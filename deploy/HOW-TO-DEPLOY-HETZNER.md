@@ -62,13 +62,13 @@ terraform apply
 After apply completes, generate the Ansible inventory:
 
 ```bash
-terraform output -raw ansible_inventory_yaml > ../ansible/production_inventory.yml
+terraform output -raw ansible_inventory_yaml > ../ansible/inventory.yml
 ```
 
 Verify SSH access:
 
 ```bash
-ssh root@$(terraform output -raw server_ips_v4 | head -1)
+ssh root@$(terraform output -json server_ips | jq -r 'to_entries[0].value')
 ```
 
 ## Step 2: Install Ansible Galaxy Requirements
@@ -196,13 +196,13 @@ All other variables are pre-configured for Babylon. The key settings:
 Test connectivity:
 
 ```bash
-ansible all -i production_inventory.yml -m ping --vault-password-file .vault_pass
+ansible all -i inventory.yml -m ping --vault-password-file .vault_pass
 ```
 
 Run the full stack:
 
 ```bash
-ansible-playbook -i production_inventory.yml site.yml --vault-password-file .vault_pass
+ansible-playbook -i inventory.yml site.yml --vault-password-file .vault_pass
 ```
 
 This runs `dbservers.yml` then `webservers.yml` in sequence:

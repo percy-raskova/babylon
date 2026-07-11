@@ -90,9 +90,7 @@ export type LensMode = (typeof LENS_MODES)[number];
  * `mapLensLayers.ts` are keyed to the balkanization block specifically.
  */
 export type Lens =
-  | { kind: LensMode }
-  | { kind: "metric"; metric: MapMetric }
-  | { kind: "class_composition" };
+  { kind: LensMode } | { kind: "metric"; metric: MapMetric } | { kind: "class_composition" };
 
 /**
  * DESIGN_BIBLE.md §9 amendment 1 (binding): the default lens is Imperial

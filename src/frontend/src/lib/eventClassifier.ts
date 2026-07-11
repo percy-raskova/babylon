@@ -195,13 +195,7 @@ export type EventStream = "urgent" | "ambient";
 
 /** Coarse thematic grouping, driving per-category mute (DESIGN_BIBLE §5.2). */
 export type EventCategory =
-  | "struggle"
-  | "solidarity"
-  | "economy"
-  | "political"
-  | "ecology"
-  | "population"
-  | "system";
+  "struggle" | "solidarity" | "economy" | "political" | "ecology" | "population" | "system";
 
 /** Every `EventCategory`, in a stable display order — for mute-toggle UI. */
 export const EVENT_CATEGORIES: readonly EventCategory[] = [

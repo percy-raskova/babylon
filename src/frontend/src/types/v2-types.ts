@@ -88,13 +88,7 @@ export interface V2Edge {
 }
 
 export type V2EdgeType =
-  | "EXPLOITATION"
-  | "SOLIDARITY"
-  | "REPRESSION"
-  | "TRIBUTE"
-  | "TENANCY"
-  | "WAGES"
-  | "ADJACENCY";
+  "EXPLOITATION" | "SOLIDARITY" | "REPRESSION" | "TRIBUTE" | "TENANCY" | "WAGES" | "ADJACENCY";
 
 /** Constitution Article V — nine atomic player verbs. */
 export interface V2Verb {
@@ -118,12 +112,7 @@ export type V2VerbKey =
   | "negotiate";
 
 export type V2TargetType =
-  | "community"
-  | "territory"
-  | "org"
-  | "any"
-  | "org_or_territory"
-  | "territory_or_community";
+  "community" | "territory" | "org" | "any" | "org_or_territory" | "territory_or_community";
 
 /** Simulation event. */
 export interface V2Event {

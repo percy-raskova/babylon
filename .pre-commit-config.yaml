@@ -141,7 +141,9 @@ repos:
       - id: prettier
         name: prettier (cockpit format)
         files: ^src/frontend/src/.*\.(ts|tsx|css)$
-        additional_dependencies: ["prettier@3.8.1"]
+        # Version must track src/frontend/package.json's prettier pin (bumped to
+        # dev's 3.9.5 toolchain — spec-113 dep-compat pre-alignment).
+        additional_dependencies: ["prettier@3.9.5"]
 
   - repo: local
     hooks:

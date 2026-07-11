@@ -14,13 +14,7 @@
 
 /** What an `InspectionRef` points at — one resolver per kind (Lane C). */
 export type InspectionRefKind =
-  | "hex"
-  | "org"
-  | "node"
-  | "edge"
-  | "community"
-  | "metric"
-  | "formula";
+  "hex" | "org" | "node" | "edge" | "community" | "metric" | "formula";
 
 /**
  * A pointer to something inspectable. `scope` disambiguates instance data

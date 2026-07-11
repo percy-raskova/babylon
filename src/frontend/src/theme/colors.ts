@@ -18,13 +18,7 @@ export type RGBAColor = [number, number, number, number];
 
 /** Map layers that own a canonical data ramp. */
 export type RampLayer =
-  | "heat"
-  | "consciousness"
-  | "rent"
-  | "biocapacity"
-  | "wealth"
-  | "population"
-  | "solidarity";
+  "heat" | "consciousness" | "rent" | "biocapacity" | "wealth" | "population" | "solidarity";
 
 /**
  * The six canonical data ramps.

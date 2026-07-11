@@ -127,11 +127,11 @@ pytest-timeout = "^2.4.0"
 import-linter = "^2.13"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = ">=7,<9"
+sphinx = ">=9,<10"
 sphinx-rtd-theme = "^3.0.2"
-sphinx-autodoc-typehints = "<3.6"
+sphinx-autodoc-typehints = "<3.13"
 myst-parser = "^5.0.0"
-sphinx-autobuild = "^2024.10.3"
+sphinx-autobuild = "^2025.8"
 sphinxcontrib-mermaid = "^2.0"
 
 [tool.pytest.ini_options]

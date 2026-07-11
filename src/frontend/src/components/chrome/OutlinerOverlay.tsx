@@ -20,13 +20,14 @@ import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
 import { Outliner } from "@/components/shell/Outliner";
 import { KeyHints } from "./KeyHints";
+// Widths live in chrome/layout.ts (the single source of truth the map-control
+// safe-area offsets derive from) — never hard-code them here, or the lens bar
+// silently slides under this rail again (spec-113 Phase V).
+import { RAIL_LEFT_W, RAIL_LEFT_COLLAPSED_W } from "./layout";
 
 interface OutlinerOverlayProps {
   gameId: string;
 }
-
-const OPEN_WIDTH = 240;
-const RAIL_WIDTH = 44;
 
 export function OutlinerOverlay({ gameId }: OutlinerOverlayProps): React.JSX.Element {
   const outlinerOpen = useStore((s) => s.ui.chrome.outlinerOpen);
@@ -38,7 +39,7 @@ export function OutlinerOverlay({ gameId }: OutlinerOverlayProps): React.JSX.Ele
       title={outlinerOpen ? "Outliner" : "☰"}
       collapsed={!outlinerOpen}
       onToggle={toggleOutliner}
-      width={outlinerOpen ? OPEN_WIDTH : RAIL_WIDTH}
+      width={outlinerOpen ? RAIL_LEFT_W : RAIL_LEFT_COLLAPSED_W}
       testId="outliner-overlay"
     >
       <Outliner gameId={gameId} />

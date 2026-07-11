@@ -13,6 +13,7 @@
 
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
+import { RAIL_RIGHT_W } from "./layout";
 import { EventsFeed } from "@/components/events/EventsFeed";
 import { EVENT_CATEGORIES } from "@/lib/eventClassifier";
 import { NarrationBlock } from "@/components/narration/NarrationBlock";
@@ -43,7 +44,7 @@ export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
       title="Events"
       collapsed={!eventTrayOpen}
       onToggle={toggleEventTray}
-      width={280}
+      width={RAIL_RIGHT_W}
       testId="event-tray"
     >
       <div className="flex h-full flex-col">

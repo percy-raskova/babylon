@@ -25,6 +25,7 @@
 import { useEffect } from "react";
 import { useStore } from "@/store";
 import { FloatingPanel } from "@/components/chrome/FloatingPanel";
+import { MAP_SAFE_RIGHT, MAP_SAFE_TOP } from "@/components/chrome/layout";
 import { InspectionCard } from "./InspectionCard";
 import { MAX_INSPECTION_DEPTH } from "@/store/slices/inspectSlice";
 import { refKey } from "@/lib/inspect/resolvers";
@@ -65,7 +66,8 @@ export function InspectionStack(_props: InspectionStackProps): React.JSX.Element
 
   return (
     <div
-      className="pointer-events-none absolute bottom-2 right-[300px] top-14 flex w-[340px] flex-col"
+      className="pointer-events-none absolute bottom-2 flex w-[340px] flex-col"
+      style={{ right: MAP_SAFE_RIGHT, top: MAP_SAFE_TOP }}
       data-testid="inspection-stack-region"
     >
       <FloatingPanel anchor="free" width={340} testId="inspection-stack">

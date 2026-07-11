@@ -20,6 +20,7 @@
 
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
+import { RAIL_RIGHT_W } from "./layout";
 import { ObjectivesTracker } from "@/components/objectives/ObjectivesTracker";
 import { useObjectives } from "@/hooks/useObjectives";
 import { KeyHints } from "./KeyHints";
@@ -40,7 +41,7 @@ export function ObjectivesTray({ gameId }: ObjectivesTrayProps): React.JSX.Eleme
       title={`Objectives (${activeCount})`}
       collapsed={!objectivesOpen}
       onToggle={toggleObjectives}
-      width={280}
+      width={RAIL_RIGHT_W}
       testId="objectives-tray"
     >
       <ObjectivesTracker gameId={gameId} />

@@ -50,4 +50,20 @@ describe("MapControls", () => {
     );
     expect(screen.queryByTestId("lens-mode-class_composition")).not.toBeInTheDocument();
   });
+
+  it("bounds the lens cluster to the map-safe area (right-anchored + max-width capped)", () => {
+    // Structural guard (spec-113 Phase V): the grouped lens bar wraps (flex-wrap),
+    // so with only a right anchor and no width cap its row slid left UNDER the
+    // outliner rail and the buttons stopped taking clicks (z-strata interception,
+    // invisible to jsdom hit-testing). The cluster must stay right-anchored AND
+    // max-width-capped to chrome/layout.ts's inter-rail safe area — remove either
+    // and the overflow returns. (The live 9-lens e2e is the end-to-end guard.)
+    render(<MapControls lens={DEFAULT_LENS} framing="county" />);
+    const cluster = screen.getByTestId("map-mode-selector").parentElement;
+    expect(cluster?.style.right, "lens cluster must be right-anchored").toBeTruthy();
+    expect(
+      cluster?.style.maxWidth,
+      "lens cluster must be width-capped to the safe area",
+    ).toBeTruthy();
+  });
 });

@@ -9,6 +9,12 @@
 import { MapLensBar } from "@/components/map/MapLensBar";
 import { MapLegend } from "@/components/map/MapLegend";
 import { FramingSelector } from "@/components/map/FramingSelector";
+import {
+  MAP_SAFE_LEFT,
+  MAP_SAFE_RIGHT,
+  MAP_SAFE_TOP,
+  MAP_SAFE_MAX_WIDTH_CSS,
+} from "@/components/chrome/layout";
 import { lensDefForLens, type LensAvailabilityContext } from "@/lib/lenses/registry";
 import { lensLegendLabel, type Lens } from "@/lib/lens";
 import type { FactionSummary } from "@/components/map/mapLensLayers";
@@ -61,10 +67,13 @@ export function MapControls({
 
   return (
     <>
-      {/* top-14 clears the TopBar strip (FloatingPanel anchor="top") and
-          left-[250px] clears the open outliner rail (OPEN_WIDTH 240) — at
-          left-3 top-3 this cluster sat UNDER the HUD band and outliner. */}
-      <div className="absolute left-[250px] top-14 z-10 flex flex-col gap-2 border-2 border-ksbc-muted-1 bg-plate/85 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm">
+      {/* Legend cluster: pinned to the map-safe area's top-left corner
+          (below the TopBar strip, right of the outliner rail). Offsets DERIVE
+          from chrome/layout.ts — no hand-tuned magic numbers. */}
+      <div
+        className="absolute z-10 flex flex-col gap-2 border-2 border-ksbc-muted-1 bg-plate/85 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm"
+        style={{ left: MAP_SAFE_LEFT, top: MAP_SAFE_TOP }}
+      >
         <MapLegend legend={legend} label={label} currentValue={currentValue} flash={flash} />
         {legendStatusText && (
           <span
@@ -76,9 +85,15 @@ export function MapControls({
         )}
       </div>
 
-      {/* right-[300px] clears the EventTray/Objectives rail (280 wide at
-          right-2, same clearance InspectionStack uses). */}
-      <div className="absolute right-[300px] top-14 z-10 flex flex-col items-end gap-2">
+      {/* Lens/framing cluster: right-anchored at the right rail's clearance,
+          but CAPPED at the safe-area width so the wrapping grouped lens bar
+          (flex-wrap) can never extend left under the outliner rail — the
+          structural fix for the Phase-V z-strata interception. All three
+          values derive from chrome/layout.ts. */}
+      <div
+        className="absolute z-10 flex flex-col items-end gap-2"
+        style={{ right: MAP_SAFE_RIGHT, top: MAP_SAFE_TOP, maxWidth: MAP_SAFE_MAX_WIDTH_CSS }}
+      >
         <MapLensBar
           lens={lens}
           onLensChange={onLensChange}

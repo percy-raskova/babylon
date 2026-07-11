@@ -122,7 +122,9 @@ jobs:
   test-rest:
     name: Non-Unit Tests (integration, scenarios, property, contract)
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Maiden run was cancelled at 35 while still serial; the shard now runs
+    # xdist (test:rest-ci -n 4 loadscope) — 45 is the bounded first-measure.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
@@ -155,6 +157,12 @@ jobs:
           gdal: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
+      # Maiden-run finding (2026-07-11): the engine runtime schema
+      # (node_state et al.) is NOT created by Django migrate — every local
+      # dev DB already has it, so the gap only shows on a fresh CI Postgres
+      # (UndefinedTable: node_state). Idempotent canonical DDL apply.
+      - name: Apply engine schema (canonical DDL)
+        run: mise run db:bootstrap
       - name: Django migrate (fresh compose DB)
         working-directory: web
         env:
@@ -286,6 +294,12 @@ jobs:
     if: ${{ vars.CI_REFDB_READY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Maiden-run finding (2026-07-11): the headless runner reads its DSN from
+    # BABYLON_TEST_PG_DSN — without it the job dies POSTGRES_UNREACHABLE
+    # before ever touching the container postgres-up just started. Same DSN
+    # the db:bootstrap task targets (compose babylon-pg on :5433).
+    env:
+      BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/bootstrap-python
@@ -293,6 +307,8 @@ jobs:
           gdal: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
+      - name: Apply engine schema (canonical DDL)
+        run: mise run db:bootstrap
       - name: qa:e2e-regression (strict 5-tick bundle vs baseline)
         run: mise run qa:e2e-regression
       - name: qa:storage-budget (rows/tick vs committed baseline)
@@ -344,6 +360,10 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           docs: "true"
+          # Maiden-run finding (2026-07-11): pytest loads the root conftest,
+          # which initializes Django -> contrib.gis -> libgdal, so even the
+          # formulas-scoped doctest run needs the system GDAL package.
+          gdal: "true"
       - name: Run doctest examples
         run: poetry run pytest --doctest-modules src/babylon/formulas -o addopts="" -vv -ra --tb=long
       - name: Build documentation

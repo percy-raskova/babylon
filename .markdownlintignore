@@ -58,7 +58,7 @@ src/babylon/docs/
 data/census/
 
 # Thoughts
-thoughts/
+project/notes/
 
 # Agent workflows and data
 .agents/

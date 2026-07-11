@@ -240,7 +240,7 @@ repos:
         exclude: |
           (?x)^(
             ai/.*|
-            thoughts/.*|
+            project/notes/.*|
             specs/.*|
             \.specify/.*|
             CHANGELOG\.md|

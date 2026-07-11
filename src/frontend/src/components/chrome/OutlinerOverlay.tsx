@@ -19,6 +19,7 @@
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
 import { Outliner } from "@/components/shell/Outliner";
+import { KeyHints } from "./KeyHints";
 
 interface OutlinerOverlayProps {
   gameId: string;
@@ -41,6 +42,7 @@ export function OutlinerOverlay({ gameId }: OutlinerOverlayProps): React.JSX.Ele
       testId="outliner-overlay"
     >
       <Outliner gameId={gameId} />
+      {outlinerOpen && <KeyHints />}
     </FloatingPanel>
   );
 }

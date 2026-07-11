@@ -67,6 +67,34 @@ describe("EventsFeed", () => {
     expect(useStore.getState().map.selection).toEqual({ kind: "hex", id: "territory-downtown" });
   });
 
+  // The territory→hex branch is pinned by the deep-link test above; this pins
+  // organization→org, the only other linked-entity type `classifyEvents` can
+  // emit today. The institution→node / hyperedge→community rows of the inlined
+  // mapping are unreachable through the classifier and are enforced statically
+  // (the Record is exhaustive over ClassifiedEvent["linkedEntityType"]).
+  it("clicking an org-linked event selects the org inspector kind", async () => {
+    useStore.setState((s) => ({
+      world: {
+        ...s.world,
+        snapshot: makeSnapshot({
+          events: [
+            makeEvent({
+              id: "e1",
+              type: "org_founded",
+              title: "Org Founded",
+              tick: 3,
+              data: { org_id: "org-uaw-local" },
+            }),
+          ],
+        }),
+      },
+    }));
+    render(<EventsFeed />);
+
+    await userEvent.click(screen.getByText("Org Founded"));
+    expect(useStore.getState().map.selection).toEqual({ kind: "org", id: "org-uaw-local" });
+  });
+
   it("does not make an event with no linked entity clickable-effective", async () => {
     useStore.setState((s) => ({
       world: {

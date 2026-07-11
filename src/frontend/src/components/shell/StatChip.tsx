@@ -39,10 +39,10 @@ export function StatChip({
 
   const content = (
     <>
-      <span className="text-[9px] uppercase tracking-widest text-ash">{label}</span>
+      <span className="text-[9px] uppercase tracking-widest text-ksbc-muted-2">{label}</span>
       <span
         className={`font-mono text-[11px] font-semibold ${
-          hasData ? colorClassName : "italic text-shroud"
+          hasData ? colorClassName : "italic text-ksbc-muted-1"
         }`}
       >
         {hasData ? format(value) : "no data"}
@@ -53,7 +53,7 @@ export function StatChip({
   if (metric === undefined) {
     return (
       <div
-        className="flex items-center gap-1.5 rounded border border-rebar bg-concrete px-2.5 py-1"
+        className="flex items-center gap-1.5 border-2 border-ksbc-muted-1 bg-plate px-2.5 py-1"
         data-testid={`stat-${label.toLowerCase()}`}
       >
         {content}
@@ -65,7 +65,7 @@ export function StatChip({
     <button
       type="button"
       onClick={() => push({ kind: "metric", id: metric, scope, label })}
-      className="flex items-center gap-1.5 rounded border border-rebar bg-concrete px-2.5 py-1 hover:border-spire"
+      className="flex items-center gap-1.5 border-2 border-ksbc-muted-1 bg-plate px-2.5 py-1 transition-colors hover:border-accent-crimson"
       data-testid={`stat-${label.toLowerCase()}`}
     >
       {content}

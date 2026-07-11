@@ -41,15 +41,15 @@ export function MapLegend({ legend, label, currentValue = null, flash = false }:
   if (legend.kind === "categorical") {
     return (
       <div className="flex flex-col gap-1" data-testid="map-legend" data-legend-kind="categorical">
-        <span className="text-[10px] uppercase tracking-wider text-ash">{label}</span>
+        <span className="text-[10px] uppercase tracking-wider text-ksbc-muted-2">{label}</span>
         <div className="flex flex-col gap-0.5">
           {legend.entries.map((entry) => (
             <div key={entry.label} className="flex items-center gap-1.5">
               <span
-                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                className="h-2.5 w-2.5 shrink-0 border border-key-shadow"
                 style={{ backgroundColor: rgbaToCss(entry.color) }}
               />
-              <span className="text-[10px] text-fog">{entry.label}</span>
+              <span className="text-[10px] text-ink">{entry.label}</span>
             </div>
           ))}
         </div>
@@ -68,26 +68,26 @@ export function MapLegend({ legend, label, currentValue = null, flash = false }:
 
   return (
     <div
-      className={`flex items-center gap-2 ${flash ? "animate-pulse" : ""}`}
+      className={`flex items-center gap-2 ${flash ? "legend-flash" : ""}`}
       data-testid="map-legend"
       data-legend-kind="ramp"
       data-flash={flash ? "true" : "false"}
     >
-      <span className="text-[10px] text-ash">0</span>
-      <div className="relative flex h-3 w-32 overflow-hidden rounded-sm">
+      <span className="text-[10px] text-ksbc-muted-2">0</span>
+      <div className="relative flex h-3 w-32 overflow-hidden border border-key-shadow">
         {swatches.map((swatch, i) => (
           <div key={i} className="flex-1" style={{ backgroundColor: swatch.color }} />
         ))}
         {markerLeftPct !== null && (
           <div
             data-testid="map-legend-marker"
-            className="absolute top-0 h-full w-[2px] -translate-x-1/2 bg-bone"
+            className="absolute top-0 h-full w-[2px] -translate-x-1/2 bg-accent-gold"
             style={{ left: markerLeftPct }}
           />
         )}
       </div>
-      <span className="text-[10px] text-ash">1</span>
-      <span className="text-[10px] uppercase tracking-wider text-ash">{label}</span>
+      <span className="text-[10px] text-ksbc-muted-2">1</span>
+      <span className="text-[10px] uppercase tracking-wider text-ksbc-muted-2">{label}</span>
     </div>
   );
 }

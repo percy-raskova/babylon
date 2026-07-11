@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/store";
 import type { ToastEntry } from "@/store/slices/eventsSlice";
 import type { EventCategory, StreamEvent } from "@/lib/eventClassifier";
+import { keyButtonClass } from "./installerKit";
 
 interface EventToastsProps {
   gameId: string;
@@ -24,9 +25,16 @@ interface EventToastsProps {
 const EPHEMERAL_TIMEOUT_MS = 12000;
 
 const SEVERITY_BORDER: Record<StreamEvent["severity"], string> = {
-  critical: "border-laser",
+  critical: "border-accent-crimson",
   notable: "border-heat",
-  ambient: "border-wet-steel",
+  ambient: "border-ksbc-muted-1",
+};
+
+/** Critical toasts throb (compositor-safe pseudo-layer opacity loop, see index.css). */
+const SEVERITY_THROB: Record<StreamEvent["severity"], string> = {
+  critical: "alert-throb-frame",
+  notable: "",
+  ambient: "",
 };
 
 function toastCategories(toast: ToastEntry): EventCategory[] {
@@ -38,10 +46,12 @@ function EventLine({ event }: { event: StreamEvent }): React.JSX.Element {
   const headline = event.event.title || event.event.type;
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[11px] text-bone">
-        {headline} <span className="text-ash">— tick {event.tick}</span>
+      <span className="text-[11px] text-ink">
+        {headline} <span className="text-ksbc-muted-2">— tick {event.tick}</span>
       </span>
-      {event.event.body && <span className="text-[10px] text-ash">{event.event.body}</span>}
+      {event.event.body && (
+        <span className="text-[10px] text-ksbc-muted-2">{event.event.body}</span>
+      )}
     </div>
   );
 }
@@ -71,7 +81,7 @@ function ToastCard({
   return (
     <div
       data-testid={`toast-${toast.id}`}
-      className={`pointer-events-auto w-72 rounded border-l-2 bg-chrome-bg p-2 shadow-[var(--chrome-shadow)] backdrop-blur-sm ${SEVERITY_BORDER[toast.severity]}`}
+      className={`toast-slam pointer-events-auto w-72 border-2 bg-plate/90 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm ${SEVERITY_BORDER[toast.severity]} ${SEVERITY_THROB[toast.severity]}`}
     >
       {isBatch && !expanded ? (
         <button
@@ -79,10 +89,8 @@ function ToastCard({
           onClick={() => setExpanded(true)}
           className="w-full text-left"
         >
-          <span className="text-[11px] text-bone">
-            {toast.events.length} developments this tick
-          </span>
-          <span className="ml-1 text-[10px] text-ash">— expand</span>
+          <span className="text-[11px] text-ink">{toast.events.length} developments this tick</span>
+          <span className="ml-1 text-[10px] text-ksbc-muted-2">— expand</span>
         </button>
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -98,7 +106,7 @@ function ToastCard({
             <button
               onClick={onOpenWire}
               data-testid={`toast-open-wire-${toast.id}`}
-              className="rounded border border-rebar px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-fog hover:border-spire hover:text-spire"
+              className={keyButtonClass(false, "px-1.5 py-0.5 text-[9px]")}
             >
               Open Wire
             </button>
@@ -106,7 +114,7 @@ function ToastCard({
           <button
             onClick={onDismiss}
             data-testid={`toast-dismiss-${toast.id}`}
-            className="rounded border border-rebar px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-fog hover:border-spire hover:text-spire"
+            className={keyButtonClass(false, "px-1.5 py-0.5 text-[9px]")}
           >
             Dismiss
           </button>
@@ -118,7 +126,7 @@ function ToastCard({
               onClick={() => onToggleMute(category)}
               title={`Mute ${category}`}
               data-testid={`toast-mute-${toast.id}-${category}`}
-              className="rounded border border-rebar px-1 py-0.5 text-[8px] uppercase tracking-widest text-shroud hover:border-heat hover:text-heat"
+              className="border border-ksbc-muted-3 bg-plate px-1 py-0.5 font-mono text-[8px] uppercase tracking-widest text-ksbc-muted-2 hover:border-heat hover:text-heat"
             >
               mute {category}
             </button>

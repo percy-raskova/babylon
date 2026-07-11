@@ -1,14 +1,18 @@
 /**
  * FloatingPanel — the one primitive every chrome overlay instances
- * (architecture §0/§1.3). Renders a concrete/rebar-bordered panel with
- * backdrop-blur over the map, promoting the `bg-void/80 backdrop-blur-sm`
- * idiom `DeckGLMap`'s control cluster already used into a shared,
- * theme-token-backed component (`index.css`'s additive `--chrome-*`
- * tokens).
+ * (architecture §0/§1.3). Skinned to the Installer/newt dialog anatomy
+ * (DESIGN_BIBLE.md §9b, spec-113 Lane SKIN-CHROME): plate background over
+ * the live map (`bg-plate/85` + `backdrop-blur-sm`, small panels only —
+ * bible's "in-game floating chrome... same anatomy at reduced opacity"),
+ * square corners, hard zero-blur offset shadow, and a title tab that
+ * BREAKS the top border (fieldset/legend idiom, crimson mono uppercase)
+ * instead of sitting inside a bordered header strip.
  *
  * "Structure now, skin later" (architecture §0): every chrome component is
  * an instance of this primitive so the Design Bible's later token/visual
- * pass never touches call sites, only this file and `index.css`.
+ * pass never touches call sites, only this file and `index.css`. The
+ * props contract (anchor/collapsed/onToggle/width/testId/children) is
+ * frozen — this is a restyle, not an interface change.
  *
  * Children stay mounted in the DOM even while `collapsed` — visibility is
  * CSS-only (`hidden`), never a JSX unmount — because several hosted panels
@@ -19,6 +23,8 @@
  * No drag in v1 — the `anchor` enum is the extension point the Design
  * Bible amends later (architecture §1.3).
  */
+
+import { keyButtonClass } from "./installerKit";
 
 interface FloatingPanelProps {
   title?: string;
@@ -52,13 +58,13 @@ export function FloatingPanel({
   return (
     <div
       data-testid={testId}
-      className={`pointer-events-auto flex flex-col overflow-hidden border-chrome-border bg-chrome-bg backdrop-blur-sm shadow-[var(--chrome-shadow)] ${ANCHOR_CLASSES[anchor]}`}
+      className={`pointer-events-auto flex flex-col overflow-hidden rounded-none border-2 border-ksbc-muted-1 bg-plate/85 pt-2 shadow-[6px_6px_0_#000] backdrop-blur-sm ${ANCHOR_CLASSES[anchor]}`}
       style={width !== undefined ? { width } : undefined}
     >
       {hasHeader && (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-rebar px-2 py-1.5">
+        <div className="relative -mt-2 mb-1 flex shrink-0 items-center justify-between gap-2 px-2">
           {title !== undefined && (
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-fog">
+            <span className="-mt-[9px] w-fit bg-plate px-1.5 font-mono text-[10px] uppercase tracking-widest text-accent-crimson">
               {title}
             </span>
           )}
@@ -66,7 +72,7 @@ export function FloatingPanel({
             <button
               onClick={onToggle}
               aria-expanded={!collapsed}
-              className="rounded border border-rebar px-1.5 py-0.5 text-[10px] text-fog hover:border-spire hover:text-spire"
+              className={keyButtonClass(false, "-mt-[9px] px-1.5 py-0 text-[10px] leading-none")}
             >
               {collapsed ? "▸" : "▾"}
             </button>

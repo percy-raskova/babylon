@@ -28,13 +28,6 @@ export interface GameSummary {
 
 export type GameStatus = "active" | "paused" | "completed" | "abandoned";
 
-/** Endgame outcome from tick resolution. */
-export interface EndgameData {
-  outcome: "REVOLUTIONARY_VICTORY" | "ECOLOGICAL_COLLAPSE" | "FASCIST_CONSOLIDATION";
-  tick: number;
-  summary: string;
-}
-
 /**
  * Full game state snapshot (Spec 052 §5).
  *
@@ -52,7 +45,6 @@ export interface GameSnapshot {
   events: GameEvent[];
   traps?: TrapDetectionResult;
   derived: DerivedBlock;
-  endgame?: EndgameData;
 }
 
 /**

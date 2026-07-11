@@ -3,10 +3,17 @@
  * Spacebar toggling is wired globally by `useSpacebarShortcut`
  * (`GameRoute`); this component is the visible surface for the same
  * `timeSlice` state machine.
+ *
+ * SKIN (Design Bible §9b): buttons compose `installerKit`'s shared
+ * button-as-key grammar so this row matches the `SpeedControls` cluster
+ * that hosts it — gold inverse-video while playing (the one selection
+ * grammar), crimson urgent key for Resume. Status text uses the ksbc
+ * role ramp (grey idle / green running / gold working / crimson urgent).
  */
 
 import { useStore } from "@/store";
 import type { TimeStatus } from "@/store";
+import { keyButtonClass, keyButtonUrgentClass } from "@/components/chrome/installerKit";
 
 interface TimeControlsProps {
   gameId: string;
@@ -21,15 +28,14 @@ const STATUS_LABEL: Record<TimeStatus, string> = {
 };
 
 const STATUS_COLOR: Record<TimeStatus, string> = {
-  paused: "text-fog",
-  playing: "text-spire",
-  resolving: "text-heat",
-  autopaused: "text-heat",
-  error: "text-laser",
+  paused: "text-ksbc-muted-2",
+  playing: "text-ksbc-green-bright",
+  resolving: "text-accent-gold",
+  autopaused: "text-accent-crimson",
+  error: "text-accent-crimson",
 };
 
-const BUTTON_BASE =
-  "rounded border px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-40";
+const KEY_SIZE = "px-2.5 py-1 text-[10px] disabled:opacity-40";
 
 export function TimeControls({ gameId }: TimeControlsProps): React.JSX.Element {
   const status = useStore((s) => s.time.status);
@@ -55,7 +61,7 @@ export function TimeControls({ gameId }: TimeControlsProps): React.JSX.Element {
         onClick={() => void step(gameId)}
         disabled={!isPaused}
         title="Step — resolve exactly one tick"
-        className={`${BUTTON_BASE} border-wet-steel text-fog hover:border-spire`}
+        className={keyButtonClass(false, KEY_SIZE)}
       >
         Step
       </button>
@@ -63,18 +69,14 @@ export function TimeControls({ gameId }: TimeControlsProps): React.JSX.Element {
         onClick={() => (isPlayingIntent ? pause() : void play(gameId))}
         disabled={!isPaused && !isPlayingIntent}
         title="Play/Pause (spacebar)"
-        className={`${BUTTON_BASE} ${
-          isPlayingIntent
-            ? "border-spire text-spire"
-            : "border-wet-steel text-fog hover:border-spire"
-        }`}
+        className={keyButtonClass(isPlayingIntent, KEY_SIZE)}
       >
         {isPlayingIntent ? "Pause" : "Play"}
       </button>
       {needsResume && (
         <button
           onClick={resume}
-          className={`${BUTTON_BASE} border-heat text-heat`}
+          className={keyButtonUrgentClass(KEY_SIZE)}
           data-testid="time-resume"
         >
           Resume
@@ -87,7 +89,7 @@ export function TimeControls({ gameId }: TimeControlsProps): React.JSX.Element {
         {STATUS_LABEL[status]}
       </span>
       {status === "error" && errorMessage && (
-        <span role="alert" className="text-[10px] text-laser">
+        <span role="alert" className="text-[10px] text-accent-crimson">
           {errorMessage}
         </span>
       )}

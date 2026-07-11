@@ -61,12 +61,12 @@ export function MapControls({
 
   return (
     <>
-      <div className="absolute left-3 top-3 z-10 flex flex-col gap-2 rounded-md bg-void/80 p-2 backdrop-blur-sm">
+      <div className="absolute left-3 top-3 z-10 flex flex-col gap-2 border-2 border-ksbc-muted-1 bg-plate/85 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm">
         <MapLegend legend={legend} label={label} currentValue={currentValue} flash={flash} />
         {legendStatusText && (
           <span
             data-testid="lens-legend-label"
-            className="text-[10px] uppercase tracking-wider text-ash"
+            className="text-[10px] uppercase tracking-wider text-ksbc-muted-2"
           >
             {legendStatusText}
           </span>

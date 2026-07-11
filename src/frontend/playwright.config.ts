@@ -15,11 +15,16 @@ const AUTH_FILE = "playwright/.auth/user.json";
 
 // Specs that drive a real Django-backed session (login required, mutate
 // or read live game state) run pre-authenticated via storageState. The
-// other three (auth.spec.ts tests the login flow itself and must NOT
-// start pre-authenticated; briefing-map-smoke / map-lens-cycling are
-// backend-free route-mocked smokes that need no login at all) run on the
-// default "chromium" project.
-const AUTHENTICATED_SPECS = ["real-loop.spec.ts", "end-turn-flow.spec.ts", "verb-submit.spec.ts"];
+// rest (auth.spec.ts tests the login flow itself and must NOT start
+// pre-authenticated; briefing-map-smoke / map-lens-cycling /
+// inspection-stack are backend-free route-mocked smokes that need no
+// login at all) run on the default "chromium" project.
+const AUTHENTICATED_SPECS = [
+  "real-loop.spec.ts",
+  "end-turn-flow.spec.ts",
+  "verb-submit.spec.ts",
+  "event-popup.spec.ts",
+];
 
 export default defineConfig({
   testDir: "e2e",

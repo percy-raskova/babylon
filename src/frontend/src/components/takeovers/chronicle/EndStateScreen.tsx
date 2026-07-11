@@ -11,6 +11,8 @@
  */
 
 import { useEndgame } from "@/hooks/useEndgame";
+import { useNarration } from "@/hooks/useNarration";
+import { NarrationBlock } from "@/components/narration/NarrationBlock";
 import type { EndgameState } from "@/types/dialectic";
 import "@/components/takeovers/chronicle/chronicle.css";
 
@@ -50,6 +52,8 @@ function buildStats(state: EndgameState): StatCard[] {
 
 export function EndStateScreen({ gameId, onRestart }: Props) {
   const { data: state, loading, error } = useEndgame(gameId);
+  const { status: narrationStatus, beats } = useNarration(gameId);
+  const endgameBeat = beats.filter((b) => b.scope === "endgame").at(-1) ?? null;
 
   const isRupture = state.outcome === "revolutionary_victory";
   let palette: string;
@@ -97,6 +101,13 @@ export function EndStateScreen({ gameId, onRestart }: Props) {
               </div>
             </div>
           ))}
+        </div>
+        {/* Epitaph — the narrator's last word on this operation. Endgames are
+            never neutral scoreboard text (Design Bible §7); honest
+            offline/pending states render via NarrationBlock, never blank. */}
+        <div className="end-state-epitaph">
+          <div className="end-state-epitaph-label">Last Dispatch</div>
+          <NarrationBlock beat={endgameBeat} state={narrationStatus} />
         </div>
         {onRestart && (
           <button className="end-state-restart" onClick={onRestart}>

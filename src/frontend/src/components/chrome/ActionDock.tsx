@@ -40,6 +40,8 @@ import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
 import { ActionComposer } from "@/components/action/ActionComposer";
 import { SUPPORTED_VERBS } from "@/lib/verb-config";
+import { keyButtonClass } from "./installerKit";
+import { KeyHints } from "./KeyHints";
 
 interface ActionDockProps {
   gameId: string;
@@ -59,7 +61,7 @@ export function ActionDock({ gameId }: ActionDockProps): React.JSX.Element {
     <div data-testid="region-dock" className="flex flex-col items-center gap-1.5">
       <div
         data-testid="action-dock-bar"
-        className="pointer-events-auto flex items-center gap-1.5 rounded border border-chrome-border bg-chrome-bg px-2 py-1.5 backdrop-blur-sm shadow-[var(--chrome-shadow)]"
+        className="pointer-events-auto flex items-center gap-1.5 border-2 border-ksbc-muted-1 bg-plate/90 px-2 py-1.5 backdrop-blur-sm shadow-[6px_6px_0_#000]"
       >
         {PRIMARY_VERBS.map((v) => (
           <button
@@ -67,18 +69,21 @@ export function ActionDock({ gameId }: ActionDockProps): React.JSX.Element {
             onClick={openComposer}
             title={v.desc}
             data-testid={`action-dock-verb-${v.verb}`}
-            className="flex flex-col items-center gap-0.5 rounded border border-rebar px-2 py-1 text-center text-fog hover:border-spire hover:text-spire"
+            className={keyButtonClass(
+              false,
+              "flex flex-col items-center gap-0.5 px-2 py-1 text-center",
+            )}
           >
             <span className="text-sm">{v.glyph}</span>
             <span className="text-[9px] uppercase tracking-widest">{v.label}</span>
-            <span className="text-[8px] text-ash">{v.cost_label}</span>
+            <span className="text-[8px] text-ksbc-muted-2">{v.cost_label}</span>
           </button>
         ))}
         <button
           onClick={openComposer}
           aria-expanded={composerOpen}
           data-testid="action-dock-more"
-          className="self-stretch rounded border border-rebar px-2 text-[9px] uppercase tracking-widest text-fog hover:border-spire hover:text-spire"
+          className={keyButtonClass(composerOpen, "self-stretch px-2 text-[9px]")}
         >
           More
         </button>
@@ -92,6 +97,7 @@ export function ActionDock({ gameId }: ActionDockProps): React.JSX.Element {
         testId="action-composer-panel"
       >
         <ActionComposer gameId={gameId} />
+        <KeyHints />
       </FloatingPanel>
     </div>
   );

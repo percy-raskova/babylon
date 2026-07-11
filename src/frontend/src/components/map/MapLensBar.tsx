@@ -19,6 +19,23 @@ import { lensRegistryByGroup, type LensAvailabilityContext } from "@/lib/lenses/
 import { lensKey, type Lens } from "@/lib/lens";
 import type { FactionSummary } from "@/components/map/mapLensLayers";
 
+/**
+ * Selection-grammar button class (DESIGN_BIBLE.md §9b: "gold inverse-video
+ * for selected/active states... everywhere the same grammar") for the
+ * densely-packed lens/framing chip rows. Deliberately leaner than
+ * `installerKit.keyButtonClass` (no per-button offset shadow/press — that
+ * grammar is reserved for the standalone chrome buttons the task brief
+ * names explicitly); the enclosing group chip carries the hard shadow
+ * instead, so many small buttons in a row don't stack overlapping shadows.
+ */
+function lensChipClass(active: boolean): string {
+  return `rounded-none px-2 py-1 font-mono text-[11px] font-medium uppercase transition-colors ${
+    active
+      ? "bg-accent-gold text-selection-ink"
+      : "text-ink hover:bg-plate hover:text-accent-crimson"
+  }`;
+}
+
 interface MapLensBarProps {
   /** The currently active lens. */
   lens: Lens;
@@ -52,10 +69,10 @@ export function MapLensBar({
         return (
           <div
             key={group.id}
-            className="flex items-center gap-0.5 rounded-md border border-wet-steel bg-void p-0.5"
+            className="flex items-center gap-0.5 border-2 border-ksbc-muted-1 bg-plate p-0.5 shadow-[3px_3px_0_#000]"
             data-testid={`lens-group-${group.id}`}
           >
-            <span className="px-1.5 text-[10px] font-medium uppercase tracking-wider text-ash">
+            <span className="px-1.5 text-[10px] font-medium uppercase tracking-wider text-ksbc-muted-2">
               {group.label}
             </span>
             {defs.map((def) => {
@@ -67,11 +84,7 @@ export function MapLensBar({
                   data-testid={`lens-mode-${def.id}`}
                   aria-pressed={active}
                   onClick={() => onLensChange?.(def.toLens())}
-                  className={`rounded px-2 py-1 text-[11px] font-mono font-medium uppercase transition-colors ${
-                    active
-                      ? "bg-rupture text-void"
-                      : "text-fog hover:bg-concrete hover:text-rupture"
-                  }`}
+                  className={lensChipClass(active)}
                 >
                   {def.label}
                 </button>
@@ -85,7 +98,7 @@ export function MapLensBar({
           data-testid="faction-filter-select"
           value={factionFilter ?? ""}
           onChange={(e) => onFactionFilterChange?.(e.target.value || null)}
-          className="rounded-md border border-wet-steel bg-void px-2 py-1 text-[11px] font-mono text-fog"
+          className="rounded-none border-2 border-ksbc-muted-1 bg-plate px-2 py-1 font-mono text-[11px] text-ink"
         >
           <option value="">Select faction…</option>
           {factions.map((f) => (

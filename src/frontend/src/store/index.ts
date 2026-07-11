@@ -30,10 +30,11 @@ export const useStore = create<RootState>()((...a) => ({
 }));
 
 export type { RootState } from "./types";
-export type { Selection } from "./slices/mapSlice";
+// Selection / InspectionFrame are deliberately NOT re-exported here: every
+// consumer imports them from their slice files directly (spec-113 Lane G
+// dead-export finding — orchestrator removal).
 export type { TimeStatus } from "./slices/timeSlice";
 export type { TakeoverKind } from "./slices/uiSlice";
-export type { InspectionFrame } from "./slices/inspectSlice";
 export type { PanelKey, TakeoverPanelKey, InspectorKind } from "./slices/panels";
 export type { Panel, PanelState } from "./slices/panels/panelFactory";
 export type { PendingActionEntry } from "./slices/actionsSlice";

@@ -17,6 +17,8 @@ import { EventsFeed } from "@/components/events/EventsFeed";
 import { EVENT_CATEGORIES } from "@/lib/eventClassifier";
 import { NarrationBlock } from "@/components/narration/NarrationBlock";
 import { useNarration } from "@/hooks/useNarration";
+import { keyButtonClass } from "./installerKit";
+import { KeyHints } from "./KeyHints";
 
 interface EventTrayProps {
   gameId: string;
@@ -48,20 +50,28 @@ export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
         {eventCounts !== undefined && (
           <div
             data-testid="event-tray-counts"
-            className="flex items-center gap-1.5 border-b border-rebar px-2 py-1.5"
+            className="flex items-center gap-1.5 border-b-2 border-ksbc-muted-1 px-2 py-1.5"
           >
-            <CountBadge label="critical" count={eventCounts.critical} colorClassName="bg-laser" />
-            <CountBadge label="warning" count={eventCounts.warning} colorClassName="bg-heat" />
+            <CountBadge
+              label="critical"
+              count={eventCounts.critical}
+              colorClassName="bg-accent-crimson text-ink"
+            />
+            <CountBadge
+              label="warning"
+              count={eventCounts.warning}
+              colorClassName="bg-heat text-void"
+            />
             <CountBadge
               label="informational"
               count={eventCounts.informational}
-              colorClassName="bg-solidarity"
+              colorClassName="bg-solidarity text-void"
             />
           </div>
         )}
 
-        <div className="border-b border-rebar px-2 py-1.5" data-testid="event-tray-narration">
-          <p className="mb-1 text-[9px] uppercase tracking-widest text-ash">Narrator</p>
+        <div className="installer-well m-2 px-2 py-1.5" data-testid="event-tray-narration">
+          <p className="mb-1 text-[9px] uppercase tracking-widest text-ksbc-muted-2">Narrator</p>
           <NarrationBlock beat={narration.latest} state={narration.status} />
         </div>
 
@@ -69,8 +79,8 @@ export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
           <EventsFeed />
         </div>
 
-        <div className="border-t border-rebar p-2">
-          <p className="mb-1 text-[9px] uppercase tracking-widest text-ash">Mute</p>
+        <div className="border-t-2 border-ksbc-muted-1 p-2">
+          <p className="mb-1 text-[9px] uppercase tracking-widest text-ksbc-muted-2">Mute</p>
           <div className="flex flex-wrap gap-1" data-testid="event-tray-mutes">
             {EVENT_CATEGORIES.map((category) => {
               const muted = mutedCategories.includes(category);
@@ -80,11 +90,7 @@ export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
                   onClick={() => toggleMuteCategory(category)}
                   aria-pressed={muted}
                   data-testid={`mute-toggle-${category}`}
-                  className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-widest ${
-                    muted
-                      ? "border-heat text-heat"
-                      : "border-rebar text-shroud hover:border-fog hover:text-fog"
-                  }`}
+                  className={keyButtonClass(muted, "px-1.5 py-0.5 text-[9px]")}
                 >
                   {category}
                 </button>
@@ -94,8 +100,8 @@ export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
         </div>
 
         {tray.length > 0 && (
-          <div className="border-t border-rebar p-2" data-testid="event-tray-dismissed">
-            <p className="mb-1 text-[9px] uppercase tracking-widest text-ash">
+          <div className="border-t-2 border-ksbc-muted-1 p-2" data-testid="event-tray-dismissed">
+            <p className="mb-1 text-[9px] uppercase tracking-widest text-ksbc-muted-2">
               Missed ({tray.length})
             </p>
             <div className="flex flex-col gap-1">
@@ -104,19 +110,21 @@ export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
                   key={toast.id}
                   onClick={() => restoreToast(toast.id)}
                   data-testid={`tray-restore-${toast.id}`}
-                  className="flex items-center justify-between rounded px-1 py-0.5 text-left text-[10px] text-fog hover:bg-rebar"
+                  className="flex items-center justify-between border border-ksbc-muted-3 bg-plate px-1 py-0.5 text-left text-[10px] text-ink hover:border-accent-gold hover:text-accent-gold"
                 >
                   <span className="truncate">
                     {toast.events.length > 1
                       ? `${toast.events.length} developments — tick ${toast.tick}`
                       : (toast.events[0]?.event.title ?? toast.events[0]?.event.type)}
                   </span>
-                  <span className="text-ash">restore</span>
+                  <span className="text-ksbc-muted-2">restore</span>
                 </button>
               ))}
             </div>
           </div>
         )}
+
+        <KeyHints />
       </div>
     </FloatingPanel>
   );
@@ -136,7 +144,7 @@ function CountBadge({
     <span
       title={`${count} ${label}`}
       data-testid={`event-tray-count-${label}`}
-      className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold text-void ${colorClassName}`}
+      className={`border-2 border-key-shadow px-1.5 py-0.5 font-mono text-[9px] font-bold ${colorClassName}`}
     >
       {count}
     </span>

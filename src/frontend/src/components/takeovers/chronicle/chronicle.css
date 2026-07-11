@@ -116,6 +116,26 @@
   font-weight: 700;
 }
 
+/* Epitaph — spec-113 SKIN-MENUS narration mount (integration ledger Phase D).
+   Additive: the ratified end-state-* rules above are unchanged. */
+.end-state-epitaph {
+  max-width: 480px;
+  margin: 0 auto 28px;
+  padding: 14px 18px;
+  text-align: left;
+  border-top: 1px solid var(--babylon-rebar);
+  border-bottom: 1px solid var(--babylon-rebar);
+}
+
+.end-state-epitaph-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--babylon-ash);
+  margin-bottom: 8px;
+}
+
 .end-state-restart {
   background: var(--babylon-spire);
   color: var(--babylon-void);

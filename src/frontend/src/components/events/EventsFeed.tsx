@@ -15,7 +15,7 @@
 
 import { useStore } from "@/store";
 import { classifyEvents } from "@/lib/eventClassifier";
-import { inspectorKindForEvent } from "@/lib/inspectorMapping";
+import type { InspectorKind } from "@/store";
 import type { ClassifiedEvent, EventSeverity } from "@/types/game";
 
 const SEVERITY_COLOR: Record<EventSeverity, string> = {
@@ -23,6 +23,33 @@ const SEVERITY_COLOR: Record<EventSeverity, string> = {
   important: "text-heat",
   informational: "text-solidarity",
 };
+
+/**
+ * Maps a classified event's linked-entity type to the Inspector's
+ * `InspectorKind` — the join between the events feed and
+ * `mapSlice.setSelection` (spec-110 B3 stage 2's "autopause deep-link":
+ * clicking an event selects the entity it references). Absorbed from
+ * `lib/inspectorMapping.ts` (spec-113 Lane G) — this was its one consumer.
+ *
+ * `institution` has no dedicated `InspectorKind` (the inspector endpoint
+ * set is `node | org | community | edge | hex`) — it falls back to the
+ * generic `node` kind rather than being silently dropped.
+ */
+const LINKED_ENTITY_TO_INSPECTOR_KIND: Record<
+  NonNullable<ClassifiedEvent["linkedEntityType"]>,
+  InspectorKind
+> = {
+  territory: "hex",
+  organization: "org",
+  institution: "node",
+  hyperedge: "community",
+};
+
+/** Resolve the `InspectorKind` a classified event's linked entity maps to, or `null` if unlinked. */
+function inspectorKindForEvent(event: ClassifiedEvent): InspectorKind | null {
+  if (!event.linkedEntityType || !event.linkedEntityId) return null;
+  return LINKED_ENTITY_TO_INSPECTOR_KIND[event.linkedEntityType];
+}
 
 export function EventsFeed(): React.JSX.Element {
   const events = useStore((s) => s.world.snapshot?.events);

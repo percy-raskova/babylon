@@ -18,6 +18,7 @@
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
 import { TimeseriesChart } from "@/components/timeseries/TimeseriesChart";
+import { KeyHints } from "./KeyHints";
 
 interface BottomDrawerProps {
   gameId: string;
@@ -39,10 +40,11 @@ export function BottomDrawer({ gameId }: BottomDrawerProps): React.JSX.Element {
         <TimeseriesChart gameId={gameId} />
       </div>
       {bottomDrawer === "events" && (
-        <p className="p-3 text-[11px] italic text-shroud">
+        <p className="p-3 text-[11px] italic text-ksbc-muted-2">
           The dispatch already runs in the tray, top right.
         </p>
       )}
+      {bottomDrawer !== "none" && <KeyHints />}
     </FloatingPanel>
   );
 }

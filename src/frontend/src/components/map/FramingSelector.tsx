@@ -49,10 +49,10 @@ interface FramingSelectorProps {
 export function FramingSelector({ framing, onFramingChange }: FramingSelectorProps) {
   return (
     <div
-      className="flex items-center gap-0.5 rounded-md border border-wet-steel bg-void p-0.5"
+      className="flex items-center gap-0.5 border-2 border-ksbc-muted-1 bg-plate p-0.5 shadow-[3px_3px_0_#000]"
       data-testid="framing-selector"
     >
-      <span className="px-1.5 text-[10px] font-medium uppercase tracking-wider text-ash">
+      <span className="px-1.5 text-[10px] font-medium uppercase tracking-wider text-ksbc-muted-2">
         Scale
       </span>
       {FRAMING_OPTIONS.map(({ level, label, tooltip }) => {
@@ -64,8 +64,10 @@ export function FramingSelector({ framing, onFramingChange }: FramingSelectorPro
             data-testid={`framing-${level}`}
             aria-pressed={active}
             onClick={() => onFramingChange?.(level)}
-            className={`rounded px-2 py-1 text-[11px] font-mono font-medium transition-colors ${
-              active ? "bg-rupture text-void" : "text-fog hover:bg-concrete hover:text-rupture"
+            className={`rounded-none px-2 py-1 font-mono text-[11px] font-medium transition-colors ${
+              active
+                ? "bg-accent-gold text-selection-ink"
+                : "text-ink hover:bg-plate hover:text-accent-crimson"
             }`}
           >
             {label}

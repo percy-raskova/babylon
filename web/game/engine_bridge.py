@@ -1723,11 +1723,18 @@ class EngineBridge:
                 key = "unknown"
             acc = groups[key]
             pop = state.pop_total or 0
-            acc["profit_rate_sum"] += (state.profit_rate or 0) * pop
-            acc["exploitation_rate_sum"] += (state.exploitation_rate or 0) * pop
-            acc["occ_sum"] += (state.occ or 0) * pop
-            acc["imperial_rent_sum"] += state.imperial_rent or 0
-            acc["heat_sum"] += (state.heat or 0) * pop
+            # These five are Postgres NUMERIC columns (psycopg → Decimal) once
+            # populated; the accumulators are float-seeded (line 1691+), and
+            # ``float += Decimal`` raises TypeError. Cast at the read boundary —
+            # matching the float() convention already used for the attribute-
+            # sourced habitability/solidarity_index sums below. This latent bug
+            # only surfaced once Program 17 1a made imperial_rent non-NULL (a
+            # NULL column read as ``None or 0`` → int, which mixes with float).
+            acc["profit_rate_sum"] += float(state.profit_rate or 0) * pop
+            acc["exploitation_rate_sum"] += float(state.exploitation_rate or 0) * pop
+            acc["occ_sum"] += float(state.occ or 0) * pop
+            acc["imperial_rent_sum"] += float(state.imperial_rent or 0)
+            acc["heat_sum"] += float(state.heat or 0) * pop
             acc["org_presence_sum"] += state.org_count or 0
             acc["population_sum"] += pop
             acc["count"] += 1
@@ -1771,7 +1778,12 @@ class EngineBridge:
                         "profit_rate": round(acc["profit_rate_sum"] / total_pop, 6),
                         "exploitation_rate": round(acc["exploitation_rate_sum"] / total_pop, 4),
                         "occ": round(acc["occ_sum"] / total_pop, 4),
-                        "imperial_rent": round(acc["imperial_rent_sum"], 2),
+                        # 6dp, not 2dp: per-hex Φ is ~1e-5 (Leontief structural
+                        # rent), so round(…, 2) collapsed the whole lens to 0.00
+                        # once Program 17 lit real Φ — the default lens read as
+                        # blank even though the value is non-zero. Match the
+                        # profit_rate precision above.
+                        "imperial_rent": round(acc["imperial_rent_sum"], 6),
                         "heat": round(acc["heat_sum"] / total_pop, 4),
                         "org_presence": acc["org_presence_sum"],
                         "population": acc["population_sum"],

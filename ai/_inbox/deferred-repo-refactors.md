@@ -27,6 +27,24 @@ Until then, the crown test is effectively local-only and the "map lights up" cla
 
 ## 2. The two-tier web↔engine contract mechanism (the real seam fix)
 
+**★ Owner dropped a concrete design for this (2026-07-12): `archive/observability-seam-coverage-gate.md`.**
+Frame it as a **declared observable-field registry + a 3-sensor seam-coverage gate** — the generalization
+of every seam bug fought live this session (blank Φ; `profit_rate` computed→carried→read but dark on
+unseeded employment; events capped 14/88). The registry is one typed source of truth (like `EventType`/
+`GameDefines`): each observable declares `name` / engine-source graph-attr / bridge wire-key / frontend
+sink / **liveness policy** (must-be-non-null-by-tick-N vs legitimately-null-until-condition). Three sensors
+check reality against it: **Sensor 1 continuity** (static set-diff engine→bridge→frontend catches
+computed-but-unserialized / serialized-but-unrendered); **Sensor 2 liveness** (run a real tick, assert each
+field non-null by its declared deadline UNLESS marked conditionally-dark — this is the one that would have
+screamed "Φ blank at tick 1" / "profit_rate dark at tick 60"); **Sensor 3 provenance** (rendered value's
+source IS the field it claims — forbids the `extraction_intensity`-painted-as-Φ relabel; needs the
+display-reads-only-typed-wire-model rule + golden field-value baselines). Maps onto the two tiers below:
+Tier-1 shape = Sensor 1, Tier-2 value/behavior golden = Sensor 2, honesty guard = Sensor 3. Caveats: the
+registry is load-bearing (must fail Sensor 1 on unregistered-but-serialized, like `defines.yaml` sync);
+"frontend consumed" is rigorous only via generated `@babylon/api-types` (tsc, not grep); curate to
+player-observables, not every scratch attr. **This is the highest-leverage anti-regression infra on the
+list — it converts "find it live by luck" into "CI trips the instant a layer drops a value."**
+
 Program 18's contract-seam critic proved the recent bugs (blank Φ, `float+=Decimal`, event whitelist,
 `None` consciousness) were **web↔ENGINE / value-population** bugs, not web↔frontend *shape* bugs — so a
 frontend split doesn't address them, and schema codegen alone wouldn't have caught 3 of 4. Do BOTH tiers

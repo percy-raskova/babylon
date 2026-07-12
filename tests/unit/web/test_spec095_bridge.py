@@ -180,13 +180,32 @@ class TestGetEndgameState:
         assert result["outcome"] is None or result["outcome"] == "in_progress"
 
     def test_returns_outcome_when_endgame_fires(self) -> None:
+        """Program 17 / Item 1c: get_endgame_state now reads the durable
+        ``tick_event`` row (via ``_fetch_endgame_event_row``), not a
+        literal-string scan of the latest graph's (per-tick, non-cumulative)
+        events list. The old fixture faked
+        ``graph.graph["events"] = [{"event_type": "REVOLUTIONARY_VICTORY"}]``
+        — a shape no real ``EndgameEvent`` ever has (event_type is ALWAYS
+        ``EventType.ENDGAME_REACHED``; the outcome lives in a separate typed
+        ``outcome`` field persisted into ``detail`` JSONB).
+        """
         mock_persistence = MagicMock()
         mock_persistence.get_metadata.return_value = None
-        graph = _mock_graph_with_contradictions()
-        graph.graph["events"] = [
-            {"event_type": "REVOLUTIONARY_VICTORY", "tick": 5, "data": {"summary": "Babylon falls"}}
-        ]
-        mock_persistence.hydrate_graph.return_value = graph
+        mock_persistence.hydrate_graph.return_value = _mock_graph_with_contradictions()
+        mock_persistence._pool = MagicMock()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = (
+            5,
+            {"kind": "endgame_reached", "outcome": "revolutionary_victory"},
+            "Babylon falls",
+        )
+        cursor.__enter__ = MagicMock(return_value=cursor)
+        cursor.__exit__ = MagicMock(return_value=False)
+        conn = MagicMock()
+        conn.cursor.return_value = cursor
+        conn.__enter__ = MagicMock(return_value=conn)
+        conn.__exit__ = MagicMock(return_value=False)
+        mock_persistence._pool.connection.return_value = conn
         bridge = EngineBridge(mock_persistence)
 
         result = bridge.get_endgame_state(_SESSION)

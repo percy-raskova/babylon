@@ -2,11 +2,17 @@
 
 Two concerns:
 
-1. **Bridge 3-of-5 bug (RED)**: ``resolve_tick`` line 1058 only recognized 3 of 5
-   GameOutcome event types (``REVOLUTIONARY_VICTORY``, ``ECOLOGICAL_COLLAPSE``,
-   ``FASCIST_CONSOLIDATION``), missing ``RED_OGV`` and ``FRAGMENTED_COLLAPSE``.
-   When the engine fires either of those, the snapshot's ``endgame`` block was
-   never populated. This test forces the fix (FR-095-02).
+1. **Bridge detector wiring (Program 17 / Item 1c)**: ``resolve_tick`` must run
+   a REAL, per-session-cached ``EndgameDetector`` and surface whichever of the
+   5 ``GameOutcome`` values it fires in ``snapshot['endgame']``. The old
+   version of this concern's tests mocked ``event.event_type = "RED_OGV"``
+   directly on a fake event — a shape no real ``EndgameEvent`` ever has
+   (``event_type`` is ALWAYS ``EventType.ENDGAME_REACHED``; the outcome lives
+   in a separate typed ``outcome`` field). These tests now drive a
+   monkeypatched ``EndgameDetector`` subclass (forcing one ``_check_*``
+   predicate True, the same isolation technique
+   ``TestEndgameDetectorFR033Priority`` below already uses) through
+   ``resolve_tick`` and assert on the detector-driven snapshot block.
 
 2. **FR-033 priority characterization**: The EndgameDetector docstring (Slice 1.6,
    stale) claims ``REVOLUTIONARY_VICTORY > ECOLOGICAL_COLLAPSE >
@@ -38,6 +44,20 @@ pytestmark = pytest.mark.unit
 _SESSION = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
 
+@pytest.fixture(autouse=True)
+def _clear_endgame_detector_cache() -> Any:
+    """``_session_endgame_detectors`` is a module-level, per-process cache
+    keyed by session_id (required so cross-tick counters survive separate
+    ``resolve_tick`` calls). Every test in this module reuses the same
+    ``_SESSION`` UUID, so without clearing the cache a detector that reached
+    game-over in one test would leak into the next."""
+    from game.engine_bridge import _session_endgame_detectors
+
+    _session_endgame_detectors.clear()
+    yield
+    _session_endgame_detectors.clear()
+
+
 def _make_mock_persistence() -> MagicMock:
     mock = MagicMock()
     mock.hydrate_graph.return_value = MagicMock()
@@ -61,6 +81,12 @@ def _make_mock_new_state(tick: int = 1) -> MagicMock:
     mock.relationships = []
     mock.events = []
     mock.to_graph.return_value = MagicMock()
+    # Program 17 / Item 1c: when the (forced) EndgameDetector fires,
+    # resolve_tick does `new_state = new_state.model_copy(update={"events":
+    # [...]})` to append the real EndgameEvent. A bare MagicMock's
+    # .model_copy(...) would otherwise return an unconfigured child mock,
+    # dropping every attribute set up above — return the same mock instead.
+    mock.model_copy.return_value = mock
     return mock
 
 
@@ -69,71 +95,92 @@ def _make_mock_new_state(tick: int = 1) -> MagicMock:
 # ---------------------------------------------------------------------- #
 
 
+def _forced_outcome_detector_class(forced: str) -> type[EndgameDetector]:
+    """Build an ``EndgameDetector`` subclass that forces exactly one
+    ``_check_*`` predicate True (the rest False), the same predicate-isolation
+    technique ``TestEndgameDetectorFR033Priority`` below uses. This drives
+    ``resolve_tick``'s new detector wiring to a known outcome without needing
+    to construct real WorldState fixtures for every one of the 5 endgames'
+    (often mutually-contradictory) prerequisites.
+    """
+
+    class ForcedDetector(EndgameDetector):
+        def _check_red_ogv(self, state: Any) -> bool:
+            return forced == "red_ogv"
+
+        def _check_fragmented_collapse(self, state: Any) -> bool:
+            return forced == "fragmented_collapse"
+
+        def _check_ecological_collapse(self, state: Any) -> bool:
+            return forced == "ecological_collapse"
+
+        def _check_fascist_consolidation(self, state: Any) -> bool:
+            return forced == "fascist_consolidation"
+
+        def _check_revolutionary_victory(self, state: Any) -> bool:
+            return forced == "revolutionary_victory"
+
+    return ForcedDetector
+
+
 class TestBridgeEndgameCoverage:
-    """FR-095-02: resolve_tick must recognize all 5 GameOutcome event types."""
+    """FR-095-02: resolve_tick must recognize all 5 GameOutcome event types.
 
-    @patch("game.engine_bridge.step")
-    def test_resolve_tick_surfaces_red_ogv_endgame(self, mock_step: MagicMock) -> None:
-        """RED_OGV endgame event must populate snapshot['endgame'].
+    Program 17 / Item 1c: resolve_tick now runs a REAL EndgameDetector — these
+    tests monkeypatch ``game.engine_bridge.EndgameDetector`` with a subclass
+    that forces exactly one outcome (see
+    :func:`_forced_outcome_detector_class`) and assert on the resulting
+    detector-driven ``snapshot['endgame']`` block.
+    """
 
-        Currently RED: endgame_types set at engine_bridge.py:1058 omits
-        'RED_OGV', so the snapshot['endgame'] block is never set.
-        """
+    def test_resolve_tick_surfaces_red_ogv_endgame(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """RED_OGV endgame must populate snapshot['endgame']."""
+        monkeypatch.setattr(
+            "game.engine_bridge.EndgameDetector", _forced_outcome_detector_class("red_ogv")
+        )
         mock_persistence = _make_mock_persistence()
         mock_new_state = _make_mock_new_state()
-        event = MagicMock()
-        event.event_type = "RED_OGV"
-        event.tick = 1
-        event.data = {"summary": "Settler-socialist trap"}
-        mock_new_state.events = [event]
-        mock_step.return_value = mock_new_state
-
-        bridge = EngineBridge(mock_persistence)
-        result = bridge.resolve_tick(_SESSION)
+        with patch("game.engine_bridge.step", return_value=mock_new_state):
+            bridge = EngineBridge(mock_persistence)
+            result = bridge.resolve_tick(_SESSION)
 
         assert "endgame" in result, "RED_OGV endgame must surface in snapshot"
-        assert result["endgame"]["outcome"] == "RED_OGV"
+        assert result["endgame"]["outcome"] == GameOutcome.RED_OGV.value
 
-    @patch("game.engine_bridge.step")
-    def test_resolve_tick_surfaces_fragmented_collapse_endgame(self, mock_step: MagicMock) -> None:
-        """FRAGMENTED_COLLAPSE endgame event must populate snapshot['endgame'].
-
-        Currently RED: endgame_types set omits 'FRAGMENTED_COLLAPSE'.
-        """
+    def test_resolve_tick_surfaces_fragmented_collapse_endgame(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FRAGMENTED_COLLAPSE endgame must populate snapshot['endgame']."""
+        monkeypatch.setattr(
+            "game.engine_bridge.EndgameDetector",
+            _forced_outcome_detector_class("fragmented_collapse"),
+        )
         mock_persistence = _make_mock_persistence()
         mock_new_state = _make_mock_new_state()
-        event = MagicMock()
-        event.event_type = "FRAGMENTED_COLLAPSE"
-        event.tick = 1
-        event.data = {"summary": "Balkanization"}
-        mock_new_state.events = [event]
-        mock_step.return_value = mock_new_state
-
-        bridge = EngineBridge(mock_persistence)
-        result = bridge.resolve_tick(_SESSION)
+        with patch("game.engine_bridge.step", return_value=mock_new_state):
+            bridge = EngineBridge(mock_persistence)
+            result = bridge.resolve_tick(_SESSION)
 
         assert "endgame" in result
-        assert result["endgame"]["outcome"] == "FRAGMENTED_COLLAPSE"
+        assert result["endgame"]["outcome"] == GameOutcome.FRAGMENTED_COLLAPSE.value
 
-    @patch("game.engine_bridge.step")
     def test_resolve_tick_surfaces_revolutionary_victory_endgame(
-        self, mock_step: MagicMock
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """REVOLUTIONARY_VICTORY (already in the set) must still work."""
+        monkeypatch.setattr(
+            "game.engine_bridge.EndgameDetector",
+            _forced_outcome_detector_class("revolutionary_victory"),
+        )
         mock_persistence = _make_mock_persistence()
         mock_new_state = _make_mock_new_state()
-        event = MagicMock()
-        event.event_type = "REVOLUTIONARY_VICTORY"
-        event.tick = 1
-        event.data = {"summary": "Babylon falls"}
-        mock_new_state.events = [event]
-        mock_step.return_value = mock_new_state
 
-        bridge = EngineBridge(mock_persistence)
-        result = bridge.resolve_tick(_SESSION)
+        with patch("game.engine_bridge.step", return_value=mock_new_state):
+            bridge = EngineBridge(mock_persistence)
+            result = bridge.resolve_tick(_SESSION)
 
         assert "endgame" in result
-        assert result["endgame"]["outcome"] == "REVOLUTIONARY_VICTORY"
+        assert result["endgame"]["outcome"] == GameOutcome.REVOLUTIONARY_VICTORY.value
 
 
 # ---------------------------------------------------------------------- #

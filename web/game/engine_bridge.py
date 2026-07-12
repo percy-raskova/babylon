@@ -28,13 +28,15 @@ from babylon.config.defines import GameDefines
 from babylon.engine.formula_registry import (  # noqa: F401 — re-exported, see above
     FormulaRegistry as FormulaRegistry,
 )
+from babylon.engine.observers import EndgameDetector
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
 from babylon.models.config import SimulationConfig
-from babylon.models.enums import ActionType
+from babylon.models.enums import ActionType, EventType, GameOutcome
+from babylon.models.events import EndgameEvent
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
@@ -56,6 +58,16 @@ _session_action_history: dict[UUID, list[dict[str, Any]]] = {}
 # Per-session trap state for severity persistence across ticks.
 _session_trap_state: dict[UUID, TrapDetectionResult] = {}
 
+# Per-session EndgameDetector instance (in-memory, not persisted). Program 17
+# / Item 1c: the cross-tick counters ECOLOGICAL_COLLAPSE/RED_OGV/
+# FRAGMENTED_COLLAPSE need (5-consecutive-tick windows, rolling habitability
+# history) require the SAME detector instance to survive across separate
+# ``resolve_tick`` HTTP calls — ``persistent_context`` does not survive
+# between web requests (a fresh ``{}`` every call, see ``resolve_tick``).
+# Same known limitation as ``_session_trap_state`` above: per-process only,
+# lost on worker restart, not shared across horizontally-scaled replicas.
+_session_endgame_detectors: dict[UUID, EndgameDetector] = {}
+
 _ACTION_HISTORY_CAP = 50
 
 # Spec 092: journal/alerts dashboards.
@@ -64,22 +76,6 @@ _JOURNAL_LIMIT = 200
 # Severities surfaced by get_alerts_dashboard — "informational" is routine
 # flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
 _ALERT_SEVERITIES = frozenset({"critical", "warning"})
-
-# Spec 095: all 5 terminal GameOutcome event types (FR-095-02). The previous
-# bridge layer only recognized 3 of 5 (the Slice 1.6 set), so RED_OGV and
-# FRAGMENTED_COLLAPSE endgames never surfaced in the snapshot's ``endgame``
-# block. This set is the authoritative source for both ``resolve_tick`` and
-# ``get_endgame_state``. Matches ``babylon.models.enums.GameOutcome`` minus
-# ``IN_PROGRESS`` (the non-terminal sentinel).
-_TERMINAL_OUTCOMES: frozenset[str] = frozenset(
-    {
-        "REVOLUTIONARY_VICTORY",
-        "ECOLOGICAL_COLLAPSE",
-        "FASCIST_CONSOLIDATION",
-        "RED_OGV",
-        "FRAGMENTED_COLLAPSE",
-    }
-)
 
 # Spec 095: canonical headlines for the chronicle end-screen (FR-095-09).
 # REVOLUTIONARY_VICTORY → rupture palette ("BABYLON FALLS"); all others →
@@ -512,24 +508,54 @@ def _fetch_flow_type_totals(pool: Any, session_id: UUID) -> list[dict[str, Any]]
         return []
 
 
-def _extract_event_type(event: Any) -> str:
-    """Extract a normalized event_type string from a dict or object event."""
-    if isinstance(event, dict):
-        return str(event.get("event_type", ""))
-    et = getattr(event, "event_type", None)
-    if et is None:
-        return ""
-    if hasattr(et, "value"):
-        return str(et.value)
-    return str(et)
+def _fetch_endgame_event_row(pool: Any, session_id: UUID) -> dict[str, Any] | None:
+    """Read the durable ``endgame_reached`` ``tick_event`` row, if any.
+
+    Spec 095 / Program 17 Item 1c: ``WorldState.events`` is per-tick, not
+    cumulative (CLAUDE.md gotcha) — ``hydrate_graph(tick=None)``'s latest
+    graph loses an endgame event the moment even one more tick elapses.
+    ``tick_event`` (PK ``(game_id, tick, event_id)``) is the only durable
+    source, already populated every tick by ``_persist_tick_events_safe``.
+    Modeled on :func:`_fetch_session_rng_seed_from_pool`.
+
+    A real row is a positional ``(tick, detail, summary)`` tuple (matching
+    every other raw-cursor helper in this module); an unconfigured
+    ``MagicMock`` masquerading as a pool/cursor in tests is truthy but not a
+    tuple, so the ``isinstance`` guard degrades it to ``None`` rather than
+    fabricating a row from mock internals.
+    """
+    if pool is None:
+        return None
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT tick, detail, summary FROM tick_event "
+                "WHERE game_id = %s AND event_type = %s ORDER BY tick ASC LIMIT 1",
+                (session_id, EventType.ENDGAME_REACHED.value),
+            )
+            row = cur.fetchone()
+            if not isinstance(row, (tuple, list)) or len(row) < 3:
+                return None
+            return {"tick": row[0], "detail": row[1] or {}, "summary": row[2]}
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to no endgame
+        logger.exception("Failed to read endgame tick_event for session %s", session_id)
+        return None
 
 
-def _extract_event_data(event: Any, key: str, default: Any = None) -> Any:
-    """Extract a field from an event's ``data`` block (dict or object)."""
-    data: Any = event.get("data") if isinstance(event, dict) else getattr(event, "data", None)
-    if isinstance(data, dict):
-        return data.get(key, default)
-    return default
+def _outcome_from_endgame_row(row: dict[str, Any] | None) -> str | None:
+    """Extract the lowercase ``GameOutcome`` value from an endgame row's
+    ``detail`` JSONB blob (validating it against the real enum rather than
+    trusting the DB blob blindly)."""
+    if row is None:
+        return None
+    detail = row.get("detail")
+    raw_outcome = detail.get("outcome") if isinstance(detail, dict) else None
+    if not raw_outcome:
+        return None
+    try:
+        return GameOutcome(raw_outcome).value
+    except ValueError:
+        return str(raw_outcome).lower()
 
 
 def _compute_avg_node_attr(graph: Any, attr: str, default: float = 0.0) -> float:
@@ -574,16 +600,6 @@ def _count_edges_by_mode(graph: Any, modes: frozenset[str]) -> int:
         return count
     except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
         return 0
-
-
-def _detect_terminal_outcome(graph_attrs: dict[str, Any]) -> str | None:
-    """Scan a graph's ``events`` list for a terminal GameOutcome event."""
-    events = graph_attrs.get("events", []) or []
-    for event in events:
-        event_type = _extract_event_type(event)
-        if event_type.upper() in _TERMINAL_OUTCOMES:
-            return event_type.lower()
-    return None
 
 
 def _objective_status(category: str, outcome: str | None) -> str:
@@ -2376,15 +2392,15 @@ class EngineBridge:
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
 
-        outcome: str | None = None
-        summary = ""
-        events_raw = graph_attrs.get("events", []) or []
-        for event in events_raw:
-            event_type = _extract_event_type(event)
-            if event_type.upper() in _TERMINAL_OUTCOMES:
-                outcome = event_type.lower()
-                summary = str(_extract_event_data(event, "summary", ""))
-                break
+        # Program 17 / Item 1c: WorldState.events is per-tick, not cumulative
+        # — the latest graph's events list loses an endgame event the moment
+        # even one more tick elapses. tick_event (durable, cumulative) is the
+        # only correct source for "has this game ever ended".
+        row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
+        outcome = _outcome_from_endgame_row(row)
+        summary = str(row.get("summary") or "") if row is not None and outcome else ""
+        if row is not None and outcome:
+            tick = int(row["tick"])
 
         headline = _OUTCOME_HEADLINES.get((outcome or "").upper(), "") if outcome else ""
 
@@ -2439,7 +2455,8 @@ class EngineBridge:
             else 0.0
         )
 
-        outcome = _detect_terminal_outcome(graph_attrs)
+        row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
+        outcome = _outcome_from_endgame_row(row)
 
         objectives: list[dict[str, Any]] = [
             {
@@ -2900,6 +2917,28 @@ class EngineBridge:
             len(new_state.events),
         )
 
+        # Program 17 / Item 1c: run the real EndgameDetector observer, cached
+        # per-session (module-level _session_endgame_detectors) so its
+        # cross-tick counters (ECOLOGICAL_COLLAPSE's 5-consecutive-tick
+        # window, RED_OGV/FRAGMENTED_COLLAPSE's rolling windows) survive
+        # across separate resolve_tick HTTP calls — persistent_context does
+        # NOT survive between web requests (see module docstring above
+        # _session_endgame_detectors). On first detection, append a real
+        # EndgameEvent to new_state.events so it rides the existing
+        # tick_event persistence pipe below (_persist_tick_events_safe).
+        detector = _session_endgame_detectors.get(session_id)
+        if detector is None:
+            detector = EndgameDetector(defines=game_defines)
+            detector.on_simulation_start(state, sim_config)
+            _session_endgame_detectors[session_id] = detector
+        if not detector.is_game_over:
+            detector.on_tick(state, new_state)
+            if detector.is_game_over:
+                endgame_event = EndgameEvent(tick=new_state.tick, outcome=detector.outcome)
+                new_state = new_state.model_copy(
+                    update={"events": [*new_state.events, endgame_event]}
+                )
+
         # Persist the new tick
         new_graph = new_state.to_graph()
         # Owner item 30, point 1: re-apply TickDynamicsSystem's territory-node
@@ -2952,7 +2991,6 @@ class EngineBridge:
             }
             _persist_action_result(self._persistence, result_data)
 
-        # T019: Check for endgame conditions in events
         snapshot = _state_to_snapshot(new_state, session_id, graph=new_graph)
 
         # Spec 092 R-CONS: persist this tick's events into tick_event so the
@@ -2985,27 +3023,20 @@ class EngineBridge:
         # Spec-109 A1: fill the spec-037 snapshot tables + the tick_summary
         # aggregates that back get_game_timeseries (spec-061 FR-003 wire-up).
         _persist_snapshots_safe(self._persistence, session_id, new_state)
-        # Spec 095 FR-095-02: recognize ALL 5 terminal GameOutcome event types
-        # (was 3-of-5 — RED_OGV and FRAGMENTED_COLLAPSE were missing, so those
-        # endgames never surfaced in the snapshot's ``endgame`` block). The
-        # _TERMINAL_OUTCOMES constant is the authoritative set, matching
-        # ``babylon.models.enums.GameOutcome`` minus IN_PROGRESS.
-        endgame_types = _TERMINAL_OUTCOMES
-        for event in new_state.events:
-            event_type = (
-                event.event_type.value
-                if hasattr(event.event_type, "value")
-                else str(event.event_type)
-            )
-            if event_type in endgame_types:
-                snapshot["endgame"] = {
-                    "outcome": event_type,
-                    "tick": new_state.tick,
-                    "summary": event.data.get("summary", "")
-                    if hasattr(event, "data") and isinstance(event.data, dict)
-                    else "",
-                }
-                break
+        # Program 17 / Item 1c: the real EndgameDetector (run above, before
+        # to_graph()) is the authoritative source now — not a literal-string
+        # scan of event_type (EndgameEvent.event_type is ALWAYS
+        # EventType.ENDGAME_REACHED; the real GameOutcome lives in its
+        # separate `outcome` field, never in event_type). `summary` stays
+        # empty: the engine adjudicates, it does not narrate (Constitution)
+        # — the async narrative_service call below is the correct place for
+        # prose, not this synchronous path.
+        if detector.is_game_over:
+            snapshot["endgame"] = {
+                "outcome": detector.outcome.value,
+                "tick": new_state.tick,
+                "summary": "",
+            }
 
         # Mark submitted turns as resolved
         _mark_resolved_safe(self._persistence, session_id, state.tick)
@@ -4510,6 +4541,7 @@ _EVENT_SEVERITY: dict[str, str] = {
     "uprising": "critical",
     "revolution": "critical",
     "fascist_consolidation": "critical",
+    "endgame_reached": "critical",
     # Warning: threshold-cross / bifurcation events
     "consciousness_bifurcation": "warning",
     "ideology_drift": "warning",

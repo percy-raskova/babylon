@@ -299,3 +299,8 @@ decisions:
     status: accepted
     date: '2026-07-11'
     file: ADR064_program15_gauntlet.yaml
+  ADR067_optimization_package:
+    title: 'src/babylon/engine/optimization/ package: migrated the legacy tools sweep stack onto headless_runner, fixed the inert-defines crown bug, sanctioned a fast in-memory backend for tool-space'
+    status: accepted
+    date: '2026-07-11'
+    file: ADR067_optimization_package.yaml

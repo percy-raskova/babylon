@@ -1260,3 +1260,7 @@ run = "npm run check"
 description = "Build frontend for production"
 dir = "src/frontend"
 run = "npm run build"
+
+[tasks."test:optimization"]
+description = "Ungated behavioral-contract tests for the optimization package (in_memory backend, no Postgres required) — NOT wired into mise run check"
+run = "poetry run pytest tests/unit/engine/optimization -q"

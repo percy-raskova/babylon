@@ -175,6 +175,92 @@ describe("DeckGLMap", () => {
       ),
     ).not.toThrow();
   });
+
+  // Phase V live-run regression (spec-113): the hex InspectionCard resolves
+  // via GET /api/games/:id/hex/:h3_index/ (web/game/urls.py inspector-hex),
+  // so the click must surface the picked territory's H3 INDEX — feeding the
+  // territory row id produced an unresolvable ref (HTTP 403/404 card).
+  it("passes the picked territory's h3_index (not its row id) to onTerritoryClick", () => {
+    const snapshot = makeSnapshot({
+      territories: [makeTerritory({ id: "terr-1", h3_index: "882a100d2bfffff" })],
+    });
+    const onTerritoryClick = vi.fn();
+    render(
+      <DeckGLMap
+        snapshot={snapshot}
+        lens={{ kind: "stance" }}
+        onTerritoryClick={onTerritoryClick}
+      />,
+    );
+    const deckProps = vi.mocked(DeckGL).mock.calls.at(-1)?.[0] as {
+      onClick?: (info: { object?: unknown }) => void;
+    };
+    deckProps.onClick?.({ object: { id: "terr-1", h3_index: "882a100d2bfffff" } });
+    expect(onTerritoryClick).toHaveBeenCalledWith("882a100d2bfffff", expect.any(Object));
+  });
+
+  it("falls back to the territory row id when the picked territory has no h3_index", () => {
+    const snapshot = makeSnapshot({
+      territories: [makeTerritory({ id: "terr-1", h3_index: undefined })],
+    });
+    const onTerritoryClick = vi.fn();
+    render(
+      <DeckGLMap
+        snapshot={snapshot}
+        lens={{ kind: "stance" }}
+        onTerritoryClick={onTerritoryClick}
+      />,
+    );
+    const deckProps = vi.mocked(DeckGL).mock.calls.at(-1)?.[0] as {
+      onClick?: (info: { object?: unknown }) => void;
+    };
+    deckProps.onClick?.({ object: { id: "terr-1" } });
+    expect(onTerritoryClick).toHaveBeenCalledWith("terr-1", expect.any(Object));
+  });
+
+  // spec-113 Phase-V polish: get_inspector_hex is stubbed, so the click hands
+  // the InspectionStack the clicked feature's OWN state as inline data — the
+  // same authoritative values the hover tooltip shows — instead of a bare id
+  // that fetches an empty card.
+  it("passes the clicked feature's own state as inline inspection data", () => {
+    const snapshot = makeSnapshot({
+      territories: [makeTerritory({ id: "terr-1", h3_index: "882a100d2bfffff" })],
+    });
+    const onTerritoryClick = vi.fn();
+    render(
+      <DeckGLMap
+        snapshot={snapshot}
+        lens={{ kind: "stance" }}
+        onTerritoryClick={onTerritoryClick}
+      />,
+    );
+    const deckProps = vi.mocked(DeckGL).mock.calls.at(-1)?.[0] as {
+      onClick?: (info: { object?: unknown }) => void;
+    };
+    deckProps.onClick?.({
+      object: {
+        id: "terr-1",
+        h3_index: "882a100d2bfffff",
+        name: "Wayne County",
+        population: 8000,
+        heat: 0.4,
+        rent_level: 1.2,
+        biocapacity: 3.3,
+        habitability: 0.8,
+      },
+    });
+    expect(onTerritoryClick).toHaveBeenCalledWith(
+      "882a100d2bfffff",
+      expect.objectContaining({
+        county_name: "Wayne County",
+        population: 8000,
+        heat: 0.4,
+        rent_level: 1.2,
+        biocapacity: 3.3,
+        habitability: 0.8,
+      }),
+    );
+  });
 });
 
 describe("DeckGLMap — region framing (spec-112 C5)", () => {
@@ -274,5 +360,66 @@ describe("DeckGLMap — region framing (spec-112 C5)", () => {
       deckglProps.onHover({ object: undefined, x: 10, y: 20 });
     });
     expect(screen.queryByTestId("region-tooltip")).not.toBeInTheDocument();
+  });
+});
+
+describe("DeckGLMap — honest-empty ramp (static economy, owner item #25)", () => {
+  beforeEach(() => {
+    vi.mocked(H3HexagonLayer).mockClear();
+    vi.mocked(H3ClusterLayer).mockClear();
+  });
+
+  const rentLens = { kind: "metric" as const, metric: "imperial_rent" as const };
+
+  it("a flat region ramp (every county identical) shows the empty-hint and no marker", () => {
+    const snapshot = makeSnapshot();
+    const flat = makeRegionMapData(
+      makeRegionFeature({ group_key: "26163", group_name: "Wayne", imperial_rent: 0 }),
+      makeRegionFeature({ group_key: "26099", group_name: "Macomb", imperial_rent: 0 }),
+    );
+    render(<DeckGLMap snapshot={snapshot} mapData={flat} lens={rentLens} framing="county" />);
+    expect(screen.getByTestId("map-legend-empty-hint")).toBeInTheDocument();
+    expect(screen.queryByTestId("map-legend-marker")).not.toBeInTheDocument();
+  });
+
+  it("a region ramp with real variation shows a marker and no empty-hint", () => {
+    const snapshot = makeSnapshot();
+    const varied = makeRegionMapData(
+      makeRegionFeature({ group_key: "26163", group_name: "Wayne", imperial_rent: 0 }),
+      makeRegionFeature({ group_key: "26099", group_name: "Macomb", imperial_rent: 10 }),
+    );
+    render(<DeckGLMap snapshot={snapshot} mapData={varied} lens={rentLens} framing="county" />);
+    expect(screen.queryByTestId("map-legend-empty-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("map-legend-marker")).toBeInTheDocument();
+  });
+
+  it("stays honest-empty when flat data arrives AFTER an empty first frame (the live domain-cache path)", () => {
+    // The regression the unit tests missed: an empty first render seeds the
+    // domain cache with the [0,1] fallback, which then STICKS. Keying rampEmpty
+    // off the cached domain would read the stale [0,1] as a real range and paint
+    // every all-0 county the ramp floor (black). This asserts the hint fires
+    // regardless, because detection reads the natural per-tick values.
+    const snapshot = makeSnapshot();
+    const { rerender } = render(
+      <DeckGLMap
+        snapshot={snapshot}
+        mapData={makeRegionMapData()}
+        lens={rentLens}
+        framing="county"
+      />,
+    );
+    rerender(
+      <DeckGLMap
+        snapshot={snapshot}
+        mapData={makeRegionMapData(
+          makeRegionFeature({ group_key: "26163", group_name: "Wayne", imperial_rent: 0 }),
+          makeRegionFeature({ group_key: "26099", group_name: "Macomb", imperial_rent: 0 }),
+        )}
+        lens={rentLens}
+        framing="county"
+      />,
+    );
+    expect(screen.getByTestId("map-legend-empty-hint")).toBeInTheDocument();
+    expect(screen.queryByTestId("map-legend-marker")).not.toBeInTheDocument();
   });
 });

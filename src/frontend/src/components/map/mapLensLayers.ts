@@ -112,6 +112,14 @@ export interface LensTerritory {
    * territory" (Constitution III.11: loud no-data, never a fabricated 0).
    */
   metrics?: Partial<Record<MapMetric, number>>;
+  /**
+   * Spec-113 Lane D's `dominant_class` `/map/` property (population-weighted
+   * majority `SocialRole` among the territory's TENANCY-linked members) —
+   * categorical, so it lives outside the numeric `metrics` bag. `null`/
+   * absent means no TENANCY-linked members were present this tick
+   * (Constitution III.11: loud no-data, never a fabricated role).
+   */
+  dominantClass?: string | null;
 }
 
 export interface RingSpec {
@@ -146,10 +154,44 @@ export interface BuildLensLayersInput {
 // Color tokens (Cold Collapse canon, spec-090 index.css — see module docstring)
 // ---------------------------------------------------------------------------
 
-const STANCE_COLOR: Record<ColonialStance, RGBAColor> = {
+/** Exported (spec-113 Lane B) so `lib/lenses/registry.ts` can build the stance/faction/collapse
+ * categorical `MapLensDef.legend` from the SAME tokens this module fills with — one source of
+ * truth for "what color is UPHOLD", never a second hardcoded copy in the legend. */
+export const STANCE_COLOR: Record<ColonialStance, RGBAColor> = {
   UPHOLD: [255, 51, 68, 220], // --babylon-laser
   IGNORE: [107, 143, 181, 220], // --babylon-cadre
   ABOLISH: [95, 191, 122, 220], // --babylon-solidarity
+};
+
+/**
+ * The 8 `SocialRole` values (`src/babylon/models/enums/social.py`) the
+ * `class_composition` lens fills by — spec-113 Lane B/D. A first-pass
+ * categorical palette (not yet colorblind-simulator-verified — DESIGN_BIBLE.md
+ * §3.2/§10 flags that QA pass as a standing follow-on for every categorical
+ * lens): distinct hues drawn from existing Cold Collapse ramp terminals so no
+ * new raw hex literals are invented here.
+ */
+export const SOCIAL_ROLE_COLOR: Record<string, RGBAColor> = {
+  core_bourgeoisie: [212, 160, 44, 220], // wealth ramp terminal — the ruling core class
+  labor_aristocracy: [138, 106, 42, 220], // wealth ramp mid-tone — privileged core worker
+  comprador_bourgeoisie: [184, 50, 31, 220], // rent ramp terminal — extraction's local agent
+  petty_bourgeoisie: [107, 143, 181, 220], // --babylon-cadre
+  periphery_proletariat: [77, 217, 230, 220], // --babylon-spire — the exploited producer
+  internal_proletariat: [90, 79, 149, 220], // population ramp mid-tone
+  lumpenproletariat: [122, 53, 37, 220], // biocapacity ramp's depleted-red neighbor
+  carceral_enforcer: [255, 51, 68, 220], // --babylon-laser — the repressive apparatus
+};
+
+/** Display labels for `SOCIAL_ROLE_COLOR`'s keys — shared by the categorical legend. */
+export const SOCIAL_ROLE_LABELS: Record<string, string> = {
+  core_bourgeoisie: "Core Bourgeoisie",
+  labor_aristocracy: "Labor Aristocracy",
+  comprador_bourgeoisie: "Comprador Bourgeoisie",
+  petty_bourgeoisie: "Petty Bourgeoisie",
+  periphery_proletariat: "Periphery Proletariat",
+  internal_proletariat: "Internal Proletariat",
+  lumpenproletariat: "Lumpenproletariat",
+  carceral_enforcer: "Carceral Enforcer",
 };
 
 const DESATURATED: RGBAColor = [26, 31, 42, 140]; // low-influence dim tone
@@ -190,7 +232,10 @@ function normalizeStance(value: string): ColonialStance | null {
     : null;
 }
 
-function factionStance(
+/** Exported (spec-113 Lane B) so `DeckGLMap.tsx` can color political CLAIMS layer fills by
+ * the SAME per-faction stance a sovereign's ruling faction resolves to elsewhere in this
+ * module (`buildClaimsHulls`) — one source of truth, not a second copy of this lookup. */
+export function factionStance(
   factionId: string | null | undefined,
   balkanization: BalkanizationBlock | null | undefined,
 ): ColonialStance | null {
@@ -283,6 +328,18 @@ function metricFill(territory: LensTerritory | undefined, metric: MapMetric): RG
   const stops = lensRampStops({ kind: "metric", metric });
   if (!stops) return NO_DATA;
   return sampleRampStops(stops, value);
+}
+
+/**
+ * `class_composition` fill (spec-113 Lane B/D): the territory's own
+ * `dominantClass` `SocialRole`, colored via `SOCIAL_ROLE_COLOR`. Loud
+ * no-data (Constitution III.11) for an absent/unrecognized role, never a
+ * fabricated color.
+ */
+function classCompositionFill(territory: LensTerritory | undefined): RGBAColor {
+  const role = territory?.dominantClass;
+  if (!role) return NO_DATA;
+  return SOCIAL_ROLE_COLOR[role] ?? NO_DATA;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +444,8 @@ export function buildLensLayers(input: BuildLensLayersInput): LensLayerResult {
         return collapseFill(territoryId, balkanization);
       case "metric":
         return metricFill(territory, lens.metric);
+      case "class_composition":
+        return classCompositionFill(territory);
     }
   };
 

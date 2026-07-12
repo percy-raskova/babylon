@@ -14,6 +14,8 @@ import type { MapSlice } from "./slices/mapSlice";
 import type { PanelsSlice } from "./slices/panels";
 import type { UiSlice } from "./slices/uiSlice";
 import type { ActionsSlice } from "./slices/actionsSlice";
+import type { InspectSlice } from "./slices/inspectSlice";
+import type { EventsSlice } from "./slices/eventsSlice";
 
 export type RootState = SessionSlice &
   WorldSlice &
@@ -21,4 +23,6 @@ export type RootState = SessionSlice &
   MapSlice &
   PanelsSlice &
   UiSlice &
-  ActionsSlice;
+  ActionsSlice &
+  InspectSlice &
+  EventsSlice;

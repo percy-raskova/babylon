@@ -1,0 +1,19 @@
+{
+  "version": 8,
+  "name": "Babylon — Cold Collapse minimal basemap",
+  "metadata": {
+    "babylon:owner": "Lane Carto (spec-113 architecture.md §7)",
+    "babylon:purpose": "Replaces the Carto Dark Matter tile dependency (DeckGLMap.tsx MAP_STYLE). The political cartography layer stack (components/map/layers/political.ts) IS the map — this style supplies only a background color, no tiles/glyphs/sprites, so the client makes zero external requests for the basemap.",
+    "babylon:background-token": "--babylon-void (src/index.css)"
+  },
+  "sources": {},
+  "layers": [
+    {
+      "id": "void-background",
+      "type": "background",
+      "paint": {
+        "background-color": "#06070b"
+      }
+    }
+  ]
+}

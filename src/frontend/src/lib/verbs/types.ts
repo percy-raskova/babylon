@@ -71,6 +71,11 @@ export interface VerbConfig {
    * Defaults to "target_id" if not specified.
    */
   targetPayloadKey?: string;
-  /** Optional selector for predicted effect tooltip (Phase 5 renders this). */
+  /**
+   * Optional selector for the pre-commit predicted delta. When present,
+   * `VerbForm` evaluates it via `evaluatePredictedEffect` (`./predicted`)
+   * once the verb is composable and renders a ▲/▼ arrow + metric name
+   * near the submit button. Absent ⇒ nothing extra renders.
+   */
   predictedEffect?: ScriptValue;
 }

@@ -10,7 +10,8 @@ import { renderHook } from "@testing-library/react";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
 import { resetMockGameState, requestLog, DEFAULT_GAME_ID } from "@/test/handlers";
-import { LENS_MODES, DEFAULT_LENS } from "@/lib/lens";
+import { DEFAULT_LENS, lensKey } from "@/lib/lens";
+import { LENS_REGISTRY } from "@/lib/lenses/registry";
 import {
   startHeartbeat,
   HEARTBEAT_MS,
@@ -144,44 +145,50 @@ describe("useSpacebarShortcut", () => {
 });
 
 describe("useLensCycleShortcut", () => {
-  it("KeyE advances through LENS_MODES with wrap-around (collapse -> stance)", () => {
+  it("KeyE advances through LENS_REGISTRY with wrap-around (last entry -> first)", () => {
     renderHook(() => useLensCycleShortcut(DEFAULT_GAME_ID));
 
-    let expectedIdx = 0; // default lens is LENS_MODES[0] ("stance")
-    LENS_MODES.forEach(() => {
+    let expectedIdx = 0; // default lens is LENS_REGISTRY[0] (imperial_rent)
+    LENS_REGISTRY.forEach(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyE" }));
-      expectedIdx = (expectedIdx + 1) % LENS_MODES.length;
-      expect(useStore.getState().map.lens).toEqual({ kind: LENS_MODES[expectedIdx] });
+      expectedIdx = (expectedIdx + 1) % LENS_REGISTRY.length;
+      expect(lensKey(useStore.getState().map.lens)).toEqual(
+        lensKey(LENS_REGISTRY[expectedIdx]!.toLens()),
+      );
     });
   });
 
-  it("KeyQ goes backward through LENS_MODES with wrap-around (stance -> collapse)", () => {
+  it("KeyQ goes backward through LENS_REGISTRY with wrap-around (first entry -> last)", () => {
     renderHook(() => useLensCycleShortcut(DEFAULT_GAME_ID));
 
-    let expectedIdx = 0; // default lens is LENS_MODES[0] ("stance")
-    LENS_MODES.forEach(() => {
+    let expectedIdx = 0; // default lens is LENS_REGISTRY[0] (imperial_rent)
+    LENS_REGISTRY.forEach(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyQ" }));
-      expectedIdx = (expectedIdx - 1 + LENS_MODES.length) % LENS_MODES.length;
-      expect(useStore.getState().map.lens).toEqual({ kind: LENS_MODES[expectedIdx] });
+      expectedIdx = (expectedIdx - 1 + LENS_REGISTRY.length) % LENS_REGISTRY.length;
+      expect(lensKey(useStore.getState().map.lens)).toEqual(
+        lensKey(LENS_REGISTRY[expectedIdx]!.toLens()),
+      );
     });
   });
 
-  it("KeyE from a metric lens lands on LENS_MODES[0]", () => {
-    useStore.getState().map.setLens({ kind: "metric", metric: "profit_rate" });
+  it("KeyE from an unregistered metric lens lands on LENS_REGISTRY[0]", () => {
+    useStore.getState().map.setLens({ kind: "metric", metric: "occ" });
     renderHook(() => useLensCycleShortcut(DEFAULT_GAME_ID));
 
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyE" }));
 
-    expect(useStore.getState().map.lens).toEqual({ kind: LENS_MODES[0] });
+    expect(lensKey(useStore.getState().map.lens)).toEqual(lensKey(LENS_REGISTRY[0]!.toLens()));
   });
 
-  it("KeyQ from a metric lens lands on the last mode", () => {
-    useStore.getState().map.setLens({ kind: "metric", metric: "profit_rate" });
+  it("KeyQ from an unregistered metric lens lands on the last registry entry", () => {
+    useStore.getState().map.setLens({ kind: "metric", metric: "occ" });
     renderHook(() => useLensCycleShortcut(DEFAULT_GAME_ID));
 
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyQ" }));
 
-    expect(useStore.getState().map.lens).toEqual({ kind: LENS_MODES[LENS_MODES.length - 1] });
+    expect(lensKey(useStore.getState().map.lens)).toEqual(
+      lensKey(LENS_REGISTRY[LENS_REGISTRY.length - 1]!.toLens()),
+    );
   });
 
   it("ignores KeyE/KeyQ when focus is in a text input", () => {

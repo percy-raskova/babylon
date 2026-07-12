@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@deck.gl/core": "^9.2.10",
+    "@deck.gl/extensions": "^9.3.6",
     "@deck.gl/geo-layers": "^9.2.10",
     "@deck.gl/layers": "^9.2.10",
     "@deck.gl/react": "^9.2.10",
@@ -36,6 +37,7 @@
     "recharts": "^2.15.0",
     "sigma": "^3.0.2",
     "tailwindcss": "^4.2.1",
+    "topojson-client": "^3.1.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
@@ -46,6 +48,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-react": "^6.0.3",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.7.0",

@@ -1,6 +1,10 @@
 /**
- * Unit tests for the ui slice (spec-110 B3) — dock tabs, bottom-strip
- * collapse, focus. Pure state, no network.
+ * Unit tests for the ui slice (spec-113 Lane A) — chrome panel visibility,
+ * focus, takeover overlays. Pure state, no network.
+ *
+ * `activeDockTab`/`bottomStripCollapsed`/`rightDockTab` were retired with
+ * `RightDock`/`BottomStrip` (architecture.md §1.4 "subtractive" step) —
+ * their behavior is now covered by `ui.chrome`'s tests below.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -12,32 +16,52 @@ beforeEach(() => {
 });
 
 describe("ui slice", () => {
-  it("defaults to the timeseries dock tab, expanded bottom strip, no focus, actions right-dock tab, no takeover", () => {
+  it("defaults: outliner/eventTray/objectives open, bottom drawer 'trends', composer open, no focus, no takeover", () => {
     const { ui } = useStore.getState();
-    expect(ui.activeDockTab).toBe("timeseries");
-    expect(ui.bottomStripCollapsed).toBe(false);
+    expect(ui.chrome.outlinerOpen).toBe(true);
+    expect(ui.chrome.eventTrayOpen).toBe(true);
+    expect(ui.chrome.objectivesOpen).toBe(true);
+    expect(ui.chrome.bottomDrawer).toBe("trends");
+    expect(ui.chrome.composerOpen).toBe(true);
     expect(ui.focusedPanelId).toBeNull();
-    expect(ui.rightDockTab).toBe("actions");
     expect(ui.takeover.active).toBeNull();
   });
 
-  it("setRightDockTab switches between actions and inspector", () => {
-    useStore.getState().ui.setRightDockTab("inspector");
-    expect(useStore.getState().ui.rightDockTab).toBe("inspector");
-    useStore.getState().ui.setRightDockTab("actions");
-    expect(useStore.getState().ui.rightDockTab).toBe("actions");
+  it("toggleOutliner flips outlinerOpen", () => {
+    useStore.getState().ui.toggleOutliner();
+    expect(useStore.getState().ui.chrome.outlinerOpen).toBe(false);
+    useStore.getState().ui.toggleOutliner();
+    expect(useStore.getState().ui.chrome.outlinerOpen).toBe(true);
   });
 
-  it("setActiveDockTab switches tabs", () => {
-    useStore.getState().ui.setActiveDockTab("graph");
-    expect(useStore.getState().ui.activeDockTab).toBe("graph");
+  it("toggleEventTray flips eventTrayOpen", () => {
+    useStore.getState().ui.toggleEventTray();
+    expect(useStore.getState().ui.chrome.eventTrayOpen).toBe(false);
+    useStore.getState().ui.toggleEventTray();
+    expect(useStore.getState().ui.chrome.eventTrayOpen).toBe(true);
   });
 
-  it("toggleBottomStrip flips collapsed state", () => {
-    useStore.getState().ui.toggleBottomStrip();
-    expect(useStore.getState().ui.bottomStripCollapsed).toBe(true);
-    useStore.getState().ui.toggleBottomStrip();
-    expect(useStore.getState().ui.bottomStripCollapsed).toBe(false);
+  it("toggleObjectives flips objectivesOpen", () => {
+    useStore.getState().ui.toggleObjectives();
+    expect(useStore.getState().ui.chrome.objectivesOpen).toBe(false);
+    useStore.getState().ui.toggleObjectives();
+    expect(useStore.getState().ui.chrome.objectivesOpen).toBe(true);
+  });
+
+  it("toggleComposer flips composerOpen", () => {
+    useStore.getState().ui.toggleComposer();
+    expect(useStore.getState().ui.chrome.composerOpen).toBe(false);
+    useStore.getState().ui.toggleComposer();
+    expect(useStore.getState().ui.chrome.composerOpen).toBe(true);
+  });
+
+  it("setBottomDrawer switches between none/trends/events", () => {
+    useStore.getState().ui.setBottomDrawer("events");
+    expect(useStore.getState().ui.chrome.bottomDrawer).toBe("events");
+    useStore.getState().ui.setBottomDrawer("none");
+    expect(useStore.getState().ui.chrome.bottomDrawer).toBe("none");
+    useStore.getState().ui.setBottomDrawer("trends");
+    expect(useStore.getState().ui.chrome.bottomDrawer).toBe("trends");
   });
 
   it("setFocusedPanel sets and clears focus", () => {
@@ -45,11 +69,6 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.focusedPanelId).toBe("panel-economy");
     useStore.getState().ui.setFocusedPanel(null);
     expect(useStore.getState().ui.focusedPanelId).toBeNull();
-  });
-
-  it("setRightDockTab switches to objectives", () => {
-    useStore.getState().ui.setRightDockTab("objectives");
-    expect(useStore.getState().ui.rightDockTab).toBe("objectives");
   });
 
   it("openTakeover/closeTakeover set and clear the active takeover", () => {

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { get, post, postForm } from "./client";
+import { get, post, postForm, fetchExplain } from "./client";
 import { server } from "@/test/server";
 import { http, HttpResponse } from "msw";
 
@@ -141,6 +141,34 @@ describe("API client", () => {
 
       await get("/api/test-no-csrf/");
       expect(capturedCsrf).toBe("");
+    });
+  });
+
+  describe("fetchExplain", () => {
+    it("encodes metric/scope into the query string", async () => {
+      let capturedUrl = "";
+      server.use(
+        http.get("/api/games/:id/explain/", ({ request }) => {
+          capturedUrl = request.url;
+          return HttpResponse.json({
+            status: "ok",
+            data: {
+              metric: "exploitation_rate",
+              scope: "global",
+              value: 0.45,
+              formula: { name: "exploitation_rate", expression: "x", doc: "d" },
+              inputs: [],
+              constants: [],
+            },
+          });
+        }),
+      );
+
+      const res = await fetchExplain("game-001", "exploitation_rate", "org:C 001");
+
+      expect(res.status).toBe("ok");
+      expect(capturedUrl).toContain("metric=exploitation_rate");
+      expect(capturedUrl).toContain("scope=org%3AC%20001");
     });
   });
 

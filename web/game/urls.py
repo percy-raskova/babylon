@@ -105,6 +105,8 @@ urlpatterns: list[URLPattern] = [
         api.inspector_territory_history,
         name="inspector-territory-history",
     ),
+    # API: Spec-113 Lane D — formula/metric provenance (InspectionStack FormulaCard)
+    path("games/<str:game_id>/explain/", api.game_explain, name="game-explain"),
     # API: Actions — utility endpoints (available, preview, pending list, cancel)
     path(
         "games/<str:game_id>/actions/available/",

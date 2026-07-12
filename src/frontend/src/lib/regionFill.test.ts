@@ -96,9 +96,46 @@ describe("regionFillForLens", () => {
     });
   });
 
-  it("a zero-width domain does not divide by zero", () => {
-    const properties: RegionFillProperties = { heat: 5 };
-    const domain = { min: 5, max: 5 };
-    expect(() => regionFillForLens({ kind: "heat" }, properties, domain)).not.toThrow();
+  describe("solidarity_index metric (spec-113 Lane B)", () => {
+    it("samples the dedicated solidarity ramp, distinct from habitability's", () => {
+      const properties: RegionFillProperties = { solidarity_index: 0.6 };
+      const lens: Lens = { kind: "metric", metric: "solidarity_index" };
+      const result = regionFillForLens(lens, properties, DOMAIN);
+      expect(result).toEqual(sampleRampStops(lensRampStops(lens)!, 0.6));
+    });
+  });
+
+  describe("class_composition lens (spec-113 Lane B/D)", () => {
+    it("colors by dominant_class via the shared SOCIAL_ROLE_COLOR palette", () => {
+      const properties: RegionFillProperties = { dominant_class: "core_bourgeoisie" };
+      expect(regionFillForLens({ kind: "class_composition" }, properties, DOMAIN)).toEqual([
+        212, 160, 44, 220,
+      ]);
+    });
+
+    it("is null-honest when dominant_class is absent", () => {
+      expect(regionFillForLens({ kind: "class_composition" }, {}, DOMAIN)).toBeNull();
+    });
+
+    it("is null-honest for an unrecognized role string", () => {
+      const properties: RegionFillProperties = { dominant_class: "not_a_real_role" };
+      expect(regionFillForLens({ kind: "class_composition" }, properties, DOMAIN)).toBeNull();
+    });
+  });
+
+  it("a degenerate (zero-dynamic-range) domain is null-honest, not a fabricated floor color", () => {
+    // A ramp encodes RELATIVE position within the visible domain. When every
+    // region shares one value (span === 0 — e.g. the static-economy case where
+    // every imperial_rent is 0.0, owner item #25), there is no relative signal
+    // to encode. Sampling the ramp at t=0 would paint a floor color
+    // indistinguishable from a genuine spread bottomed at the floor — the very
+    // thing mapLensLayers.ts::metricFill's docstring forbids ("an empty domain
+    // must render as visibly distinct from a real 0.0"). Honest-null here →
+    // REGION_NO_DATA_FILL, so the always-drawn political borders show through
+    // instead of a black blob (Constitution III.11). No divide-by-zero either.
+    expect(regionFillForLens({ kind: "heat" }, { heat: 5 }, { min: 5, max: 5 })).toBeNull();
+
+    const rentLens: Lens = { kind: "metric", metric: "imperial_rent" };
+    expect(regionFillForLens(rentLens, { imperial_rent: 0 }, { min: 0, max: 0 })).toBeNull();
   });
 });

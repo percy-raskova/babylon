@@ -78,5 +78,9 @@ export const TAKEOVER_PANEL_KEYS = [
   "endgame",
   "objectives",
   "tradeFlows",
+  // narration (spec-113 Lane N + orchestrator wiring): same mounted-only
+  // contract; its fetch is cumulative (since_tick cursor) and degrades to
+  // an honest "offline" state while the backend endpoint is contract-only.
+  "narration",
 ] as const;
 export type TakeoverPanelKey = (typeof TAKEOVER_PANEL_KEYS)[number];

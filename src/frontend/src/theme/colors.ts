@@ -17,7 +17,8 @@ import type { MapLayer } from "@/types/game";
 export type RGBAColor = [number, number, number, number];
 
 /** Map layers that own a canonical data ramp. */
-export type RampLayer = "heat" | "consciousness" | "rent" | "biocapacity" | "wealth" | "population";
+export type RampLayer =
+  "heat" | "consciousness" | "rent" | "biocapacity" | "wealth" | "population" | "solidarity";
 
 /**
  * The six canonical data ramps.
@@ -45,6 +46,11 @@ export const DATA_RAMPS: Record<RampLayer, string[]> = {
   wealth: ["#0d1016", "#2a251f", "#4d3f28", "#8a6a2a", "#d4a02c"],
   // Single hue, lightness only.
   population: ["#0d1016", "#23223a", "#3d3868", "#5a4f95", "#7a6db8", "#a89dd0"],
+  // Spec-113 Lane B addition (bible §3.2's Struggle-group Solidarity lens):
+  // single hue, ends at the canon --babylon-solidarity green (#5fbf7a) — the
+  // same terminal `mapLensLayers.ts`'s STANCE_COLOR.ABOLISH already uses, so
+  // "high solidarity" reads consistently with the stance lens's ABOLISH tone.
+  solidarity: ["#0d1016", "#132a1c", "#1e4a2a", "#2f7a3f", "#48a85c", "#5fbf7a"],
 };
 
 /** Fill alpha for deck.gl hex layers (near-opaque, as pre-090). */

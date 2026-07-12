@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { evaluatePredictedEffect } from "@/lib/verbs";
 import type { VerbConfig } from "@/lib/verbs";
 import type { GameSnapshot, PlayerVerb } from "@/types/game";
 import { TargetPicker } from "./TargetPicker";
@@ -45,6 +46,7 @@ export function VerbForm({
   const targetRequired = config.targetRequired ?? true;
   const canSubmit = Boolean(orgId && (targetId || !targetRequired) && !submitting);
   const showPicker = !(targetRequired === false && targets.length === 0 && !loading);
+  const predicted = evaluatePredictedEffect(config, snapshot, targetId);
 
   return (
     <>
@@ -64,6 +66,18 @@ export function VerbForm({
           values={paramVals}
           onChange={(k, v) => setParamVals((p) => ({ ...p, [k]: v }))}
         />
+      )}
+
+      {predicted && (
+        <p
+          data-testid="predicted-delta"
+          title={`${predicted.label}: ${predicted.value > 0 ? "+" : ""}${predicted.value}`}
+          className={`font-mono text-[10px] uppercase tracking-widest ${
+            predicted.direction === "up" ? "text-accent-gold" : "text-accent-crimson"
+          }`}
+        >
+          {predicted.direction === "up" ? "▲" : "▼"} {predicted.label}
+        </p>
       )}
 
       <button

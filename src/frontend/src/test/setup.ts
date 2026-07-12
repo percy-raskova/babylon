@@ -51,11 +51,22 @@ vi.mock("@deck.gl/react", () => ({
 
 vi.mock("@deck.gl/geo-layers", () => ({
   H3HexagonLayer: vi.fn(),
+  // Spec-113 Lane B: DeckGLMap's region-framing branch (and any leftover
+  // async effect from an unmounted DeckGLMap — its topology `useEffect`
+  // isn't awaited by every test) can construct an H3ClusterLayer even in
+  // files that don't locally override this mock (that pattern,
+  // e.g. DeckGLMap.test.tsx, still takes precedence for its own file).
+  H3ClusterLayer: vi.fn(),
 }));
 
 vi.mock("@deck.gl/layers", () => ({
   ScatterplotLayer: vi.fn(),
   PolygonLayer: vi.fn(),
+  // Spec-113 Lane B: layers/political.ts's base political-cartography stack
+  // (county hairlines/state borders) is now part of every DeckGLMap render,
+  // so any test mounting a real DeckGLMap needs this, not just political.test.ts's
+  // own local override (which additionally inspects `.id`/`.props`).
+  GeoJsonLayer: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------

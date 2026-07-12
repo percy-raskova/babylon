@@ -1,42 +1,69 @@
 /**
- * deck.gl + MapLibre hex map visualization.
- *
- * Renders territories as H3 hexagons (when h3_index is available)
- * or as ScatterplotLayer dots (fallback). Color encodes the active `Lens`.
+ * deck.gl + MapLibre political-cartography map (spec-113 Lane B rewrite of
+ * the spec-112 C5 hex/region map).
  *
  * Adapted (spec-110 B2) to the unified `Lens` discriminated union
  * (`@/lib/lens`) and decoupled from both `mapStore` (stores are B3
- * territory) and `react-router` (routing is B3 territory): this is now a
- * controlled component — the active lens, faction filter, and territory
- * click all come in via props/callbacks instead of zustand state and
- * `useNavigate`. There is exactly one fill axis now (`lens`), not the old
- * `activeLayer` + `lensMode` pair — `buildLensLayers` always returns a
- * usable `getFillColor`, including a graceful "no data" fill for
- * balkanization-derived lenses when that block is absent, so no separate
- * metric-ramp fallback path is needed.
+ * territory) and `react-router` (routing is B3 territory): this is a
+ * controlled component — the active lens, faction filter, framing, and
+ * territory click all come in via props/callbacks instead of zustand state
+ * and `useNavigate`.
+ *
+ * Spec-113 §7/DESIGN_BIBLE.md §2: the political cartography layer stack
+ * (`layers/political.ts`, Lane Carto's frozen export) is now the map's base
+ * — de jure county hairlines + state borders, de facto polity fills/claim
+ * borders — drawn UNDER the active lens's hex/region fill at every framing
+ * ("de-jure hairlines + state borders ALWAYS on"). Controls (lens bar,
+ * legend, framing selector) are extracted to `MapControls.tsx` (architecture
+ * §3.3) — this component is pure canvas + tooltips + the political/lens
+ * layer composition.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DeckGL } from "@deck.gl/react";
 import { H3HexagonLayer, H3ClusterLayer } from "@deck.gl/geo-layers";
 import { PolygonLayer, ScatterplotLayer } from "@deck.gl/layers";
-import { Map } from "react-map-gl/maplibre";
+// Aliased: an unaliased `Map` import shadows the global `Map` constructor
+// for the rest of this module, which this file now uses (`fipsByTerritoryId`,
+// `hexFeaturesByH3`'s fallback) — a latent collision the pre-Lane-B version
+// never tripped because it never called `new Map(...)` anywhere.
+import { Map as MapLibreMap } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { RGBAColor } from "@/theme/colors";
 
-import { MapLegend } from "@/components/map/MapLegend";
+import { MapControls } from "@/components/map/MapControls";
 import { HexTooltip } from "@/components/map/HexTooltip";
-import { MapModeSelector } from "@/components/map/MapModeSelector";
-import { FramingSelector } from "@/components/map/FramingSelector";
 import {
   BALKANIZATION_LENSES,
   buildLensLayers,
+  factionStance,
+  STANCE_COLOR,
+  type BalkanizationBlock,
+  type LensTerritory,
   type RingSpec,
   type HullSpec,
 } from "@/components/map/mapLensLayers";
 import { hullPolygonForTerritories } from "@/components/map/mapLensGeometry";
+import { buildPoliticalLayers, type PolityClaim } from "@/components/map/layers/political";
+import { resolvePulseTargets, useCriticalPulses } from "@/components/map/layers/criticalPulse";
+import { useStore } from "@/store";
+import {
+  loadCountyTopology,
+  loadStateTopology,
+  countyFeatures,
+  stateFeatures,
+  type CountyTopology,
+  type StateTopology,
+} from "@/lib/geo/topology";
 import { regionFillForLens, type FillDomain, type RegionFillProperties } from "@/lib/regionFill";
-import type { Lens } from "@/lib/lens";
+import {
+  hexFeaturePropertiesByH3,
+  availableMetricsFromMapData,
+  type HexMapFeatureProperties,
+} from "@/lib/mapMetadata";
+import { lensKey, type Lens } from "@/lib/lens";
+import { lensDefForLens } from "@/lib/lenses/registry";
+import { territoryToHexInline } from "@/lib/inspect/adapters/hex";
 import type {
   AdminFeatureProperties,
   AdminLevel,
@@ -62,6 +89,14 @@ const DEFAULT_LAYER_OPACITY = 0.8;
 
 /** Neutral fill for a region regionFillForLens has no data for — mirrors mapLensLayers.ts's NO_DATA. */
 const REGION_NO_DATA_FILL: RGBAColor = [58, 53, 48, 160];
+/**
+ * Stable degenerate domain used for a region ramp lens with no variation this
+ * tick (`rampEmpty`): a zero span routes both the fill (`regionFillForLens`) and
+ * the legend marker (`currentValueForLens`) through their `span<=0` honest-null
+ * path. Module-level so the `layers`/`currentValue` memos stay referentially
+ * stable while flat (no per-render `{min,max}` object churn).
+ */
+const EMPTY_FILL_DOMAIN: FillDomain = { min: 0, max: 0 };
 /** Structural gray border between adjacent regions. */
 const REGION_LINE_COLOR: RGBAColor = [130, 138, 150, 160];
 
@@ -119,12 +154,60 @@ function buildClaimsHullLayers(hulls: HullSpec[], h3Territories: H3Territory[]):
   return layers;
 }
 
+/** `null` -> `undefined` (the `LensTerritory.metrics` bag's "absent" spelling — see its docstring). */
+function nullToUndefined(v: number | null | undefined): number | undefined {
+  return v ?? undefined;
+}
+
+/** The numeric `metrics` bag `territoryToLensTerritory` merges from one hex feature's properties. */
+function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["metrics"] {
+  return {
+    profit_rate: nullToUndefined(hexProps.profit_rate),
+    exploitation_rate: nullToUndefined(hexProps.exploitation_rate),
+    occ: nullToUndefined(hexProps.occ),
+    imperial_rent: nullToUndefined(hexProps.imperial_rent),
+    org_presence: nullToUndefined(hexProps.org_presence),
+    population: nullToUndefined(hexProps.population),
+    solidarity_index: nullToUndefined(hexProps.solidarity_index),
+  };
+}
+
+/**
+ * Merge one `TerritoryState` with its matching hex-zoom `/map/` feature
+ * properties (keyed by `h3_index`, when present) into a `LensTerritory` —
+ * `buildLensLayers`'s input shape. Extracted to a pure top-level function
+ * (spec-113 Lane B) so `DeckGLMap`'s render body stays a plain `.map()`
+ * call instead of an inline multi-branch arrow (cognitive-complexity
+ * budget) — also makes the merge independently unit-testable.
+ */
+function territoryToLensTerritory(
+  t: TerritoryState,
+  hexFeaturesByH3: Map<string, HexMapFeatureProperties>,
+): LensTerritory {
+  const hexProps = t.h3_index ? hexFeaturesByH3.get(t.h3_index) : undefined;
+  return {
+    id: t.id,
+    h3_index: t.h3_index,
+    heat: t.heat,
+    biocapacity: t.biocapacity,
+    // Spec-109 A2: real Territory field, was hardcoded to 100.
+    max_biocapacity: t.max_biocapacity ?? 100,
+    habitability: t.habitability ?? hexProps?.habitability ?? null,
+    dominantClass: hexProps?.dominant_class ?? null,
+    metrics: hexProps ? hexPropsToMetrics(hexProps) : undefined,
+  };
+}
+
 /**
  * Real min/max across a lens's domain-normalized field (heat,
  * `{kind:"metric"}`), scanning all region features — a per-render
  * auto-scaled range, since aggregated heat/metric values have no fixed
  * [0, 1] span the way a per-hex value might (see `regionFillForLens`).
  * Lens kinds that don't use a domain get an inert `{min:0,max:1}` default.
+ * The RESULT of this "natural" scan is never used directly for region fill
+ * or the legend marker — both route through the render-time domain cache
+ * first (DESIGN_BIBLE.md §3.2/§6: "no silent rescale between ticks" — see
+ * the `domainCache` state in `DeckGLMap` below).
  */
 function computeFillDomain(lens: Lens, propertyBags: RegionFillProperties[]): FillDomain {
   let key: keyof RegionFillProperties | null = null;
@@ -139,6 +222,107 @@ function computeFillDomain(lens: Lens, propertyBags: RegionFillProperties[]): Fi
     .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   if (values.length === 0) return { min: 0, max: 1 };
   return { min: Math.min(...values), max: Math.max(...values) };
+}
+
+/** Mean of the finite values in `values`, or `null` for an all-absent set (honest no-summary). */
+function meanOfFinite(values: (number | null | undefined)[]): number | null {
+  const finite = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (finite.length === 0) return null;
+  return finite.reduce((a, b) => a + b, 0) / finite.length;
+}
+
+/**
+ * The legend marker's normalized [0,1] position for the CURRENT world
+ * state (DESIGN_BIBLE.md §3.2's Sylvester citation) — `null` for categorical
+ * lenses (no ramp to mark) or when no real values are present (Constitution
+ * III.11: no marker beats a fabricated one). Habitability is never
+ * domain-normalized (its values already live in ~[0,1] — matches
+ * `habitabilityFill`/`regionFillForLens`'s own habitability branch); heat
+ * and metric lenses normalize by `domain` at region framing and clamp the
+ * raw mean directly at hex framing (mirroring how the hex fill itself
+ * samples those values — see `mapLensLayers.ts`'s `heatFill`/`metricFill`).
+ */
+function currentValueForLens(
+  lens: Lens,
+  framing: AdminLevel,
+  hexValues: (number | null | undefined)[],
+  regionValues: (number | null | undefined)[],
+  domain: FillDomain,
+): number | null {
+  if (
+    lens.kind === "stance" ||
+    lens.kind === "faction" ||
+    lens.kind === "collapse" ||
+    lens.kind === "class_composition"
+  ) {
+    return null;
+  }
+  const mean = meanOfFinite(framing === "hex" ? hexValues : regionValues);
+  if (mean === null) return null;
+  if (lens.kind === "habitability" || framing === "hex") {
+    return Math.max(0, Math.min(1, mean));
+  }
+  const span = domain.max - domain.min;
+  // Degenerate domain (no dynamic range): no honest position for the marker,
+  // mirroring regionFill.ts::normalize. null → no marker AND drives MapControls'
+  // rampEmpty honest-empty hint (Constitution III.11 — no fabricated floor).
+  if (span <= 0) return null;
+  return Math.max(0, Math.min(1, (mean - domain.min) / span));
+}
+
+/** `currentValueForLens`'s hex-framing raw sample values for `lens` — extracted (cognitive-complexity budget). */
+function hexMarkerValuesForLens(
+  lens: Lens,
+  territories: TerritoryState[],
+  hexFeaturesByH3: Map<string, HexMapFeatureProperties>,
+): (number | null | undefined)[] {
+  if (lens.kind === "heat") return territories.map((t) => t.heat);
+  if (lens.kind === "habitability") return territories.map((t) => t.habitability ?? null);
+  if (lens.kind === "metric") {
+    const metric = lens.metric;
+    return territories.map((t) => hexFeaturesByH3.get(t.h3_index ?? "")?.[metric]);
+  }
+  return [];
+}
+
+/** `currentValueForLens`'s region-framing raw sample values for `lens` — extracted (cognitive-complexity budget). */
+function regionMarkerValuesForLens(
+  lens: Lens,
+  regionFeatures: RegionFeature[],
+): (number | null | undefined)[] {
+  if (lens.kind === "heat") return regionFeatures.map((f) => f.properties.heat);
+  if (lens.kind === "habitability") {
+    return regionFeatures.map((f) => (f.properties as { habitability?: number }).habitability);
+  }
+  if (lens.kind === "metric") {
+    const metric = lens.metric;
+    return regionFeatures.map((f) => (f.properties as unknown as Record<string, number>)[metric]);
+  }
+  return [];
+}
+
+/**
+ * True when a region-framing RAMP lens carries no variation this tick — every
+ * region equal, or none finite (the static economy, owner item #25). Keyed off
+ * the natural per-tick `regionMarkerValues`, NOT the cached fillDomain (which can
+ * hold a stale [0,1] seeded from the empty first frame that masks the flatness
+ * and paints every region the ramp floor). Guarded on `regionFeatureCount` so a
+ * pre-fetch frame stays quiet. Extracted from `DeckGLMap` for its
+ * cognitive-complexity budget; drives the honest-empty hint + degenerate-domain
+ * render (Constitution III.11).
+ */
+function isRegionRampEmpty(
+  lens: Lens,
+  framing: AdminLevel,
+  regionFeatureCount: number,
+  regionMarkerValues: (number | null | undefined)[],
+): boolean {
+  if (framing === "hex" || regionFeatureCount === 0) return false;
+  if (lensDefForLens(lens)?.legend.kind !== "ramp") return false;
+  const finite = regionMarkerValues.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v),
+  );
+  return finite.length === 0 || finite.every((v) => v === finite[0]);
 }
 
 /**
@@ -172,10 +356,14 @@ function buildRegionLayer(
   });
 }
 
-/** Dark basemap style with actual map tiles (Carto Dark Matter). */
-const MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+/**
+ * Self-authored minimal MapLibre style (Lane Carto, spec-113 §7) — land/
+ * water only, Cold Collapse values. Replaces the Carto Dark Matter tile
+ * dependency: the political cartography layer stack IS the map now.
+ */
+const MAP_STYLE = "/geo/basemap-style.json";
 
-/** Default view centered on Southeast Michigan. */
+/** Default view centered on Southeast Michigan (the canonical scenario region). */
 const INITIAL_VIEW_STATE = {
   longitude: -83.2,
   latitude: 42.5,
@@ -204,8 +392,12 @@ interface DeckGLMapProps {
   onFactionFilterChange?: (factionId: string | null) => void;
   /** Hex fill opacity [0, 1]. Defaults to 0.8. */
   layerOpacity?: number;
-  /** Called on hex click instead of navigating internally (routing is B3's job). */
-  onTerritoryClick?: (territoryId: string) => void;
+  /**
+   * Called on hex click instead of navigating internally (routing is B3's job).
+   * `inline` carries the clicked feature's own state so the InspectionStack can
+   * render it directly without a `get_inspector_hex` round-trip.
+   */
+  onTerritoryClick?: (territoryId: string, inline?: Record<string, unknown>) => void;
   /**
    * Admin-level spatial aggregation LOD (spec-112 C5). Defaults to "hex" —
    * the pre-county-framing rendered behavior — so every caller that
@@ -272,6 +464,328 @@ function RegionStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * Resolve a deck.gl hover event into `HoverInfo`, or `null` when hover
+ * clears — extracted to a top-level function (spec-113 Lane B,
+ * cognitive-complexity budget) so the `<DeckGL onHover>` prop is a
+ * one-line call.
+ */
+function resolveHoverInfo(
+  info: { object?: unknown; x: number; y: number },
+  framing: AdminLevel,
+): HoverInfo | null {
+  if (!info.object) return null;
+  if (framing !== "hex") {
+    const feature = info.object as RegionFeature;
+    return { kind: "region", properties: feature.properties, x: info.x, y: info.y };
+  }
+  return { kind: "territory", territory: info.object as TerritoryState, x: info.x, y: info.y };
+}
+
+/**
+ * Region clicks have no territory-selection meaning (spec-112 C5 only
+ * specifies hover for regions) — no-op rather than misinterpreting a
+ * region feature as a `TerritoryState`.
+ */
+function handleMapClick(
+  info: { object?: unknown },
+  framing: AdminLevel,
+  onTerritoryClick: ((territoryId: string, inline?: Record<string, unknown>) => void) | undefined,
+): void {
+  if (info.object && framing === "hex") {
+    const territory = info.object as TerritoryState;
+    // Hex inspection refs resolve via GET /api/games/:id/hex/:h3_index/
+    // (web/game/urls.py inspector-hex) — the h3 index is the key, not the
+    // territory row id (found live in Phase V: id-keyed refs render an
+    // unresolvable-card error). Scatter-fallback territories (no h3_index)
+    // keep the row id so the click still surfaces something inspectable.
+    // Pass the clicked feature's own state as inline data so the card renders
+    // real values immediately (get_inspector_hex is stubbed) — same source the
+    // hover tooltip uses, so card and tooltip never disagree.
+    onTerritoryClick?.(territory.h3_index ?? territory.id, territoryToHexInline(territory));
+  }
+}
+
+/**
+ * Map `balkanization.sovereigns[]` (Sovereign -> Territory CLAIMS,
+ * Constitution VIII.9) into `PolityClaim[]` for `layers/political.ts`'s
+ * de-facto polity fills. `political.ts` needs county FIPS membership
+ * (`memberFips`), but a Sovereign's real claims are over TERRITORY ids
+ * (`claimed_territory_ids`, hex-native) — this resolves each claimed
+ * territory to its real `county_fips` (a `TerritoryState` model field, not
+ * derived) and de-dupes. A sovereign with no FIPS-resolvable claims (every
+ * claimed territory missing from `territories`, or itself claiming
+ * nothing) is omitted — an empty claim would draw a zero-county polity,
+ * which `mergePolity` can't dissolve meaningfully. Claim color reuses the
+ * SAME `factionStance`/`STANCE_COLOR` lookup the hex-native CLAIMS hulls
+ * use (`buildClaimsHullLayers` above), so the political fill and the hex
+ * ring/hull overlay never disagree about what color a sovereign's stance is.
+ */
+function buildPolityClaims(
+  balkanization: BalkanizationBlock | null | undefined,
+  territories: TerritoryState[],
+): PolityClaim[] {
+  if (!balkanization) return [];
+  const fipsByTerritoryId = new Map(territories.map((t) => [t.id, t.county_fips]));
+  const claims: PolityClaim[] = [];
+  for (const sovereign of balkanization.sovereigns) {
+    const memberFips = Array.from(
+      new Set(
+        sovereign.claimed_territory_ids
+          .map((id) => fipsByTerritoryId.get(id))
+          .filter((fips): fips is string => Boolean(fips)),
+      ),
+    );
+    if (memberFips.length === 0) continue;
+    const stance = factionStance(sovereign.ruling_faction_id, balkanization);
+    const color: RGBAColor = stance ? STANCE_COLOR[stance] : [200, 168, 96, 200];
+    claims.push({ polityId: sovereign.id, name: sovereign.id, color, memberFips });
+  }
+  return claims;
+}
+
+/**
+ * Fetch both cartographic topologies (Lane Carto's `lib/geo/topology.ts`)
+ * and commit each to its setter as it resolves — extracted to a top-level
+ * function (spec-113 Lane B, cognitive-complexity budget) so `DeckGLMap`'s
+ * mount effect is a one-line call. Returns the cleanup function React calls
+ * on unmount; a load failure degrades honestly to "just absent" (no
+ * fabricated placeholder, no crash) — `politicalLayers` is simply `[]`
+ * until (unless) a topology resolves.
+ */
+function startTopologyLoad(
+  setCountyTopology: (topo: CountyTopology) => void,
+  setStateTopology: (topo: StateTopology) => void,
+): () => void {
+  let cancelled = false;
+  loadCountyTopology()
+    .then((topo) => {
+      if (!cancelled) setCountyTopology(topo);
+    })
+    .catch(() => {
+      // See docstring: honest absence, not a crash.
+    });
+  loadStateTopology()
+    .then((topo) => {
+      if (!cancelled) setStateTopology(topo);
+    })
+    .catch(() => {
+      // See docstring: honest absence, not a crash.
+    });
+  return () => {
+    cancelled = true;
+  };
+}
+
+/**
+ * Loads + composes the political cartography base layer stack (Lane Carto,
+ * spec-113 §7) — de jure county hairlines + state borders, de facto polity
+ * fills. Extracted to its own hook (spec-113 Lane B, cognitive-complexity
+ * budget): owns the two topology fetches (mount-once, immutable substrate)
+ * and their derived FeatureCollections/claims/layers, so `DeckGLMap`'s own
+ * body only makes one call. Degrades honestly (`[]`, no fabricated
+ * placeholder) until both topologies resolve.
+ */
+function usePoliticalLayers(
+  balkanization: BalkanizationBlock | null | undefined,
+  territories: TerritoryState[],
+): ReturnType<typeof buildPoliticalLayers> {
+  const [countyTopology, setCountyTopology] = useState<CountyTopology | null>(null);
+  const [stateTopology, setStateTopology] = useState<StateTopology | null>(null);
+
+  useEffect(() => startTopologyLoad(setCountyTopology, setStateTopology), []);
+
+  const counties = useMemo(
+    () => (countyTopology ? countyFeatures(countyTopology) : null),
+    [countyTopology],
+  );
+  const states = useMemo(
+    () => (stateTopology ? stateFeatures(stateTopology) : null),
+    [stateTopology],
+  );
+  const polityClaims = useMemo(
+    () => buildPolityClaims(balkanization, territories),
+    [balkanization, territories],
+  );
+  return useMemo(
+    () =>
+      countyTopology && counties && states
+        ? buildPoliticalLayers({
+            topology: countyTopology,
+            counties,
+            states,
+            claims: polityClaims,
+            showContested: true,
+          })
+        : [],
+    [countyTopology, counties, states, polityClaims],
+  );
+}
+
+/**
+ * Fixed per-lens ramp domain (DESIGN_BIBLE.md §3.2/§6: "no silent rescale
+ * between ticks") + whether the CURRENT data would need a wider one (an
+ * honest "flash" state, the same section's legend-flash requirement) —
+ * extracted to its own hook (spec-113 Lane B, cognitive-complexity budget).
+ *
+ * Implemented as React's documented "adjust state during render" pattern
+ * (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+ * rather than a ref-backed cache (`lib/lenses/domainMemo.ts`'s
+ * `createDomainMemo`, kept as a pure/unit-tested reference implementation
+ * of the same rule but not wired in live here): reading/mutating a ref
+ * during render is exactly the impurity `react-hooks/refs` exists to catch
+ * (StrictMode double-render risk), and `setState` inside a `useEffect` body
+ * trips `react-hooks/set-state-in-effect`. A plain, pure, conditional
+ * `setState` call in the render body — keyed and idempotent — is React's
+ * own blessed alternative for this exact "derive from previous renders"
+ * shape. Hex framing never routes through this: its fill samples raw
+ * territory values directly (`mapLensLayers.ts`'s `heatFill`/`metricFill`),
+ * so a domain concept doesn't apply there.
+ */
+function useRampDomain(
+  framing: AdminLevel,
+  lens: Lens,
+  regionFeatures: RegionFeature[],
+): { fillDomain: FillDomain; legendFlash: boolean } {
+  const [domainCache, setDomainCache] = useState<Record<string, FillDomain>>({});
+  const naturalRegionDomain = useMemo(
+    () =>
+      computeFillDomain(
+        lens,
+        regionFeatures.map((f) => f.properties),
+      ),
+    [lens, regionFeatures],
+  );
+  const domainCacheKey = framing === "hex" ? null : lensKey(lens);
+  const cachedDomain = domainCacheKey ? domainCache[domainCacheKey] : undefined;
+  if (domainCacheKey && !cachedDomain) {
+    setDomainCache((prev) => ({ ...prev, [domainCacheKey]: naturalRegionDomain }));
+  }
+  const fillDomain = cachedDomain ?? naturalRegionDomain;
+  const legendFlash = Boolean(
+    cachedDomain &&
+    (naturalRegionDomain.min < cachedDomain.min || naturalRegionDomain.max > cachedDomain.max),
+  );
+  return { fillDomain, legendFlash };
+}
+
+/**
+ * The three `layers` construction branches (region / hex / scatter
+ * fallback), extracted to top-level functions (spec-113 Lane B) so
+ * `DeckGLMap`'s own cognitive-complexity budget doesn't absorb their
+ * branching — each owns its own budget instead. Pure given their params;
+ * no hooks, no closures over component state.
+ */
+function buildRegionFramingLayers(params: {
+  politicalLayers: ReturnType<typeof buildPoliticalLayers>;
+  regionFeatures: RegionFeature[];
+  lens: Lens;
+  fillDomain: FillDomain;
+  layerOpacity: number;
+  rings: RingSpec[];
+  hulls: HullSpec[];
+  h3Territories: H3Territory[];
+}) {
+  const {
+    politicalLayers,
+    regionFeatures,
+    lens,
+    fillDomain,
+    layerOpacity,
+    rings,
+    hulls,
+    h3Territories,
+  } = params;
+  return [
+    ...politicalLayers,
+    buildRegionLayer(regionFeatures, lens, fillDomain, layerOpacity),
+    ...buildRingLayers(rings, h3Territories),
+    ...buildClaimsHullLayers(hulls, h3Territories),
+  ];
+}
+
+function buildHexFramingLayers(params: {
+  politicalLayers: ReturnType<typeof buildPoliticalLayers>;
+  h3Territories: H3Territory[];
+  getColor: (t: TerritoryState) => RGBAColor;
+  layerOpacity: number;
+  lens: Lens;
+  factionFilter: string | null | undefined;
+  rings: RingSpec[];
+  hulls: HullSpec[];
+}) {
+  const {
+    politicalLayers,
+    h3Territories,
+    getColor,
+    layerOpacity,
+    lens,
+    factionFilter,
+    rings,
+    hulls,
+  } = params;
+  const baseHexLayer = new H3HexagonLayer<H3Territory>({
+    id: "h3-hexagons",
+    data: h3Territories,
+    getHexagon: (t) => t.h3_index,
+    getFillColor: getColor,
+    getElevation: 0,
+    extruded: false,
+    opacity: layerOpacity,
+    pickable: true,
+    autoHighlight: true,
+    highlightColor: [200, 168, 96, 180],
+    updateTriggers: {
+      getFillColor: [lens, factionFilter],
+    },
+  });
+  return [
+    ...politicalLayers,
+    baseHexLayer,
+    ...buildRingLayers(rings, h3Territories),
+    ...buildClaimsHullLayers(hulls, h3Territories),
+  ];
+}
+
+/** Territories without an `h3_index` — placed in a grid since no real coordinates exist. */
+function buildScatterFallbackLayers(params: {
+  politicalLayers: ReturnType<typeof buildPoliticalLayers>;
+  territories: TerritoryState[];
+  getColor: (t: TerritoryState) => RGBAColor;
+  layerOpacity: number;
+  lens: Lens;
+  factionFilter: string | null | undefined;
+}) {
+  const { politicalLayers, territories, getColor, layerOpacity, lens, factionFilter } = params;
+  const gridSize = Math.ceil(Math.sqrt(territories.length));
+  return [
+    ...politicalLayers,
+    new ScatterplotLayer<TerritoryState & { _idx: number }>({
+      id: "territory-dots",
+      data: territories.map((t, i) => ({ ...t, _idx: i })),
+      getPosition: (t: TerritoryState & { _idx: number }) => {
+        const col = t._idx % gridSize;
+        const row = Math.floor(t._idx / gridSize);
+        return [
+          INITIAL_VIEW_STATE.longitude - 10 + (col / gridSize) * 20,
+          INITIAL_VIEW_STATE.latitude + 5 - (row / gridSize) * 10,
+        ] as [number, number];
+      },
+      getFillColor: getColor,
+      getRadius: 30000,
+      radiusMinPixels: 12,
+      radiusMaxPixels: 40,
+      opacity: layerOpacity,
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [200, 168, 96, 180],
+      updateTriggers: {
+        getFillColor: [lens, factionFilter],
+      },
+    }),
+  ];
+}
+
 export function DeckGLMap({
   snapshot,
   mapData,
@@ -288,6 +802,27 @@ export function DeckGLMap({
 
   const territories = snapshot.territories;
   const balkanization = mapData?.metadata?.balkanization ?? null;
+  const availableMetrics = useMemo(() => availableMetricsFromMapData(mapData ?? null), [mapData]);
+
+  // Critical-event map pulse (Lane PULSE, DESIGN_BIBLE.md §5.2's third
+  // channel). This is the ONE place DeckGLMap reaches into the store — it is
+  // otherwise a controlled/presentational component (spec-110 B2/B3) — because
+  // MapStage's DeckGLMap contract is frozen (architecture §3.3, so it can't
+  // thread a new prop) yet the live classified critical stream lives on
+  // eventsSlice. Each new critical event with a resolvable geography fires a
+  // one-shot crimson ring; `useCriticalPulses` owns the lifetime and holds a
+  // stable-empty layer list while nothing is rupturing (stability contract).
+  const criticalToasts = useStore((s) => s.events.toasts);
+  const pulseTargets = useMemo(
+    () => resolvePulseTargets(criticalToasts, territories),
+    [criticalToasts, territories],
+  );
+  const pulseLayers = useCriticalPulses(pulseTargets);
+
+  // Political cartography base layer (Lane Carto, spec-113 §7) — de jure
+  // county hairlines + state borders, de facto polity fills — see
+  // `usePoliticalLayers`'s docstring.
+  const politicalLayers = usePoliticalLayers(balkanization, territories);
 
   // Real aggregated features ship geometry: null, which the `geojson`
   // package's Feature type doesn't express — see RegionFeature's docstring.
@@ -296,13 +831,25 @@ export function DeckGLMap({
     [mapData, framing],
   );
 
-  const fillDomain = useMemo(
+  // Ramp-domain memoization (DESIGN_BIBLE.md §3.2/§6: "no silent rescale
+  // between ticks") — see `useRampDomain`'s docstring.
+  const { fillDomain, legendFlash } = useRampDomain(framing, lens, regionFeatures);
+
+  // -------------------------------------------------------------------
+  // Hex framing branch — spec-113 Lane B: merge real per-hex metrics
+  // (profit_rate/exploitation_rate/occ/imperial_rent/org_presence/
+  // population/solidarity_index/dominant_class) from the hex-zoom `/map/`
+  // response onto each territory, keyed by h3_index (hex features carry no
+  // territory id of their own). Without this, metric/class_composition
+  // lenses always rendered NO_DATA at hex framing — the only framing that
+  // matters until mapSlice's default framing flips to "county" (Lane C).
+  // -------------------------------------------------------------------
+  const hexFeaturesByH3 = useMemo(
     () =>
-      computeFillDomain(
-        lens,
-        regionFeatures.map((f) => f.properties),
-      ),
-    [lens, regionFeatures],
+      framing === "hex"
+        ? hexFeaturePropertiesByH3(mapData ?? null)
+        : new Map<string, HexMapFeatureProperties>(),
+    [mapData, framing],
   );
 
   const hasH3 = useMemo(() => territories.some((t) => t.h3_index != null), [territories]);
@@ -310,20 +857,12 @@ export function DeckGLMap({
   const lensResult = useMemo(
     () =>
       buildLensLayers({
-        territories: territories.map((t) => ({
-          id: t.id,
-          h3_index: t.h3_index,
-          heat: t.heat,
-          biocapacity: t.biocapacity,
-          // Spec-109 A2: real Territory field, was hardcoded to 100.
-          max_biocapacity: t.max_biocapacity ?? 100,
-          habitability: t.habitability ?? null,
-        })),
+        territories: territories.map((t) => territoryToLensTerritory(t, hexFeaturesByH3)),
         balkanization,
         lens,
         factionFilter,
       }),
-    [territories, balkanization, lens, factionFilter],
+    [territories, balkanization, lens, factionFilter, hexFeaturesByH3],
   );
 
   // Only show the legend-label chip for balkanization lenses when there's
@@ -338,75 +877,72 @@ export function DeckGLMap({
     [lensResult],
   );
 
+  // Legend marker (bible §3.2's Sylvester citation) — see currentValueForLens's docstring.
+  const hexMarkerValues = useMemo(
+    () => hexMarkerValuesForLens(lens, territories, hexFeaturesByH3),
+    [lens, territories, hexFeaturesByH3],
+  );
+  const regionMarkerValues = useMemo(
+    () => regionMarkerValuesForLens(lens, regionFeatures),
+    [lens, regionFeatures],
+  );
+  // Honest-empty (III.11): a region-framing RAMP lens with no variation this tick
+  // (see `isRegionRampEmpty`). When flat, render against the data's TRUE
+  // (degenerate) domain so regionFill/marker's span<=0 honest-null path fires
+  // (NO_DATA fill + no marker), bypassing the anti-rescale cache — which has no
+  // range to protect when nothing varies.
+  const rampEmpty = useMemo(
+    () => isRegionRampEmpty(lens, framing, regionFeatures.length, regionMarkerValues),
+    [lens, framing, regionFeatures.length, regionMarkerValues],
+  );
+  const effectiveFillDomain = rampEmpty ? EMPTY_FILL_DOMAIN : fillDomain;
+  const currentValue = useMemo(
+    () =>
+      currentValueForLens(lens, framing, hexMarkerValues, regionMarkerValues, effectiveFillDomain),
+    [lens, framing, hexMarkerValues, regionMarkerValues, effectiveFillDomain],
+  );
+
   const layers = useMemo(() => {
     // h3Territories backs rings/hulls for BOTH the region and hex branches
     // below — those overlays are hex-native (spec-070 territory_influence/
     // sovereign CLAIMS) and framing-independent (see regionFillForLens's
     // faction/collapse docs: they remain the signal at every framing).
-    const h3Territories = territories.filter(
-      (t): t is TerritoryState & { h3_index: string } => t.h3_index != null,
-    );
+    const h3Territories = territories.filter((t): t is H3Territory => t.h3_index != null);
 
     if (framing !== "hex") {
-      const regionLayer = buildRegionLayer(regionFeatures, lens, fillDomain, layerOpacity);
-      return [
-        regionLayer,
-        ...buildRingLayers(lensResult.rings, h3Territories),
-        ...buildClaimsHullLayers(lensResult.hulls, h3Territories),
-      ];
+      return buildRegionFramingLayers({
+        politicalLayers,
+        regionFeatures,
+        lens,
+        fillDomain: effectiveFillDomain,
+        layerOpacity,
+        rings: lensResult.rings,
+        hulls: lensResult.hulls,
+        h3Territories,
+      });
     }
 
     if (hasH3) {
-      const baseHexLayer = new H3HexagonLayer<TerritoryState & { h3_index: string }>({
-        id: "h3-hexagons",
-        data: h3Territories,
-        getHexagon: (t) => t.h3_index,
-        getFillColor: getColor,
-        getElevation: 0,
-        extruded: false,
-        opacity: layerOpacity,
-        pickable: true,
-        autoHighlight: true,
-        highlightColor: [200, 168, 96, 180],
-        updateTriggers: {
-          getFillColor: [lens, factionFilter],
-        },
+      return buildHexFramingLayers({
+        politicalLayers,
+        h3Territories,
+        getColor,
+        layerOpacity,
+        lens,
+        factionFilter,
+        rings: lensResult.rings,
+        hulls: lensResult.hulls,
       });
-      return [
-        baseHexLayer,
-        ...buildRingLayers(lensResult.rings, h3Territories),
-        ...buildClaimsHullLayers(lensResult.hulls, h3Territories),
-      ];
     }
 
-    // Fallback: ScatterplotLayer for territories without h3_index
-    // Place them in a grid pattern since we don't have real coordinates
-    const gridSize = Math.ceil(Math.sqrt(territories.length));
-    return [
-      new ScatterplotLayer<TerritoryState & { _idx: number }>({
-        id: "territory-dots",
-        data: territories.map((t, i) => ({ ...t, _idx: i })),
-        getPosition: (t: TerritoryState & { _idx: number }) => {
-          const col = t._idx % gridSize;
-          const row = Math.floor(t._idx / gridSize);
-          return [
-            INITIAL_VIEW_STATE.longitude - 10 + (col / gridSize) * 20,
-            INITIAL_VIEW_STATE.latitude + 5 - (row / gridSize) * 10,
-          ] as [number, number];
-        },
-        getFillColor: getColor,
-        getRadius: 30000,
-        radiusMinPixels: 12,
-        radiusMaxPixels: 40,
-        opacity: layerOpacity,
-        pickable: true,
-        autoHighlight: true,
-        highlightColor: [200, 168, 96, 180],
-        updateTriggers: {
-          getFillColor: [lens, factionFilter],
-        },
-      }),
-    ];
+    return buildScatterFallbackLayers({
+      politicalLayers,
+      territories,
+      getColor,
+      layerOpacity,
+      lens,
+      factionFilter,
+    });
   }, [
     territories,
     hasH3,
@@ -417,74 +953,45 @@ export function DeckGLMap({
     lensResult,
     framing,
     regionFeatures,
-    fillDomain,
+    effectiveFillDomain,
+    politicalLayers,
   ]);
+
+  // Critical-event pulses ride ABOVE the base map so the rupture cue is never
+  // occluded by fills/hulls. `pulseLayers` is a stable-empty array at rest
+  // (memoized in `useCriticalPulses`), so this memo — and the deck.gl layer
+  // list it feeds — is referentially unchanged while nothing is rupturing
+  // (DeckGLMap's render/stability contract, architecture §3.3).
+  const allLayers = useMemo(() => [...layers, ...pulseLayers], [layers, pulseLayers]);
 
   return (
     <div className="relative flex h-full flex-col">
-      {/* Controls */}
-      <div className="absolute left-3 top-3 z-10 flex flex-col gap-2 rounded-md bg-void/80 p-2 backdrop-blur-sm">
-        <MapLegend lens={lens} />
-        {showLensLegendLabel && (
-          <span
-            data-testid="lens-legend-label"
-            className="text-[10px] uppercase tracking-wider text-ash"
-          >
-            {lensResult.legendLabel}
-          </span>
-        )}
-      </div>
-
-      {/* Political-topology lens mode selector + admin framing scale */}
-      <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
-        <MapModeSelector
-          lens={lens}
-          onLensChange={onLensChange}
-          factionFilter={factionFilter}
-          onFactionFilterChange={onFactionFilterChange}
-          factions={balkanization?.factions}
-        />
-        <FramingSelector framing={framing} onFramingChange={onFramingChange} />
-      </div>
+      <MapControls
+        lens={lens}
+        onLensChange={onLensChange}
+        factionFilter={factionFilter}
+        onFactionFilterChange={onFactionFilterChange}
+        factions={balkanization?.factions}
+        framing={framing}
+        onFramingChange={onFramingChange}
+        availability={{ balkanization, availableMetrics }}
+        currentValue={currentValue}
+        flash={legendFlash}
+        legendStatusText={showLensLegendLabel ? lensResult.legendLabel : null}
+        rampEmpty={rampEmpty}
+      />
 
       {/* Map */}
       <div className="flex-1">
         <DeckGL
           initialViewState={INITIAL_VIEW_STATE}
           controller={true}
-          layers={layers}
-          onHover={(info) => {
-            if (!info.object) {
-              setHoverInfo(null);
-            } else if (framing !== "hex") {
-              const feature = info.object as RegionFeature;
-              setHoverInfo({
-                kind: "region",
-                properties: feature.properties,
-                x: info.x,
-                y: info.y,
-              });
-            } else {
-              setHoverInfo({
-                kind: "territory",
-                territory: info.object as TerritoryState,
-                x: info.x,
-                y: info.y,
-              });
-            }
-          }}
-          onClick={(info) => {
-            // Region clicks have no territory-selection meaning (spec-112
-            // C5 only specifies hover for regions) — no-op rather than
-            // misinterpreting a region feature as a TerritoryState.
-            if (info.object && framing === "hex") {
-              const territoryId = (info.object as TerritoryState).id;
-              onTerritoryClick?.(territoryId);
-            }
-          }}
+          layers={allLayers}
+          onHover={(info) => setHoverInfo(resolveHoverInfo(info, framing))}
+          onClick={(info) => handleMapClick(info, framing, onTerritoryClick)}
           style={{ position: "relative", width: "100%", height: "100%" }}
         >
-          <Map mapStyle={MAP_STYLE} />
+          <MapLibreMap mapStyle={MAP_STYLE} />
         </DeckGL>
       </div>
 

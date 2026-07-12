@@ -100,7 +100,7 @@ export function ObjectivesTracker({ gameId }: Props) {
       {error && <div className="objectives-empty">Error: {error}</div>}
 
       {tracker.objectives.length === 0 && !loading && !error && (
-        <div className="objectives-empty">No active objectives.</div>
+        <div className="objectives-empty">No objectives declared this session.</div>
       )}
 
       <div className="objectives-grid">

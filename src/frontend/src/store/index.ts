@@ -14,6 +14,8 @@ import { createMapSlice } from "./slices/mapSlice";
 import { createPanelsSlice } from "./slices/panels";
 import { createUiSlice } from "./slices/uiSlice";
 import { createActionsSlice } from "./slices/actionsSlice";
+import { createInspectSlice } from "./slices/inspectSlice";
+import { createEventsSlice } from "./slices/eventsSlice";
 
 export const useStore = create<RootState>()((...a) => ({
   ...createSessionSlice(...a),
@@ -23,12 +25,16 @@ export const useStore = create<RootState>()((...a) => ({
   ...createPanelsSlice(...a),
   ...createUiSlice(...a),
   ...createActionsSlice(...a),
+  ...createInspectSlice(...a),
+  ...createEventsSlice(...a),
 }));
 
 export type { RootState } from "./types";
-export type { Selection } from "./slices/mapSlice";
+// Selection / InspectionFrame are deliberately NOT re-exported here: every
+// consumer imports them from their slice files directly (spec-113 Lane G
+// dead-export finding — orchestrator removal).
 export type { TimeStatus } from "./slices/timeSlice";
-export type { DockTab, RightDockTab, TakeoverKind } from "./slices/uiSlice";
+export type { TakeoverKind } from "./slices/uiSlice";
 export type { PanelKey, TakeoverPanelKey, InspectorKind } from "./slices/panels";
 export type { Panel, PanelState } from "./slices/panels/panelFactory";
 export type { PendingActionEntry } from "./slices/actionsSlice";

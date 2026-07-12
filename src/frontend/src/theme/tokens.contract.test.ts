@@ -170,3 +170,74 @@ describe("C6 — each lens resolves to its canon ramp (unified Lens union)", () 
     expect(lensRampStops({ kind: "collapse" })).toBeNull();
   });
 });
+
+/**
+ * C7 — KSBC Installer chrome tokens (Program 16 / spec-113, Lane
+ * SKIN-CHROME, DESIGN_BIBLE.md §9b). ADDITIVE to the C1-C6 canon contract
+ * above — never edits it. Percy's Kitty theme `ksbc-new`, verbatim values.
+ */
+describe("C7 — KSBC Installer chrome tokens present in index.css (`--ksbc-*` role tokens)", () => {
+  const KSBC_TOKENS: Record<string, string> = {
+    "--ksbc-field": "#1a0000",
+    "--ksbc-ink": "#e8e8e8",
+    "--ksbc-accent-crimson": "#dc143c",
+    "--ksbc-accent-gold": "#ffd700",
+    "--ksbc-key-shadow": "#000000",
+    "--ksbc-muted-1": "#404040",
+    "--ksbc-muted-2": "#c0c0c0",
+    "--ksbc-muted-3": "#202020",
+    "--ksbc-green": "#228b22",
+    "--ksbc-green-bright": "#32cd32",
+    "--ksbc-royal": "#4169e1",
+    "--ksbc-cyan": "#008b8b",
+  };
+  for (const [name, value] of Object.entries(KSBC_TOKENS)) {
+    it(`${name} = ${value}`, () => {
+      const re = new RegExp(`${name}\\s*:\\s*${value}`, "i");
+      expect(cssLower).toMatch(re);
+    });
+  }
+
+  it("semantic aliases bind selection to gold-on-black and urgency to crimson", () => {
+    expect(cssLower).toMatch(/--ksbc-selection-bg:\s*var\(--ksbc-accent-gold\)/);
+    expect(cssLower).toMatch(/--ksbc-selection-ink:\s*var\(--ksbc-key-shadow\)/);
+    expect(cssLower).toMatch(/--ksbc-urgency:\s*var\(--ksbc-accent-crimson\)/);
+  });
+
+  it("exposes the ksbc tokens as Tailwind @theme utilities (--color-field etc.)", () => {
+    for (const themeName of [
+      "--color-field",
+      "--color-plate",
+      "--color-ink",
+      "--color-accent-crimson",
+      "--color-accent-gold",
+      "--color-key-shadow",
+      "--color-selection-bg",
+      "--color-selection-ink",
+      "--color-urgency",
+    ]) {
+      expect(cssLower).toMatch(new RegExp(`${themeName}\\s*:\\s*var\\(--ksbc-`, "i"));
+    }
+  });
+});
+
+describe("C8 — Installer juice keyframes present in index.css (Lane SKIN-CHROME owns all of them)", () => {
+  const KEYFRAME_NAMES = [
+    "installer-blink",
+    "toast-slam",
+    "alert-throb",
+    "claim-shimmer",
+    "tick-pulse",
+    "crt-reveal",
+    "legend-flash",
+  ];
+  for (const name of KEYFRAME_NAMES) {
+    it(`@keyframes ${name} is defined`, () => {
+      expect(cssLower).toMatch(new RegExp(`@keyframes\\s+${name}\\s*{`));
+    });
+  }
+
+  it("a global prefers-reduced-motion block kills loops and reduces one-shots to fades", () => {
+    expect(cssLower).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+  });
+});

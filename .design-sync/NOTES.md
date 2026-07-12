@@ -126,3 +126,39 @@ Repo-specific gotchas for future syncs. One bullet per fact.
 - `GameSnapshot.endgame` (types/game.ts) is a dead field with zero readers —
   the real endgame path is `panels.endgame` reading `types/dialectic.ts`.
   Don't "fix" previews toward the dead field.
+
+## spec-113 Living Map re-sync (2026-07-11 — 49 → 59 components)
+
+- **9 components REMOVED** (shell teardown deleted their source): `BottomStrip`
+  (→ BottomDrawer), `StatusBar` (→ TopBar), `InspectorPanel` (→ InspectionCard/
+  InspectionStack), `MapModeSelector` (→ MapLensBar), `MapPanel` (→ MapStage,
+  out), `RightDock`, `ConsciousnessBreakdown`, `Stat` (→ ValueRow), plus
+  `DeckGLMap` (see below). All dropped from `componentSrcMap` + `overrides` +
+  `previews/` and deleted from the remote. A stale `componentSrcMap` entry whose
+  source is gone still EMITS a broken card (undefined export → `[RENDER]`/`bad`),
+  so prune the map when app components are deleted.
+- **DeckGLMap + MapStage stay OUT of the bundle by design** — the barrel
+  (`design-sync.entry.tsx`) excludes them because maplibre/deck.gl throw at
+  module-eval in headless, which drops the WHOLE bundle export →
+  `[BUNDLE_EXPORT] not a component: DeckGLMap`. `skip` does NOT clear
+  `[BUNDLE_EXPORT]` (it's a bundle-eval check, not a render check). Fix =
+  `componentSrcMap.DeckGLMap: null`
+  so it's not in `headerMeta.components`. The map CHROME (MapControls, MapLensBar,
+  MapLegend, HexTooltip, FramingSelector) is pure DOM/SVG and stays.
+- **Framework refactors silently stale UNCHANGED components' previews.** MapLegend
+  is `unchanged` by sourceKey (its `.d.ts` didn't move) yet rendered `bad`: the
+  spec-113 lens rewrite changed its API from `lens` → `legend: LensLegend`+`label`
+  (`@/lib/lenses/registry`), so the old preview passed a dead prop → `undefined.kind`.
+  After ANY lens/store refactor, eyeball the map/inspector previews even if the
+  driver calls them unchanged.
+- **Iosevka Nerd Font** (owner-approved 2026-07-11) resolves the `[FONT_MISSING]`
+  fallback families (IBM Plex Mono, VT323, Major Mono Display, DIN Alternate, DIN
+  Next). `.design-sync/nerd-fonts.css` aliases all five to a Latin+box-drawing
+  subset at `.design-sync/fonts-nerd/iosevka-nerd-mono.woff`, wired via
+  `extraFonts`. No `brotli` in this env → fonttools emits **woff, not woff2**
+  (`python3 -m fontTools.subset … --flavor=woff`); source ttf is
+  `~/.fonts/Iosevka Terminal/IosevkaTermNerdFontMono-Regular.ttf` (13 MB full).
+- Grade lifecycle gotcha: the prep session captured but never wrote
+  `.grade.json` (only the `<Name>.json` bookkeeping, `pendingGrade:true`). A full
+  re-sync re-captures added+changed and re-lists them as pendingGrade — grade
+  them from `_screenshots/review/*.png` (all 20 → good this run).

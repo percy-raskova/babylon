@@ -55,6 +55,9 @@ jobs:
       - name: Repo hygiene gate
         run: mise run check:hygiene
 
+      - name: Seam continuity gate (Sensor 1 — VIII.12)
+        run: mise run check:seams
+
       - name: Lint (ruff check)
         run: mise run lint:check
 

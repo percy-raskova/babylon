@@ -237,8 +237,8 @@ def run_simulation(
     has been replaced by a routed call to
     :func:`babylon.engine.headless_runner.run`, which performs a real
     Postgres-backed simulation. Result keys preserve
-    the legacy dict shape so downstream tools (``tools/monte_carlo.py``,
-    ``tools/parameter_analysis.py``, etc.) continue to compile, but
+    the legacy dict shape so downstream tools (``tools/parameter_analysis.py``,
+    ``tools/necropolis_viewer.py``, etc.) continue to compile, but
     several fields are degraded since the headless MVP runner does not
     yet compute them — see ``Returns`` below for the per-field status.
 

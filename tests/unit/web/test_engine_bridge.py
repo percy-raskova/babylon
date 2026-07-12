@@ -711,6 +711,77 @@ class TestHexStateProjection:
         assert rows.first().tick == 7
 
     @patch("game.engine_bridge.step")
+    def test_resolve_tick_upsert_updates_phi_columns_on_second_write(
+        self, mock_step: MagicMock
+    ) -> None:
+        """Program 17 / Item 1a-followup: ``_persist_hex_state_safe``'s bulk_create
+        ``update_fields`` omitted profit_rate/exploitation_rate/occ/imperial_rent,
+        so once Phi went non-zero these 4 columns populated on the FIRST insert
+        but froze on every later tick's UPSERT (the map reads hex_latest). A
+        second resolve_tick with DIFFERENT tick_-attr values must actually move
+        these columns, not leave them stuck at the first tick's numbers.
+        """
+        from babylon.models.entities import Territory
+        from babylon.models.enums import SectorType
+        from game.models import HexState
+
+        self._make_session_row()
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+
+        cell = "862a91a17ffffff"  # 15-char lowercase hex, matches Territory pattern
+        territory = Territory(
+            id=cell, h3_index=cell, name="Test Hex", sector_type=SectorType.INDUSTRIAL
+        )
+
+        mock_new_state_1 = _make_mock_new_state(tick=1)
+        mock_new_state_1.territories = {cell: territory}
+        graph_tick1 = BabylonGraph()
+        graph_tick1.add_node(
+            cell,
+            node_type="territory",
+            tick_profit_rate=0.10,
+            tick_exploitation_rate=0.20,
+            tick_occ=0.30,
+            tick_phi_hour=0.40,
+        )
+        mock_new_state_1.to_graph.return_value = graph_tick1
+        mock_step.return_value = mock_new_state_1
+
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        row = HexState.objects.get(game_id=self._SID, h3_index=cell)
+        assert row.profit_rate == pytest.approx(0.10)
+        assert row.exploitation_rate == pytest.approx(0.20)
+        assert row.occ == pytest.approx(0.30)
+        assert row.imperial_rent == pytest.approx(0.40)
+
+        # Second tick: DIFFERENT values. Before the fix, these 4 columns
+        # would stay frozen at the first tick's numbers on this UPSERT.
+        mock_new_state_2 = _make_mock_new_state(tick=2)
+        mock_new_state_2.territories = {cell: territory}
+        graph_tick2 = BabylonGraph()
+        graph_tick2.add_node(
+            cell,
+            node_type="territory",
+            tick_profit_rate=0.55,
+            tick_exploitation_rate=0.65,
+            tick_occ=0.75,
+            tick_phi_hour=0.85,
+        )
+        mock_new_state_2.to_graph.return_value = graph_tick2
+        mock_step.return_value = mock_new_state_2
+
+        bridge.resolve_tick(self._SID)
+
+        row.refresh_from_db()
+        assert row.profit_rate == pytest.approx(0.55)
+        assert row.exploitation_rate == pytest.approx(0.65)
+        assert row.occ == pytest.approx(0.75)
+        assert row.imperial_rent == pytest.approx(0.85)
+
+    @patch("game.engine_bridge.step")
     def test_resolve_tick_skips_territories_without_h3(self, mock_step: MagicMock) -> None:
         """two_node-style territories (h3_index=None) must be skipped, not crash."""
         from babylon.models.entities import Territory

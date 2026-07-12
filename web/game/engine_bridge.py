@@ -5459,6 +5459,16 @@ def _persist_hex_state_safe(
                 "org_count",
                 "pop_total",
                 "attributes",
+                # Program 17 / Item 1a-followup: these 4 columns were being
+                # set correctly on first INSERT but silently FROZEN on every
+                # later tick's UPSERT (omitted here means Postgres's ON
+                # CONFLICT ... DO UPDATE never touches them again) — once Φ
+                # went non-zero, the map's imperial-rent lens stopped
+                # animating after tick 0.
+                "profit_rate",
+                "exploitation_rate",
+                "occ",
+                "imperial_rent",
             ],
         )
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution

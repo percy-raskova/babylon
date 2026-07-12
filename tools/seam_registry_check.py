@@ -14,14 +14,20 @@ is layer-0.5 pure Python, so importing it carries no engine/web weight). Keeping
 it static is what lets it live in the always-on dev fast-gate (``mise run
 check`` -> ``check:seams``).
 
-Phase 1 ships one check — ``check_map_metrics`` — reconciling the registry's
-``MAP``-scope wire keys against ``web/game/map_contract.py``'s
-``MAP_METRIC_PROPERTIES`` (the spec-109 A3 single source of truth). Later phases
-add ``check_tick_attrs`` / ``check_event_tables`` / ``check_bridge_serialization``.
+Checks come in two tiers. **Gating** checks red the fast-gate (exit 1):
+``check_map_metrics`` (registry MAP-scope keys vs ``map_contract.py``'s
+``MAP_METRIC_PROPERTIES``) and ``check_tick_payloads_exist`` (every registered
+``tick_*`` payload exists in the engine write-set). **Advisory** checks print
+loudly but do NOT gate — they surface pre-existing drift that awaits an owner
+fix-vs-allowlist ruling before promotion: ``check_tick_coverage`` (engine
+``tick_*`` writes not yet registered) and ``check_event_tables`` (narrator /
+severity / converter vocabularies drifted from the ``EventType`` enum). Phase 3
+adds ``check_bridge_serialization``.
 
-Run: ``poetry run python tools/seam_registry_check.py --check``. Exit 0 = clean,
-1 = violations (printed to stderr), 2 = infrastructure failure (source missing
-or unparseable — itself a loud failure, never swallowed).
+Run: ``poetry run python tools/seam_registry_check.py --check``. Exit 0 = clean
+(gating passed; advisory findings may still print), 1 = gating violations,
+2 = infrastructure failure (source missing or unparseable — itself a loud
+failure, never swallowed).
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from babylon.models.enums.events import EventType
 from babylon.seams.registry import SEAM_REGISTRY
 from babylon.seams.types import SeamEntry, SeamScope
 
@@ -41,6 +48,16 @@ _REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 #: The spec-109 A3 map contract — the single source of truth for /map/ lenses.
 _MAP_CONTRACT_PATH: Path = _REPO_ROOT / "web" / "game" / "map_contract.py"
 _MAP_CONTRACT_VAR: str = "MAP_METRIC_PROPERTIES"
+
+#: The engine's per-territory ``tick_*`` write-site (``update_node`` kwargs).
+_GRAPH_BRIDGE_PATH: Path = (
+    _REPO_ROOT / "src" / "babylon" / "domain" / "economics" / "tick" / "graph_bridge.py"
+)
+#: The two capped event vocabularies that silently default when they drift.
+_NARRATOR_PATH: Path = _REPO_ROOT / "web" / "game" / "narrator.py"
+_ENGINE_BRIDGE_PATH: Path = _REPO_ROOT / "web" / "game" / "engine_bridge.py"
+#: The bus-event -> pydantic converter (an unhandled EventType drops to None).
+_SIM_ENGINE_PATH: Path = _REPO_ROOT / "src" / "babylon" / "engine" / "simulation_engine.py"
 
 
 class SeamCheckError(RuntimeError):
@@ -99,6 +116,109 @@ def _literal_str_tuple(path: Path, var_name: str) -> tuple[str, ...]:
     raise SeamCheckError(f"{path}: no module-level assignment to {var_name!r} found")
 
 
+def _literal_dict_keys(path: Path, var_name: str) -> tuple[str, ...]:
+    """Statically extract the string keys of a module-level ``dict`` literal.
+
+    :param path: Source file to parse.
+    :param var_name: The assigned name whose ``dict`` literal to read.
+    :returns: The string-literal keys, in source order (non-literal keys — e.g.
+        ``EventType.X.value`` — are skipped, so a computed-key map yields an
+        empty tuple rather than raising).
+    :raises SeamCheckError: If the file is missing/unparseable, the name is
+        absent, or its value is not a dict literal.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except OSError as exc:
+        raise SeamCheckError(f"cannot read {path}: {exc}") from exc
+    except SyntaxError as exc:
+        raise SeamCheckError(f"cannot parse {path}: {exc}") from exc
+
+    for node in tree.body:
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if value is None or not any(isinstance(t, ast.Name) and t.id == var_name for t in targets):
+            continue
+        if not isinstance(value, ast.Dict):
+            raise SeamCheckError(f"{path}:{var_name} is not a dict literal")
+        return tuple(
+            k.value for k in value.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)
+        )
+    raise SeamCheckError(f"{path}: no module-level assignment to {var_name!r} found")
+
+
+def _tick_write_set(path: Path) -> set[str]:
+    """Collect the ``tick_*`` keyword names the engine writes via ``update_node``.
+
+    This is the engine side of the seam — the per-territory state the tick
+    dynamics stamp onto graph nodes. Extracted statically (no engine run) by
+    walking every ``*.update_node(...)`` call and taking its ``tick_``-prefixed
+    keyword arguments.
+
+    :param path: The ``graph_bridge.py`` source to parse.
+    :returns: The set of ``tick_*`` attribute names written.
+    :raises SeamCheckError: If the source is missing or unparseable.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except OSError as exc:
+        raise SeamCheckError(f"cannot read {path}: {exc}") from exc
+    except SyntaxError as exc:
+        raise SeamCheckError(f"cannot parse {path}: {exc}") from exc
+
+    keys: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "update_node"
+        ):
+            for kw in node.keywords:
+                if kw.arg is not None and kw.arg.startswith("tick_"):
+                    keys.add(kw.arg)
+    return keys
+
+
+def _eventtype_names_in_func(path: Path, func_name: str) -> set[str]:
+    """Collect the ``EventType.<NAME>`` members referenced inside a function.
+
+    Used to measure how many ``EventType`` members a dispatcher (e.g.
+    ``_convert_bus_event_to_pydantic``) actually handles — the rest fall through
+    to a silent default.
+
+    :param path: The source file to parse.
+    :param func_name: The function whose body to scan.
+    :returns: The set of referenced ``EventType`` member names.
+    :raises SeamCheckError: If the source is missing or unparseable.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except OSError as exc:
+        raise SeamCheckError(f"cannot read {path}: {exc}") from exc
+    except SyntaxError as exc:
+        raise SeamCheckError(f"cannot parse {path}: {exc}") from exc
+
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
+            for sub in ast.walk(node):
+                if (
+                    isinstance(sub, ast.Attribute)
+                    and isinstance(sub.value, ast.Name)
+                    and sub.value.id == "EventType"
+                ):
+                    names.add(sub.attr)
+    return names
+
+
 def _registry_wire_keys(scope: SeamScope, registry: tuple[SeamEntry, ...]) -> set[str]:
     """Collect every wire key registered under ``scope``.
 
@@ -144,9 +264,112 @@ def check_map_metrics(registry: tuple[SeamEntry, ...] = SEAM_REGISTRY) -> list[s
     return violations
 
 
-#: Every Sensor-1 check: ``(human label, zero-arg callable -> violations)``.
-_CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
+def check_tick_payloads_exist(registry: tuple[SeamEntry, ...] = SEAM_REGISTRY) -> list[str]:
+    """Every registered ``tick_*`` payload must exist in the engine write-set.
+
+    The engine side of the seam: a registry row may declare its payload is the
+    graph attribute ``tick_phi_hour``; this asserts the engine actually writes
+    that attribute (via ``graph_bridge.py``'s ``update_node``). Catches a row
+    citing a renamed or removed engine attribute — a dead payload that would
+    read null forever.
+
+    :param registry: The registry to check (injectable for tests).
+    :returns: Sorted violation strings (empty when every tick_* payload exists).
+    :raises SeamCheckError: If ``graph_bridge.py`` cannot be parsed.
+    """
+    write_set = _tick_write_set(_GRAPH_BRIDGE_PATH)
+    violations: list[str] = []
+    for entry in registry:
+        if entry.payload.startswith("tick_") and entry.payload not in write_set:
+            violations.append(
+                f"registry {entry.key!r} declares payload {entry.payload!r} but the engine "
+                f"tick write-set has no such attr (renamed/removed in graph_bridge.py?)"
+            )
+    return sorted(violations)
+
+
+def check_tick_coverage() -> list[str]:
+    """ADVISORY: engine ``tick_*`` writes not registered as observables.
+
+    Surfaces the "neglected seam" gap — quantities the engine computes and
+    stamps onto the graph that no registry row claims. Advisory because whether
+    each actually crosses the seam to the player is decided by the Phase-3
+    bridge-serialization sweep; this makes the candidate surface *visible* now.
+
+    :returns: One advisory string per unregistered ``tick_*`` write.
+    :raises SeamCheckError: If ``graph_bridge.py`` cannot be parsed.
+    """
+    write_set = _tick_write_set(_GRAPH_BRIDGE_PATH)
+    registered_payloads = {entry.payload for entry in SEAM_REGISTRY}
+    return [
+        f"engine writes tick attr {attr!r}, not registered as an observable "
+        f"(Phase 3 decides whether it crosses the seam)"
+        for attr in sorted(write_set - registered_payloads)
+    ]
+
+
+def check_event_tables() -> list[str]:
+    """ADVISORY: event vocabularies that drift from the ``EventType`` enum.
+
+    The engine's ``EventType`` (79 members) is the canonical event vocabulary;
+    three downstream tables must agree with it or a real event silently defaults:
+
+    - ``narrator._TEMPLATES`` keyed on a non-``EventType`` string renders no
+      bespoke story (falls to the generic template) — dead, or a ``GameOutcome``
+      value conflated as an event type.
+    - ``_EVENT_SEVERITY`` keyed on a non-``EventType`` string can never match a
+      real event, so that event defaults to ``"informational"``.
+    - ``_convert_bus_event_to_pydantic`` not handling an ``EventType`` drops that
+      event to ``None`` at the bus->pydantic boundary — it never reaches the wire.
+
+    Advisory until the owner rules fix-vs-allowlist per finding (build plan 2b);
+    ``EVENT_CLASS_MAP`` is intentionally excluded — its keys are computed
+    (``EventType.X.value``), not static literals, and it has a safe class fallback.
+
+    :returns: Advisory strings, most-actionable first.
+    :raises SeamCheckError: If a scanned source cannot be parsed.
+    """
+    event_values = {e.value for e in EventType}
+    event_names = {e.name for e in EventType}
+    findings: list[str] = []
+
+    templates = set(_literal_dict_keys(_NARRATOR_PATH, "_TEMPLATES"))
+    for key in sorted(templates - event_values):
+        findings.append(
+            f"narrator._TEMPLATES key {key!r} is not an EventType value — dead template "
+            f"or GameOutcome conflated as an event type"
+        )
+
+    severity = set(_literal_dict_keys(_ENGINE_BRIDGE_PATH, "_EVENT_SEVERITY"))
+    for key in sorted(severity - event_values):
+        findings.append(
+            f"_EVENT_SEVERITY key {key!r} is not an EventType value — matching events "
+            f"silently default to 'informational'"
+        )
+
+    handled = _eventtype_names_in_func(_SIM_ENGINE_PATH, "_convert_bus_event_to_pydantic")
+    unhandled = sorted(event_names - handled)
+    if unhandled:
+        findings.append(
+            f"_convert_bus_event_to_pydantic handles {len(handled)}/{len(event_names)} EventTypes; "
+            f"{len(unhandled)} drop to None at the bus->pydantic boundary (never reach the wire): "
+            f"{', '.join(unhandled)}"
+        )
+    return findings
+
+
+#: Gating Sensor-1 checks: a violation reds the dev fast-gate (exit 1).
+_GATING_CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("map metric not reconciled with MAP_METRIC_PROPERTIES", check_map_metrics),
+    ("registered tick_* payload missing from the engine write-set", check_tick_payloads_exist),
+)
+
+#: Advisory Sensor-1 checks: findings are printed loudly but do NOT gate — the
+#: surfaced drift is pre-existing and awaits an owner fix-vs-allowlist ruling
+#: (build plan 2b) before it is promoted into ``_GATING_CHECKS``.
+_ADVISORY_CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
+    ("engine tick_* write not registered as an observable", check_tick_coverage),
+    ("event vocabulary drifted from the EventType enum", check_event_tables),
 )
 
 
@@ -166,18 +389,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.parse_args(argv)
 
     exit_code = 0
-    for label, check in _CHECKS:
-        try:
-            violations = check()
-        except SeamCheckError as exc:
-            print(f"SEAM SENSOR-1 ERROR: {exc}", file=sys.stderr)
-            return 2
-        for violation in violations:
-            print(f"SEAM VIOLATION [{label}]: {violation}", file=sys.stderr)
-            exit_code = 1
+    try:
+        for label, check in _GATING_CHECKS:
+            for violation in check():
+                print(f"SEAM VIOLATION [{label}]: {violation}", file=sys.stderr)
+                exit_code = 1
+        advisory_count = 0
+        for label, check in _ADVISORY_CHECKS:
+            for finding in check():
+                print(f"SEAM ADVISORY [{label}]: {finding}", file=sys.stderr)
+                advisory_count += 1
+    except SeamCheckError as exc:
+        print(f"SEAM SENSOR-1 ERROR: {exc}", file=sys.stderr)
+        return 2
 
     if exit_code == 0:
-        print(f"Seam continuity (Sensor 1): clean — {len(SEAM_REGISTRY)} registered observables.")
+        summary = (
+            f"Seam continuity (Sensor 1): clean — {len(SEAM_REGISTRY)} registered observables."
+        )
+        if advisory_count:
+            summary += f" ({advisory_count} advisory findings above — pre-existing, non-gating.)"
+        print(summary)
     return exit_code
 
 

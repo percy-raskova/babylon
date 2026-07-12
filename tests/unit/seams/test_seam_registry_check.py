@@ -104,3 +104,69 @@ def test_missing_source_is_infrastructure_error_not_violation() -> None:
     """A missing/unparseable source raises SeamCheckError (exit 2), never a silent pass."""
     with pytest.raises(sensor1.SeamCheckError):
         sensor1._literal_str_tuple(Path("/nonexistent/does_not_exist.py"), "X")
+
+
+# --- Phase 2: tick_* payload existence (gating) + coverage/event advisories ---
+
+
+def test_tick_write_set_extracts_engine_attrs() -> None:
+    """The static tick write-set extractor reads the engine's update_node kwargs."""
+    write_set = sensor1._tick_write_set(sensor1._GRAPH_BRIDGE_PATH)
+    assert "tick_phi_hour" in write_set
+    assert "tick_median_wage" in write_set
+    assert len(write_set) >= 30  # the engine stamps ~30 tick_* attrs per territory
+
+
+def test_registered_tick_payloads_exist_in_engine() -> None:
+    """Every shipped tick_* payload is actually written by the engine (green)."""
+    assert sensor1.check_tick_payloads_exist() == []
+
+
+def test_dead_tick_payload_is_flagged() -> None:
+    """A registry row citing a non-existent engine tick attr reds the gate (efficacy)."""
+    dead = SeamEntry(
+        payload="tick_does_not_exist",
+        wire_keys=("phantom",),
+        scope=SeamScope.MAP,
+        owner_layer="test",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+    )
+    violations = sensor1.check_tick_payloads_exist(registry=(dead,))
+    assert len(violations) == 1
+    assert "tick_does_not_exist" in violations[0]
+
+
+def test_tick_coverage_advisory_lists_unregistered_engine_attrs() -> None:
+    """The coverage advisory surfaces engine tick_* writes with no registry row."""
+    findings = sensor1.check_tick_coverage()
+    joined = "\n".join(findings)
+    assert "tick_median_wage" in joined  # a real unregistered engine attr
+    assert "tick_phi_hour" not in joined  # registered (map.imperial_rent) — excluded
+
+
+def test_event_tables_advisory_flags_non_eventtype_vocabulary() -> None:
+    """The event advisory catches templates/severity keys that are not EventTypes."""
+    findings = sensor1.check_event_tables()
+    # A dead narrator template key and the bus->pydantic coverage gap.
+    assert any("_TEMPLATES" in f and "eviction_pipeline" in f for f in findings)
+    assert any("_convert_bus_event_to_pydantic" in f and "drop to None" in f for f in findings)
+
+
+def test_dict_keys_helper_reads_narrator_templates() -> None:
+    """The dict-key extractor reads a real module-level dict literal."""
+    keys = sensor1._literal_dict_keys(sensor1._NARRATOR_PATH, "_TEMPLATES")
+    assert "uprising" in keys
+
+
+def test_cli_still_exits_zero_despite_advisories() -> None:
+    """Advisory findings print but MUST NOT gate — the CLI still exits 0."""
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell, trusted path
+        [sys.executable, str(_TOOL_PATH), "--check"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert "SEAM ADVISORY" in result.stderr  # advisories are being emitted
+    assert "advisory findings above" in result.stdout  # and summarized, non-gating

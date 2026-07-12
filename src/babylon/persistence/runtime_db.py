@@ -202,7 +202,7 @@ class RuntimeDatabase:
                         """,
                         (
                             tick,
-                            event.get("type", "UNKNOWN"),
+                            event.get("event_type", "UNKNOWN"),
                             event.get("entity_id"),
                             json.dumps(event, default=json_default),
                         ),

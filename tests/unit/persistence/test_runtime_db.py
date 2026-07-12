@@ -364,6 +364,36 @@ class TestEventPersistence:
             assert all_events[1]["type"] == "B"
             assert all_events[2]["type"] == "C"
 
+    def test_persist_events_populates_event_type_column(self) -> None:
+        """The ``event_type`` SQL column reads the ``event_type`` key, not ``type``.
+
+        A real ``SimulationEvent.model_dump(mode="json")`` dict never has a
+        ``type`` key (the field is ``event_type``) -- a prior typo read
+        ``event.get("type", "UNKNOWN")`` and silently stored "UNKNOWN" for
+        every real event. This asserts the raw SQL column, not
+        ``get_events()`` (which only ever reads the ``details`` JSON blob
+        and would not have caught this bug).
+        """
+        with RuntimeDatabase(in_memory=True) as db:
+            graph: nx.DiGraph = BabylonGraph()
+            events = [
+                {
+                    "event_type": "fascist_drift",
+                    "tick": 0,
+                    "timestamp": "2026-07-08T01:00:00",
+                    "node_id": "w1",
+                },
+            ]
+            db.persist_tick(tick=0, graph=graph, events=events)
+
+            cursor = db.con.execute(
+                "SELECT event_type FROM events WHERE tick = ?",
+                (0,),
+            )
+            rows = cursor.fetchall()
+            assert len(rows) == 1
+            assert rows[0][0] == "fascist_drift"
+
 
 class TestTickSummaryRecording:
     """Tests for tick_summary recording (legacy API compatibility)."""

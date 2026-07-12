@@ -8,6 +8,15 @@
 # checks the ruleset requires, not merely because the workflow ran.
 # `main` never receives a Dependabot PR directly; it only receives changes
 # via the fast-forward promotion (`tools/promote.sh`) once `dev` is green.
+#
+# CONFIG-AUTHORITY INVARIANT (2026-07-12): Dependabot reads THIS FILE — every
+# `target-branch` and every `ignore` below — from the repository's DEFAULT
+# branch ONLY. The default branch is now `dev` (changed from `main` on
+# 2026-07-12) precisely so rule/ignore edits take effect the moment they land
+# on `dev`, with no promotion required. If the default branch is ever moved
+# back to `main`, edits here go INERT until promoted — the Program-15
+# "promote before closing" gotcha. Keep the default branch = the branch you
+# edit this file on.
 
 version: 2
 updates:

@@ -4578,8 +4578,17 @@ def _carry_tick_dynamics_flows(
             ``_tick_dynamics`` (graph-level ``TickDynamicsSystem`` output)
             when a boundary ran.
     """
+    from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
+
     tick_dynamics = persistent_context.get("_tick_dynamics")
     county_states = tick_dynamics.get("county_states") if isinstance(tick_dynamics, dict) else None
+    # national_params is stashed alongside county_states by write_tick_state_to_graph
+    # (graph_bridge.py); it carries tau/v_reproduction — the other half of what
+    # DerivedRateCalculator needs to recompute the per-county derived rates.
+    national_params = (
+        tick_dynamics.get("national_params") if isinstance(tick_dynamics, dict) else None
+    )
+    rate_calc = DerivedRateCalculator()
 
     for node_id, node_data in new_graph.nodes(data=True):
         if node_data.get("_node_type") != "territory":
@@ -4590,6 +4599,20 @@ def _carry_tick_dynamics_flows(
 
         if county_states is not None and fips in county_states:
             county = county_states[fips]
+            # Derived rates (profit_rate/occ/exploitation_rate) are computed by
+            # write_tick_state_to_graph at the boundary but stripped by the
+            # WorldState round-trip; recompute them the SAME way here so the
+            # profit/occ/exploitation map lenses survive to persistence, not just
+            # imperial_rent (tick_phi_hour). national_params is present whenever
+            # county_states is (both stashed together), but guard defensively.
+            rate_updates: dict[str, Any] = {}
+            if national_params is not None:
+                rates = rate_calc.compute_county_rates(county, national_params)
+                rate_updates = {
+                    "tick_profit_rate": rates.profit_rate,
+                    "tick_occ": rates.organic_composition,
+                    "tick_exploitation_rate": rates.exploitation_rate,
+                }
             new_graph.update_node(
                 node_id,
                 tick_capital_stock=county.capital_stock,
@@ -4599,6 +4622,7 @@ def _carry_tick_dynamics_flows(
                 tick_year=county.year,
                 flow_phi_accrued=0.0,
                 flow_wage_accrued=0.0,
+                **rate_updates,
             )
             continue
 
@@ -4625,6 +4649,12 @@ def _carry_tick_dynamics_flows(
             tick_year=old_data.get("tick_year"),
             flow_phi_accrued=prior_phi + annual_phi / WEEKS_PER_YEAR,
             flow_wage_accrued=prior_wage + annual_wage / WEEKS_PER_YEAR,
+            # Derived rates are annual (recomputed only at boundaries); carry the
+            # last boundary's values forward so the lenses don't flicker to None
+            # for the 51 ticks between boundaries.
+            tick_profit_rate=old_data.get("tick_profit_rate"),
+            tick_occ=old_data.get("tick_occ"),
+            tick_exploitation_rate=old_data.get("tick_exploitation_rate"),
         )
 
 

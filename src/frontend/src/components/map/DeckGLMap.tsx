@@ -62,6 +62,7 @@ import {
   type HexMapFeatureProperties,
 } from "@/lib/mapMetadata";
 import { lensKey, type Lens } from "@/lib/lens";
+import { lensDefForLens } from "@/lib/lenses/registry";
 import { territoryToHexInline } from "@/lib/inspect/adapters/hex";
 import type {
   AdminFeatureProperties,
@@ -88,6 +89,14 @@ const DEFAULT_LAYER_OPACITY = 0.8;
 
 /** Neutral fill for a region regionFillForLens has no data for — mirrors mapLensLayers.ts's NO_DATA. */
 const REGION_NO_DATA_FILL: RGBAColor = [58, 53, 48, 160];
+/**
+ * Stable degenerate domain used for a region ramp lens with no variation this
+ * tick (`rampEmpty`): a zero span routes both the fill (`regionFillForLens`) and
+ * the legend marker (`currentValueForLens`) through their `span<=0` honest-null
+ * path. Module-level so the `layers`/`currentValue` memos stay referentially
+ * stable while flat (no per-render `{min,max}` object churn).
+ */
+const EMPTY_FILL_DOMAIN: FillDomain = { min: 0, max: 0 };
 /** Structural gray border between adjacent regions. */
 const REGION_LINE_COLOR: RGBAColor = [130, 138, 150, 160];
 
@@ -254,7 +263,10 @@ function currentValueForLens(
     return Math.max(0, Math.min(1, mean));
   }
   const span = domain.max - domain.min;
-  if (span <= 0) return 0;
+  // Degenerate domain (no dynamic range): no honest position for the marker,
+  // mirroring regionFill.ts::normalize. null → no marker AND drives MapControls'
+  // rampEmpty honest-empty hint (Constitution III.11 — no fabricated floor).
+  if (span <= 0) return null;
   return Math.max(0, Math.min(1, (mean - domain.min) / span));
 }
 
@@ -287,6 +299,30 @@ function regionMarkerValuesForLens(
     return regionFeatures.map((f) => (f.properties as unknown as Record<string, number>)[metric]);
   }
   return [];
+}
+
+/**
+ * True when a region-framing RAMP lens carries no variation this tick — every
+ * region equal, or none finite (the static economy, owner item #25). Keyed off
+ * the natural per-tick `regionMarkerValues`, NOT the cached fillDomain (which can
+ * hold a stale [0,1] seeded from the empty first frame that masks the flatness
+ * and paints every region the ramp floor). Guarded on `regionFeatureCount` so a
+ * pre-fetch frame stays quiet. Extracted from `DeckGLMap` for its
+ * cognitive-complexity budget; drives the honest-empty hint + degenerate-domain
+ * render (Constitution III.11).
+ */
+function isRegionRampEmpty(
+  lens: Lens,
+  framing: AdminLevel,
+  regionFeatureCount: number,
+  regionMarkerValues: (number | null | undefined)[],
+): boolean {
+  if (framing === "hex" || regionFeatureCount === 0) return false;
+  if (lensDefForLens(lens)?.legend.kind !== "ramp") return false;
+  const finite = regionMarkerValues.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v),
+  );
+  return finite.length === 0 || finite.every((v) => v === finite[0]);
 }
 
 /**
@@ -850,9 +886,20 @@ export function DeckGLMap({
     () => regionMarkerValuesForLens(lens, regionFeatures),
     [lens, regionFeatures],
   );
+  // Honest-empty (III.11): a region-framing RAMP lens with no variation this tick
+  // (see `isRegionRampEmpty`). When flat, render against the data's TRUE
+  // (degenerate) domain so regionFill/marker's span<=0 honest-null path fires
+  // (NO_DATA fill + no marker), bypassing the anti-rescale cache — which has no
+  // range to protect when nothing varies.
+  const rampEmpty = useMemo(
+    () => isRegionRampEmpty(lens, framing, regionFeatures.length, regionMarkerValues),
+    [lens, framing, regionFeatures.length, regionMarkerValues],
+  );
+  const effectiveFillDomain = rampEmpty ? EMPTY_FILL_DOMAIN : fillDomain;
   const currentValue = useMemo(
-    () => currentValueForLens(lens, framing, hexMarkerValues, regionMarkerValues, fillDomain),
-    [lens, framing, hexMarkerValues, regionMarkerValues, fillDomain],
+    () =>
+      currentValueForLens(lens, framing, hexMarkerValues, regionMarkerValues, effectiveFillDomain),
+    [lens, framing, hexMarkerValues, regionMarkerValues, effectiveFillDomain],
   );
 
   const layers = useMemo(() => {
@@ -867,7 +914,7 @@ export function DeckGLMap({
         politicalLayers,
         regionFeatures,
         lens,
-        fillDomain,
+        fillDomain: effectiveFillDomain,
         layerOpacity,
         rings: lensResult.rings,
         hulls: lensResult.hulls,
@@ -906,7 +953,7 @@ export function DeckGLMap({
     lensResult,
     framing,
     regionFeatures,
-    fillDomain,
+    effectiveFillDomain,
     politicalLayers,
   ]);
 
@@ -931,6 +978,7 @@ export function DeckGLMap({
         currentValue={currentValue}
         flash={legendFlash}
         legendStatusText={showLensLegendLabel ? lensResult.legendLabel : null}
+        rampEmpty={rampEmpty}
       />
 
       {/* Map */}

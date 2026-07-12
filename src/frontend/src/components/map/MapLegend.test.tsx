@@ -72,4 +72,19 @@ describe("MapLegend", () => {
     );
     expect(screen.getByTestId("map-legend")).toHaveAttribute("data-flash", "true");
   });
+
+  it("marks data-muted=true when muted (honest empty — ramp carries no signal this tick)", () => {
+    // The map-legend-empty-hint (MapControls) sets this when a ramp lens has no
+    // usable value: the strip dims to read as inactive rather than as a live 0→1
+    // scale nothing sits on (Constitution III.11 — visibly distinct from real data).
+    render(
+      <MapLegend legend={{ kind: "ramp", stops: DATA_RAMPS.heat }} label="Heat" muted={true} />,
+    );
+    expect(screen.getByTestId("map-legend")).toHaveAttribute("data-muted", "true");
+  });
+
+  it("is not muted by default", () => {
+    render(<MapLegend legend={{ kind: "ramp", stops: DATA_RAMPS.heat }} label="Heat" />);
+    expect(screen.getByTestId("map-legend")).toHaveAttribute("data-muted", "false");
+  });
 });

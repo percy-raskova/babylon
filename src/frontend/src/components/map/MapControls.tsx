@@ -15,7 +15,11 @@ import {
   MAP_SAFE_TOP,
   MAP_SAFE_MAX_WIDTH_CSS,
 } from "@/components/chrome/layout";
-import { lensDefForLens, type LensAvailabilityContext } from "@/lib/lenses/registry";
+import {
+  lensDefForLens,
+  availableLensRegistry,
+  type LensAvailabilityContext,
+} from "@/lib/lenses/registry";
 import { lensLegendLabel, type Lens } from "@/lib/lens";
 import type { FactionSummary } from "@/components/map/mapLensLayers";
 import type { AdminLevel } from "@/types/game";
@@ -37,6 +41,14 @@ interface MapControlsProps {
   currentValue?: number | null;
   /** True for one render after the domain memo reports a would-be silent rescale. */
   flash?: boolean;
+  /**
+   * The active ramp lens has no usable value this tick (degenerate domain —
+   * every visible region identical/absent, e.g. the static economy). Computed
+   * by `DeckGLMap` (it holds the region data + `currentValue`). Dims the ramp
+   * and surfaces the honest-empty hint (Constitution III.11 loud-failure) —
+   * distinct from `legendStatusText`'s per-tick "— no data" balkanization note.
+   */
+  rampEmpty?: boolean;
   /**
    * The honest per-tick legend status text `buildLensLayers` computes
    * (mode label/metric name, with a "— no data" suffix for an empty-but-
@@ -60,10 +72,22 @@ export function MapControls({
   currentValue = null,
   flash = false,
   legendStatusText = null,
+  rampEmpty = false,
 }: MapControlsProps) {
   const def = lensDefForLens(lens);
   const legend = def?.legend ?? { kind: "none" as const };
   const label = def?.label ?? lensLegendLabel(lens);
+
+  // When the active ramp lens is empty, point the player at the categorical
+  // lenses that reliably DO carry signal (balkanization-derived), in this
+  // order — but only those `availability` actually allows, so a click never
+  // lands on a lens degraded out of the bar.
+  const EMPTY_HINT_LENS_IDS = ["class_composition", "stance"];
+  const suggestions = rampEmpty
+    ? EMPTY_HINT_LENS_IDS.map((id) =>
+        availableLensRegistry(availability).find((d) => d.id === id),
+      ).filter((d) => d !== undefined)
+    : [];
 
   return (
     <>
@@ -74,7 +98,13 @@ export function MapControls({
         className="absolute z-10 flex flex-col gap-2 border-2 border-ksbc-muted-1 bg-plate/85 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm"
         style={{ left: MAP_SAFE_LEFT, top: MAP_SAFE_TOP }}
       >
-        <MapLegend legend={legend} label={label} currentValue={currentValue} flash={flash} />
+        <MapLegend
+          legend={legend}
+          label={label}
+          currentValue={currentValue}
+          flash={flash}
+          muted={rampEmpty}
+        />
         {legendStatusText && (
           <span
             data-testid="lens-legend-label"
@@ -82,6 +112,31 @@ export function MapControls({
           >
             {legendStatusText}
           </span>
+        )}
+        {rampEmpty && (
+          <div data-testid="map-legend-empty-hint" className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wider text-ksbc-muted-2">
+              — no variation this tick —
+            </span>
+            {suggestions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 text-[10px] uppercase tracking-wider text-ksbc-muted-2">
+                <span aria-hidden="true">↳ try</span>
+                {suggestions.map((s, i) => (
+                  <span key={s.id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      data-testid={`empty-hint-lens-${s.id}`}
+                      onClick={() => onLensChange?.(s.toLens())}
+                      className="uppercase tracking-wider text-accent-gold underline-offset-2 hover:text-ink hover:underline"
+                    >
+                      {s.label}
+                    </button>
+                    {i < suggestions.length - 1 && <span aria-hidden="true">or</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

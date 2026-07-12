@@ -3,8 +3,8 @@
  * (spec-113 Lane B) DeckGLMap now delegates to.
  */
 
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MapControls } from "./MapControls";
 import { DEFAULT_LENS } from "@/lib/lens";
 
@@ -65,5 +65,66 @@ describe("MapControls", () => {
       cluster?.style.maxWidth,
       "lens cluster must be width-capped to the safe area",
     ).toBeTruthy();
+  });
+
+  describe("honest-empty ramp hint (rampEmpty)", () => {
+    // Owner-picked treatment: when the active ramp lens has no usable value
+    // (degenerate domain — every region identical/absent, e.g. the static
+    // economy), dim the ramp, drop the marker, and add a muted note that points
+    // to categorical lenses that DO have data. Constitution III.11 loud-failure.
+    it("renders no hint by default", () => {
+      render(<MapControls lens={DEFAULT_LENS} framing="county" />);
+      expect(screen.queryByTestId("map-legend-empty-hint")).not.toBeInTheDocument();
+      expect(screen.getByTestId("map-legend")).toHaveAttribute("data-muted", "false");
+    });
+
+    it("renders the note and mutes the legend when rampEmpty is set", () => {
+      render(<MapControls lens={DEFAULT_LENS} framing="county" rampEmpty />);
+      expect(screen.getByTestId("map-legend-empty-hint")).toHaveTextContent(/no variation/i);
+      expect(screen.getByTestId("map-legend")).toHaveAttribute("data-muted", "true");
+    });
+
+    it("suggests the reliably-populated categorical lenses that availability allows", () => {
+      render(
+        <MapControls
+          lens={DEFAULT_LENS}
+          framing="county"
+          rampEmpty
+          availability={{ availableMetrics: ["dominant_class"] }}
+        />,
+      );
+      expect(screen.getByTestId("empty-hint-lens-class_composition")).toBeInTheDocument();
+      expect(screen.getByTestId("empty-hint-lens-stance")).toBeInTheDocument();
+    });
+
+    it("omits a suggested lens that availability degrades away (never suggests a dead lens)", () => {
+      // class_composition needs the dominant_class metric; without it, only the
+      // always-available stance survives — no misleading click-to-nothing.
+      render(
+        <MapControls
+          lens={DEFAULT_LENS}
+          framing="county"
+          rampEmpty
+          availability={{ availableMetrics: ["heat"] }}
+        />,
+      );
+      expect(screen.queryByTestId("empty-hint-lens-class_composition")).not.toBeInTheDocument();
+      expect(screen.getByTestId("empty-hint-lens-stance")).toBeInTheDocument();
+    });
+
+    it("clicking a suggested lens switches to it via onLensChange", () => {
+      const onLensChange = vi.fn();
+      render(
+        <MapControls
+          lens={DEFAULT_LENS}
+          framing="county"
+          rampEmpty
+          onLensChange={onLensChange}
+          availability={{ availableMetrics: ["dominant_class"] }}
+        />,
+      );
+      fireEvent.click(screen.getByTestId("empty-hint-lens-stance"));
+      expect(onLensChange).toHaveBeenCalledWith({ kind: "stance" });
+    });
   });
 });

@@ -33,9 +33,21 @@ interface MapLegendProps {
   currentValue?: number | null;
   /** Ramp mode only: true for one render after the domain memo reports a would-be rescale. */
   flash?: boolean;
+  /**
+   * Ramp mode only: dim the strip because the lens carries no usable signal this
+   * tick (degenerate domain — MapControls' `rampEmpty`). Reads as an inactive
+   * scale rather than a live 0→1 nothing sits on (Constitution III.11).
+   */
+  muted?: boolean;
 }
 
-export function MapLegend({ legend, label, currentValue = null, flash = false }: MapLegendProps) {
+export function MapLegend({
+  legend,
+  label,
+  currentValue = null,
+  flash = false,
+  muted = false,
+}: MapLegendProps) {
   if (legend.kind === "none") return null;
 
   if (legend.kind === "categorical") {
@@ -68,10 +80,11 @@ export function MapLegend({ legend, label, currentValue = null, flash = false }:
 
   return (
     <div
-      className={`flex items-center gap-2 ${flash ? "legend-flash" : ""}`}
+      className={`flex items-center gap-2 ${flash ? "legend-flash" : ""} ${muted ? "opacity-50" : ""}`}
       data-testid="map-legend"
       data-legend-kind="ramp"
       data-flash={flash ? "true" : "false"}
+      data-muted={muted ? "true" : "false"}
     >
       <span className="text-[10px] text-ksbc-muted-2">0</span>
       <div className="relative flex h-3 w-32 overflow-hidden border border-key-shadow">

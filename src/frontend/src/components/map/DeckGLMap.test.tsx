@@ -362,3 +362,64 @@ describe("DeckGLMap — region framing (spec-112 C5)", () => {
     expect(screen.queryByTestId("region-tooltip")).not.toBeInTheDocument();
   });
 });
+
+describe("DeckGLMap — honest-empty ramp (static economy, owner item #25)", () => {
+  beforeEach(() => {
+    vi.mocked(H3HexagonLayer).mockClear();
+    vi.mocked(H3ClusterLayer).mockClear();
+  });
+
+  const rentLens = { kind: "metric" as const, metric: "imperial_rent" as const };
+
+  it("a flat region ramp (every county identical) shows the empty-hint and no marker", () => {
+    const snapshot = makeSnapshot();
+    const flat = makeRegionMapData(
+      makeRegionFeature({ group_key: "26163", group_name: "Wayne", imperial_rent: 0 }),
+      makeRegionFeature({ group_key: "26099", group_name: "Macomb", imperial_rent: 0 }),
+    );
+    render(<DeckGLMap snapshot={snapshot} mapData={flat} lens={rentLens} framing="county" />);
+    expect(screen.getByTestId("map-legend-empty-hint")).toBeInTheDocument();
+    expect(screen.queryByTestId("map-legend-marker")).not.toBeInTheDocument();
+  });
+
+  it("a region ramp with real variation shows a marker and no empty-hint", () => {
+    const snapshot = makeSnapshot();
+    const varied = makeRegionMapData(
+      makeRegionFeature({ group_key: "26163", group_name: "Wayne", imperial_rent: 0 }),
+      makeRegionFeature({ group_key: "26099", group_name: "Macomb", imperial_rent: 10 }),
+    );
+    render(<DeckGLMap snapshot={snapshot} mapData={varied} lens={rentLens} framing="county" />);
+    expect(screen.queryByTestId("map-legend-empty-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("map-legend-marker")).toBeInTheDocument();
+  });
+
+  it("stays honest-empty when flat data arrives AFTER an empty first frame (the live domain-cache path)", () => {
+    // The regression the unit tests missed: an empty first render seeds the
+    // domain cache with the [0,1] fallback, which then STICKS. Keying rampEmpty
+    // off the cached domain would read the stale [0,1] as a real range and paint
+    // every all-0 county the ramp floor (black). This asserts the hint fires
+    // regardless, because detection reads the natural per-tick values.
+    const snapshot = makeSnapshot();
+    const { rerender } = render(
+      <DeckGLMap
+        snapshot={snapshot}
+        mapData={makeRegionMapData()}
+        lens={rentLens}
+        framing="county"
+      />,
+    );
+    rerender(
+      <DeckGLMap
+        snapshot={snapshot}
+        mapData={makeRegionMapData(
+          makeRegionFeature({ group_key: "26163", group_name: "Wayne", imperial_rent: 0 }),
+          makeRegionFeature({ group_key: "26099", group_name: "Macomb", imperial_rent: 0 }),
+        )}
+        lens={rentLens}
+        framing="county"
+      />,
+    );
+    expect(screen.getByTestId("map-legend-empty-hint")).toBeInTheDocument();
+    expect(screen.queryByTestId("map-legend-marker")).not.toBeInTheDocument();
+  });
+});

@@ -134,6 +134,10 @@ ast_usages.txt
 ai/scratch/*
 !ai/scratch/README.md
 
+# ai/_inbox is the owner's drop-zone (parsed items → ai/_inbox/archive/). Keep the
+# text notes tracked, but babylon_books/ is 555 MB of reference PDFs — never commit it.
+ai/_inbox/babylon_books/
+
 # Frontend (src/frontend — the cockpit, spec-110/112)
 dev_harness.png
 test_hang.py

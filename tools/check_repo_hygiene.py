@@ -65,6 +65,7 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         ".gitattributes",
         ".gitignore",
         ".gitleaks.toml",  # secret-scan policy shared by CI + pre-commit (program 15)
+        ".gitmodules",  # submodule pointer — program 18: src/frontend → babylon-cockpit subrepo
         ".markdownlint.yaml",
         ".markdownlintignore",
         ".mdformat.toml",

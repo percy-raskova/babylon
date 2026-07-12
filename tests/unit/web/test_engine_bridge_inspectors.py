@@ -1,0 +1,189 @@
+"""Program 17 / Item 1d: the 5 ``get_inspector_*`` bridge methods.
+
+Red-phase (before the fix): every one of the 5 methods
+(``get_inspector_node``/``org``/``community``/``edge``/``hex``) on
+``EngineBridge`` unconditionally ``return {}``. This suite drives them
+against a REAL ``wayne_county`` tick-0 graph (via
+``game.engine_bridge._build_initial_state_for_scenario`` — the same
+scenario-seeding pipeline the bridge itself uses, no mocking of engine
+internals — matching the established pattern in
+``tests/unit/web/test_provenance.py``), so every assertion is against real,
+named scenario data (C002 Suburban Petty Bourgeoisie, C003 Wayne County
+Bourgeoisie, ORG001 Wayne County Organizing Committee).
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+def _wayne_bridge() -> tuple[Any, Any]:
+    from game.engine_bridge import EngineBridge, _build_initial_state_for_scenario
+
+    state = _build_initial_state_for_scenario("wayne_county")
+    graph = state.to_graph()
+    mock_persistence = MagicMock()
+    mock_persistence.hydrate_graph.return_value = graph
+    return EngineBridge(mock_persistence), graph
+
+
+class TestGetInspectorNode:
+    def test_social_class_pairs_wage_with_value_and_apologist_refutation(self) -> None:
+        bridge, graph = _wayne_bridge()
+        # C003 (Wayne Bourgeoisie) --WAGES--> C002 (Suburban Petty
+        # Bourgeoisie, role=LABOR_ARISTOCRACY, wealth=0.65) is seeded at
+        # value_flow=0.0 (tick 0); overwrite to a deterministic positive
+        # gap for this test.
+        graph.add_edge("C003", "C002", edge_type="wages", value_flow=1.0, tension=0.0)
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["type"] == "social_class"
+        assert result["wealth"] == pytest.approx(0.65)
+        assert result["core_wages"] == pytest.approx(1.0)
+        assert result["imperial_rent_gap"] == pytest.approx(0.35)
+        assert "skill premium" in result["apologist_claim"]
+        assert "0.35" in result["apologist_refutation"]
+
+    def test_negative_gap_is_signed_not_clamped(self) -> None:
+        """C001 (Detroit Proletariat) receives no WAGES edge at all — core
+        wages 0.0, wealth 0.15 — the gap is negative (exploited, not
+        subsidized). Signed, not clamped to zero (owner ruling)."""
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C001")
+
+        assert result["core_wages"] == pytest.approx(0.0)
+        assert result["wealth"] == pytest.approx(0.15)
+        assert result["imperial_rent_gap"] == pytest.approx(-0.15)
+        assert "no imperial subsidy" in result["apologist_refutation"].lower()
+
+    def test_generic_fallback_for_non_social_class_node(self) -> None:
+        """Organization nodes (and any other non-social_class type) fall
+        through to the honest generic enum-normalized dump."""
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "ORG001")
+
+        assert result["type"] == "organization"
+        assert result["id"] == "ORG001"
+        assert "core_wages" not in result  # social_class-only field
+
+    def test_unknown_node_id_returns_empty_dict(self) -> None:
+        bridge, _graph = _wayne_bridge()
+        assert bridge.get_inspector_node(uuid.uuid4(), "NOPE") == {}
+
+
+class TestGetInspectorOrg:
+    def test_returns_real_organization_fields_not_class_fields(self) -> None:
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_org(uuid.uuid4(), "ORG001")
+
+        assert result["name"] == "Wayne County Organizing Committee"
+        assert result["budget"] == pytest.approx(100.0)
+        assert result["cohesion"] == pytest.approx(0.5)
+        assert result["class_character"] == "proletarian"
+        assert result["type"] == "civil_society"
+        # Honest absence — base Organization has no wealth/ideology/
+        # 3-way consciousness vector (Constitution III.11).
+        assert "wealth" not in result
+        assert "ideology" not in result
+        assert "labor_aristocracy_ratio" not in result
+
+    def test_social_class_id_is_not_shaped_as_an_organization(self) -> None:
+        """Deliberately stricter than get_org_status: a social_class id
+        must not be coerced into an organization payload."""
+        bridge, _graph = _wayne_bridge()
+        assert bridge.get_inspector_org(uuid.uuid4(), "C002") == {}
+
+    def test_unknown_org_id_returns_empty_dict(self) -> None:
+        bridge, _graph = _wayne_bridge()
+        assert bridge.get_inspector_org(uuid.uuid4(), "NOPE") == {}
+
+
+class TestGetInspectorEdge:
+    def test_parses_source_target_and_reports_edge_type(self) -> None:
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_edge(uuid.uuid4(), "C003->C002")
+
+        assert result["edge_type"] == "wages"
+        assert result["source_id"] == "C003"
+        assert result["target_id"] == "C002"
+
+    def test_solidarity_edge_carries_solidarity_strength(self) -> None:
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_edge(uuid.uuid4(), "C001->C004")
+
+        assert result["edge_type"] == "solidarity"
+        assert "solidarity_strength" in result
+
+    def test_unknown_edge_returns_empty_dict(self) -> None:
+        bridge, _graph = _wayne_bridge()
+        assert bridge.get_inspector_edge(uuid.uuid4(), "NOPE->ALSO_NOPE") == {}
+
+
+class TestGetInspectorCommunity:
+    def test_reuses_solidarity_builder_with_fixed_consciousness(self) -> None:
+        """Program 17 / Item 1d also fixes _social_class_stats (engine_bridge
+        .py) reading a non-existent top-level `class_consciousness` key
+        instead of the real nested `ideology.class_consciousness` — before
+        the fix, avg_consciousness was always None."""
+        bridge, graph = _wayne_bridge()
+        from game.engine_bridge import _build_solidarity_communities
+
+        communities = _build_solidarity_communities(graph)
+        assert communities, "wayne_county seeds a C001<->C004 SOLIDARITY edge"
+        community_id = communities[0]["id"]
+
+        result = bridge.get_inspector_community(uuid.uuid4(), community_id)
+
+        assert result["id"] == community_id
+        # (0.6 + 0.55) / 2 for C001 (ideology=-0.2) / C004 (ideology=-0.1).
+        assert result["avg_consciousness"] == pytest.approx(0.575)
+
+    def test_unknown_community_id_returns_empty_dict(self) -> None:
+        bridge, _graph = _wayne_bridge()
+        assert bridge.get_inspector_community(uuid.uuid4(), "NOPE") == {}
+
+
+class TestGetInspectorHex:
+    def test_finds_territory_by_h3_index(self) -> None:
+        bridge, _graph = _wayne_bridge()
+        from game.engine_bridge import _build_initial_state_for_scenario
+
+        state = _build_initial_state_for_scenario("wayne_county")
+        territory = next(iter(state.territories.values()))
+
+        result = bridge.get_inspector_hex(uuid.uuid4(), territory.h3_index)
+
+        assert result["h3_index"] == territory.h3_index
+        assert result["id"] == territory.id
+        # Honest gap pending Program 17 / Item 1a's data landing.
+        assert result["profit_rate"] is None
+        assert result["imperial_rent"] is None
+
+    def test_unknown_h3_index_returns_empty_dict(self) -> None:
+        bridge, _graph = _wayne_bridge()
+        assert bridge.get_inspector_hex(uuid.uuid4(), "nonexistent-h3") == {}
+
+
+class TestAllFiveDegradeToEmptyDictOnUnknownId:
+    """Smoke test matching the ticket's own acceptance criterion: none of
+    the 5 methods should ever raise on an unknown id — an honest {}."""
+
+    def test_all_five_return_empty_dict_not_crash(self) -> None:
+        bridge, _graph = _wayne_bridge()
+        assert bridge.get_inspector_node(uuid.uuid4(), "NOPE") == {}
+        assert bridge.get_inspector_org(uuid.uuid4(), "NOPE") == {}
+        assert bridge.get_inspector_community(uuid.uuid4(), "NOPE") == {}
+        assert bridge.get_inspector_edge(uuid.uuid4(), "NOPE->ALSO_NOPE") == {}
+        assert bridge.get_inspector_hex(uuid.uuid4(), "NOPE") == {}

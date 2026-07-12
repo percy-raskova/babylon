@@ -1094,7 +1094,15 @@ def _social_class_stats(
         node_data = graph.nodes.get(member_id, {})
         if node_data.get("_node_type") != "social_class":
             continue
-        consciousness = node_data.get("class_consciousness")
+        # Bug fix (Program 17 / Item 1d): `class_consciousness` has never
+        # existed as a top-level graph node key — to_graph() writes it
+        # nested at `ideology.class_consciousness` (**entity.model_dump()`,
+        # `ideology: IdeologicalProfile` is a nested model field). This read
+        # always returned None in production, so avg_consciousness was
+        # always None (see _get_class_consciousness_from_node in
+        # src/babylon/engine/systems/economic.py for the correct pattern).
+        ideology = node_data.get("ideology")
+        consciousness = ideology.get("class_consciousness") if isinstance(ideology, dict) else None
         if consciousness is not None:
             consciousness_values.append(float(consciousness))
         role = node_data.get("role")
@@ -1268,6 +1276,105 @@ def _build_solidarity_communities(graph: BabylonGraph) -> list[dict[str, Any]]:
 
     communities.sort(key=lambda c: (-c["member_count"], str(c["id"])))
     return communities
+
+
+# ---------------------------------------------------------------------- #
+# Inspector view helpers (real graph reads; Constitution III.11)
+# Program 17 / Item 1d.
+# ---------------------------------------------------------------------- #
+
+
+def _incoming_wages_flow(graph: BabylonGraph, node_id: str) -> float:
+    """Sum ``value_flow`` over live WAGES edges targeting ``node_id``.
+
+    WAGES is the engine's Employer -> Worker edge (:class:`EdgeType`); this
+    is the real per-entity "core wages" source ``ProductionSystem``/
+    ``ImperialRentSystem`` write. Verbatim port of
+    ``game.provenance._incoming_wages_flow`` (provenance.py:203-218) — NOT
+    an import, because provenance.py imports FROM this module
+    (``from .engine_bridge import FormulaRegistry, _aggregate_graph_economy``),
+    so the reverse import would be circular.
+    """
+    total = 0.0
+    for source, target in graph.edges:
+        if target != node_id:
+            continue
+        edge_data = graph.edges[(source, target)]
+        etype = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+        if etype == "wages":
+            total += float(edge_data.get("value_flow", 0.0))
+    return total
+
+
+_APOLOGIST_CLAIM: Final[str] = (
+    "The wage gap reflects a 'skill premium' — harder-earned pay, not a "
+    "politically-arranged subsidy."
+)
+
+
+def _enum_normalized(data: dict[str, Any]) -> dict[str, Any]:
+    """``{k: v.value if v is enum-like else v}`` — plain-string-ify every
+    enum-typed value in a raw graph node/edge dict so inspector payloads
+    always serialize as their plain string value (mirrors the convention
+    ``_dominant_class_by_territory`` already established)."""
+    return {k: (_enum_val(v) if hasattr(v, "value") else v) for k, v in data.items()}
+
+
+def _social_class_inspector_fields(data: dict[str, Any], core_wages: float) -> dict[str, Any]:
+    """Build the wage-pairing + apologist narrative block for a
+    ``social_class`` inspector payload.
+
+    Pairs ``core_wages`` (incoming WAGES flow — what this class is PAID)
+    with ``wealth`` (value produced) and their signed difference
+    ``imperial_rent_gap`` (= Φ per the Fundamental Theorem ``W_c − V_c``).
+    Signed deliberately: negative for exploited/periphery classes is itself
+    an honest, theoretically meaningful signal, not an error.
+
+    Args:
+        data: The raw graph node dict for a ``social_class`` node.
+        core_wages: Output of :func:`_incoming_wages_flow` for this node.
+
+    Returns:
+        Dict merged onto the ``get_inspector_node`` base payload.
+    """
+    wealth = float(data.get("wealth", 0.0))
+    imperial_rent_gap = round(core_wages - wealth, 4)
+    ideology = data.get("ideology")
+    ideology = ideology if isinstance(ideology, dict) else {}
+
+    if imperial_rent_gap > 0:
+        apologist_refutation = (
+            f"Core wages ({core_wages:.4f}) exceed value produced ({wealth:.4f}) by "
+            f"{imperial_rent_gap:.4f} — an unearned increment "
+            f"(unearned_increment={_optional_float(data.get('unearned_increment')) or 0.0:.4f}, "
+            f"ppp_multiplier={_optional_float(data.get('ppp_multiplier')) or 1.0:.4f}) transferred "
+            "from the periphery, the material basis of labor-aristocracy loyalty — not a "
+            "return to skill."
+        )
+    else:
+        apologist_refutation = (
+            "No imperial subsidy applies here: core wages do not exceed value produced "
+            f"(gap={imperial_rent_gap:.4f})."
+        )
+
+    return {
+        "role": _enum_val(data.get("role")) if data.get("role") is not None else None,
+        "wealth": wealth,
+        "core_wages": round(core_wages, 4),
+        "imperial_rent_gap": imperial_rent_gap,
+        "unearned_increment": _optional_float(data.get("unearned_increment")),
+        "ppp_multiplier": _optional_float(data.get("ppp_multiplier")),
+        "effective_wealth": _optional_float(data.get("effective_wealth")),
+        "population": data.get("population"),
+        "organization": _optional_float(data.get("organization")),
+        "repression_faced": _optional_float(data.get("repression_faced")),
+        "subsistence_threshold": _optional_float(data.get("subsistence_threshold")),
+        "class_consciousness": ideology.get("class_consciousness"),
+        "national_identity": ideology.get("national_identity"),
+        "agitation": ideology.get("agitation"),
+        "apologist_claim": _APOLOGIST_CLAIM,
+        "apologist_refutation": apologist_refutation,
+    }
 
 
 class EngineBridge:
@@ -2791,25 +2898,162 @@ class EngineBridge:
     # Inspector Views
     # ------------------------------------------------------------------ #
 
-    def get_inspector_node(self, _session_id: UUID, _node_id: str) -> dict[str, Any]:
-        """Return detailed stats for a generic node click."""
+    def get_inspector_node(self, session_id: UUID, node_id: str) -> dict[str, Any]:
+        """Return detailed stats for a generic node click (spec-113).
+
+        Reads the RAW graph directly — never ``WorldState.from_graph()``,
+        which reconstructs unrecognized ``_node_type`` values (faction,
+        sovereign, community) as a strict ``SocialClass`` and crashes on
+        their real attributes (see :func:`_build_balkanization_block`'s
+        docstring). ``social_class`` nodes get the wage-pairing + apologist
+        narrative block (:func:`_social_class_inspector_fields`); every
+        other node type gets an honest generic dump of its real fields,
+        enum-normalized (matches ``EventsFeed.tsx``'s documented "node is
+        the generic fallback" contract).
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        if node_id not in graph.nodes:
+            return {}
+        data = graph.nodes[node_id]
+        node_type = data.get("_node_type", "unknown")
+        payload: dict[str, Any] = {
+            "id": node_id,
+            "type": node_type,
+            "name": data.get("name", node_id),
+        }
+        if node_type == "social_class":
+            core_wages = _incoming_wages_flow(graph, node_id)
+            payload.update(_social_class_inspector_fields(data, core_wages))
+        else:
+            payload.update(
+                _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})
+            )
+        return payload
+
+    def get_inspector_org(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return real Organization fields for a drill-down (spec-113).
+
+        Deliberately stricter than :meth:`get_org_status`'s bare membership
+        check: a non-organization node id returns ``{}`` rather than being
+        shaped as one (Constitution III.11 — absence over fabrication).
+        Does NOT fabricate ``wealth``/``ideology``/consciousness-vector
+        fields — the base ``Organization`` model has none of those.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        if org_id not in graph.nodes or graph.nodes[org_id].get("_node_type") != "organization":
+            return {}
+        data = graph.nodes[org_id]
+        enums = _enum_normalized(
+            {
+                "class_character": data.get("class_character"),
+                "org_type": data.get("org_type"),
+                "legal_standing": data.get("legal_standing"),
+                "consciousness_tendency": data.get("consciousness_tendency"),
+            }
+        )
+        return {
+            "id": org_id,
+            "name": data.get("name", org_id),
+            "class_character": enums["class_character"],
+            "type": enums["org_type"],
+            "budget": float(data.get("budget", 0.0)),
+            "cohesion": float(data.get("cohesion", 0.0)),
+            "cadre_level": float(data.get("cadre_level", 0.0)),
+            "heat": float(data.get("heat", 0.0)),
+            "legal_standing": enums["legal_standing"],
+            "consciousness_tendency": enums["consciousness_tendency"],
+            "territory_ids": list(data.get("territory_ids", [])),
+        }
+
+    def get_inspector_community(self, session_id: UUID, hyperedge_id: str) -> dict[str, Any]:
+        """Return one ``/communities/`` entry by id.
+
+        Pure reuse of :func:`_build_solidarity_communities` — zero new
+        logic — guarantees this inspector can never drift from the
+        dashboard list it drills into.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        for community in _build_solidarity_communities(graph):
+            if community["id"] == hyperedge_id:
+                return community
         return {}
 
-    def get_inspector_org(self, _session_id: UUID, _org_id: str) -> dict[str, Any]:
-        """Return detailed drill-down data for a specific organization."""
-        return {}
+    def get_inspector_edge(self, session_id: UUID, edge_id: str) -> dict[str, Any]:
+        """Return one edge's detail by its ``"{source}->{target}"`` id.
 
-    def get_inspector_community(self, _session_id: UUID, _hyperedge_id: str) -> dict[str, Any]:
-        """Return detailed drill-down data for a community hyperedge."""
-        return {}
+        No canonical ``edge_id`` URL format existed before this method;
+        :func:`_outgoing_extractive_edges` already uses this exact
+        ``f"{source}->{target}"`` shape for a payload field (never for URL
+        routing) — reused here rather than invented.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        source, sep, target = edge_id.partition("->")
+        if not sep or (source, target) not in graph.edges:
+            return {}
+        data = graph.edges[(source, target)]
+        edge_type = str(data.get("edge_type", data.get("_edge_type", ""))).lower()
+        edge_mode = data.get("edge_mode")
+        payload: dict[str, Any] = {
+            "id": edge_id,
+            "source_id": source,
+            "target_id": target,
+            "source_name": graph.nodes.get(source, {}).get("name", source),
+            "target_name": graph.nodes.get(target, {}).get("name", target),
+            "edge_type": edge_type,
+            "edge_mode": str(edge_mode).lower() if edge_mode is not None else None,
+            "value_flow": float(data.get("value_flow", 0.0)),
+            "tension": float(data.get("tension", 0.0)),
+        }
+        if edge_type == "solidarity":
+            payload["solidarity_strength"] = float(data.get("solidarity_strength", 0.0))
+        return payload
 
-    def get_inspector_edge(self, _session_id: UUID, _edge_id: str) -> dict[str, Any]:
-        """Return detailed drill-down data for an edge."""
-        return {}
+    def get_inspector_hex(self, session_id: UUID, h3_index: str) -> dict[str, Any]:
+        """Return one territory's drill-down detail by its ``h3_index``.
 
-    def get_inspector_hex(self, _session_id: UUID, _h3_index: str) -> dict[str, Any]:
-        """Return detailed drill-down data for a map hex."""
-        return {}
+        ``imperial_rent``/``profit_rate``/``occ``/``exploitation_rate``
+        mirror how :func:`_serialize_territory` reads the same
+        ``tick_``-prefixed graph attrs (Program 17 / Item 1a) — real
+        per-territory values once ``TickDynamicsSystem``'s first year
+        boundary produces them, honest ``None`` until then.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        territory_id: str | None = None
+        for node_id, node_data in graph.nodes(data=True):
+            if node_data.get("_node_type") == "territory" and node_data.get("h3_index") == h3_index:
+                territory_id = node_id
+                break
+        if territory_id is None:
+            return {}
+        data = graph.nodes[territory_id]
+        biocapacity = float(data.get("biocapacity", 0.0))
+        max_biocapacity = float(data.get("max_biocapacity", 0.0)) or 1.0
+        habitability = max(0.0, min(1.0, biocapacity / max_biocapacity))
+
+        tenancy_members = _tenancy_members_by_territory(graph)
+        dominant_class = _dominant_class_by_territory(graph, tenancy_members).get(territory_id)
+        solidarity_index = _solidarity_index_by_territory(graph, tenancy_members).get(territory_id)
+        org_presence = sum(
+            1
+            for _node_id, member_data in _nodes_in_territory(graph, territory_id)
+            if member_data.get("_node_type") == "organization"
+        )
+
+        return {
+            "id": territory_id,
+            "h3_index": h3_index,
+            "name": data.get("name", territory_id),
+            "habitability": round(habitability, 4),
+            "dominant_class": dominant_class,
+            "solidarity_index": solidarity_index,
+            "org_presence": org_presence,
+            "imperial_rent": _territory_graph_attr(graph, territory_id, "tick_phi_hour"),
+            "profit_rate": _territory_graph_attr(graph, territory_id, "tick_profit_rate"),
+            "occ": _territory_graph_attr(graph, territory_id, "tick_occ"),
+            "exploitation_rate": _territory_graph_attr(
+                graph, territory_id, "tick_exploitation_rate"
+            ),
+        }
 
     # ------------------------------------------------------------------ #
     # Tick resolution

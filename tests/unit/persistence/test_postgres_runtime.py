@@ -264,7 +264,10 @@ class TestPersistTick:
         """persist_tick writes simulation events."""
         events = [
             {
-                "type": "UPRISING",
+                # Real runtime shape: SimulationEvent.model_dump(mode="json")
+                # emits the field name "event_type" (no alias). The old "type"
+                # here matched the _persist_events bug, not the engine.
+                "event_type": "UPRISING",
                 "entity_id": "worker_1",
                 "community_type": "NEIGHBORHOOD",
                 "message": "Workers revolt!",
@@ -304,7 +307,7 @@ class TestPersistTick:
         reproduce the TypeError.
         """
         events = [
-            {"type": "UPRISING", "entity_id": "w1", "timestamp": datetime(2026, 7, 8, 1, 0)},
+            {"event_type": "UPRISING", "entity_id": "w1", "timestamp": datetime(2026, 7, 8, 1, 0)},
         ]
         graph = _build_graph(nodes={"w1": {"type": "SocialClass"}})
         runtime.persist_tick(tick=5, graph=graph, events=events, session_id=session_id)

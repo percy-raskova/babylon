@@ -62,6 +62,13 @@ export function ActionDock({ gameId }: ActionDockProps): React.JSX.Element {
         data-testid="action-dock-bar"
         className="pointer-events-auto flex items-center gap-1.5 border-2 border-ksbc-muted-1 bg-plate/90 px-2 py-1.5 backdrop-blur-sm shadow-[6px_6px_0_#000]"
       >
+        {/* Deliberate simplification (Program 17 Wave 1 item 1e, owner-ruled
+            descope): these 3 buttons stay on the static cost_label — they are
+            pre-org-context shortcuts that don't even set the verb today
+            (see the file docstring's NOT-implemented note), so a per-button
+            live-cost fetch here would be a new fetch pattern for a display
+            surface that's already an honest, if static, hint. VerbGrid
+            (components/action/VerbGrid.tsx) carries the live-cost fix. */}
         {PRIMARY_VERBS.map((v) => (
           <button
             key={v.verb}

@@ -14,6 +14,18 @@ export interface VerbTarget {
   group?: string;
 }
 
+/**
+ * A live per-verb cost parsed from the verb-target endpoint's `cost`
+ * payload — supersedes the static `VERBS[].cost_label` hint once the
+ * fetch resolves (Program 17 Wave 1 item 1e).
+ */
+export interface LiveVerbCost {
+  /** Human-readable cost, e.g. "2 CL + 5 SL + $100". */
+  label: string;
+  /** Whether the acting org can currently afford this action. */
+  canAfford: boolean;
+}
+
 /** A dynamic form field definition for verb-specific parameters. */
 export interface ParamField {
   /** Field key in the params object. */
@@ -53,6 +65,14 @@ export interface VerbConfig {
   description: string;
   /** Parse the raw API target response into a flat list of VerbTarget. */
   parseTargets: (raw: Record<string, unknown>) => VerbTarget[];
+  /**
+   * Parse the raw API target response into a live cost display. Returns
+   * null when the payload carries no interpretable cost (honest-null,
+   * Constitution III.11) — the caller falls back to the static
+   * `cost_label` hint. Absent entirely for verbs whose GET route never
+   * returns a `cost` shape (e.g. campaign, whose GET 405s).
+   */
+  parseCost?: (raw: Record<string, unknown>) => LiveVerbCost | null;
   /** Additional form parameter fields beyond org and target. */
   paramFields: ParamField[];
   /** Whether a target selection is required before submit (default true). */

@@ -126,11 +126,16 @@ describe("ActionComposer", () => {
     );
   });
 
-  it("renders no predicted-delta filler for registry verbs without predictedEffect", async () => {
-    // No VERB_REGISTRY config populates `predictedEffect` today — the
-    // composed educate flow must show NOTHING extra near submit
-    // (Constitution III.11 honest null; fixture-driven rendering is
-    // covered in VerbForm.test.tsx).
+  it("shows educate's grounded predicted-delta arrow once a target is selected (Program 17 Wave 1 item 1e)", async () => {
+    // educate.ts now carries a real predictedEffect (grounded in
+    // compute_consciousness_delta — see educate.ts's own comment), so the
+    // composed educate flow shows the ▲ Consciousness chip near submit.
+    // Honest-null coverage for verbs that deliberately carry NO
+    // predictedEffect (investigate/negotiate — zero real scalar engine
+    // effect) lives in verbs.test.ts's HONEST_NULL_PREDICTED_VERBS set;
+    // both are DISABLED_VERBS, so their form can't be driven through this
+    // composed flow. Fixture-driven honest-null rendering (an injected
+    // config with no predictedEffect at all) is covered in VerbForm.test.tsx.
     server.use(
       http.get("/api/games/:id/actions/educate/targets/", () =>
         HttpResponse.json({
@@ -153,7 +158,8 @@ describe("ActionComposer", () => {
     await userEvent.click(screen.getByText(/Downtown/));
 
     expect(screen.getByRole("button", { name: /submit educate/i })).toBeEnabled();
-    expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
+    const delta = screen.getByTestId("predicted-delta");
+    expect(delta).toHaveTextContent("▲ Consciousness");
   });
 
   it("shows a loud submit error when the backend rejects the action", async () => {

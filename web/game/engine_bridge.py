@@ -2868,19 +2868,29 @@ class EngineBridge:
         # Owner item 30, point 3: wire the county economics calculators
         # only when this session actually has county-resolution territory
         # data for them to compute over (see _has_county_resolution_territory).
-        calculator_overrides = (
-            _bridge_economics_overrides() if _has_county_resolution_territory(state) else None
+        calculator_overrides, leontief_session = (
+            _bridge_economics_overrides()
+            if _has_county_resolution_territory(state)
+            else (None, None)
         )
 
         # Step the engine
+        # Program 17 / Item 1a: _bridge_economics_overrides() opens a fresh
+        # SQLAlchemy session every resolve_tick() call (unlike the headless
+        # runner's once-per-run session) — close it as soon as step() returns
+        # so a long-running web session doesn't leak one session per tick.
         logger.debug("Stepping engine session=%s tick=%d", session_id, state.tick)
-        new_state = step(
-            state,
-            sim_config,
-            persistent_context=persistent_context,
-            defines=game_defines,
-            calculator_overrides=calculator_overrides,
-        )
+        try:
+            new_state = step(
+                state,
+                sim_config,
+                persistent_context=persistent_context,
+                defines=game_defines,
+                calculator_overrides=calculator_overrides,
+            )
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
         logger.info(
             "Engine step complete session=%s tick=%d->%d entities=%d events=%d",
             session_id,
@@ -4137,7 +4147,7 @@ def _has_county_resolution_territory(state: WorldState) -> bool:
     return any(t.county_fips for t in state.territories.values())
 
 
-def _bridge_economics_overrides() -> dict[str, Any]:
+def _bridge_economics_overrides() -> tuple[dict[str, Any], Any]:
     """Wire the ``melt_calculator``/``gamma_calculator`` TickDynamicsSystem needs.
 
     Owner item 30, point 3. Mirrors
@@ -4148,26 +4158,36 @@ def _bridge_economics_overrides() -> dict[str, Any]:
     ``services.melt_calculator is None`` gate at
     ``economics/tick/system/__init__.py``'s annual-pipeline entry).
 
-    Only the same 2 calculators the headless runner wires are wired here.
-    The Spec-057 Leontief imperial-rent pipeline
-    (``periphery_labor_source``/``final_demand_source``/
+    Program 17 / Item 1a: also wires the Spec-057 Leontief imperial-rent
+    pipeline (``periphery_labor_source``/``final_demand_source``/
     ``industry_county_allocator``/``production_chain_calculator``/
-    ``bea_industries``) is unwired in BOTH the headless runner and this
-    bridge — a much larger, separate data-pipeline task, out of this
-    lane's scope (see ``babylon.domain.economics.tick.system.imperial_rent
-    ._spec_057_pipeline_wired``). ``phi_hour`` therefore stays ``0.0``
-    for web sessions exactly as it does for the headless canonical run;
-    ``median_wage``/``employment`` (Vol I's ``DefaultWagePressureCalculator``
-    is ALSO unwired in both runners — no ``reserve_army_data_source`` —
-    so they stay at ``CountyEconomicState``'s bootstrap defaults, 21.0
-    $/hr and 100,000 workers) are the calculator-independent values that
-    make ``flow_wage_accrued`` move (Constitution III.11: these are the
-    engine's own documented graceful-degradation defaults, not a value
-    this lane invents).
+    ``bea_industries``) via
+    :func:`babylon.domain.economics.factory.create_leontief_rent_services`,
+    so ``tick_phi_hour`` is genuinely computed per county for web sessions
+    too, instead of staying at the permanent ``0.0`` stub (see
+    ``babylon.domain.economics.tick.system.imperial_rent
+    ._spec_057_pipeline_wired``). ``median_wage``/``employment`` (Vol I's
+    ``DefaultWagePressureCalculator`` is ALSO unwired in both runners — no
+    ``reserve_army_data_source`` — so they stay at ``CountyEconomicState``'s
+    bootstrap defaults, 21.0 $/hr and 100,000 workers) are the
+    calculator-independent values that make ``flow_wage_accrued`` move
+    (Constitution III.11: these are the engine's own documented
+    graceful-degradation defaults, not a value this lane invents).
+
+    Unlike the headless runner (which builds overrides ONCE before its
+    tick loop), this function is called FRESH on every ``resolve_tick()``
+    call — the returned session must be closed by the caller within that
+    same call (see the ``try``/``finally`` around ``step()`` at this
+    function's call site) so a long-running web session doesn't leak one
+    open SQLAlchemy session per tick.
 
     Returns:
-        Dict of service overrides for ``step()``'s ``calculator_overrides``.
+        A ``(overrides, leontief_session)`` tuple: ``overrides`` is the
+        dict of service overrides for ``step()``'s ``calculator_overrides``;
+        ``leontief_session`` is the open SQLAlchemy session backing the
+        Leontief overrides, which the caller must close.
     """
+    from babylon.domain.economics.factory import create_leontief_rent_services
     from babylon.domain.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
     from babylon.domain.economics.gamma.gamma_iii import DefaultGammaIIICalculator
     from babylon.domain.economics.melt import DefaultMELTCalculator
@@ -4175,6 +4195,7 @@ def _bridge_economics_overrides() -> dict[str, Any]:
         SQLiteBEANationalGDPSource,
         SQLiteQCEWNationalEmploymentSource,
     )
+    from babylon.kernel.event_bus import EventBus
     from babylon.reference.database import get_normalized_session_factory
 
     gamma = DefaultGammaIIICalculator(MVPUnpaidCareHoursSource(), QCEWCareAdapter())
@@ -4185,7 +4206,15 @@ def _bridge_economics_overrides() -> dict[str, Any]:
         SQLiteQCEWNationalEmploymentSource(session_factory),
     )
 
-    return {"gamma_calculator": gamma, "melt_calculator": melt}
+    event_bus = EventBus()
+    defines = GameDefines.load_default()
+    leontief_overrides, leontief_session = create_leontief_rent_services(
+        session_factory, event_bus, defines
+    )
+
+    overrides: dict[str, Any] = {"gamma_calculator": gamma, "melt_calculator": melt}
+    overrides.update(leontief_overrides)
+    return overrides, leontief_session
 
 
 def _carry_tick_dynamics_flows(
@@ -4957,10 +4986,18 @@ def _hex_state_row(
       both have real per-tick engine sources.
     * ``attributes["habitability"]`` — the graph-only Sovereign-driven
       metabolic impact (Spec-070 FR-043), when present on ``territory``.
-    * ``profit_rate``/``exploitation_rate``/``occ``/``imperial_rent``/
-      ``g33_visibility`` — NO wired system computes these per-territory
-      (only global aggregates, or orphaned economics/tick/ modules) —
-      left at their NULL column default.
+    * ``profit_rate``/``exploitation_rate``/``occ``/``imperial_rent`` —
+      Program 17 / Item 1a: real per-territory values now, sourced from
+      ``TickDynamicsSystem``'s ``tick_profit_rate``/``tick_exploitation_rate``/
+      ``tick_occ``/``tick_phi_hour`` graph attrs via
+      :func:`_serialize_territory` (``None`` until the first year boundary
+      this session produces usable data for that territory).
+    * ``g33_visibility`` — gamma_III is a single NATIONAL coefficient in
+      this codebase (no per-county visibility_g33 computation is wired
+      anywhere) — deliberately left at its NULL column default (Program 17
+      / Item 1a scope decision, pending owner ruling on open_questions:
+      broadcast the national value vs. defer to a genuine per-county
+      visibility_g33 once tensor_registry is wired).
     * ``pop_bourgeoisie``/``pop_petit_bourgeoisie``/``pop_labor_aristocracy``/
       ``pop_proletariat``/``pop_lumpenproletariat`` — no shipped scenario
       sets ``SocialClass.county_fips``, so there is no live per-territory
@@ -5039,6 +5076,23 @@ def _hex_state_row(
         row["dominant_class"] = dominant_class
     if len(county_fips) >= 2:
         row["state_fips"] = county_fips[:2]
+
+    # Program 17 / Item 1a: real per-territory Marxian indicators (None
+    # until TickDynamicsSystem's first year boundary produces usable data
+    # for this territory — see _serialize_territory).
+    profit_rate = territory.get("profit_rate")
+    if profit_rate is not None:
+        row["profit_rate"] = float(profit_rate)
+    exploitation_rate = territory.get("exploitation_rate")
+    if exploitation_rate is not None:
+        row["exploitation_rate"] = float(exploitation_rate)
+    occ = territory.get("occ")
+    if occ is not None:
+        row["occ"] = float(occ)
+    imperial_rent = territory.get("imperial_rent")
+    if imperial_rent is not None:
+        row["imperial_rent"] = float(imperial_rent)
+
     return row
 
 
@@ -5245,6 +5299,15 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     (Spec-070 FR-043, MetabolismSystem), ``dispossession_intensity``
     (Feature 021, DispossessionEventSystem), ``wage_pressure`` (Feature 021,
     ReserveArmySystem). Without a graph these stay ``None``.
+
+    Program 17 / Item 1a: also reads ``imperial_rent``/``profit_rate``/
+    ``occ``/``exploitation_rate`` off the same graph-only ``tick_``-prefixed
+    territory attrs (``tick_phi_hour``/``tick_profit_rate``/``tick_occ``/
+    ``tick_exploitation_rate``) that ``TickDynamicsSystem`` writes at year
+    boundaries via ``graph_bridge.write_tick_state_to_graph`` — these were
+    already being computed but never read at this serialization boundary.
+    ``None`` (not ``0.0``) until the first year boundary this session
+    produces usable data (Constitution III.11).
     """
     territory_id = t.id
     return {
@@ -5281,6 +5344,10 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
             graph, territory_id, "dispossession_intensity"
         ),
         "wage_pressure": _territory_graph_attr(graph, territory_id, "wage_pressure"),
+        "imperial_rent": _territory_graph_attr(graph, territory_id, "tick_phi_hour"),
+        "profit_rate": _territory_graph_attr(graph, territory_id, "tick_profit_rate"),
+        "occ": _territory_graph_attr(graph, territory_id, "tick_occ"),
+        "exploitation_rate": _territory_graph_attr(graph, territory_id, "tick_exploitation_rate"),
     }
 
 

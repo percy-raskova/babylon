@@ -94,9 +94,16 @@ class EventCapture:
 
     @staticmethod
     def _extract_event_type(event: Any) -> str:
-        if hasattr(event, "event_type"):
-            t = event.event_type
-            return str(t.value) if hasattr(t, "value") else str(t)
+        # Typed domain events expose ``event_type``; kernel ``event_bus.Event``
+        # dataclasses expose ``type`` (an EventType). Check BOTH — otherwise
+        # every bus-published event (e.g. TERMINAL_DECISION, SUPERWAGE_CRISIS)
+        # collapses to the class name "Event", which silently starved the
+        # Carceral phase-milestone detection on the headless backend
+        # (Constitution III.11 — a plausible-but-wrong default).
+        for attr in ("event_type", "type"):
+            if hasattr(event, attr):
+                t = getattr(event, attr)
+                return str(t.value) if hasattr(t, "value") else str(t)
         return str(event.__class__.__name__)
 
     @staticmethod

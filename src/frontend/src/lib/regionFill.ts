@@ -83,14 +83,25 @@ function isPresent(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && Number.isFinite(value);
 }
 
-/** Normalize `value` into [0, 1] against `domain`; `null` when absent/non-finite. */
+/**
+ * Normalize `value` into [0, 1] against `domain`; `null` when absent/non-finite
+ * OR when `domain` has zero dynamic range (`span <= 0`). A degenerate domain —
+ * every visible region shares one value (e.g. the static-economy case where
+ * every imperial_rent is 0.0, owner item #25) — carries no relative signal for a
+ * ramp to encode. Returning 0 here would paint the ramp floor, indistinguishable
+ * from a genuine spread bottomed at the floor; honest-null instead (→ caller's
+ * NO_DATA fill, borders show through) keeps an empty domain "visibly distinct
+ * from a real 0.0" (Constitution III.11, the rule mapLensLayers.ts::metricFill
+ * already states). Self-heals: once values spread (span > 0) the ramp colors
+ * normally. Also the divide-by-zero guard.
+ */
 function normalize(value: number | null | undefined, domain: FillDomain): number | null {
   if (!isPresent(value)) {
     return null;
   }
   const span = domain.max - domain.min;
   if (span <= 0) {
-    return 0;
+    return null;
   }
   return Math.max(0, Math.min(1, (value - domain.min) / span));
 }

@@ -18,6 +18,8 @@ import logging
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
+import psycopg
+
 from babylon.config.defines import GameDefines
 
 # Spec-113 Lane D: re-exported (not otherwise used in this module) so
@@ -6073,7 +6075,16 @@ def init_persistence(db_config: dict[str, Any]) -> RuntimePersistence:
     persistence = PostgresRuntime(_pool)
     try:
         persistence.init_schema()
-    except Exception as exc:
-        logger.warning("PostgreSQL schema init had non-fatal error: %s", exc)
+    except (psycopg.Error, RuntimeError) as exc:
+        # Schema init is infra-layer, so we catch to keep the web app bootable
+        # rather than hard-crash on a partial-schema hiccup — but LOUDLY
+        # (Constitution III.11). A swallowed WARNING here hid a real hex_cell
+        # column drift for weeks; ERROR + explicit degraded-state wording so it
+        # cannot be mistaken for benign. init_schema now names the failing DDL.
+        logger.error(
+            "PostgreSQL schema init FAILED — engine may run in a DEGRADED state "
+            "(missing tables/indexes); investigate immediately: %s",
+            exc,
+        )
 
     return persistence

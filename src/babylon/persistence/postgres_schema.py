@@ -273,6 +273,19 @@ CREATE TABLE IF NOT EXISTS hex_cell (
 )
 """
 
+# Idempotent column heals for ``hex_cell``. ``CREATE TABLE IF NOT EXISTS`` no-ops
+# on a table created by an older schema version, so the geography columns added
+# after the table first shipped never appear on long-lived databases. Without
+# these ALTERs the ``idx_hex_cell_bea_ea`` index below fails with UndefinedColumn
+# on any DB predating the column (observed live 2026-07-12). ``ADD COLUMN IF NOT
+# EXISTS`` is a no-op where the column already exists, so this is safe to re-run.
+HEX_CELL_MIGRATIONS_DDL: list[str] = [
+    "ALTER TABLE hex_cell ADD COLUMN IF NOT EXISTS county_name VARCHAR(100)",
+    "ALTER TABLE hex_cell ADD COLUMN IF NOT EXISTS bea_ea_code VARCHAR(8)",
+    "ALTER TABLE hex_cell ADD COLUMN IF NOT EXISTS msa_code VARCHAR(10)",
+    "ALTER TABLE hex_cell ADD COLUMN IF NOT EXISTS state_fips VARCHAR(2) NOT NULL DEFAULT '26'",
+]
+
 HEX_STATE_DDL = """
 CREATE TABLE IF NOT EXISTS hex_state (
     session_id      UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
@@ -1003,6 +1016,7 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     TICK_SUMMARY_DDL,
     # Layer 3: Spatial
     HEX_CELL_DDL,
+    *HEX_CELL_MIGRATIONS_DDL,  # heal drifted hex_cell before its indexes run
     HEX_STATE_DDL,
     HEX_TERRAIN_STATE_DDL,
     # Layer 3b: R8 Geographic Substrate (Reference Data)

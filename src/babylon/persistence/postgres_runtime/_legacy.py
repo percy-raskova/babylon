@@ -24,6 +24,7 @@ from uuid import UUID
 
 if TYPE_CHECKING:
     from babylon.topology.graph import BabylonGraph
+import psycopg
 from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -87,7 +88,17 @@ class PostgresRuntime:
         with self._pool.connection() as conn:
             conn.autocommit = True
             for ddl in POSTGRES_SCHEMA_DDL:
-                conn.execute(ddl)
+                try:
+                    conn.execute(ddl)
+                except psycopg.Error as exc:
+                    # Loud, statement-attributed failure (Constitution III.11).
+                    # A bare psycopg error here surfaces with no clue which of
+                    # the ~90 DDL statements failed, and (autocommit=True) every
+                    # statement after it is silently skipped. Name the offender.
+                    statement = " ".join(ddl.split())[:300]
+                    raise RuntimeError(
+                        f"schema DDL failed ({type(exc).__name__}: {exc}); statement: {statement}"
+                    ) from exc
         logger.info("PostgreSQL schema initialized (%d statements)", len(POSTGRES_SCHEMA_DDL))
 
     def close(self) -> None:

@@ -433,10 +433,9 @@ poetry run python tools/parameter_analysis.py trace \
 description = "Run parameter sweep analysis"
 run = """
 mkdir -p results
-poetry run python tools/parameter_analysis.py sweep \
-  --param economy.extraction_efficiency \
-  --start 0.05 --end 0.50 --step 0.05 \
-  --csv results/sweep.csv
+poetry run python -m babylon.engine.optimization sweep \
+  --param "economy.extraction_efficiency=0.05:0.50:0.05" \
+  --output-csv results/sweep.csv --report
 """
 
 [tasks."sim:profile"]
@@ -455,10 +454,10 @@ arg "[seed]" help="Random seed (optional)"
 '''
 run = """
 mkdir -p results
-poetry run python tools/monte_carlo.py \
-  --samples ${usage_samples} \
+poetry run python -m babylon.engine.optimization monte-carlo \
+  --n-samples ${usage_samples} \
   ${usage_seed:+--seed ${usage_seed}} \
-  --csv results/monte_carlo.csv
+  --csv-path results/monte_carlo.csv
 """
 
 [tasks."sim:e2e-michigan"]
@@ -566,8 +565,8 @@ arg "[trials]" help="Number of optimization trials" default="100"
 arg "[name]" help="Study name (for resumption)" default="babylon_carceral"
 '''
 run = """
-poetry run python tools/tune_agent.py \
-  --trials ${usage_trials} \
+poetry run python -m babylon.engine.optimization bayesian \
+  --n-trials ${usage_trials} \
   --study-name ${usage_name} \
   --storage sqlite:///optuna.db
 """
@@ -583,22 +582,20 @@ arg "[ticks]" help="Max ticks per simulation" default="5200"
 '''
 run = """
 mkdir -p results
-poetry run python tools/landscape_analysis.py \
-  --param1 ${usage_param1} \
-  --range1 ${usage_range1} \
-  --param2 ${usage_param2} \
-  --range2 ${usage_range2} \
+poetry run python -m babylon.engine.optimization sweep \
+  --param "${usage_param1}=${usage_range1}" \
+  --param2 "${usage_param2}=${usage_range2}" \
   --max-ticks ${usage_ticks} \
-  --output results/landscape.csv
+  --output-csv results/landscape.csv
 """
 
 [tasks."tune:params"]
 description = "1D parameter sensitivity sweep"
-run = "poetry run python tools/tune_parameters.py"
+run = 'poetry run python -m babylon.engine.optimization sweep --param "economy.extraction_efficiency=0.05:0.50:0.05" --report'
 
 [tasks."tune:params-custom"]
 description = "Run parameter sweep with custom range"
-run = "poetry run python tools/tune_parameters.py --start ${1:-0.05} --end ${2:-0.50} --step ${3:-0.05}"
+run = 'poetry run python -m babylon.engine.optimization sweep --param "economy.extraction_efficiency=${1:-0.05}:${2:-0.50}:${3:-0.05}" --report'
 
 [tasks."tune:dashboard"]
 description = "Launch Optuna Dashboard for visualization"
@@ -609,10 +606,10 @@ description = "Global sensitivity analysis (Morris + Sobol)"
 run = """
 mkdir -p results
 echo "Running Morris screening..."
-poetry run python tools/sensitivity_analysis.py morris --trajectories 10
+poetry run python -m babylon.engine.optimization sensitivity --method morris --trajectories 10 --morris-output results/morris.json
 echo ""
 echo "Running Sobol analysis..."
-poetry run python tools/sensitivity_analysis.py sobol --samples 256
+poetry run python -m babylon.engine.optimization sensitivity --method sobol --samples 256 --sobol-output results/sobol.json
 """
 
 [tasks."tune:morris"]
@@ -620,9 +617,9 @@ description = "Morris elementary effects screening (fast)"
 usage = 'arg "[trajectories]" help="Number of trajectories" default="10"'
 run = """
 mkdir -p results
-poetry run python tools/sensitivity_analysis.py morris \
+poetry run python -m babylon.engine.optimization sensitivity --method morris \
   --trajectories ${usage_trajectories} \
-  --output results/morris.json
+  --morris-output results/morris.json
 """
 
 [tasks."tune:sobol"]
@@ -630,9 +627,9 @@ description = "Sobol variance decomposition (slow)"
 usage = 'arg "[samples]" help="Base sample size" default="256"'
 run = """
 mkdir -p results
-poetry run python tools/sensitivity_analysis.py sobol \
+poetry run python -m babylon.engine.optimization sensitivity --method sobol \
   --samples ${usage_samples} \
-  --output results/sobol.json
+  --sobol-output results/sobol.json
 """
 
 # =============================================================================

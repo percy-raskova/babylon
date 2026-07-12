@@ -20,6 +20,22 @@ class _MockEvent:
         self.severity = severity
 
 
+class TestKernelEventTypeField:
+    """The kernel ``event_bus.Event`` exposes ``type`` (an EventType), not
+    ``event_type``. The extractor must read it so bus-published events carry
+    their real type instead of collapsing to the class name ``"Event"`` —
+    the bug that starved headless Carceral phase-milestone detection."""
+
+    def test_reads_type_field_from_kernel_event(self) -> None:
+        from babylon.kernel.event_bus import Event
+
+        cap = EventCapture()
+        cap.set_tick(7)
+        cap.on_event(Event(type="RUPTURE", tick=7, payload={}))
+        drained = cap.drain()
+        assert drained[0].event_type == "RUPTURE"
+
+
 # ----------------------------------------------------------------------
 # T066: capture appends in emission order
 # ----------------------------------------------------------------------

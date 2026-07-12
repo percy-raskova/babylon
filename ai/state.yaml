@@ -1304,16 +1304,19 @@ implemented:
           - "Entity ID constants"
         importers:
           - "tools/parameter_analysis.py"
-          - "tools/landscape_analysis.py"
           - "tools/audit_simulation.py"
-          - "tools/tune_agent.py"
-          - "tools/monte_carlo.py"
-          - "tools/sensitivity_analysis.py"
+          - "tools/necropolis_viewer.py"
+          - "tools/profiler.py"
           - "tools/regression_test.py"
+        note: >-
+          The sweep/optimize helpers (get_tunable_parameters, inject_parameter)
+          also live in src/babylon/engine/optimization/params.py; the standalone
+          tune_agent/tune_parameters/landscape_analysis/monte_carlo/
+          sensitivity_analysis tools were retired into that package.
 
       monte_carlo:
-        status: "complete"
-        location: "tools/monte_carlo.py"
+        status: "complete (migrated to package)"
+        location: "src/babylon/engine/optimization/monte_carlo.py (subcommand: monte-carlo)"
         date: "2026-01-01"
         mise_task: "sim:monte-carlo"
         description: "Monte Carlo uncertainty quantification (N-sample replication)"
@@ -1324,8 +1327,8 @@ implemented:
         dependencies: ["scipy>=1.11.0"]
 
       sensitivity_analysis:
-        status: "complete"
-        location: "tools/sensitivity_analysis.py"
+        status: "complete (migrated to package)"
+        location: "src/babylon/engine/optimization/sensitivity.py (subcommand: sensitivity)"
         date: "2026-01-01"
         mise_tasks: ["tune:sensitivity", "tune:morris", "tune:sobol"]
         description: "Global sensitivity analysis via SALib (Morris + Sobol)"

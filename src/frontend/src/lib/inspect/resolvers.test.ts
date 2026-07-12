@@ -28,6 +28,26 @@ describe("resolveRef", () => {
     expect(node.sections[0]?.rows.find((r) => r.label === "Heat")?.value).toBe(0.4);
   });
 
+  it("resolves an entity ref from ref.inline WITHOUT fetching (pure), preferring inline over the endpoint", async () => {
+    // If the fetch path were taken it would return this SENTINEL — asserting the
+    // node reflects the inline payload instead proves the endpoint was bypassed.
+    server.use(
+      http.get("/api/games/:id/hex/:entityId/", () =>
+        HttpResponse.json({ status: "ok", data: { county_name: "FROM ENDPOINT", heat: 9.9 } }),
+      ),
+    );
+    const node = await resolveRef("game-001", {
+      kind: "hex",
+      id: "h1",
+      inline: { county_name: "Wayne County", heat: 0.4, population: 8000 },
+    });
+    expect(node.title).toBe("Wayne County");
+    expect(node.sections[0]?.rows.find((r) => r.label === "Heat")?.value).toBe(0.4);
+    expect(node.sections[0]?.rows.find((r) => r.label === "Population")?.value).toBe(8000);
+    // A field absent from the inline payload stays an honest null (III.11).
+    expect(node.sections[0]?.rows.find((r) => r.label === "Dominant Class")?.value).toBeNull();
+  });
+
   it("metric hits GET /explain/?metric=&scope= and adapts the FormulaCard shape", async () => {
     server.use(
       http.get("/api/games/:id/explain/", ({ request }) => {

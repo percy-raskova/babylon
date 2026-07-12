@@ -62,6 +62,7 @@ import {
   type HexMapFeatureProperties,
 } from "@/lib/mapMetadata";
 import { lensKey, type Lens } from "@/lib/lens";
+import { territoryToHexInline } from "@/lib/inspect/adapters/hex";
 import type {
   AdminFeatureProperties,
   AdminLevel,
@@ -355,8 +356,12 @@ interface DeckGLMapProps {
   onFactionFilterChange?: (factionId: string | null) => void;
   /** Hex fill opacity [0, 1]. Defaults to 0.8. */
   layerOpacity?: number;
-  /** Called on hex click instead of navigating internally (routing is B3's job). */
-  onTerritoryClick?: (territoryId: string) => void;
+  /**
+   * Called on hex click instead of navigating internally (routing is B3's job).
+   * `inline` carries the clicked feature's own state so the InspectionStack can
+   * render it directly without a `get_inspector_hex` round-trip.
+   */
+  onTerritoryClick?: (territoryId: string, inline?: Record<string, unknown>) => void;
   /**
    * Admin-level spatial aggregation LOD (spec-112 C5). Defaults to "hex" —
    * the pre-county-framing rendered behavior — so every caller that
@@ -449,7 +454,7 @@ function resolveHoverInfo(
 function handleMapClick(
   info: { object?: unknown },
   framing: AdminLevel,
-  onTerritoryClick: ((territoryId: string) => void) | undefined,
+  onTerritoryClick: ((territoryId: string, inline?: Record<string, unknown>) => void) | undefined,
 ): void {
   if (info.object && framing === "hex") {
     const territory = info.object as TerritoryState;
@@ -458,7 +463,10 @@ function handleMapClick(
     // territory row id (found live in Phase V: id-keyed refs render an
     // unresolvable-card error). Scatter-fallback territories (no h3_index)
     // keep the row id so the click still surfaces something inspectable.
-    onTerritoryClick?.(territory.h3_index ?? territory.id);
+    // Pass the clicked feature's own state as inline data so the card renders
+    // real values immediately (get_inspector_hex is stubbed) — same source the
+    // hover tooltip uses, so card and tooltip never disagree.
+    onTerritoryClick?.(territory.h3_index ?? territory.id, territoryToHexInline(territory));
   }
 }
 

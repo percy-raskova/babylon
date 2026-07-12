@@ -57,7 +57,9 @@ export function MapStage({ gameId }: MapStageProps): React.JSX.Element {
           onLensChange={setLens}
           factionFilter={factionFilter}
           onFactionFilterChange={setFactionFilter}
-          onTerritoryClick={(territoryId) => setSelection({ kind: "hex", id: territoryId })}
+          onTerritoryClick={(territoryId, inline) =>
+            setSelection({ kind: "hex", id: territoryId, inline })
+          }
           framing={framing}
           onFramingChange={setFraming}
         />

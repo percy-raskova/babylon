@@ -196,7 +196,7 @@ describe("DeckGLMap", () => {
       onClick?: (info: { object?: unknown }) => void;
     };
     deckProps.onClick?.({ object: { id: "terr-1", h3_index: "882a100d2bfffff" } });
-    expect(onTerritoryClick).toHaveBeenCalledWith("882a100d2bfffff");
+    expect(onTerritoryClick).toHaveBeenCalledWith("882a100d2bfffff", expect.any(Object));
   });
 
   it("falls back to the territory row id when the picked territory has no h3_index", () => {
@@ -215,7 +215,51 @@ describe("DeckGLMap", () => {
       onClick?: (info: { object?: unknown }) => void;
     };
     deckProps.onClick?.({ object: { id: "terr-1" } });
-    expect(onTerritoryClick).toHaveBeenCalledWith("terr-1");
+    expect(onTerritoryClick).toHaveBeenCalledWith("terr-1", expect.any(Object));
+  });
+
+  // spec-113 Phase-V polish: get_inspector_hex is stubbed, so the click hands
+  // the InspectionStack the clicked feature's OWN state as inline data — the
+  // same authoritative values the hover tooltip shows — instead of a bare id
+  // that fetches an empty card.
+  it("passes the clicked feature's own state as inline inspection data", () => {
+    const snapshot = makeSnapshot({
+      territories: [makeTerritory({ id: "terr-1", h3_index: "882a100d2bfffff" })],
+    });
+    const onTerritoryClick = vi.fn();
+    render(
+      <DeckGLMap
+        snapshot={snapshot}
+        lens={{ kind: "stance" }}
+        onTerritoryClick={onTerritoryClick}
+      />,
+    );
+    const deckProps = vi.mocked(DeckGL).mock.calls.at(-1)?.[0] as {
+      onClick?: (info: { object?: unknown }) => void;
+    };
+    deckProps.onClick?.({
+      object: {
+        id: "terr-1",
+        h3_index: "882a100d2bfffff",
+        name: "Wayne County",
+        population: 8000,
+        heat: 0.4,
+        rent_level: 1.2,
+        biocapacity: 3.3,
+        habitability: 0.8,
+      },
+    });
+    expect(onTerritoryClick).toHaveBeenCalledWith(
+      "882a100d2bfffff",
+      expect.objectContaining({
+        county_name: "Wayne County",
+        population: 8000,
+        heat: 0.4,
+        rent_level: 1.2,
+        biocapacity: 3.3,
+        habitability: 0.8,
+      }),
+    );
   });
 });
 

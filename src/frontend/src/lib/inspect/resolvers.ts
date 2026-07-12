@@ -47,6 +47,13 @@ async function resolveEntityRef(
   ref: InspectionRef,
   kind: EntityRefKind,
 ): Promise<InspectionNode> {
+  // Inline payload the pusher already held (e.g. a map click carrying the
+  // clicked feature's own state) — adapt it directly, no fetch. Keeps the
+  // module pure (operates only on the ref) and correct-by-source: the same
+  // authoritative per-hex data the tooltip shows, not a stubbed endpoint.
+  if (ref.inline) {
+    return ENTITY_ADAPTER[kind](ref, ref.inline);
+  }
   const segment = ENTITY_PATH_SEGMENT[kind];
   const res = await apiGet<RawEntity>(`/api/games/${gameId}/${segment}/${ref.id}/`);
   if (res.status !== "ok") {

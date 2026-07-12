@@ -33,6 +33,13 @@ export type InspectorKind = "node" | "org" | "community" | "edge" | "hex";
 export interface Selection {
   kind: InspectorKind;
   id: string;
+  /**
+   * Optional pre-fetched payload for the selected entity (a map click carries
+   * the clicked feature's own state) — threaded onto the pushed `InspectionRef`
+   * so the resolver adapts it directly instead of fetching. Graph/table/event
+   * selections omit it and fetch as before (`inspect/resolvers.ts`).
+   */
+  inline?: Record<string, unknown>;
 }
 
 export interface MapSlice {
@@ -92,7 +99,11 @@ export const createMapSlice: StateCreator<RootState, [], [], MapSlice> = (set, g
       // itself (not `panels.inspector`) now owns fetch/loading/error.
       get().inspect.clear();
       if (selection) {
-        get().inspect.push({ kind: selection.kind, id: selection.id });
+        get().inspect.push({
+          kind: selection.kind,
+          id: selection.id,
+          inline: selection.inline,
+        });
       }
     },
   },

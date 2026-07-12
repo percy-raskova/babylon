@@ -34,6 +34,17 @@ export interface InspectionRef {
   id: string;
   scope?: string;
   label?: string;
+  /**
+   * A pre-fetched payload the pusher already holds (Lane C, additive). When a
+   * map click selects a hex, the clicked deck.gl feature already carries that
+   * hex's authoritative per-tick state (the same object the hover `HexTooltip`
+   * renders) — attaching it here lets the resolver adapt it directly instead of
+   * round-tripping `get_inspector_hex` (stubbed today). Fields the click did not
+   * carry stay absent so the adapter renders them as honest nulls (III.11), and
+   * the resolver stays pure: `inline` is part of the ref, not a store read.
+   * Omitted for refs pushed from a row/provenance click, which fetch as before.
+   */
+  inline?: Record<string, unknown>;
 }
 
 /**

@@ -504,7 +504,7 @@ def _fetch_per_county_substrate_apportionment(
         JOIN dim_time t ON t.time_id = fci.time_id
         WHERE dc.fips IN ({placeholders}) AND t.year = ?
         GROUP BY dc.fips
-        """,
+        """,  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
         (*fips_list, year),
     ).fetchall()
     population_by_fips = {fips: float(total or 0) for fips, total in pop_rows}
@@ -516,7 +516,7 @@ def _fetch_per_county_substrate_apportionment(
         FROM dim_county_geometry dcg
         JOIN dim_county dc ON dc.county_id = dcg.county_id
         WHERE dc.fips IN ({placeholders})
-        """,
+        """,  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
         tuple(fips_list),
     ).fetchall()
     area_by_fips = {fips: float(area or 0) for fips, area in area_rows}
@@ -615,7 +615,7 @@ def _fetch_per_county_data(
         WHERE dc.fips IN ({_placeholders(fips_list)})
           AND t.year = ?
         GROUP BY dc.fips
-        """,
+        """,  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
         (*fips_list, year),
     ).fetchall()
     qcew_wages_by_fips = {fips: float(total or 0) for fips, total in qcew_rows}
@@ -629,7 +629,7 @@ def _fetch_per_county_data(
         JOIN dim_time t ON t.time_id = fbg.time_id
         WHERE dc.fips IN ({_placeholders(fips_list)})
           AND t.year = ? AND fbg.bea_industry_id = ?
-        """,
+        """,  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
         (*fips_list, year, _BEA_ALL_INDUSTRIES_ID),
     ).fetchall()
     bea_gdp_by_fips = {fips: float(gdp_millions or 0) * 1e6 for fips, gdp_millions in bea_rows}
@@ -641,7 +641,7 @@ def _fetch_per_county_data(
         FROM fact_broadband_coverage fbc
         JOIN dim_county dc ON dc.county_id = fbc.county_id
         WHERE dc.fips IN ({_placeholders(fips_list)})
-        """,
+        """,  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
         tuple(fips_list),
     ).fetchall()
     broadband_by_fips = {
@@ -656,7 +656,7 @@ def _fetch_per_county_data(
         JOIN dim_county dc ON dc.county_id = fci.county_id
         WHERE dc.fips IN ({_placeholders(fips_list)})
         GROUP BY dc.fips
-        """,
+        """,  # noqa: S608 — placeholder-count helper emits only ? tokens; values bound
         tuple(fips_list),
     ).fetchall()
     coercive_by_fips = {fips: int(total or 0) for fips, total in coercive_rows}

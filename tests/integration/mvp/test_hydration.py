@@ -27,6 +27,9 @@ from babylon.engine.hydration.reference import (
 )
 from babylon.engine.simulation import Simulation
 
+# Needs the reference SQLite DB — excluded on CI until the item-40 subset artifact lands.
+pytestmark = pytest.mark.requires_reference_db
+
 # Detroit test case: Wayne and Oakland counties
 WAYNE_FIPS = "26163"
 OAKLAND_FIPS = "26125"

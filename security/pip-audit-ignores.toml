@@ -1,0 +1,23 @@
+# pip-audit ignore policy (Constitution III.11 — Loud Failure).
+#
+# Every entry in [[ignore]] MUST carry:
+#   id       - the vulnerability identifier (e.g. a CVE or GHSA id) passed to
+#              `pip-audit --ignore-vuln`
+#   reason   - non-empty justification for why the finding is suppressed
+#   expires  - an ISO date (YYYY-MM-DD); the last day the ignore is valid
+#
+# tools/run_pip_audit.py HARD-FAILS (exit 2) on any entry missing id/reason,
+# any entry with an unparseable expires date, and any entry that has expired
+# relative to today's date. This is deliberate: ignores can never rot
+# silently. When an entry expires, the quarterly re-review either renews it
+# (bump expires, keep or update reason) or removes it because the
+# vulnerability is now fixed upstream.
+#
+# 2026-07-11 — POLICY EMPTIED. The dependabot-wave-20260711 batch unblocked the
+# item-41 residue: bumping sentence-transformers ^3.0 -> ^5.6 pulled transformers
+# 4.57.6 -> 5.13.1 (fixing CVE-2026-1839 @ 5.0.0rc3, CVE-2026-4372 @ 5.3.0, and
+# PYSEC-2025-217) and the resolver moved torch 2.10.0 -> 2.13.0 (clearing
+# CVE-2026-3219, PYSEC-2026-139, CVE-2025-3000). A raw `pip-audit` over the new
+# environment reports zero known vulnerabilities, so the minimal passing policy
+# carries no [[ignore]] entries. Any new suppression added below must re-justify
+# itself and will trip the exact-pin test in tests/unit/tools/test_run_pip_audit.py.

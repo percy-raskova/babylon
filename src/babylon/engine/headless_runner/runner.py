@@ -538,7 +538,7 @@ def _query_trace(
     """
     select_cols = ", ".join(c for c in TRACE_COLUMNS if c not in {"simulated_year"})
     sql = (
-        f"SELECT {select_cols} FROM view_runtime_trace_emission "
+        f"SELECT {select_cols} FROM view_runtime_trace_emission "  # noqa: S608 — TRACE_COLUMNS is an imported constant; values use %s placeholders
         "WHERE session_id = %s AND tick < %s ORDER BY tick, entity_id"
     )
     with pool.connection() as conn, conn.cursor() as cur:

@@ -1,11 +1,11 @@
-[tool.poetry]
+[project]
 name = "babylon"
 version = "0.3.0"
 description = "A Marxist text-based role playing game powered by Claude. It aims to educate and entertain by turning the immortal science of dialectical materialism into a game engine."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 authors = [
-    "Persephone Raskova <percy@babylonrpg.com>",
+    { name = "Persephone Raskova", email = "percy@babylonrpg.com" },
 ]
 keywords = [
     "ai",
@@ -14,6 +14,12 @@ keywords = [
     "rpg",
     "dystopian",
 ]
+requires-python = ">=3.12,<4.0"
+# Poetry 2.x hybrid mode (PEP 621 metadata + Poetry dependency tables):
+# classifiers are auto-derived; dependencies stay under [tool.poetry.*].
+dynamic = ["classifiers", "dependencies"]
+
+[tool.poetry]
 packages = [
     { include = "babylon", from = "src" },
     # babylon_data: thin Python wrapper around the data trove at
@@ -23,17 +29,16 @@ packages = [
     { include = "babylon_data", from = "src" },
 ]
 
-[tool.poetry.urls]
+[project.urls]
 Homepage = "https://babylonrpg.com"
 Documentation = "https://github.com/bogdanscarwash/babylon#readme"
 Issues = "https://github.com/bogdanscarwash/babylon/issues"
 Source = "https://github.com/bogdanscarwash/babylon"
 
 [tool.poetry.dependencies]
-python = "^3.12"
 pydantic = ">=2.10.3"
 numpy = ">=1.26.4"
-rustworkx = "^0.17.1"
+rustworkx = "^0.18.0"
 sqlalchemy = ">=2.0.36"
 pandas = ">=2.2.3"
 jsonschema = "^4.25.1"
@@ -67,17 +72,17 @@ doc8 = "^2.0.0"
 polars = "^1.38.1"
 psycopg = "^3.3.3"
 psycopg-pool = "^3.3.0"
-pyarrow = "^23.0.1"
+pyarrow = "^25.0.0"
 boto3 = "^1.42.59"
 duckdb = "^1.4.4"
-pgvector = "^0.4"
+pgvector = "^0.5"
 ansible-dev-tools = "^26.2.0"
 uuid = "^1.30"
 django = ">=5.0,<6.0"
 djangorestframework = ">=3.15"
 django-cors-headers = ">=4.0"
 gunicorn = ">=21.0"
-sentence-transformers = "^3.0"
+sentence-transformers = "^5.6"
 tqdm = "^4.66"
 
 [tool.poetry.group.dev.dependencies]
@@ -106,7 +111,7 @@ pytest-randomly = "^4.0.1"
 mutmut = "^3.4.0"
 deptry = "^0.25.1"
 salib = "^1.5.2"
-optuna = "^3.6"
+optuna = "^4.9"
 optuna-dashboard = "^0.20"
 types-docutils = "^0.22.3.20251115"
 types-tqdm = "^4.67.0.20250809"
@@ -122,11 +127,11 @@ pytest-timeout = "^2.4.0"
 import-linter = "^2.13"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = ">=7,<9"
+sphinx = ">=9,<10"
 sphinx-rtd-theme = "^3.0.2"
-sphinx-autodoc-typehints = "<3.6"
+sphinx-autodoc-typehints = "<3.13"
 myst-parser = "^5.0.0"
-sphinx-autobuild = "^2024.10.3"
+sphinx-autobuild = "^2025.8"
 sphinxcontrib-mermaid = "^2.0"
 
 [tool.pytest.ini_options]
@@ -172,6 +177,7 @@ markers = [
     "invariant: Marx value-form & software metamorphic invariant tests (spec-060)",
     "cross_scale: marks tests for spec 062 cross-scale integration",
     "contract: Contract tests pinning cross-boundary interfaces (tests/contract/)",
+    "requires_reference_db: Tests needing the reference SQLite DB (data/sqlite/marxist-data-3NF.sqlite) — excluded on the dev CI tier; main/nightly include them via the CI subset artifact (item 40)",
 ]
 # Enforce marker/config strictness via ini options: the --strict-markers /
 # --strict-config addopts entries were a verified NO-OP under pytest 9.0.3
@@ -233,6 +239,7 @@ select = [
     "UP",
     "ARG",
     "SIM",
+    "S",
 ]
 ignore = [
     "E501",
@@ -250,17 +257,45 @@ known-first-party = [
 "tests/**" = [
     "ARG001",
     "ARG002",
+    "S101",  # asserts are pytest's language
+    "S102",  # exec in import-surface tests is the point of the test
+    "S103",  # chmod on fixtures (executable-bit setup)
+    "S105",  # fixture passwords
+    "S106",  # fixture passwords
+    "S108",  # /tmp literals as nonexistent-path/scratch fixtures
+    "S112",  # try/except/continue in property-test harnesses
+    "S301",  # pickle round-trip tests exercise serialization deliberately
+    "S311",  # seeded randomness in strategies
+    "S603",  # subprocess smoke tests invoke our own CLIs with literal args
+    "S607",  # subprocess smoke tests invoke our own CLIs with literal args
+    "S608",  # SQL literals in test fixtures
 ]
 "web/**" = [
     "ARG001",
 ]
+# The DEBUG-mode fake bridge: random fake data + best-effort side writes are
+# its design, not a defect (game/apps.py falls back to it without RUN_MAIN).
+"web/game/stub_bridge.py" = [
+    "S110",
+    "S311",
+]
 "tools/**" = [
     "C901",
     "SIM",
+    "S101",  # asserts in dev tooling (incl. the qa:regression harness)
+    "S108",  # /tmp scratch in bootstrap tooling
+    "S112",  # audit tooling skips unparseable entries by design
+    "S311",  # seeded sim RNG in benches/monte-carlo — same III.7 rationale as src
+    "S603",  # subprocess for dev tooling
+    "S607",  # subprocess for dev tooling
+    "S608",  # SQL literals in local loaders (operator-run, no external input)
 ]
 "scripts/**" = [
     "C901",
     "SIM",
+]
+"src/**" = [
+    "S311",  # seeded determinism IS the product (Constitution III.7) — sim RNG is never a security token
 ]
 
 [tool.ruff.format]
@@ -330,7 +365,6 @@ paths_to_mutate = [
     "src/babylon/formulas/survival_calculus.py",
     "src/babylon/formulas/unequal_exchange.py",
     "src/babylon/formulas/dynamic_balance.py",
-    "src/babylon/formulas/ideological_routing.py",
     "src/babylon/formulas/solidarity.py",
     "src/babylon/formulas/metabolic_rift.py",
     "src/babylon/formulas/vitality.py",
@@ -349,50 +383,48 @@ paths_to_mutate = [
     "src/babylon/engine/systems/metabolism.py",
     "src/babylon/engine/systems/contradiction.py",
     "src/babylon/engine/systems/event_template.py",
-    "src/babylon/economics/tensor.py",
-    "src/babylon/economics/capital_stock.py",
-    "src/babylon/economics/reproduction.py",
-    "src/babylon/economics/depreciation.py",
-    "src/babylon/economics/derived_metrics.py",
-    "src/babylon/economics/shadow_labor.py",
-    "src/babylon/economics/department_mapper.py",
-    "src/babylon/economics/snlt.py",
-    "src/babylon/economics/tensor_registry.py",
-    "src/babylon/economics/hydrator.py",
-    "src/babylon/economics/melt/melt_calculator.py",
-    "src/babylon/economics/melt/imperial_rent.py",
-    "src/babylon/economics/melt/class_position.py",
-    "src/babylon/economics/melt/basket_visibility.py",
-    "src/babylon/economics/melt/wealth_proxy.py",
-    "src/babylon/economics/throughput/calculator.py",
-    "src/babylon/economics/throughput/supply_chain.py",
-    "src/babylon/economics/throughput/naics_depth.py",
-    "src/babylon/economics/throughput/analysis.py",
-    "src/babylon/economics/gamma/gamma_iii.py",
-    "src/babylon/economics/gamma/gamma_basket.py",
-    "src/babylon/economics/gamma/gamma_import.py",
-    "src/babylon/economics/gamma/shadow_subsidy.py",
-    "src/babylon/economics/gamma/validation.py",
-    "src/babylon/economics/dynamics/accumulation.py",
-    "src/babylon/economics/dynamics/dispossession.py",
-    "src/babylon/economics/dynamics/savings_schedule.py",
-    "src/babylon/economics/dynamics/crisis.py",
-    "src/babylon/economics/dynamics/validation.py",
-    "src/babylon/economics/dynamics/transition_engine.py",
-    "src/babylon/economics/crisis/bifurcation.py",
-    "src/babylon/economics/crisis/wage_compression.py",
-    "src/babylon/economics/tick/system.py",
-    "src/babylon/economics/tick/crisis_detector.py",
-    "src/babylon/economics/tick/derived_rates.py",
-    "src/babylon/economics/tick/precarity.py",
-    "src/babylon/economics/tick/smoothing.py",
-    "src/babylon/economics/tick/graph_bridge.py",
-    "src/babylon/economics/tick/initializer.py",
-    "src/babylon/economics/temporal/transitions.py",
-    "src/babylon/economics/temporal/anomaly.py",
-    "src/babylon/economics/temporal/smoothing.py",
-    "src/babylon/economics/temporal/signals.py",
-    "src/babylon/economics/calibration/thresholds.py",
+    "src/babylon/domain/economics/tensor.py",
+    "src/babylon/domain/economics/capital_stock.py",
+    "src/babylon/domain/economics/depreciation.py",
+    "src/babylon/domain/economics/derived_metrics.py",
+    "src/babylon/domain/economics/shadow_labor.py",
+    "src/babylon/domain/economics/department_mapper.py",
+    "src/babylon/domain/economics/snlt.py",
+    "src/babylon/domain/economics/tensor_registry.py",
+    "src/babylon/domain/economics/hydrator.py",
+    "src/babylon/domain/economics/melt/melt_calculator.py",
+    "src/babylon/domain/economics/melt/class_position.py",
+    "src/babylon/domain/economics/melt/basket_visibility.py",
+    "src/babylon/domain/economics/melt/wealth_proxy.py",
+    "src/babylon/domain/economics/throughput/calculator.py",
+    "src/babylon/domain/economics/throughput/supply_chain.py",
+    "src/babylon/domain/economics/throughput/naics_depth.py",
+    "src/babylon/domain/economics/throughput/analysis.py",
+    "src/babylon/domain/economics/gamma/gamma_iii.py",
+    "src/babylon/domain/economics/gamma/gamma_basket.py",
+    "src/babylon/domain/economics/gamma/gamma_import.py",
+    "src/babylon/domain/economics/gamma/shadow_subsidy.py",
+    "src/babylon/domain/economics/gamma/validation.py",
+    "src/babylon/domain/economics/dynamics/accumulation.py",
+    "src/babylon/domain/economics/dynamics/dispossession.py",
+    "src/babylon/domain/economics/dynamics/savings_schedule.py",
+    "src/babylon/domain/economics/dynamics/crisis.py",
+    "src/babylon/domain/economics/dynamics/validation.py",
+    "src/babylon/domain/economics/dynamics/transition_engine.py",
+    "src/babylon/domain/economics/crisis/bifurcation.py",
+    "src/babylon/domain/economics/crisis/wage_compression.py",
+    "src/babylon/domain/economics/tick/system/__init__.py",
+    "src/babylon/domain/economics/tick/crisis_detector.py",
+    "src/babylon/domain/economics/tick/derived_rates.py",
+    "src/babylon/domain/economics/tick/precarity.py",
+    "src/babylon/domain/economics/tick/smoothing.py",
+    "src/babylon/domain/economics/tick/graph_bridge.py",
+    "src/babylon/domain/economics/tick/initializer.py",
+    "src/babylon/domain/economics/temporal/transitions.py",
+    "src/babylon/domain/economics/temporal/anomaly.py",
+    "src/babylon/domain/economics/temporal/smoothing.py",
+    "src/babylon/domain/economics/temporal/signals.py",
+    "src/babylon/domain/economics/calibration/thresholds.py",
 ]
 tests_dir = [
     "tests/unit/formulas/",
@@ -458,7 +490,7 @@ asyncio = "WARNING"
 
 [build-system]
 requires = [
-    "poetry-core>=1.0.0",
+    "poetry-core>=2.0.0,<3.0.0",
 ]
 build-backend = "poetry.core.masonry.api"
 

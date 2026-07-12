@@ -121,13 +121,13 @@ def compute_legitimation_index(
         Legitimation index [0, 1].
 
     Examples:
-        >>> compute_legitimation_index(
+        >>> round(compute_legitimation_index(
         ...     pension_coverage=0.73, ss_replacement_rate=0.43,
         ...     healthcare_security=0.60, home_ownership_rate=0.66,
         ...     retirement_confidence=0.50,
         ...     w_home=0.35, w_health=0.30, w_retire=0.20,
         ...     w_pension=0.10, w_ss=0.05,
-        ... )
+        ... ), 6)
         0.6055
     """
     index = (
@@ -187,10 +187,10 @@ def compute_ideology_transmission(
         Transmitted ideology value.
 
     Examples:
-        >>> compute_ideology_transmission(
+        >>> round(compute_ideology_transmission(
         ...     caregiver_ideology=0.3, institutional_hegemony=0.8,
         ...     caregiver_weight=0.7, institutional_weight=0.3,
-        ... )
+        ... ), 6)
         0.45
     """
     return caregiver_weight * caregiver_ideology + institutional_weight * institutional_hegemony
@@ -215,7 +215,7 @@ def compute_shadow_subsidy(
         Shadow subsidy (always >= 0).
 
     Examples:
-        >>> compute_shadow_subsidy(p_g2_labor_value=60000, wage_paid_for_d_g2=12000)
+        >>> compute_shadow_subsidy(p_g2_labor_value=60000.0, wage_paid_for_d_g2=12000.0)
         48000.0
     """
     return max(0.0, p_g2_labor_value - wage_paid_for_d_g2)

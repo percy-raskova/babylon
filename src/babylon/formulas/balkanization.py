@@ -383,7 +383,7 @@ def extrapolate_habitability(
         Projected habitability, clamped to ``[0.0, 1.0]``.
 
     Example:
-        >>> extrapolate_habitability(0.8, -0.02, 10)
+        >>> round(extrapolate_habitability(0.8, -0.02, 10), 6)
         0.6
         >>> extrapolate_habitability(0.5, 0.01, 100)  # would overshoot
         1.0

@@ -50,6 +50,12 @@ variable "enable_cloudflare_rulesets" {
   default     = true
 }
 
+variable "manage_cloudflare" {
+  description = "Production runs manage the Cloudflare zone; CI ephemeral applies set false so zone settings/DNS/rulesets/R2 are never touched"
+  type        = bool
+  default     = true
+}
+
 # ============================================
 # PROJECT CONFIGURATION
 # ============================================
@@ -62,6 +68,17 @@ variable "project_name" {
   validation {
     condition     = can(regex("^[a-z0-9-]+$", var.project_name))
     error_message = "Project name must contain only lowercase letters, numbers, and hyphens"
+  }
+}
+
+variable "server_name_prefix" {
+  description = "Prefix for Hetzner resource names (server, firewall, network, volume, load balancer); ephemeral CI applies use \"ci-ephemeral\" so the orphan sweeper can target strays by prefix"
+  type        = string
+  default     = "babylon"
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]+$", var.server_name_prefix))
+    error_message = "Server name prefix must contain only lowercase letters, numbers, and hyphens"
   }
 }
 
@@ -145,15 +162,15 @@ variable "server_count" {
 }
 
 variable "server_type" {
-  description = "Hetzner server type (cpx11, cpx21, cpx31, etc.)"
+  description = "Hetzner server type (cpx11, cpx21, cx32, cpx31, etc.)"
   type        = string
-  default     = "cpx21" # 3 vCPU, 4GB RAM, 80GB NVMe
+  default     = "cx32" # 4 vCPU, 8GB RAM, 80GB NVMe
 }
 
 variable "server_image" {
-  description = "Server OS image"
+  description = "Server OS image (debian-13 ships Python 3.12+ natively)"
   type        = string
-  default     = "debian-12"
+  default     = "debian-13"
 }
 
 variable "server_location" {

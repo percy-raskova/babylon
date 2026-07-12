@@ -895,7 +895,8 @@ def initialize_session(
                 )
                 rows_persisted += count
                 years_persisted += 1
-            except Exception:  # noqa: BLE001 — surface partial hydration in counts
+            except Exception as exc:  # noqa: BLE001 — surface partial hydration in counts
+                logger.warning("LODES persist failed for year %s: %s", clamped, exc)
                 continue
         report.lodes_year_count = years_persisted
         report.lodes_row_count = rows_persisted

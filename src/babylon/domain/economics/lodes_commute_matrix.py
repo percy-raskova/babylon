@@ -542,9 +542,9 @@ class LODESCommuteMatrixLoader:
                 # are tracked separately by the future "_aux_" file path; not in spec 063 scope).
                 if not home_in:
                     continue
-                assert home_hex is not None  # for mypy
+                assert home_hex is not None  # noqa: S101 — mypy narrowing; unreachable per the preceding continue guard
                 if work_in:
-                    assert work_hex is not None
+                    assert work_hex is not None  # noqa: S101 — mypy narrowing; unreachable per the preceding continue guard
                     dest_id = work_hex
                     boundary_dest_kind[dest_id] = NodeKind.HEX
                 else:

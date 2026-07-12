@@ -210,9 +210,8 @@ TRACE_COLUMN_DICT: tuple[dict[str, Any], ...] = (
     },
 )
 
-assert len(TRACE_COLUMN_DICT) == len(TRACE_COLUMNS), (
-    "TRACE_COLUMN_DICT and TRACE_COLUMNS must stay in lock-step"
-)
+if len(TRACE_COLUMN_DICT) != len(TRACE_COLUMNS):
+    raise RuntimeError("TRACE_COLUMN_DICT and TRACE_COLUMNS must stay in lock-step")
 
 
 def build_manifest(
@@ -366,7 +365,7 @@ def _git_sha() -> str:
     """Best-effort HEAD SHA via subprocess; ``"unknown"`` on failure."""
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            ["git", "rev-parse", "HEAD"],  # noqa: S607 — list-form git invocation, dev-tooling idiom with fallback
             check=True,
             capture_output=True,
             text=True,

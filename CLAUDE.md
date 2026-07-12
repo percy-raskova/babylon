@@ -148,8 +148,9 @@ mise run sim:status                     # canonical-run status (tick/520, DB siz
 mise run db:sql -- "SELECT ..."         # one-shot SQL vs babylon_test
 ```
 
-CI (`.github/workflows/ci.yml`) uses raw `poetry run pytest … --tb=short -q`, never `mise` — the mise
-tasks are dev/agent ergonomics only.
+CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit-ci`, `lint:check`,
+`qa:regression`, …) — the only raw-poetry exceptions are the py3.13 forward-compat leg (`nightly.yml`)
+and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
 
 ## Gotchas (hard-won; details in `ai/anti-patterns.yaml`)
 

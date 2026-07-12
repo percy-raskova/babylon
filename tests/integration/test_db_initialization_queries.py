@@ -22,6 +22,9 @@ from pathlib import Path
 
 import pytest
 
+# Needs the reference SQLite DB — excluded on CI until the item-40 subset artifact lands.
+pytestmark = pytest.mark.requires_reference_db
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------

@@ -2,6 +2,10 @@
 # Provisions VPS servers on Hetzner Cloud with proper configuration
 
 terraform {
+  # Floor matches what validates in CI (setup-terraform 1.15.x) while staying
+  # permissive for the operator's local binary (tflint terraform_required_version).
+  required_version = ">= 1.9.0"
+
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"
@@ -36,7 +40,7 @@ locals {
 # ============================================
 
 resource "hcloud_firewall" "default" {
-  name = "${var.project_name}-firewall"
+  name = "${var.server_name_prefix}-firewall"
 
   # SSH access
   rule {
@@ -118,7 +122,7 @@ resource "hcloud_firewall" "default" {
 
 resource "hcloud_server" "vps" {
   count        = var.server_count
-  name         = "${var.project_name}-${count.index + 1}"
+  name         = "${var.server_name_prefix}-${count.index + 1}"
   server_type  = var.server_type
   image        = var.server_image
   location     = var.server_location
@@ -136,7 +140,7 @@ resource "hcloud_server" "vps" {
 
   # User data for initial setup
   user_data = templatefile("${path.module}/cloud-init.yaml", {
-    hostname       = "${var.project_name}-${count.index + 1}"
+    hostname       = "${var.server_name_prefix}-${count.index + 1}"
     ssh_public_key = file(var.ssh_public_key_path)
   })
 
@@ -161,7 +165,7 @@ resource "hcloud_server" "vps" {
 
 resource "hcloud_network" "private" {
   count    = var.enable_private_network ? 1 : 0
-  name     = "${var.project_name}-network"
+  name     = "${var.server_name_prefix}-network"
   ip_range = var.private_network_ip_range
 }
 
@@ -179,7 +183,7 @@ resource "hcloud_network_subnet" "private" {
 
 resource "hcloud_volume" "storage" {
   count     = var.enable_additional_storage ? var.server_count : 0
-  name      = "${var.project_name}-storage-${count.index + 1}"
+  name      = "${var.server_name_prefix}-storage-${count.index + 1}"
   size      = var.storage_size_gb
   server_id = hcloud_server.vps[count.index].id
   automount = true
@@ -197,7 +201,7 @@ resource "hcloud_volume" "storage" {
 
 resource "hcloud_load_balancer" "lb" {
   count              = var.enable_load_balancer ? 1 : 0
-  name               = "${var.project_name}-lb"
+  name               = "${var.server_name_prefix}-lb"
   load_balancer_type = var.load_balancer_type
   location           = var.server_location
 

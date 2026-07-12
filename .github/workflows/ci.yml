@@ -1,565 +1,170 @@
 name: CI
 
-# Simplified CI pipeline for Babylon game project
-# Philosophy: Block on correctness (bugs, types, tests), not style
-# Style enforcement is handled by pre-commit hooks locally
-# See: docs/concepts/vibe-coding/ for development methodology
+# Program 15 (The Gauntlet): the DEV FAST LANE.
+#
+# Tier model: push to dev = fast iteration with sanity checks (~8-10 min wall);
+# push to main = the full pipeline (main.yml); deep/slow legs run on a schedule
+# (nightly.yml). PRs to either branch get this fast lane; PRs to main
+# additionally trigger main.yml.
+#
+# House rules (Constitution III.11 — Loud Failure):
+#   - every job carries timeout-minutes (a hang must die loudly, not run 56min);
+#   - no continue-on-error except jobs explicitly named "(advisory)";
+#   - steps invoke the same mise tasks devs run locally — one invocation
+#     source of truth (the bootstrap composite pins the identical toolchain).
 
 on:
   push:
-    branches: [main, dev]
+    branches: [dev]
   pull_request:
     branches: [main, dev]
-  # Manual re-runs (repo Actions had been disabled since 2026-05; re-enabled
-  # at the spec-112 cutover — dispatch lets any HEAD be exercised on demand).
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: Lint, Type Check & Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up tools with mise
-        uses: jdx/mise-action@v4
-        with:
-          cache: true
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          # v2 (spec-112): cache-hit skips poetry install, so a stale save
-          # pins old tool versions (CI ruff drifted from the lock) — bump
-          # the key to force one fresh install fleet-wide.
-          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-
-      - name: Install project
-        run: poetry install --no-interaction
-
-      # GeoDjango: settings/base.py uses the postgis backend, which loads
-      # GEOS/GDAL/PROJ at import — any pytest touching Django settings dies
-      # with ImproperlyConfigured without these (spec-112 CI re-enable).
-      - name: Install GeoDjango system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
-
-      # Repo-hygiene gate (Program 14): root allowlist, no tracked-ignored
-      # files, no >1MiB non-LFS blobs. Stdlib-only — runs before anything
-      # heavy so violations fail in seconds.
-      - name: Repo hygiene gate
-        run: python3 tools/check_repo_hygiene.py
-
-      # Correctness checks - these block merges
-      # (--version printed while diagnosing CI-vs-local ruff drift: the venv
-      # cache skips reinstall on hit, so a stale cache can pin an old ruff.)
-      - name: Lint with Ruff
-        run: poetry run ruff --version && poetry run ruff check .
-
-      # Import-boundary contracts (Program 14): kernel < models/formulas <
-      # domain < engine; nothing imports the engine backward.
-      - name: Import-boundary contracts
-        run: poetry run lint-imports
-
-      - name: Type check with MyPy
-        run: poetry run mypy src
-
-      - name: Run tests
-        # Fast correctness gate (exclude AI suite and RED-phase tests)
-        run: poetry run pytest --ignore=tests/unit/ai -m "not red_phase" --tb=short -q
-
-      # Coverage gate for simulation-critical code
-      # Enforces 80% coverage on engine/systems and formulas modules
-      - name: Coverage Gate (Simulation Code)
-        run: |
-          poetry run pytest --ignore=tests/unit/ai -m "not red_phase" \
-            --cov=src/babylon/engine/systems \
-            --cov-fail-under=80 \
-            --cov-report=term-missing:skip-covered \
-            -q --tb=no
-        # Blocks merge if simulation code coverage drops below 80%
-
-      # Code complexity analysis - see ADR028 in ai/decisions.yaml
-      - name: Code Complexity Report
-        run: poetry run radon cc src/ -a -s --show-complexity
-        continue-on-error: true  # Informational only, never blocks
-
-      - name: Code Complexity Gate
-        if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
-        run: poetry run xenon --max-absolute C src/
-        # Blocks merge to main if any function exceeds CC 15 (grade C boundary)
-
-  security:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          # v2 (spec-112): cache-hit skips poetry install, so a stale save
-          # pins old tool versions (CI ruff drifted from the lock) — bump
-          # the key to force one fresh install fleet-wide.
-          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-root
-
-      - name: Security audit
-        run: poetry run pip-audit --ignore-vuln CVE-2026-3219
-
-  docs:
-    name: Documentation Build
-    runs-on: ubuntu-latest
-    # Only build docs on main branch - saves CI time on dev/feature branches
-    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          key: venv-docs-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --with docs
-
-      - name: Install project
-        run: poetry install --no-interaction --with docs
-
-      - name: Run doctest examples
-        run: poetry run pytest --doctest-modules src/babylon/formulas -v
-
-      - name: Build documentation
-        run: |
-          cd docs
-          poetry run sphinx-build -b html . _build/html
-
-  # Style check - informational only, doesn't block merges
-  # Pre-commit hooks handle formatting locally
-  style:
-    name: Style Check (Informational)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          # v2 (spec-112): cache-hit skips poetry install, so a stale save
-          # pins old tool versions (CI ruff drifted from the lock) — bump
-          # the key to force one fresh install fleet-wide.
-          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-root
-
-      - name: Check formatting
-        run: poetry run ruff format --check .
-
-  # Mutation testing - validates test quality for critical math
-  # Only runs on PRs to main - uses incremental testing on changed files
-  mutation:
-    name: Mutation Testing (Test Quality)
-    runs-on: ubuntu-latest
-    if: github.base_ref == 'main'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0  # Need full history for diff
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          # v2 (spec-112): cache-hit skips poetry install, so a stale save
-          # pins old tool versions (CI ruff drifted from the lock) — bump
-          # the key to force one fresh install fleet-wide.
-          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      # Detect changed simulation files for incremental mutation testing
-      - name: Get changed simulation files
-        id: changed
-        run: |
-          # Get files changed in this PR that are in simulation-critical paths
-          CHANGED=$(git diff --name-only origin/main...HEAD | \
-            grep -E '^src/babylon/engine/systems/.*\.py$' | \
-            grep -v '__pycache__' | \
-            grep -v '__init__' | \
-            tr '\n' ',' | sed 's/,$//')
-          echo "files=$CHANGED" >> $GITHUB_OUTPUT
-          if [ -n "$CHANGED" ]; then
-            echo "📝 Changed simulation files: $CHANGED"
-          else
-            echo "📝 No simulation files changed in this PR"
-          fi
-
-      # Run incremental mutation testing on changed files only
-      # See ADR028 in ai/decisions.yaml
-      - name: Run Mutation Tests (Incremental)
-        if: steps.changed.outputs.files != ''
-        run: |
-          echo "🧬 Running mutation testing on changed files..."
-          poetry run mutmut run \
-            --paths-to-mutate="${{ steps.changed.outputs.files }}" \
-            --runner="poetry run pytest tests/unit/engine tests/unit/formulas -x -q --tb=no"
-
-      - name: Show Mutation Results
-        if: steps.changed.outputs.files != '' && always()
-        run: |
-          echo ""
-          echo "📊 Mutation Testing Results:"
-          poetry run mutmut results
-
-      - name: Skip Message
-        if: steps.changed.outputs.files == ''
-        run: echo "✅ No simulation-critical files changed - skipping mutation testing"
-
-  ai-tests:
-    name: AI Tests (Separate Suite)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          # v2 (spec-112): cache-hit skips poetry install, so a stale save
-          # pins old tool versions (CI ruff drifted from the lock) — bump
-          # the key to force one fresh install fleet-wide.
-          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-root
-
-      - name: Install GeoDjango system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
-
-      - name: Run AI unit tests
-        run: poetry run pytest tests/unit/ai --tb=short -q
-
-  # Postgres integration leg (remediation C.4) — runs the web bridge suites
-  # that every other job skips (they gate on POSTGRES_HOST). Uses the
-  # repo-canonical compose service: docker/postgres/Dockerfile is
-  # postgis/postgis:16-3.4 + pgvector. A GitHub services: block cannot build
-  # that Dockerfile, and a stock postgis image lacks pgvector, which aborts
-  # PostgresRuntime.init_schema at `CREATE EXTENSION vector`
-  # (src/babylon/persistence/postgres_schema.py) — so compose is a step here.
-  postgres-integration:
-    name: Postgres Integration (web bridge)
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          # v2 (spec-112): cache-hit skips poetry install, so a stale save
-          # pins old tool versions (CI ruff drifted from the lock) — bump
-          # the key to force one fresh install fleet-wide.
-          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Install GeoDjango system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
-
-      - name: Start isolated Postgres (compose, port 5433)
-        run: docker compose up -d --wait babylon-pg
-
-      # The compose DB is FRESH — the direct-host suites expect the Django
-      # schema (game_session et al.). From-zero migrate works since
-      # 25bc0150 (spec-112).
-      - name: Django migrate (fresh compose DB)
-        working-directory: web
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        run: poetry run python manage.py migrate
-
-      - name: Run web integration suites (direct-host + testcontainers)
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        run: poetry run pytest tests/integration/web/ --tb=short -q
-
-      - name: Stop Postgres
-        if: always()
-        run: docker compose down -v
-
-  # Playwright E2E leg (remediation C.5) — boots the REAL stack (compose
-  # Postgres → migrate → seed wayne_county → Django dev server) and runs the
-  # browser suite against it. Vite is started by Playwright's own webServer
-  # block (reuseExistingServer is disabled under CI). Scoped to an explicit
-  # spec list: visual.spec.ts (snapshot variance) and the long owner-run
-  # live-data specs stay out even though SPEC061_TEST_SESSION_ID is set.
-  playwright-e2e:
-    name: Playwright E2E (real loop)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.8.4"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          # v2 (spec-112): cache-hit skips poetry install, so a stale save
-          # pins old tool versions (CI ruff drifted from the lock) — bump
-          # the key to force one fresh install fleet-wide.
-          key: venv-${{ runner.os }}-v2-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      # GeoDjango: settings/base.py uses the postgis backend, which loads
-      # GEOS/GDAL/PROJ at first connection (Django docs' minimal set).
-      - name: Install GeoDjango system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
-
-      # .mise.toml provisions no node — set it up explicitly. The local
-      # node_modules symlink convention does not exist in CI: npm ci.
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: src/frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: src/frontend
-        run: npm ci
-
-      - name: Install Playwright Chromium
-        working-directory: src/frontend
-        run: npx playwright install --with-deps chromium
-
-      - name: Start isolated Postgres (compose, port 5433)
-        run: docker compose up -d --wait babylon-pg
-
-      - name: Django migrate
-        working-directory: web
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        run: poetry run python manage.py migrate
-
-      # RUN_MAIN=true is required: game/apps.py skips EngineBridge init for
-      # DEBUG-mode management commands otherwise and the seed refuses the stub.
-      - name: Seed wayne_county session
-        working-directory: web
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          RUN_MAIN: "true"
-        run: |
-          SEED_OUT=$(poetry run python manage.py seed_initial_game --scenario wayne_county --player admin)
-          echo "$SEED_OUT"
-          SESSION_ID=$(echo "$SEED_OUT" | grep -oE 'Game session created: [0-9a-f-]{36}' | awk '{print $4}')
-          test -n "$SESSION_ID"
-          echo "SPEC061_TEST_SESSION_ID=$SESSION_ID" >> "$GITHUB_ENV"
-
-      # --noreload never sets RUN_MAIN itself; without it /api/* silently
-      # serves the StubEngineBridge fallback (game/apps.py + game/api.py).
-      - name: Start Django backend
-        working-directory: web
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          RUN_MAIN: "true"
-        run: |
-          nohup poetry run python manage.py runserver 8000 --noreload > ../django-ci.log 2>&1 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8000/health/ && break
-            sleep 1
-          done
-          curl -sf http://localhost:8000/health/
-
-      - name: Run Playwright suite (Vite auto-started by webServer)
-        working-directory: src/frontend
-        env:
-          CI: "true"
-        run: >-
-          npx playwright test
-          e2e/real-loop.spec.ts
-          e2e/end-turn-flow.spec.ts
-          e2e/verb-submit.spec.ts
-          e2e/auth.spec.ts
-          e2e/briefing-map-smoke.spec.ts
-          e2e/map-lens-cycling.spec.ts
-
-      - name: Upload Playwright report + Django log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            src/frontend/playwright-report/
-            django-ci.log
-
-      - name: Stop Postgres
-        if: always()
-        run: docker compose down -v
-
-  # Frontend unit/typecheck/build gate (src/frontend — the cockpit, THE
-  # frontend since the spec-112 cutover). The e2e leg against the live
-  # stack is the playwright-e2e job above.
-  cockpit-frontend:
-    name: Frontend (src/frontend)
+  fast-gate:
+    name: Fast Gate (hygiene, lint, format, imports, types, lock)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      # gdal:true — mypy's django-stubs plugin loads Django settings at
+      # startup, and the postgis backend imports GEOS/GDAL/PROJ.
+      - uses: ./.github/actions/bootstrap-python
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: src/frontend/package-lock.json
+          gdal: "true"
 
-      - name: Install cockpit frontend dependencies
-        working-directory: src/frontend
-        run: npm ci
+      # Incremental mypy state. Key ends in the commit SHA so every run saves
+      # a fresh snapshot; restore-keys fall back to the newest same-lock cache.
+      # Speed only — mypy's verdict is identical warm or cold.
+      - name: Cache mypy incremental state
+        uses: actions/cache@v6
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-
 
-      - name: Type check
-        working-directory: src/frontend
-        run: npx tsc --noEmit
+      - name: Repo hygiene gate
+        run: mise run check:hygiene
 
-      - name: Unit tests (Vitest)
+      - name: Lint (ruff check)
+        run: mise run lint:check
+
+      - name: Format (ruff format --check — blocking)
+        run: mise run format:check
+
+      - name: Import-boundary contracts
+        run: mise run lint:imports
+
+      - name: Type check (mypy strict)
+        run: mise run typecheck
+
+      - name: Poetry lock consistency
+        run: poetry check --lock
+
+  test-unit:
+    name: Unit Tests (xdist, coverage gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+
+      - name: Unit shard (excludes ai/slow/reference-DB; engine/systems cov >= 80%)
+        run: mise run test:unit-ci
+
+      - name: Upload test results + coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-ci-results
+          path: reports/test-results/unit-ci/
+
+  qa-regression:
+    name: Determinism Gate (byte-identical dense goldens)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # No gdal: the 5 regression scenarios are synthetic in-memory factories
+      # (no Django, no reference DB, no Postgres) — proven by the Phase-0
+      # probe: byte-identical on hosted runners across CPU/glibc/Python.
+      - uses: ./.github/actions/bootstrap-python
+
+      - name: qa:regression (5 scenarios vs committed baselines)
+        run: mise run qa:regression
+
+  frontend:
+    name: Frontend (tsc, eslint, prettier, vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/bootstrap-node
+
+      - name: Check (tsc + eslint + prettier + vitest)
         working-directory: src/frontend
-        run: npx vitest run
+        run: npm run check
 
       - name: Build
         working-directory: src/frontend
         run: npm run build
+
+      - name: npm audit (prod deps, high+)
+        working-directory: src/frontend
+        run: npm audit --omit=dev --audit-level=high
+
+  security:
+    # Blocking since 2026-07-11: item 41 closed the CVE wave (73 -> 5, the
+    # residue in security/pip-audit-ignores.toml with reasons + expiries).
+    name: Security Audit (pip-audit policy — blocking since item-41)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/bootstrap-python
+
+      - name: pip-audit (policy wrapper — ignores carry reason + expiry)
+        run: mise run security:pip-audit
+
+  gitleaks:
+    name: Secret Scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trivy-config:
+    name: IaC Config Scan (trivy, HIGH+CRITICAL blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          skip-dirs: .pre-commit-cache
+          trivyignores: .trivyignore
+          cache: "true"

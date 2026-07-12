@@ -144,6 +144,7 @@ output "summary" {
     Public IPs:
     ${join("\n  ", [for name, ip in { for idx, server in hcloud_server.vps : server.name => server.ipv4_address } : "${name}: ${ip}"])}
 
+    ${var.manage_cloudflare ? "DNS: ${var.cloudflare_record_name}.${var.cloudflare_zone_name} -> ${cloudflare_dns_record.babylon[0].content}" : "DNS: Not managed by this apply (manage_cloudflare=false)"}
     ${var.enable_private_network ? "Private Network: Enabled" : "Private Network: Disabled"}
     ${var.enable_load_balancer ? "Load Balancer: ${hcloud_load_balancer.lb[0].ipv4}" : "Load Balancer: Disabled"}
     ${var.enable_additional_storage ? "Additional Storage: ${var.storage_size_gb}GB per server" : "Additional Storage: Disabled"}
@@ -153,7 +154,7 @@ output "summary" {
        terraform output -raw ansible_inventory_yaml > ../ansible/inventory.yml
 
     2. Configure servers with Ansible:
-       cd ../ansible && ansible-playbook -i inventory.yml playbook.yml
+       cd ../ansible && ansible-playbook -i inventory.yml site.yml
 
     3. SSH to servers:
        ${join("\n     ", [for cmd in values({ for idx, server in hcloud_server.vps : server.name => "ssh root@${server.ipv4_address}" }) : cmd])}
@@ -172,15 +173,15 @@ output "domain" {
 }
 
 output "cloudflare_dns_record_id" {
-  description = "Cloudflare DNS record identifier"
-  value       = cloudflare_dns_record.babylon.id
+  description = "Cloudflare DNS record identifier (null when manage_cloudflare=false)"
+  value       = var.manage_cloudflare ? cloudflare_dns_record.babylon[0].id : null
 }
 
 output "r2_bucket_names" {
-  description = "Cloudflare R2 bucket names"
-  value = {
-    backups   = cloudflare_r2_bucket.backups.name
-    reference = cloudflare_r2_bucket.reference.name
-    archives  = cloudflare_r2_bucket.archives.name
-  }
+  description = "Cloudflare R2 bucket names (empty when manage_cloudflare=false)"
+  value = var.manage_cloudflare ? {
+    backups   = cloudflare_r2_bucket.backups[0].name
+    reference = cloudflare_r2_bucket.reference[0].name
+    archives  = cloudflare_r2_bucket.archives[0].name
+  } : {}
 }

@@ -1,9 +1,13 @@
 # Dependabot configuration for Babylon
 # Docs: https://docs.github.com/en/code-security/dependabot
 #
-# Workflow: Dependabot PRs target `dev` branch. After CI passes,
-# minor/patch updates auto-merge. Major updates require manual review.
-# BD squash-merges `dev` to `main` for releases.
+# Promotion model (Program 15, Phase 3): Dependabot never opens PRs against
+# `main`. Every ecosystem below targets `dev`. `dev`'s required-checks
+# ruleset is what makes `.github/workflows/dependabot-automerge.yml`
+# truthful — a PR can only auto-merge once it has actually satisfied the
+# checks the ruleset requires, not merely because the workflow ran.
+# `main` never receives a Dependabot PR directly; it only receives changes
+# via the fast-forward promotion (`tools/promote.sh`) once `dev` is green.
 
 version: 2
 updates:
@@ -41,12 +45,30 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-    # Major updates stay as individual PRs for careful review.
-    # Ignore specific packages that cause issues or need manual handling.
-    # Example: ignore major numpy updates (uncomment if needed)
-    # ignore:
-    #   - dependency-name: "numpy"
-    #     update-types: ["version-update:semver-major"]
+      # Majors arrive as ONE reviewable PR per ecosystem (never auto-merged —
+      # the automerge workflow only takes minor/patch). An agent unbundles
+      # locally if one member is red.
+      python-majors:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+    # Deferred majors (OWNER ITEM 55 — django 6 + mypy 2 modernization). This is
+    # a deliberate railed batch (manage.py check + web suites + typecheck across
+    # 567 files), not a drive-by bump: django-stubs 6 + drf-stubs cap `mypy<2.2`
+    # via the compatible-mypy extras, so django 6 and mypy 2 are UNSATISFIABLE
+    # together on the current stubs. Hold the three majors until item 55 ships.
+    # `ignore` suppresses both version- and security-update PRs for the pinned
+    # MAJOR only — minor/patch security fixes within 5.x / 1.x still flow.
+    # UNBLOCK: delete these three entries when item 55 is executed.
+    ignore:
+      - dependency-name: "django"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "django-stubs"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mypy"
+        update-types: ["version-update:semver-major"]
 
   # ==========================================================================
   # GitHub Actions
@@ -71,3 +93,105 @@ updates:
       github-actions-all:
         patterns:
           - "*"
+
+  # ==========================================================================
+  # Frontend dependencies (npm)
+  # ==========================================================================
+  - package-ecosystem: "npm"
+    directory: "/src/frontend"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "fix(deps)"
+      prefix-development: "chore(deps-dev)"
+    labels:
+      - "dependencies"
+      - "frontend"
+    groups:
+      # Group all minor/patch updates into a single PR (reduces noise)
+      frontend-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Security updates get their own group (higher priority)
+      frontend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      # Majors as one reviewable PR (see python-majors rationale above).
+      frontend-majors:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+    # Deferred major: TypeScript 7. It removed `baseUrl` (our tsconfig relies on
+    # it) and `typescript-eslint ^8` has no TS7 support yet — taking it breaks
+    # both the tsc build and the eslint typecheck. Hold the major until
+    # typescript-eslint ships TS7 support; 5.x patches still flow.
+    # UNBLOCK: delete this entry once typescript-eslint supports TypeScript 7.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # ==========================================================================
+  # Postgres base image (Docker) — monthly: base-image bumps are deliberate,
+  # engine-adjacent events (see the Phase-3 postgis bump protocol).
+  # ==========================================================================
+  - package-ecosystem: "docker"
+    directory: "/docker/postgres"
+    target-branch: "dev"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "docker"
+    # PG-major bumps (16 -> 17, alpine, etc.) are OWNER ITEM 45: a Postgres/
+    # PostGIS major can alter geometry float behavior under the byte-identical
+    # determinism bundle and needs the full protocol (qa:e2e-regression on the
+    # new image + pg_upgrade path + testcontainers lockstep). Not a casual PR.
+    ignore:
+      - dependency-name: "postgis/postgis"
+        update-types: ["version-update:semver-major"]
+
+  # ==========================================================================
+  # Ansible deploy tooling (pip) — monthly: infra tooling, not runtime deps.
+  # ==========================================================================
+  - package-ecosystem: "pip"
+    directory: "/deploy/ansible"
+    target-branch: "dev"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "America/Chicago"
+    labels:
+      - "dependencies"
+      - "infra"
+    groups:
+      # Infra tooling travels as (at most) two PRs: minors+patches, majors.
+      ansible-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      ansible-majors:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"

@@ -26,7 +26,8 @@ from babylon.domain.economics.melt.adapters import (
 )
 from babylon.reference.database import get_normalized_session_factory
 
-pytestmark = pytest.mark.integration
+# Needs the reference SQLite DB — excluded on CI until the item-40 subset artifact lands.
+pytestmark = [pytest.mark.integration, pytest.mark.requires_reference_db]
 
 TEST_YEAR = 2022
 

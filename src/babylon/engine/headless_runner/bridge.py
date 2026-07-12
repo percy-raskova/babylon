@@ -458,8 +458,10 @@ class WorldStateBridge:
         """
         if not self._hydrated:
             raise RuntimeError("WorldStateBridge.persist_tick called before hydrate_initial")
-        assert self._session_id is not None
-        assert self._scope_fips is not None
+        if self._session_id is None:
+            raise RuntimeError("WorldStateBridge.persist_tick called before hydrate_initial")
+        if self._scope_fips is None:
+            raise RuntimeError("WorldStateBridge.persist_tick called before hydrate_initial")
 
         consciousness_rows: list[DynamicConsciousnessState] = []
         demographics_rows: list[DynamicDemographicsState] = []
@@ -606,7 +608,10 @@ class WorldStateBridge:
             return
         if not hasattr(self._runtime, "persist_contradiction_fields"):
             return
-        assert self._session_id is not None
+        if self._session_id is None:
+            raise RuntimeError(
+                "WorldStateBridge._persist_opposition_fields called before hydrate_initial"
+            )
         # contradiction_field enforces a game_session FK that the headless
         # runner's uuid4 session never satisfies (its runtime-state tables carry
         # no such FK). Ensure the parent row exists (idempotent) first.
@@ -911,7 +916,10 @@ class WorldStateBridge:
         """
         if not getattr(world, "relationships", None):
             return []
-        assert self._session_id is not None
+        if self._session_id is None:
+            raise RuntimeError(
+                "WorldStateBridge._build_relationship_rows called before hydrate_initial"
+            )
         rows: list[DynamicRelationshipState] = []
         allowed = {"EXPLOITATION", "SOLIDARITY", "WAGES", "TRIBUTE", "TENANCY", "ADJACENCY"}
         for rel in world.relationships:
@@ -977,7 +985,10 @@ class WorldStateBridge:
         # Spec-069: reference-data reads come from the in-memory cache
         # populated at hydrate_initial. No new SQLite connection is opened
         # on this per-tick path (II.6 / FR-003).
-        assert self._ref_cache is not None  # hydrate_initial sets this
+        if self._ref_cache is None:
+            raise RuntimeError(
+                "WorldStateBridge._derive_subsystem_rows_for_county called before hydrate_initial"
+            )
         demographics_row: DynamicDemographicsState | None = None
         employment_row: DynamicEmploymentState | None = None
         year = self._start_year + tick // 52

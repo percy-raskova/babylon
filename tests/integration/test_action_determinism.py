@@ -142,7 +142,9 @@ class TestResolveTickThreadsRngSeed:
 
         captured_config: list[Any] = []
 
-        def _capturing_step(state, config, persistent_context=None, defines=None):  # noqa: ARG001
+        def _capturing_step(
+            state, config, persistent_context=None, defines=None, calculator_overrides=None
+        ):  # noqa: ARG001
             captured_config.append(config)
             return state.model_copy(update={"tick": state.tick + 1})
 
@@ -188,7 +190,9 @@ class TestResolveTickThreadsRngSeed:
 
         captured: list[Any] = []
 
-        def _capturing_step(state, config, persistent_context=None, defines=None):  # noqa: ARG001
+        def _capturing_step(
+            state, config, persistent_context=None, defines=None, calculator_overrides=None
+        ):  # noqa: ARG001
             captured.append(config)
             return state.model_copy(update={"tick": state.tick + 1})
 

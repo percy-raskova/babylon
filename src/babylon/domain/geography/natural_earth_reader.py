@@ -214,7 +214,7 @@ class NaturalEarthReader:
         try:
             # Global roads table
             cursor = conn.execute(
-                "SELECT ogc_fid, name, prefix, type, expressway, "
+                "SELECT ogc_fid, name, prefix, type, expressway, "  # noqa: S608 — module-constant int LIMIT; table names are literals
                 f"scalerank, GEOMETRY FROM ne_10m_roads LIMIT {_MAX_FEATURES}"
             )
             for row in cursor:
@@ -240,7 +240,7 @@ class NaturalEarthReader:
 
             # NA supplement roads table
             cursor = conn.execute(
-                "SELECT ogc_fid, prefix, number, class, type, "
+                "SELECT ogc_fid, prefix, number, class, type, "  # noqa: S608 — module-constant int LIMIT; table names are literals
                 f"scalerank, GEOMETRY FROM ne_10m_roads_north_america LIMIT {_MAX_FEATURES}"
             )
             for row in cursor:
@@ -285,7 +285,7 @@ class NaturalEarthReader:
         try:
             # Global railroads — has mult_track
             cursor = conn.execute(
-                "SELECT ogc_fid, featurecla, scalerank, mult_track, "
+                "SELECT ogc_fid, featurecla, scalerank, mult_track, "  # noqa: S608 — module-constant int LIMIT; table names are literals
                 f"GEOMETRY FROM ne_10m_railroads LIMIT {_MAX_FEATURES}"
             )
             for row in cursor:
@@ -307,7 +307,7 @@ class NaturalEarthReader:
 
             # NA supplement — no mult_track
             cursor = conn.execute(
-                "SELECT ogc_fid, featurecla, scalerank, "
+                "SELECT ogc_fid, featurecla, scalerank, "  # noqa: S608 — module-constant int LIMIT; table names are literals
                 f"GEOMETRY FROM ne_10m_railroads_north_america LIMIT {_MAX_FEATURES}"
             )
             for row in cursor:
@@ -347,7 +347,7 @@ class NaturalEarthReader:
         conn = self._connect()
         try:
             cursor = conn.execute(
-                "SELECT ogc_fid, name, iata_code, scalerank, natlscale, "
+                "SELECT ogc_fid, name, iata_code, scalerank, natlscale, "  # noqa: S608 — module-constant int LIMIT; table names are literals
                 f"type, GEOMETRY FROM ne_10m_airports LIMIT {_MAX_FEATURES}"
             )
             for row in cursor:
@@ -388,7 +388,7 @@ class NaturalEarthReader:
         conn = self._connect()
         try:
             cursor = conn.execute(
-                "SELECT ogc_fid, name, scalerank, natlscale, "
+                "SELECT ogc_fid, name, scalerank, natlscale, "  # noqa: S608 — module-constant int LIMIT; table names are literals
                 f"GEOMETRY FROM ne_10m_ports LIMIT {_MAX_FEATURES}"
             )
             for row in cursor:
@@ -431,7 +431,7 @@ class NaturalEarthReader:
         conn = self._connect()
         try:
             cursor = conn.execute(
-                "SELECT ogc_fid, name, featurecla, scalerank, "
+                "SELECT ogc_fid, name, featurecla, scalerank, "  # noqa: S608 — module-constant int LIMIT; table names are literals
                 "GEOMETRY FROM ne_10m_geography_regions_polys "
                 f"LIMIT {_MAX_FEATURES}"
             )

@@ -1,6 +1,0 @@
----
-
-- name: restart rabbitmq-server
-  ansible.builtin.service:
-    name: rabbitmq-server
-    state: restarted

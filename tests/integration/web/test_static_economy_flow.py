@@ -293,6 +293,11 @@ class TestWayneCountyResolveDoesNotRegress:
         assert ts["ticks"] == [0, 1, 2]
 
 
+@pytest.mark.requires_postgres
+@pytest.mark.skipif(
+    not os.environ.get("POSTGRES_HOST"),
+    reason="PostgreSQL not configured (set POSTGRES_HOST)",
+)
 class TestWayneCountyFlowSurvivesWebResolve:
     """Owner item 30 acceptance gate: a real economic value MOVES between
     two consecutive ``resolve_tick`` calls on a ``wayne_county`` web

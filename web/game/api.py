@@ -16,6 +16,7 @@ from uuid import UUID
 
 from django.conf import settings as django_settings
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpRequest, HttpResponseBase, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
@@ -1323,8 +1324,10 @@ class BaseVerbActionView(APIView):
                 "ACTION_GAME_NOT_ACTIVE",
             )
 
-        assert self.serializer_class is not None
-        assert self.verb is not None
+        if self.serializer_class is None or self.verb is None:
+            raise ImproperlyConfigured(
+                f"{type(self).__name__} must define serializer_class and verb"
+            )
 
         serializer = self.serializer_class(
             data=request.data,

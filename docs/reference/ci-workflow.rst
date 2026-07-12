@@ -320,7 +320,7 @@ CI workflows may use these variables:
    * - ``PYTHON_VERSION``
      - Python version for setup-python (default: 3.12)
    * - ``POETRY_VERSION``
-     - Poetry version for install-poetry (default: 1.8.4)
+     - Poetry version for install-poetry (default: 2.2.1)
 
 Secrets (not used in current config):
 

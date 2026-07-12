@@ -212,7 +212,7 @@ class EventBus:
 
             # Continue with (possibly modified) event
             # result.event is guaranteed non-None here since not blocked
-            assert result.event is not None
+            assert result.event is not None  # noqa: S101 — mypy narrowing; guaranteed non-None by the not-blocked branch above
             current_event = result.event
 
         return current_event

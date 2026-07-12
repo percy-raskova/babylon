@@ -1,0 +1,77 @@
+# Babylon secret-scanning policy for gitleaks.
+#
+# This config exists so CI and pre-commit share ONE secret-scanning policy
+# instead of drifting configs in two places. Secret scanning became
+# mandatory after the Jul-8 2026 leaked Cloudflare token incident: the
+# token was rotated and the full git history was rewritten via
+# `git filter-repo` on 2026-07-09 (see
+# ai/memory/leaked-cloudflare-token-2026-07-08.md). A post-rewrite
+# full-history scan came back clean of that token; this file's job is to
+# keep it that way going forward.
+#
+# Every [[rules]] override below only ADDS a rule-scoped, path-scoped
+# allowlist entry to an existing default rule (via `extend.useDefault`) —
+# it never disables or redefines detection. Every allowlist entry must
+# carry a comment recording the evidence that was actually inspected
+# (file, commit, and why the match is not a live secret). Do not add an
+# entry "just in case" — prove it first with an unredacted look at the
+# flagged content and commit it to history in this comment.
+
+[extend]
+useDefault = true
+
+# --- private-key rule -------------------------------------------------
+# Baseline (no-config, default-ruleset) full-history scan on 2026-07-11
+# flagged 3 `private-key` hits, all inspected unredacted and confirmed to
+# be non-live fixture/placeholder PEM blocks, not real key material:
+#
+#   1. deploy/ansible/group_vars/development/vars.yml:91 (commit f8fcb86f)
+#   2. deploy/ansible/group_vars/vagrant/vars.yml:100    (commit f8fcb86f)
+#      Both are self-signed dev-only SSL certs/keys for the
+#      `django-default-project` ansible boilerplate (git_repo points at
+#      https://github.com/YPCrumble/django-default-project). The line
+#      immediately above each key reads: "This key is for demo purposes
+#      only. If you're committing your keys to your git repo, you'd
+#      probably want it encrypted." — real deployment secrets go through
+#      ansible-vault separately, not this file.
+#   3. deploy/HOW-TO-DEPLOY-HETZNER.md:136 (commit 508455eb)
+#      Not a key at all — a doc snippet showing the vault.yml *shape*,
+#      with literal placeholder text `<paste Cloudflare Origin CA
+#      private key here>` between the PEM markers.
+[[rules]]
+id = "private-key"
+
+[rules.allowlist]
+regexTarget = "match"
+paths = [
+  '''deploy/ansible/group_vars/development/vars\.yml''',
+  '''deploy/ansible/group_vars/vagrant/vars\.yml''',
+  '''deploy/HOW-TO-DEPLOY-HETZNER\.md''',
+]
+
+# --- generic-api-key rule ----------------------------------------------
+# Baseline scan also flagged 5 `generic-api-key` hits, all inspected
+# unredacted and confirmed to be regex false-positives on ordinary prose,
+# not secrets:
+#
+#   1. specs/020-detroit-vertical-slice/contracts/internal-api.md:1
+#      (commit 29f92abd) — the match is the markdown heading text
+#      "# Internal API Contracts: 020-detroit-vertical-slice"; the doc
+#      body is Python function signatures, no credentials.
+#   2-5. tests/integration/test_proletarian_internationalism.py:107
+#      (commits ce664dd8, d01c3458, 6752b7be, 0c992486 — same line
+#      recommitted across an ideology-migration refactor series; file
+#      later renamed away in the 78c1ce18 test-taxonomy reorg, so it no
+#      longer exists at HEAD but remains in history) — the match is a
+#      Python test comment: "# KEY: solidarity_strength=0 (no
+#      infrastructure)". "KEY:" here labels the salient test parameter,
+#      not a credential.
+[[rules]]
+id = "generic-api-key"
+
+[rules.allowlist]
+regexTarget = "match"
+paths = [
+  '''specs/020-detroit-vertical-slice/contracts/internal-api\.md''',
+  '''tests/integration/test_proletarian_internationalism\.py''',
+]

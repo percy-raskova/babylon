@@ -120,8 +120,9 @@ class ArchiveReader:
         try:
             for parquet in sorted(self._dir.glob("*.parquet")):
                 path_literal = str(parquet).replace("'", "''")
+                view_ident = parquet.stem.replace('"', '""')
                 con.execute(
-                    f'CREATE VIEW "{parquet.stem}" AS '
+                    f'CREATE VIEW "{view_ident}" AS '  # noqa: S608 — local session dir only; identifier + literal both escaped (DuckDB DDL rejects bound params)
                     f"SELECT * FROM read_parquet('{path_literal}')"
                 )
             result = con.execute(sql, list(params))

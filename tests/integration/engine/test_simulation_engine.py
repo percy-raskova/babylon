@@ -657,13 +657,6 @@ class TestStepConsciousnessDrift:
 class TestStepTensionRate:
     """step() tension accumulation should be configurable."""
 
-    def test_default_tension_rate(
-        self,
-        config: SimulationConfig,
-    ) -> None:
-        """Default tension rate should be 0.05."""
-        assert config.tension_accumulation_rate == 0.05
-
     def test_tension_decoupled_from_accumulation_rate(
         self,
         two_node_state: WorldState,

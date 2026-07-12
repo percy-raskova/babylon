@@ -16,7 +16,7 @@
 
 [tools]
 python = "3.12"
-poetry = "latest"  # one `mise install` provisions Python AND Poetry (registry: pipx:poetry)
+poetry = "2.2.1"  # pinned fleet-wide (CI + local) since the PEP-621 migration
 
 [env]
 PYTHONPATH = "src"
@@ -42,7 +42,7 @@ run = """
 set -e
 mise install
 poetry install --with dev
-poetry run pre-commit install
+poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 mise run db:up
 mise run db:bootstrap
 if [ ! -f data/sqlite/marxist-data-3NF.sqlite ]; then
@@ -101,6 +101,80 @@ run = "poetry run python tools/check_repo_hygiene.py"
 description = "Import-boundary contracts: kernel < models/formulas < domain < engine (program 14)"
 run = "poetry run lint-imports"
 
+[tasks."ci:local"]
+description = "Run a GitHub Actions job locally via gh-act (program 15) — e.g. mise run ci:local -- -W .github/workflows/ci.yml -j fast-gate. Install once: gh extension install https://github.com/nektos/gh-act"
+run = "gh act -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest --container-architecture linux/amd64"
+
+[tasks."lint:check"]
+description = "Ruff lint, no fixes (CI parity; the auto-fixing variant is tasks.lint)"
+run = "poetry run ruff check ."
+
+[tasks."format:check"]
+description = "Ruff format check, no rewrites (CI parity; the rewriting variant is tasks.format)"
+run = "poetry run ruff format --check ."
+
+# CI pytest flag rationale (both test:*-ci tasks):
+#   -o addopts="" is LOAD-BEARING: pyproject addopts inject --cov-report=html,
+#     and pytest-cov's clear-reports special case (--cov-report=) only fires
+#     when it is the SOLE occurrence across addopts+CLI — without the strip,
+#     every CI run silently writes htmlcov/. Wanted addopts are re-added below.
+#   Maximum verbosity by owner ruling (2026-07-11): CI logs are read by AI
+#     agents, so -vv/-ra/-l/--tb=long/--durations=0 — finest granularity wins.
+#   No --color=yes: CI is non-TTY, so pytest emits plain text — ANSI codes
+#     inside FAILED tokens break machine grep (bitten during Phase 0).
+#   Coverage (owner ruling 2026-07-11): MEASURE the whole tree (term-missing
+#     table + coverage.xml/json artifacts); GATE only engine/systems >= 80,
+#     enforced by a report-time --include filter on the same .coverage data —
+#     one pytest invocation, metrics and gate separated.
+[tasks."test:unit-ci"]
+description = "CI unit shard (program 15): xdist -n4, max-verbosity output, full-tree coverage artifacts, excludes ai/slow/red_phase/requires_reference_db, gates engine/systems cov >= 80"
+run = """
+set -e
+mkdir -p reports/test-results/unit-ci
+poetry run pytest tests/unit --ignore=tests/unit/ai \
+  -o addopts="" -vv -ra -l --tb=long --durations=0 \
+  -m 'not red_phase and not slow and not requires_reference_db' \
+  -n 4 \
+  --cov=src/babylon \
+  --cov-report=term-missing:skip-covered \
+  --cov-report=xml:reports/test-results/unit-ci/coverage.xml \
+  --cov-report=json:reports/test-results/unit-ci/coverage.json \
+  --junit-xml=reports/test-results/unit-ci/junit.xml
+echo '=== Coverage gate: src/babylon/engine/systems >= 80% ==='
+poetry run coverage report --include='src/babylon/engine/systems/*' --fail-under=80
+"""
+
+[tasks."test:rest-ci"]
+description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; includes slow; excludes red_phase/requires_reference_db"
+# NO coverage on this shard (program 15, 2026-07-11): pytest-cov under
+# `-n 4` xdist instruments all of src/babylon in every worker, and stacked on
+# the memory-heavy integration/property suites it OOM-killed a worker on the
+# hosted runner — a silent SIGKILL ("sh exited with non-zero status: no exit
+# status", no traceback), at a DIFFERENT test each attempt (cumulative memory,
+# not a test bug: every test passes standalone). The coverage GATE is unaffected
+# — it lives on the unit shard (test:unit-ci, engine/systems >=80). This shard's
+# full-tree coverage was non-gating artifact only; restoring it needs a proper
+# per-worker memory budget (owner item 54).
+run = """
+set -e
+mkdir -p reports/test-results/rest-ci
+poetry run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
+  -o addopts="" -vv -ra -l --tb=long --durations=0 \
+  -m 'not red_phase and not requires_reference_db' \
+  -n 4 --dist loadscope \
+  --junit-xml=reports/test-results/rest-ci/junit.xml
+echo '=== slow-marked tests/unit tests (excluded from the test:unit-ci fast shard) ==='
+poetry run pytest tests/unit --ignore=tests/unit/ai \
+  -o addopts="" -vv -ra -l --tb=long --durations=0 \
+  -m 'slow and not red_phase and not requires_reference_db' \
+  -n 4 --dist loadscope \
+  --junit-xml=reports/test-results/rest-ci/junit-slow-unit.xml
+"""
+
+[tasks."security:pip-audit"]
+description = "pip-audit through the expiring-ignores policy wrapper (program 15): security/pip-audit-ignores.toml entries need reason + expiry; expired entries hard-fail"
+run = "poetry run python tools/run_pip_audit.py"
+
 [tasks.commit]
 description = "Hook-safe commit: pre-run hooks on staged files, re-stage their fixes, commit, verify HEAD moved"
 usage = 'arg "<message>" help="Conventional commit message"'
@@ -144,10 +218,10 @@ git status --short | grep -v "^??" || true
 # -----------------------------------------------------------------------------
 
 [tasks."test:unit"]
-description = "Unit tests (fast) → reports/test-results/unit/"
+description = "Unit tests (fast gate — excludes slow-marked; those run in test:slow locally and CI's test:rest-ci) → reports/test-results/unit/"
 run = """
 mkdir -p reports/test-results/unit
-poetry run pytest tests/unit -m 'not red_phase' \
+poetry run pytest tests/unit -m 'not red_phase and not slow' \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/unit/junit.xml \
   --json-report --json-report-file=reports/test-results/unit/report.json --json-report-indent=2 \
@@ -945,8 +1019,18 @@ run = "poetry run pre-commit run --all-files"
 # =============================================================================
 
 [tasks.bump]
-description = "Bump version with commitizen"
-run = "poetry run cz bump --changelog"
+description = "Deliberate version bump on dev (program 15, tag-driven releases): cz bump writes the bump commit + vX.Y.Z tag; both ride the next ff promotion, and pushing the tag fires release.yml"
+run = """
+set -e
+BRANCH=$(git branch --show-current)
+if [ "$BRANCH" != "dev" ]; then
+  echo "bump runs on dev (current: $BRANCH)"; exit 1
+fi
+poetry run cz bump --yes --changelog
+echo ""
+echo "Bump committed + tagged. Publish with: git push origin dev --follow-tags"
+echo "Then promote: tools/promote.sh"
+"""
 
 [tasks."bump:dry"]
 description = "Preview version bump without changes"

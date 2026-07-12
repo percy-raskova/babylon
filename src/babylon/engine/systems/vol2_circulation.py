@@ -184,7 +184,8 @@ class Vol2CirculationStep:
         # contribution[dest_col] = sum_j(OD[j, dest_col] * normalized[j])
         # FR-009 + FR-016 — the in-area portion is exactly this MV product.
         contributions = np.asarray(year_matrix.matrix.T @ normalized).ravel()
-        assert contributions.shape == (n_dests,)
+        if contributions.shape != (n_dests,):
+            raise ValueError(f"contributions shape {contributions.shape} != expected ({n_dests},)")
 
         # ── 5. Build v_post additively + emit boundary rows ─────────────────
         # The post-state for any in-graph hex is the SUM of three contributions:

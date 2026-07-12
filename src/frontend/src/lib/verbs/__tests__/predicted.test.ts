@@ -3,10 +3,12 @@
  * pre-commit predicted-delta arrows (spec-113 Lane DELTA; vision doc:
  * verbs show "live cost and predicted delta arrows BEFORE you commit").
  *
- * No registry verb carries `predictedEffect` today, so the matrix is
- * driven entirely by fixtures — the honest-null branches (absent
- * selector, no snapshot, no target, zero/non-finite value) are the
- * load-bearing contract (Constitution III.11).
+ * 7 of 9 registry verbs now carry `predictedEffect` (Program 17 Wave 1
+ * item 1e; investigate/negotiate stay honest-null — see verbs.test.ts),
+ * but this file's own matrix is still driven entirely by fixtures — the
+ * honest-null branches (absent selector, no snapshot, no target,
+ * zero/non-finite value) are the load-bearing contract (Constitution
+ * III.11).
  */
 
 import { describe, it, expect, vi } from "vitest";

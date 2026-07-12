@@ -6,9 +6,9 @@
  * `useVerbTargets.ts`'s docstring for why that pattern is avoided here).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { evaluatePredictedEffect } from "@/lib/verbs";
-import type { VerbConfig } from "@/lib/verbs";
+import type { LiveVerbCost, VerbConfig } from "@/lib/verbs";
 import type { GameSnapshot, PlayerVerb } from "@/types/game";
 import { TargetPicker } from "./TargetPicker";
 import { ParamFields } from "./ParamFields";
@@ -22,6 +22,10 @@ interface VerbFormProps {
   snapshot: GameSnapshot | null;
   submitting: boolean;
   onSubmit: (targetId: string | null, params: Record<string, unknown>) => void;
+  /** Notifies the sibling VerbGrid of this verb's live cost as it
+   *  resolves, so the selected verb's button can show it instead of the
+   *  static cost_label hint. */
+  onCostChange?: (cost: LiveVerbCost | null) => void;
 }
 
 function defaultParamVals(config: VerbConfig): Record<string, unknown> {
@@ -36,12 +40,17 @@ export function VerbForm({
   snapshot,
   submitting,
   onSubmit,
+  onCostChange,
 }: VerbFormProps): React.JSX.Element {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [paramVals, setParamVals] = useState<Record<string, unknown>>(() =>
     defaultParamVals(config),
   );
-  const { targets, loading, error } = useVerbTargets(gameId, verb, config, orgId, snapshot);
+  const { targets, loading, error, cost } = useVerbTargets(gameId, verb, config, orgId, snapshot);
+
+  useEffect(() => {
+    onCostChange?.(cost);
+  }, [cost, onCostChange]);
 
   const targetRequired = config.targetRequired ?? true;
   const canSubmit = Boolean(orgId && (targetId || !targetRequired) && !submitting);

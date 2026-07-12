@@ -21,7 +21,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { fetchVerbTargets } from "@/lib/verbs";
-import type { VerbConfig, VerbTarget } from "@/lib/verbs";
+import type { LiveVerbCost, VerbConfig, VerbTarget } from "@/lib/verbs";
 import type { GameSnapshot, PlayerVerb } from "@/types/game";
 
 function snapshotTargets(snapshot: GameSnapshot | null): VerbTarget[] {
@@ -43,9 +43,12 @@ export interface UseVerbTargetsResult {
   targets: VerbTarget[];
   loading: boolean;
   error: string | null;
+  /** Live per-verb cost parsed from the fetch response, or null before
+   *  the fetch resolves / on error / when the verb has no parseCost. */
+  cost: LiveVerbCost | null;
 }
 
-const IDLE: UseVerbTargetsResult = { targets: [], loading: false, error: null };
+const IDLE: UseVerbTargetsResult = { targets: [], loading: false, error: null, cost: null };
 
 export function useVerbTargets(
   gameId: string,
@@ -61,7 +64,7 @@ export function useVerbTargets(
   );
 
   const [fetched, setFetched] = useState<UseVerbTargetsResult>(() =>
-    !isSnapshotSourced && orgId ? { targets: [], loading: true, error: null } : IDLE,
+    !isSnapshotSourced && orgId ? { targets: [], loading: true, error: null, cost: null } : IDLE,
   );
 
   useEffect(() => {
@@ -75,8 +78,18 @@ export function useVerbTargets(
       if (cancelled) return;
       setFetched(
         res.ok
-          ? { targets: config.parseTargets(res.payload), loading: false, error: null }
-          : { targets: [], loading: false, error: res.message ?? "Failed to fetch action targets" },
+          ? {
+              targets: config.parseTargets(res.payload),
+              loading: false,
+              error: null,
+              cost: config.parseCost?.(res.payload) ?? null,
+            }
+          : {
+              targets: [],
+              loading: false,
+              error: res.message ?? "Failed to fetch action targets",
+              cost: null,
+            },
       );
     });
     return () => {
@@ -85,7 +98,7 @@ export function useVerbTargets(
   }, [gameId, verb, config, orgId, isSnapshotSourced]);
 
   if (isSnapshotSourced) {
-    return { targets: snapshotResult, loading: false, error: null };
+    return { targets: snapshotResult, loading: false, error: null, cost: null };
   }
   return fetched;
 }

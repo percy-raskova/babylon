@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { useStore } from "@/store";
 import { VERB_REGISTRY } from "@/lib/verbs";
+import type { LiveVerbCost } from "@/lib/verbs";
 import type { PlayerVerb } from "@/types/game";
 import { VerbGrid } from "./VerbGrid";
 import { VerbForm } from "./VerbForm";
@@ -32,6 +33,7 @@ export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Eleme
   const activeOrgId = playerOrgs.some((o) => o.id === orgId) ? orgId : (playerOrgs[0]?.id ?? "");
   const [verb, setVerb] = useState<PlayerVerb | null>(null);
   const config = verb ? VERB_REGISTRY[verb] : undefined;
+  const [liveCost, setLiveCost] = useState<LiveVerbCost | null>(null);
 
   function handleFormSubmit(targetId: string | null, params: Record<string, unknown>): void {
     if (!config || !verb || !activeOrgId) return;
@@ -52,7 +54,7 @@ export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Eleme
             <OrgSelect orgs={playerOrgs} value={activeOrgId} onChange={setOrgId} />
           )}
 
-          <VerbGrid selectedVerb={verb} onSelect={setVerb} />
+          <VerbGrid selectedVerb={verb} onSelect={setVerb} liveCost={verb ? liveCost : null} />
 
           {config && verb && (
             <VerbForm
@@ -64,6 +66,7 @@ export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Eleme
               snapshot={snapshot}
               submitting={submitting}
               onSubmit={handleFormSubmit}
+              onCostChange={setLiveCost}
             />
           )}
 

@@ -60,15 +60,20 @@ def test_bridge_overrides_include_capital_calculator_when_fips_given(_django_set
     try:
         assert "capital_calculator" in overrides
         assert overrides["capital_calculator"] is not None
+        # Fix C: employment_source is wired unconditionally (queried per fips-year,
+        # no upfront hydration).
+        assert overrides.get("employment_source") is not None
     finally:
         if session is not None:
             session.close()
 
     # With no FIPS there is nothing to hydrate, so the capital_calculator is absent
-    # (the Leontief/MELT/gamma wiring is unaffected).
+    # (the Leontief/MELT/gamma wiring is unaffected) — but employment_source, being
+    # hydration-free, is still wired.
     overrides_bare, session_bare = _bridge_economics_overrides(())
     try:
         assert "capital_calculator" not in overrides_bare
+        assert overrides_bare.get("employment_source") is not None
     finally:
         if session_bare is not None:
             session_bare.close()

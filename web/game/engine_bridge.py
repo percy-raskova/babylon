@@ -4552,6 +4552,7 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
         SQLiteBEANationalGDPSource,
         SQLiteQCEWNationalEmploymentSource,
     )
+    from babylon.domain.economics.throughput.adapters import SQLiteQCEWCountyNAICSSource
     from babylon.kernel.event_bus import EventBus
     from babylon.reference.database import get_normalized_session_factory
 
@@ -4571,6 +4572,11 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
 
     overrides: dict[str, Any] = {"gamma_calculator": gamma, "melt_calculator": melt}
     overrides.update(leontief_overrides)
+    # Owner item 25 / Fix C: real per-county employment (QCEW county rollup),
+    # so v = v_reproduction·employment·hours is grounded rather than the 100k
+    # placeholder — the last honesty gap in the derived-rate lenses. Queried
+    # per (fips, year); no upfront hydration, so wire it unconditionally.
+    overrides["employment_source"] = SQLiteQCEWCountyNAICSSource(session_factory)
     # Owner item 25 / Fix B: wire a real per-county capital_calculator (cached) so
     # occ and profit_rate are non-degenerate. Only when we know which counties to
     # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.

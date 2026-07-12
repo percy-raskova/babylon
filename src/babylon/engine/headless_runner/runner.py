@@ -848,6 +848,36 @@ def _county_terminal_snapshot(
     return out
 
 
+def _resolve_defines(config: SimulationRunConfig) -> Any:
+    """Resolve the ``GameDefines`` a run executes against.
+
+    Precedence (spec: optimization-package plumbing fix):
+
+    1. ``config.defines`` — an in-process ``GameDefines`` supplied by a caller
+       (e.g. a programmatic parameter sweep). Used verbatim.
+    2. ``config.defines_overlay_path`` — a YAML overlay loaded + per-field-merged
+       over the schema defaults via :meth:`GameDefines.load_from_yaml`.
+    3. Neither set — :meth:`GameDefines.load_default` (the canonical on-disk
+       ``defines.yaml``, else the compiled defaults).
+
+    The default branch is byte-identical to the pre-fix behaviour, so the
+    ``qa:regression`` baselines (which set neither override) are unaffected.
+
+    Args:
+        config: The run configuration.
+
+    Returns:
+        The resolved ``GameDefines`` instance.
+    """
+    from babylon.config.defines import GameDefines
+
+    if config.defines is not None:
+        return config.defines
+    if config.defines_overlay_path is not None:
+        return GameDefines.load_from_yaml(config.defines_overlay_path)
+    return GameDefines.load_default()
+
+
 def _defines_hash(defines: Any) -> str:
     """SHA-256 over the canonical model_dump() of a GameDefines instance."""
     try:
@@ -927,7 +957,6 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
     _install_sigint_handler()
     _validate_preflight(config)
 
-    from babylon.config.defines import GameDefines
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.conservation_audit import (
         ConservationAuditor,
@@ -955,7 +984,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
     try:
         _apply_migrations(pool)
         runtime = PostgresRuntime(pool=pool)
-        defines = GameDefines.load_default()
+        defines = _resolve_defines(config)
 
         t0 = time.perf_counter()
         report = initialize_session(

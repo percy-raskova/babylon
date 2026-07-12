@@ -24,6 +24,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from babylon.config.defines import GameDefines
+
 _FIPS5_RE = re.compile(r"^\d{5}$")
 
 
@@ -115,6 +117,15 @@ class SimulationRunConfig(BaseModel):
     )
     output_dir: Path = Field(...)
     defines_overlay_path: Path | None = Field(default=None)
+
+    #: In-process coefficient override. When set, :func:`runner.run` uses this
+    #: ``GameDefines`` verbatim instead of resolving from disk — the fast path
+    #: for programmatic parameter sweeps (``babylon.engine.optimization``), which
+    #: build a per-trial ``GameDefines`` via ``inject_parameter`` and must have it
+    #: actually reach the simulation. Excluded from serialization/manifest: the
+    #: coefficient provenance is captured canonically by ``_defines_hash`` instead.
+    #: Resolution precedence: ``defines`` > ``defines_overlay_path`` > ``load_default()``.
+    defines: GameDefines | None = Field(default=None, exclude=True, repr=False)
 
     dry_run: bool = Field(default=False)
     verbose: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO")

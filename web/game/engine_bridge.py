@@ -3143,8 +3143,11 @@ class EngineBridge:
         # Owner item 30, point 3: wire the county economics calculators
         # only when this session actually has county-resolution territory
         # data for them to compute over (see _has_county_resolution_territory).
+        county_fips_codes = tuple(
+            sorted({t.county_fips for t in state.territories.values() if t.county_fips})
+        )
         calculator_overrides, leontief_session = (
-            _bridge_economics_overrides()
+            _bridge_economics_overrides(county_fips_codes)
             if _has_county_resolution_territory(state)
             else (None, None)
         )
@@ -4436,7 +4439,72 @@ def _has_county_resolution_territory(state: WorldState) -> bool:
     return any(t.county_fips for t in state.territories.values())
 
 
-def _bridge_economics_overrides() -> tuple[dict[str, Any], Any]:
+#: Cache of hydrated capital calculators keyed by the county FIPS-set. Hydrating
+#: the TensorRegistry runs one QCEW query per (county, year), and
+#: :func:`_bridge_economics_overrides` is called on EVERY ``resolve_tick`` — so
+#: rebuilding it per tick would re-query the reference DB ~15x per county every
+#: tick. Keyed by ``frozenset`` so distinct scenarios don't collide.
+_CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
+
+#: QCEW county coverage runs 2010–2024; hydrate the full span once so the
+#: perpetual-inventory ``get_K`` has every year the sim can advance into.
+_CAPITAL_HYDRATION_YEARS: Final[tuple[int, ...]] = tuple(range(2010, 2025))
+
+
+def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
+    """Build (and cache) a ``CapitalStockCalculator`` with a hydrated registry.
+
+    Owner item 25 / Fix B (owner-ruled 2026-07-12): give the web session a REAL
+    per-county capital stock K instead of the engine's ``0.0`` default, so
+    ``occ = K/v`` is non-zero and ``profit_rate = s/(K+v)`` separates from
+    ``exploitation_rate = s/v`` — with K=0 the two are identical, a degenerate,
+    dishonest tie. Mirrors the ``TensorRegistry`` hydration in
+    :meth:`babylon.engine.simulation._legacy.Simulation.from_sqlite`, and reads
+    the SAME reference DB the Leontief rent path already opens (no new runtime
+    dependency). Cached per FIPS-set because hydration hits the DB once per
+    ``(county, year)``.
+
+    Args:
+        fips_codes: The county FIPS this session computes over (non-empty).
+
+    Returns:
+        A ``CapitalStockCalculator`` whose ``get_K`` returns real per-county K
+        for the hydrated years, or a falsy ``NoDataSentinel`` where the
+        reference DB lacks that county-year (the engine's ``_compute_county_states``
+        guards on that truthiness — Constitution III.11 graceful degradation).
+    """
+    key = frozenset(fips_codes)
+    cached = _CAPITAL_CALCULATOR_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    from pathlib import Path
+
+    import babylon.domain.economics as economics_pkg
+    from babylon.domain.economics.adapters import SQLiteQCEWSource
+    from babylon.domain.economics.capital_stock import CapitalStockCalculator
+    from babylon.domain.economics.department_mapper import DepartmentMapper
+    from babylon.domain.economics.hydrator import MarxianHydrator
+    from babylon.domain.economics.tensor_registry import TensorRegistry
+    from babylon.engine.hydration.reference import StubBEASource
+    from babylon.reference.database import get_reference_session
+
+    registry = TensorRegistry()
+    naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
+    with get_reference_session() as session:
+        hydrator = MarxianHydrator(
+            SQLiteQCEWSource(session),
+            StubBEASource(),  # falls back to DepartmentMapper department ratios
+            DepartmentMapper.from_yaml(naics_yaml),
+        )
+        registry.hydrate_counties(hydrator, list(fips_codes), list(_CAPITAL_HYDRATION_YEARS))
+
+    calculator = CapitalStockCalculator(registry)
+    _CAPITAL_CALCULATOR_CACHE[key] = calculator
+    return calculator
+
+
+def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[str, Any], Any]:
     """Wire the ``melt_calculator``/``gamma_calculator`` TickDynamicsSystem needs.
 
     Owner item 30, point 3. Mirrors
@@ -4503,6 +4571,11 @@ def _bridge_economics_overrides() -> tuple[dict[str, Any], Any]:
 
     overrides: dict[str, Any] = {"gamma_calculator": gamma, "melt_calculator": melt}
     overrides.update(leontief_overrides)
+    # Owner item 25 / Fix B: wire a real per-county capital_calculator (cached) so
+    # occ and profit_rate are non-degenerate. Only when we know which counties to
+    # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.
+    if fips_codes:
+        overrides["capital_calculator"] = _build_capital_calculator(fips_codes)
     return overrides, leontief_session
 
 

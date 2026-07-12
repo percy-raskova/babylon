@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { classifyEvent } from "@/lib/eventClassifier";
+import { classifyEvent, classifyEventForStream } from "@/lib/eventClassifier";
 import type { GameEvent } from "@/types/game";
 
 function makeEvent(type: string, overrides: Partial<GameEvent> = {}): GameEvent {
@@ -89,5 +89,48 @@ describe("classifyEvent — severity map keyed on lowercase EventType values", (
   it("classifies an 'eviction' type as informational (not an EventType; no special-case)", () => {
     const ce = classifyEvent(makeEvent("eviction"), 0);
     expect(ce.severity).toBe("informational");
+  });
+});
+
+describe("classifyEventForStream — the two-stream toast/tray model (spec-113 §5.2)", () => {
+  it("maps critical severity to the urgent stream and 'critical' tier", () => {
+    const se = classifyEventForStream(makeEvent("rupture"), 0);
+    expect(se.severity).toBe("critical");
+    expect(se.stream).toBe("urgent");
+    expect(se.category).toBe("struggle");
+  });
+
+  it("maps important severity to the urgent stream and 'notable' tier", () => {
+    const se = classifyEventForStream(makeEvent("uprising"), 0);
+    expect(se.severity).toBe("notable");
+    expect(se.stream).toBe("urgent");
+  });
+
+  it("maps informational severity to the ambient stream and 'ambient' tier", () => {
+    const se = classifyEventForStream(makeEvent("value_transfer"), 0);
+    expect(se.severity).toBe("ambient");
+    expect(se.stream).toBe("ambient");
+    expect(se.category).toBe("economy");
+  });
+
+  it("elevates a genuinely unknown type to 'notable' rather than burying it as ambient", () => {
+    const se = classifyEventForStream(makeEvent("totally_unknown_type"), 0);
+    expect(se.severity).toBe("notable");
+    expect(se.stream).toBe("urgent");
+    expect(se.category).toBe("system");
+    // The raw type stays visible on the event — never dropped.
+    expect(se.event.type).toBe("totally_unknown_type");
+  });
+
+  it("classifies a solidarity-family event into the solidarity category", () => {
+    const se = classifyEventForStream(makeEvent("solidarity_awakening"), 0);
+    expect(se.category).toBe("solidarity");
+  });
+
+  it("classifies a political-family event (sovereign_collapse) as critical/urgent/political", () => {
+    const se = classifyEventForStream(makeEvent("sovereign_collapse"), 0);
+    expect(se.severity).toBe("critical");
+    expect(se.stream).toBe("urgent");
+    expect(se.category).toBe("political");
   });
 });

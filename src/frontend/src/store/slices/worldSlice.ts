@@ -35,11 +35,18 @@ async function onTickAdvanced(
   isGenuineAdvance: boolean,
 ) {
   const panels = get().panels;
+  // `endgame` is deliberately excluded from the generic mounted-only
+  // fan-out below and fetched unconditionally instead (spec-113 §4.4
+  // correction): the auto-open watcher needs to observe its `outcome`
+  // transition even before any takeover ever mounts `useEndgame`.
+  const prevEndgameOutcome = panels.endgame.data?.outcome ?? null;
+
   await Promise.all([
     ...PANEL_KEYS.filter((key) => panels[key].mounted).map((key) => panels[key].fetch(gameId)),
-    ...TAKEOVER_PANEL_KEYS.filter((key) => panels[key].mounted).map((key) =>
+    ...TAKEOVER_PANEL_KEYS.filter((key) => key !== "endgame" && panels[key].mounted).map((key) =>
       panels[key].fetch(gameId),
     ),
+    panels.endgame.fetch(gameId),
   ]);
 
   // A resolve consumes every action queued against the prior tick — the
@@ -50,11 +57,26 @@ async function onTickAdvanced(
     get().actions.clearPending();
   }
 
+  // events.ingest is idempotent per tick (dedup guard) — safe to call on
+  // every observed tick, including the initial null -> first-snapshot load.
+  get().events.ingest(snap.tick, snap.events);
+
   const criticalIds = classifyEvents(snap.events)
     .filter((e) => e.severity === "critical")
     .map((e) => e.id);
   if (criticalIds.length > 0) {
     get().time.autopause(criticalIds);
+  }
+
+  // Endgame auto-open (spec-113 §4.4 correction, owner item 37): the real
+  // endgame signal is `panels.endgame.data.outcome` transitioning
+  // null -> non-null, NOT `GameSnapshot.endgame` (a dead field with zero
+  // readers). Firing only on that transition — never on an already-non-null
+  // outcome staying non-null — is what makes this exactly-once per game.
+  const newEndgameOutcome = get().panels.endgame.data?.outcome ?? null;
+  if (prevEndgameOutcome === null && newEndgameOutcome !== null) {
+    get().time.pause();
+    get().ui.openTakeover("chronicle");
   }
 }
 

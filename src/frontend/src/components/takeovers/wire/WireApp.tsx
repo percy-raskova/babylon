@@ -8,6 +8,8 @@
 
 import { useState } from "react";
 import { useWire } from "@/hooks/useWire";
+import { useNarration } from "@/hooks/useNarration";
+import { NarrationBlock } from "@/components/narration/NarrationBlock";
 import { WireWindow } from "./WireWindow";
 import type { WireTab } from "./WireWindow";
 import { ContinentalColumn } from "./ContinentalColumn";
@@ -24,6 +26,12 @@ interface Props {
 
 export function WireApp({ gameId }: Props) {
   const { data: feed, loading, error } = useWire(gameId);
+  // Narrator strip (spec-113 integration ledger, Phase D): latest tick-scope
+  // beat, mounted in the wire window's own header area — WireWindow's
+  // ratified title-bar/tab-bar internals are untouched, this is a slim row
+  // WireApp adds to its own "wire" tab content, above the triptych.
+  const { status: narrationStatus, beats } = useNarration(gameId);
+  const latestTickBeat = beats.filter((b) => b.scope === "tick").at(-1) ?? null;
   const [tab, setTab] = useState<string>("wire");
   const [activeEuph, setActiveEuph] = useState<string | null>(null);
   const [activeSup, setActiveSup] = useState<number | null>(null);
@@ -99,6 +107,18 @@ export function WireApp({ gameId }: Props) {
         <>
           {tab === "wire" && (
             <div className={`flex h-full flex-col ${euphAlways ? "euph-always" : ""}`}>
+              {/* Narrator strip — compact, latest tick-scope beat */}
+              <div
+                className="shrink-0 border-b px-4 py-1.5"
+                style={{
+                  borderColor: "var(--babylon-rebar)",
+                  background: "rgba(255,255,255,0.012)",
+                }}
+                data-testid="wire-narrator-strip"
+              >
+                <NarrationBlock beat={latestTickBeat} state={narrationStatus} />
+              </div>
+
               {/* Story chrome */}
               <div
                 className="flex shrink-0 items-center justify-between border-b px-4 py-2"

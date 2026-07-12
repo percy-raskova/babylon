@@ -155,4 +155,59 @@ describe("world slice — fetchState", () => {
 
     expect(useStore.getState().time.status).toBe("paused");
   });
+
+  it("ingests the tick's events into the events slice on every observed tick", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "uprising", tick: 1 })] });
+
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().events.ingestedTicks).toEqual([1]);
+    expect(useStore.getState().events.toasts).toHaveLength(1);
+  });
+});
+
+describe("world slice — endgame auto-open (spec-113 §4.4 correction)", () => {
+  it("opens the chronicle takeover + pauses exactly once when outcome transitions null -> non-null", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID); // outcome still null
+
+    expect(useStore.getState().ui.takeover.active).toBeNull();
+    expect(requestLog.filter((r) => r === "GET endgame")).toHaveLength(1);
+
+    server.use(
+      http.get("/api/games/:id/endgame/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: {
+            tick: 2,
+            outcome: "revolutionary_victory",
+            headline: "The masses have won.",
+            summary: "",
+            stats: { final_tick: 2, consciousness: 0.9, solidarity_edges: 10, heat: 0.1 },
+          },
+        }),
+      ),
+    );
+
+    setMockSnapshot({ ...useStore.getState().world.snapshot!, tick: 2 });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().ui.takeover.active).toBe("chronicle");
+    expect(useStore.getState().time.status).toBe("paused");
+
+    // A further observed tick with the outcome still non-null must not
+    // re-open/re-pause — the transition already fired once.
+    useStore.getState().ui.closeTakeover();
+    setMockSnapshot({ ...useStore.getState().world.snapshot!, tick: 3 });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().ui.takeover.active).toBeNull();
+  });
+
+  it("does not open the chronicle takeover while outcome stays null", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    setMockSnapshot({ ...useStore.getState().world.snapshot!, tick: 2 });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().ui.takeover.active).toBeNull();
+  });
 });

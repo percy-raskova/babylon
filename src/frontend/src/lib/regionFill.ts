@@ -35,10 +35,17 @@
  *   only), which remain the actual signal at every framing; a region fill
  *   would either be misleading (no per-faction breakdown to summarize) or
  *   duplicate information the overlay already carries.
+ * - `class_composition` (spec-113 Lane B/D): `properties.dominant_class`
+ *   (the group's population-weighted plurality `SocialRole`,
+ *   `_aggregate_hex_features`'s `dominant_class_pop` vote) via the SAME
+ *   `SOCIAL_ROLE_COLOR` palette `mapLensLayers.ts`'s hex-native fill uses —
+ *   one source of truth, no duplicated color table. Null-honest for an
+ *   absent/unrecognized role.
  */
 
 import { lensRampStops, sampleRampStops, type Lens, type MapMetric } from "@/lib/lens";
 import { rampForLayer, type RGBAColor } from "@/theme/colors";
+import { SOCIAL_ROLE_COLOR } from "@/components/map/mapLensLayers";
 
 /** The value range a domain-normalized field (heat, `{kind:"metric"}`) is scaled against. */
 export interface FillDomain {
@@ -61,6 +68,14 @@ export interface FillDomain {
  */
 export type RegionFillProperties = Partial<Record<MapMetric, number | null>> & {
   consciousness?: number | null;
+  /**
+   * Spec-113 Lane D's aggregated `dominant_class` (the population-weighted
+   * plurality `SocialRole` across the group's members,
+   * `_aggregate_hex_features`'s `dominant_class_pop` vote) — categorical,
+   * so (like `RegionFillProperties` itself vs. `MapMetric`) it lives
+   * outside the numeric bag.
+   */
+  dominant_class?: string | null;
 };
 
 /** True for a real, finite value — false for `null`/`undefined`/`NaN`. */
@@ -68,16 +83,45 @@ function isPresent(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && Number.isFinite(value);
 }
 
-/** Normalize `value` into [0, 1] against `domain`; `null` when absent/non-finite. */
+/**
+ * Normalize `value` into [0, 1] against `domain`; `null` when absent/non-finite
+ * OR when `domain` has zero dynamic range (`span <= 0`). A degenerate domain —
+ * every visible region shares one value (e.g. the static-economy case where
+ * every imperial_rent is 0.0, owner item #25) — carries no relative signal for a
+ * ramp to encode. Returning 0 here would paint the ramp floor, indistinguishable
+ * from a genuine spread bottomed at the floor; honest-null instead (→ caller's
+ * NO_DATA fill, borders show through) keeps an empty domain "visibly distinct
+ * from a real 0.0" (Constitution III.11, the rule mapLensLayers.ts::metricFill
+ * already states). Self-heals: once values spread (span > 0) the ramp colors
+ * normally. Also the divide-by-zero guard.
+ */
 function normalize(value: number | null | undefined, domain: FillDomain): number | null {
   if (!isPresent(value)) {
     return null;
   }
   const span = domain.max - domain.min;
   if (span <= 0) {
-    return 0;
+    return null;
   }
   return Math.max(0, Math.min(1, (value - domain.min) / span));
+}
+
+/** Shared by the `heat`/`metric` cases: ramp-sample a domain-normalized value, or `null` if either is absent. */
+function normalizedRampFill(
+  lens: Lens,
+  value: number | null | undefined,
+  domain: FillDomain,
+): RGBAColor | null {
+  const ramp = lensRampStops(lens);
+  const t = normalize(value, domain);
+  return ramp === null || t === null ? null : sampleRampStops(ramp, t);
+}
+
+/** The `stance` case: `properties.consciousness` sampled over the consciousness ramp (FLAGGED, see module docstring). */
+function stanceFill(properties: RegionFillProperties): RGBAColor | null {
+  return isPresent(properties.consciousness)
+    ? sampleRampStops(rampForLayer("consciousness"), properties.consciousness)
+    : null;
 }
 
 /**
@@ -90,11 +134,8 @@ export function regionFillForLens(
   domain: FillDomain,
 ): RGBAColor | null {
   switch (lens.kind) {
-    case "heat": {
-      const ramp = lensRampStops(lens);
-      const t = normalize(properties.heat, domain);
-      return ramp === null || t === null ? null : sampleRampStops(ramp, t);
-    }
+    case "heat":
+      return normalizedRampFill(lens, properties.heat, domain);
     case "habitability": {
       const ramp = lensRampStops(lens);
       if (ramp === null || !isPresent(properties.habitability)) {
@@ -102,19 +143,16 @@ export function regionFillForLens(
       }
       return sampleRampStops(ramp, properties.habitability);
     }
-    case "metric": {
-      const ramp = lensRampStops(lens);
-      const t = normalize(properties[lens.metric], domain);
-      return ramp === null || t === null ? null : sampleRampStops(ramp, t);
-    }
-    case "stance": {
-      if (!isPresent(properties.consciousness)) {
-        return null;
-      }
-      return sampleRampStops(rampForLayer("consciousness"), properties.consciousness);
-    }
+    case "metric":
+      return normalizedRampFill(lens, properties[lens.metric], domain);
+    case "stance":
+      return stanceFill(properties);
     case "faction":
     case "collapse":
       return null;
+    case "class_composition": {
+      const role = properties.dominant_class;
+      return role ? (SOCIAL_ROLE_COLOR[role] ?? null) : null;
+    }
   }
 }

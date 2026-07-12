@@ -2,9 +2,24 @@
  * Real core-loop gate for the cockpit (spec-110 B6 — the Phase-B exit
  * measurement). Mirrors web/frontend/e2e/real-loop.spec.ts's shape:
  * login → lobby → create a fresh wayne_county operation → cockpit shell
- * renders (map/outliner/dock/statusbar/bottomstrip) → submit a verb via
+ * renders (map/outliner/dock/bottomstrip/statusbar) → submit a verb via
  * the ActionComposer → Step resolves the tick → StatusBar tick advances
- * → the Events tab reflects the new tick.
+ * → the always-mounted EventTray reflects the new tick.
+ *
+ * Rewritten for the Living Map shell (spec-113, architecture.md §0/§1.1)
+ * — the five `region-*` testids this spec pins are UNCHANGED (they carry
+ * onto the new component owners: `region-dock` is now `ActionDock`'s
+ * outer wrapper, `region-bottomstrip` is `BottomDrawer`'s FloatingPanel —
+ * see each component's docstring's "testid-contract risk" note), but the
+ * Events assertion is rewritten: the old `BottomStrip` tab UI (a "Time
+ * Series"/"Events" toggle) is deleted (architecture §1.2's disperse row)
+ * — `EventsFeed` now lives inside `EventTray` (the always-mounted right
+ * rail, `eventTrayOpen: true` by default in `uiSlice`), so no tab click
+ * is needed to reach it. `ActionComposer`/`verb-grid`/`target-picker`
+ * likewise need no "open the dock" step: `ActionDock` keeps
+ * `ui.chrome.composerOpen: true` by default specifically so this spec's
+ * (and `verb-submit.spec.ts`'s) one-step submit flow still works
+ * (`ActionDock.tsx`'s docstring).
  *
  * Runs on the "chromium-authenticated" project (storageState from
  * auth.setup.ts). Requires the live stack: Django `:8000`
@@ -22,6 +37,15 @@
  * CSRF_TRUSTED_ORIGINS/CORS_ALLOWED_ORIGINS 403s any login origin but
  * 5173, including the cockpit's own 5174). Whole suite `fixme` until
  * that `web/` settings allowlist is fixed.
+ *
+ * UNVERIFIED against a live backend (spec-113 Lane G handoff, 2026-07-11):
+ * this needs the live Django/Postgres stack this lane doesn't have, AND
+ * the current dev-worktree environment independently fails to load ANY
+ * `/game/:id` route at all (see `inspection-stack.spec.ts`'s docstring —
+ * reproduced against `briefing-map-smoke.spec.ts`/`map-lens-cycling.spec.ts`
+ * too, not a Lane G regression). Rewritten strictly against the real
+ * testids/defaults confirmed by reading `ActionDock.tsx`/`EventTray.tsx`/
+ * `BottomDrawer.tsx`/`uiSlice.ts` — Phase V must run this live.
  */
 import { expect, test } from "./fixtures";
 
@@ -38,7 +62,9 @@ test.describe("real core loop (cockpit, spec-110 B6)", () => {
 
   test("creating a wayne_county operation provisions a fresh session", async ({ page }) => {
     await page.goto("/lobby");
-    await page.locator("select").selectOption("wayne_county");
+    // The scenario picker is a Guix-style listbox since Wave 3 SKIN-MENUS
+    // (LobbyRoute.SelectionList) — the native <select> is gone.
+    await page.getByTestId("scenario-option-wayne_county").click();
 
     const [createResp] = await Promise.all([
       page.waitForResponse(
@@ -62,6 +88,10 @@ test.describe("real core loop (cockpit, spec-110 B6)", () => {
     expect(gameId, "created-session test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
 
+    // region-dock is now ActionDock's outer wrapper (the verb bar + the
+    // ActionComposer FloatingPanel); region-bottomstrip is BottomDrawer's
+    // FloatingPanel (the "Trends" drawer) — both keep their pre-Living-Map
+    // testids per architecture §6's testid-contract risk.
     await expect(page.getByTestId("region-statusbar")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("region-outliner")).toBeVisible();
     await expect(page.getByTestId("region-map")).toBeVisible();
@@ -125,21 +155,22 @@ test.describe("real core loop (cockpit, spec-110 B6)", () => {
     await expect(page.getByTestId("time-status")).toHaveText("PAUSED");
   });
 
-  test("Events tab shows the resolved tick's classified events or the honest empty state", async ({
+  test("EventTray shows the resolved tick's classified events or the honest empty state", async ({
     page,
   }) => {
     expect(gameId, "created-session test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
-    await expect(page.getByTestId("region-bottomstrip")).toBeVisible({ timeout: 15000 });
 
-    // Bottom strip defaults to the Time Series tab (uiSlice.activeDockTab)
-    // — switch to Events before asserting the feed is visible.
-    await page.getByRole("button", { name: "Events" }).click();
+    // EventTray is the always-mounted right rail hosting EventsFeed
+    // verbatim (architecture §1.2's BottomStrip disperse row) —
+    // eventTrayOpen defaults true (uiSlice), so no tab/toggle click is
+    // needed to reach it (the old BottomStrip "Events" tab is gone).
+    await expect(page.getByTestId("event-tray")).toBeVisible({ timeout: 15000 });
     const feed = page.getByTestId("events-feed");
     await expect(feed).toBeVisible({ timeout: 10000 });
     // Never fabricated content (Constitution III.11): the feed renders
-    // either at least one classified event or the honest "No events this
-    // tick." copy — either way it must not be blank.
+    // either at least one classified event or the honest "The wire is
+    // quiet this tick." copy — either way it must not be blank.
     await expect(feed).not.toBeEmpty({ timeout: 5000 });
   });
 });

@@ -126,6 +126,36 @@ describe("ActionComposer", () => {
     );
   });
 
+  it("renders no predicted-delta filler for registry verbs without predictedEffect", async () => {
+    // No VERB_REGISTRY config populates `predictedEffect` today — the
+    // composed educate flow must show NOTHING extra near submit
+    // (Constitution III.11 honest null; fixture-driven rendering is
+    // covered in VerbForm.test.tsx).
+    server.use(
+      http.get("/api/games/:id/actions/educate/targets/", () =>
+        HttpResponse.json({
+          targets: [
+            {
+              community_id: "comm-1",
+              territory_name: "Downtown",
+              category: "labor",
+              credibility: 0.5,
+            },
+          ],
+        }),
+      ),
+    );
+    seedPlayerOrg();
+    render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /educate/i }));
+    await waitFor(() => expect(screen.getByText(/Downtown/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Downtown/));
+
+    expect(screen.getByRole("button", { name: /submit educate/i })).toBeEnabled();
+    expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
+  });
+
   it("shows a loud submit error when the backend rejects the action", async () => {
     server.use(
       http.get("/api/games/:id/actions/educate/targets/", () =>

@@ -1,0 +1,73 @@
+{
+  "type": "Topology",
+  "arcs": [
+    [
+      [0, 100],
+      [100, 0]
+    ],
+    [
+      [100, 100],
+      [0, -100]
+    ],
+    [
+      [100, 0],
+      [-100, 0],
+      [0, 100]
+    ],
+    [
+      [100, 100],
+      [100, 0]
+    ],
+    [
+      [200, 100],
+      [0, -100],
+      [-100, 0]
+    ],
+    [
+      [0, 100],
+      [0, 100],
+      [100, 0]
+    ],
+    [
+      [100, 200],
+      [0, -100]
+    ],
+    [
+      [100, 200],
+      [100, 0],
+      [0, -100]
+    ]
+  ],
+  "transform": { "scale": [0.01, 0.01], "translate": [0, 0] },
+  "objects": {
+    "counties": {
+      "type": "GeometryCollection",
+      "geometries": [
+        {
+          "arcs": [[0, 1, 2]],
+          "type": "Polygon",
+          "properties": { "GEOID": "00001", "NAME": "Alpha", "STATEFP": "99" },
+          "id": "00001"
+        },
+        {
+          "arcs": [[-2, 3, 4]],
+          "type": "Polygon",
+          "properties": { "GEOID": "00002", "NAME": "Beta", "STATEFP": "99" },
+          "id": "00002"
+        },
+        {
+          "arcs": [[5, 6, -1]],
+          "type": "Polygon",
+          "properties": { "GEOID": "00003", "NAME": "Gamma", "STATEFP": "99" },
+          "id": "00003"
+        },
+        {
+          "arcs": [[-7, 7, -4]],
+          "type": "Polygon",
+          "properties": { "GEOID": "00004", "NAME": "Delta", "STATEFP": "99" },
+          "id": "00004"
+        }
+      ]
+    }
+  }
+}

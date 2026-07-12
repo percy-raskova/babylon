@@ -113,21 +113,3 @@ def test_qa_audit_writes_markdown_report(tmp_path: Path) -> None:
     assert "A: Baseline" in body
     assert "B: Starvation" in body
     assert "C: Glut" in body
-
-
-def test_tune_morris_smoke_known_skipped() -> None:
-    """T043: tune:morris smoke. sensitivity_analysis is route-only; not
-    refactored beyond the import boundary in this MVP."""
-    pytest.skip(
-        "sensitivity_analysis (Morris/Sobol) routes through shared.run_simulation "
-        "with degraded result fields; full Morris-output validation lands when "
-        "real engine systems re-enter the headless tick loop (future spec)."
-    )
-
-
-def test_tune_landscape_smoke_known_skipped() -> None:
-    """T045a: landscape_analysis smoke. Same MVP-degradation note as Morris."""
-    pytest.skip(
-        "landscape_analysis routes through shared.run_simulation with "
-        "degraded fields; full 2D-grid value validation deferred."
-    )

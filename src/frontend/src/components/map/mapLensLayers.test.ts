@@ -355,6 +355,51 @@ describe("buildLensLayers", () => {
     });
   });
 
+  describe("class_composition lens (spec-113 Lane B/D)", () => {
+    const TERRITORIES_WITH_CLASS: LensTerritory[] = [
+      { ...TERRITORIES[0]!, dominantClass: "core_bourgeoisie" },
+      { ...TERRITORIES[1]!, dominantClass: "periphery_proletariat" },
+      { ...TERRITORIES[2]!, dominantClass: null },
+    ];
+
+    it("fills by dominantClass, distinctly per role", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_CLASS,
+        balkanization: null,
+        lens: { kind: "class_composition" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T2"));
+    });
+
+    it("is loud no-data for a territory with no dominantClass (Constitution III.11)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_CLASS,
+        balkanization: null,
+        lens: { kind: "class_composition" },
+      });
+      expect(result.getFillColor("T3")).toEqual([58, 53, 48, 160]);
+    });
+
+    it("never requires balkanization data (territory-local, like metric lenses)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_CLASS,
+        balkanization: null,
+        lens: { kind: "class_composition" },
+      });
+      expect(result.legendLabel.toLowerCase()).not.toContain("no data");
+    });
+
+    it("renders no rings/hulls (balkanization-only overlays)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_CLASS,
+        balkanization: BALKANIZATION,
+        lens: { kind: "class_composition" },
+      });
+      expect(result.rings).toEqual([]);
+      expect(result.hulls).toEqual([]);
+    });
+  });
+
   it("VIII.9: BalkanizationBlock carries no hyperedge/community field for the hull builder to read", () => {
     // Runtime guarantee: even if a caller attaches extra hyperedge-shaped
     // data onto the object (bypassing the type system, e.g. from an

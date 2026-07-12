@@ -154,3 +154,35 @@ class TestPostgresMonotonicIdempotent:
         different = dict(ev, entity_id="other")
         with pytest.raises(MonotonicityViolationError):
             runtime.persist_tick(tick=0, graph=graph, events=[different], session_id=session_id)
+
+
+class TestSimulationEventTypeKey:
+    """spec-113 engine defect: ``_persist_events`` must read the ``"event_type"``
+    key — the field name on ``SimulationEvent`` and therefore the key
+    ``model_dump(mode="json")`` emits — not ``"type"``. Reading ``"type"``
+    persisted EVERY event as ``"UNKNOWN"``, so two distinct events at one tick
+    collapsed onto the same ``ux_simulation_event_session_tick_natural`` key
+    (resolve-loop UniqueViolation, session death ~tick 18) and the web layer
+    never saw a real type (silent wire / no toasts)."""
+
+    def test_distinct_event_types_at_one_tick_persist_as_distinct_rows(
+        self, runtime: PostgresRuntime, session_id: uuid.UUID, pg_pool
+    ) -> None:
+        # Same tick, same (empty) entity, DIFFERENT event_type. Pre-fix both
+        # serialized to "UNKNOWN" -> identical natural key -> UniqueViolation
+        # inside persist_tick's transaction. Post-fix they carry real, distinct
+        # types and both rows land.
+        events = [
+            {"event_type": "SURPLUS_EXTRACTION", "tick": 4},
+            {"event_type": "RADICALIZATION", "tick": 4},
+        ]
+        runtime.persist_tick(
+            tick=4, graph=_payload_to_graph("evt", 1), events=events, session_id=session_id
+        )
+        with pg_pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT event_type FROM simulation_event "
+                "WHERE session_id = %s AND tick = %s ORDER BY event_type",
+                (session_id, 4),
+            ).fetchall()
+        assert [r[0] for r in rows] == ["RADICALIZATION", "SURPLUS_EXTRACTION"]

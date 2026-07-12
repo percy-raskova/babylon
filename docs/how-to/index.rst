@@ -56,6 +56,7 @@ Debugging & Analysis
 
    debug-simulation-outcomes
    analyze-parameter-sensitivity
+   parameter-sweeps
 
 **Debug Simulation Outcomes**
    Diagnose unexpected results systematically. Use structured logging,
@@ -64,6 +65,12 @@ Debugging & Analysis
 **Analyze Parameter Sensitivity**
    Explore how parameter changes affect simulation outcomes. Run sweeps,
    identify thresholds, and validate theoretical predictions.
+
+**Run Parameter Sweeps and Optimization**
+   Use the ``babylon.engine.optimization`` package for sweeps, Monte Carlo,
+   global sensitivity analysis, and Bayesian search over ``GameDefines``
+   coefficients, with both a fast in-memory backend and the realistic
+   Postgres-backed headless backend.
 
 GUI Development
 ---------------

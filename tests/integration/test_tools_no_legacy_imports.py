@@ -31,11 +31,8 @@ TOOLS_DIR = Path(__file__).resolve().parents[2] / "tools"
 
 IN_SCOPE_TOOLS: tuple[str, ...] = (
     "audit_simulation.py",
-    "monte_carlo.py",
     "parameter_analysis.py",
-    "sensitivity_analysis.py",
     "profiler.py",
-    "landscape_analysis.py",
     "shared.py",
 )
 

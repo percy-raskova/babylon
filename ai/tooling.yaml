@@ -545,14 +545,16 @@ parameter_tuning:
   migration_date: "2025-12-30"
 
   primary_tool:
-    name: "tune_agent.py"
-    location: "tools/tune_agent.py"
-    status: "PLANNED"
+    name: "babylon.engine.optimization"
+    location: "src/babylon/engine/optimization/ (engine-tier package)"
+    status: "ACTIVE"
     description: |
-      Autonomous tuning agent using Optuna to optimize simulation parameters
-      against defined objective functions. Uses TPE (Tree-structured Parzen
-      Estimator) for sample-efficient optimization and Hyperband pruning to
-      kill non-viable simulations early.
+      Unified parameter sweep + optimization package (subcommands: sweep,
+      monte-carlo, sensitivity, bayesian). Migrated from the standalone tools/
+      scripts onto the fixed headless runner — an injected GameDefines now
+      actually reaches the simulation (the old tools silently ran bit-identical
+      math). The bayesian subcommand uses Optuna TPE + Hyperband pruning;
+      backend is selectable (headless Postgres scope or fast in-memory step()).
 
     algorithm: "TPE (Tree-structured Parzen Estimator)"
     pruning: "Hyperband (Successive Halving)"
@@ -564,11 +566,16 @@ parameter_tuning:
       - "Pareto front visualization via Optuna Dashboard"
 
     usage: |
-      # Run optimization study
-      poetry run python tools/tune_agent.py --n-trials 200 --study-name imperial_circuit
+      # Bayesian optimization study
+      poetry run python -m babylon.engine.optimization bayesian --n-trials 200 --study-name imperial_circuit
 
-      # Resume existing study
-      poetry run python tools/tune_agent.py --study-name imperial_circuit --resume
+      # Report best trial of an existing study
+      poetry run python -m babylon.engine.optimization bayesian --study-name imperial_circuit --show-best
+
+      # 1D/2D sweep, Monte Carlo, sensitivity
+      poetry run python -m babylon.engine.optimization sweep --param "economy.extraction_efficiency=0.05:0.5:0.05" --report
+      poetry run python -m babylon.engine.optimization monte-carlo --n-samples 100
+      poetry run python -m babylon.engine.optimization sensitivity --method both
 
       # Launch Optuna Dashboard
       optuna-dashboard sqlite:///optuna.db
@@ -577,34 +584,23 @@ parameter_tuning:
       Maximize: w1*ticks_survived + w2*rent_pool_health + w3*consciousness_variance
       Subject to: No Comprador death before tick 10 (pruning constraint)
 
-  legacy_tools:
-    - name: "tune_parameters.py"
-      location: "tools/tune_parameters.py"
-      status: "LEGACY - Manual Inspection Only"
-      description: |
-        Original parameter sweeping tool. Useful for quick manual inspection
-        but inefficient for systematic optimization. Retained for debugging
-        and understanding individual parameter effects.
-      recommendation: "Use for one-off explorations, not systematic tuning"
+  retired_tools:
+    note: |
+      tune_agent.py, tune_parameters.py, landscape_analysis.py, monte_carlo.py,
+      and sensitivity_analysis.py were REMOVED once the babylon.engine.optimization
+      package superseded them (they silently ran bit-identical math — the injected
+      GameDefines never reached the sim). carceral_scoring.py moved to the package's
+      objectives.py. See the optimization-package ADR.
 
-    - name: "parameter_analysis.py"
-      location: "tools/parameter_analysis.py"
-      status: "ACTIVE - Trace/Sweep Commands"
-      description: |
-        Detailed time-series analysis tool. trace command produces full
-        CSV of all entity states per tick. sweep command produces summary
-        statistics. Still valuable for deep-dive analysis after Optuna
-        identifies interesting parameter regions.
-      recommendation: "Use for detailed analysis of Optuna-identified optima"
-
-    - name: "landscape_analysis.py"
-      location: "tools/landscape_analysis.py"
-      status: "ACTIVE - 2D Visualization"
-      description: |
-        2D parameter grid search for visualizing interaction effects.
-        Produces matrix CSV suitable for heatmap visualization. Useful
-        for understanding parameter interactions in reduced dimensions.
-      recommendation: "Use for visualizing 2D slices of parameter space"
+    still_active:
+      - name: "parameter_analysis.py"
+        location: "tools/parameter_analysis.py"
+        status: "ACTIVE - Trace command (sim:trace)"
+        description: |
+          Single-run trace diagnostic: full per-tick CSV of all entity states.
+          Kept because it is a diagnostic, not a sweep (sim:sweep now uses the
+          optimization package).
+        recommendation: "Use for a detailed per-tick trace of a single run"
 
   dependencies:
     optuna:
@@ -627,16 +623,20 @@ parameter_tuning:
 
   mise_tasks:
     "tune:optuna":
-      command: "poetry run python tools/tune_agent.py"
+      command: "poetry run python -m babylon.engine.optimization bayesian"
       description: "Run Bayesian optimization (Optuna TPE)"
 
     "tune:landscape":
-      command: "poetry run python tools/landscape_analysis.py"
+      command: "poetry run python -m babylon.engine.optimization sweep --param ... --param2 ..."
       description: "2D parameter grid search"
 
     "tune:params":
-      command: "poetry run python tools/tune_parameters.py"
+      command: "poetry run python -m babylon.engine.optimization sweep --param ..."
       description: "1D parameter sensitivity sweep"
+
+    "tune:sensitivity | tune:morris | tune:sobol":
+      command: "poetry run python -m babylon.engine.optimization sensitivity --method {morris,sobol,both}"
+      description: "Global sensitivity analysis (SALib Morris/Sobol)"
 
     "tune:dashboard":
       command: "optuna-dashboard sqlite:///optuna.db"
@@ -702,12 +702,12 @@ shared_utilities:
 
   importers:
     - "tools/parameter_analysis.py"
-    - "tools/landscape_analysis.py"
     - "tools/audit_simulation.py"
-    - "tools/tune_agent.py"
-    - "tools/monte_carlo.py"
-    - "tools/sensitivity_analysis.py"
+    - "tools/necropolis_viewer.py"
+    - "tools/profiler.py"
     - "tools/regression_test.py"
+    # NOTE: the params helpers (get_tunable_parameters/inject_parameter) also
+    # live in src/babylon/engine/optimization/params.py, used by the package.
 
 # =============================================================================
 # MONTE CARLO UNCERTAINTY QUANTIFICATION
@@ -715,7 +715,7 @@ shared_utilities:
 
 monte_carlo:
   philosophy: "Capture stochastic variance via N-sample replication"
-  location: "tools/monte_carlo.py"
+  location: "src/babylon/engine/optimization/monte_carlo.py (subcommand: monte-carlo)"
   added: "2026-01-01"
   mise_task: "sim:monte-carlo"
 
@@ -734,7 +734,7 @@ monte_carlo:
   cli_usage:
     basic: "mise run sim:monte-carlo 100"
     with_seed: "mise run sim:monte-carlo 1000 42"
-    with_param: "poetry run python tools/monte_carlo.py --param economy.extraction_efficiency=0.5"
+    with_param: "poetry run python -m babylon.engine.optimization monte-carlo --param economy.extraction_efficiency=0.5"
 
   statistics:
     confidence_interval:
@@ -767,7 +767,7 @@ monte_carlo:
 
 sensitivity_analysis:
   philosophy: "Quantify parameter importance via variance decomposition"
-  location: "tools/sensitivity_analysis.py"
+  location: "src/babylon/engine/optimization/sensitivity.py (subcommand: sensitivity)"
   added: "2026-01-01"
   mise_tasks:
     - "tune:sensitivity"

@@ -896,6 +896,114 @@ def inspector_territory_history(request: Request, game_id: str, county_fips: str
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
+def _explain_result_to_dict(result: Any) -> dict[str, Any]:
+    """Project a :class:`game.provenance.ExplainResult` onto the
+    ``/explain/`` response body (architecture.md §2.4)."""
+    inputs = [
+        {"name": i.name, "label": i.label, "value": i.value, "kind": i.kind, "ref": i.ref}
+        for i in result.inputs
+    ]
+    constants = [row for row in inputs if row["kind"] == "constant"]
+    return {
+        "metric": result.metric,
+        "scope": result.scope,
+        "value": result.value,
+        "formula": {
+            "name": result.formula_name,
+            "expression": result.expression,
+            "doc": result.doc,
+        },
+        "inputs": inputs,
+        "constants": constants,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_explain(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/explain/?metric=<name>&scope=<scope> — Formula
+    provenance for one metric (spec-113 Lane D, architecture.md §2.4).
+
+    Backs InspectionStack's terminal FormulaCard frame: expression, real
+    per-scope input values, constants with provenance. ``scope`` grammar:
+    ``global`` | ``hex:<h3>`` | ``org:<id>``.
+
+    Errors (Constitution III.11 — loud, not silent):
+        400: missing/malformed ``metric``/``scope``, or a scope kind this
+            metric does not support (body names the supported kinds).
+        404: unknown ``metric``, or a well-formed scope naming a hex/org
+            that does not exist in this game.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    metric = request.query_params.get("metric")
+    raw_scope = request.query_params.get("scope")
+    if not metric:
+        return _error("Missing required query parameter 'metric'", http_status=400)
+    if not raw_scope:
+        return _error("Missing required query parameter 'scope'", http_status=400)
+
+    from .provenance import (
+        METRIC_PROVENANCE,
+        SUPPORTED_SCOPE_KINDS,
+        ScopeEntityNotFoundError,
+        UnknownMetricError,
+        UnsupportedScopeError,
+        explain_metric,
+        parse_scope,
+    )
+
+    scope = parse_scope(raw_scope)
+    if scope.kind not in SUPPORTED_SCOPE_KINDS:
+        return _error(
+            f"Invalid scope kind {scope.kind!r}. Valid kinds: {sorted(SUPPORTED_SCOPE_KINDS)}",
+            http_status=400,
+        )
+
+    bridge = _get_bridge()
+    session_uuid = uuid.UUID(str(session.id))
+
+    if hasattr(bridge, "hydrate_state"):
+        try:
+            state, graph = bridge.hydrate_state(session_uuid)
+        except Exception:  # noqa: BLE001 — diagnostic; surfaced as a clean 404
+            logger.exception("game_explain: failed to hydrate state for session=%s", session_uuid)
+            return _error("Game state not available", http_status=404)
+        try:
+            result = explain_metric(state, graph, metric, scope)
+        except UnknownMetricError:
+            return _error(
+                f"Unknown metric {metric!r}. Valid metrics: {sorted(METRIC_PROVENANCE)}",
+                http_status=404,
+            )
+        except UnsupportedScopeError as exc:
+            return _error(
+                f"Metric {metric!r} does not support scope kind {exc.kind!r}. "
+                f"Supported: {sorted(exc.supported)}",
+                http_status=400,
+            )
+        except ScopeEntityNotFoundError as exc:
+            return _error(
+                f"No {exc.kind} found for id {exc.entity_id!r} in this game",
+                http_status=404,
+            )
+        data = _explain_result_to_dict(result)
+    else:
+        # StubEngineBridge (no Postgres/engine): its own self-contained
+        # mock manifest, same metric catalog and response shape, but no
+        # per-scope validation (see StubEngineBridge.get_explain's docstring).
+        data = bridge.get_explain(session_uuid, metric, raw_scope)
+        if data is None:
+            return _error(
+                f"Unknown metric {metric!r}. Valid metrics: {sorted(METRIC_PROVENANCE)}",
+                http_status=404,
+            )
+
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
 # ---------------------------------------------------------------------- #
 # Action endpoints
 # ---------------------------------------------------------------------- #

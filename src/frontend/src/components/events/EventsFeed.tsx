@@ -15,7 +15,7 @@
 
 import { useStore } from "@/store";
 import { classifyEvents } from "@/lib/eventClassifier";
-import { inspectorKindForEvent } from "@/lib/inspectorMapping";
+import type { InspectorKind } from "@/store";
 import type { ClassifiedEvent, EventSeverity } from "@/types/game";
 
 const SEVERITY_COLOR: Record<EventSeverity, string> = {
@@ -23,6 +23,33 @@ const SEVERITY_COLOR: Record<EventSeverity, string> = {
   important: "text-heat",
   informational: "text-solidarity",
 };
+
+/**
+ * Maps a classified event's linked-entity type to the Inspector's
+ * `InspectorKind` — the join between the events feed and
+ * `mapSlice.setSelection` (spec-110 B3 stage 2's "autopause deep-link":
+ * clicking an event selects the entity it references). Absorbed from
+ * `lib/inspectorMapping.ts` (spec-113 Lane G) — this was its one consumer.
+ *
+ * `institution` has no dedicated `InspectorKind` (the inspector endpoint
+ * set is `node | org | community | edge | hex`) — it falls back to the
+ * generic `node` kind rather than being silently dropped.
+ */
+const LINKED_ENTITY_TO_INSPECTOR_KIND: Record<
+  NonNullable<ClassifiedEvent["linkedEntityType"]>,
+  InspectorKind
+> = {
+  territory: "hex",
+  organization: "org",
+  institution: "node",
+  hyperedge: "community",
+};
+
+/** Resolve the `InspectorKind` a classified event's linked entity maps to, or `null` if unlinked. */
+function inspectorKindForEvent(event: ClassifiedEvent): InspectorKind | null {
+  if (!event.linkedEntityType || !event.linkedEntityId) return null;
+  return LINKED_ENTITY_TO_INSPECTOR_KIND[event.linkedEntityType];
+}
 
 export function EventsFeed(): React.JSX.Element {
   const events = useStore((s) => s.world.snapshot?.events);
@@ -35,17 +62,19 @@ export function EventsFeed(): React.JSX.Element {
   // The honest empty states carry the same testid as the populated feed —
   // "renders classified events OR the honest empty copy" is one surface
   // (Constitution III.11), and e2e asserts on the container either way.
+  // Copy is in-register (DESIGN_BIBLE §7's "purge the admin voice" — "the
+  // wire is silent", not "No events loaded yet.").
   if (!events) {
     return (
       <div className="flex flex-col gap-1 p-2" data-testid="events-feed">
-        <p className="p-3 text-[11px] italic text-shroud">No world state loaded yet.</p>
+        <p className="p-3 text-[11px] italic text-shroud">The wire is silent — no dispatch yet.</p>
       </div>
     );
   }
   if (classified.length === 0) {
     return (
       <div className="flex flex-col gap-1 p-2" data-testid="events-feed">
-        <p className="p-3 text-[11px] italic text-shroud">No events this tick.</p>
+        <p className="p-3 text-[11px] italic text-shroud">The wire is quiet this tick.</p>
       </div>
     );
   }

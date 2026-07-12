@@ -5,6 +5,7 @@
  */
 
 import type { ApiResponse } from "@/types/game";
+import type { ExplainResponse } from "@/types/inspection";
 import { getCorrelationId, createLogger } from "@/utils/logger";
 
 const log = createLogger("ApiClient");
@@ -122,4 +123,19 @@ export async function postForm<T>(
   });
 
   return response.json();
+}
+
+/**
+ * `GET /api/games/{id}/explain/?metric=<name>&scope=<scope>` — formula
+ * provenance for one metric (spec-113 Lane C/D, architecture.md §2.4).
+ * `scope` grammar: `"global"` | `"hex:<h3>"` | `"org:<id>"`.
+ */
+export async function fetchExplain(
+  gameId: string,
+  metric: string,
+  scope: string,
+): Promise<ApiResponse<ExplainResponse>> {
+  return get<ExplainResponse>(
+    `/api/games/${gameId}/explain/?metric=${encodeURIComponent(metric)}&scope=${encodeURIComponent(scope)}`,
+  );
 }

@@ -200,6 +200,28 @@ export const handlers = [
     });
   }),
 
+  // Spec-113 Lane Carto's cartographic substrate (`lib/geo/topology.ts`) —
+  // DeckGLMap fetches these directly (not through the app's api client), so
+  // they need their own MSW handlers or `onUnhandledRequest: "error"`
+  // (setup.ts) fails every test that mounts a real DeckGLMap. Minimal but
+  // structurally valid (empty-geometry) topologies — geometry-content
+  // assertions belong to `lib/geo/topology.test.ts`'s real-asset smoke
+  // tests, not here.
+  http.get("/geo/counties.topojson", () =>
+    HttpResponse.json({
+      type: "Topology",
+      arcs: [],
+      objects: { counties: { type: "GeometryCollection", geometries: [] } },
+    }),
+  ),
+  http.get("/geo/states.topojson", () =>
+    HttpResponse.json({
+      type: "Topology",
+      arcs: [],
+      objects: { states: { type: "GeometryCollection", geometries: [] } },
+    }),
+  ),
+
   // ---- Takeover surfaces + Objectives dock tab (spec-110 B5) -----------
 
   http.get("/api/games/:id/wire/", () => {

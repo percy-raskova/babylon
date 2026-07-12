@@ -40,7 +40,7 @@ import {
 import { DATA_RAMPS } from "@/theme/colors";
 
 describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIES", () => {
-  it("has exactly the 8 contract metric names, in contract order", () => {
+  it("has exactly the 9 numeric contract metric names, in contract order", () => {
     expect(MAP_METRICS).toEqual([
       "profit_rate",
       "exploitation_rate",
@@ -50,7 +50,12 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
       "org_presence",
       "population",
       "habitability",
+      "solidarity_index",
     ]);
+  });
+
+  it("deliberately excludes dominant_class (categorical — drives the class_composition Lens kind instead)", () => {
+    expect(MAP_METRICS).not.toContain("dominant_class");
   });
 });
 
@@ -60,7 +65,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
     expect(SELECTABLE_METRICS).not.toContain("habitability");
   });
 
-  it("keeps every other contract metric", () => {
+  it("keeps every other contract metric, including solidarity_index", () => {
     expect([...SELECTABLE_METRICS].sort()).toEqual(
       [
         "profit_rate",
@@ -69,6 +74,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
         "imperial_rent",
         "org_presence",
         "population",
+        "solidarity_index",
       ].sort(),
     );
   });
@@ -81,8 +87,8 @@ describe("LENS_MODES — the 5 spec-093 political-topology kinds", () => {
 });
 
 describe("DEFAULT_LENS", () => {
-  it("is the stance lens (matches the old mapStore default)", () => {
-    expect(DEFAULT_LENS).toEqual({ kind: "stance" });
+  it("is the Imperial Rent metric lens (DESIGN_BIBLE.md §9 amendment 1 — not a political-topology default)", () => {
+    expect(DEFAULT_LENS).toEqual({ kind: "metric", metric: "imperial_rent" });
   });
 });
 
@@ -131,6 +137,10 @@ describe("isBalkanizationLens", () => {
       expect(isBalkanizationLens({ kind: "metric", metric })).toBe(false);
     }
   });
+
+  it("is false for class_composition (hex_latest's own column, not the spec-070 balkanization block)", () => {
+    expect(isBalkanizationLens({ kind: "class_composition" })).toBe(false);
+  });
 });
 
 describe("lensKey — stable identity for React keys / updateTriggers arrays", () => {
@@ -163,6 +173,11 @@ describe("lensLegendLabel", () => {
       "profit",
     );
   });
+
+  it("labels class_composition distinctly from every mode/metric lens", () => {
+    const label = lensLegendLabel({ kind: "class_composition" }).toLowerCase();
+    expect(label).toContain("class");
+  });
 });
 
 describe("lensRampStops — single ramp resolution shared by fill + legend", () => {
@@ -194,9 +209,16 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
     }
   });
 
-  it("stance/faction/collapse have no single metric ramp (balkanization-derived stance colors, not a ramp)", () => {
+  it("stance/faction/collapse/class_composition have no single metric ramp (categorical fills, not a ramp)", () => {
     expect(lensRampStops({ kind: "stance" })).toBeNull();
     expect(lensRampStops({ kind: "faction" })).toBeNull();
     expect(lensRampStops({ kind: "collapse" })).toBeNull();
+    expect(lensRampStops({ kind: "class_composition" })).toBeNull();
+  });
+
+  it("solidarity_index resolves to its own dedicated ramp, distinct from habitability's", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "solidarity_index" });
+    expect(stops).toEqual(DATA_RAMPS.solidarity);
+    expect(stops).not.toEqual(DATA_RAMPS.biocapacity);
   });
 });

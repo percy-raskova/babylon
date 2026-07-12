@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Exclude the vendored cartography from Tailwind v4's auto source
+   detection (spec-113 Lane Carto ships multi-MB single-line TopoJSON in
+   public/geo/; the class-candidate scanner goes pathological on it —
+   the dev server's main thread spins at 100% and every module
+   transform hangs; root-caused Wave 3, Lane G + orchestrator). */
+@source not "../public/geo";
+
 /* ================================================================
    Constitution VIII — Cold Collapse Design System (spec-090)
    Ported from design/mockups/colors_and_type.css (the ratified canon)
@@ -223,6 +230,54 @@
   --vignette-spread: 60%;
   --flicker-range: 0.05;
   --flicker-speed: 1.5s;
+
+  /* ----------------------------------------------------------------
+     CHROME TOKENS (spec-113 The Living Map, Lane A, architecture §1.3) —
+     ADDITIVE ONLY. Every value here composes existing canon tokens above;
+     none of the canon tokens are edited (tokens.contract.test.ts pins
+     them byte-identical). Backs `FloatingPanel`, the shared primitive
+     every chrome overlay instances — promotes the `bg-void/80
+     backdrop-blur-sm` idiom DeckGLMap's control cluster already used.
+     ---------------------------------------------------------------- */
+  --chrome-bg: rgba(
+    6,
+    7,
+    11,
+    0.8
+  ); /* --babylon-void @ 80%, literal (no CSS relative-color dependency) */
+  --chrome-border: var(--babylon-rebar);
+  --chrome-border-active: var(--babylon-spire);
+  --chrome-shadow: var(--shadow-panel);
+
+  /* ----------------------------------------------------------------
+     KSBC INSTALLER TOKENS (spec-113 The Living Map, Program 16, Lane
+     SKIN-CHROME, DESIGN_BIBLE.md §9b) — ADDITIVE ONLY. Percy's Kitty
+     theme `ksbc-new`, verbatim values (bible §9b table). These are ROLE
+     tokens for the CHROME skin (dialog anatomy, buttons-as-keys,
+     selection grammar) — they never touch the Cold Collapse canon
+     palette above (tokens.contract.test.ts pins the canon byte-for-byte;
+     this block is pinned separately, additively, in the same file).
+     `--ksbc-*` here, exposed as `--color-*` Tailwind utilities below
+     (same two-tier pattern `--babylon-*` -> `--color-*` already uses).
+     ---------------------------------------------------------------- */
+  --ksbc-field: #1a0000; /* dead space — background, near-black blood-red undertone */
+  --ksbc-plate: #2a0d0d; /* lifted field tone for dialog plates (derived: field + one step toward crimson) */
+  --ksbc-ink: #e8e8e8; /* foreground text */
+  --ksbc-accent-crimson: #dc143c; /* cursor, active border — urgency, cursor accents */
+  --ksbc-accent-gold: #ffd700; /* selection bg, bell, url — SELECTION, action, solidarity (Article VII GOLD) */
+  --ksbc-key-shadow: #000000; /* hard offset shadow + selection-ink (inverse video) */
+  --ksbc-muted-1: #404040; /* inactive grey — borders, disabled keys */
+  --ksbc-muted-2: #c0c0c0; /* inactive grey — secondary text */
+  --ksbc-muted-3: #202020; /* inactive grey — recessed wells */
+  --ksbc-green: #228b22; /* ANSI ramp — data accent */
+  --ksbc-green-bright: #32cd32; /* ANSI ramp — data accent (bright) */
+  --ksbc-royal: #4169e1; /* ANSI ramp — data accent */
+  --ksbc-cyan: #008b8b; /* ANSI ramp — data accent */
+
+  /* Semantic aliases */
+  --ksbc-selection-bg: var(--ksbc-accent-gold);
+  --ksbc-selection-ink: var(--ksbc-key-shadow);
+  --ksbc-urgency: var(--ksbc-accent-crimson);
 }
 
 /* ================================================================
@@ -306,6 +361,32 @@
   --code-bg: var(--babylon-rebar);
   --code-color: var(--babylon-solidarity);
   --code-border: var(--babylon-wet-steel);
+
+  /* -------- Chrome (spec-113 Lane A, additive — see :root block above) --------
+     Blur reuses Tailwind's built-in `backdrop-blur-sm` (4px) — the exact
+     value the promoted `bg-void/80 backdrop-blur-sm` idiom already used,
+     so no custom blur token is needed. */
+  --color-chrome-bg: var(--chrome-bg);
+  --color-chrome-border: var(--chrome-border);
+  --color-chrome-border-active: var(--chrome-border-active);
+
+  /* -------- KSBC Installer tokens as Tailwind utilities (see :root block above) -------- */
+  --color-field: var(--ksbc-field);
+  --color-plate: var(--ksbc-plate);
+  --color-ink: var(--ksbc-ink);
+  --color-accent-crimson: var(--ksbc-accent-crimson);
+  --color-accent-gold: var(--ksbc-accent-gold);
+  --color-key-shadow: var(--ksbc-key-shadow);
+  --color-ksbc-muted-1: var(--ksbc-muted-1);
+  --color-ksbc-muted-2: var(--ksbc-muted-2);
+  --color-ksbc-muted-3: var(--ksbc-muted-3);
+  --color-ksbc-green: var(--ksbc-green);
+  --color-ksbc-green-bright: var(--ksbc-green-bright);
+  --color-ksbc-royal: var(--ksbc-royal);
+  --color-ksbc-cyan: var(--ksbc-cyan);
+  --color-selection-bg: var(--ksbc-selection-bg);
+  --color-selection-ink: var(--ksbc-selection-ink);
+  --color-urgency: var(--ksbc-urgency);
 }
 
 /* ================================================================
@@ -325,18 +406,33 @@
     font-family: var(--font-sans);
   }
 
-  /* Scrollbar styling for the dark theme */
+  /* Scrollbar styling — Installer chrome (DESIGN_BIBLE §9b: "Scrollbars:
+     styled hatched/dotted tracks, square thumbs"). Field-colored track,
+     square crimson-bordered thumb; Firefox via scrollbar-width/-color. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ksbc-accent-crimson) var(--ksbc-field);
+  }
   ::-webkit-scrollbar {
     @apply w-2 h-2;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-void;
+    background-color: var(--ksbc-field);
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(220, 20, 60, 0.12) 0,
+      rgba(220, 20, 60, 0.12) 1px,
+      transparent 1px,
+      transparent 4px
+    );
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-wet-steel rounded-full;
+    border-radius: 0;
+    border: 1px solid var(--ksbc-key-shadow);
+    background-color: var(--ksbc-muted-1);
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-fog;
+    background-color: var(--ksbc-accent-crimson);
   }
 }
 
@@ -430,4 +526,209 @@
   content: "█";
   color: var(--babylon-laser);
   animation: bbl-cursor 1s step-end infinite;
+}
+
+/* ================================================================
+   INSTALLER JUICE KEYFRAMES (spec-113 The Living Map, Program 16, Lane
+   SKIN-CHROME, integration-ledger.md's Juice Pass re-aimed by
+   DESIGN_BIBLE.md §9b). This lane owns every keyframe in this file; other
+   lanes consume by class name only, never redefine one. Performance
+   budget (integration-ledger.md, binding): persistent/looping animations
+   are transform/opacity ONLY (or opacity of a dedicated pseudo-layer for
+   border/glow effects — never an animated box-shadow/backdrop-filter
+   loop on a large surface); one-shot entrances may additionally animate
+   filter/clip-path. Nothing here targets the deck.gl canvas.
+   ================================================================ */
+
+/* installer-blink — crimson cursor-rhythm opacity, hard steps (title-tab
+   blink-accent on critical dialogs, bible §9b Juice re-aim). LOOP. */
+@keyframes installer-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.25;
+  }
+}
+.installer-blink {
+  animation: installer-blink 1s steps(2, jump-none) infinite;
+}
+
+/* toast-slam — one-shot slam-in entrance (transform + opacity only). */
+@keyframes toast-slam {
+  0% {
+    transform: translateX(24px) scale(0.92);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(-3px) scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+.toast-slam {
+  animation: toast-slam 220ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
+}
+
+/* alert-throb — critical-urgency loop. Compositor-safe: never animates
+   box-shadow directly; a dedicated ::after pseudo-layer (positioned
+   inset, crimson border) has its OPACITY animated instead. Apply
+   `.alert-throb-frame` to a `position: relative` container. */
+@keyframes alert-throb {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+.alert-throb-frame {
+  position: relative;
+}
+.alert-throb-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 2px solid var(--ksbc-accent-crimson);
+  animation: alert-throb 1.6s ease-in-out infinite;
+}
+
+/* claim-shimmer — gold sweep, translate-based (claim-redraw shimmer,
+   bible §9b: "stays but in gold"). One-shot per redraw. */
+@keyframes claim-shimmer {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+.claim-shimmer {
+  animation: claim-shimmer 650ms ease-out both;
+}
+
+/* tick-pulse — one-shot feedback on every resolve (Norman feedback,
+   DESIGN_BIBLE §6: "a subtle tick pulse on the time control"). */
+@keyframes tick-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(1.18);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.tick-pulse {
+  animation: tick-pulse 260ms ease-out both;
+}
+
+/* crt-reveal — one-shot wire-headline arrival (clip-path + opacity). */
+@keyframes crt-reveal {
+  0% {
+    clip-path: inset(48% 0 48% 0);
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+.crt-reveal {
+  animation: crt-reveal 320ms ease-out both;
+}
+
+/* legend-flash — one-shot domain-rescale flash (Tufte integrity: a
+   silent rescale is banned, so a rescale event must flash). */
+@keyframes legend-flash {
+  0% {
+    filter: brightness(2.4);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+.legend-flash {
+  animation: legend-flash 500ms ease-out both;
+}
+
+/* Buttons-as-keys: chunky, hard-shadowed, square. Press = shadow
+   collapse + 2px translate (bible §9b: "Buttons are keys"). */
+.key-button {
+  border-radius: 0;
+  border-width: 2px;
+  box-shadow: 3px 3px 0 var(--ksbc-key-shadow);
+  transition:
+    transform 75ms ease-out,
+    box-shadow 75ms ease-out;
+}
+.key-button:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+.key-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Double-line inner well (bible §9b: "Inner wells: double-line borders
+   ... in crimson around scrollable content regions"). */
+.installer-well {
+  border: 4px double var(--ksbc-accent-crimson);
+}
+
+/* prefers-reduced-motion: kill every loop, reduce one-shots to fades. */
+@media (prefers-reduced-motion: reduce) {
+  .installer-blink,
+  .alert-throb-frame::after,
+  .bbl-flicker,
+  .bbl-cursor::after {
+    animation: none !important;
+  }
+  .installer-blink {
+    opacity: 1;
+  }
+  .alert-throb-frame::after {
+    opacity: 0.6;
+  }
+  .toast-slam,
+  .claim-shimmer,
+  .tick-pulse,
+  .crt-reveal,
+  .legend-flash {
+    animation-name: reduced-motion-fade;
+    animation-duration: 150ms;
+    animation-timing-function: ease-out;
+    transform: none !important;
+    clip-path: none !important;
+    filter: none !important;
+  }
+}
+
+@keyframes reduced-motion-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

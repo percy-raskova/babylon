@@ -18,11 +18,13 @@ import argparse
 import sys
 from collections.abc import Callable
 
+from babylon.sentinels.coverage.checks import main as coverage_main
 from babylon.sentinels.seam.checks import main as seam_main
 
 #: Registered sentinels: name -> its ``main(argv)`` entry point.
 _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "seam": seam_main,
+    "coverage": coverage_main,
 }
 
 

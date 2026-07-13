@@ -96,8 +96,8 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "poetry run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: hygiene + seams + lint + imports + format + typecheck + unit tests"
-depends = ["check:hygiene", "check:seams", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+description = "Fast CI gate: hygiene + seams + coverage + lint + imports + format + typecheck + unit tests"
+depends = ["check:hygiene", "check:seams", "check:coverage", "lint", "lint:imports", "format", "typecheck", "test:unit"]
 
 [tasks."check:quick"]
 description = "Quality gate without the test leg: lint + format + typecheck"
@@ -110,6 +110,10 @@ run = "poetry run python tools/check_repo_hygiene.py"
 [tasks."check:seams"]
 description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
 run = "poetry run python tools/sentinel_check.py seam --check"
+
+[tasks."check:coverage"]
+description = "Data-coverage sentinel: every declared reference-data source class exists (static gate)"
+run = "poetry run python tools/sentinel_check.py coverage --check"
 
 [tasks.cap]
 description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"

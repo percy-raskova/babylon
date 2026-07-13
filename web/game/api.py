@@ -82,6 +82,18 @@ def _get_bridge() -> Any:
     if _bridge_instance is None:
         from .stub_bridge import StubEngineBridge
 
+        # Seam Sensor 3 (provenance): the StubEngineBridge serves fabricated
+        # values through the real API contract. That is fine in DEBUG (dev/stub
+        # settings, DEBUG=True), but serving it with DEBUG off would render fake
+        # data as if real — the "rendered but fake" honesty violation this sensor
+        # exists to forbid. Fail loud (III.11) instead of silently faking.
+        if not django_settings.DEBUG:
+            raise ImproperlyConfigured(
+                "EngineBridge not initialized and DEBUG is off — refusing to serve the "
+                "StubEngineBridge's fabricated data through the production API "
+                "(Seam Sensor 3 provenance / Constitution III.11). Initialize a real "
+                "bridge via init_bridge() / GameConfig.ready() with a persistence layer."
+            )
         logger.warning(
             "EngineBridge not initialized — falling back to StubEngineBridge. "
             "Set up PostgreSQL or call init_bridge() for production use."

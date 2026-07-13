@@ -4901,8 +4901,9 @@ def _optional_float(value: Any) -> float | None:
 # "informational" — the safe non-alarming bucket.
 #
 # Every key here is a real ``EventType.value`` — enforced by the Seam
-# Observatory's Sensor 1 (``tools/seam_registry_check.py``,
-# ``check_severity_vocabulary``). Eight dead keys that matched no EventType
+# Observatory's Sensor 1 (``tools/sentinel_check.py seam``,
+# ``babylon.sentinels.seam.checks.check_severity_vocabulary``). Eight dead
+# keys that matched no EventType
 # (and so classified nothing, silently defaulting their intended events to
 # "informational") were removed, and three drifted aliases were repaired to
 # their real events: ``repression_event`` -> ``state_repression``,

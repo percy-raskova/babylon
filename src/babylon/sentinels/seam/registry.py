@@ -1,8 +1,9 @@
 """The single declared source of truth for player-observable seam quantities.
 
 Every quantity that crosses the engine → web-bridge → frontend seam is declared
-here as one :class:`~babylon.seams.types.SeamEntry`. The sensors in
-``tools/seam_*_check.py`` diff reality against this tuple and fail loudly when
+here as one :class:`~babylon.sentinels.seam.types.SeamEntry`. The sensors in
+``babylon.sentinels.seam.checks`` (run via ``tools/sentinel_check.py seam``) diff
+reality against this tuple and fail loudly when
 something is computed-but-unserialized, serialized-but-unregistered,
 serialized-but-unrendered, or classified dishonestly.
 
@@ -19,7 +20,7 @@ runtime config, so it carries no round-trip/regeneration machinery.
 
 from __future__ import annotations
 
-from babylon.seams.types import LivenessClass, SeamEntry, SeamScope
+from babylon.sentinels.seam.types import LivenessClass, SeamEntry, SeamScope
 
 # ---------------------------------------------------------------------------
 # MAP scope — the ``/map/`` lens metrics (spec-109 A3 ``MAP_METRIC_PROPERTIES``).

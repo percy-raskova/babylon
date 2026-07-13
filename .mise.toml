@@ -99,7 +99,7 @@ run = "poetry run python tools/check_repo_hygiene.py"
 
 [tasks."check:seams"]
 description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
-run = "poetry run python tools/seam_registry_check.py --check"
+run = "poetry run python tools/sentinel_check.py seam --check"
 
 [tasks."lint:imports"]
 description = "Import-boundary contracts: kernel < models/formulas < domain < engine (program 14)"

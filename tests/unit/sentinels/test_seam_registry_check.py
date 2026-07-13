@@ -20,19 +20,19 @@ from pathlib import Path
 
 import pytest
 
-from babylon.seams.registry import SEAM_REGISTRY
-from babylon.seams.types import LivenessClass, SeamEntry, SeamScope
-
-# Tools are not a package on the pytest path (pythonpath = src, web); add the
-# dir like the other tools/ tests (tests/unit/tools/test_dense_goldens.py).
-_TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
-sys.path.insert(0, str(_TOOLS_DIR))
-
-import seam_registry_check as sensor1  # type: ignore[import-not-found]  # noqa: E402
+from babylon.sentinels._ast import literal_dict_keys, literal_str_tuple, tick_write_set
+from babylon.sentinels.base import SentinelCheckError
+from babylon.sentinels.seam import checks as sensor1
+from babylon.sentinels.seam.registry import SEAM_REGISTRY
+from babylon.sentinels.seam.types import LivenessClass, SeamEntry, SeamScope
 
 pytestmark = pytest.mark.unit
 
-_TOOL_PATH = _TOOLS_DIR / "seam_registry_check.py"
+# The family CLI dispatches ``sentinel_check.py <sensor> --check`` — no sys.path
+# hack, because the check logic lives in the importable ``babylon.sentinels``
+# package (only the thin subprocess-idiom test needs the tool path).
+_TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
+_TOOL_PATH = _TOOLS_DIR / "sentinel_check.py"
 
 
 def _map_entry(wire_key: str) -> SeamEntry:
@@ -49,7 +49,7 @@ def _map_entry(wire_key: str) -> SeamEntry:
 
 def test_ast_helper_extracts_the_map_contract_literal() -> None:
     """The static extractor reads MAP_METRIC_PROPERTIES without importing web/."""
-    keys = sensor1._literal_str_tuple(sensor1._MAP_CONTRACT_PATH, sensor1._MAP_CONTRACT_VAR)
+    keys = literal_str_tuple(sensor1._MAP_CONTRACT_PATH, sensor1._MAP_CONTRACT_VAR)
     assert "imperial_rent" in keys
     assert len(keys) >= 10
 
@@ -87,9 +87,9 @@ def test_phantom_map_metric_is_flagged() -> None:
 
 
 def test_cli_check_exits_zero_on_real_registry() -> None:
-    """``seam_registry_check.py --check`` exits 0 today (CI fast-gate idiom)."""
+    """``sentinel_check.py seam --check`` exits 0 today (CI fast-gate idiom)."""
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell, trusted path
-        [sys.executable, str(_TOOL_PATH), "--check"],
+        [sys.executable, str(_TOOL_PATH), "seam", "--check"],
         capture_output=True,
         text=True,
         check=False,
@@ -102,8 +102,8 @@ def test_cli_check_exits_zero_on_real_registry() -> None:
 
 def test_missing_source_is_infrastructure_error_not_violation() -> None:
     """A missing/unparseable source raises SeamCheckError (exit 2), never a silent pass."""
-    with pytest.raises(sensor1.SeamCheckError):
-        sensor1._literal_str_tuple(Path("/nonexistent/does_not_exist.py"), "X")
+    with pytest.raises(SentinelCheckError):
+        literal_str_tuple(Path("/nonexistent/does_not_exist.py"), "X")
 
 
 # --- Phase 2: tick_* payload existence (gating) + coverage/event advisories ---
@@ -111,7 +111,7 @@ def test_missing_source_is_infrastructure_error_not_violation() -> None:
 
 def test_tick_write_set_extracts_engine_attrs() -> None:
     """The static tick write-set extractor reads the engine's update_node kwargs."""
-    write_set = sensor1._tick_write_set(sensor1._GRAPH_BRIDGE_PATH)
+    write_set = tick_write_set(sensor1._GRAPH_BRIDGE_PATH)
     assert "tick_phi_hour" in write_set
     assert "tick_median_wage" in write_set
     assert len(write_set) >= 30  # the engine stamps ~30 tick_* attrs per territory
@@ -175,14 +175,14 @@ def test_event_coverage_advisory_reports_converter_gap() -> None:
 
 def test_dict_keys_helper_reads_narrator_templates() -> None:
     """The dict-key extractor reads a real module-level dict literal."""
-    keys = sensor1._literal_dict_keys(sensor1._NARRATOR_PATH, "_TEMPLATES")
+    keys = literal_dict_keys(sensor1._NARRATOR_PATH, "_TEMPLATES")
     assert "uprising" in keys
 
 
 def test_cli_still_exits_zero_despite_advisories() -> None:
     """Advisory findings print but MUST NOT gate — the CLI still exits 0."""
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell, trusted path
-        [sys.executable, str(_TOOL_PATH), "--check"],
+        [sys.executable, str(_TOOL_PATH), "seam", "--check"],
         capture_output=True,
         text=True,
         check=False,

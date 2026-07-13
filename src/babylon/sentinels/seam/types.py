@@ -5,13 +5,13 @@ Article VIII.12 ("silent no-op / disarmed guardrail") and III.11 (Loud
 Failure). This codebase's most dangerous bugs are not crashes but **silence**:
 a quantity computed by the engine, dropped on the wire, and rendered blank —
 type-checking, importing, and passing tests the entire way. This module gives
-that failure mode a name and a shape so the sensors in ``tools/seam_*_check.py``
-can catch it.
+that failure mode a name and a shape so the sensors in
+``babylon.sentinels.seam.checks`` can catch it.
 
 Every player-observable quantity that crosses the engine → web-bridge →
 frontend seam is declared as one :class:`SeamEntry`. The registry
-(:data:`babylon.seams.registry.SEAM_REGISTRY`) is the single source of truth;
-the sensors diff reality against it and fail loudly.
+(:data:`babylon.sentinels.seam.registry.SEAM_REGISTRY`) is the single source of
+truth; the sensors diff reality against it and fail loudly.
 
 Dependency-light **by design** — this module sits at layer 0.5 (same rank as
 :mod:`babylon.config`), importable by ``engine``, ``domain``, ``web.game.*``

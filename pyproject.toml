@@ -547,9 +547,9 @@ source_modules = ["babylon.topology"]
 forbidden_modules = ["babylon.engine"]
 
 [[tool.importlinter.contracts]]
-name = "seams (observability registry) is layer 0.5 — imports nothing above models/config"
+name = "sentinels (invariant registry family) is layer 0.5 — imports nothing above models/config"
 type = "forbidden"
-source_modules = ["babylon.seams"]
+source_modules = ["babylon.sentinels"]
 forbidden_modules = [
     "babylon.engine",
     "babylon.topology",

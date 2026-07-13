@@ -119,6 +119,10 @@ run = "tools/capped.sh"
 description = "test:unit under a 12G/8-core hard cap — the safe way to run the full suite locally"
 run = "tools/capped.sh mise run test:unit"
 
+[tasks."mcp:reap"]
+description = "Reap leaked chroma-mcp servers (claude-mem backend leaks ~1GB each on long sessions; 77 = 28GB once nearly froze the box). Safe: Chroma data is on disk, a fresh server respawns on next use. Run when they pile up."
+run = "tools/reap_chroma.sh"
+
 [tasks."lint:imports"]
 description = "Import-boundary contracts: kernel < models/formulas < domain < engine (program 14)"
 run = "poetry run lint-imports"

@@ -166,9 +166,13 @@ memory pressure thrashes swap and **freezes the whole desktop before the kernel 
 - **NEVER fan out a Workflow where multiple agents each spawn pytest / the full suite.** `test:unit`
   is xdist with **full-tree coverage instrumentation ≈ 1 GB per worker**; N parallel agents × 4 workers
   stacks tens of GB. It also stacks **~1 GB per `chroma-mcp` server** (the claude-mem backend spawns one
-  per connection — they accumulate and are NOT auto-reaped). That combination is what hit 31 GB and
-  froze the box. Parallel agents are fine for *read-only* investigation; keep heavy test/build runs
-  single-flight and capped. Prefer scoped `mise run test:q -- <path>` over the full suite locally.
+  per connection — they accumulate and are NOT auto-reaped, climbing to 77 = 28 GB in one session). That
+  combination is what hit 31 GB and froze the box. Parallel agents are fine for *read-only* investigation;
+  keep heavy test/build runs single-flight and capped. Prefer scoped `mise run test:q -- <path>` locally.
+- **Reap the chroma-mcp leak on long sessions:** `mise run mcp:reap` (`tools/reap_chroma.sh`) kills the
+  accumulated servers and reclaims the RAM — safe, the Chroma store is on disk and a fresh server respawns.
+  Run it when `pgrep -fc -- '--client-type persistent'` climbs. Never `pkill -f chroma-mcp` by hand: that
+  pattern matches its own command line and SIGTERMs your shell; the script uses a `chroma[-]mcp` bracket guard.
 - **System-level backstop (recommended, needs sudo, user action):** enable an OOM protector so nothing —
   not just Babylon — can ever freeze the box: `sudo systemctl enable --now systemd-oomd` (already present,
   just inactive) or `sudo apt install earlyoom`.

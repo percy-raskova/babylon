@@ -21,6 +21,16 @@ poetry = "2.2.1"  # pinned fleet-wide (CI + local) since the PEP-621 migration
 [env]
 PYTHONPATH = "src"
 BABYLON_ENV = "development"
+# Pin BLAS/OpenMP to 1 thread for every mise-run command. The engine's numpy/scipy
+# economics spawns one OpenBLAS thread PER CORE (24 here) per process by default;
+# under xdist / parallel runs that nested process x BLAS parallelism thrashed the
+# box until the desktop froze (2026-07-12). xdist supplies the parallelism; nested
+# BLAS threads are pure harm. Also removes non-deterministic FP reduction order
+# (Constitution III.7). tests/conftest.py enforces the same for raw `poetry run`.
+OMP_NUM_THREADS = "1"
+OPENBLAS_NUM_THREADS = "1"
+MKL_NUM_THREADS = "1"
+NUMEXPR_NUM_THREADS = "1"
 # Agent ergonomics: uncolored tool output (kills ANSI-strip pipelines)
 NO_COLOR = "1"
 # Soundfont for MIDI conversion

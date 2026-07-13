@@ -101,6 +101,14 @@ run = "poetry run python tools/check_repo_hygiene.py"
 description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
 run = "poetry run python tools/sentinel_check.py seam --check"
 
+[tasks.cap]
+description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"
+run = "tools/capped.sh"
+
+[tasks."test:capped"]
+description = "test:unit under a 12G/8-core hard cap — the safe way to run the full suite locally"
+run = "tools/capped.sh mise run test:unit"
+
 [tasks."lint:imports"]
 description = "Import-boundary contracts: kernel < models/formulas < domain < engine (program 14)"
 run = "poetry run lint-imports"

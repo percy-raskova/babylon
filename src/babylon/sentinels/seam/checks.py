@@ -43,6 +43,7 @@ from babylon.sentinels._ast import (
     tick_write_set,
 )
 from babylon.sentinels.base import LabelledCheck, run_sensor
+from babylon.sentinels.seam.bridge import check_bridge_serialization
 from babylon.sentinels.seam.provenance import check_admin_feature_emission
 from babylon.sentinels.seam.registry import SEAM_REGISTRY
 from babylon.sentinels.seam.types import SeamEntry, SeamScope
@@ -239,6 +240,10 @@ _ADVISORY_CHECKS: tuple[LabelledCheck, ...] = (
     (
         "AdminFeatureProperties field the map emitter never sends (Sensor 3)",
         check_admin_feature_emission,
+    ),
+    (
+        "bridge serializer/TS emission drift + unrouted seams (Sensor 3 sweep)",
+        check_bridge_serialization,
     ),
 )
 

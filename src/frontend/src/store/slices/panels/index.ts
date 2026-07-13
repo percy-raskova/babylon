@@ -26,6 +26,7 @@ import type { FeatureCollection } from "geojson";
 import type { WireFeed } from "@/types/wire";
 import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/types/dialectic";
 import type { TradeFlowsPayload } from "@/types/trade";
+import { endpoints } from "@/api/endpoints";
 import type { RootState } from "../../types";
 import { createPanel, type Panel } from "./panelFactory";
 import { createNarrationPanel, type NarrationPanel } from "./narrationPanel";
@@ -56,57 +57,57 @@ export interface PanelsSlice {
 
 export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (set, get) => {
   const summary = createPanel<GameSummaryPayload>(
-    (gameId) => `/api/games/${gameId}/summary/`,
+    (gameId) => endpoints.summary.path({ id: gameId }),
     (updater) => set((s) => ({ panels: { ...s.panels, summary: updater(s.panels.summary) } })),
     get,
   );
   const timeseries = createPanel<TimeseriesPayload>(
-    (gameId) => `/api/games/${gameId}/timeseries/`,
+    (gameId) => endpoints.timeseries.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, timeseries: updater(s.panels.timeseries) } })),
     get,
   );
   const economy = createPanel<EconomyDashboardPayload>(
-    (gameId) => `/api/games/${gameId}/economy/`,
+    (gameId) => endpoints.economy.path({ id: gameId }),
     (updater) => set((s) => ({ panels: { ...s.panels, economy: updater(s.panels.economy) } })),
     get,
   );
   const communities = createPanel<CommunitiesDashboardPayload>(
-    (gameId) => `/api/games/${gameId}/communities/`,
+    (gameId) => endpoints.communities.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, communities: updater(s.panels.communities) } })),
     get,
   );
   const mapPanel = createPanel<FeatureCollection>(
-    (gameId, getRoot) => `/api/games/${gameId}/map/?zoom=${getRoot().map.framing}`,
+    (gameId, getRoot) => `${endpoints.map.path({ id: gameId })}?zoom=${getRoot().map.framing}`,
     (updater) => set((s) => ({ panels: { ...s.panels, map: updater(s.panels.map) } })),
     get,
   );
 
   const wire = createPanel<WireFeed>(
-    (gameId) => `/api/games/${gameId}/wire/`,
+    (gameId) => endpoints.wire.path({ id: gameId }),
     (updater) => set((s) => ({ panels: { ...s.panels, wire: updater(s.panels.wire) } })),
     get,
   );
   const contradiction = createPanel<ContradictionSnapshot>(
-    (gameId) => `/api/games/${gameId}/contradiction/`,
+    (gameId) => endpoints.contradiction.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, contradiction: updater(s.panels.contradiction) } })),
     get,
   );
   const endgame = createPanel<EndgameState>(
-    (gameId) => `/api/games/${gameId}/endgame/`,
+    (gameId) => endpoints.endgame.path({ id: gameId }),
     (updater) => set((s) => ({ panels: { ...s.panels, endgame: updater(s.panels.endgame) } })),
     get,
   );
   const objectives = createPanel<ObjectivesTracker>(
-    (gameId) => `/api/games/${gameId}/objectives/`,
+    (gameId) => endpoints.objectives.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, objectives: updater(s.panels.objectives) } })),
     get,
   );
   const tradeFlows = createPanel<TradeFlowsPayload>(
-    (gameId) => `/api/games/${gameId}/trade-flows/`,
+    (gameId) => endpoints.tradeFlows.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, tradeFlows: updater(s.panels.tradeFlows) } })),
     get,

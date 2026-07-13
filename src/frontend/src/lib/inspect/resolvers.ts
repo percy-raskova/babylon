@@ -7,6 +7,7 @@
  */
 
 import { get as apiGet, fetchExplain } from "@/api/client";
+import { endpoints, type Endpoint } from "@/api/endpoints";
 import type { InspectionNode, InspectionRef } from "@/types/inspection";
 import { adaptHex } from "./adapters/hex";
 import { adaptOrg } from "./adapters/org";
@@ -23,12 +24,12 @@ export function refKey(ref: InspectionRef): string {
 
 type EntityRefKind = "hex" | "org" | "node" | "edge" | "community";
 
-const ENTITY_PATH_SEGMENT: Record<EntityRefKind, string> = {
-  hex: "hex",
-  org: "org",
-  node: "node",
-  edge: "edge",
-  community: "community",
+const ENTITY_ENDPOINT: Record<EntityRefKind, Endpoint<unknown>> = {
+  hex: endpoints.inspectorHex,
+  org: endpoints.inspectorOrg,
+  node: endpoints.inspectorNode,
+  edge: endpoints.inspectorEdge,
+  community: endpoints.inspectorCommunity,
 };
 
 const ENTITY_ADAPTER: Record<
@@ -54,8 +55,7 @@ async function resolveEntityRef(
   if (ref.inline) {
     return ENTITY_ADAPTER[kind](ref, ref.inline);
   }
-  const segment = ENTITY_PATH_SEGMENT[kind];
-  const res = await apiGet<RawEntity>(`/api/games/${gameId}/${segment}/${ref.id}/`);
+  const res = await apiGet<RawEntity>(ENTITY_ENDPOINT[kind].path({ id: gameId, entityId: ref.id }));
   if (res.status !== "ok") {
     throw new Error(res.message ?? `Failed to load ${kind} ${ref.id}`);
   }

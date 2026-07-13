@@ -12,6 +12,7 @@
 
 import type { StateCreator } from "zustand";
 import { get as apiGet } from "@/api/client";
+import { endpoints } from "@/api/endpoints";
 import { classifyEvents } from "@/lib/eventClassifier";
 import type { GameSnapshot } from "@/types/game";
 import type { RootState } from "../types";
@@ -89,7 +90,7 @@ export const createWorldSlice: StateCreator<RootState, [], [], WorldSlice> = (se
 
     fetchState: async (gameId) => {
       set((s) => ({ world: { ...s.world, loading: true, error: null } }));
-      const res = await apiGet<GameSnapshot>(`/api/games/${gameId}/state/`);
+      const res = await apiGet<GameSnapshot>(endpoints.gameState.path({ id: gameId }));
 
       if (res.status !== "ok") {
         set((s) => ({

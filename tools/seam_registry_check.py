@@ -16,13 +16,15 @@ check`` -> ``check:seams``).
 
 Checks come in two tiers. **Gating** checks red the fast-gate (exit 1):
 ``check_map_metrics`` (registry MAP-scope keys vs ``map_contract.py``'s
-``MAP_METRIC_PROPERTIES``) and ``check_tick_payloads_exist`` (every registered
-``tick_*`` payload exists in the engine write-set). **Advisory** checks print
-loudly but do NOT gate — they surface pre-existing drift that awaits an owner
-fix-vs-allowlist ruling before promotion: ``check_tick_coverage`` (engine
-``tick_*`` writes not yet registered) and ``check_event_tables`` (narrator /
-severity / converter vocabularies drifted from the ``EventType`` enum). Phase 3
-adds ``check_bridge_serialization``.
+``MAP_METRIC_PROPERTIES``), ``check_tick_payloads_exist`` (every registered
+``tick_*`` payload exists in the engine write-set), and
+``check_severity_vocabulary`` (every ``_EVENT_SEVERITY`` key is a real
+``EventType`` value). **Advisory** checks print loudly but do NOT gate — they
+surface pre-existing drift awaiting a scoped remediation before promotion:
+``check_tick_coverage`` (engine ``tick_*`` writes not yet registered),
+``check_narrator_vocabulary`` (crafted-but-unreachable ``_TEMPLATES`` keys), and
+``check_event_coverage`` (EventTypes dropped before the wire). Phase 3 adds
+``check_bridge_serialization``.
 
 Run: ``poetry run python tools/seam_registry_check.py --check``. Exit 0 = clean
 (gating passed; advisory findings may still print), 1 = gating violations,
@@ -308,68 +310,88 @@ def check_tick_coverage() -> list[str]:
     ]
 
 
-def check_event_tables() -> list[str]:
-    """ADVISORY: event vocabularies that drift from the ``EventType`` enum.
+def check_severity_vocabulary(path: Path = _ENGINE_BRIDGE_PATH) -> list[str]:
+    """GATING: every ``_EVENT_SEVERITY`` key must be a real ``EventType`` value.
 
-    The engine's ``EventType`` (79 members) is the canonical event vocabulary;
-    three downstream tables must agree with it or a real event silently defaults:
+    A severity key that matches no ``EventType`` value can never classify a real
+    event, so that event silently defaults to ``"informational"``. The bridge's
+    ``_EVENT_SEVERITY`` was repaired (dead keys removed, aliases fixed to their
+    real events) so this gate now passes clean and blocks any regression.
 
-    - ``narrator._TEMPLATES`` keyed on a non-``EventType`` string renders no
-      bespoke story (falls to the generic template) — dead, or a ``GameOutcome``
-      value conflated as an event type.
-    - ``_EVENT_SEVERITY`` keyed on a non-``EventType`` string can never match a
-      real event, so that event defaults to ``"informational"``.
-    - ``_convert_bus_event_to_pydantic`` not handling an ``EventType`` drops that
-      event to ``None`` at the bus->pydantic boundary — it never reaches the wire.
-
-    Advisory until the owner rules fix-vs-allowlist per finding (build plan 2b);
-    ``EVENT_CLASS_MAP`` is intentionally excluded — its keys are computed
-    (``EventType.X.value``), not static literals, and it has a safe class fallback.
-
-    :returns: Advisory strings, most-actionable first.
-    :raises SeamCheckError: If a scanned source cannot be parsed.
+    :param path: The source file holding ``_EVENT_SEVERITY`` (injectable so tests
+        can supply a deliberately-broken fixture to prove the gate reds).
+    :returns: Sorted violation strings (empty when all keys are EventType values).
+    :raises SeamCheckError: If ``path`` cannot be parsed.
     """
     event_values = {e.value for e in EventType}
-    event_names = {e.name for e in EventType}
-    findings: list[str] = []
+    severity = set(_literal_dict_keys(path, "_EVENT_SEVERITY"))
+    return [
+        f"_EVENT_SEVERITY key {key!r} is not an EventType value — matching events "
+        f"silently default to 'informational'"
+        for key in sorted(severity - event_values)
+    ]
 
+
+def check_narrator_vocabulary() -> list[str]:
+    """ADVISORY: ``narrator._TEMPLATES`` keys that are not ``EventType`` values.
+
+    A template keyed on a non-``EventType`` string renders no bespoke story (the
+    event falls to the generic template). The remaining drift here is *crafted*
+    endgame/mechanic narrative content whose correct fix is a product decision
+    (activate via outcome-aware narration vs remove) — a separate remediation, so
+    this stays advisory until that scope is ruled.
+
+    :returns: Advisory strings, one per non-EventType template key.
+    :raises SeamCheckError: If ``narrator.py`` cannot be parsed.
+    """
+    event_values = {e.value for e in EventType}
     templates = set(_literal_dict_keys(_NARRATOR_PATH, "_TEMPLATES"))
-    for key in sorted(templates - event_values):
-        findings.append(
-            f"narrator._TEMPLATES key {key!r} is not an EventType value — dead template "
-            f"or GameOutcome conflated as an event type"
-        )
+    return [
+        f"narrator._TEMPLATES key {key!r} is not an EventType value — crafted-but-unreachable "
+        f"template (endgame-outcome or eventless mechanic)"
+        for key in sorted(templates - event_values)
+    ]
 
-    severity = set(_literal_dict_keys(_ENGINE_BRIDGE_PATH, "_EVENT_SEVERITY"))
-    for key in sorted(severity - event_values):
-        findings.append(
-            f"_EVENT_SEVERITY key {key!r} is not an EventType value — matching events "
-            f"silently default to 'informational'"
-        )
 
+def check_event_coverage() -> list[str]:
+    """ADVISORY: ``EventType`` members dropped before they reach the wire.
+
+    ``_convert_bus_event_to_pydantic`` not handling an ``EventType`` returns
+    ``None`` for that event at the bus->pydantic boundary, so it never reaches
+    the player. Advisory because many unhandled members are intentionally
+    non-narrative (calibration / internal) events; owner triages which deserve
+    conversion. ``EVENT_CLASS_MAP`` is excluded — its keys are computed
+    (``EventType.X.value``), not static literals, with a safe class fallback.
+
+    :returns: One advisory summary line naming the unhandled members (or empty).
+    :raises SeamCheckError: If ``simulation_engine.py`` cannot be parsed.
+    """
+    event_names = {e.name for e in EventType}
     handled = _eventtype_names_in_func(_SIM_ENGINE_PATH, "_convert_bus_event_to_pydantic")
     unhandled = sorted(event_names - handled)
-    if unhandled:
-        findings.append(
-            f"_convert_bus_event_to_pydantic handles {len(handled)}/{len(event_names)} EventTypes; "
-            f"{len(unhandled)} drop to None at the bus->pydantic boundary (never reach the wire): "
-            f"{', '.join(unhandled)}"
-        )
-    return findings
+    if not unhandled:
+        return []
+    return [
+        f"_convert_bus_event_to_pydantic handles {len(handled)}/{len(event_names)} EventTypes; "
+        f"{len(unhandled)} drop to None at the bus->pydantic boundary (never reach the wire): "
+        f"{', '.join(unhandled)}"
+    ]
 
 
 #: Gating Sensor-1 checks: a violation reds the dev fast-gate (exit 1).
 _GATING_CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("map metric not reconciled with MAP_METRIC_PROPERTIES", check_map_metrics),
     ("registered tick_* payload missing from the engine write-set", check_tick_payloads_exist),
+    ("_EVENT_SEVERITY keyed on a non-EventType string", check_severity_vocabulary),
 )
 
 #: Advisory Sensor-1 checks: findings are printed loudly but do NOT gate — the
-#: surfaced drift is pre-existing and awaits an owner fix-vs-allowlist ruling
-#: (build plan 2b) before it is promoted into ``_GATING_CHECKS``.
+#: surfaced drift is pre-existing and awaits a scoped remediation before any is
+#: promoted into ``_GATING_CHECKS``.
 _ADVISORY_CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("engine tick_* write not registered as an observable", check_tick_coverage),
-    ("event vocabulary drifted from the EventType enum", check_event_tables),
+    ("narrator._TEMPLATES keyed on a non-EventType string", check_narrator_vocabulary),
+    ("EventType dropped before the wire (converter coverage)", check_event_coverage),
 )
 
 

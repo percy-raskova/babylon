@@ -41,24 +41,29 @@ class _StubEvent:
 
 
 class TestSeveritySchema:
-    """FR-012: severity is one of the canonical three buckets."""
+    """FR-012: severity is one of the canonical three buckets.
+
+    Every key exercised here is a real ``EventType.value`` (the Seam
+    Observatory's ``check_severity_vocabulary`` gate now enforces that
+    ``_EVENT_SEVERITY`` cannot key on a non-EventType string). The prior
+    version of this test asserted eight drifted strings that no engine event
+    ever carried — false confidence the Program-17 seam work removed.
+    """
 
     def test_critical_events_classified_as_critical(self) -> None:
         for event_type in (
             "economic_crisis",
             "class_decomposition",
-            "imperial_collapse",
+            "superwage_crisis",
             "uprising",
-            "revolution",
+            "endgame_reached",
         ):
             assert _classify_event(event_type) == "critical", event_type
 
     def test_warning_events_classified_as_warning(self) -> None:
         for event_type in (
-            "consciousness_bifurcation",
-            "ideology_drift",
-            "heat_threshold",
-            "trap_activated",
+            "state_repression",
+            "red_settler_trap_detected",
             "excessive_force",
         ):
             assert _classify_event(event_type) == "warning", event_type
@@ -67,8 +72,7 @@ class TestSeveritySchema:
         for event_type in (
             "surplus_extraction",
             "imperial_subsidy",
-            "wage_payment",
-            "solidarity_transmission",
+            "consciousness_transmission",
         ):
             assert _classify_event(event_type) == "informational", event_type
 

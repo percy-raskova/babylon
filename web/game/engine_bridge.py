@@ -4896,32 +4896,34 @@ def _optional_float(value: Any) -> float | None:
 
 
 # Spec 061 US3 FR-012: event severity classification.
-# Maps engine EventType strings (the canonical lowercase form) to the
+# Maps engine EventType values (the canonical lowercase form) to the
 # three-bucket frontend taxonomy. Default for unmapped types is
 # "informational" — the safe non-alarming bucket.
+#
+# Every key here is a real ``EventType.value`` — enforced by the Seam
+# Observatory's Sensor 1 (``tools/seam_registry_check.py``,
+# ``check_severity_vocabulary``). Eight dead keys that matched no EventType
+# (and so classified nothing, silently defaulting their intended events to
+# "informational") were removed, and three drifted aliases were repaired to
+# their real events: ``repression_event`` -> ``state_repression``,
+# ``trap_activated`` -> ``red_settler_trap_detected``, and
+# ``solidarity_transmission`` -> ``consciousness_transmission``
+# (Program 17 Seam Observatory, 2026-07-12).
 _EVENT_SEVERITY: dict[str, str] = {
     # Critical: state-violation / collapse events
     "economic_crisis": "critical",
     "class_decomposition": "critical",
     "superwage_crisis": "critical",
-    "imperial_collapse": "critical",
     "uprising": "critical",
-    "revolution": "critical",
-    "fascist_consolidation": "critical",
     "endgame_reached": "critical",
-    # Warning: threshold-cross / bifurcation events
-    "consciousness_bifurcation": "warning",
-    "ideology_drift": "warning",
-    "heat_threshold": "warning",
-    "eviction_pipeline": "warning",
-    "repression_event": "warning",
-    "trap_activated": "warning",
+    # Warning: threshold-cross / repression events
+    "state_repression": "warning",
+    "red_settler_trap_detected": "warning",
     "excessive_force": "warning",
     # Informational: routine flow events
     "surplus_extraction": "informational",
     "imperial_subsidy": "informational",
-    "wage_payment": "informational",
-    "solidarity_transmission": "informational",
+    "consciousness_transmission": "informational",
 }
 
 

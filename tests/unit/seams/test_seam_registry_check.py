@@ -145,11 +145,31 @@ def test_tick_coverage_advisory_lists_unregistered_engine_attrs() -> None:
     assert "tick_phi_hour" not in joined  # registered (map.imperial_rent) — excluded
 
 
-def test_event_tables_advisory_flags_non_eventtype_vocabulary() -> None:
-    """The event advisory catches templates/severity keys that are not EventTypes."""
-    findings = sensor1.check_event_tables()
-    # A dead narrator template key and the bus->pydantic coverage gap.
-    assert any("_TEMPLATES" in f and "eviction_pipeline" in f for f in findings)
+def test_severity_vocabulary_is_clean_and_gates() -> None:
+    """After the drift repair, every _EVENT_SEVERITY key is a real EventType (gating)."""
+    assert sensor1.check_severity_vocabulary() == []
+
+
+def test_severity_vocabulary_reds_on_non_eventtype_key(tmp_path: Path) -> None:
+    """A regression that keys _EVENT_SEVERITY on a non-EventType string reds the gate."""
+    fake = tmp_path / "fake_bridge.py"
+    fake.write_text(
+        '_EVENT_SEVERITY = {"economic_crisis": "critical", "totally_fake_event": "warning"}\n'
+    )
+    violations = sensor1.check_severity_vocabulary(path=fake)
+    assert len(violations) == 1
+    assert "totally_fake_event" in violations[0]
+
+
+def test_narrator_vocabulary_advisory_flags_unreachable_templates() -> None:
+    """The narrator advisory still surfaces the crafted-but-unreachable templates."""
+    findings = sensor1.check_narrator_vocabulary()
+    assert any("ecological_collapse" in f for f in findings)  # a crafted endgame template
+
+
+def test_event_coverage_advisory_reports_converter_gap() -> None:
+    """The coverage advisory reports EventTypes dropped before the wire."""
+    findings = sensor1.check_event_coverage()
     assert any("_convert_bus_event_to_pydantic" in f and "drop to None" in f for f in findings)
 
 

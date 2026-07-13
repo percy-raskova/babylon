@@ -43,6 +43,7 @@ from babylon.sentinels._ast import (
     tick_write_set,
 )
 from babylon.sentinels.base import LabelledCheck, run_sensor
+from babylon.sentinels.seam.provenance import check_admin_feature_emission
 from babylon.sentinels.seam.registry import SEAM_REGISTRY
 from babylon.sentinels.seam.types import SeamEntry, SeamScope
 
@@ -235,6 +236,10 @@ _ADVISORY_CHECKS: tuple[LabelledCheck, ...] = (
     ("engine tick_* write not registered as an observable", check_tick_coverage),
     ("narrator._TEMPLATES keyed on a non-EventType string", check_narrator_vocabulary),
     ("EventType dropped before the wire (converter coverage)", check_event_coverage),
+    (
+        "AdminFeatureProperties field the map emitter never sends (Sensor 3)",
+        check_admin_feature_emission,
+    ),
 )
 
 

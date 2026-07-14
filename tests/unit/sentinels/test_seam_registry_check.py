@@ -138,10 +138,18 @@ def test_dead_tick_payload_is_flagged() -> None:
 
 
 def test_tick_coverage_advisory_lists_unregistered_engine_attrs() -> None:
-    """The coverage advisory surfaces engine tick_* writes with no registry row."""
+    """The coverage advisory surfaces engine tick_* writes with no registry row.
+
+    Wave 2 Gap-1 registered ``tick_median_wage`` (territory.tick_median_wage);
+    ``tick_throughput_position``/``tick_supply_chain_depth`` remain deliberately
+    unregistered until Round 2 wires the real throughput calculator (owner
+    ruling 1) — they are the still-honest advisory witnesses here.
+    """
     findings = sensor1.check_tick_coverage()
     joined = "\n".join(findings)
-    assert "tick_median_wage" in joined  # a real unregistered engine attr
+    assert "tick_throughput_position" in joined  # real unregistered engine attr
+    assert "tick_supply_chain_depth" in joined  # real unregistered engine attr
+    assert "tick_median_wage" not in joined  # now registered (territory.tick_median_wage)
     assert "tick_phi_hour" not in joined  # registered (map.imperial_rent) — excluded
 
 

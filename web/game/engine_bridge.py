@@ -2103,9 +2103,12 @@ class EngineBridge:
         per-territory computation (same EXTRACTIVE/ANTAGONISTIC edge-mode
         filter and exploitation-rate proxy via
         :func:`_aggregate_graph_economy`), plus real WAGES/TRIBUTE flow
-        sums and wealth grouped by class role. ``profit_rate``/``occ`` stay
-        ``None`` — no c/v/s decomposition or organic-composition-of-capital
-        formula runs on the live graph (Constitution III.11).
+        sums and wealth grouped by class role. ``profit_rate``/``occ``
+        (Wave 2 Gap-1 Backend-1) are the mean of every territory's
+        year-boundary ``tick_profit_rate``/``tick_occ``
+        (:func:`_mean_territory_attr`) — ``None`` (not a fabricated 0.0)
+        until at least one territory has crossed a year boundary this
+        session (Constitution III.11).
 
         ``county_flow`` (owner item 30, point 5) surfaces the hex-level
         static-economy broadcast (spec-109 A7) for sessions where it is
@@ -2132,8 +2135,8 @@ class EngineBridge:
             "value_produced": econ["value_produced"],
             "rent_extracted": econ["rent_extracted"],
             "exploitation_rate": econ["exploitation_rate"],
-            "profit_rate": None,
-            "occ": None,
+            "profit_rate": _mean_territory_attr(graph, "tick_profit_rate"),
+            "occ": _mean_territory_attr(graph, "tick_occ"),
             "imperial_rent_pool": (
                 float(state.economy.imperial_rent_pool) if state.economy else None
             ),
@@ -4916,6 +4919,24 @@ def _carry_tick_dynamics_flows(
                 tick_year=county.year,
                 flow_phi_accrued=0.0,
                 flow_wage_accrued=0.0,
+                # Wave 2 Gap-1 Backend-1: Group A (crisis detector) + Group B
+                # (frozen-constant) attrs, same evaporation the derived rates
+                # above were fixed for (W1 Fix A) — write_tick_state_to_graph
+                # computes these at the boundary (graph_bridge.py:108-119) but
+                # the WorldState round-trip strips them before this function
+                # ever runs.
+                tick_crisis_phase=county.crisis_state.phase.value,
+                tick_crisis_duration=county.crisis_state.crisis_duration,
+                tick_bifurcation_score=county.bifurcation_risk.score,
+                tick_wage_compression=county.crisis_state.cumulative_wage_compression,
+                tick_class_distribution={
+                    "bourgeoisie": county.class_distribution.bourgeoisie_share,
+                    "petit_bourgeoisie": county.class_distribution.petit_bourgeoisie_share,
+                    "labor_aristocracy": county.class_distribution.labor_aristocracy_share,
+                    "proletariat": county.class_distribution.proletariat_share,
+                    "lumpenproletariat": county.class_distribution.lumpenproletariat_share,
+                },
+                tick_unemployment_rate=county.unemployment_rate,
                 **rate_updates,
             )
             continue
@@ -4949,7 +4970,44 @@ def _carry_tick_dynamics_flows(
             tick_profit_rate=old_data.get("tick_profit_rate"),
             tick_occ=old_data.get("tick_occ"),
             tick_exploitation_rate=old_data.get("tick_exploitation_rate"),
+            # Wave 2 Gap-1 Backend-1: Group A/B are also annual (recomputed only
+            # at boundaries) — carry them forward byte-identical, same pattern
+            # as the derived rates above, so they don't evaporate mid-year.
+            tick_crisis_phase=old_data.get("tick_crisis_phase"),
+            tick_crisis_duration=old_data.get("tick_crisis_duration"),
+            tick_bifurcation_score=old_data.get("tick_bifurcation_score"),
+            tick_wage_compression=old_data.get("tick_wage_compression"),
+            tick_class_distribution=old_data.get("tick_class_distribution"),
+            tick_unemployment_rate=old_data.get("tick_unemployment_rate"),
         )
+
+
+def _mean_territory_attr(graph: Any, key: str) -> float | None:
+    """Mean of a non-null territory-node attr across the graph, or ``None``.
+
+    Wave 2 Gap-1 Backend-1: ``get_economy_dashboard``'s ``profit_rate``/``occ``
+    were hardcoded ``None`` even after ``TickDynamicsSystem`` computed real
+    per-territory ``tick_profit_rate``/``tick_occ`` at a year boundary. This
+    is the graph-wide analogue of :func:`_territory_graph_attr` (which reads
+    one territory) — territories with no ``key`` attr yet (no boundary this
+    session) are excluded from the mean, never coerced to a fabricated 0.0
+    (Constitution III.11); an empty domain (nothing to average) is ``None``.
+
+    Args:
+        graph: A live graph (e.g. :meth:`hydrate_state`'s second return
+            value) whose territory nodes may carry the ``tick_*`` attr.
+        key: The territory-node attribute to average.
+
+    Returns:
+        The arithmetic mean of every non-``None`` value, or ``None`` when no
+        territory carries the attr.
+    """
+    values = [
+        float(data[key])
+        for _node_id, data in graph.nodes(data=True)
+        if data.get("_node_type") == "territory" and data.get(key) is not None
+    ]
+    return sum(values) / len(values) if values else None
 
 
 def _county_flow_snapshot(graph: Any) -> dict[str, Any]:
@@ -5973,6 +6031,20 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     already being computed but never read at this serialization boundary.
     ``None`` (not ``0.0``) until the first year boundary this session
     produces usable data (Constitution III.11).
+
+    Wave 2 Gap-1 Backend-1: likewise exposes the crisis-detector family
+    (``crisis_phase``/``crisis_duration``/``bifurcation_score``/
+    ``wage_compression``/``capital_stock``) and the frozen-constant family
+    (``class_distribution``/``unemployment_rate``) off ``tick_crisis_phase``/
+    ``tick_crisis_duration``/``tick_bifurcation_score``/
+    ``tick_wage_compression``/``tick_capital_stock``/
+    ``tick_class_distribution``/``tick_unemployment_rate``. ``tick_median_wage``
+    is exposed under its own ``tick_``-prefixed wire key (not ``median_wage``)
+    because that key already names the real, distinct Territory model field
+    (Feature 021) — the same wire-key-collision hazard the ``imperial_rent``
+    scope split documents, resolved here by picking a distinct key instead of
+    a distinct scope, since both values ride the same payload dict. Seam
+    Observatory rows: see ``SEAM_REGISTRY`` (scope=TERRITORY).
     """
     territory_id = t.id
     return {
@@ -6013,6 +6085,14 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "profit_rate": _territory_graph_attr(graph, territory_id, "tick_profit_rate"),
         "occ": _territory_graph_attr(graph, territory_id, "tick_occ"),
         "exploitation_rate": _territory_graph_attr(graph, territory_id, "tick_exploitation_rate"),
+        "crisis_phase": _territory_graph_attr(graph, territory_id, "tick_crisis_phase"),
+        "crisis_duration": _territory_graph_attr(graph, territory_id, "tick_crisis_duration"),
+        "bifurcation_score": _territory_graph_attr(graph, territory_id, "tick_bifurcation_score"),
+        "wage_compression": _territory_graph_attr(graph, territory_id, "tick_wage_compression"),
+        "capital_stock": _territory_graph_attr(graph, territory_id, "tick_capital_stock"),
+        "class_distribution": _territory_graph_attr(graph, territory_id, "tick_class_distribution"),
+        "unemployment_rate": _territory_graph_attr(graph, territory_id, "tick_unemployment_rate"),
+        "tick_median_wage": _territory_graph_attr(graph, territory_id, "tick_median_wage"),
     }
 
 

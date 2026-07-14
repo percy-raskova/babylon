@@ -25,6 +25,7 @@ from game.engine_bridge import (
     _heat_delta_by_territory,
     _hex_feature_properties,
     _hex_state_row,
+    _mean_territory_attr,
     _org_count_by_territory,
     _serialize_territory,
     _state_to_snapshot,
@@ -920,6 +921,59 @@ class TestSerializeTerritoryGraphThreading:
         assert result["median_wage"] == pytest.approx(3.0)
         assert result["max_biocapacity"] == pytest.approx(88.0)
 
+    def test_no_graph_yields_none_for_group_a_b_tick_attrs(self) -> None:
+        """Wave 2 Gap-1: Group A/B tick_* reads are honest None without a graph."""
+        territory = self._make_territory()
+
+        result = _serialize_territory(territory)
+
+        assert result["crisis_phase"] is None
+        assert result["crisis_duration"] is None
+        assert result["bifurcation_score"] is None
+        assert result["wage_compression"] is None
+        assert result["capital_stock"] is None
+        assert result["class_distribution"] is None
+        assert result["unemployment_rate"] is None
+        assert result["tick_median_wage"] is None
+
+    def test_graph_supplies_group_a_b_tick_attrs_when_written(self) -> None:
+        """Wave 2 Gap-1: Group A/B surface from the graph-only tick_* attrs."""
+        territory = self._make_territory()
+        graph = BabylonGraph()
+        dist = {
+            "bourgeoisie": 0.02,
+            "petit_bourgeoisie": 0.08,
+            "labor_aristocracy": 0.30,
+            "proletariat": 0.40,
+            "lumpenproletariat": 0.20,
+        }
+        graph.add_node(
+            "T001",
+            node_type="territory",
+            tick_crisis_phase="deep",
+            tick_crisis_duration=7,
+            tick_bifurcation_score=-0.65,
+            tick_wage_compression=0.22,
+            tick_capital_stock=1e9,
+            tick_class_distribution=dist,
+            tick_unemployment_rate=0.081,
+            tick_median_wage=21.0,
+        )
+
+        result = _serialize_territory(territory, graph=graph)
+
+        assert result["crisis_phase"] == "deep"
+        assert result["crisis_duration"] == 7
+        assert result["bifurcation_score"] == pytest.approx(-0.65)
+        assert result["wage_compression"] == pytest.approx(0.22)
+        assert result["capital_stock"] == pytest.approx(1e9)
+        assert result["class_distribution"] == dist
+        assert result["unemployment_rate"] == pytest.approx(0.081)
+        assert result["tick_median_wage"] == pytest.approx(21.0)
+        # tick_median_wage must not collide with the real Territory.median_wage
+        # field (Feature 021) — both are present, distinctly.
+        assert result["median_wage"] == pytest.approx(3.0)
+
 
 @pytest.mark.unit
 class TestOrgCountByTerritory:
@@ -958,6 +1012,49 @@ class TestHeatDeltaByTerritory:
         deltas = _heat_delta_by_territory(pre, post, ["T001"])
 
         assert "T001" not in deltas
+
+
+@pytest.mark.unit
+class TestMeanTerritoryAttr:
+    """Wave 2 Gap-1 Backend-1: get_economy_dashboard's profit_rate/occ mean."""
+
+    def test_averages_non_null_values_across_territories(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory", tick_profit_rate=0.10)
+        graph.add_node("T002", node_type="territory", tick_profit_rate=0.20)
+
+        result = _mean_territory_attr(graph, "tick_profit_rate")
+
+        assert result == pytest.approx(0.15)
+
+    def test_excludes_territories_missing_the_attr_never_fabricates_zero(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory", tick_profit_rate=0.10)
+        graph.add_node("T002", node_type="territory")  # no boundary yet this session
+
+        result = _mean_territory_attr(graph, "tick_profit_rate")
+
+        assert result == pytest.approx(0.10)
+
+    def test_ignores_non_territory_nodes(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory", tick_profit_rate=0.10)
+        graph.add_node("C001", node_type="social_class", tick_profit_rate=99.0)
+
+        result = _mean_territory_attr(graph, "tick_profit_rate")
+
+        assert result == pytest.approx(0.10)
+
+    def test_no_territory_carries_attr_yields_none(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory")
+
+        assert _mean_territory_attr(graph, "tick_profit_rate") is None
+
+    def test_empty_graph_yields_none(self) -> None:
+        graph = BabylonGraph()
+
+        assert _mean_territory_attr(graph, "tick_profit_rate") is None
 
 
 @pytest.mark.unit

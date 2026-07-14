@@ -2,9 +2,35 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.26.0"
-  updated: "2026-07-11"
+  version: "2.27.0"
+  updated: "2026-07-14"
   truth_status: |
+    (2026-07-14 ~3pm) PROGRAM 17 WAVE 1 + SENTINELS LANDED ON THE BRANCH,
+    REVIEWED, VERIFIED. feature/17-living-engine (~38 commits over dev@28bef52f)
+    holds: Wave 1 "Light the Seam" (per-county Φ lit end-to-end, events 14→34,
+    endgame wired, 5 real inspectors, live verb costs, item-25 A/B/C — all 4
+    metric lenses honest), the 5-sentinel family + 3 seam sensors, the seam
+    close-out (typed endpoints.ts manifest as API-contract SoT, autonomous
+    bridge-serialization sweep, coverage-sentinel CLI, 82-row wiring punch-list
+    = the UI/UX-pass backlog), and the inbox triage (MELT/TVT corpus landed at
+    project/research/melt-tvt/). A 13-agent adversarial review confirmed 2
+    majors, both fixed same-day: the sweep's silent skip of non-get_ serializers
+    (e096a6d5) and punch-list under-enumeration (013da395); the 5 remaining
+    hardcoded API paths migrated onto the manifest (19b760ab). Gates:
+    qa:regression 5/5 byte-identical; frontend 819 vitest + tsc + eslint green;
+    unit suite 9617 green with 10 environmental reds — the LUKS data drive
+    remounted at /media/user/data1 after the 2026-07-13 session kill, dangling
+    every data/* symlink, AND docker's babylon-pg has been writing a SHADOW data
+    dir on the root fs at /media/user/data/babylon-pg since then (owner runbook
+    delivered; needs sudo). Machine-safety update (owner ruling 2026-07-14):
+    mise run cap retired from routine use — the claude-mem leak is fixed
+    upstream-and-locally, earlyoom is the backstop, and a memory-eating process
+    is a code smell to CATCH loudly, not contain silently. BLAS=1 pin stays.
+    ADR068 (Program 17) + ADR069 (Program 18 C1 design) recorded. Next: owner
+    fixes the mount, full check re-run green, PR feature/17-living-engine → dev;
+    then the Path Forward ranking (B1 reference-DB reproducibility → B2 economy
+    phantom quick-strike → B3 Wave 2 topology).
+
     (2026-07-11 ~5pm) PHASE 8 CLOSED + DEPENDABOT MADE REPRODUCIBLE. A second
     promotion carried the CI-hardening/proving-run wave to main (82a92882 ->
     a491c22d, 28 commits, clean ff via promote.sh; gate 2 saw 21 green checks).

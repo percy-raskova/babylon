@@ -314,3 +314,13 @@ decisions:
     status: accepted
     date: '2026-07-11'
     file: ADR067_optimization_package.yaml
+  ADR068_program17_wave1_sentinels:
+    title: 'Program 17 Wave 1 (Light the Seam) + the Sentinels family (babylon.sentinels, 5 declared-invariant gates) + seam close-out: per-county Φ lit end-to-end (31,688 IMPORT_USE rows), events 14→34, endgame wired, 5 inspectors real, live verb costs, 4 dynamic sentinels sharing one shared-tick fixture, 82-finding advisory punch-list as the honest UI-wiring backlog'
+    status: accepted
+    date: '2026-07-14'
+    file: ADR068_program17_wave1_sentinels.yaml
+  ADR069_program18_c1_frontend_submodule:
+    title: 'Program 18 (C1 — Frontend Submodule): src/frontend extracted to a public babylon-cockpit repo, consumed as a git submodule at src/frontend; web/ and src/babylon stay together; two-tier web-engine contract mechanism required as the seam safety net; DESIGN accepted, execution PENDING owner green-light'
+    status: accepted
+    date: '2026-07-14'
+    file: ADR069_program18_c1_frontend_submodule.yaml

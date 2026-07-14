@@ -120,5 +120,5 @@ different ways, so any bigger cut needs verified numbers first. Requires its own
   vocabulary or stores event instances — never a second copy of the mapping.**
 
 ---
-_See ADR068 (repository topology) and [[program-17-living-engine]]. Governance: ADR063 rejected a
-DIFFERENT (kernel/topology/domain/engine) split — not reopened by any of the above._
+_See ADR069 (repository topology — Program 18 C1) and [[program-17-living-engine]]. Governance:
+ADR063 rejected a DIFFERENT (kernel/topology/domain/engine) split — not reopened by any of the above._

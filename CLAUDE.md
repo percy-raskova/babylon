@@ -152,30 +152,27 @@ CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit
 `qa:regression`, …) — the only raw-poetry exceptions are the py3.13 forward-compat leg (`nightly.yml`)
 and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
 
-## Machine safety — resource limits (froze the dev box twice, 2026-07-12)
+## Machine safety — resource limits (history: froze the dev box twice, 2026-07-12)
 
-This is a **solo dev box (12 cores / 31 GB RAM), with NO earlyoom / systemd-oomd installed** — so
-memory pressure thrashes swap and **freezes the whole desktop before the kernel OOM killer fires**
-(forcing a hard restart). Two things caused it, both avoidable:
+Solo dev box (12 cores / 31 GB RAM). The 2026-07-12 freezes were root-caused and FIXED: BLAS
+thread oversubscription (pinned to 1, commit `f3dde939` — also a determinism win) stacked on the
+claude-mem chroma-mcp leak (fixed upstream + locally 2026-07-13; **earlyoom is now active** as the
+system backstop). Owner ruling 2026-07-14:
 
-- **Run every heavy command capped:** `mise run cap -- <cmd>` (or `mise run test:capped`) wraps it in a
-  transient systemd user scope with a hard `MemoryMax=12G` + `MemorySwapMax=0` + `CPUQuota=800%`
-  (`tools/capped.sh`). A runaway then OOM-dies *inside its cgroup* — the machine survives (proven:
-  a 2 GB bomb under a 400 MB cap died at exit 137, host memory untouched). Use it for the full test
-  suite, `qa:regression`, mutmut, and any `mise run check`.
-- **NEVER fan out a Workflow where multiple agents each spawn pytest / the full suite.** `test:unit`
-  is xdist with **full-tree coverage instrumentation ≈ 1 GB per worker**; N parallel agents × 4 workers
-  stacks tens of GB. It also stacks **~1 GB per `chroma-mcp` server** (the claude-mem backend spawns one
-  per connection — they accumulate and are NOT auto-reaped, climbing to 77 = 28 GB in one session). That
-  combination is what hit 31 GB and froze the box. Parallel agents are fine for *read-only* investigation;
-  keep heavy test/build runs single-flight and capped. Prefer scoped `mise run test:q -- <path>` locally.
-- **Reap the chroma-mcp leak on long sessions:** `mise run mcp:reap` (`tools/reap_chroma.sh`) kills the
-  accumulated servers and reclaims the RAM — safe, the Chroma store is on disk and a fresh server respawns.
-  Run it when `pgrep -fc -- '--client-type persistent'` climbs. Never `pkill -f chroma-mcp` by hand: that
-  pattern matches its own command line and SIGTERMs your shell; the script uses a `chroma[-]mcp` bracket guard.
-- **System-level backstop (recommended, needs sudo, user action):** enable an OOM protector so nothing —
-  not just Babylon — can ever freeze the box: `sudo systemctl enable --now systemd-oomd` (already present,
-  just inactive) or `sudo apt install earlyoom`.
+- **Run heavy commands UNCAPPED.** `mise run cap` (`tools/capped.sh`) is retired from routine use —
+  a process that eats memory is a **code smell to catch loudly**, not contain silently; earlyoom
+  keeps the box alive. The cap wrapper still exists for deliberately-risky one-offs (memory bombs,
+  untrusted repro scripts), nothing else.
+- **Keep the BLAS=1 pin** (conftest + mise `[env]` + guard test `tests/unit/test_blas_thread_cap.py`)
+  — that one is correctness (deterministic FP reduction order), not just safety.
+- **Still never fan out a Workflow where multiple agents each spawn pytest / the full suite** —
+  `test:unit` is xdist with ~1 GB/worker coverage instrumentation; N agents × 4 workers stacks tens
+  of GB for no benefit. Parallel agents are for read-only investigation and doc work; heavy
+  test/build runs stay single-flight. Prefer scoped `mise run test:q -- <path>` locally.
+- **If chroma-mcp servers accumulate again** (`pgrep -fc -- '--client-type persistent'` climbing):
+  `mise run mcp:reap`. Never `pkill -f chroma-mcp` by hand (matches its own cmdline, SIGTERMs your
+  shell; the script uses a `chroma[-]mcp` bracket guard). The recycle-loop root cause is fixed, so
+  a climbing count is news — investigate, don't just reap.
 
 ## Gotchas (hard-won; details in `ai/anti-patterns.yaml`)
 

@@ -55,9 +55,11 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.chrome.composerOpen).toBe(true);
   });
 
-  it("setBottomDrawer switches between none/trends/events", () => {
+  it("setBottomDrawer switches between none/trends/events/economy", () => {
     useStore.getState().ui.setBottomDrawer("events");
     expect(useStore.getState().ui.chrome.bottomDrawer).toBe("events");
+    useStore.getState().ui.setBottomDrawer("economy");
+    expect(useStore.getState().ui.chrome.bottomDrawer).toBe("economy");
     useStore.getState().ui.setBottomDrawer("none");
     expect(useStore.getState().ui.chrome.bottomDrawer).toBe("none");
     useStore.getState().ui.setBottomDrawer("trends");

@@ -22,8 +22,10 @@ import type {
   FactionalComposition,
   GameSummaryPayload,
   TimeseriesPayload,
+  EconomyDashboardPayload,
   CommunityEntry,
   CommunitiesDashboardPayload,
+  JournalPayload,
 } from "@/types/game";
 import type { WireFeed, WireStoryIndex } from "@/types/wire";
 import { EMPTY_WIRE_FEED } from "@/types/wire";
@@ -381,6 +383,36 @@ export function makeTimeseriesPayload(overrides?: Partial<TimeseriesPayload>): T
     heat: [0.2, 0.25],
     wealth: [100, 105],
     biocapacity: [0.5, 0.5],
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/economy/ payload — see `EngineBridge.get_economy_dashboard`. */
+export function makeEconomyDashboardPayload(
+  overrides?: Partial<EconomyDashboardPayload>,
+): EconomyDashboardPayload {
+  return {
+    tick: 1,
+    has_data: true,
+    value_produced: 100,
+    rent_extracted: 20,
+    exploitation_rate: 0.2,
+    profit_rate: null,
+    occ: null,
+    imperial_rent_pool: 50,
+    current_super_wage_rate: 1.2,
+    wage_flow_total: 30,
+    tribute_flow_total: 5,
+    wealth_by_class_role: { periphery_proletariat: 40, core_bourgeoisie: 60 },
+    county_flow: { year: null, phi_accrued_this_year: null, wage_accrued_this_year: null },
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/journal/ payload — full cross-tick event history. */
+export function makeJournalPayload(overrides?: Partial<JournalPayload>): JournalPayload {
+  return {
+    events: [],
     ...overrides,
   };
 }

@@ -19,6 +19,7 @@ import {
   makeEndgameState,
   makeObjectivesTracker,
   makeTradeFlowsPayload,
+  makeJournalPayload,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -183,8 +184,19 @@ export const handlers = [
         wage_flow_total: 30,
         tribute_flow_total: 5,
         wealth_by_class_role: { proletariat: 40, bourgeoisie: 60 },
+        county_flow: { year: null, phi_accrued_this_year: null, wage_accrued_this_year: null },
       },
     });
+  }),
+
+  // Cross-tick event history (spec-092) — not a docked panel (no
+  // `panels.journal` slice), but EconomyDashboard's crisis timeline
+  // (Wave 2 W2.2a) fetches it directly and filters for
+  // `crisis_phase_transition`. Empty by default; tests that need crisis
+  // rows override with server.use().
+  http.get("/api/games/:id/journal/", () => {
+    logRequest("GET journal");
+    return HttpResponse.json({ status: "ok", data: makeJournalPayload() });
   }),
 
   http.get("/api/games/:id/communities/", () => {

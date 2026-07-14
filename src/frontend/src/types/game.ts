@@ -670,6 +670,18 @@ export interface TimeseriesPayload {
 }
 
 /**
+ * County-level flow-accrual snapshot (owner item 30, point 5). See
+ * `EngineBridge._county_flow_snapshot`: every field is `null` when no
+ * territory has ever carried boundary state this session (Constitution
+ * III.11 — an empty domain, not a fabricated zero).
+ */
+export interface CountyFlowSnapshot {
+  year: number | null;
+  phi_accrued_this_year: number | null;
+  wage_accrued_this_year: number | null;
+}
+
+/**
  * GET /api/games/{id}/economy/ (no `territory_id`) — graph-wide economy
  * dashboard. See `EngineBridge.get_economy_dashboard`. Distinct from
  * `EconomyPayload`, which is the per-territory shape returned when
@@ -689,6 +701,8 @@ export interface EconomyDashboardPayload {
   tribute_flow_total: number;
   /** Wealth summed by `SocialRole`, keyed by role name. */
   wealth_by_class_role: Record<string, number>;
+  /** Hex-level static-economy broadcast (spec-109 A7), surfaced when reachable. */
+  county_flow: CountyFlowSnapshot;
 }
 
 /**

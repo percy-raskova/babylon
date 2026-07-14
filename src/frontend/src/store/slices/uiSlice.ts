@@ -19,8 +19,8 @@ import type { RootState } from "../types";
 /** The three full-screen takeover surfaces (spec-110 B5), or none open. */
 export type TakeoverKind = "wire" | "chronicle" | "dialectic";
 
-/** `BottomDrawer`'s three states (architecture §1.4): closed, or one of its two contents. */
-export type BottomDrawerState = "none" | "trends" | "events";
+/** `BottomDrawer`'s four states (architecture §1.4): closed, or one of its three contents. */
+export type BottomDrawerState = "none" | "trends" | "events" | "economy";
 
 /**
  * Chrome panel open/collapsed state (architecture §1.4). One field per

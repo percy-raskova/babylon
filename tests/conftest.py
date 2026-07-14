@@ -44,6 +44,12 @@ for _blas_var in (
     "OPENBLAS_NUM_THREADS",
     "MKL_NUM_THREADS",
     "NUMEXPR_NUM_THREADS",
+    # W1.8: rustworkx centrality parallelizes via rayon above its
+    # parallel_threshold (50 nodes) — same per-core oversubscription hazard,
+    # plus parallel float-summation order breaks Constitution III.7. Rayon
+    # reads this env var once at pool init, so it must be set before the
+    # first rustworkx parallel call.
+    "RAYON_NUM_THREADS",
 ):
     _os.environ.setdefault(_blas_var, "1")
 

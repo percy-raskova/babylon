@@ -31,6 +31,10 @@ OMP_NUM_THREADS = "1"
 OPENBLAS_NUM_THREADS = "1"
 MKL_NUM_THREADS = "1"
 NUMEXPR_NUM_THREADS = "1"
+# W1.8: rustworkx centrality parallelizes via rayon above parallel_threshold
+# (50 nodes) — same oversubscription hazard + parallel float-summation order
+# (Constitution III.7). Rayon reads this once at pool init.
+RAYON_NUM_THREADS = "1"
 # Agent ergonomics: uncolored tool output (kills ANSI-strip pipelines)
 NO_COLOR = "1"
 # Soundfont for MIDI conversion

@@ -4789,9 +4789,15 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
     quantity (sum would exceed the bound; max overweights outliers). The
     aggregated edge takes the support_type of its highest-influence child
     (lexicographic tie-break — deterministic per III.7). Sovereign
-    ``initial_claims`` seed as CLAIMS edges when their territories are
-    present (the shipped seed file has none — claims stay empty until
-    SovereigntySystem writes them, which is honest, not a bug).
+    ``initial_claims`` seed as CLAIMS edges when their ``territory_id``
+    literally matches a scenario Territory key (the shipped seed file's
+    ``canada`` / ``rest_of_usa`` are :mod:`persistence.external_node`
+    IDs, never scenario Territory keys, so this pass is currently a
+    no-op in every scenario). Per FR-040b (spec-070), every Territory
+    the literal pass doesn't claim falls to ``SOV_EXTERIOR_NULL`` — the
+    documented provisional fallback sovereign — so CLAIMS coverage is
+    total: every Territory in ``state.territories`` ends up claimed by
+    exactly one Sovereign.
 
     Args:
         state: The scenario-built tick-0 WorldState.
@@ -4847,6 +4853,7 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
                 )
             )
 
+    claimed_territory_ids: set[str] = set()
     for record in load_seed_sovereigns_raw():
         for claim in record.get("initial_claims", []):
             territory_id = str(claim.get("territory_id", ""))
@@ -4861,6 +4868,25 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
                     legal_status=str(claim.get("legal_status", "de_jure")),
                 )
             )
+            claimed_territory_ids.add(territory_id)
+
+    # FR-040b fallback (spec-070): SOV_EXTERIOR_NULL claims every
+    # Territory the literal pass above left unclaimed, so the SC-017
+    # coverage invariant (every Territory influenced or claimed) holds
+    # even when the seed file's initial_claims don't resolve to real
+    # Territory keys. Deterministic iteration order per III.7.
+    for territory_id in sorted(state.territories):
+        if territory_id in claimed_territory_ids:
+            continue
+        new_relationships.append(
+            Relationship(
+                source_id="SOV_EXTERIOR_NULL",
+                target_id=territory_id,
+                edge_type=EdgeType.CLAIMS,
+                control_level=1.0,
+                legal_status="de_jure",
+            )
+        )
 
     return state.model_copy(
         update={

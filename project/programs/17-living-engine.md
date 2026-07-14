@@ -167,3 +167,31 @@ local on-demand run before a deploy, not a cron).
   part of this program's scope. `ai/_inbox/deferred-repo-refactors.md` carries the fuller
   priority-ordered list of what that decision leaves undone (contract mechanism, `poetry build`
   defect, `babylon_data` submodule candidacy, `web/` split — likely never).
+
+## Owner rulings — 2026-07-14 (engine direction, post-Wave-1)
+
+Two rulings dropped after the epochs vision-gap audit landed. Both are recorded here as
+*direction* — neither is designed or scheduled yet.
+
+1. **Emergence over scripted conclusions.** Verbatim spirit: "I want Babylon to be as emergent
+   as possible. No conclusion should be pre-programmed, the conclusions emerge from the physics
+   engine." Specifics: (a) the EndgameDetector's five pre-determined terminal states are disliked
+   as-designed; the model to move toward is Victoria-3-style — a game is a fixed span ("a game is
+   a century, it ends when it ends"), with overarching *patterns* rather than adjudicated endings.
+   Likely implementation shape when designed: demote the detector from adjudicator (terminates the
+   run with a verdict) to recognizer (annotates emergent configurations as wire events; the run
+   ends at its horizon). (b) Standard abstract event templates (e.g. a RIOT the AI fills with
+   game-universe-specific detail) are good; over-scripting is not — this resolves the pending
+   narrator-remediation triage in favor of outcome-aware template narration rather than deleting
+   the crafted templates. Blast radius when executed: EndgameDetector + the spec-070 priority
+   gates, e2e tests that expect a terminal outcome, qa:regression baselines, and the CLAUDE.md /
+   `ai/architecture.yaml` passages naming the 5 outcomes — an ADR (possibly a constitutional
+   touch), not a quick fix.
+
+2. **Energy/Labor/Money ternary simplex — named, deferred.** The owner suspects the M/L/E
+   triplet forms a *bounding simplex* central to the engine, alongside (not replacing) the
+   price/value contradiction tracked in the MELT/TSSI program. Explicitly research-intensive and
+   deferred; named now so the direction is on the record. Seed note with research anchors:
+   `project/research/energy-labor-money-simplex.md`. Existing engine anchors: MELT (the M↔L
+   edge, `project/research/melt-tvt/`), MetabolismSystem's `ΔB = R − (E·η)` + overshoot (E is
+   already a first-class per-tick quantity), and the Leontief/Φ tensor stack (L).

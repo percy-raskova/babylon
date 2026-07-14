@@ -4,6 +4,17 @@
 `FileNotFoundError: data/sqlite/marxist-data-3NF.sqlite`). **Status: OPEN — needs owner (sudo).**
 Forensics: read-only 4-agent sweep, evidence inline below.
 
+**OPERATIONALIZED (2026-07-14):** this failure class is now mechanically caught and healed:
+
+- **`mise run data:doctor`** (`tools/data_doctor.sh`, wired into the `check` gate; clean skip on
+  boxes without the drive) — reds loudly on all four facets: displaced mount, missing trove,
+  dangling repo symlinks, Postgres bind off-drive. Live efficacy proven against this incident.
+- **`sudo tools/heal_data_mount.sh [--with-fstab]`** — the runbook below as one verified command:
+  dump shadow → stop container → preserve shadow aside → remount at the rightful mountpoint
+  (optional fstab hardening so a reboot can never displace it again) → restart → verify lineage.
+- A pre-heal `pg_dumpall` of the shadow already sits on the drive:
+  `/media/user/data1/babylon-pg-shadow-backup-20260714-1526.sql`.
+
 ## What happened
 
 1. During the 2026-07-13 session-kill window (earlyoom killed the X session; see the claude-mem

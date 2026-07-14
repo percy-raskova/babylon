@@ -106,6 +106,18 @@ different ways, so any bigger cut needs verified numbers first. Requires its own
   raw NULL `imperial_rent` or let a chart relabel `extraction_intensity` as Φ — undercutting honest-Φ).
   **Rule: player-facing charts stay native (recharts/DeckGL) reading THROUGH the bridge.** The in-game
   "charts" gap is data-wiring, not a rendering-tool gap. Datasette only ever behind the dev flag.
+- **Event routing tables → config plane, Postgres validates only** (`postgres-event-tables.md`,
+  parsed 2026-07-14). The event-keyed lookup dicts that drifted (`_EVENT_SEVERITY`, narrator
+  template keys, the convert whitelist) are *configuration*, not runtime state — once the
+  vocabulary triage (owner item, punch-list "adjacent" section) settles what works, formalize them
+  as **one declared source in the config/registry plane** (`GameDefines`/`defines.yaml` siblings or
+  the seam registry itself), generated projections everywhere else. Putting the routing rules in
+  Postgres would be determinism-adjacent drift, hard to diff, and invisible to the static Sensor-1
+  gate. The one genuinely useful Postgres move: make `tick_event.event_type` an **ENUM / FK to a
+  reference table generated from the canonical 79** — the DB then *rejects* the `UNKNOWN`/typo
+  class at the persistence layer (a 4th sensor), without ever hosting a second editable copy of
+  the routing logic. Rule of thumb: **one declared source; Postgres either validates the
+  vocabulary or stores event instances — never a second copy of the mapping.**
 
 ---
 _See ADR068 (repository topology) and [[program-17-living-engine]]. Governance: ADR063 rejected a

@@ -2393,6 +2393,13 @@ class EngineBridge:
             "cable_id": f"{tick:04d}-A",
             "page_of": "001/001",
             "timestamp_utc": "2026-05-12T08:47:22Z",
+            # Real per-scenario class display names — scenarios reuse
+            # canonical ids under different names (wayne_county's C002 is
+            # "Suburban Petty Bourgeoisie", not the registry's Comprador).
+            # The narrator prefers these over its canonical fallback map so
+            # class-scoped events never narrate a confidently wrong name;
+            # _build_meta drops the key from the wire.yaml output.
+            "class_names": {class_id: sc.name for class_id, sc in sorted(state.entities.items())},
         }
 
         feed = self._narrator.narrate(events, meta)
@@ -2952,6 +2959,13 @@ class EngineBridge:
         shaped as one (Constitution III.11 — absence over fabrication).
         Does NOT fabricate ``wealth``/``ideology``/consciousness-vector
         fields — the base ``Organization`` model has none of those.
+
+        Program 17 Wave 1 / W1.3: also attaches ``vanguard``
+        (:class:`VanguardResources`, same player-org gating
+        ``_serialize_organization`` uses) and ``traps`` (via the SAME
+        :func:`_compute_traps` code path the main snapshot uses — never
+        duplicated) — both only for the player org; non-player orgs get
+        ``None`` for each rather than an empty-shell section.
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         if org_id not in graph.nodes or graph.nodes[org_id].get("_node_type") != "organization":
@@ -2965,6 +2979,39 @@ class EngineBridge:
                 "consciousness_tendency": data.get("consciousness_tendency"),
             }
         )
+        is_player_org = (
+            enums["class_character"] == "proletarian" and enums["org_type"] == "civil_society"
+        )
+
+        vanguard: dict[str, Any] | None = None
+        traps: dict[str, Any] | None = None
+        if is_player_org:
+            vanguard = VanguardResources.from_organization(
+                cadre_level=float(data.get("cadre_level", 0.0)),
+                cohesion=float(data.get("cohesion", 0.0)),
+                budget=float(data.get("budget", 0.0)),
+                heat=float(data.get("heat", 0.0)),
+                territory_count=len(data.get("territory_ids", [])),
+            ).model_dump()
+            # Reputation is functionally dead: no from_organization call site
+            # anywhere carries it tick-to-tick, so it always defaults to 0.0.
+            # Emit None rather than a fabricated number (Constitution III.11)
+            # — wire persistence before ever emitting a real value here.
+            vanguard["reputation"] = None
+
+            # The inspector is a READ: report the trap state the last resolved
+            # tick persisted, verbatim. detect_traps increments
+            # ticks_at_moderate per call, so recomputing here would let
+            # inspector polling escalate a MODERATE trap toward SEVERE. Only
+            # compute fresh (previous carry is None, no writeback) when no
+            # tick has persisted state for this session yet.
+            cached = _session_trap_state.get(session_id)
+            if cached is not None:
+                traps = cached.model_dump()
+            else:
+                world_state = WorldState.from_graph(graph, tick=_graph_tick(graph))
+                traps = _compute_traps(world_state, session_id, persist=False)
+
         return {
             "id": org_id,
             "name": data.get("name", org_id),
@@ -2977,6 +3024,8 @@ class EngineBridge:
             "legal_standing": enums["legal_standing"],
             "consciousness_tendency": enums["consciousness_tendency"],
             "territory_ids": list(data.get("territory_ids", [])),
+            "vanguard": vanguard,
+            "traps": traps,
         }
 
     def get_inspector_community(self, session_id: UUID, hyperedge_id: str) -> dict[str, Any]:
@@ -6007,10 +6056,15 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
     return snapshot
 
 
-def _compute_traps(state: WorldState, session_id: UUID) -> dict[str, Any] | None:
+def _compute_traps(
+    state: WorldState, session_id: UUID, *, persist: bool = True
+) -> dict[str, Any] | None:
     """Run trap detection for a session, computing scores from action history.
 
     Returns None if no player org is found (non-Wayne County scenarios).
+    ``persist=False`` computes without writing ``_session_trap_state`` —
+    for read-only callers (the org inspector) that must never advance the
+    ``ticks_at_moderate`` escalation carried tick-to-tick.
     """
     # Find the player org
     player_org = None
@@ -6062,7 +6116,8 @@ def _compute_traps(state: WorldState, session_id: UUID) -> dict[str, Any] | None
     )
 
     # Persist trap state for next tick
-    _session_trap_state[session_id] = result
+    if persist:
+        _session_trap_state[session_id] = result
 
     return result.model_dump()
 

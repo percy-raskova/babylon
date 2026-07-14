@@ -97,6 +97,132 @@ class TestGetInspectorOrg:
         assert "ideology" not in result
         assert "labor_aristocracy_ratio" not in result
 
+    def test_attaches_vanguard_resources_for_player_org(self) -> None:
+        """Program 17 Wave 1 / W1.3: ORG001 is the wayne_county player org
+        (proletarian + civil_society) — same values ``_serialize_organization``
+        would compute (cadre_level=0.1, cohesion=0.5, budget=100.0, heat=0.0,
+        territory_count=2), reused via :class:`VanguardResources`."""
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_org(uuid.uuid4(), "ORG001")
+
+        assert result["vanguard"] == {
+            "cadre_labor": pytest.approx(1.0),
+            "sympathizer_labor": pytest.approx(4.0),
+            "reputation": None,
+            "budget": pytest.approx(100.0),
+            "heat": pytest.approx(0.0),
+            "max_cadre_labor": pytest.approx(1.0),
+            "max_sympathizer_labor": pytest.approx(5.0),
+        }
+
+    def test_vanguard_reputation_is_none_not_a_fabricated_zero(self) -> None:
+        """Reputation is functionally dead (no from_organization call site
+        ever passes reputation=) — never emit a fabricated 0.0."""
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_org(uuid.uuid4(), "ORG001")
+
+        assert result["vanguard"]["reputation"] is None
+
+    def test_attaches_traps_for_player_org(self) -> None:
+        """Traps are computed via the SAME ``_compute_traps`` path the main
+        snapshot uses — a fresh org with no action history has no active or
+        game-over trap, but the full TrapDetectionResult shape is present."""
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_org(uuid.uuid4(), "ORG001")
+
+        assert result["traps"] is not None
+        for trap_key in ("liberal", "ultra_left", "rightist"):
+            assert result["traps"][trap_key]["trap_type"] == trap_key
+            assert "severity" in result["traps"][trap_key]
+            assert "score" in result["traps"][trap_key]
+        assert result["traps"]["active_trap"] is None
+        assert result["traps"]["game_over_trap"] is None
+
+    def test_inspector_read_does_not_persist_session_trap_state(self) -> None:
+        """The inspector is a READ — it must never advance trap escalation.
+
+        ``detect_traps`` increments ``ticks_at_moderate`` per call and
+        ``_compute_traps`` persists the result, so routing the inspector
+        through the persisting path would let polling escalate a MODERATE
+        trap toward SEVERE independent of real tick advancement.
+        """
+        from game.engine_bridge import _session_trap_state
+
+        bridge, _graph = _wayne_bridge()
+        session_id = uuid.uuid4()
+        try:
+            bridge.get_inspector_org(session_id, "ORG001")
+            bridge.get_inspector_org(session_id, "ORG001")
+
+            assert session_id not in _session_trap_state
+        finally:
+            _session_trap_state.pop(session_id, None)
+
+    def test_inspector_returns_tick_persisted_trap_state_verbatim(self) -> None:
+        """When a resolved tick has already persisted trap state for the
+        session, the inspector reports THAT state — no recompute, no
+        ``ticks_at_moderate`` increment, no phantom severity preview."""
+        from babylon.engine.trap_detection import (
+            TrapDetectionResult,
+            TrapSeverity,
+            TrapStatus,
+            TrapType,
+        )
+        from game.engine_bridge import _session_trap_state
+
+        bridge, _graph = _wayne_bridge()
+        session_id = uuid.uuid4()
+        seeded = TrapDetectionResult(
+            liberal=TrapStatus(
+                trap_type=TrapType.LIBERAL,
+                severity=TrapSeverity.MODERATE,
+                score=0.7,
+                indicators=["seeded"],
+                ticks_at_moderate=2,
+            ),
+            ultra_left=TrapStatus(trap_type=TrapType.ULTRA_LEFT),
+            rightist=TrapStatus(trap_type=TrapType.RIGHTIST),
+            active_trap=TrapType.LIBERAL,
+        )
+        _session_trap_state[session_id] = seeded
+        try:
+            result = bridge.get_inspector_org(session_id, "ORG001")
+
+            assert result["traps"] == seeded.model_dump()
+            assert result["traps"]["liberal"]["ticks_at_moderate"] == 2
+            assert _session_trap_state[session_id] is seeded
+        finally:
+            _session_trap_state.pop(session_id, None)
+
+    def test_vanguard_and_traps_none_for_non_player_org(self) -> None:
+        """A non-player org (e.g. a state apparatus) gets honest ``None`` for
+        both fields — sections the frontend must render as absent, not as
+        empty shells."""
+        from babylon.models.enums.social import ClassCharacter, OrgType
+
+        bridge, graph = _wayne_bridge()
+        graph.add_node(
+            "ORG999",
+            _node_type="organization",
+            name="Wayne County Sheriff's Office",
+            class_character=ClassCharacter.BOURGEOIS,
+            org_type=OrgType.STATE_APPARATUS,
+            budget=500.0,
+            cohesion=0.8,
+            cadre_level=0.9,
+            heat=0.1,
+            territory_ids=[],
+        )
+
+        result = bridge.get_inspector_org(uuid.uuid4(), "ORG999")
+
+        assert result["name"] == "Wayne County Sheriff's Office"
+        assert result["vanguard"] is None
+        assert result["traps"] is None
+
     def test_social_class_id_is_not_shaped_as_an_organization(self) -> None:
         """Deliberately stricter than get_org_status: a social_class id
         must not be coerced into an organization payload."""

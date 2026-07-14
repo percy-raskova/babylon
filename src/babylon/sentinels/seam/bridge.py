@@ -163,30 +163,42 @@ def _route_view_pairs(urls_path: Path = _URLS_PATH) -> dict[str, str]:
 
 
 def _first_bridge_serializer(node: ast.AST) -> str | None:
-    """Return the first ``bridge.get_*`` attribute called anywhere under ``node``.
+    """Return the bridge method whose return is this view's wire payload.
+
+    Prefers the first ``bridge.get_*`` call (the read-serializer convention).
+    When a view calls the bridge but never through ``get_*`` — the
+    ``actions/preview`` shape, whose only call is ``bridge.preview_action(...)``
+    — the first bridge call of any name is used instead: its return IS the wire
+    payload, and skipping it would silently hide a routed, typed endpoint from
+    the sweep (the exact silence this gate exists to forbid).
 
     :param node: A function or class AST node to scan.
     :returns: The serializer method name (``"get_economy"``) or ``None`` if the
-        view calls no bridge serializer (e.g. a POST submit / DB-only listing).
+        view never calls the bridge at all (a pure POST submit / DB-only listing).
     """
+    fallback: str | None = None
     for sub in ast.walk(node):
         if (
             isinstance(sub, ast.Call)
             and isinstance(sub.func, ast.Attribute)
             and isinstance(sub.func.value, ast.Name)
             and sub.func.value.id == _BRIDGE_VAR
-            and sub.func.attr.startswith("get_")
         ):
-            return sub.func.attr
-    return None
+            if sub.func.attr.startswith("get_"):
+                return sub.func.attr
+            if fallback is None:
+                fallback = sub.func.attr
+    return fallback
 
 
 def _view_serializer_map(api_path: Path = _API_PATH) -> dict[str, str]:
     """Discover ``view -> serializer`` from ``api.py``.
 
     Every function view and every class-based view method is scanned for its
-    first ``bridge.get_*`` call. A view with no such call is omitted (it is not a
-    serializer seam — a POST resolver, a DB listing, a redirect).
+    serializing bridge call (``get_*`` preferred, any bridge call as fallback —
+    see :func:`_first_bridge_serializer`). A view that never calls the bridge is
+    omitted here; the sweep still reports it as a blind spot when the manifest
+    declares a typed contract for its route.
 
     :param api_path: The API views module to parse (injectable for tests).
     :returns: Mapping from view/class name to the bridge serializer it calls.
@@ -408,6 +420,16 @@ def check_bridge_serialization(
     for canon, view in sorted(route_to_view.items()):
         serializer = view_to_serializer.get(view)
         if serializer is None:
+            # No bridge call at all. Silence is only honest when nothing is
+            # promised either: a typed manifest row with no serializer to check
+            # it against is an unverifiable promise — a loud blind spot.
+            interface = path_to_interface.get(canon)
+            if interface is not None and not _is_uncheckable(interface):
+                findings.append(
+                    f"[{canon}] endpoints.ts declares {interface} but view {view} calls no "
+                    f"bridge serializer — emission honesty unverifiable at this seam "
+                    f"(serialize through the bridge or retype the manifest row)"
+                )
             continue  # not a serializer seam (POST resolver / DB listing / redirect)
 
         interface = path_to_interface.get(canon)

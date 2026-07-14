@@ -156,6 +156,55 @@ def test_doc_comment_example_is_not_parsed_as_endpoint(tmp_path: Path) -> None:
     assert not any("commented" in f or "Phantom" in f for f in findings)
 
 
+def test_non_get_serializer_is_discovered_and_checked(tmp_path: Path) -> None:
+    """A view whose only bridge call is not ``get_``-prefixed is still a seam.
+
+    The ``actions/preview`` shape: ``bridge.preview_economy(...)`` IS the wire
+    payload, so a declared-but-unemitted field must red exactly like a ``get_*``
+    serializer's phantom — never vanish in a silent skip.
+    """
+    api = "def game_economy(request, game_id):\n    return bridge.preview_economy(session)\n"
+    engine = (
+        "class EngineBridge:\n    def preview_economy(self, s):\n        return {'a': 1, 'b': 2}\n"
+    )
+    game_ts = (
+        "export interface EconomyDashboardPayload {\n  a: number;\n  b: number;\n"
+        "  ghost: number;\n}\n"
+    )
+    paths = _write_wiring(
+        tmp_path, urls=_URLS, api=api, engine=engine, endpoints=_ENDPOINTS, game_ts=game_ts
+    )
+    findings = check_bridge_serialization(**paths)
+    assert len(findings) == 1
+    assert "'ghost'" in findings[0]
+    assert "preview_economy" in findings[0]
+
+
+def test_typed_endpoint_with_no_bridge_call_is_loud(tmp_path: Path) -> None:
+    """A typed manifest row whose view never touches the bridge is a blind spot.
+
+    The manifest promises a field-checkable shape, but there is no serializer to
+    check it against — that unverifiability must be reported, not skipped.
+    """
+    api = "def game_economy(request, game_id):\n    return _envelope(rows_from_db(game_id))\n"
+    paths = _write_wiring(
+        tmp_path, urls=_URLS, api=api, engine=_ENGINE, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+    )
+    findings = check_bridge_serialization(**paths)
+    assert any("calls no bridge serializer" in f for f in findings)
+
+
+def test_untyped_endpoint_with_no_bridge_call_stays_silent(tmp_path: Path) -> None:
+    """No serializer AND no typed promise = not a serializer seam — the one
+    declared silence (a POST resolver / DB listing with an ``Untyped`` row)."""
+    api = "def game_economy(request, game_id):\n    return _envelope(rows_from_db(game_id))\n"
+    untyped = 'export const endpoints = {\n  economy: ep<Untyped>("/api/games/:id/economy/"),\n} as const;\n'
+    paths = _write_wiring(
+        tmp_path, urls=_URLS, api=api, engine=_ENGINE, endpoints=untyped, game_ts=_GAME_TS
+    )
+    assert check_bridge_serialization(**paths) == []
+
+
 def test_missing_source_is_loud(tmp_path: Path) -> None:
     """A missing discovery source is an infrastructure failure, never a false clean."""
     paths = _write_wiring(

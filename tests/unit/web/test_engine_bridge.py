@@ -1176,6 +1176,50 @@ class TestWireFeed:
         assert len(result["filters"]) == 5
         assert len(result["index"]) == 1
 
+    def test_class_scoped_event_narrates_the_scenario_name_not_the_canonical_map(self) -> None:
+        """W1.7: wayne_county reuses canonical class ids under different
+        names (its C002 is "Suburban Petty Bourgeoisie"; the registry's C002
+        is the Comprador). ``get_wire_feed`` must pass the hydrated state's
+        real names to the narrator via ``meta["class_names"]`` so a
+        class-scoped event never narrates a confidently wrong name."""
+        from game.engine_bridge import _build_initial_state_for_scenario
+
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.hydrate_graph.return_value = _build_initial_state_for_scenario(
+            "wayne_county"
+        ).to_graph()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 1,
+                "event_type": "fascist_drift",
+                "severity": "warning",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Class drifted fascist",
+                "detail": {
+                    "node_id": "C002",
+                    "fascist_pull": 0.71,
+                    "fascist_alignment": 0.42,
+                    "entitlement": 0.66,
+                    "solidarity": 0.12,
+                    "regime": "crisis",
+                },
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_wire_feed(sid)
+
+        feed_json = json.dumps(result)
+        assert "Suburban Petty Bourgeoisie" in feed_json
+        assert "Comprador" not in feed_json
+        assert "class_names" not in result["meta"]
+
     def test_empty_events_produces_empty_feed(self) -> None:
         mock_persistence = _make_mock_persistence()
         mock_persistence.query_session_events = None

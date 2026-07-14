@@ -5,6 +5,7 @@
  */
 
 import type { ApiResponse } from "@/types/game";
+import { endpoints } from "@/api/endpoints";
 import type { ExplainResponse } from "@/types/inspection";
 import { getCorrelationId, createLogger } from "@/utils/logger";
 
@@ -136,6 +137,6 @@ export async function fetchExplain(
   scope: string,
 ): Promise<ApiResponse<ExplainResponse>> {
   return get<ExplainResponse>(
-    `/api/games/${gameId}/explain/?metric=${encodeURIComponent(metric)}&scope=${encodeURIComponent(scope)}`,
+    `${endpoints.explain.path({ id: gameId })}?metric=${encodeURIComponent(metric)}&scope=${encodeURIComponent(scope)}`,
   );
 }

@@ -53,6 +53,20 @@ from babylon.models.events._legacy import (
     TransmissionEvent,
     UprisingEvent,
 )
+from babylon.models.events.dispossession_payloads import (
+    DispossessionCascadeEvent,
+    DispossessionEvent,
+    EcologicalOvershootEvent,
+    ReserveArmyPressureEvent,
+    ValueTransferEvent,
+)
+from babylon.models.events.struggle_payloads import (
+    FascistRevanchismEvent,
+    PeripheralRevoltEvent,
+    PowerVacuumEvent,
+    RevolutionaryOffensiveEvent,
+    SpontaneousRiotEvent,
+)
 
 # deserialize_event was deleted in Spec 059 US2 / FR-006 / SC-003. Use
 # TickEventAdapter.validate_python(data) for new code; legacy-data callers
@@ -93,4 +107,17 @@ __all__ = [
     "TickEventAdapter",
     # Legacy dispatch (kept for backward compat with non-kind data)
     "EVENT_CLASS_MAP",
+    # Wave 1 item W1.1 struggle-system payloads (struggle_payloads.py)
+    "PowerVacuumEvent",
+    "RevolutionaryOffensiveEvent",
+    "FascistRevanchismEvent",
+    "SpontaneousRiotEvent",
+    "PeripheralRevoltEvent",
+    # Wave 1 item W1.1 dispossession/reserve-army/metabolism payloads
+    # (dispossession_payloads.py)
+    "DispossessionEvent",
+    "ValueTransferEvent",
+    "ReserveArmyPressureEvent",
+    "DispossessionCascadeEvent",
+    "EcologicalOvershootEvent",
 ]

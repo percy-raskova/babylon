@@ -39,6 +39,13 @@ from babylon.models.events.balkanization_payloads import (
     SovereignCollapsePayload,
     TerritoryTransitionPayload,
 )
+from babylon.models.events.dispossession_payloads import (
+    DispossessionCascadeEvent,
+    DispossessionEvent,
+    EcologicalOvershootEvent,
+    ReserveArmyPressureEvent,
+    ValueTransferEvent,
+)
 from babylon.models.events.field_payloads import PrincipalContradictionShiftEvent
 from babylon.models.events.institution_payloads import (
     InstitutionBonapartistModeEvent,
@@ -60,6 +67,13 @@ from babylon.models.events.reactionary_payloads import (
     FascistRecruitmentEvent,
     OrganizationalFractureEvent,
     RedBrownCoupEvent,
+)
+from babylon.models.events.struggle_payloads import (
+    FascistRevanchismEvent,
+    PeripheralRevoltEvent,
+    PowerVacuumEvent,
+    RevolutionaryOffensiveEvent,
+    SpontaneousRiotEvent,
 )
 
 
@@ -830,6 +844,355 @@ class TestStateSurveillanceEventConversion:
         assert result.org_id == "ORG_TEST"
         assert result.target_id == PERIPHERY_WORKER_ID
         assert result.backfire_delta == 0.1
+
+
+class TestPowerVacuumEventConversion:
+    """Tests for POWER_VACUUM event conversion (struggle.py:537-549)."""
+
+    def test_converts_power_vacuum_event(self) -> None:
+        """POWER_VACUUM events convert to PowerVacuumEvent."""
+        bus_event = Event(
+            type=EventType.POWER_VACUUM,
+            tick=29,
+            payload={
+                "comprador_id": COMPRADOR_ID,
+                "comprador_wealth": 1.5,
+                "subsistence_threshold": 5.0,
+                "revolutionary_capacity": 0.42,
+                "jackson_threshold": 0.5,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, PowerVacuumEvent)
+        assert result.event_type == EventType.POWER_VACUUM
+        assert result.tick == 29
+        assert result.comprador_id == COMPRADOR_ID
+        assert result.comprador_wealth == 1.5
+        assert result.subsistence_threshold == 5.0
+        assert result.revolutionary_capacity == 0.42
+        assert result.jackson_threshold == 0.5
+
+
+class TestRevolutionaryOffensiveEventConversion:
+    """Tests for REVOLUTIONARY_OFFENSIVE event conversion (struggle.py:581-594)."""
+
+    def test_converts_revolutionary_offensive_event(self) -> None:
+        """REVOLUTIONARY_OFFENSIVE events convert to RevolutionaryOffensiveEvent."""
+        bus_event = Event(
+            type=EventType.REVOLUTIONARY_OFFENSIVE,
+            tick=30,
+            payload={
+                "periphery_id": PERIPHERY_WORKER_ID,
+                "revolutionary_capacity": 0.8,
+                "agitation_boost": 0.2,
+                "narrative_hint": "CRISIS OPPORTUNITY: Organized labor seizes the means of production.",
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, RevolutionaryOffensiveEvent)
+        assert result.event_type == EventType.REVOLUTIONARY_OFFENSIVE
+        assert result.tick == 30
+        assert result.periphery_id == PERIPHERY_WORKER_ID
+        assert result.revolutionary_capacity == 0.8
+        assert result.agitation_boost == 0.2
+        assert result.narrative_hint == (
+            "CRISIS OPPORTUNITY: Organized labor seizes the means of production."
+        )
+
+
+class TestFascistRevanchismEventConversion:
+    """Tests for FASCIST_REVANCHISM event conversion (struggle.py:630-645)."""
+
+    def test_converts_fascist_revanchism_event(self) -> None:
+        """FASCIST_REVANCHISM events convert to FascistRevanchismEvent."""
+        bus_event = Event(
+            type=EventType.FASCIST_REVANCHISM,
+            tick=31,
+            payload={
+                "core_worker_id": LABOR_ARISTOCRACY_ID,
+                "revolutionary_capacity": 0.1,
+                "identity_boost": 0.3,
+                "acquiescence_boost": 0.15,
+                "narrative_hint": "REACTIONARY TURN: Core demands restoration of order amid chaos.",
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, FascistRevanchismEvent)
+        assert result.event_type == EventType.FASCIST_REVANCHISM
+        assert result.tick == 31
+        assert result.core_worker_id == LABOR_ARISTOCRACY_ID
+        assert result.revolutionary_capacity == 0.1
+        assert result.identity_boost == 0.3
+        assert result.acquiescence_boost == 0.15
+        assert result.narrative_hint == (
+            "REACTIONARY TURN: Core demands restoration of order amid chaos."
+        )
+
+    def test_converts_fascist_revanchism_event_with_none_core_worker(self) -> None:
+        """core_worker_id is None when no Labor Aristocracy node exists."""
+        bus_event = Event(
+            type=EventType.FASCIST_REVANCHISM,
+            tick=32,
+            payload={
+                "core_worker_id": None,
+                "revolutionary_capacity": 0.05,
+                "identity_boost": 0.3,
+                "acquiescence_boost": 0.15,
+                "narrative_hint": "REACTIONARY TURN: Core demands restoration of order amid chaos.",
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, FascistRevanchismEvent)
+        assert result.core_worker_id is None
+
+
+class TestSpontaneousRiotEventConversion:
+    """Tests for SPONTANEOUS_RIOT event conversion (struggle.py:474-491)."""
+
+    def test_converts_spontaneous_riot_event(self) -> None:
+        """SPONTANEOUS_RIOT events convert to SpontaneousRiotEvent."""
+        bus_event = Event(
+            type=EventType.SPONTANEOUS_RIOT,
+            tick=33,
+            payload={
+                "node_id": "C005",
+                "volatility": 0.7,
+                "organizational_discipline": 0.1,
+                "riot_risk": 0.65,
+                "wealth_before": 10.0,
+                "wealth_after": 6.0,
+                "narrative_hint": (
+                    "SPONTANEOUS RIOT: the declassed erupt without direction. "
+                    "Wealth burns; no solidarity is built."
+                ),
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, SpontaneousRiotEvent)
+        assert result.event_type == EventType.SPONTANEOUS_RIOT
+        assert result.tick == 33
+        assert result.node_id == "C005"
+        assert result.volatility == 0.7
+        assert result.organizational_discipline == 0.1
+        assert result.riot_risk == 0.65
+        assert result.wealth_before == 10.0
+        assert result.wealth_after == 6.0
+        assert result.narrative_hint == (
+            "SPONTANEOUS RIOT: the declassed erupt without direction. "
+            "Wealth burns; no solidarity is built."
+        )
+
+
+class TestPeripheralRevoltEventConversion:
+    """Tests for PERIPHERAL_REVOLT event conversion (struggle.py:702-718)."""
+
+    def test_converts_peripheral_revolt_event(self) -> None:
+        """PERIPHERAL_REVOLT events convert to PeripheralRevoltEvent."""
+        bus_event = Event(
+            type=EventType.PERIPHERAL_REVOLT,
+            tick=34,
+            payload={
+                "node_id": PERIPHERY_WORKER_ID,
+                "edges_severed": 3,
+                "p_acquiescence": 0.2,
+                "p_revolution": 0.9,
+                "capital_labor_gap": 0.55,
+                "narrative_hint": (
+                    "PERIPHERAL REVOLT: Colonial extraction ends. "
+                    "The periphery refuses to subsidize the empire."
+                ),
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, PeripheralRevoltEvent)
+        assert result.event_type == EventType.PERIPHERAL_REVOLT
+        assert result.tick == 34
+        assert result.node_id == PERIPHERY_WORKER_ID
+        assert result.edges_severed == 3
+        assert result.p_acquiescence == 0.2
+        assert result.p_revolution == 0.9
+        assert result.capital_labor_gap == 0.55
+        assert result.narrative_hint == (
+            "PERIPHERAL REVOLT: Colonial extraction ends. "
+            "The periphery refuses to subsidize the empire."
+        )
+
+
+class TestDispossessionEventConversion:
+    """Tests for DISPOSSESSION_EVENT conversion (dispossession_events.py:118-131)."""
+
+    def test_converts_dispossession_event(self) -> None:
+        """DISPOSSESSION_EVENT events convert to DispossessionEvent."""
+        bus_event = Event(
+            type=EventType.DISPOSSESSION_EVENT,
+            tick=35,
+            payload={
+                "territory": "T001",
+                "intensity": 0.3,
+                "foreclosure_rate": 0.05,
+                "eviction_rate": 0.02,
+                "displacement_rate": 0.01,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, DispossessionEvent)
+        assert result.event_type == EventType.DISPOSSESSION_EVENT
+        assert result.tick == 35
+        assert result.territory == "T001"
+        assert result.intensity == 0.3
+        assert result.foreclosure_rate == 0.05
+        assert result.eviction_rate == 0.02
+        assert result.displacement_rate == 0.01
+
+
+class TestValueTransferEventConversion:
+    """Tests for VALUE_TRANSFER conversion (dispossession_events.py:101-113)."""
+
+    def test_converts_value_transfer_event(self) -> None:
+        """VALUE_TRANSFER events convert to ValueTransferEvent."""
+        bus_event = Event(
+            type=EventType.VALUE_TRANSFER,
+            tick=36,
+            payload={
+                "territory": "T001",
+                "total_transferred": 100.0,
+                "net_received": 85.0,
+                "deadweight_loss": 15.0,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, ValueTransferEvent)
+        assert result.event_type == EventType.VALUE_TRANSFER
+        assert result.tick == 36
+        assert result.territory == "T001"
+        assert result.total_transferred == 100.0
+        assert result.net_received == 85.0
+        assert result.deadweight_loss == 15.0
+
+
+class TestReserveArmyPressureEventConversion:
+    """Tests for RESERVE_ARMY_PRESSURE conversion (reserve_army.py:88-101)."""
+
+    def test_converts_reserve_army_pressure_event(self) -> None:
+        """RESERVE_ARMY_PRESSURE events convert to ReserveArmyPressureEvent."""
+        bus_event = Event(
+            type=EventType.RESERVE_ARMY_PRESSURE,
+            tick=37,
+            payload={
+                "territory": "T001",
+                "reserve_ratio": 0.4,
+                "wage_pressure": 0.1,
+                "median_wage": 18.0,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, ReserveArmyPressureEvent)
+        assert result.event_type == EventType.RESERVE_ARMY_PRESSURE
+        assert result.tick == 37
+        assert result.territory == "T001"
+        assert result.reserve_ratio == 0.4
+        assert result.wage_pressure == 0.1
+        assert result.median_wage == 18.0
+
+
+class TestDispossessionCascadeEventConversion:
+    """Tests for DISPOSSESSION_CASCADE conversion (tick/system/__init__.py:944-955).
+
+    The emit site publishes ``EventType.DISPOSSESSION_CASCADE.value`` (a plain
+    string), not the enum member — this is the one publish site among the ten
+    that exercises the converter's str-normalization path, so it gets a
+    dedicated string-typed test in addition to the enum-typed one.
+    """
+
+    def test_converts_dispossession_cascade_event(self) -> None:
+        """DISPOSSESSION_CASCADE events convert to DispossessionCascadeEvent."""
+        bus_event = Event(
+            type=EventType.DISPOSSESSION_CASCADE,
+            tick=38,
+            payload={
+                "fips": "26163",
+                "cumulative_la_decline": 0.0512,
+                "milestone_crossed": 0.05,
+                "current_la_share": 0.2,
+                "baseline_la_share": 0.2512,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, DispossessionCascadeEvent)
+        assert result.event_type == EventType.DISPOSSESSION_CASCADE
+        assert result.tick == 38
+        assert result.fips == "26163"
+        assert result.cumulative_la_decline == 0.0512
+        assert result.milestone_crossed == 0.05
+        assert result.current_la_share == 0.2
+        assert result.baseline_la_share == 0.2512
+
+    def test_converts_dispossession_cascade_event_from_string_publish_shape(self) -> None:
+        """The real emit site publishes ``.value`` (a str), not the enum member."""
+        bus_event = Event(
+            type=EventType.DISPOSSESSION_CASCADE.value,  # type: ignore[arg-type]
+            tick=39,
+            payload={
+                "fips": "26163",
+                "cumulative_la_decline": 0.1023,
+                "milestone_crossed": 0.1,
+                "current_la_share": 0.15,
+                "baseline_la_share": 0.2523,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, DispossessionCascadeEvent)
+        assert result.event_type == EventType.DISPOSSESSION_CASCADE
+        assert result.tick == 39
+        assert result.fips == "26163"
+        assert result.milestone_crossed == 0.1
+
+
+class TestEcologicalOvershootEventConversion:
+    """Tests for ECOLOGICAL_OVERSHOOT conversion (metabolism.py:128-138)."""
+
+    def test_converts_ecological_overshoot_event(self) -> None:
+        """ECOLOGICAL_OVERSHOOT events convert to EcologicalOvershootEvent."""
+        bus_event = Event(
+            type=EventType.ECOLOGICAL_OVERSHOOT,
+            tick=40,
+            payload={
+                "overshoot_ratio": 1.3,
+                "total_consumption": 500.0,
+                "total_biocapacity": 385.0,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, EcologicalOvershootEvent)
+        assert result.event_type == EventType.ECOLOGICAL_OVERSHOOT
+        assert result.tick == 40
+        assert result.overshoot_ratio == 1.3
+        assert result.total_consumption == 500.0
+        assert result.total_biocapacity == 385.0
 
 
 class TestGracefulDegradation:

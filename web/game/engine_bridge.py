@@ -4943,14 +4943,26 @@ _EVENT_SEVERITY: dict[str, str] = {
     "superwage_crisis": "critical",
     "uprising": "critical",
     "endgame_reached": "critical",
+    "power_vacuum": "critical",
+    "revolutionary_offensive": "critical",
+    "fascist_revanchism": "critical",
+    "spontaneous_riot": "critical",
+    "peripheral_revolt": "critical",
+    "ecological_overshoot": "critical",
     # Warning: threshold-cross / repression events
     "state_repression": "warning",
     "red_settler_trap_detected": "warning",
     "excessive_force": "warning",
+    "mass_awakening": "warning",
+    "fascist_drift": "warning",
+    "dispossession_cascade": "warning",
     # Informational: routine flow events
     "surplus_extraction": "informational",
     "imperial_subsidy": "informational",
     "consciousness_transmission": "informational",
+    "dispossession_event": "informational",
+    "value_transfer": "informational",
+    "reserve_army_pressure": "informational",
 }
 
 

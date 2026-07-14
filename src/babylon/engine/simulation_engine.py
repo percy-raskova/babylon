@@ -96,6 +96,13 @@ from babylon.models.events.balkanization_payloads import (
     SovereignCollapsePayload,
     TerritoryTransitionPayload,
 )
+from babylon.models.events.dispossession_payloads import (
+    DispossessionCascadeEvent,
+    DispossessionEvent,
+    EcologicalOvershootEvent,
+    ReserveArmyPressureEvent,
+    ValueTransferEvent,
+)
 from babylon.models.events.field_payloads import PrincipalContradictionShiftEvent
 from babylon.models.events.institution_payloads import (
     InstitutionBonapartistModeEvent,
@@ -117,6 +124,13 @@ from babylon.models.events.reactionary_payloads import (
     FascistRecruitmentEvent,
     OrganizationalFractureEvent,
     RedBrownCoupEvent,
+)
+from babylon.models.events.struggle_payloads import (
+    FascistRevanchismEvent,
+    PeripheralRevoltEvent,
+    PowerVacuumEvent,
+    RevolutionaryOffensiveEvent,
+    SpontaneousRiotEvent,
 )
 from babylon.models.world_state import WorldState
 
@@ -475,6 +489,7 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
 
     Sprint 3.1+: Supports all 10 EventTypes except SOLIDARITY_AWAKENING.
     Program 17 item 1b: widened to 34 of 79 EventTypes.
+    Wave 1 item W1.1: widened to 44 of 79 EventTypes.
     """
     # Normalize event type (may be string or EventType enum)
     event_type = event.type
@@ -830,6 +845,120 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
             org_id=payload.get("org_id", ""),
             target_id=payload.get("target_id", ""),
             backfire_delta=payload.get("backfire_delta", 0.0),
+        )
+
+    # Wave 1 item W1.1 struggle-system events (Program 17 / struggle.py)
+    if event_type == EventType.POWER_VACUUM:
+        return PowerVacuumEvent(
+            tick=tick,
+            timestamp=timestamp,
+            comprador_id=payload.get("comprador_id", ""),
+            comprador_wealth=payload.get("comprador_wealth", 0.0),
+            subsistence_threshold=payload.get("subsistence_threshold", 0.0),
+            revolutionary_capacity=payload.get("revolutionary_capacity", 0.0),
+            jackson_threshold=payload.get("jackson_threshold", 0.0),
+        )
+
+    if event_type == EventType.REVOLUTIONARY_OFFENSIVE:
+        return RevolutionaryOffensiveEvent(
+            tick=tick,
+            timestamp=timestamp,
+            periphery_id=payload.get("periphery_id", ""),
+            revolutionary_capacity=payload.get("revolutionary_capacity", 0.0),
+            agitation_boost=payload.get("agitation_boost", 0.0),
+            narrative_hint=payload.get("narrative_hint", ""),
+        )
+
+    if event_type == EventType.FASCIST_REVANCHISM:
+        return FascistRevanchismEvent(
+            tick=tick,
+            timestamp=timestamp,
+            core_worker_id=payload.get("core_worker_id"),
+            revolutionary_capacity=payload.get("revolutionary_capacity", 0.0),
+            identity_boost=payload.get("identity_boost", 0.0),
+            acquiescence_boost=payload.get("acquiescence_boost", 0.0),
+            narrative_hint=payload.get("narrative_hint", ""),
+        )
+
+    if event_type == EventType.SPONTANEOUS_RIOT:
+        return SpontaneousRiotEvent(
+            tick=tick,
+            timestamp=timestamp,
+            node_id=payload.get("node_id", ""),
+            volatility=payload.get("volatility", 0.0),
+            organizational_discipline=payload.get("organizational_discipline", 0.0),
+            riot_risk=payload.get("riot_risk", 0.0),
+            wealth_before=payload.get("wealth_before", 0.0),
+            wealth_after=payload.get("wealth_after", 0.0),
+            narrative_hint=payload.get("narrative_hint", ""),
+        )
+
+    if event_type == EventType.PERIPHERAL_REVOLT:
+        return PeripheralRevoltEvent(
+            tick=tick,
+            timestamp=timestamp,
+            node_id=payload.get("node_id", ""),
+            edges_severed=payload.get("edges_severed", 0),
+            p_acquiescence=payload.get("p_acquiescence", 0.0),
+            p_revolution=payload.get("p_revolution", 0.0),
+            capital_labor_gap=payload.get("capital_labor_gap", 0.0),
+            narrative_hint=payload.get("narrative_hint", ""),
+        )
+
+    # Wave 1 item W1.1 dispossession/reserve-army/metabolism events
+    if event_type == EventType.DISPOSSESSION_EVENT:
+        return DispossessionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            territory=payload.get("territory", ""),
+            intensity=payload.get("intensity", 0.0),
+            foreclosure_rate=payload.get("foreclosure_rate", 0.0),
+            eviction_rate=payload.get("eviction_rate", 0.0),
+            displacement_rate=payload.get("displacement_rate", 0.0),
+        )
+
+    if event_type == EventType.VALUE_TRANSFER:
+        return ValueTransferEvent(
+            tick=tick,
+            timestamp=timestamp,
+            territory=payload.get("territory", ""),
+            total_transferred=payload.get("total_transferred", 0.0),
+            net_received=payload.get("net_received", 0.0),
+            deadweight_loss=payload.get("deadweight_loss", 0.0),
+        )
+
+    if event_type == EventType.RESERVE_ARMY_PRESSURE:
+        return ReserveArmyPressureEvent(
+            tick=tick,
+            timestamp=timestamp,
+            territory=payload.get("territory", ""),
+            reserve_ratio=payload.get("reserve_ratio", 0.0),
+            wage_pressure=payload.get("wage_pressure", 0.0),
+            median_wage=payload.get("median_wage", 0.0),
+        )
+
+    # DISPOSSESSION_CASCADE's live publish site (TickDynamicsSystem) emits
+    # ``EventType.DISPOSSESSION_CASCADE.value`` (a string), not the enum
+    # member; the isinstance(str) normalization at the top of this function
+    # already converts it back to the enum before this comparison runs.
+    if event_type == EventType.DISPOSSESSION_CASCADE:
+        return DispossessionCascadeEvent(
+            tick=tick,
+            timestamp=timestamp,
+            fips=payload.get("fips", ""),
+            cumulative_la_decline=payload.get("cumulative_la_decline", 0.0),
+            milestone_crossed=payload.get("milestone_crossed", 0.0),
+            current_la_share=payload.get("current_la_share", 0.0),
+            baseline_la_share=payload.get("baseline_la_share", 0.0),
+        )
+
+    if event_type == EventType.ECOLOGICAL_OVERSHOOT:
+        return EcologicalOvershootEvent(
+            tick=tick,
+            timestamp=timestamp,
+            overshoot_ratio=payload.get("overshoot_ratio", 0.0),
+            total_consumption=payload.get("total_consumption", 0.0),
+            total_biocapacity=payload.get("total_biocapacity", 0.0),
         )
 
     # Feature 002 events (EDGE_MODE_TRANSITION, CO_OPTIVE_BREAKDOWN,

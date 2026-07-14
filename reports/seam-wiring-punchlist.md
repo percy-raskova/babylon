@@ -7,8 +7,9 @@ Regenerate anytime with:
 poetry run python tools/sentinel_check.py seam --check   # or: mise run check:seams
 ```
 
-Every row below is a line the sentinels emit on the real tree (80 advisory findings at time of
-writing, `feature/17-living-engine`). It is the map for the UI/UX wiring pass: the sentinels were
+Every row below is a line the sentinels emit on the real tree (82 advisory findings at time of
+writing, `feature/17-living-engine` — regenerated after the sweep learned to see non-`get_*`
+serializer seams). It is the map for the UI/UX wiring pass: the sentinels were
 built to prove that **every quantity the engine computes is routed somewhere into the interface and
 actually used** — or is flagged here as unrouted. Nothing computed falls on the floor unaccounted for.
 
@@ -60,8 +61,9 @@ runtime 500 on the endpoint. High priority — a dark endpoint reads as "no data
 
 ### 2b — Serializers with no typed contract (`Untyped` in the manifest — wire a response type)
 
-Each has a working `bridge.get_*` serializer but `endpoints.ts` declares its response `Untyped`.
-Give each a real TS interface (derived from the serializer's emitted keys), then a consumer:
+Each has a working bridge serializer (`get_*` or otherwise) but `endpoints.ts` declares its
+response `Untyped`. Give each a real TS interface (derived from the serializer's emitted keys),
+then a consumer:
 
 - **Dashboards:** `games/*/edges` (`get_edges_dashboard`), `games/*/organizations`
   (`get_organizations_dashboard`), `games/*/state-apparatus` (`get_state_apparatus_dashboard`),
@@ -69,8 +71,15 @@ Give each a real TS interface (derived from the serializer's emitted keys), then
 - **Inspectors:** `games/*/node/*`, `games/*/org/*`, `games/*/community/*`, `games/*/edge/*`,
   `games/*/hex/*` (adapter-decoded to `RawEntity` client-side today — a typed inspector contract would
   let the sweep field-check them), plus histories `games/*/org/*/history`, `games/*/territory/*/history`.
-- **Action targets:** `games/*/actions/{educate,aid,attack,mobilize,move,investigate,reproduce,negotiate}/targets`
-  and `games/*/actions/available` (`get_*_targets` / `get_available_actions`).
+- **Verb actions — two rows per verb.** Each of the 8 verbs registers BOTH a targets route and a
+  submit route on the same view (`get_*_targets` serves the GET side), so each fires its own
+  advisory line: `games/*/actions/{educate,aid,attack,mobilize,move,investigate,reproduce,negotiate}/targets`
+  **and** the bare submit siblings `games/*/actions/{educate,aid,attack,mobilize,move,investigate,reproduce,negotiate}`;
+  plus `games/*/actions/available` (`get_available_actions`). Typing the shared `get_*_targets`
+  response resolves both siblings of a verb at once.
+- **Action lifecycle:** `games/*/actions` (POST submit, serializer `submit_action`) and `games`
+  (POST create, `create_game` → `GameSummary[]`, a list shape the sweep cannot field-check) —
+  surfaced once the sweep learned to see non-`get_*` bridge calls.
 
 ### 2c — Structurally opaque returns (blind spots — not field-checkable as-is)
 
@@ -92,10 +101,12 @@ the interface.
 **`EconomyDashboardPayload` (`games/*/economy`, serializer `get_economy`) — 8 phantoms:**
 `current_super_wage_rate`, `imperial_rent_pool`, `occ`, `profit_rate`, `tick`, `tribute_flow_total`,
 `wage_flow_total`, `wealth_by_class_role`.
-*(Note: several of these — `profit_rate`, `occ`, `imperial_rent_pool` — are exactly the Program-17 Φ
-metrics computed per-tick in Gap 1. The economy dashboard promises them; the serializer never wires
-them through. This is the single highest-value fix: the data exists, the contract exists, only the
-serializer emission is missing.)*
+*(Note: `profit_rate` and `occ` are exactly the Program-17 metrics already registered and clean at
+the MAP seam (`tick_profit_rate`/`tick_occ` in `SEAM_REGISTRY`) — they are not Gap-1 rows; and
+`imperial_rent_pool` is the ECONOMY-scope reserve STOCK, distinct from the registered map-side
+`imperial_rent` flow. The engine computes all of them every tick; the economy dashboard promises
+them; only the `get_economy` serializer emission is missing. That makes this the single
+highest-value fix: data exists, contract exists, wire one serializer.)*
 
 **`AdminFeatureProperties` (map features, emitter `_aggregate_hex_features`) — 4 phantoms**
 (source: Sensor-3 `check_admin_feature_emission`): `biocapacity`, `consciousness`, `rent`, `wealth`.

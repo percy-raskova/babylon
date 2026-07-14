@@ -1,5 +1,4 @@
 import type { LiveVerbCost, VerbConfig, VerbTarget } from "./types";
-import { makeDirectionalEffect } from "./predictedEffects";
 
 interface MobilizeTarget {
   id: string;
@@ -47,19 +46,4 @@ export const mobilizeConfig: VerbConfig = {
     params: { sl_committed: Number(params.sl_committed ?? 0) },
   }),
   parseCost: parseMobilizeCost,
-  // Grounded in resolve_mobilize (babylon/engine/actions/mobilize.py:78):
-  // new_heat = min(1.0, heat + heat_generated) — backfire only multiplies
-  // heat_generated, never flips its sign. mobilize's targets ARE real
-  // business/civil_society org ids — the cleanest scope-match of the 9.
-  // CAVEAT: sl_committed defaults to 0 (this verb's paramFields default),
-  // so at the DEFAULT param state the real delta is exactly 0 — this
-  // constant arrow shows slightly eagerly, before the player raises the
-  // slider (evaluate() cannot see paramVals — see predictedEffects.ts).
-  predictedEffect: makeDirectionalEffect(
-    "mobilize.heat.delta",
-    "Heat",
-    "Predicted state-attention (heat) increase on the target from mobilized turnout.",
-    "org",
-    1,
-  ),
 };

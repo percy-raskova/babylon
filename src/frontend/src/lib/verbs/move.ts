@@ -1,6 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
 import { parseFlatCost } from "./cost";
-import { makeDirectionalEffect } from "./predictedEffects";
 
 interface MoveTarget {
   id?: string;
@@ -42,18 +41,4 @@ export const moveConfig: VerbConfig = {
   // Flat {action_points, cadre_labor, sympathizer_labor, material,
   // can_afford, ...} envelope (engine_bridge.py:3751-3759).
   parseCost: parseFlatCost,
-  // Grounded in resolve_move (babylon/engine/actions/move.py:64-66):
-  // "expand" mode appends to territory_ids — territorial presence grows
-  // by at most 1. scopeKind "global" — no real per-org presence count is
-  // reachable from Scope. FLAG: true only for the DEFAULT "expand" mode;
-  // "relocate" mode REPLACES territory_ids (count stays flat, does not
-  // grow) and evaluate() cannot see the mode param — the weakest-grounded
-  // non-null verb after investigate/negotiate.
-  predictedEffect: makeDirectionalEffect(
-    "move.territorial_presence.delta",
-    "Territorial Presence",
-    "Predicted growth in the acting org's territory count (assumes the default 'expand' mode).",
-    "global",
-    1,
-  ),
 };

@@ -44,12 +44,10 @@ export const negotiateConfig: VerbConfig = {
   // can_afford, ...} envelope (engine_bridge.py:3805-3813 — cost is
   // always free/can_afford:true for negotiate).
   parseCost: parseFlatCost,
-  // NO predictedEffect — deliberately honest-null (owner ruling, Program
-  // 17 Wave 1 item 1e), same as investigate. resolve_negotiate (babylon/
-  // engine/actions/negotiate.py) only flips `edge_type` on success
-  // (leverage-gated) — no continuous metric is written at all
-  // (EdgeState.tension exists in the type but the resolver never touches
-  // it). There is no real scalar delta to ground here, and fabricating
-  // one would violate Constitution III.11. See verbs.test.ts's
-  // HONEST_NULL_PREDICTED_VERBS for the pinned contract.
+  // resolve_negotiate (babylon/engine/actions/negotiate.py) only flips
+  // `edge_type` on success (leverage-gated) — no continuous metric is
+  // written at all (EdgeState.tension exists in the type but the resolver
+  // never touches it). The live `/actions/preview/` chip (Program 17 Wave
+  // 1 item W1.2) is expected to show no delta for this verb, same as
+  // investigate — an honest reflection of the real engine effect.
 };

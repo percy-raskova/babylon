@@ -1,5 +1,4 @@
 import type { LiveVerbCost, VerbConfig, VerbTarget } from "./types";
-import { makeDirectionalEffect } from "./predictedEffects";
 
 interface AttackTargetEntry {
   target_id: string;
@@ -86,17 +85,4 @@ export const attackConfig: VerbConfig = {
     params: { mode: String(params.mode ?? "targeted") },
   }),
   parseCost: parseAttackCost,
-  // Grounded in resolve_attack (babylon/engine/actions/attack.py:56-59):
-  // new_heat = min(1.0, heat + _ATTACK_SELF_HEAT_GAIN) — unconditional,
-  // the single most solidly-grounded verb of the 9. NOTE: this metric
-  // describes the ACTING org's heat, not the target's — a scope mismatch
-  // inherent to attack having no target-side scalar effect (layer 3's
-  // infrastructure decrement is not modeled here).
-  predictedEffect: makeDirectionalEffect(
-    "attack.self_heat.delta",
-    "Heat",
-    "Predicted state-attention (heat) increase on the ACTING org from launching an attack.",
-    "org",
-    1,
-  ),
 };

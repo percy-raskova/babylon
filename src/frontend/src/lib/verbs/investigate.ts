@@ -59,12 +59,11 @@ export const investigateConfig: VerbConfig = {
   // Flat {action_points, cadre_labor, sympathizer_labor, material,
   // can_afford, ...} envelope (engine_bridge.py:3662-3670).
   parseCost: parseFlatCost,
-  // NO predictedEffect — deliberately honest-null (owner ruling, Program
-  // 17 Wave 1 item 1e). resolve_investigate (babylon/engine/actions/
-  // investigate.py) performs ZERO numeric graph mutation: it is purely
-  // informational (fog-of-war reveal — a `revealed` attribute-name list
-  // in direct_effects, no graph.update_node call at all). There is no
-  // real scalar delta to ground here, and fabricating one would violate
-  // Constitution III.11 (never fabricate). See verbs.test.ts's
-  // HONEST_NULL_PREDICTED_VERBS for the pinned contract.
+  // resolve_investigate (babylon/engine/actions/investigate.py) performs
+  // ZERO numeric graph mutation: it is purely informational (fog-of-war
+  // reveal — a `revealed` attribute-name list in direct_effects, no
+  // graph.update_node call at all). The live `/actions/preview/` chip
+  // (Program 17 Wave 1 item W1.2) is expected to show no delta for this
+  // verb — an honest reflection of the real engine effect, not a config
+  // omission to work around.
 };

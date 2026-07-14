@@ -4,17 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { VERB_REGISTRY, VERB_NAMES } from "@/lib/verbs";
-import { evaluatePredictedEffect } from "../predicted";
-import { makeSnapshot } from "@/test/fixtures";
 import educateTargetsFixture from "@/mocks/educate_targets.json";
-
-// investigate and negotiate have ZERO scalar engine effect (resolve_investigate
-// only reveals fog-of-war fields; resolve_negotiate only flips an edge_type —
-// see investigate.ts/negotiate.ts's own module comments). Per owner ruling,
-// fabricating a directional arrow for them would violate Constitution III.11 —
-// they are left honest-null (predictedEffect unset), matching
-// predicted.test.ts's own "no predictedEffect" first test case.
-const HONEST_NULL_PREDICTED_VERBS = new Set(["investigate", "negotiate"]);
 
 describe("VERB_REGISTRY", () => {
   it("contains all 9 verbs", () => {
@@ -156,31 +146,6 @@ describe("reproduce.parseTargets", () => {
     expect(targets).toHaveLength(1);
     expect(targets[0]!.id).toBe("org-1");
     expect(targets[0]!.label).toBe("WCLF");
-  });
-});
-
-describe("predictedEffect wiring (Program 17 Wave 1 item 1e)", () => {
-  it("every registry verb except the honest-null zero-scalar-effect pair declares a predictedEffect", () => {
-    for (const [key, config] of Object.entries(VERB_REGISTRY)) {
-      if (HONEST_NULL_PREDICTED_VERBS.has(key)) continue;
-      expect(config.predictedEffect, `${key} is missing predictedEffect`).toBeDefined();
-    }
-  });
-
-  it("investigate and negotiate stay honest-null (zero real scalar engine effect)", () => {
-    for (const key of HONEST_NULL_PREDICTED_VERBS) {
-      expect(
-        VERB_REGISTRY[key]!.predictedEffect,
-        `${key} should not fabricate an effect`,
-      ).toBeUndefined();
-    }
-  });
-
-  it("educate's predictedEffect evaluates to a non-null directional chip", () => {
-    const delta = evaluatePredictedEffect(VERB_REGISTRY.educate!, makeSnapshot(), "hx-new-afrikan");
-    expect(delta).not.toBeNull();
-    expect(delta?.direction).toBe("up");
-    expect(delta?.label).toBe("Consciousness");
   });
 });
 

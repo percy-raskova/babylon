@@ -1,22 +1,22 @@
 /**
- * VerbForm — predicted-delta arrows before commit (spec-113 Lane DELTA).
- *
- * Fixture-driven: no registry verb populates `predictedEffect` today, so
- * these tests inject a `ScriptValue` through a fixture `VerbConfig` and
- * pin the rendering contract: arrow + metric name near the submit button
- * once a verb + target are composed, gold for ▲ / crimson for ▼, and
- * NOTHING rendered when the prediction is absent or empty (Constitution
- * III.11 — no "unknown" filler).
+ * VerbForm — real preview strip driven by `POST /actions/preview/`
+ * (Program 17 Wave 1 item W1.2). This replaces the old fixture-driven
+ * `predictedEffect`/constant-direction-chip machinery (deleted): the chip
+ * shown here reflects the live backend's `estimated_consciousness_delta`/
+ * `estimated_heat_delta`, not a hardcoded config sign. Pins the rendering
+ * contract: chips + probability + warnings once a real, non-zero preview
+ * lands, and NOTHING while pending, absent, or errored (Constitution
+ * III.11 — no "unknown" filler, no stale chip, no skeleton).
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "@/test/server";
 import { DEFAULT_GAME_ID } from "@/test/handlers";
 import { makeSnapshot } from "@/test/fixtures";
-import type { ScriptValue } from "@/lib/selectors/types";
+import type { ActionPreviewResult } from "@/types/game";
 import type { VerbConfig, VerbTarget } from "@/lib/verbs";
 import { VerbForm } from "./VerbForm";
 
@@ -25,17 +25,14 @@ interface RawTarget {
   territory_name: string;
 }
 
-function makeEffect(overrides?: Partial<ScriptValue>): ScriptValue {
-  return {
-    name: "hex.heat.delta",
-    label: "Heat",
-    description: "Predicted heat delta for the composed action.",
-    scopeKind: "hex",
-    evaluate: () => 0.25,
-    breakdown: () => ({ total: 0.25, contributors: [] }),
-    ...overrides,
-  };
-}
+const BASE_PREVIEW: ActionPreviewResult = {
+  estimated_consciousness_delta: 0,
+  estimated_heat_delta: 0,
+  action_point_cost: 1,
+  success_probability: 0.5,
+  affected_territory_ids: [],
+  warnings: [],
+};
 
 function makeConfig(overrides?: Partial<VerbConfig>): VerbConfig {
   return {
@@ -67,6 +64,14 @@ function stubTargets(): void {
   );
 }
 
+function stubPreview(overrides?: Partial<ActionPreviewResult>): void {
+  server.use(
+    http.post(`/api/games/${DEFAULT_GAME_ID}/actions/preview/`, () =>
+      HttpResponse.json({ status: "ok", data: { ...BASE_PREVIEW, ...overrides } }),
+    ),
+  );
+}
+
 function renderForm(config: VerbConfig): void {
   render(
     <VerbForm
@@ -86,54 +91,100 @@ async function selectDowntown(): Promise<void> {
   await userEvent.click(screen.getByText("Downtown"));
 }
 
-describe("VerbForm predicted delta", () => {
-  it("renders nothing extra when the config has no predictedEffect (honest null)", async () => {
+describe("VerbForm action preview", () => {
+  it("renders nothing before a target is selected (not yet composable)", async () => {
     stubTargets();
+    stubPreview({ estimated_consciousness_delta: 0.3 });
+    renderForm(makeConfig());
+
+    await waitFor(() => expect(screen.getByTestId("target-picker")).toBeInTheDocument());
+
+    expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("preview-probability")).not.toBeInTheDocument();
+  });
+
+  it("renders nothing while the preview request is pending (no skeleton, no stale chip)", async () => {
+    stubTargets();
+    let resolvePreview!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      resolvePreview = resolve;
+    });
+    server.use(
+      http.post(`/api/games/${DEFAULT_GAME_ID}/actions/preview/`, async () => {
+        await pending;
+        return HttpResponse.json({ status: "ok", data: BASE_PREVIEW });
+      }),
+    );
     renderForm(makeConfig());
 
     await selectDowntown();
 
-    expect(screen.getByRole("button", { name: /submit educate/i })).toBeEnabled();
     expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("preview-probability")).not.toBeInTheDocument();
+
+    resolvePreview(undefined);
+    await waitFor(() => expect(screen.getByTestId("preview-probability")).toBeInTheDocument());
   });
 
-  it("shows a gold ▲ + metric name only once a target is selected", async () => {
+  it("shows delta chips for non-zero estimated deltas once a target is selected", async () => {
     stubTargets();
-    renderForm(makeConfig({ predictedEffect: makeEffect() }));
+    stubPreview({ estimated_consciousness_delta: 0.234, estimated_heat_delta: -0.5 });
+    renderForm(makeConfig());
 
-    await waitFor(() => expect(screen.getByTestId("target-picker")).toBeInTheDocument());
-    expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
+    await selectDowntown();
 
-    await userEvent.click(screen.getByText("Downtown"));
-
-    const delta = screen.getByTestId("predicted-delta");
-    expect(delta).toHaveTextContent("▲ Heat");
-    expect(delta.className).toContain("text-accent-gold");
-    expect(delta.className).not.toContain("text-accent-crimson");
+    const chips = await screen.findAllByTestId("predicted-delta");
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveTextContent("▲ Consciousness");
+    expect(chips[0]!.className).toContain("text-accent-gold");
+    expect(chips[1]).toHaveTextContent("▼ Heat");
+    expect(chips[1]!.className).toContain("text-accent-crimson");
   });
 
-  it("shows a crimson ▼ for a negative predicted delta", async () => {
+  it("shows no delta chips but shows the success probability when both deltas are zero", async () => {
     stubTargets();
-    renderForm(
-      makeConfig({
-        predictedEffect: makeEffect({ label: "Cohesion", evaluate: () => -0.1 }),
+    stubPreview({ success_probability: 0.684 });
+    renderForm(makeConfig());
+
+    await selectDowntown();
+
+    await waitFor(() => expect(screen.getByTestId("preview-probability")).toBeInTheDocument());
+    expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
+    expect(screen.getByTestId("preview-probability")).toHaveTextContent("68% est. success");
+  });
+
+  it("renders backend warnings as a muted list", async () => {
+    stubTargets();
+    stubPreview({ warnings: ["Insufficient cadre labor", "Target already contested"] });
+    renderForm(makeConfig());
+
+    await selectDowntown();
+
+    const warnings = await screen.findByTestId("preview-warnings");
+    expect(warnings).toHaveTextContent("Insufficient cadre labor");
+    expect(warnings).toHaveTextContent("Target already contested");
+  });
+
+  it("renders nothing when the preview fetch fails (honest null)", async () => {
+    stubTargets();
+    let requestSeen = false;
+    server.use(
+      http.post(`/api/games/${DEFAULT_GAME_ID}/actions/preview/`, () => {
+        requestSeen = true;
+        return HttpResponse.json({ status: "error", data: null, message: "boom" }, { status: 500 });
       }),
     );
+    renderForm(makeConfig());
 
     await selectDowntown();
-
-    const delta = screen.getByTestId("predicted-delta");
-    expect(delta).toHaveTextContent("▼ Cohesion");
-    expect(delta.className).toContain("text-accent-crimson");
-    expect(delta.className).not.toContain("text-accent-gold");
-  });
-
-  it("renders no arrow for a zero predicted delta", async () => {
-    stubTargets();
-    renderForm(makeConfig({ predictedEffect: makeEffect({ evaluate: () => 0 }) }));
-
-    await selectDowntown();
+    await waitFor(() => expect(requestSeen).toBe(true));
+    // Flush the failed fetch's state update before asserting permanent absence.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("preview-probability")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("preview-warnings")).not.toBeInTheDocument();
   });
 });

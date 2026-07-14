@@ -1,6 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
 import { parseFlatCost } from "./cost";
-import { makeDirectionalEffect } from "./predictedEffects";
 
 interface AidPopTarget {
   community_id: string;
@@ -51,16 +50,4 @@ export const aidConfig: VerbConfig = {
   // Flat {action_points, cadre_labor, sympathizer_labor, material,
   // can_afford, ...} envelope (engine_bridge.py:3315-3323).
   parseCost: parseFlatCost,
-  // Grounded in resolve_aid (babylon/engine/actions/aid.py:89-92):
-  // received = transfer * _AID_EFFICIENCY, and the transfer_amount
-  // ParamField has min:0 — this half of aid's effect is unconditionally
-  // non-negative (unlike aid's other, tendency-signed consciousness
-  // effect, which this arrow does NOT attempt to model).
-  predictedEffect: makeDirectionalEffect(
-    "aid.material_transfer.delta",
-    "Material Transfer",
-    "Predicted wealth increase on the target org/community from a material transfer.",
-    "org",
-    1,
-  ),
 };

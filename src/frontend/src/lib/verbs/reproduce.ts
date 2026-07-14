@@ -1,6 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
 import { parseFlatCost } from "./cost";
-import { makeDirectionalEffect } from "./predictedEffects";
 
 interface ReproduceTarget {
   target_id: string;
@@ -62,21 +61,4 @@ export const reproduceConfig: VerbConfig = {
   // `resource_cost` nested under targets[0].modes, which parseFlatCost
   // does not read.
   parseCost: parseFlatCost,
-  // Grounded in resolve_reproduce's cadre_training branch (babylon/engine/
-  // actions/reproduce.py:88-91, the paramFields default mode): unconditionally
-  // raises both cadre_level and cohesion. targetRequired is already false.
-  // FLAG PROMINENTLY: if the player switches the mode dropdown to
-  // mass_recruitment, the REAL engine effect FLIPS (reproduce.py:67-86 —
-  // cohesion DECREASES, no cadre change), but evaluate() never sees
-  // paramVals and will keep showing ▲ Cadre. This is the one verb where
-  // the arrow can become actively WRONG (not just imprecise) once the
-  // player changes the mode — a known limitation of the frozen
-  // evaluatePredictedEffect(config, snapshot, targetId) signature.
-  predictedEffect: makeDirectionalEffect(
-    "reproduce.cadre.delta",
-    "Cadre",
-    "Predicted cadre_level/cohesion increase (assumes the default 'cadre_training' mode).",
-    "global",
-    1,
-  ),
 };

@@ -126,16 +126,10 @@ describe("ActionComposer", () => {
     );
   });
 
-  it("shows educate's grounded predicted-delta arrow once a target is selected (Program 17 Wave 1 item 1e)", async () => {
-    // educate.ts now carries a real predictedEffect (grounded in
-    // compute_consciousness_delta — see educate.ts's own comment), so the
-    // composed educate flow shows the ▲ Consciousness chip near submit.
-    // Honest-null coverage for verbs that deliberately carry NO
-    // predictedEffect (investigate/negotiate — zero real scalar engine
-    // effect) lives in verbs.test.ts's HONEST_NULL_PREDICTED_VERBS set;
-    // both are DISABLED_VERBS, so their form can't be driven through this
-    // composed flow. Fixture-driven honest-null rendering (an injected
-    // config with no predictedEffect at all) is covered in VerbForm.test.tsx.
+  it("shows the live preview's ▲ Consciousness chip once a target is selected (Program 17 Wave 1 item W1.2)", async () => {
+    // The chip now reflects the real POST /actions/preview/ response
+    // (estimated_consciousness_delta), not a hardcoded config sign — the
+    // fake constant-direction predictedEffect machinery was deleted.
     server.use(
       http.get("/api/games/:id/actions/educate/targets/", () =>
         HttpResponse.json({
@@ -149,6 +143,19 @@ describe("ActionComposer", () => {
           ],
         }),
       ),
+      http.post("/api/games/:id/actions/preview/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: {
+            estimated_consciousness_delta: 0.15,
+            estimated_heat_delta: 0,
+            action_point_cost: 1,
+            success_probability: 0.8,
+            affected_territory_ids: ["comm-1"],
+            warnings: [],
+          },
+        }),
+      ),
     );
     seedPlayerOrg();
     render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
@@ -158,7 +165,7 @@ describe("ActionComposer", () => {
     await userEvent.click(screen.getByText(/Downtown/));
 
     expect(screen.getByRole("button", { name: /submit educate/i })).toBeEnabled();
-    const delta = screen.getByTestId("predicted-delta");
+    const delta = await screen.findByTestId("predicted-delta");
     expect(delta).toHaveTextContent("▲ Consciousness");
   });
 

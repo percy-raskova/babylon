@@ -264,6 +264,24 @@ export const handlers = [
     return HttpResponse.json({ status: "ok", data: null });
   }),
 
+  // Live preview strip (Program 17 Wave 1 item W1.2) — default is an honest
+  // all-zero/no-warning baseline; tests that care about a specific delta
+  // override with server.use().
+  http.post("/api/games/:id/actions/preview/", () => {
+    logRequest("POST actions:preview");
+    return HttpResponse.json({
+      status: "ok",
+      data: {
+        estimated_consciousness_delta: 0,
+        estimated_heat_delta: 0,
+        action_point_cost: 0,
+        success_probability: 1,
+        affected_territory_ids: [],
+        warnings: [],
+      },
+    });
+  }),
+
   // ---- Inspector drill-downs — GET /api/games/{id}/{kind}/{entityId}/ --
 
   http.get("/api/games/:id/:kind/:entityId/", ({ params }) => {

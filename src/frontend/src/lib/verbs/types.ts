@@ -2,8 +2,6 @@
  * Verb configuration types — drives the generic ActionPage form.
  */
 
-import type { ScriptValue } from "@/lib/selectors/types";
-
 /** A target option parsed from the API's verb-target endpoint response. */
 export interface VerbTarget {
   /** Unique target identifier. */
@@ -91,11 +89,4 @@ export interface VerbConfig {
    * Defaults to "target_id" if not specified.
    */
   targetPayloadKey?: string;
-  /**
-   * Optional selector for the pre-commit predicted delta. When present,
-   * `VerbForm` evaluates it via `evaluatePredictedEffect` (`./predicted`)
-   * once the verb is composable and renders a ▲/▼ arrow + metric name
-   * near the submit button. Absent ⇒ nothing extra renders.
-   */
-  predictedEffect?: ScriptValue;
 }

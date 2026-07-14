@@ -1,7 +1,13 @@
 # Incident: data-drive mount displacement + silent Postgres shadow cluster
 
 **Found:** 2026-07-14, while verifying `feature/17-living-engine` (10 unit tests red with
-`FileNotFoundError: data/sqlite/marxist-data-3NF.sqlite`). **Status: OPEN — needs owner (sudo).**
+`FileNotFoundError: data/sqlite/marxist-data-3NF.sqlite`).
+**Status: ✅ RESOLVED 2026-07-14 ~17:11 EDT** — owner ran `sudo tools/heal_data_mount.sh
+--with-fstab`: drive reclaimed at `/media/user/data`, fstab hardened (nofail), shadow preserved
+at `/media/user/babylon-pg.shadow-20260714-1710` plus two SQL dumps on the drive; Postgres came
+ready after ~95 s of fsync + automatic crash recovery (the script's old 60 s wait declared a
+false failure — now 5 min); real lineage verified live (5,102 `tick_commit` rows, newest
+2026-07-13 03:35 UTC) and `mise run data:doctor` fully green.
 Forensics: read-only 4-agent sweep, evidence inline below.
 
 **OPERATIONALIZED (2026-07-14):** this failure class is now mechanically caught and healed:

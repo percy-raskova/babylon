@@ -89,10 +89,13 @@ fi
 if docker ps -a --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
   say "starting $PG_CONTAINER on the real cluster"
   docker start "$PG_CONTAINER" >/dev/null
+  # Cold start of a large real cluster can fsync the data dir for 90+ s and
+  # then run crash recovery (observed 2026-07-14: ~95 s before "ready to
+  # accept connections") — allow up to 5 minutes before declaring failure.
   tries=0
   until docker exec "$PG_CONTAINER" pg_isready -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; do
     tries=$((tries + 1))
-    [ "$tries" -ge 30 ] && die "postgres not ready after 30 checks — inspect: docker logs $PG_CONTAINER"
+    [ "$tries" -ge 150 ] && die "postgres not ready after 150 checks (~5 min) — inspect: docker logs $PG_CONTAINER"
     sleep 2
   done
   say "postgres ready; tick_commit lineage now reads:"

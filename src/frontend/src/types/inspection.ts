@@ -12,6 +12,8 @@
  * formula → input-metric → …), bottoming out at constants/state values.
  */
 
+import type { ConsciousnessVector } from "@/types/game";
+
 /** What an `InspectionRef` points at — one resolver per kind (Lane C). */
 export type InspectionRefKind =
   "hex" | "org" | "node" | "edge" | "community" | "metric" | "formula";
@@ -78,6 +80,53 @@ export interface InspectionRow {
    * this row — absence, not an empty series, is the honest signal.
    */
   history?: number[];
+  /**
+   * Marks this row's value as a placeholder for a feature that does not
+   * exist in the codebase yet (owner's mock doctrine, Program 17 Wave 1 /
+   * W1.4) — still rendered, never silently omitted, but visibly badged.
+   * `ValueRow` renders a small `MockBadge` next to the label when `true`.
+   */
+  mock?: boolean;
+  /**
+   * Present when this row IS the 4-node imperial-circuit mini-Sankey
+   * (Program 17 Wave 1 / W1.6, `EngineBridge.get_inspector_node`'s
+   * `circuit_flows`). `ValueRow` renders `ImperialCircuitFlow` instead of a
+   * plain value/composition when set.
+   */
+  circuitFlows?: CircuitFlows;
+}
+
+/**
+ * One node in the 4-node imperial-circuit Sankey (`circuit_flows.nodes`).
+ * Resolved by `SocialRole` on the backend, never a hardcoded id — a scenario
+ * missing a role (wayne_county has no `comprador_bourgeoisie` class) simply
+ * omits that node, never fabricates one (Constitution III.11).
+ */
+export interface CircuitFlowNode {
+  role: string;
+  id: string;
+  name: string;
+}
+
+/** One directed value-flow link in the imperial circuit (`circuit_flows.links`). */
+export interface CircuitFlowLink {
+  source_role: string;
+  target_role: string;
+  source_id: string;
+  target_id: string;
+  value_flow: number;
+}
+
+/**
+ * The 4-node imperial-circuit Sankey data
+ * (`EngineBridge.get_inspector_node`'s `circuit_flows` key, Program 17 Wave 1
+ * / W1.6): Periphery Proletariat -> Comprador Bourgeoisie -> Core Bourgeoisie
+ * -> Labor Aristocracy. A role/hop a scenario does not seed is honestly
+ * absent from `nodes`/`links` rather than fabricated.
+ */
+export interface CircuitFlows {
+  nodes: CircuitFlowNode[];
+  links: CircuitFlowLink[];
 }
 
 /** A grouped block of rows within an `InspectionNode`; `label` is optional (ungrouped). */
@@ -121,4 +170,42 @@ export interface ExplainResponse {
   formula: ExplainFormula;
   inputs: ExplainInput[];
   constants: ExplainInput[];
+}
+
+/**
+ * `GET /api/games/:id/node/:entityId/` response body (architecture.md §2.4,
+ * `EngineBridge.get_inspector_node`). Two shapes share one endpoint: a
+ * `social_class` node gets the wage-pairing/ideology/circuit fields below;
+ * every other node type gets an honest enum-normalized dump of its own real
+ * fields (Constitution III.11) — hence the index signature for fields this
+ * interface does not enumerate. `lib/inspect/adapters/node.ts` discriminates
+ * on `type`.
+ */
+export interface InspectorNodeResponse {
+  id: string;
+  type: string;
+  name: string;
+  // social_class-only fields (undefined for every other node type)
+  role?: string | null;
+  wealth?: number;
+  core_wages?: number;
+  imperial_rent_gap?: number;
+  unearned_increment?: number | null;
+  ppp_multiplier?: number | null;
+  effective_wealth?: number | null;
+  population?: number | null;
+  organization?: number | null;
+  repression_faced?: number | null;
+  subsistence_threshold?: number | null;
+  class_consciousness?: number | null;
+  national_identity?: number | null;
+  agitation?: number | null;
+  consciousness?: ConsciousnessVector | null;
+  inequality?: number | null;
+  class_position?: string;
+  class_position_mock?: boolean;
+  circuit_flows?: CircuitFlows;
+  apologist_claim?: string;
+  apologist_refutation?: string;
+  [key: string]: unknown;
 }

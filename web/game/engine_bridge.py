@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+from itertools import pairwise
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
@@ -37,11 +38,17 @@ from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
 from babylon.models.config import SimulationConfig
-from babylon.models.enums import ActionType, EventType, GameOutcome
+from babylon.models.enums import ActionType, EventType, GameOutcome, SocialRole
 from babylon.models.events import EndgameEvent
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
+
+# Program 17 Wave 1 / W1.4: the canonical IdeologicalProfile -> TernaryConsciousness
+# bridge mapping. Underscore-private (persistence-internal), imported directly per
+# owner instruction rather than duplicated — the math (r/l/f simplex algebra) has
+# exactly one home.
+from babylon.persistence.county_aggregation import _ideology_to_ternary
 from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
 from babylon.topology.graph import BabylonGraph
 
@@ -859,6 +866,110 @@ def _sum_edge_value_flow_by_mode(graph: BabylonGraph, edge_types: frozenset[str]
     return round(total, 4)
 
 
+# Program 17 Wave 1 / W1.6: the canonical 4-node imperial circuit (Periphery
+# Proletariat -> Comprador -> Core Bourgeoisie -> Labor Aristocracy), as seeded
+# verbatim by ``create_imperial_circuit_scenario`` (_legacy.py). Order is the
+# registry's ROLE_TO_ENTITY_ID id sequence (C001-C004); membership is resolved
+# by SocialRole, never a hardcoded id, since scenarios rename/reuse ids
+# (wayne_county's C002 is a Labor-Aristocracy-role class named "Suburban Petty
+# Bourgeoisie", and wayne_county has no comprador_bourgeoisie role at all).
+_CIRCUIT_ROLES: Final[tuple[SocialRole, ...]] = (
+    SocialRole.PERIPHERY_PROLETARIAT,
+    SocialRole.COMPRADOR_BOURGEOISIE,
+    SocialRole.CORE_BOURGEOISIE,
+    SocialRole.LABOR_ARISTOCRACY,
+)
+
+# The three EdgeType values that carry real imperial-circuit value flow in the
+# seeded scenarios (verified against ``create_imperial_circuit_scenario``:
+# EXPLOITATION P_w->P_c, TRIBUTE P_c->C_b, WAGES C_b->C_w). No ``RENT`` EdgeType
+# exists in ``babylon.models.enums.topology.EdgeType`` — CLIENT_STATE (the
+# reverse C_b->P_c subsidy) and SOLIDARITY (P_w->C_w) are deliberately excluded:
+# neither is a forward circuit hop.
+_CIRCUIT_EDGE_TYPES: Final[frozenset[str]] = frozenset({"exploitation", "tribute", "wages"})
+
+
+def _circuit_role_to_node_id(graph: BabylonGraph) -> dict[str, str]:
+    """Map each real ``SocialRole`` value present on the graph to one node id.
+
+    Defensive dedup: if more than one ``social_class`` node shares a role (not
+    the case in any current scenario — each seeds at most one class per role),
+    the lexicographically smallest node id wins, so the result is deterministic
+    regardless of graph iteration order.
+    """
+    role_to_node: dict[str, str] = {}
+    for node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") != "social_class":
+            continue
+        role = data.get("role")
+        if role is None:
+            continue
+        role_str = _enum_val(role)
+        existing = role_to_node.get(role_str)
+        role_to_node[role_str] = node_id if existing is None else min(existing, node_id)
+    return role_to_node
+
+
+def _build_circuit_flows(graph: BabylonGraph) -> dict[str, Any]:
+    """Real 4-node imperial-circuit Sankey data for the class InspectionCard.
+
+    Graph-wide (not scoped to any one clicked node) — the same block is
+    attached to every ``social_class`` inspector payload so the frontend's
+    mini-Sankey shows the whole circuit regardless of which node was clicked.
+
+    A role with no matching ``social_class`` node on this graph is honestly
+    OMITTED from ``nodes`` (never a fabricated placeholder node). A hop
+    between two present roles is honestly OMITTED from ``links`` when no real
+    :data:`_CIRCUIT_EDGE_TYPES` edge exists between them (Constitution III.11
+    — absence over fabrication). Both lists are emitted in fixed canonical
+    role order, so the result is deterministic independent of graph iteration
+    order.
+
+    Args:
+        graph: The hydrated tick graph.
+
+    Returns:
+        ``{"nodes": [{"role", "id", "name"}, ...], "links": [{"source_role",
+        "target_role", "source_id", "target_id", "value_flow"}, ...]}``.
+    """
+    role_to_node = _circuit_role_to_node_id(graph)
+
+    nodes: list[dict[str, Any]] = []
+    for role in _CIRCUIT_ROLES:
+        role_str = _enum_val(role)
+        node_id = role_to_node.get(role_str)
+        if node_id is None:
+            continue
+        node_data = graph.nodes[node_id]
+        nodes.append({"role": role_str, "id": node_id, "name": node_data.get("name", node_id)})
+
+    links: list[dict[str, Any]] = []
+    for source_role, target_role in pairwise(_CIRCUIT_ROLES):
+        source_role_str = _enum_val(source_role)
+        target_role_str = _enum_val(target_role)
+        source_id = role_to_node.get(source_role_str)
+        target_id = role_to_node.get(target_role_str)
+        if source_id is None or target_id is None:
+            continue
+        if (source_id, target_id) not in graph.edges:
+            continue
+        edge_data = graph.edges[(source_id, target_id)]
+        etype = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+        if etype not in _CIRCUIT_EDGE_TYPES:
+            continue
+        links.append(
+            {
+                "source_role": source_role_str,
+                "target_role": target_role_str,
+                "source_id": source_id,
+                "target_id": target_id,
+                "value_flow": float(edge_data.get("value_flow", 0.0)),
+            }
+        )
+
+    return {"nodes": nodes, "links": links}
+
+
 def _wealth_by_class_role(state: WorldState) -> dict[str, float]:
     """Sum ``SocialClass.wealth`` grouped by ``SocialRole`` — real values only."""
     totals: dict[str, float] = {}
@@ -1313,6 +1424,19 @@ _APOLOGIST_CLAIM: Final[str] = (
     "politically-arranged subsidy."
 )
 
+# Program 17 Wave 1 / W1.4: no ``class_position`` taxonomy exists anywhere in the
+# codebase for a social_class node (the "class_position" name IS used elsewhere —
+# babylon.domain.economics.melt.class_position's per-household ClassPosition — but
+# that is a different concept on a different entity; nothing computes a per-class
+# structural-position label here). Ships as a clearly-badged mock per the owner's
+# mock doctrine: a self-describing placeholder value, never a fabricated-looking
+# number, PLUS an explicit ``class_position_mock: True`` flag the frontend renders
+# as a visible MOCK badge (Constitution III.11 — a mock must never be mistaken for
+# real data).
+_CLASS_POSITION_MOCK_LABEL: Final[str] = (
+    "Not yet modeled — placeholder for a future class-position taxonomy."
+)
+
 
 def _enum_normalized(data: dict[str, Any]) -> dict[str, Any]:
     """``{k: v.value if v is enum-like else v}`` — plain-string-ify every
@@ -1322,7 +1446,36 @@ def _enum_normalized(data: dict[str, Any]) -> dict[str, Any]:
     return {k: (_enum_val(v) if hasattr(v, "value") else v) for k, v in data.items()}
 
 
-def _social_class_inspector_fields(data: dict[str, Any], core_wages: float) -> dict[str, Any]:
+def _ternary_consciousness_or_none(ideology: dict[str, Any]) -> dict[str, float] | None:
+    """The node's ``(revolutionary, liberal, fascist)`` ternary, or ``None``.
+
+    Feeds the node's real ``ideology.class_consciousness``/
+    ``ideology.national_identity`` into the canonical
+    :func:`babylon.persistence.county_aggregation._ideology_to_ternary` bridge
+    mapping. Honest-null (Constitution III.11): if either axis is absent, this
+    returns ``None`` rather than defaulting the missing axis to 0.0 and
+    computing a fabricated ternary.
+
+    Args:
+        ideology: The node's ``ideology`` dict (already normalized to ``{}``
+            by the caller when the node carries no such dict at all).
+
+    Returns:
+        ``{"revolutionary": r, "liberal": l, "fascist": f}`` or ``None``.
+    """
+    class_consciousness = ideology.get("class_consciousness")
+    national_identity = ideology.get("national_identity")
+    if not isinstance(class_consciousness, int | float) or not isinstance(
+        national_identity, int | float
+    ):
+        return None
+    r, l_, f = _ideology_to_ternary(float(class_consciousness), float(national_identity))
+    return {"revolutionary": r, "liberal": l_, "fascist": f}
+
+
+def _social_class_inspector_fields(
+    data: dict[str, Any], core_wages: float, graph: BabylonGraph
+) -> dict[str, Any]:
     """Build the wage-pairing + apologist narrative block for a
     ``social_class`` inspector payload.
 
@@ -1332,9 +1485,17 @@ def _social_class_inspector_fields(data: dict[str, Any], core_wages: float) -> d
     Signed deliberately: negative for exploited/periphery classes is itself
     an honest, theoretically meaningful signal, not an error.
 
+    Program 17 Wave 1 also adds (W1.4): the per-class ternary consciousness
+    (``consciousness``, honest-null per :func:`_ternary_consciousness_or_none`),
+    the real intra-class ``inequality`` Gini, and a clearly-badged
+    ``class_position``/``class_position_mock`` placeholder row; and (W1.6) the
+    graph-wide ``circuit_flows`` mini-Sankey data (:func:`_build_circuit_flows`)
+    — the same block regardless of which social_class node was clicked.
+
     Args:
         data: The raw graph node dict for a ``social_class`` node.
         core_wages: Output of :func:`_incoming_wages_flow` for this node.
+        graph: The hydrated tick graph (for the graph-wide ``circuit_flows``).
 
     Returns:
         Dict merged onto the ``get_inspector_node`` base payload.
@@ -1374,6 +1535,11 @@ def _social_class_inspector_fields(data: dict[str, Any], core_wages: float) -> d
         "class_consciousness": ideology.get("class_consciousness"),
         "national_identity": ideology.get("national_identity"),
         "agitation": ideology.get("agitation"),
+        "consciousness": _ternary_consciousness_or_none(ideology),
+        "inequality": _optional_float(data.get("inequality")),
+        "class_position": _CLASS_POSITION_MOCK_LABEL,
+        "class_position_mock": True,
+        "circuit_flows": _build_circuit_flows(graph),
         "apologist_claim": _APOLOGIST_CLAIM,
         "apologist_refutation": apologist_refutation,
     }
@@ -2944,7 +3110,7 @@ class EngineBridge:
         }
         if node_type == "social_class":
             core_wages = _incoming_wages_flow(graph, node_id)
-            payload.update(_social_class_inspector_fields(data, core_wages))
+            payload.update(_social_class_inspector_fields(data, core_wages, graph))
         else:
             payload.update(
                 _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})

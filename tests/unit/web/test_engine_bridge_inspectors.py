@@ -33,6 +33,21 @@ def _wayne_bridge() -> tuple[Any, Any]:
     return EngineBridge(mock_persistence), graph
 
 
+def _imperial_circuit_bridge() -> tuple[Any, Any]:
+    """The canonical 4-node imperial-circuit scenario (all 4 SocialRole slots
+    filled: C001 periphery_proletariat, C002 comprador_bourgeoisie, C003
+    core_bourgeoisie, C004 labor_aristocracy) — used by the W1.6 circuit_flows
+    tests to prove all 3 hops render when a scenario actually seeds every role,
+    contrasting wayne_county's partial (comprador-less) roster."""
+    from game.engine_bridge import EngineBridge, _build_initial_state_for_scenario
+
+    state = _build_initial_state_for_scenario("imperial_circuit")
+    graph = state.to_graph()
+    mock_persistence = MagicMock()
+    mock_persistence.hydrate_graph.return_value = graph
+    return EngineBridge(mock_persistence), graph
+
+
 class TestGetInspectorNode:
     def test_social_class_pairs_wage_with_value_and_apologist_refutation(self) -> None:
         bridge, graph = _wayne_bridge()
@@ -78,6 +93,181 @@ class TestGetInspectorNode:
     def test_unknown_node_id_returns_empty_dict(self) -> None:
         bridge, _graph = _wayne_bridge()
         assert bridge.get_inspector_node(uuid.uuid4(), "NOPE") == {}
+
+    def test_ternary_consciousness_computed_via_the_shared_bridge_mapping(self) -> None:
+        """Program 17 Wave 1 / W1.4: reuses (not duplicates) the canonical
+        ``_ideology_to_ternary`` bridge mapping from
+        ``babylon.persistence.county_aggregation``, fed the node's real
+        ``ideology.class_consciousness``/``ideology.national_identity``.
+        C002: cc=0.3, ni=0.7 -> r=0.09, f=0.49, l=0.42."""
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["consciousness"] == {
+            "revolutionary": pytest.approx(0.09),
+            "liberal": pytest.approx(0.42),
+            "fascist": pytest.approx(0.49),
+        }
+
+    def test_ternary_consciousness_is_null_when_ideology_is_absent(self) -> None:
+        """Honest null, never a fabricated 0.0-computed ternary (III.11): a
+        synthetic social_class node with no ``ideology`` dict at all gets
+        ``consciousness: None``, not a ternary computed from defaulted axes."""
+        bridge, graph = _wayne_bridge()
+        graph.add_node(
+            "C999",
+            _node_type="social_class",
+            name="Synthetic No-Ideology Class",
+            wealth=0.0,
+        )
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C999")
+
+        assert result["consciousness"] is None
+
+    def test_inequality_reads_the_real_graph_field(self) -> None:
+        """Program 17 Wave 1 / W1.4: ``inequality`` is a real ``SocialClass``
+        field (Gini coefficient, ``VitalitySystem`` reads it for attrition) —
+        not a mock. Mutate the real graph attribute and prove it round-trips."""
+        bridge, graph = _wayne_bridge()
+        graph.nodes["C002"]["inequality"] = 0.42
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["inequality"] == pytest.approx(0.42)
+
+    def test_inequality_is_none_when_absent_not_a_fabricated_zero(self) -> None:
+        bridge, graph = _wayne_bridge()
+        graph.add_node(
+            "C999",
+            _node_type="social_class",
+            name="Synthetic No-Inequality Class",
+            wealth=0.0,
+        )
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C999")
+
+        assert result["inequality"] is None
+
+    def test_class_position_ships_as_a_clearly_badged_mock(self) -> None:
+        """Owner's mock doctrine (Program 17 Wave 1 / W1.4): no real
+        class-position taxonomy exists in the codebase yet, so the row ships
+        with an explicit ``class_position_mock: True`` flag — a visible mock,
+        never a fabricated value presented as real."""
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["class_position_mock"] is True
+        assert isinstance(result["class_position"], str)
+        assert result["class_position"] != ""
+
+
+class TestGetInspectorNodeCircuitFlows:
+    """Program 17 Wave 1 / W1.6: the 4-node imperial-circuit mini-Sankey data.
+
+    Circuit membership is resolved by :class:`~babylon.models.enums.SocialRole`
+    (never a hardcoded id), because scenarios rename/reuse ids — wayne_county's
+    C002 is a Labor-Aristocracy-role class named "Suburban Petty Bourgeoisie",
+    and wayne_county has NO comprador_bourgeoisie-role class at all.
+    """
+
+    def test_wayne_county_omits_the_missing_comprador_role(self) -> None:
+        """wayne_county seeds internal_proletariat/labor_aristocracy/
+        core_bourgeoisie/periphery_proletariat — no comprador_bourgeoisie.
+        The periphery->comprador and comprador->core hops are honestly
+        ABSENT (not fabricated); only core_bourgeoisie(C003)->
+        labor_aristocracy(C002) WAGES survives as a real edge."""
+        bridge, graph = _wayne_bridge()
+        graph.add_edge("C003", "C002", edge_type="wages", value_flow=1.0, tension=0.0)
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["circuit_flows"] == {
+            "nodes": [
+                {
+                    "role": "periphery_proletariat",
+                    "id": "C004",
+                    "name": "Dearborn Industrial Workers",
+                },
+                {"role": "core_bourgeoisie", "id": "C003", "name": "Wayne County Bourgeoisie"},
+                {"role": "labor_aristocracy", "id": "C002", "name": "Suburban Petty Bourgeoisie"},
+            ],
+            "links": [
+                {
+                    "source_role": "core_bourgeoisie",
+                    "target_role": "labor_aristocracy",
+                    "source_id": "C003",
+                    "target_id": "C002",
+                    "value_flow": 1.0,
+                },
+            ],
+        }
+
+    def test_circuit_flows_is_graph_wide_not_per_queried_node(self) -> None:
+        """circuit_flows is whole-graph context for the Sankey, not scoped to
+        the clicked node — querying C001 and C002 return the identical block."""
+        bridge, _graph = _wayne_bridge()
+
+        by_c001 = bridge.get_inspector_node(uuid.uuid4(), "C001")
+        by_c002 = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert by_c001["circuit_flows"] == by_c002["circuit_flows"]
+
+    def test_full_imperial_circuit_scenario_carries_all_three_hops(self) -> None:
+        """The canonical ``imperial_circuit`` scenario seeds all 4 roles and
+        all 3 circuit edges (EXPLOITATION/TRIBUTE/WAGES) — every node/link
+        present, in canonical role order, all real (seeded) value_flow=0.0."""
+        bridge, _graph = _imperial_circuit_bridge()
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C001")
+
+        assert result["circuit_flows"] == {
+            "nodes": [
+                {"role": "periphery_proletariat", "id": "C001", "name": "Periphery Worker"},
+                {"role": "comprador_bourgeoisie", "id": "C002", "name": "Comprador"},
+                {"role": "core_bourgeoisie", "id": "C003", "name": "Core Bourgeoisie"},
+                {"role": "labor_aristocracy", "id": "C004", "name": "Labor Aristocracy"},
+            ],
+            "links": [
+                {
+                    "source_role": "periphery_proletariat",
+                    "target_role": "comprador_bourgeoisie",
+                    "source_id": "C001",
+                    "target_id": "C002",
+                    "value_flow": 0.0,
+                },
+                {
+                    "source_role": "comprador_bourgeoisie",
+                    "target_role": "core_bourgeoisie",
+                    "source_id": "C002",
+                    "target_id": "C003",
+                    "value_flow": 0.0,
+                },
+                {
+                    "source_role": "core_bourgeoisie",
+                    "target_role": "labor_aristocracy",
+                    "source_id": "C003",
+                    "target_id": "C004",
+                    "value_flow": 0.0,
+                },
+            ],
+        }
+
+    def test_unrelated_edge_types_between_role_nodes_are_not_summed_in(self) -> None:
+        """imperial_circuit also seeds a CLIENT_STATE C003->C002 edge (wrong
+        direction + wrong type for this hop) and a SOLIDARITY C001->C004 edge
+        (wrong type) — neither should leak into the circuit's value_flow sums."""
+        bridge, _graph = _imperial_circuit_bridge()
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C001")
+
+        link_role_pairs = {
+            (link["source_role"], link["target_role"]) for link in result["circuit_flows"]["links"]
+        }
+        assert ("core_bourgeoisie", "comprador_bourgeoisie") not in link_role_pairs
+        assert ("periphery_proletariat", "labor_aristocracy") not in link_role_pairs
 
 
 class TestGetInspectorOrg:

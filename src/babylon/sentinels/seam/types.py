@@ -50,6 +50,11 @@ class SeamScope(StrEnum):
         (``get_game_summary`` / ``get_economy_dashboard``).
     :cvar ENDGAME: terminal-outcome payload (``get_endgame_state``).
     :cvar EVENT: per-tick simulation events (the ``EventType`` vocabulary).
+    :cvar INSPECTOR: the ``get_inspector_node``/``get_inspector_org``/…
+        drill-down payloads (``EngineBridge.get_inspector_*``; Program 17
+        Wave 1 W1.4/W1.6 registers the ``get_inspector_node`` social_class
+        additions — per-class ternary consciousness, agitation, and the
+        4-node imperial-circuit Sankey data).
     """
 
     MAP = "map"
@@ -57,6 +62,7 @@ class SeamScope(StrEnum):
     ECONOMY = "economy"
     ENDGAME = "endgame"
     EVENT = "event"
+    INSPECTOR = "inspector"
 
 
 class LivenessClass(StrEnum):

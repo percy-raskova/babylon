@@ -188,5 +188,112 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# INSPECTOR scope — the ``get_inspector_node`` social_class drill-down
+# (Program 17 Wave 1 W1.4/W1.6, ``web/game/engine_bridge.py``
+# ``_social_class_inspector_fields``/``_build_circuit_flows``). Registered
+# here rather than left as an undeclared drift because this pass is what
+# brings the ``/node/`` inspector endpoint's new observables under the Seam
+# Observatory for the first time — scoped to exactly the three NEW
+# observables this pass introduces (ternary consciousness, agitation,
+# circuit_flows), not a retroactive audit of the endpoint's older fields.
+# ---------------------------------------------------------------------------
+
+_INSPECTOR_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::_social_class_inspector_fields (:1476)",
+    "web/game/engine_bridge.py::EngineBridge.get_inspector_node",
+)
+
+_INSPECTOR_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="ideology_ternary_consciousness",
+        wire_keys=("consciousness",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer=(
+            "bridge-derived (_ternary_consciousness_or_none, engine_bridge.py :1449), "
+            "reusing babylon.persistence.county_aggregation._ideology_to_ternary"
+        ),
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires the node's ideology dict to carry both class_consciousness and "
+            "national_identity; null when either axis is absent, never a ternary computed "
+            "from a defaulted-to-0.0 axis"
+        ),
+        dtype="json",
+        read_paths=_INSPECTOR_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::_ternary_consciousness_or_none (:1449)",
+        spec_ref="Program 17 Wave 1 · W1.4",
+        notes=(
+            "{revolutionary, liberal, fascist} simplex point on the class InspectionCard — "
+            "shares the exact bridge mapping babylon.persistence.county_aggregation uses for "
+            "per-county consciousness aggregation, not a duplicated formula."
+        ),
+    ),
+    SeamEntry(
+        payload="ideology_agitation",
+        wire_keys=("agitation",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer="engine (IdeologicalProfile.agitation, babylon.models.entities.social_class)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires the node's ideology dict to carry an 'agitation' key; null for a "
+            "social_class-shaped fixture with no ideology dict at all"
+        ),
+        dtype="float",
+        read_paths=_INSPECTOR_EMITTERS,
+        spec_ref="Program 17 Wave 1 · W1.4",
+        notes=(
+            "Raw political energy from crisis, [0.0, inf). Pre-existing field on this "
+            "endpoint's payload; registered now as part of bringing get_inspector_node under "
+            "the Seam Observatory."
+        ),
+    ),
+    SeamEntry(
+        payload="class_inequality",
+        wire_keys=("inequality",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer="engine (SocialClass.inequality Gini, read by VitalitySystem for attrition)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires the node to carry an 'inequality' graph attribute; null for a "
+            "social_class-shaped fixture without one — never a fabricated 0.0"
+        ),
+        dtype="float",
+        read_paths=_INSPECTOR_EMITTERS,
+        spec_ref="Program 17 Wave 1 · W1.4",
+        notes=(
+            "Intra-class Gini [0.0, 1.0] — a real pre-existing engine field, newly EXPOSED on "
+            "this endpoint by W1.4 (unlike agitation, which the payload already carried). The "
+            "deliberately-unregistered sibling class_position/class_position_mock is a badged "
+            "MOCK, not an observable — mocks are never seam-declared."
+        ),
+    ),
+    SeamEntry(
+        payload="circuit_flows",
+        wire_keys=("circuit_flows",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer="bridge-derived (_build_circuit_flows, engine_bridge.py :913)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires social_class nodes seeded for at least one adjacent pair of the 4 "
+            "circuit roles (periphery_proletariat/comprador_bourgeoisie/core_bourgeoisie/"
+            "labor_aristocracy) AND a real EXPLOITATION/TRIBUTE/WAGES edge between them; a "
+            "role/edge a scenario does not seed is OMITTED from nodes/links (never "
+            "fabricated) — wayne_county, e.g., has no comprador_bourgeoisie role at all"
+        ),
+        dtype="json",
+        nullable=False,
+        read_paths=_INSPECTOR_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::_build_circuit_flows (:913)",
+        spec_ref="Program 17 Wave 1 · W1.6",
+        notes=(
+            "Graph-wide 4-node imperial-circuit mini-Sankey ({nodes, links}) attached to "
+            "every social_class inspector payload, not scoped to the clicked node. The "
+            "container itself is always a dict (possibly {nodes: [], links: []}); only its "
+            "contents are conditional."
+        ),
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
-SEAM_REGISTRY: tuple[SeamEntry, ...] = _MAP_METRICS
+SEAM_REGISTRY: tuple[SeamEntry, ...] = _MAP_METRICS + _INSPECTOR_METRICS

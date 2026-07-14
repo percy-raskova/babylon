@@ -42,7 +42,7 @@ import type {
 import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/types/dialectic";
 import type { TradeFlowsPayload } from "@/types/trade";
 import type { WireFeed } from "@/types/wire";
-import type { ExplainResponse } from "@/types/inspection";
+import type { ExplainResponse, InspectorNodeResponse } from "@/types/inspection";
 import type { FeatureCollection } from "geojson";
 
 /**
@@ -140,7 +140,7 @@ export const endpoints = {
 
   // ---- Inspector drill-downs (adapter-decoded; RawEntity, not a wire
   //      contract — declared Untyped so the sentinel reports the adapter seam) //
-  inspectorNode: ep<Untyped>("/api/games/:id/node/:entityId/"),
+  inspectorNode: ep<InspectorNodeResponse>("/api/games/:id/node/:entityId/"),
   inspectorOrg: ep<Untyped>("/api/games/:id/org/:entityId/"),
   inspectorCommunity: ep<Untyped>("/api/games/:id/community/:entityId/"),
   inspectorEdge: ep<Untyped>("/api/games/:id/edge/:entityId/"),

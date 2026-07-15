@@ -33,6 +33,20 @@ const CONSCIOUSNESS_COLORS = {
   fascist: "text-rupture",
 } as const;
 
+/** Section label for the Survival Calculus block (Wave 2 W2.5a) — exported
+ * so `InspectionCard` can detect "this frame is a social_class node" from
+ * the already-adapted `InspectionNode` without re-deriving the discriminant
+ * this file already owns (`InspectionNode` carries no `type` field
+ * post-adaptation). */
+export const SURVIVAL_CALCULUS_LABEL = "Survival Calculus";
+
+/** True when `node` carries the Survival Calculus section — i.e. it is a
+ * resolved `social_class` node — used by `InspectionCard` to decide whether
+ * to mount `SurvivalDuelPanel` alongside `FormulaCard`. */
+export function hasSurvivalCalculus(node: InspectionNode | null): boolean {
+  return node?.sections.some((s) => s.label === SURVIVAL_CALCULUS_LABEL) ?? false;
+}
+
 /** Narrow `data.circuit_flows` to a usable shape, or `null` (absent/malformed). */
 function readCircuitFlows(data: RawEntity): CircuitFlows | null {
   const raw = data.circuit_flows;
@@ -126,9 +140,30 @@ function socialClassSections(data: RawEntity): InspectionSection[] {
     },
   ];
 
+  // Survival Calculus (Wave 2 W2.5a, owner ruling 3): current-tick P(S|A)/
+  // P(S|R) as plain synchronous rows from the already-fetched node payload
+  // — honest-null (Constitution III.11) until Backend-3 wires
+  // `_social_class_inspector_fields`. The historical duel chart these rows
+  // pair with (`SurvivalDuelPanel`) needs its own fetch to the real
+  // `/node/:id/history/` endpoint, which this pure adapter cannot make —
+  // `InspectionCard` mounts it separately, keyed on this section's label.
+  const survivalRows: InspectionRow[] = [
+    {
+      label: "P(S|A) Acquiescence",
+      value: readNumberField(data, "p_acquiescence"),
+      format: "decimal3",
+    },
+    {
+      label: "P(S|R) Revolution",
+      value: readNumberField(data, "p_revolution"),
+      format: "decimal3",
+    },
+  ];
+
   const sections: InspectionSection[] = [
     { rows: mainRows },
     { label: "Ideology", rows: ideologyRows },
+    { label: SURVIVAL_CALCULUS_LABEL, rows: survivalRows },
     { label: "Imperial Apologetics", rows: apologistRows },
   ];
 

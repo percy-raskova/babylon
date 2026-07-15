@@ -26,6 +26,8 @@ import type {
   CommunityEntry,
   CommunitiesDashboardPayload,
   JournalPayload,
+  ClassHistoryPoint,
+  ClassHistoryPayload,
 } from "@/types/game";
 import type { WireFeed, WireStoryIndex } from "@/types/wire";
 import { EMPTY_WIRE_FEED } from "@/types/wire";
@@ -413,6 +415,29 @@ export function makeEconomyDashboardPayload(
 export function makeJournalPayload(overrides?: Partial<JournalPayload>): JournalPayload {
   return {
     events: [],
+    ...overrides,
+  };
+}
+
+/** One point of GET /api/games/{id}/node/{entityId}/history/'s `history`
+ *  array (Wave 2 W2.5a) — a social_class node's per-tick survival calculus. */
+export function makeClassHistoryPoint(overrides?: Partial<ClassHistoryPoint>): ClassHistoryPoint {
+  return {
+    tick: 1,
+    p_acquiescence: 0.6,
+    p_revolution: 0.2,
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/node/{entityId}/history/ payload (Wave 2 W2.5a). */
+export function makeClassHistoryPayload(
+  overrides?: Partial<ClassHistoryPayload>,
+): ClassHistoryPayload {
+  return {
+    class_id: "C002",
+    history: [],
+    ruptures: [],
     ...overrides,
   };
 }

@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { InspectionCard } from "./InspectionCard";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
+import { resetMockGameState, DEFAULT_GAME_ID } from "@/test/handlers";
 import type { InspectionFrame } from "@/store/slices/inspectSlice";
 
 beforeEach(() => {
   resetStore();
+  resetMockGameState();
 });
 
 function frame(overrides?: Partial<InspectionFrame>): InspectionFrame {
@@ -108,5 +110,76 @@ describe("InspectionCard", () => {
       <InspectionCard frame={frame()} canDrill={false} onDrill={vi.fn()} onTogglePin={vi.fn()} />,
     );
     expect(screen.getByTestId("depth-limit-notice")).toBeInTheDocument();
+  });
+
+  describe("SurvivalDuelPanel wiring (Wave 2 W2.5a)", () => {
+    it("mounts SurvivalDuelPanel for a resolved social_class frame given a gameId", async () => {
+      render(
+        <InspectionCard
+          frame={frame({
+            ref: { kind: "node", id: "C002" },
+            data: {
+              ref: { kind: "node", id: "C002" },
+              title: "Periphery Proletariat",
+              sections: [
+                { rows: [{ label: "Wealth", value: 0.4, format: "decimal2" }] },
+                {
+                  label: "Survival Calculus",
+                  rows: [
+                    { label: "P(S|A) Acquiescence", value: 0.6, format: "decimal3" },
+                    { label: "P(S|R) Revolution", value: 0.2, format: "decimal3" },
+                  ],
+                },
+              ],
+            },
+          })}
+          canDrill
+          onDrill={vi.fn()}
+          onTogglePin={vi.fn()}
+          gameId={DEFAULT_GAME_ID}
+        />,
+      );
+      expect(screen.getByText("P(S|A) Acquiescence")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("survival-duel-panel")).toBeInTheDocument());
+    });
+
+    it("does not mount SurvivalDuelPanel for a non-social_class frame (e.g. an org)", () => {
+      render(
+        <InspectionCard
+          frame={frame({
+            data: {
+              ref: { kind: "org", id: "org-1" },
+              title: "Wayne County Committee",
+              sections: [{ rows: [{ label: "Cohesion", value: 0.6, format: "decimal2" }] }],
+            },
+          })}
+          canDrill
+          onDrill={vi.fn()}
+          onTogglePin={vi.fn()}
+          gameId={DEFAULT_GAME_ID}
+        />,
+      );
+      expect(screen.queryByTestId("survival-duel-panel")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("duel-sparkline-empty")).not.toBeInTheDocument();
+    });
+
+    it("does not mount SurvivalDuelPanel when no gameId is supplied, even for a social_class frame", () => {
+      render(
+        <InspectionCard
+          frame={frame({
+            ref: { kind: "node", id: "C002" },
+            data: {
+              ref: { kind: "node", id: "C002" },
+              title: "Periphery Proletariat",
+              sections: [{ label: "Survival Calculus", rows: [] }],
+            },
+          })}
+          canDrill
+          onDrill={vi.fn()}
+          onTogglePin={vi.fn()}
+        />,
+      );
+      expect(screen.queryByTestId("survival-duel-panel")).not.toBeInTheDocument();
+    });
   });
 });

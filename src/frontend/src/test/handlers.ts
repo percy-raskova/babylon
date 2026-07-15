@@ -20,6 +20,7 @@ import {
   makeObjectivesTracker,
   makeTradeFlowsPayload,
   makeJournalPayload,
+  makeClassHistoryPayload,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -295,6 +296,19 @@ export const handlers = [
   }),
 
   // ---- Inspector drill-downs — GET /api/games/{id}/{kind}/{entityId}/ --
+
+  // Wave 2 W2.5a/W2.5b — GET /api/games/{id}/node/{entityId}/history/: a
+  // class's survival-calculus history (SurvivalDuelPanel's fetch). Registered
+  // ahead of the generic 2-segment catch-all below since this route has an
+  // extra trailing /history/ segment. Empty by default; tests needing real
+  // points/markers override with server.use().
+  http.get("/api/games/:id/node/:entityId/history/", ({ params }) => {
+    logRequest("GET node:history");
+    return HttpResponse.json({
+      status: "ok",
+      data: makeClassHistoryPayload({ class_id: String(params.entityId) }),
+    });
+  }),
 
   http.get("/api/games/:id/:kind/:entityId/", ({ params }) => {
     logRequest(`GET inspector:${String(params.kind)}`);

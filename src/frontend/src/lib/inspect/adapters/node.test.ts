@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { adaptNode } from "./node";
+import { adaptNode, hasSurvivalCalculus } from "./node";
 
 describe("adaptNode (social_class, Program 17 Wave 1 / W1.4+W1.6)", () => {
   const baseData = {
@@ -139,5 +139,36 @@ describe("adaptNode (social_class, Program 17 Wave 1 / W1.4+W1.6)", () => {
     const rows = node.sections[0]?.rows ?? [];
     expect(rows.find((r) => r.label === "type")?.value).toBe("node");
     expect(rows.find((r) => r.label === "details")?.value).toBe("Stub details.");
+  });
+
+  describe("Survival Calculus section (Wave 2 W2.5a, owner ruling 3)", () => {
+    it("renders P(S|A) and P(S|R) rows from the inspector payload", () => {
+      const node = adaptNode(
+        { kind: "node", id: "C002" },
+        { ...baseData, p_acquiescence: 0.72, p_revolution: 0.18 },
+      );
+      const section = node.sections.find((s) => s.label === "Survival Calculus");
+      expect(section).toBeDefined();
+      expect(section?.rows.find((r) => r.label === "P(S|A) Acquiescence")?.value).toBe(0.72);
+      expect(section?.rows.find((r) => r.label === "P(S|R) Revolution")?.value).toBe(0.18);
+    });
+
+    it("renders honest nulls when p_acquiescence/p_revolution are absent", () => {
+      const node = adaptNode({ kind: "node", id: "C002" }, baseData);
+      const section = node.sections.find((s) => s.label === "Survival Calculus");
+      expect(section?.rows.find((r) => r.label === "P(S|A) Acquiescence")?.value).toBeNull();
+      expect(section?.rows.find((r) => r.label === "P(S|R) Revolution")?.value).toBeNull();
+    });
+
+    it("hasSurvivalCalculus is true for a resolved social_class node", () => {
+      const node = adaptNode({ kind: "node", id: "C002" }, baseData);
+      expect(hasSurvivalCalculus(node)).toBe(true);
+    });
+
+    it("hasSurvivalCalculus is false for a non-social_class node and for null", () => {
+      const node = adaptNode({ kind: "node", id: "n1" }, { type: "node", details: "Stub." });
+      expect(hasSurvivalCalculus(node)).toBe(false);
+      expect(hasSurvivalCalculus(null)).toBe(false);
+    });
   });
 });

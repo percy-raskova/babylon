@@ -12,3 +12,4 @@
 export { BblLabel } from "./BblLabel";
 export { BblData } from "./BblData";
 export { Sparkline } from "./Sparkline";
+export { DuelSparkline } from "./DuelSparkline";

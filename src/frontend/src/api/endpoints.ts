@@ -38,6 +38,7 @@ import type {
   InfrastructurePayload,
   ScenarioInfo,
   ActionPreviewResult,
+  ClassHistoryPayload,
 } from "@/types/game";
 import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/types/dialectic";
 import type { TradeFlowsPayload } from "@/types/trade";
@@ -147,6 +148,11 @@ export const endpoints = {
   inspectorHex: ep<Untyped>("/api/games/:id/hex/:entityId/"),
   inspectorOrgHistory: ep<Untyped>("/api/games/:id/org/:entityId/history/"),
   inspectorTerritoryHistory: ep<Untyped>("/api/games/:id/territory/:entityId/history/"),
+  // Wave 2 W2.5a/W2.5b (reports/wave2-implementation-map.md owner ruling 3):
+  // class survival-calculus history — mirrors the org/territory history
+  // routes above but, unlike them, has a real frontend consumer
+  // (SurvivalDuelPanel) as of this row, hence typed rather than Untyped.
+  inspectorNodeHistory: ep<ClassHistoryPayload>("/api/games/:id/node/:entityId/history/"),
 
   // ---- Formula/metric provenance (spec-113 Lane D) ---------------------- //
   explain: ep<ExplainResponse>("/api/games/:id/explain/"),

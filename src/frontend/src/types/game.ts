@@ -334,6 +334,58 @@ export interface AlertsPayload {
   alerts: GameEvent[];
 }
 
+/**
+ * One per-tick point of a `social_class` node's survival-calculus history
+ * (Wave 2 W2.5a/W2.5b, `reports/wave2-implementation-map.md` owner ruling
+ * 3). Sourced from the real `class_snapshot` table (mirrors the
+ * `org_snapshot`/`territory_snapshot` per-tick pattern, spec 111 C2), never
+ * client-side accumulation. Honest-null (Constitution III.11): a tick the
+ * engine has not populated stays `null` rather than a fabricated value.
+ */
+export interface ClassHistoryPoint {
+  tick: number;
+  p_acquiescence: number | null;
+  p_revolution: number | null;
+}
+
+/**
+ * `GET /api/games/:id/node/:entityId/history/` response body for a
+ * `social_class` node (Wave 2 W2.5a/W2.5b) — mirrors `get_org_history`'s
+ * `{org_id, history}` shape (`web/game/engine_bridge.py`). The URL path
+ * param is `node_id` (reusing the generic `/node/:node_id/` inspector
+ * route), but the envelope key follows `get_org_history`'s convention of
+ * naming it after the snapshot table's own PK column — `class_snapshot`'s
+ * is `class_id` (`postgres_schema.py`'s `CLASS_SNAPSHOT_DDL`,
+ * `query_class_snapshot_history`'s `class_id` parameter). Oldest-tick-first;
+ * an empty `history` is an honest "no ticks recorded yet", never a
+ * fabricated flat line.
+ *
+ * `ruptures` is the server-filtered UPRISING/`revolutionary_pressure`
+ * event list for THIS node (`query_node_uprising_events`) — preferred over
+ * client-filtering `/journal/`, whose shared 200-event cap can silently
+ * age an old rupture out of the window in a long game.
+ */
+export interface ClassHistoryPayload {
+  class_id: string;
+  history: ClassHistoryPoint[];
+  ruptures: GameEvent[];
+}
+
+/**
+ * A rupture marker on the Survival Duel chart (Wave 2 W2.5a, owner ruling
+ * 3): one `UPRISING` event whose `data.trigger === "revolutionary_pressure"`
+ * for this class's node id — the only honest P(S|R) > P(S|A) crossing
+ * signal (struggling classes only, agitation gated; `struggle.py`'s
+ * `uprising_condition`). Sourced from `ClassHistoryPayload.ruptures` (the
+ * uncapped, server-filtered list) with the same predicate re-applied
+ * client-side as defense-in-depth — never computed from the raw
+ * probability crossing, which is not evented for non-struggling classes.
+ */
+export interface RuptureMarker {
+  tick: number;
+  eventId: string;
+}
+
 /** Spec 093 US5: GET /api/games/{id}/economy/?territory_id= — real
  *  per-territory economic summary for Territory Detail's economic panel.
  *  See `specs/093-territory-org-detail/contracts/economy.yaml`. */

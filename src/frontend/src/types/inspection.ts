@@ -200,6 +200,14 @@ export interface InspectorNodeResponse {
   class_consciousness?: number | null;
   national_identity?: number | null;
   agitation?: number | null;
+  /** Survival Calculus (Wave 2 W2.5a/W2.5b): `Sigmoid(Wealth - Subsistence)` —
+   *  survival probability via acquiescence. Undefined/null until Backend-3
+   *  wires `_social_class_inspector_fields` to carry `SurvivalSystem.step`'s
+   *  `p_acquiescence` (survival.py:143). */
+  p_acquiescence?: number | null;
+  /** Survival Calculus: `Organization / Repression` — survival probability
+   *  via revolution. Same exposure gap as `p_acquiescence` above. */
+  p_revolution?: number | null;
   consciousness?: ConsciousnessVector | null;
   inequality?: number | null;
   class_position?: string;

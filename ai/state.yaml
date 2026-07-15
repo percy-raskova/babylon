@@ -2677,4 +2677,19 @@ program_20_means_of_production:
     - add 'use flake ./infra' guard line to the live checkout's .envrc
     - run terraform plan before next apply (cloudflare provider 5.18->5.22)
     - owner-run 'ansible-playbook -i localhost, -K ansible/workstation.yml'
-  track_b_ai_modernization: IN_PROGRESS
+  track_b_ai_modernization: COMPLETE
+  track_b_summary: >
+    Narrator stack modernized behind BABYLON_LLM_NARRATOR (D3 intact, Mock
+    Doctrine): prompt registry (versioned artifacts, hash-derived
+    PROMPT_VERSION + drift-proof), RIOT-style event archetypes bound to
+    real+reachable EventTypes, LLMConfig provider selection, WorkersAIClient
+    (AI Gateway, @cf/openai/gpt-oss-20b, cf-aig-gateway-id) + factory,
+    NarrationRecord persistence (migration 0015), real GET /narration/
+    endpoint to the cockpit's typed contract (registry entry, sentinel
+    rails), architecture.yaml ai_narrative block rewritten to reality.
+    Flag-off wire feed byte-identical (parity tests green).
+  crown_finding: >
+    Fresh worktrees lack the untracked data/ symlink farm; sqlite
+    creates-on-connect forged a stub reference DB that data_doctor's
+    readlink -e check accepted while 30 tests failed. Doctor check 3b now
+    fails loud on a non-symlink data/sqlite (commit c857e060).

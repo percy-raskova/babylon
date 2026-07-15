@@ -45,6 +45,15 @@ if ! readlink -e "$REPO_ROOT/data/sqlite/marxist-data-3NF.sqlite" >/dev/null 2>&
   bad "repo symlink $REPO_ROOT/data/sqlite dangles (reference-DB tests will FAIL, not skip)"
 fi
 
+# 3b. data/sqlite must BE a symlink into the trove — a real dir here means a
+#     test run auto-created an empty stub DB (sqlite creates-on-connect) and
+#     every reference-DB test fails with "no such table". readlink -e alone
+#     passes on such a stub, which is exactly how this slipped past on
+#     2026-07-15 in a fresh worktree (symlink farm is untracked local state).
+if [ -e "$REPO_ROOT/data/sqlite" ] && [ ! -L "$REPO_ROOT/data/sqlite" ]; then
+  bad "repo data/sqlite is a real dir/file, not a trove symlink — likely an auto-created stub DB; fix: rm -r data/sqlite && ln -s $EXPECTED_MOUNT/babylon-data/sqlite data/sqlite"
+fi
+
 # 4. The Postgres bind source must sit on the data drive — NOT the root fs.
 #    (The exact silent failure mode of 2026-07-13: docker auto-creates a missing
 #    bind path and Postgres initdb's a divergent shadow cluster, zero errors.)

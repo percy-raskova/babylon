@@ -25,6 +25,9 @@ import type {
   EconomyDashboardPayload,
   CommunityEntry,
   CommunitiesDashboardPayload,
+  StateApparatusDashboard,
+  EdgeRow,
+  EdgesDashboardPayload,
   JournalPayload,
   ClassHistoryPoint,
   ClassHistoryPayload,
@@ -563,6 +566,78 @@ export function makeCommunitiesDashboardPayload(
 ): CommunitiesDashboardPayload {
   return {
     communities: [makeCommunityEntry()],
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/state-apparatus/ payload (spec-111 C2). Defaults
+ * mirror the real wayne_county contract: the seeded Detroit Police
+ * Department (`ORG002`, a `state_apparatus` org — not player-controlled, so
+ * `vanguard: null`), no state actions fired yet (honest at tick 0), and no
+ * state finances seeded (no scenario ships `WorldState.state_finances`).
+ */
+export function makeStateApparatusDashboard(
+  overrides?: Partial<StateApparatusDashboard>,
+): StateApparatusDashboard {
+  return {
+    tick: 0,
+    organizations: [
+      makeOrg({
+        id: "ORG002",
+        name: "Detroit Police Department",
+        org_type: "state_apparatus",
+        class_character: "state",
+        budget: 40,
+        heat: 0.1,
+        territory_ids: [],
+        hyperedge_memberships: [],
+        vanguard: null,
+      }),
+    ],
+    org_count: 1,
+    total_repression_budget: 40,
+    total_heat: 0.1,
+    state_finances: {},
+    recent_actions: [],
+    ...overrides,
+  };
+}
+
+/** One `EdgeRow` (see `_edge_row` in `engine_bridge.py`). */
+export function makeEdgeRow(overrides?: Partial<EdgeRow>): EdgeRow {
+  return {
+    source_id: "org-finance-bloc",
+    target_id: "org-workers-union",
+    edge_type: "exploitation",
+    edge_mode: null,
+    value_flow: 12.5,
+    tension: 0.4,
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/edges/ payload (spec-111 C2). Defaults mirror the
+ * real wayne_county contract cited in
+ * `tests/unit/web/test_edges_dashboard.py`: 495 total edges split across
+ * the seeded relation types (summing back to `total_edges`, matching the
+ * backend's own `sum(counts.values()) == total_edges` invariant), one
+ * SOLIDARITY edge at strength 0.05 (the seeded Detroit prole <-> Dearborn
+ * workers edge), and an honestly-empty `counts_by_mode` (tick 0, before
+ * `EdgeTransitionSystem` has run).
+ */
+export function makeEdgesDashboard(
+  overrides?: Partial<EdgesDashboardPayload>,
+): EdgesDashboardPayload {
+  return {
+    tick: 0,
+    total_edges: 495,
+    counts_by_type: { exploitation: 200, wages: 150, solidarity: 50, tenancy: 95 },
+    counts_by_mode: {},
+    top_by_tension: [makeEdgeRow({ tension: 0.82, value_flow: 40 })],
+    top_by_value_flow: [makeEdgeRow({ tension: 0.4, value_flow: 500 })],
+    solidarity_strength_stats: { count: 1, avg: 0.05, min: 0.05, max: 0.05 },
     ...overrides,
   };
 }

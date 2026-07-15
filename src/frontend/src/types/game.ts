@@ -907,6 +907,84 @@ export interface CommunitiesDashboardPayload {
   communities: CommunityEntry[];
 }
 
+/**
+ * GET /api/games/{id}/state-apparatus/ — the State Apparatus intelligence
+ * screen (spec-111 C2). See `EngineBridge.get_state_apparatus_dashboard` /
+ * `_build_state_apparatus_dashboard`.
+ *
+ * `organizations` reuses `OrgState` (the same shape the Outliner/OrgNetwork
+ * already render) filtered server-side to `org_type === "state_apparatus"` —
+ * wayne_county seeds the Detroit Police Department (`"ORG002"`), so this is
+ * non-empty (`org_count >= 1`) for that scenario. `recent_actions` reuses
+ * `GameEvent` (the same shape the journal/alerts feeds render), pre-filtered
+ * to STATE_REPRESSION/STATE_SURVEILLANCE/STATE_ACTION_EXECUTED rows.
+ *
+ * `state_finances` is honestly `{}` today — no scenario seeds
+ * `WorldState.state_finances` yet (Constitution III.11: an empty map is the
+ * true state, never a fabricated placeholder). Typed as a loose record
+ * (per-state `StateFinance.model_dump()` JSON) rather than a fully-modeled
+ * interface since there is no real data yet to shape one against.
+ */
+export interface StateApparatusDashboard {
+  tick: number;
+  organizations: OrgState[];
+  org_count: number;
+  total_repression_budget: number;
+  total_heat: number;
+  state_finances: Record<string, unknown>;
+  recent_actions: GameEvent[];
+}
+
+/**
+ * One live graph edge projected onto the edges-dashboard row shape — see
+ * `_edge_row` in `web/game/engine_bridge.py`. `edge_type` is the mechanical
+ * `EdgeType` (exploitation/wages/solidarity/tenancy/tribute/…), lowercased;
+ * `edge_mode` is the dialectical EdgeMode classification, also lowercased,
+ * and `null` until `EdgeTransitionSystem` has run at least one tick — a
+ * fresh tick-0 graph legitimately has no edge_mode yet (Constitution
+ * III.11). Both are typed as loose `string`s rather than the uppercase
+ * `EdgeMode` union above: the backend lowercases whatever `EdgeType`/
+ * `EdgeMode` StrEnum value is present, so reusing that union verbatim
+ * would be dishonest casing.
+ */
+export interface EdgeRow {
+  source_id: string;
+  target_id: string;
+  edge_type: string;
+  edge_mode: string | null;
+  value_flow: number;
+  tension: number;
+}
+
+/**
+ * GET /api/games/{id}/edges/ — the edges/relations left-panel dashboard
+ * (spec-111 C2). See `EngineBridge.get_edges_dashboard` /
+ * `_build_edges_dashboard`. Aggregates every live graph edge: counts by
+ * mechanical `edge_type` and by dialectical `edge_mode` (the latter
+ * honestly `{}` until `EdgeTransitionSystem` runs a tick), the top-10
+ * edges by absolute `value_flow` and by `tension` (both deterministically
+ * tie-broken by `(source_id, target_id)`), and SOLIDARITY-edge strength
+ * summary stats. The "where is the class war hottest" ranked/textual
+ * companion to the `field_flow` spatial lens.
+ *
+ * `solidarity_strength_stats`'s `avg`/`min`/`max` are `null` when `count`
+ * is 0 (no SOLIDARITY edges seeded this session) — never a fabricated 0.
+ */
+export interface EdgesDashboardPayload {
+  tick: number;
+  total_edges: number;
+  counts_by_type: Record<string, number>;
+  counts_by_mode: Record<string, number>;
+  top_by_value_flow: EdgeRow[];
+  top_by_tension: EdgeRow[];
+  solidarity_strength_stats: {
+    count: number;
+    avg: number | null;
+    min: number | null;
+    max: number | null;
+  };
+}
+
 /** Aggregated admin-level feature from map snapshot. */
 export interface AdminFeatureProperties {
   group_key: string;

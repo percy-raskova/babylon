@@ -616,7 +616,16 @@ flowchart TD
 > percolation chip. Corrections vs the audit: OrgNetworkNode's typed contract has NO
 > social_class kind; MEMBERSHIP edges have zero production writers; CLIENT_STATE is a
 > class→class subsidy edge, not org-related. Stragglers → task #76: centrality MAP lens,
-> edge-history sparkline, SeamScope NETWORK enum extension).
+> edge-history sparkline; the SeamScope NETWORK extension landed `6da3ab97`).
+> **Waves 5+6 — PROGRAM PROPOSALS DRAFTED 2026-07-15, pending owner ratification**
+> (`e42c0059`): `project/research/epistemic-horizon-program-proposal.md` (fog of war —
+> corpus-mined from `ai/epochs/epoch3/fog-of-war.yaml`; crown rulings needed: the
+> epoch3-model vs Constitution-V Investigate-sub-verbs lineage reconciliation, and Desert
+> falsification vs III.11 Loud Failure) + `project/research/doctrine-tree-program-proposal.md`
+> (doctrine DAG/TL/four trunks from `doctrine-tree{,-mvp}.yaml`; crown rulings: corpus-MVP
+> staging vs the no-MVP directive, and the Strasserism faction-flip architecture).
+> Wave 5's displacement-lens item was largely delivered early by W2 R2's territory_type
+> categorical lens; its HIFLD/MIRTA loader item is gated on the CI-no-drive parquet program.
 
 ### Wave 1 — Make the Spine Felt (P0, no new engine math)
 

@@ -28,7 +28,12 @@
  * against the real `EventToasts.tsx`/`eventsSlice.ts` contracts — Phase V
  * must run this live.
  */
-import { expect, test, createWayneCountyGame } from "./fixtures";
+import {
+  expect,
+  test,
+  createWayneCountyGame,
+  acknowledgeAutopauseIfPresent,
+} from "./fixtures";
 
 /** Hard cap on Step presses while waiting for an urgent (critical/notable) event to toast. */
 const MAX_STEPS = 20;
@@ -91,14 +96,8 @@ test.describe("event popup on tick advance (cockpit, spec-113 Lane G)", () => {
 
     // A critical event also raises the CriticalEventModal (the autopause
     // alertdialog) OVER the toast rail — its full-screen backdrop
-    // intercepts every toast click until acknowledged. Resume returns the
-    // time slice to plain "paused" (timeSlice.resume), so acknowledging
-    // here never sets the loop playing.
-    const criticalModal = page.getByTestId("critical-event-modal");
-    if (await criticalModal.isVisible()) {
-      await page.getByTestId("autopause-resume").click();
-      await expect(criticalModal).toHaveCount(0);
-    }
+    // intercepts every toast click until acknowledged.
+    await acknowledgeAutopauseIfPresent(page);
 
     // Whichever toast fired first, it carries the two-lifetime contract:
     // a persistent (critical) toast shows "Open Wire" + "Dismiss"; an

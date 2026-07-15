@@ -162,3 +162,6 @@ deploy/terraform/*.tfstate
 deploy/terraform/*.tfstate.backup
 deploy/ansible/.vault_pass
 deploy/ansible/production_inventory.yml
+
+# program-20: local infra subrepo mount (becomes a submodule when it gets a remote)
+/infra/

@@ -48,12 +48,16 @@ def pg_pool():  # type: ignore[no-untyped-def]
 
 @pytest.fixture
 def view_applied(pg_pool):  # type: ignore[no-untyped-def]
-    """Apply every numbered migration so the view is present."""
-    migrations_dir = Path("src/babylon/persistence/migrations").resolve()
-    with pg_pool.connection() as conn:
-        conn.autocommit = True
-        for sql_file in sorted(migrations_dir.glob("00*.sql")):
-            conn.execute(sql_file.read_text())
+    """Apply every numbered migration so the view is present.
+
+    Self-healing (task #77): delegates to the shared
+    ``conftest.apply_migrations_healing`` so a shared ``babylon_test`` DB left
+    mid-migration by a killed background pytest run is healed loudly with one
+    retry instead of erroring fixture setup — see conftest.py docstring.
+    """
+    from tests.unit.persistence.conftest import apply_migrations_healing
+
+    apply_migrations_healing(pg_pool)
 
 
 def test_view_columns_match_trace_csv_contract(pg_pool, view_applied) -> None:  # type: ignore[no-untyped-def]

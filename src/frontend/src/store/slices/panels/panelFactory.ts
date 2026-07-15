@@ -61,8 +61,15 @@ export function createPanel<T>(
   return { data: null, loading: false, error: null, mounted: false, fetch, setMounted };
 }
 
-/** The 5 tick-driven docked panels the fetch orchestrator fans out to. */
-export const PANEL_KEYS = ["summary", "timeseries", "economy", "communities", "map"] as const;
+/** The 6 tick-driven docked panels the fetch orchestrator fans out to. */
+export const PANEL_KEYS = [
+  "summary",
+  "timeseries",
+  "economy",
+  "communities",
+  "map",
+  "stateApparatus",
+] as const;
 export type PanelKey = (typeof PANEL_KEYS)[number];
 
 /**

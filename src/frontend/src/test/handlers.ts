@@ -25,6 +25,7 @@ import {
   makeFieldStatePayload,
   makeMapHistoryPayload,
   makeOrgNetworkPayload,
+  makeStateApparatusDashboard,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -207,6 +208,17 @@ export const handlers = [
   http.get("/api/games/:id/communities/", () => {
     logRequest("GET communities");
     return HttpResponse.json({ status: "ok", data: { communities: [] } });
+  }),
+
+  // spec-111 C2 — the State Apparatus intelligence screen. Defaults mirror
+  // the real wayne_county contract (Detroit PD seeded, no actions/finances
+  // yet); tests needing a specific payload override with server.use().
+  http.get("/api/games/:id/state-apparatus/", () => {
+    logRequest("GET stateApparatus");
+    return HttpResponse.json({
+      status: "ok",
+      data: makeStateApparatusDashboard({ tick: mockSnapshot.tick }),
+    });
   }),
 
   http.get("/api/games/:id/map/", () => {

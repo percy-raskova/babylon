@@ -907,6 +907,34 @@ export interface CommunitiesDashboardPayload {
   communities: CommunityEntry[];
 }
 
+/**
+ * GET /api/games/{id}/state-apparatus/ — the State Apparatus intelligence
+ * screen (spec-111 C2). See `EngineBridge.get_state_apparatus_dashboard` /
+ * `_build_state_apparatus_dashboard`.
+ *
+ * `organizations` reuses `OrgState` (the same shape the Outliner/OrgNetwork
+ * already render) filtered server-side to `org_type === "state_apparatus"` —
+ * wayne_county seeds the Detroit Police Department (`"ORG002"`), so this is
+ * non-empty (`org_count >= 1`) for that scenario. `recent_actions` reuses
+ * `GameEvent` (the same shape the journal/alerts feeds render), pre-filtered
+ * to STATE_REPRESSION/STATE_SURVEILLANCE/STATE_ACTION_EXECUTED rows.
+ *
+ * `state_finances` is honestly `{}` today — no scenario seeds
+ * `WorldState.state_finances` yet (Constitution III.11: an empty map is the
+ * true state, never a fabricated placeholder). Typed as a loose record
+ * (per-state `StateFinance.model_dump()` JSON) rather than a fully-modeled
+ * interface since there is no real data yet to shape one against.
+ */
+export interface StateApparatusDashboard {
+  tick: number;
+  organizations: OrgState[];
+  org_count: number;
+  total_repression_budget: number;
+  total_heat: number;
+  state_finances: Record<string, unknown>;
+  recent_actions: GameEvent[];
+}
+
 /** Aggregated admin-level feature from map snapshot. */
 export interface AdminFeatureProperties {
   group_key: string;

@@ -25,6 +25,7 @@ import type {
   EconomyDashboardPayload,
   CommunityEntry,
   CommunitiesDashboardPayload,
+  StateApparatusDashboard,
   JournalPayload,
   ClassHistoryPoint,
   ClassHistoryPayload,
@@ -563,6 +564,40 @@ export function makeCommunitiesDashboardPayload(
 ): CommunitiesDashboardPayload {
   return {
     communities: [makeCommunityEntry()],
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/state-apparatus/ payload (spec-111 C2). Defaults
+ * mirror the real wayne_county contract: the seeded Detroit Police
+ * Department (`ORG002`, a `state_apparatus` org — not player-controlled, so
+ * `vanguard: null`), no state actions fired yet (honest at tick 0), and no
+ * state finances seeded (no scenario ships `WorldState.state_finances`).
+ */
+export function makeStateApparatusDashboard(
+  overrides?: Partial<StateApparatusDashboard>,
+): StateApparatusDashboard {
+  return {
+    tick: 0,
+    organizations: [
+      makeOrg({
+        id: "ORG002",
+        name: "Detroit Police Department",
+        org_type: "state_apparatus",
+        class_character: "state",
+        budget: 40,
+        heat: 0.1,
+        territory_ids: [],
+        hyperedge_memberships: [],
+        vanguard: null,
+      }),
+    ],
+    org_count: 1,
+    total_repression_budget: 40,
+    total_heat: 0.1,
+    state_finances: {},
+    recent_actions: [],
     ...overrides,
   };
 }

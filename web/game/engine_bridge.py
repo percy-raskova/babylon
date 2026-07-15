@@ -1144,14 +1144,15 @@ def _build_state_apparatus_dashboard(
     """Aggregate real state-apparatus data (spec 111 C2).
 
     Filters ``organizations`` (already-serialized :func:`_serialize_organization`
-    dicts) to ``org_type == "state_apparatus"`` — no scenario currently seeds
-    one (wayne_county's sole org is CIVIL_SOCIETY), so this is an honest
-    empty list for every session today, not a fabricated placeholder
-    (Constitution III.11). ``total_repression_budget``/``total_heat`` sum
-    the real ``budget``/``heat`` fields of whatever state orgs do exist.
-    ``state_finances`` surfaces :class:`StateFinance` (police_budget is the
-    literal repression-budget field) when the engine has seeded any — also
-    honestly empty today (no scenario seeds ``WorldState.state_finances``).
+    dicts) to ``org_type == "state_apparatus"``. wayne_county seeds the Detroit
+    Police Department (``ORG002``, a :class:`StateApparatus` — commit ``70d6e3f2``,
+    ``_legacy_wayne.py::_create_state_apparatus_org``), so this list is NON-EMPTY
+    for a real session (``org_count`` >= 1), and ``total_repression_budget``/
+    ``total_heat`` sum the real ``budget``/``heat`` fields of the seeded state
+    orgs. ``state_finances`` surfaces :class:`StateFinance` (police_budget is the
+    literal repression-budget field) when the engine has seeded any — still
+    honestly empty today (no scenario seeds ``WorldState.state_finances``), an
+    honest empty map, never a fabricated placeholder (Constitution III.11).
 
     Args:
         state: The hydrated WorldState.

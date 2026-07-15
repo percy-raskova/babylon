@@ -1,8 +1,9 @@
 /**
  * Panels slice — one docked-panel state per endpoint (spec-110 B3).
  *
- * `summary`/`timeseries`/`economy`/`communities`/`map` are the 5 tick-driven
- * panels the fetch orchestrator fans out to on `onTickAdvanced`.
+ * `summary`/`timeseries`/`economy`/`communities`/`map`/`stateApparatus` are
+ * the 6 tick-driven panels the fetch orchestrator fans out to on
+ * `onTickAdvanced`.
  *
  * `wire`/`contradiction`/`endgame`/`objectives`/`tradeFlows` back the
  * takeover surfaces + Objectives dock tab (spec-110 B5) — same
@@ -21,6 +22,7 @@ import type {
   TimeseriesPayload,
   EconomyDashboardPayload,
   CommunitiesDashboardPayload,
+  StateApparatusDashboard,
   OrgNetworkPayload,
 } from "@/types/game";
 import type { FeatureCollection } from "geojson";
@@ -47,6 +49,7 @@ export interface PanelsSlice {
     economy: Panel<EconomyDashboardPayload>;
     communities: Panel<CommunitiesDashboardPayload>;
     map: Panel<FeatureCollection>;
+    stateApparatus: Panel<StateApparatusDashboard>;
     wire: Panel<WireFeed>;
     contradiction: Panel<ContradictionSnapshot>;
     endgame: Panel<EndgameState>;
@@ -84,6 +87,14 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
   const mapPanel = createPanel<FeatureCollection>(
     (gameId, getRoot) => `${endpoints.map.path({ id: gameId })}?zoom=${getRoot().map.framing}`,
     (updater) => set((s) => ({ panels: { ...s.panels, map: updater(s.panels.map) } })),
+    get,
+  );
+  const stateApparatus = createPanel<StateApparatusDashboard>(
+    (gameId) => endpoints.stateApparatus.path({ id: gameId }),
+    (updater) =>
+      set((s) => ({
+        panels: { ...s.panels, stateApparatus: updater(s.panels.stateApparatus) },
+      })),
     get,
   );
 
@@ -132,6 +143,7 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
       economy,
       communities,
       map: mapPanel,
+      stateApparatus,
       wire,
       contradiction,
       endgame,

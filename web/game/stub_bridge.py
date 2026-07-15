@@ -997,6 +997,24 @@ class StubEngineBridge:
     # Spec 103: Trade surfaces — stub returns honest empty states.
     # ------------------------------------------------------------------ #
 
+    def get_field_state(self, session_id: UUID) -> dict[str, Any]:
+        """Program 19/20 (Wave 3 Round 1): honest empty-but-well-formed stub.
+
+        The hypergraph/communities cautionary tale (a real bridge method the
+        stub never implemented -> guaranteed 500) does not repeat here: the
+        stub carries no engine, so it has no field stack to report — nulls
+        and empty lists, never fabricated field/gradient values.
+        """
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        return {
+            "tick": tick,
+            "nodes": [],
+            "edges": [],
+            "principal_field": None,
+            "dialectical_regime": None,
+        }
+
     def get_trade_flows(self, _session_id: UUID) -> dict[str, Any]:
         """Stub: no boundary_flow_register in stub mode → has_data: False."""
         return {"tick": 0, "has_data": False, "blocs": []}

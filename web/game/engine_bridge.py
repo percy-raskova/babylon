@@ -1382,6 +1382,154 @@ def _agitation_index_by_territory(
     return index
 
 
+def _class_to_territory(tenancy_members: dict[str, list[str]]) -> dict[str, str]:
+    """Invert :func:`_tenancy_members_by_territory` to social_class -> territory.
+
+    Program 19/20 (Wave 3 Round 1): the field-stack edge payload
+    (:func:`_build_field_state_edges`) anchors each gradient edge's endpoints
+    onto a territory. Deterministic tie-break: territories and their members
+    are walked in sorted order, so the lexicographically smallest territory
+    wins if a class somehow carries TENANCY edges into more than one
+    territory (not seeded by any current scenario, but not structurally
+    forbidden either).
+
+    Args:
+        tenancy_members: Output of :func:`_tenancy_members_by_territory`
+            (territory node id -> list of tenant social_class node ids).
+
+    Returns:
+        Map of social_class node id -> territory node id. A class with no
+        TENANCY edge into any territory is simply absent — callers must
+        treat a missing entry as unresolved, never a fabricated territory.
+    """
+    mapping: dict[str, str] = {}
+    for territory_id in sorted(tenancy_members):
+        for class_id in sorted(tenancy_members[territory_id]):
+            mapping.setdefault(class_id, territory_id)
+    return mapping
+
+
+def _build_field_state_nodes(graph: Any) -> list[dict[str, Any]]:
+    """Serialize the Systems #19/#20 field stack per social_class node.
+
+    Program 19/20 (Wave 3 Round 1): reads ``contradiction_fields``
+    (ContradictionFieldSystem @19), ``field_derivatives`` (FieldDerivativeSystem
+    @20 — only its ``laplacian``/``df_dt`` sub-keys; ``d2f_dt2`` is out of this
+    endpoint's declared contract), and ``fascist_alignment``
+    (FascistFactionSystem) off each social_class node. Constitution III.11: a
+    node carrying NONE of these attrs is omitted entirely from the result; a
+    node carrying some (not all) contributes only the keys it actually has.
+
+    Args:
+        graph: The hydrated session graph (nx-compat ``.nodes(data=True)``).
+
+    Returns:
+        List of ``{"id", "name", "fields"?, "laplacian"?, "df_dt"?,
+        "fascist_alignment"?}`` dicts, sorted by ``id`` (deterministic,
+        independent of graph iteration order).
+    """
+    nodes_fn = getattr(graph, "nodes", None)
+    if nodes_fn is None:
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for node_id, data in nodes_fn(data=True):
+        if not isinstance(data, dict) or data.get("_node_type") != "social_class":
+            continue
+
+        optional: dict[str, Any] = {}
+
+        fields = data.get("contradiction_fields")
+        if isinstance(fields, dict) and fields:
+            optional["fields"] = dict(fields)
+
+        derivatives = data.get("field_derivatives")
+        if isinstance(derivatives, dict) and derivatives:
+            laplacian = {
+                name: deriv["laplacian"]
+                for name, deriv in derivatives.items()
+                if isinstance(deriv, dict) and deriv.get("laplacian") is not None
+            }
+            df_dt = {
+                name: deriv["df_dt"]
+                for name, deriv in derivatives.items()
+                if isinstance(deriv, dict) and deriv.get("df_dt") is not None
+            }
+            if laplacian:
+                optional["laplacian"] = laplacian
+            if df_dt:
+                optional["df_dt"] = df_dt
+
+        fascist_alignment = data.get("fascist_alignment")
+        if fascist_alignment is not None:
+            optional["fascist_alignment"] = float(fascist_alignment)
+
+        if not optional:
+            continue
+
+        entries.append({"id": node_id, "name": data.get("name", node_id), **optional})
+
+    entries.sort(key=lambda entry: entry["id"])
+    return entries
+
+
+def _build_field_state_edges(graph: Any, class_territory: dict[str, str]) -> list[dict[str, Any]]:
+    """Serialize FieldDerivativeSystem @20's per-edge gradients, territory-anchored.
+
+    Program 19/20 (Wave 3 Round 1): reads the ``field_gradients`` dict
+    FieldDerivativeSystem's ``_compute_edge_gradients`` writes onto every edge
+    whose two endpoints both carry ``contradiction_fields`` (in production,
+    exclusively social_class<->social_class edges — any edge touching a
+    non-social_class node has an empty ``contradiction_fields`` on that end
+    and is skipped by the engine, so it never carries ``field_gradients``
+    either). Each edge contributes one entry per field name it has a gradient
+    for. Territory anchoring reuses :func:`_class_to_territory` (built from
+    :func:`_tenancy_members_by_territory`, the bridge's existing tenancy
+    resolution) — an endpoint with no resolvable territory keeps its edge
+    entry with that territory key present but ``None`` (the same
+    keep-key-use-null convention ``_serialize_territory``'s
+    dominant_class/solidarity_index/agitation reads already use for an
+    unresolvable per-territory aggregate — see :func:`_dominant_class_by_territory`),
+    never omitted or fabricated.
+
+    Args:
+        graph: The hydrated session graph (nx-compat ``.edges(data=True)``).
+        class_territory: Output of :func:`_class_to_territory`.
+
+    Returns:
+        List of ``{"source", "target", "source_territory", "target_territory",
+        "field", "gradient"}`` dicts, sorted by ``(source, target, field)``
+        (deterministic, independent of graph iteration order).
+    """
+    edges_fn = getattr(graph, "edges", None)
+    if edges_fn is None:
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for source, target, data in edges_fn(data=True):
+        if not isinstance(data, dict):
+            continue
+        gradients = data.get("field_gradients")
+        if not isinstance(gradients, dict) or not gradients:
+            continue
+        source_territory = class_territory.get(source)
+        target_territory = class_territory.get(target)
+        for field_name in sorted(gradients):
+            entries.append(
+                {
+                    "source": source,
+                    "target": target,
+                    "source_territory": source_territory,
+                    "target_territory": target_territory,
+                    "field": field_name,
+                    "gradient": gradients[field_name],
+                }
+            )
+
+    entries.sort(key=lambda entry: (entry["source"], entry["target"], entry["field"]))
+    return entries
+
+
 def _build_solidarity_communities(graph: BabylonGraph) -> list[dict[str, Any]]:
     """Group nodes into communities via connected SOLIDARITY edges.
 
@@ -2980,6 +3128,76 @@ class EngineBridge:
         return {
             "tick": tick,
             "objectives": objectives,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Program 19/20: Contradiction Field Stack — the Field screen feed
+    # (Wave 3 Round 1, Backend-W3R1).
+    # ------------------------------------------------------------------ #
+
+    def get_field_state(self, session_id: UUID) -> dict[str, Any]:
+        """Return the System-19/20 contradiction-field stack for the Field screen.
+
+        Program 19/20 (Wave 3 Round 1). Reads ``contradiction_fields``/
+        ``field_derivatives`` (ContradictionFieldSystem @19 /
+        FieldDerivativeSystem @20), ``fascist_alignment`` (FascistFactionSystem),
+        and the graph-level ``principal_field``/``dialectical_regime`` attrs via
+        :meth:`hydrate_graph` — the same access pattern as
+        :meth:`get_contradiction_snapshot`/:meth:`get_journal_objectives`
+        (``graph_attrs = getattr(graph, "graph", {}) or {}``). Constitution
+        III.11: a node/attr the engine did not compute this tick is OMITTED,
+        never fabricated as 0.0/""/a default dict.
+
+        Known altitude gap (found during this round, NOT fixed here — the
+        brief is read-only w.r.t. the engine/models): ``contradiction_fields``/
+        ``field_derivatives`` are excluded from ``SocialClass`` reconstruction
+        (``SOCIAL_CLASS_COMPUTED_FIELDS``, ``babylon.models.world_state``), and
+        ``dialectical_regime``/``principal_field`` are graph-level attrs
+        ``WorldState.to_graph()`` never re-emits (its ``G.graph`` write is a
+        fixed whitelist — economy/state_finances/contradiction_frames/
+        opposition_states/events/event_log/institution_relations — that does
+        not include either). Unlike the territory ``tick_*`` attrs
+        ``_carry_tick_dynamics_flows`` re-injects onto ``new_graph`` before
+        every ``persist_tick``, no analogous carry-forward exists for the
+        field stack, so today these four read empty/null on every real
+        ``resolve_tick`` despite the engine computing them every tick — only
+        ``fascist_alignment`` (a real, defaulted ``SocialClass`` field)
+        survives the round-trip. This method is a faithful reader of whatever
+        the persisted graph actually carries; see the Backend-W3R1 report for
+        the full trace.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``FieldState`` dict: ``{"tick", "nodes", "edges", "principal_field",
+            "dialectical_regime"}``. See :func:`_build_field_state_nodes`/
+            :func:`_build_field_state_edges` for the per-entry shape.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        nodes = _build_field_state_nodes(graph)
+        tenancy_members = _tenancy_members_by_territory(graph)
+        class_territory = _class_to_territory(tenancy_members)
+        edges = _build_field_state_edges(graph, class_territory)
+
+        principal_raw = graph_attrs.get("principal_field")
+        principal_field = (
+            principal_raw.get("field_name") if isinstance(principal_raw, dict) else None
+        )
+
+        dialectical_regime = graph_attrs.get("dialectical_regime")
+        if not isinstance(dialectical_regime, dict):
+            dialectical_regime = None
+
+        return {
+            "tick": tick,
+            "nodes": nodes,
+            "edges": edges,
+            "principal_field": principal_field,
+            "dialectical_regime": dialectical_regime,
         }
 
     # ------------------------------------------------------------------ #

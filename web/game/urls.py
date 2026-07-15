@@ -56,6 +56,12 @@ urlpatterns: list[URLPattern] = [
         api.game_objectives,
         name="game-objectives",
     ),
+    # API: Program 19/20 — Contradiction Field Stack (Systems #19/#20)
+    path(
+        "games/<str:game_id>/field_state/",
+        api.game_field_state,
+        name="game-field-state",
+    ),
     # API: Spec 103 — Trade surfaces
     path(
         "games/<str:game_id>/trade-flows/",

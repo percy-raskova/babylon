@@ -55,6 +55,14 @@ class SeamScope(StrEnum):
         Wave 1 W1.4/W1.6 registers the ``get_inspector_node`` social_class
         additions — per-class ternary consciousness, agitation, and the
         4-node imperial-circuit Sankey data).
+    :cvar FIELD_STATE: the ``GET /api/games/{id}/field_state/`` payload
+        (``EngineBridge.get_field_state``; Program 19/20 Wave 3 Round 1) — the
+        Systems #19/#20 contradiction-field stack (per-node fields/gradients/
+        derivatives, ``fascist_alignment``, graph-level ``principal_field``/
+        ``dialectical_regime``). Distinct from :attr:`ENDGAME`'s System-18
+        opposition-gap ``dialectical_regime`` read on ``/contradiction/`` —
+        same graph attr, different observable surface, so scoping keeps them
+        from colliding under :class:`SeamEntry`'s ``key``.
     """
 
     MAP = "map"
@@ -63,6 +71,7 @@ class SeamScope(StrEnum):
     ENDGAME = "endgame"
     EVENT = "event"
     INSPECTOR = "inspector"
+    FIELD_STATE = "field_state"
 
 
 class LivenessClass(StrEnum):

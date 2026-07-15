@@ -2101,3 +2101,277 @@ class TestGetClassHistory:
         result = bridge.get_class_history(uuid.uuid4(), "C004")
 
         assert result["ruptures"] == []
+
+
+# ---------------------------------------------------------------------- #
+# Program 19/20 (Wave 3 Round 1, Backend-W3R1): get_field_state serializes
+# the System-19/20 contradiction-field stack — honest omission (III.11) +
+# deterministic sort (III.7).
+# ---------------------------------------------------------------------- #
+
+_FIELD_STATE_SESSION = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+
+def _graph_with_field_stack() -> BabylonGraph:
+    """A real BabylonGraph carrying the Systems #19/#20 field stack.
+
+    A real graph (not a MagicMock) is used because ``_tenancy_members_by_territory``
+    reads ``graph.edges`` via both iteration AND ``__getitem__`` while
+    ``_build_field_state_edges`` calls it AND ``graph.edges(data=True)`` —
+    ``BabylonGraph``'s real ``EdgesView`` satisfies every one of those; a
+    hand-rolled mock would have to reimplement all three.
+    """
+    g = BabylonGraph()
+    g.graph["tick"] = 9
+    g.graph["principal_field"] = {
+        "field_name": "exploitation",
+        "max_abs_df_dt": 0.05,
+        "changed": True,
+    }
+    g.graph["dialectical_regime"] = {
+        "regime": "crisis",
+        "opposition": "capital_labor",
+        "rate": 0.12,
+    }
+    # C002 is added before C001 — the serializer must sort by id regardless
+    # of insertion/iteration order.
+    g.add_node(
+        "C002",
+        "social_class",
+        name="Suburban Petit-Bourgeois",
+        contradiction_fields={"exploitation": 0.6, "atomization": 0.2},
+        field_derivatives={
+            "exploitation": {"laplacian": 0.1, "df_dt": 0.02, "d2f_dt2": 0.001},
+            "atomization": {"laplacian": 0.0, "df_dt": None, "d2f_dt2": None},
+        },
+        fascist_alignment=0.4,
+    )
+    g.add_node(
+        "C001",
+        "social_class",
+        name="Detroit Proletariat",
+        contradiction_fields={"exploitation": 0.8, "atomization": 0.2},
+        fascist_alignment=0.0,
+    )
+    # C003 carries NONE of the field-stack attrs — must be omitted entirely.
+    g.add_node("C003", "social_class", name="Wayne County Bourgeoisie")
+    # T001 is a territory — never eligible as a field-state node regardless
+    # of any stray attrs.
+    g.add_node("T001", "territory", name="Downtown Detroit")
+    g.add_edge("C001", "T001", "TENANCY")
+    g.add_edge("C002", "T001", "TENANCY")
+    g.add_edge(
+        "C001",
+        "C002",
+        "EXPLOITATION",
+        field_gradients={"exploitation": -0.2, "atomization": 0.0},
+    )
+    return g
+
+
+def _field_state_bridge() -> EngineBridge:
+    mock_persistence = MagicMock()
+    mock_persistence.hydrate_graph.return_value = _graph_with_field_stack()
+    return EngineBridge(mock_persistence)
+
+
+@pytest.mark.unit
+class TestGetFieldState:
+    def test_nodes_honest_omission_of_absent_keys(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        by_id = {n["id"]: n for n in result["nodes"]}
+        # C003 carries none of the 4 attrs -> omitted entirely (III.11).
+        assert "C003" not in by_id
+
+        # C001 has fields + fascist_alignment but no field_derivatives -> no
+        # laplacian/df_dt keys at all (never a fabricated {} or 0.0).
+        c001 = by_id["C001"]
+        assert set(c001.keys()) == {"id", "name", "fields", "fascist_alignment"}
+        assert "laplacian" not in c001
+        assert "df_dt" not in c001
+
+        # C002 has all 4; atomization's df_dt=None is honestly omitted from
+        # the df_dt dict (only exploitation's real df_dt surfaces).
+        c002 = by_id["C002"]
+        assert c002["fields"] == {"exploitation": 0.6, "atomization": 0.2}
+        assert c002["laplacian"] == {"exploitation": 0.1, "atomization": 0.0}
+        assert c002["df_dt"] == {"exploitation": 0.02}
+        assert c002["fascist_alignment"] == 0.4
+
+    def test_nodes_sorted_deterministically_by_id(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        ids = [n["id"] for n in result["nodes"]]
+        assert ids == ["C001", "C002"]
+
+    def test_edges_territory_anchored_and_sorted(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        edges = result["edges"]
+        assert [e["field"] for e in edges] == ["atomization", "exploitation"]
+        for e in edges:
+            assert e["source"] == "C001"
+            assert e["target"] == "C002"
+            assert e["source_territory"] == "T001"
+            assert e["target_territory"] == "T001"
+        atomization_edge = next(e for e in edges if e["field"] == "atomization")
+        assert atomization_edge["gradient"] == 0.0
+        exploitation_edge = next(e for e in edges if e["field"] == "exploitation")
+        assert exploitation_edge["gradient"] == -0.2
+
+    def test_edges_unresolvable_territory_is_null_not_omitted(self) -> None:
+        g = BabylonGraph()
+        g.graph["tick"] = 1
+        g.add_node("C001", "social_class", name="A", contradiction_fields={"exploitation": 0.5})
+        g.add_node("C002", "social_class", name="B", contradiction_fields={"exploitation": 0.1})
+        g.add_edge("C001", "C002", "EXPLOITATION", field_gradients={"exploitation": -0.4})
+        mock_persistence = MagicMock()
+        mock_persistence.hydrate_graph.return_value = g
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert len(result["edges"]) == 1
+        edge = result["edges"][0]
+        # Keep-key-use-null: the territory keys are PRESENT but None, matching
+        # _serialize_territory's existing dominant_class/solidarity_index/
+        # agitation convention for an unresolvable per-territory aggregate.
+        assert "source_territory" in edge
+        assert edge["source_territory"] is None
+        assert "target_territory" in edge
+        assert edge["target_territory"] is None
+
+    def test_principal_field_extracts_field_name_from_graph_attr_dict(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["principal_field"] == "exploitation"
+
+    def test_principal_field_and_regime_null_when_graph_attrs_absent(self) -> None:
+        g = BabylonGraph()
+        g.graph["tick"] = 3
+        mock_persistence = MagicMock()
+        mock_persistence.hydrate_graph.return_value = g
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["principal_field"] is None
+        assert result["dialectical_regime"] is None
+        assert result["nodes"] == []
+        assert result["edges"] == []
+        assert result["tick"] == 3
+
+    def test_dialectical_regime_passthrough(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["dialectical_regime"] == {
+            "regime": "crisis",
+            "opposition": "capital_labor",
+            "rate": 0.12,
+        }
+
+    def test_tick_read_from_graph_attrs(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["tick"] == 9
+
+
+@pytest.mark.unit
+class TestGetFieldStateStubParity:
+    """The hypergraph/communities cautionary tale (``GET .../hypergraph/
+    communities/`` calls a bridge method neither bridge implements ->
+    guaranteed 500) must not repeat here — StubEngineBridge needs its own
+    honest-empty-but-well-formed ``get_field_state``."""
+
+    def test_stub_returns_well_formed_empty_payload(self) -> None:
+        from game.stub_bridge import StubEngineBridge
+
+        stub = StubEngineBridge()
+
+        result = stub.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["tick"] == 0
+        assert result["nodes"] == []
+        assert result["edges"] == []
+        assert result["principal_field"] is None
+        assert result["dialectical_regime"] is None
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestGetFieldStateAPIView:
+    """GET /api/games/{id}/field_state/ returns the standard envelope
+    (mirrors get_contradiction_snapshot's view wiring)."""
+
+    def test_view_returns_envelope(self) -> None:
+        from django.contrib.auth.models import User
+        from django.test import Client
+        from django.urls import reverse
+
+        import game.api
+        from game.models import GameSession
+
+        user = User.objects.create_user(  # type: ignore[no-untyped-call]
+            username="fieldstateuser", password="fieldstatepass123"
+        )
+        client = Client()
+        client.login(username="fieldstateuser", password="fieldstatepass123")
+        session = GameSession.objects.create(
+            id=uuid.UUID("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"),
+            player_id=user.id,
+            scenario="wayne_county",
+            current_tick=4,
+            status="active",
+        )
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.hydrate_graph.return_value = _graph_with_field_stack()
+        game.api._bridge_instance = EngineBridge(mock_persistence)
+
+        url = reverse("game:game-field-state", kwargs={"game_id": str(session.id)})
+        response = client.get(url)
+
+        assert response.status_code == 200
+        body = json.loads(response.content)
+        assert body["status"] == "ok"
+        assert body["session_id"] == str(session.id)
+        data = body["data"]
+        assert set(data.keys()) == {
+            "tick",
+            "nodes",
+            "edges",
+            "principal_field",
+            "dialectical_regime",
+        }
+        assert data["principal_field"] == "exploitation"
+
+    def test_view_404s_on_unknown_game(self) -> None:
+        from django.contrib.auth.models import User
+        from django.test import Client
+        from django.urls import reverse
+
+        import game.api
+
+        User.objects.create_user(  # type: ignore[no-untyped-call]
+            username="fieldstateghost", password="fieldstatepass123"
+        )
+        client = Client()
+        client.login(username="fieldstateghost", password="fieldstatepass123")
+        game.api._bridge_instance = MagicMock()
+
+        url = reverse("game:game-field-state", kwargs={"game_id": str(uuid.uuid4())})
+        response = client.get(url)
+
+        assert response.status_code == 404

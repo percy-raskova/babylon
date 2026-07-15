@@ -700,6 +700,27 @@ def game_objectives(request: Request, game_id: str) -> JsonResponse:
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def game_field_state(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/field_state/ — the System-19/20 contradiction-field stack.
+
+    Program 19/20 (Wave 3 Round 1). Reads ``contradiction_fields``/
+    ``field_derivatives`` (ContradictionFieldSystem @19 / FieldDerivativeSystem
+    @20), ``fascist_alignment``, and the graph-level ``principal_field``/
+    ``dialectical_regime`` attrs. Distinct from ``/contradiction/`` (Spec 095's
+    System-18 opposition gap/rate snapshot) — a different concept, never
+    reused under this name. Constitution III: pure read — surfaces field
+    state the engine already computed, never computes it.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_field_state(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def game_trade_flows(request: Request, game_id: str) -> JsonResponse:
     """GET /api/games/{id}/trade-flows/ — per-bloc price/flow lines.
 

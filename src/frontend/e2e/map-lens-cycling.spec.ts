@@ -45,6 +45,13 @@
  * file's mock `/map/` response never sets `metadata.available_metrics`, so
  * it renders here regardless, same as those four.
  *
+ * Wave 5's receptivity pair adds the 15th and 16th entries —
+ * `mass_receptivity` (numeric, the Epistemic Horizon's M_r on its dedicated
+ * receptivity ramp) and `vision_state` (categorical, the corpus's
+ * desert/mud/water partition) — bringing the roster to 16. Both
+ * `hasMetric`-gated; same "no available_metrics in this mock means visible"
+ * rule as the entries above.
+ *
  * Needs only the cockpit Vite dev server — no live Django/Postgres, no
  * storageState — runs on the default "chromium" project.
  */
@@ -188,6 +195,8 @@ const LENSES = [
   { id: "solidarity_index", label: /solidarity/i },
   { id: "centrality", label: /central/i },
   { id: "agitation", label: /agitation/i },
+  { id: "mass_receptivity", label: /mass receptivity/i },
+  { id: "vision_state", label: /vision state/i },
   { id: "field_flow_exploitation", label: /gradient wind/i },
   { id: "stance", label: /stance/i },
   { id: "faction", label: /faction/i },
@@ -228,8 +237,8 @@ async function mockRoutes(page: import("@playwright/test").Page, mapData: unknow
 }
 
 test.describe("Map lens cycling (backend-free, spec-110 B6/spec-113 Lane B)", () => {
-  test("cycles all 14 registered lenses with no uncaught page error", async ({ page }) => {
-    // 14 sequential lens switches = 14 full deck.gl attribute rebuilds — an
+  test("cycles all 16 registered lenses with no uncaught page error", async ({ page }) => {
+    // 16 sequential lens switches = 16 full deck.gl attribute rebuilds — an
     // order of magnitude more GPU work than this file's other tests. Under
     // software GL (headless CI/SwiftShader) each rebuild costs seconds, so
     // this one legitimately needs Playwright's slow-test budget (3×).

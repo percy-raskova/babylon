@@ -283,6 +283,94 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
             "PRESENCE-linked territories (0.25/0.5/0.5 degree split)."
         ),
     ),
+    # --- Wave 5 receptivity lens pair (Epistemic Horizon Phase 1 honest-display,
+    # 2026-07-15). Both are conditionally-present, unlike territory_type: they
+    # are honest-null (III.11) for a tenant-less territory OR before
+    # EpistemicHorizonSystem has ever run this session (engine position 27 —
+    # only executes inside a tick, so the seeded tick-0 graph never carries
+    # them). mass_receptivity additionally can be LEGITIMATELY exactly 0.0 in
+    # real gameplay (e.g. a territory tenanted only by a role absent from the
+    # corpus's class-factor table, class_factor_default=0.0 — see
+    # EpistemicHorizonSystem's own worked test), which is indistinguishable
+    # from Sensor 2's dark_default probe — the deciding reason both stay
+    # DECLARED_CONDITIONAL rather than territory_type's MUST_BE_LIVE, even
+    # though every wayne_county territory happened to get a real value this
+    # Phase-1 pass (65 desert / 16 mud / 0 water, 81/81 covered).
+    # ---------------------------------------------------------------------------
+    SeamEntry(
+        payload="mass_receptivity",
+        wire_keys=("mass_receptivity",),
+        scope=SeamScope.MAP,
+        owner_layer="engine (EpistemicHorizonSystem, babylon.engine.systems.epistemic_horizon)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires at least one TENANCY-linked social_class member with positive "
+            "population (Constitution III.11 honest-null — EpistemicHorizonSystem skips a "
+            "tenant-less territory entirely, writing none of the three shadow attrs) AND "
+            "resolve_tick to have run at least once this session (the system is engine "
+            "position 27, last — the seeded tick-0 graph has never been stepped). Separately: "
+            "M_r can be LEGITIMATELY exactly 0.0 (a role absent from the corpus's class-factor "
+            "table falls to class_factor_default=0.0), a real value Sensor 2's dark_default "
+            "probe cannot distinguish from 'never computed' — unlike territory_type's non-empty "
+            "enum, so this is DECLARED_CONDITIONAL, not MUST_BE_LIVE"
+        ),
+        dtype="float",
+        write_site=(
+            "src/babylon/engine/systems/epistemic_horizon.py::"
+            "compute_epistemic_horizon (graph.update_node)"
+        ),
+        read_paths=_MAP_EMITTERS,
+        spec_ref="project/research/epistemic-horizon-program-proposal.md · Phase 1",
+        notes=(
+            "M_r = population-weighted mean over TENANCY-linked tenant classes of "
+            "(1 - p_acquiescence) * class_consciousness * C_f. A NATIVE per-territory graph "
+            "attr (unlike agitation/solidarity_index, which are TENANCY-projected "
+            "aggregations of a per-class value) — rides straight off _serialize_territory's "
+            "own key, same shape as habitability/throughput_position. "
+            "_carry_epistemic_horizon re-injects it onto the web bridge's post-round-trip "
+            "graph (the same altitude-gap fix _carry_tick_dynamics_flows applies to "
+            "TickDynamicsSystem's tick_*/flow_* attrs). Population-weighted MEAN at county "
+            "zoom, partial-coverage-aware (same pattern as agitation/throughput_position)."
+        ),
+    ),
+    SeamEntry(
+        payload="vision_state",
+        wire_keys=("vision_state",),
+        scope=SeamScope.MAP,
+        owner_layer="engine (EpistemicHorizonSystem, babylon.engine.systems.epistemic_horizon)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires at least one TENANCY-linked social_class member with positive "
+            "population (Constitution III.11 honest-null, same gate as mass_receptivity above) "
+            "AND resolve_tick to have run at least once this session (engine position 27, "
+            "last). Unlike mass_receptivity, vision_state is a non-empty enum string "
+            "('desert'/'mud'/'water') whenever WRITTEN, so it would probe LIVE the same way "
+            "territory_type does once present — but its PRESENCE, not its value, is what stays "
+            "conditional: territory_type is a required, defaulted Territory MODEL field "
+            "(unconditionally present on every territory node); vision_state is derived, "
+            "written only when M_r itself was honestly computable. That conditional absence, "
+            "not a fabricated default, is why this stays DECLARED_CONDITIONAL despite its "
+            "categorical MUST_BE_LIVE-style non-emptiness"
+        ),
+        dtype="enum:str",
+        write_site=(
+            "src/babylon/engine/systems/epistemic_horizon.py::"
+            "compute_epistemic_horizon (graph.update_node)"
+        ),
+        read_paths=_MAP_EMITTERS,
+        spec_ref="project/research/epistemic-horizon-program-proposal.md · Phase 1",
+        notes=(
+            "The corpus's fog-of-war three-state partition (ai/epochs/epoch3/fog-of-war.yaml "
+            "'desert'/M_r<0.2, 'water'/M_r>=0.8, 'mud' between — EpistemicHorizonDefines "
+            "desert_threshold/water_threshold), derived from mass_receptivity above. A NATIVE "
+            "per-territory graph attr (like mass_receptivity), also re-injected by "
+            "_carry_epistemic_horizon. Population-weighted MODE at county zoom, same "
+            "deterministic lexicographically-greatest tie-break as dominant_class/"
+            "territory_type. Phase 1 finding (wayne_county): 65 desert / 16 mud / 0 water — "
+            "C_p=0 everywhere (no is_player org marker) means water is unreached today, not "
+            "structurally impossible."
+        ),
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -681,6 +769,100 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         read_paths=_TICK_WRITE_SITE,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=f"{_INTEREST_GATE} Count of active signals, int in [0, 4].",
+    ),
+    # --- Wave 5 receptivity lens pair, territory-serializer/inspector rows
+    # (2026-07-15). mass_receptivity/vision_state mirror their MAP-scope
+    # siblings above — same payload, same DECLARED_CONDITIONAL reasoning,
+    # different observable surface (_serialize_territory + get_inspector_hex
+    # rather than the /map/ hex/county features). intel_confidence joins
+    # them here ONLY: it deliberately has NO MAP-scope row (no lens) — it is
+    # uniformly 0.1 in every scenario verified so far (C_p=0 everywhere; see
+    # the program report's Phase-1 findings), so a flat lens would be
+    # decorative, but the real per-territory value is still honestly
+    # exposed on the drill-down surfaces.
+    SeamEntry(
+        payload="mass_receptivity",
+        wire_keys=("mass_receptivity",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="engine (EpistemicHorizonSystem, babylon.engine.systems.epistemic_horizon)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same TENANCY-population + resolve_tick-has-run gate as the MAP-scope "
+            "'map.mass_receptivity' row; M_r can also be legitimately exactly 0.0 (see that "
+            "row's liveness_condition for the full reasoning)"
+        ),
+        dtype="float",
+        write_site=(
+            "src/babylon/engine/systems/epistemic_horizon.py::"
+            "compute_epistemic_horizon (graph.update_node)"
+        ),
+        read_paths=(
+            *_TERRITORY_EMITTERS,
+            "web/game/engine_bridge.py::EngineBridge.get_inspector_hex",
+        ),
+        spec_ref="project/research/epistemic-horizon-program-proposal.md · Phase 1",
+        notes=(
+            "Read via _territory_graph_attr, same shape as habitability/throughput_position "
+            "on this surface. None for a tenant-less territory or before the graph has ever "
+            "been stepped this session."
+        ),
+    ),
+    SeamEntry(
+        payload="intel_confidence",
+        wire_keys=("intel_confidence",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="engine (EpistemicHorizonSystem, babylon.engine.systems.epistemic_horizon)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same TENANCY-population + resolve_tick-has-run gate as mass_receptivity above "
+            "(I_c is derived FROM M_r — EpistemicHorizonSystem writes all three shadow attrs "
+            "together or not at all)"
+        ),
+        dtype="float",
+        write_site=(
+            "src/babylon/engine/systems/epistemic_horizon.py::"
+            "compute_epistemic_horizon (graph.update_node)"
+        ),
+        read_paths=(
+            *_TERRITORY_EMITTERS,
+            "web/game/engine_bridge.py::EngineBridge.get_inspector_hex",
+        ),
+        spec_ref="project/research/epistemic-horizon-program-proposal.md · Phase 1",
+        notes=(
+            "I_c = B_o + (C_p * M_r), clamped [0, 1]. Deliberately has NO MAP-scope sibling "
+            "row — verified uniformly 0.1 across wayne_county's 81 territories this Phase-1 "
+            "pass (C_p=0 everywhere: no Organization subtype outside PoliticalFaction carries "
+            "an is_player marker — new ruling 6 in the program report, prereq for Phase 2), so "
+            "a flat map lens would be purely decorative. Still a real, honestly-computed "
+            "per-territory value on this drill-down surface, not fabricated."
+        ),
+    ),
+    SeamEntry(
+        payload="vision_state",
+        wire_keys=("vision_state",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="engine (EpistemicHorizonSystem, babylon.engine.systems.epistemic_horizon)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same TENANCY-population + resolve_tick-has-run gate as the MAP-scope "
+            "'map.vision_state' row (see that row's liveness_condition for the full "
+            "present-vs-value-conditional reasoning)"
+        ),
+        dtype="enum:str",
+        write_site=(
+            "src/babylon/engine/systems/epistemic_horizon.py::"
+            "compute_epistemic_horizon (graph.update_node)"
+        ),
+        read_paths=(
+            *_TERRITORY_EMITTERS,
+            "web/game/engine_bridge.py::EngineBridge.get_inspector_hex",
+        ),
+        spec_ref="project/research/epistemic-horizon-program-proposal.md · Phase 1",
+        notes=(
+            "Read via _territory_graph_attr, same shape as mass_receptivity on this surface. "
+            "None for a tenant-less territory or before the graph has ever been stepped this "
+            "session."
+        ),
     ),
 )
 

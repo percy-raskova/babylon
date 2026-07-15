@@ -32,6 +32,13 @@ const TERRITORY_METRICS: Record<string, (t: TerritoryState) => string> = {
   sector_type: (t) => t.sector_type,
   profile: (t) => t.profile,
   territory_type: (t) => t.territory_type,
+  // Wave 5 receptivity pair — em-dash for honest absence (a tenant-less
+  // territory or a never-stepped graph; Constitution III.11), never a
+  // fabricated 0. intel_confidence rides here too (its ONLY map surface —
+  // no lens; uniformly 0.1 today, see the program report).
+  mass_receptivity: (t) => (t.mass_receptivity != null ? t.mass_receptivity.toFixed(2) : "—"),
+  intel_confidence: (t) => (t.intel_confidence != null ? t.intel_confidence.toFixed(2) : "—"),
+  vision_state: (t) => t.vision_state ?? "—",
 };
 
 const METRIC_LABELS: Record<string, string> = {
@@ -43,6 +50,9 @@ const METRIC_LABELS: Record<string, string> = {
   sector_type: "Sector",
   profile: "Profile",
   territory_type: "Type",
+  mass_receptivity: "Receptivity",
+  intel_confidence: "Intel",
+  vision_state: "Vision",
 };
 
 const DEFAULT_PRIORITY = [
@@ -76,6 +86,25 @@ const LENS_METRIC_PRIORITY: Record<string, string[]> = {
     "rent_level",
     "profile",
     "sector_type",
+  ],
+  // Wave 5 receptivity pair: both lenses lead with the receptivity trio
+  // (M_r, its categorical cut, and intel_confidence — which has no lens of
+  // its own and surfaces here), then fall back to the material base.
+  "metric:mass_receptivity": [
+    "mass_receptivity",
+    "vision_state",
+    "intel_confidence",
+    "population",
+    "heat",
+    "rent_level",
+  ],
+  vision_state: [
+    "vision_state",
+    "mass_receptivity",
+    "intel_confidence",
+    "population",
+    "heat",
+    "rent_level",
   ],
 };
 

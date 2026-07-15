@@ -231,6 +231,9 @@ function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["me
     agitation: nullToUndefined(hexProps.agitation),
     // Audit Wave 4 straggler (task #76).
     centrality: nullToUndefined(hexProps.centrality),
+    // Wave 5 receptivity pair (numeric half; vision_state is categorical
+    // and rides territoryToLensTerritory's own visionState field instead).
+    mass_receptivity: nullToUndefined(hexProps.mass_receptivity),
   };
 }
 
@@ -261,6 +264,11 @@ function territoryToLensTerritory(
     // (unlike habitability's t.habitability fallback) — the hex feature is
     // the only source, mirroring dominantClass above.
     territoryType: hexProps?.territory_type ?? null,
+    // Wave 5: vision_state DOES have a TerritoryState-level source
+    // (_serialize_territory emits it on every /state/ snapshot territory
+    // row), so it follows habitability's dual-source pattern — snapshot
+    // value first, hex feature fallback, honest null when neither exists.
+    visionState: t.vision_state ?? hexProps?.vision_state ?? null,
     metrics: hexProps ? hexPropsToMetrics(hexProps) : undefined,
   };
   return replay ? applyHexReplayOverride(base, replay, t.county_fips) : base;
@@ -357,6 +365,7 @@ function currentValueForLens(
     lens.kind === "collapse" ||
     lens.kind === "class_composition" ||
     lens.kind === "territory_type" ||
+    lens.kind === "vision_state" ||
     lens.kind === "field_flow"
   ) {
     return null;

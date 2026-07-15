@@ -219,6 +219,15 @@ def test_must_be_live_scope_matches_registry() -> None:
         # a territory carrying a PRESENCE/HOUSES edge from an org/institution
         # in the (today sparse, wayne_county-only) org network.
         "centrality",
+        # Wave 5 receptivity lens pair: honest-null for a tenant-less
+        # territory or before EpistemicHorizonSystem has ever run this
+        # session; mass_receptivity can also be legitimately exactly 0.0
+        # (indistinguishable from Sensor 2's dark_default probe), which is
+        # why it (and its categorical sibling vision_state, conditionally
+        # PRESENT unlike territory_type) stay DECLARED_CONDITIONAL rather
+        # than MUST_BE_LIVE — see registry.py's row-level reasoning.
+        "mass_receptivity",
+        "vision_state",
     }
     assert gated.isdisjoint(conditional)
 

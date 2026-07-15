@@ -24,6 +24,8 @@ import {
   buildLensLayers,
   TERRITORY_TYPE_COLOR,
   TERRITORY_TYPE_LABELS,
+  VISION_STATE_COLOR,
+  VISION_STATE_LABELS,
   type BalkanizationBlock,
   type LensTerritory,
 } from "./mapLensLayers";
@@ -527,6 +529,101 @@ describe("buildLensLayers", () => {
         territories: TERRITORIES, // no `metrics` bag at all
         balkanization: null,
         lens: { kind: "metric", metric: "agitation" },
+      });
+      expect(result.getFillColor("T1")).toEqual([58, 53, 48, 160]);
+    });
+  });
+
+  describe("vision_state lens (Wave 5 receptivity pair — Epistemic Horizon honest display)", () => {
+    const TERRITORIES_WITH_VISION: LensTerritory[] = [
+      { ...TERRITORIES[0]!, visionState: "desert" },
+      { ...TERRITORIES[1]!, visionState: "water" },
+      { ...TERRITORIES[2]!, visionState: null },
+    ];
+
+    it("fills by visionState, distinctly per vision state", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_VISION,
+        balkanization: null,
+        lens: { kind: "vision_state" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T2"));
+      expect(result.getFillColor("T1")).toEqual(VISION_STATE_COLOR.desert);
+      expect(result.getFillColor("T2")).toEqual(VISION_STATE_COLOR.water);
+    });
+
+    it("is loud no-data for a territory with no visionState (Constitution III.11)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_VISION,
+        balkanization: null,
+        lens: { kind: "vision_state" },
+      });
+      expect(result.getFillColor("T3")).toEqual([58, 53, 48, 160]);
+    });
+
+    it("is loud no-data for an unrecognized vision-state string", () => {
+      const result = buildLensLayers({
+        territories: [{ ...TERRITORIES[0]!, visionState: "not_a_real_state" }],
+        balkanization: null,
+        lens: { kind: "vision_state" },
+      });
+      expect(result.getFillColor("T1")).toEqual([58, 53, 48, 160]);
+    });
+
+    it("never requires balkanization data (territory-local, like territory_type)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_VISION,
+        balkanization: null,
+        lens: { kind: "vision_state" },
+      });
+      expect(result.legendLabel.toLowerCase()).not.toContain("no data");
+    });
+
+    it("renders no rings/hulls (balkanization-only overlays)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_VISION,
+        balkanization: BALKANIZATION,
+        lens: { kind: "vision_state" },
+      });
+      expect(result.rings).toEqual([]);
+      expect(result.hulls).toEqual([]);
+    });
+
+    it("VISION_STATE_COLOR/VISION_STATE_LABELS cover exactly the corpus's 3 vision states", () => {
+      // ai/epochs/epoch3/fog-of-war.yaml territory_overlay: water/mud/desert
+      // (the same strings EpistemicHorizonSystem writes).
+      const expectedKeys = ["desert", "mud", "water"];
+      expect(Object.keys(VISION_STATE_COLOR).sort()).toEqual(expectedKeys.sort());
+      expect(Object.keys(VISION_STATE_LABELS).sort()).toEqual(expectedKeys.sort());
+    });
+
+    it("every VISION_STATE_COLOR entry is a distinct color (visually distinguishable)", () => {
+      const colors = Object.values(VISION_STATE_COLOR).map((c) => c.join(","));
+      expect(new Set(colors).size).toBe(colors.length);
+    });
+  });
+
+  describe("mass_receptivity metric lens (Wave 5 receptivity pair)", () => {
+    const TERRITORIES_WITH_RECEPTIVITY: LensTerritory[] = TERRITORIES.map((t, i) => ({
+      ...t,
+      metrics: { mass_receptivity: 0.1 + i * 0.4 },
+    }));
+
+    it("fills by mass_receptivity, varying with the underlying value", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_RECEPTIVITY,
+        balkanization: null,
+        lens: { kind: "metric", metric: "mass_receptivity" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T3"));
+      expect(result.legendLabel.toLowerCase()).toContain("receptivity");
+    });
+
+    it("renders NO_DATA for a territory missing mass_receptivity (never a fabricated 0)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES, // no `metrics` bag at all
+        balkanization: null,
+        lens: { kind: "metric", metric: "mass_receptivity" },
       });
       expect(result.getFillColor("T1")).toEqual([58, 53, 48, 160]);
     });

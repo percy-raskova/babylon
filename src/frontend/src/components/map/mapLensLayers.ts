@@ -138,6 +138,15 @@ export interface LensTerritory {
    * is honest no-data (Constitution III.11), never a fabricated type.
    */
   territoryType?: string | null;
+  /**
+   * Wave 5 receptivity pair's `vision_state` `/map/` property — the
+   * corpus's desert/mud/water partition, threshold-derived from
+   * `mass_receptivity` by `EpistemicHorizonSystem`. Categorical, so it
+   * lives outside the numeric `metrics` bag, like `territoryType`.
+   * `null`/absent is honest no-data (a tenant-less territory, or a graph
+   * that has never been stepped — Constitution III.11), never fabricated.
+   */
+  visionState?: string | null;
 }
 
 export interface RingSpec {
@@ -242,6 +251,34 @@ export const TERRITORY_TYPE_LABELS: Record<string, string> = {
   reservation: "Reservation",
   penal_colony: "Penal Colony",
   concentration_camp: "Concentration Camp",
+};
+
+/**
+ * The corpus's 3 fog-of-war vision states (`ai/epochs/epoch3/fog-of-war.yaml`
+ * territory_overlay, lines ~780-794 — the exact strings
+ * `EpistemicHorizonSystem` writes) — the Wave 5 `vision_state` lens.
+ * Palette direction is the corpus's own, adapted to theme tokens honestly:
+ * desert "Red/gray tint" = a muted red-gray (`#7a3a38`, blending the canon
+ * thermal `#b8321f` toward the shroud gray `#3d4250` — hostile but grayed,
+ * NOT the full-alarm laser/thermal reds other lenses reserve for violence);
+ * mud "Brown/amber tint" = the heat ramp's canon amber-brown `#b8581f`;
+ * water "Blue-green glow" = `#3ecfb2`, the receptivity ramp's own terminal
+ * (`theme/colors.ts` `DATA_RAMPS.receptivity`) — the SAME hex, so the
+ * categorical lens and the numeric `mass_receptivity` ramp read as one
+ * family, and deliberately BLUE-green so it aliases neither solidarity's
+ * pure green (`#5fbf7a`) nor the spire's pure cyan (`#4dd9e6`).
+ */
+export const VISION_STATE_COLOR: Record<string, RGBAColor> = {
+  desert: [122, 58, 56, 220], // #7a3a38 red-gray — "you are blind and exposed"
+  mud: [184, 88, 31, 220], // #b8581f heat-ramp amber-brown — partial information
+  water: [62, 207, 178, 220], // #3ecfb2 blue-green glow — "the masses are your eyes"
+};
+
+/** Display labels for `VISION_STATE_COLOR`'s keys — shared by the categorical legend. */
+export const VISION_STATE_LABELS: Record<string, string> = {
+  desert: "Desert",
+  mud: "Mud",
+  water: "Water",
 };
 
 const DESATURATED: RGBAColor = [26, 31, 42, 140]; // low-influence dim tone
@@ -409,6 +446,19 @@ function territoryTypeFill(territory: LensTerritory | undefined): RGBAColor {
   return TERRITORY_TYPE_COLOR[type] ?? NO_DATA;
 }
 
+/**
+ * `vision_state` fill (Wave 5 receptivity pair): the territory's own
+ * `visionState` (the corpus's desert/mud/water partition), colored via
+ * `VISION_STATE_COLOR`. Loud no-data (Constitution III.11) for an
+ * absent/unrecognized value, never a fabricated color — mirrors
+ * `territoryTypeFill` exactly.
+ */
+function visionStateFill(territory: LensTerritory | undefined): RGBAColor {
+  const state = territory?.visionState;
+  if (!state) return NO_DATA;
+  return VISION_STATE_COLOR[state] ?? NO_DATA;
+}
+
 // ---------------------------------------------------------------------------
 // Rings + hulls
 // ---------------------------------------------------------------------------
@@ -515,6 +565,8 @@ export function buildLensLayers(input: BuildLensLayersInput): LensLayerResult {
         return classCompositionFill(territory);
       case "territory_type":
         return territoryTypeFill(territory);
+      case "vision_state":
+        return visionStateFill(territory);
       case "field_flow":
         // Wave 3 §11's gradient-wind vector lens: the wind rides ABOVE the
         // base map (components/map/layers/fieldFlow.ts), so the hex fill

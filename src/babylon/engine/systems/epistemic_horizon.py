@@ -73,8 +73,24 @@ def _class_consciousness_of(attrs: dict[str, Any]) -> float:
     return 0.0
 
 
-class EpistemicHorizonSystem(SystemBase):
-    """Phase 1 SHADOW: Mass Receptivity (M_r) / Intel Confidence (I_c) / Vision State.
+def compute_epistemic_horizon(
+    graph: GraphProtocol,
+    defines: Any,
+) -> None:
+    """Compute and write shadow M_r/I_c/vision_state onto territory nodes.
+
+    Extracted from :meth:`EpistemicHorizonSystem.step` (pure
+    graph-in/graph-out function, no ``services``/``context`` dependency
+    beyond the one defines category) so the web bridge can recompute this
+    tick's shadow attrs on its own post-``WorldState``-round-trip graph —
+    see ``web/game/engine_bridge.py::_carry_epistemic_horizon``'s docstring
+    for why a recompute (not a ``persistent_context`` stash, unlike
+    ``TickDynamicsSystem``'s carry) is the correct fix for this system's
+    altitude gap: every input this function reads (``p_acquiescence``,
+    ``ideology.class_consciousness``, ``role``, ``population`` — all real
+    ``SocialClass`` model fields — plus the TENANCY/PRESENCE edges) survives
+    the round trip untouched, so calling this twice against the same
+    tenant-class state reproduces byte-identical output (Constitution III.7).
 
     Per TERRITORY node:
 
@@ -98,6 +114,92 @@ class EpistemicHorizonSystem(SystemBase):
     *derived from* ``M_r``, fabricating them from an implicit M_r=0 would
     smuggle the same dishonesty in through the back door. All three attrs
     are written together, or not at all.
+
+    Args:
+        graph: The graph to mutate in place (a live engine-tick graph, or a
+            post-round-trip ``new_graph`` the bridge is about to persist).
+        defines: This session's ``EpistemicHorizonDefines``
+            (``services.defines.epistemic_horizon`` / ``game_defines.epistemic_horizon``).
+    """
+    role_factor: dict[SocialRole, float] = {
+        SocialRole.PERIPHERY_PROLETARIAT: defines.class_factor_periphery_proletariat,
+        SocialRole.LUMPENPROLETARIAT: defines.class_factor_lumpenproletariat,
+        SocialRole.PETTY_BOURGEOISIE: defines.class_factor_petty_bourgeoisie,
+        SocialRole.LABOR_ARISTOCRACY: defines.class_factor_labor_aristocracy,
+    }
+
+    for territory in graph.query_nodes(node_type="territory"):
+        territory_id = territory.id
+
+        weighted_sum = 0.0
+        total_population = 0.0
+
+        for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
+            if edge.target_id != territory_id:
+                continue
+            tenant = graph.get_node(edge.source_id)
+            if tenant is None or tenant.node_type != "social_class":
+                continue
+
+            attrs = tenant.attributes
+            population = float(attrs.get("population", 0) or 0)
+            if population <= 0.0:
+                continue
+
+            p_acquiescence = float(attrs.get("p_acquiescence", 0.0))
+            ideological_alignment = _class_consciousness_of(attrs)
+            role = _coerce_role(attrs.get("role"))
+            class_factor = (
+                defines.class_factor_default
+                if role is None
+                else role_factor.get(role, defines.class_factor_default)
+            )
+
+            class_m_r = (1.0 - p_acquiescence) * ideological_alignment * class_factor
+            weighted_sum += class_m_r * population
+            total_population += population
+
+        if total_population <= 0.0:
+            # Honest absence (Constitution III.11): no tenant classes with
+            # positive population -> no M_r, no I_c, no vision_state.
+            continue
+
+        mass_receptivity = weighted_sum / total_population
+
+        cadre_presence = 0.0
+        for edge in graph.query_edges(edge_type=EdgeType.PRESENCE):
+            if edge.target_id != territory_id:
+                continue
+            org = graph.get_node(edge.source_id)
+            if org is not None and org.attributes.get("is_player", False):
+                cadre_presence = 1.0
+                break
+
+        intel_confidence = max(
+            0.0,
+            min(1.0, defines.base_observation + cadre_presence * mass_receptivity),
+        )
+
+        if mass_receptivity < defines.desert_threshold:
+            vision_state = "desert"
+        elif mass_receptivity >= defines.water_threshold:
+            vision_state = "water"
+        else:
+            vision_state = "mud"
+
+        graph.update_node(
+            territory_id,
+            mass_receptivity=mass_receptivity,
+            intel_confidence=intel_confidence,
+            vision_state=vision_state,
+        )
+
+
+class EpistemicHorizonSystem(SystemBase):
+    """Phase 1 SHADOW: Mass Receptivity (M_r) / Intel Confidence (I_c) / Vision State.
+
+    See :func:`compute_epistemic_horizon` for the formula/algorithm — this
+    class is now a thin ``SystemBase`` adapter over that pure function.
     """
 
     name: ClassVar[str] = "Epistemic Horizon"
@@ -111,77 +213,4 @@ class EpistemicHorizonSystem(SystemBase):
         _context: ContextType,
     ) -> None:
         """Compute and write shadow M_r/I_c/vision_state onto territory nodes."""
-
-        defines = services.defines.epistemic_horizon
-        role_factor: dict[SocialRole, float] = {
-            SocialRole.PERIPHERY_PROLETARIAT: defines.class_factor_periphery_proletariat,
-            SocialRole.LUMPENPROLETARIAT: defines.class_factor_lumpenproletariat,
-            SocialRole.PETTY_BOURGEOISIE: defines.class_factor_petty_bourgeoisie,
-            SocialRole.LABOR_ARISTOCRACY: defines.class_factor_labor_aristocracy,
-        }
-
-        for territory in graph.query_nodes(node_type="territory"):
-            territory_id = territory.id
-
-            weighted_sum = 0.0
-            total_population = 0.0
-
-            for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
-                if edge.target_id != territory_id:
-                    continue
-                tenant = graph.get_node(edge.source_id)
-                if tenant is None or tenant.node_type != "social_class":
-                    continue
-
-                attrs = tenant.attributes
-                population = float(attrs.get("population", 0) or 0)
-                if population <= 0.0:
-                    continue
-
-                p_acquiescence = float(attrs.get("p_acquiescence", 0.0))
-                ideological_alignment = _class_consciousness_of(attrs)
-                role = _coerce_role(attrs.get("role"))
-                class_factor = (
-                    defines.class_factor_default
-                    if role is None
-                    else role_factor.get(role, defines.class_factor_default)
-                )
-
-                class_m_r = (1.0 - p_acquiescence) * ideological_alignment * class_factor
-                weighted_sum += class_m_r * population
-                total_population += population
-
-            if total_population <= 0.0:
-                # Honest absence (Constitution III.11): no tenant classes with
-                # positive population -> no M_r, no I_c, no vision_state.
-                continue
-
-            mass_receptivity = weighted_sum / total_population
-
-            cadre_presence = 0.0
-            for edge in graph.query_edges(edge_type=EdgeType.PRESENCE):
-                if edge.target_id != territory_id:
-                    continue
-                org = graph.get_node(edge.source_id)
-                if org is not None and org.attributes.get("is_player", False):
-                    cadre_presence = 1.0
-                    break
-
-            intel_confidence = max(
-                0.0,
-                min(1.0, defines.base_observation + cadre_presence * mass_receptivity),
-            )
-
-            if mass_receptivity < defines.desert_threshold:
-                vision_state = "desert"
-            elif mass_receptivity >= defines.water_threshold:
-                vision_state = "water"
-            else:
-                vision_state = "mud"
-
-            graph.update_node(
-                territory_id,
-                mass_receptivity=mass_receptivity,
-                intel_confidence=intel_confidence,
-                vision_state=vision_state,
-            )
+        compute_epistemic_horizon(graph, services.defines.epistemic_horizon)

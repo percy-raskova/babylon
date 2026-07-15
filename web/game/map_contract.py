@@ -73,6 +73,30 @@ MAP_METRIC_PROPERTIES: tuple[str, ...] = (
     # Organization rows (_legacy_wayne.py), so every other shipped scenario
     # is honestly empty for this lens.
     "centrality",
+    # Wave 5 receptivity lens pair (Epistemic Horizon Phase 1 honest-display,
+    # program: project/research/epistemic-horizon-program-proposal.md):
+    # mass_receptivity (M_r) is a NATIVE per-territory graph attr written
+    # directly by EpistemicHorizonSystem (engine position 27, last) — unlike
+    # agitation/solidarity_index it needs no TENANCY-projection aggregation
+    # of its own, it rides straight off _serialize_territory's own key (same
+    # shape as habitability/throughput_position). Population-weighted MEAN
+    # at county zoom. vision_state is the companion categorical lens (the
+    # corpus's desert/mud/water three-state partition, threshold-derived
+    # from M_r) — population-weighted MODE at county zoom, same deterministic
+    # lexicographic-greatest tie-break as dominant_class/territory_type. Both
+    # rides hex_latest's JSONB attributes column like territory_type — no
+    # dedicated column. Honest null for a territory with no TENANCY-linked
+    # social_class members carrying positive population (Constitution III.11
+    # — EpistemicHorizonSystem writes all three shadow attrs together or not
+    # at all), and for a graph that has never been stepped (this system runs
+    # only inside a tick). intel_confidence (I_c) deliberately does NOT join
+    # this contract: it is uniformly 0.1 in every scenario verified so far
+    # (C_p=0 everywhere — no org model outside PoliticalFaction carries a
+    # player marker yet, see the program report's Phase-1 findings), so a
+    # flat lens would be decorative; it rides the territory serializer/
+    # inspector payload only.
+    "mass_receptivity",
+    "vision_state",
 )
 
 # Backend-W3R3 (Program 17 Wave 3): the MAP_METRIC_PROPERTIES subset

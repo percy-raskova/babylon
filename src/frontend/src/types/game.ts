@@ -138,6 +138,21 @@ export interface TerritoryState {
    * session produces usable data, never a fabricated 0).
    */
   bifurcation_score?: number | null;
+  /**
+   * Wave 5 receptivity pair (Epistemic Horizon Phase 1 honest display):
+   * `_serialize_territory` emits all three on every `/state/` snapshot
+   * territory row, read off the graph-only `mass_receptivity`/
+   * `intel_confidence`/`vision_state` attrs `EpistemicHorizonSystem`
+   * writes and `_carry_epistemic_horizon` re-injects post-round-trip.
+   * `intel_confidence` deliberately has NO map lens (uniformly 0.1 today,
+   * C_p=0 everywhere — see the program report's Phase-1 findings); it is
+   * a drill-down/tooltip field only. All three are honest `null` for a
+   * tenant-less territory or before the graph has ever been stepped
+   * (Constitution III.11 — never a fabricated 0/state).
+   */
+  mass_receptivity?: number | null;
+  intel_confidence?: number | null;
+  vision_state?: string | null;
 }
 
 /** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */
@@ -918,6 +933,15 @@ export interface AdminFeatureProperties {
    * partial-coverage reason as `throughput_position`/`agitation`.
    */
   centrality?: number | null;
+  /**
+   * Wave 5 receptivity pair — `_aggregate_hex_features`'s
+   * population-weighted mean of `mass_receptivity` (M_r) and
+   * population-weighted-mode `vision_state` (desert/mud/water, same
+   * deterministic tie-break as `territory_type`). Optional/nullable for
+   * the same partial-coverage reason as the entries above.
+   */
+  mass_receptivity?: number | null;
+  vision_state?: string | null;
 }
 
 // ---------------------------------------------------------------------------

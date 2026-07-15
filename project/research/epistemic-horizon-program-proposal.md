@@ -88,6 +88,12 @@ it has built relationships. Mechanically:
   by its own ≥0.8 threshold table — the system implements the table; I_a is proxied by
   `class_consciousness` (documented); 4 corpus-unnamed roles fall to an explicit
   `class_factor_default=0.0` (Phase-2 judgment call, esp. CARCERAL_ENFORCER).
+  **Honest-display lenses landed (Wave-5 receptivity pair, 2026-07-15):** `mass_receptivity`
+  (numeric, dedicated desert→mud→water receptivity ramp) + `vision_state` (categorical) as
+  `/map/` lenses; `intel_confidence` on the territory-serializer/inspector surfaces only
+  (uniformly 0.1 today, a lens would be decorative); bridge-side `_carry_epistemic_horizon`
+  recompute closes the round-trip altitude gap — still ZERO masking, pure display of true
+  computed values.
 - **Phase 2** — reveal gating: bridge serialization filters by vision state (Mud
   approximation with markers); Investigate wired to raise `I_c` (finally reading its own
   `revealed` channel).

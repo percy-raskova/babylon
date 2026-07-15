@@ -76,6 +76,17 @@ export interface HexMapFeatureProperties {
    * real organizations).
    */
   centrality?: number | null;
+  /**
+   * Wave 5 receptivity pair: `mass_receptivity` (M_r, [0, 1] — the
+   * Epistemic Horizon's population-weighted mass-line receptivity, written
+   * by `EpistemicHorizonSystem` and re-injected by
+   * `_carry_epistemic_horizon`) and its categorical companion
+   * `vision_state` (the corpus's `desert`/`mud`/`water` partition). Both
+   * honest null/absent for a tenant-less territory or before the graph has
+   * ever been stepped (Constitution III.11).
+   */
+  mass_receptivity?: number | null;
+  vision_state?: string | null;
   [key: string]: unknown;
 }
 

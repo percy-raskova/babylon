@@ -18,6 +18,8 @@ import {
   SOCIAL_ROLE_LABELS,
   TERRITORY_TYPE_COLOR,
   TERRITORY_TYPE_LABELS,
+  VISION_STATE_COLOR,
+  VISION_STATE_LABELS,
   type BalkanizationBlock,
 } from "@/components/map/mapLensLayers";
 import { DATA_RAMPS, FIELD_FLOW_COLOR, rampForLayer, type RGBAColor } from "@/theme/colors";
@@ -110,6 +112,21 @@ const TERRITORY_TYPE_LEGEND: LensLegend = {
   entries: Object.entries(TERRITORY_TYPE_LABELS).map(([type, label]) => ({
     label,
     color: TERRITORY_TYPE_COLOR[type] ?? [58, 53, 48, 160],
+  })),
+};
+
+/**
+ * Wave 5's `vision_state` categorical legend — one entry per corpus
+ * vision state (desert/mud/water), built from the SAME
+ * `VISION_STATE_COLOR`/`VISION_STATE_LABELS` palette `mapLensLayers.ts`'s
+ * hex-native and `regionFill.ts`'s aggregated fills both read — one source
+ * of truth, no duplicated color table (mirrors `TERRITORY_TYPE_LEGEND`).
+ */
+const VISION_STATE_LEGEND: LensLegend = {
+  kind: "categorical",
+  entries: Object.entries(VISION_STATE_LABELS).map(([state, label]) => ({
+    label,
+    color: VISION_STATE_COLOR[state] ?? [58, 53, 48, 160],
   })),
 };
 
@@ -208,6 +225,38 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     legend: { kind: "ramp", stops: DATA_RAMPS.consciousness },
     toLens: () => ({ kind: "metric", metric: "agitation" }),
     availableWhen: hasMetric("agitation"),
+  },
+  {
+    // Wave 5 receptivity pair (Epistemic Horizon Phase 1 honest display).
+    // Struggle group, not reproduction: M_r reads the mass-line
+    // RELATIONSHIP — desperation (P(S|A), Survival) x class consciousness x
+    // class factor over the SAME TENANCY-linked class state agitation and
+    // solidarity already read — class-struggle intelligence, "you know what
+    // the masses tell you". Reproduction is the metabolic/ecological group
+    // (habitability); receptivity has no metabolic content. Placed adjacent
+    // to agitation (its nearest input cousin), before the vector lens.
+    id: "mass_receptivity",
+    group: "struggle",
+    label: "Mass Receptivity",
+    tooltip:
+      "The masses' willingness to be your eyes — M_r = desperation × consciousness × class factor (Epistemic Horizon; honest display, no masking)",
+    legend: { kind: "ramp", stops: DATA_RAMPS.receptivity },
+    toLens: () => ({ kind: "metric", metric: "mass_receptivity" }),
+    availableWhen: hasMetric("mass_receptivity"),
+  },
+  {
+    // Wave 5 receptivity pair, categorical half — same struggle-group
+    // reasoning as mass_receptivity above (it IS mass_receptivity, cut at
+    // the corpus's own thresholds). "Fish in water": Water = the masses
+    // are your eyes; Mud = partial information; Desert = blind and exposed.
+    id: "vision_state",
+    group: "struggle",
+    label: "Vision State",
+    tooltip:
+      "Fish-in-water partition — Water: the masses are your eyes; Mud: partial information; Desert: you are blind and exposed",
+    legend: VISION_STATE_LEGEND,
+    toLens: () => ({ kind: "vision_state" }),
+    availableWhen: hasMetric("vision_state"),
   },
   {
     // Wave 3 §11's "gradient wind" — the first VECTOR lens kind. Struggle

@@ -72,6 +72,21 @@ describe("LENS_REGISTRY", () => {
     expect(def?.legend.kind).toBe("ramp");
     expect(def?.toLens()).toEqual({ kind: "metric", metric: "centrality" });
   });
+
+  it("includes the Wave 5 receptivity lens pair (mass_receptivity numeric, vision_state categorical)", () => {
+    const massReceptivity = LENS_REGISTRY.find((d) => d.id === "mass_receptivity");
+    const visionState = LENS_REGISTRY.find((d) => d.id === "vision_state");
+    // Struggle group: M_r reads the mass-line relationship (desperation x
+    // consciousness x class factor over the same TENANCY-linked class state
+    // agitation/solidarity read) — class-struggle intelligence, not
+    // reproduction (metabolic/ecological) or political topology.
+    expect(massReceptivity?.group).toBe("struggle");
+    expect(visionState?.group).toBe("struggle");
+    expect(massReceptivity?.legend.kind).toBe("ramp");
+    expect(visionState?.legend.kind).toBe("categorical");
+    expect(massReceptivity?.toLens()).toEqual({ kind: "metric", metric: "mass_receptivity" });
+    expect(visionState?.toLens()).toEqual({ kind: "vision_state" });
+  });
 });
 
 describe("lensDefForLens", () => {
@@ -100,6 +115,13 @@ describe("lensDefForLens", () => {
 
   it("resolves the centrality metric lens back to its registry entry", () => {
     expect(lensDefForLens({ kind: "metric", metric: "centrality" })?.id).toBe("centrality");
+  });
+
+  it("resolves the Wave 5 receptivity lens pair back to their registry entries", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "mass_receptivity" })?.id).toBe(
+      "mass_receptivity",
+    );
+    expect(lensDefForLens({ kind: "vision_state" })?.id).toBe("vision_state");
   });
 
   it("resolves field_flow back to its registry entry, keyed by field", () => {
@@ -168,6 +190,20 @@ describe("availableWhen degradation (existing balkanization pattern)", () => {
   it("centrality is available once advertised in available_metrics", () => {
     const ctx = { availableMetrics: ["centrality"] };
     expect(availableLensRegistry(ctx).map((d) => d.id)).toContain("centrality");
+  });
+
+  it("mass_receptivity/vision_state degrade honestly when absent from available_metrics (Wave 5)", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).not.toContain("mass_receptivity");
+    expect(available).not.toContain("vision_state");
+  });
+
+  it("mass_receptivity/vision_state are available once advertised in available_metrics", () => {
+    const ctx = { availableMetrics: ["mass_receptivity", "vision_state"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).toContain("mass_receptivity");
+    expect(available).toContain("vision_state");
   });
 
   it("heat and habitability are always available (no backend gate)", () => {
@@ -290,5 +326,32 @@ describe("legend metadata", () => {
     expect(centrality.legend.stops.length).toBeGreaterThan(1);
     expect(centrality.legend.stops).not.toEqual(agitation.legend.stops);
     expect(centrality.legend.stops).not.toEqual(throughput.legend.stops);
+  });
+
+  it("mass_receptivity carries the dedicated receptivity ramp, distinct from every sibling struggle ramp (Wave 5)", () => {
+    const massReceptivity = LENS_REGISTRY.find((d) => d.id === "mass_receptivity");
+    const heat = LENS_REGISTRY.find((d) => d.id === "heat");
+    const solidarity = LENS_REGISTRY.find((d) => d.id === "solidarity_index");
+    const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
+    if (
+      massReceptivity?.legend.kind !== "ramp" ||
+      heat?.legend.kind !== "ramp" ||
+      solidarity?.legend.kind !== "ramp" ||
+      agitation?.legend.kind !== "ramp"
+    ) {
+      throw new Error("expected ramp legends");
+    }
+    expect(massReceptivity.legend.stops.length).toBeGreaterThan(1);
+    expect(massReceptivity.legend.stops).not.toEqual(heat.legend.stops);
+    expect(massReceptivity.legend.stops).not.toEqual(solidarity.legend.stops);
+    expect(massReceptivity.legend.stops).not.toEqual(agitation.legend.stops);
+  });
+
+  it("vision_state's legend has exactly 3 entries — the corpus's desert/mud/water partition (Wave 5)", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "vision_state");
+    if (def?.legend.kind !== "categorical") throw new Error("expected categorical legend");
+    expect(def.legend.entries).toHaveLength(3);
+    const labels = def.legend.entries.map((e) => e.label);
+    expect(labels).toEqual(expect.arrayContaining(["Desert", "Mud", "Water"]));
   });
 });

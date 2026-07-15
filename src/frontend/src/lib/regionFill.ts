@@ -45,7 +45,11 @@
 
 import { lensRampStops, sampleRampStops, type Lens, type MapMetric } from "@/lib/lens";
 import { rampForLayer, type RGBAColor } from "@/theme/colors";
-import { SOCIAL_ROLE_COLOR, TERRITORY_TYPE_COLOR } from "@/components/map/mapLensLayers";
+import {
+  SOCIAL_ROLE_COLOR,
+  TERRITORY_TYPE_COLOR,
+  VISION_STATE_COLOR,
+} from "@/components/map/mapLensLayers";
 
 /** The value range a domain-normalized field (heat, `{kind:"metric"}`) is scaled against. */
 export interface FillDomain {
@@ -83,6 +87,16 @@ export type RegionFillProperties = Partial<Record<MapMetric, number | null>> & {
    * so outside the numeric bag" reasoning as `dominant_class`.
    */
   territory_type?: string | null;
+  /**
+   * Wave 5 receptivity pair's aggregated `vision_state` — the group's
+   * population-weighted-mode desert/mud/water value
+   * (`_aggregate_hex_features`'s `vision_state_pop` vote, same
+   * deterministic tie-break as `territory_type`). Categorical, so outside
+   * the numeric bag. `mass_receptivity` (its numeric sibling) needs no
+   * field here — it is a `MapMetric`, covered by the `Partial<Record<...>>`
+   * bag this type intersects.
+   */
+  vision_state?: string | null;
 };
 
 /** True for a real, finite value — false for `null`/`undefined`/`NaN`. */
@@ -152,6 +166,12 @@ function territoryTypeRegionFill(properties: RegionFillProperties): RGBAColor | 
   return type ? (TERRITORY_TYPE_COLOR[type] ?? null) : null;
 }
 
+/** The `vision_state` case: `properties.vision_state` via the shared `VISION_STATE_COLOR` palette. Extracted (cognitive-complexity budget). */
+function visionStateRegionFill(properties: RegionFillProperties): RGBAColor | null {
+  const state = properties.vision_state;
+  return state ? (VISION_STATE_COLOR[state] ?? null) : null;
+}
+
 /**
  * Resolve the fill color for one aggregated region feature under the
  * active lens, or `null` for an honest empty/neutral fill.
@@ -177,6 +197,8 @@ export function regionFillForLens(
       return classCompositionRegionFill(properties);
     case "territory_type":
       return territoryTypeRegionFill(properties);
+    case "vision_state":
+      return visionStateRegionFill(properties);
     case "field_flow":
       // The gradient-wind vector overlay is the signal at every framing —
       // no aggregated-region equivalent exists (it's per-class-pair, not a

@@ -2116,6 +2116,16 @@ class EngineBridge:
         ``habitability``/``solidarity_index``/``agitation`` — not every hex
         is a node in the org network (see
         :func:`_centrality_by_territory`).
+
+        Wave 5 receptivity lens pair: ``mass_receptivity`` gets the same
+        partial-coverage-aware population-weighted mean as the numeric
+        lenses above — not every hex has TENANCY-linked members with
+        positive population (Constitution III.11 honest-null;
+        ``EpistemicHorizonSystem`` skips a tenant-less territory entirely).
+        ``vision_state`` is categorical — same population-weighted-mode
+        treatment as ``territory_type``, tracked in its own
+        ``vision_state_pop`` accumulator with the identical
+        lexicographically-greatest tie-break.
         """
         from collections import defaultdict
 
@@ -2159,6 +2169,11 @@ class EngineBridge:
                 # pattern — not every hex is a node in the org network.
                 "centrality_sum": 0.0,
                 "centrality_pop": 0,
+                # Wave 5 receptivity lens pair: same partial-coverage
+                # pattern — not every hex has TENANCY-linked members with
+                # positive population (Constitution III.11 honest-null).
+                "mass_receptivity_sum": 0.0,
+                "mass_receptivity_pop": 0,
                 "count": 0,
             }
         )
@@ -2173,6 +2188,10 @@ class EngineBridge:
         # value, kept separate for the same reason (territory_type is
         # categorical).
         territory_type_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        # Wave 5 receptivity lens pair: population-weighted vote per group ->
+        # vision_state value, kept separate for the same reason
+        # (vision_state is categorical, same treatment as territory_type).
+        vision_state_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
         for state in hex_states:
             key = getattr(state, group_attr, None)
@@ -2227,6 +2246,15 @@ class EngineBridge:
             if territory_type is not None:
                 territory_type_pop[key][territory_type] += pop
 
+            mass_receptivity = attributes.get("mass_receptivity")
+            if mass_receptivity is not None:
+                acc["mass_receptivity_sum"] += float(mass_receptivity) * pop
+                acc["mass_receptivity_pop"] += pop
+
+            vision_state = attributes.get("vision_state")
+            if vision_state is not None:
+                vision_state_pop[key][vision_state] += pop
+
             dominant_class = getattr(state, "dominant_class", None)
             if dominant_class is not None:
                 dominant_class_pop[key][dominant_class] += pop
@@ -2243,8 +2271,10 @@ class EngineBridge:
             throughput_position_pop = acc["throughput_position_pop"]
             agitation_pop = acc["agitation_pop"]
             centrality_pop = acc["centrality_pop"]
+            mass_receptivity_pop = acc["mass_receptivity_pop"]
             role_votes = dominant_class_pop.get(key) or {}
             type_votes = territory_type_pop.get(key) or {}
+            vision_votes = vision_state_pop.get(key) or {}
             features.append(
                 {
                     "type": "Feature",
@@ -2301,6 +2331,16 @@ class EngineBridge:
                         "territory_type": (
                             max(type_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
                             if type_votes
+                            else None
+                        ),
+                        "mass_receptivity": (
+                            round(acc["mass_receptivity_sum"] / mass_receptivity_pop, 4)
+                            if mass_receptivity_pop
+                            else None
+                        ),
+                        "vision_state": (
+                            max(vision_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                            if vision_votes
                             else None
                         ),
                     },
@@ -4117,6 +4157,17 @@ class EngineBridge:
         function the map lens's aggregation reads), and ``territory_type``
         reads the real ``Territory.territory_type`` enum directly off the
         raw graph node (always present — a required, defaulted field).
+
+        Wave 5 receptivity lens pair: ``mass_receptivity``/``vision_state``
+        mirror ``imperial_rent`` above (native per-territory graph attrs,
+        read directly off the node); ``intel_confidence`` joins them here
+        even though it has no ``/map/`` lens of its own (uniformly 0.1 in
+        every scenario verified so far — a flat lens would be decorative,
+        see the program report's Phase-1 findings). All three are ``None``
+        before ``EpistemicHorizonSystem`` has ever run this session (it
+        executes only inside a tick — this drill-down reads whatever
+        ``hydrate_graph`` last persisted) or for a tenant-less territory
+        (Constitution III.11).
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         territory_id: str | None = None
@@ -4163,6 +4214,9 @@ class EngineBridge:
             "territory_type": (
                 _enum_val(territory_type_raw) if territory_type_raw is not None else None
             ),
+            "mass_receptivity": _territory_graph_attr(graph, territory_id, "mass_receptivity"),
+            "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
+            "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
         }
 
     # ------------------------------------------------------------------ #
@@ -4303,6 +4357,12 @@ class EngineBridge:
         # stripped (see _carry_tick_dynamics_flows's docstring for why).
         # Mutates new_graph in place, before it gets persisted below.
         _carry_tick_dynamics_flows(graph, new_graph, persistent_context)
+        # Wave 5 receptivity lens pair: re-inject EpistemicHorizonSystem's
+        # mass_receptivity/intel_confidence/vision_state shadow attrs, the
+        # same class of round-trip loss the carry above fixes for
+        # TickDynamicsSystem (see _carry_epistemic_horizon's docstring for
+        # why a recompute, not a persistent_context stash, is correct here).
+        _carry_epistemic_horizon(new_graph, game_defines.epistemic_horizon)
         events_as_dicts: list[dict[str, Any]] = [
             e.model_dump(mode="json") for e in new_state.events
         ]
@@ -5909,6 +5969,56 @@ def _carry_tick_dynamics_flows(
         )
 
 
+def _carry_epistemic_horizon(new_graph: Any, defines: Any) -> None:
+    """Re-inject ``EpistemicHorizonSystem``'s shadow territory attrs onto
+    ``new_graph`` before it is persisted — the Wave-5 receptivity-lens
+    counterpart to :func:`_carry_tick_dynamics_flows`.
+
+    Same altitude gap, different fix. ``EpistemicHorizonSystem`` (engine
+    position 27, last in ``_DEFAULT_SYSTEMS``) writes ``mass_receptivity``/
+    ``intel_confidence``/``vision_state`` onto TERRITORY nodes during
+    ``step()``'s internal graph mutation, but ``Territory`` is
+    ``extra="forbid"`` and none of the three are Territory model fields
+    (``TERRITORY_EXCLUDED_FIELDS``, ``babylon.models.world_state``), so
+    ``from_graph()`` drops all three before ``new_state.to_graph()`` (this
+    function's ``new_graph`` argument) ever re-emits them.
+
+    UNLIKE :func:`_carry_tick_dynamics_flows`, this is not a stash-and-
+    forward of boundary-gated historical state
+    (``persistent_context["_tick_dynamics"]``): every input
+    ``EpistemicHorizonSystem`` reads — ``p_acquiescence``, ``ideology.
+    class_consciousness``, ``role``, ``population`` (all real ``SocialClass``
+    model fields, so they DO survive the round trip) plus the live TENANCY/
+    PRESENCE edges — is still present on ``new_graph``. Nothing runs after
+    ``EpistemicHorizonSystem`` within a tick (it is LAST), so simply
+    RECOMPUTING the same pure formula against ``new_graph`` reproduces
+    byte-identical output to what the engine already computed internally —
+    a genuine recompute, not an approximation, and it can never drift out of
+    sync with the engine (no duplicated math — this calls the exact same
+    :func:`~babylon.engine.systems.epistemic_horizon.compute_epistemic_horizon`
+    function ``EpistemicHorizonSystem.step`` delegates to).
+
+    Honest absence carries as absence (Constitution III.11): a territory
+    with no TENANCY-linked social_class members carrying positive
+    population gets none of the three attrs, exactly as
+    ``EpistemicHorizonSystem`` itself would leave it. Only called from
+    :meth:`EngineBridge.resolve_tick` (mirrors ``_carry_tick_dynamics_flows``'s
+    own single call site) — NOT from the tick-0/seeded bootstrap paths,
+    where ``EpistemicHorizonSystem`` has genuinely never run yet (no
+    ``step()`` call has occurred), so honest absence there is "not yet
+    computed", not a bug to carry around.
+
+    Args:
+        new_graph: ``new_state.to_graph()`` — about to be persisted; mutated
+            in place.
+        defines: This session's ``EpistemicHorizonDefines``
+            (``game_defines.epistemic_horizon``).
+    """
+    from babylon.engine.systems.epistemic_horizon import compute_epistemic_horizon
+
+    compute_epistemic_horizon(new_graph, defines)
+
+
 def _mean_territory_attr(graph: Any, key: str) -> float | None:
     """Mean of a non-null territory-node attr across the graph, or ``None``.
 
@@ -6610,7 +6720,8 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     column — spec-113 Lane D; ``throughput_position``/``agitation``/
     ``territory_type`` likewise ride ``attributes`` — Wave 2 W2.4;
     ``centrality`` rides ``attributes`` too — audit Wave 4 straggler, task
-    #76) plus the identity/context columns. Extracted from the
+    #76; ``mass_receptivity``/``vision_state`` ride ``attributes`` as well —
+    Wave 5 receptivity lens pair) plus the identity/context columns. Extracted from the
     ``get_map_snapshot`` loop so the contract is unit-testable without a
     database.
 
@@ -6641,6 +6752,8 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "agitation": attributes.get("agitation"),
         "territory_type": attributes.get("territory_type"),
         "centrality": attributes.get("centrality"),
+        "mass_receptivity": attributes.get("mass_receptivity"),
+        "vision_state": attributes.get("vision_state"),
     }
 
 
@@ -6695,6 +6808,68 @@ def _heat_delta_by_territory(
         post_heat = float(post_graph.nodes[territory_id].get("heat", 0.0))
         deltas[territory_id] = post_heat - pre_heat
     return deltas
+
+
+def _build_hex_state_attributes(
+    territory: dict[str, Any],
+    *,
+    solidarity_index: float | None,
+    agitation: float | None,
+    centrality: float | None,
+) -> dict[str, Any]:
+    """Assemble ``hex_latest``'s JSONB ``attributes`` payload for one territory.
+
+    Extracted from :func:`_hex_state_row` (whose docstring carries the full
+    per-key source inventory) purely to keep that function inside the
+    cognitive-complexity budget as the attribute family grew — Wave 5's
+    ``mass_receptivity``/``vision_state`` tipped it over. Two source shapes,
+    both preserved exactly:
+
+    * territory-dict keys (``habitability``/``throughput_position``/
+      ``territory_type``/``mass_receptivity``/``vision_state``) — native
+      per-territory values ``_serialize_territory`` already read off the
+      graph;
+    * caller-computed aggregates (``solidarity_index``/``agitation``/
+      ``centrality``) — TENANCY/network projections passed down from
+      ``_persist_hex_state_safe``.
+
+    Absent/``None`` values are OMITTED, never fabricated (Constitution
+    III.11) — an absent key is the honest no-data signal every reader of
+    this JSONB column (``_hex_feature_properties``,
+    ``_aggregate_hex_features``) already relies on.
+
+    Args:
+        territory: One :func:`_serialize_territory` dict.
+        solidarity_index: Caller-computed SOLIDARITY-edge density, or ``None``.
+        agitation: Caller-computed population-weighted mean agitation, or ``None``.
+        centrality: Caller-computed org-network degree-centrality, or ``None``.
+
+    Returns:
+        The ``attributes`` dict for the :class:`game.models.HexState` row.
+    """
+    attributes: dict[str, Any] = {}
+    habitability = territory.get("habitability")
+    if habitability is not None:
+        attributes["habitability"] = float(habitability)
+    if solidarity_index is not None:
+        attributes["solidarity_index"] = float(solidarity_index)
+    if agitation is not None:
+        attributes["agitation"] = float(agitation)
+    throughput_position = territory.get("throughput_position")
+    if throughput_position is not None:
+        attributes["throughput_position"] = float(throughput_position)
+    territory_type = territory.get("territory_type")
+    if territory_type is not None:
+        attributes["territory_type"] = territory_type
+    if centrality is not None:
+        attributes["centrality"] = float(centrality)
+    mass_receptivity = territory.get("mass_receptivity")
+    if mass_receptivity is not None:
+        attributes["mass_receptivity"] = float(mass_receptivity)
+    vision_state = territory.get("vision_state")
+    if vision_state is not None:
+        attributes["vision_state"] = vision_state
+    return attributes
 
 
 def _hex_state_row(
@@ -6781,6 +6956,17 @@ def _hex_state_row(
       organization/institution (sparse today — only ``wayne_county`` seeds
       real ``Organization`` rows). Rides the JSONB ``attributes`` column
       like ``agitation``/``solidarity_index``.
+    * ``attributes["mass_receptivity"]``/``attributes["vision_state"]`` —
+      Wave 5 receptivity lens pair: read straight off ``territory``'s own
+      key (like ``throughput_position``/``territory_type``, NOT a separate
+      caller arg like ``agitation``/``centrality`` — ``mass_receptivity`` is
+      a native per-territory graph attr, not a TENANCY-projected
+      aggregation). Source: ``_serialize_territory``'s
+      ``mass_receptivity``/``vision_state`` keys, off the
+      ``EpistemicHorizonSystem`` shadow attrs ``_carry_epistemic_horizon``
+      re-injects onto the graph. ``None``/absent for a tenant-less
+      territory (Constitution III.11) or before the graph has ever been
+      stepped.
 
     Args:
         session_id: The game session UUID (``hex_latest.game_id``).
@@ -6822,22 +7008,12 @@ def _hex_state_row(
         return None
 
     county_fips = str(territory.get("county_fips") or "")
-    attributes: dict[str, Any] = {}
-    habitability = territory.get("habitability")
-    if habitability is not None:
-        attributes["habitability"] = float(habitability)
-    if solidarity_index is not None:
-        attributes["solidarity_index"] = float(solidarity_index)
-    if agitation is not None:
-        attributes["agitation"] = float(agitation)
-    throughput_position = territory.get("throughput_position")
-    if throughput_position is not None:
-        attributes["throughput_position"] = float(throughput_position)
-    territory_type = territory.get("territory_type")
-    if territory_type is not None:
-        attributes["territory_type"] = territory_type
-    if centrality is not None:
-        attributes["centrality"] = float(centrality)
+    attributes = _build_hex_state_attributes(
+        territory,
+        solidarity_index=solidarity_index,
+        agitation=agitation,
+        centrality=centrality,
+    )
 
     row: dict[str, Any] = {
         "game_id": session_id,
@@ -7135,6 +7311,15 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     ``_bridge_economics_overrides`` wires a ``throughput_calculator`` AND a
     year boundary has run; ``None`` before then (never the engine's frozen
     1.0/2.0 bootstrap defaults re-surfacing here as if they were live).
+
+    Wave 5 receptivity lenses: ``mass_receptivity``/``intel_confidence``/
+    ``vision_state`` join the same graph-attr family off the identically-
+    named ``EpistemicHorizonSystem`` shadow attrs (non-``tick_``-prefixed,
+    but the same "transient, not a Territory model field" shape) —
+    ``_carry_epistemic_horizon`` re-injects them onto the graph before this
+    is called on a resolve_tick's ``new_graph``. ``None`` for a tenant-less
+    territory (Constitution III.11) or before the graph has ever been
+    stepped (this engine system runs only inside a tick).
     """
     territory_id = t.id
     return {
@@ -7187,6 +7372,9 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
             graph, territory_id, "tick_throughput_position"
         ),
         "supply_chain_depth": _territory_graph_attr(graph, territory_id, "tick_supply_chain_depth"),
+        "mass_receptivity": _territory_graph_attr(graph, territory_id, "mass_receptivity"),
+        "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
+        "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
     }
 
 

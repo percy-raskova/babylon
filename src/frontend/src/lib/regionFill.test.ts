@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import { regionFillForLens, type RegionFillProperties } from "./regionFill";
 import { lensRampStops, sampleRampStops, type Lens } from "@/lib/lens";
 import { rampForLayer } from "@/theme/colors";
-import { TERRITORY_TYPE_COLOR } from "@/components/map/mapLensLayers";
+import { TERRITORY_TYPE_COLOR, VISION_STATE_COLOR } from "@/components/map/mapLensLayers";
 
 const DOMAIN = { min: 0, max: 1 };
 
@@ -176,6 +176,38 @@ describe("regionFillForLens", () => {
       const agitationLens: Lens = { kind: "metric", metric: "agitation" };
       expect(regionFillForLens(throughputLens, {}, DOMAIN)).toBeNull();
       expect(regionFillForLens(agitationLens, {}, DOMAIN)).toBeNull();
+    });
+  });
+
+  describe("mass_receptivity metric / vision_state lenses (Wave 5 receptivity pair)", () => {
+    it("mass_receptivity samples its own ramp like any other metric lens", () => {
+      const properties: RegionFillProperties = { mass_receptivity: 0.56 };
+      const lens: Lens = { kind: "metric", metric: "mass_receptivity" };
+      const result = regionFillForLens(lens, properties, DOMAIN);
+      expect(result).toEqual(sampleRampStops(lensRampStops(lens)!, 0.56));
+    });
+
+    it("mass_receptivity is null-honest when missing (never a fabricated zero fill)", () => {
+      const lens: Lens = { kind: "metric", metric: "mass_receptivity" };
+      expect(regionFillForLens(lens, {}, DOMAIN)).toBeNull();
+    });
+
+    it("colors by vision_state via the shared VISION_STATE_COLOR palette", () => {
+      const properties: RegionFillProperties = { vision_state: "water" };
+      expect(regionFillForLens({ kind: "vision_state" }, properties, DOMAIN)).toEqual(
+        VISION_STATE_COLOR.water,
+      );
+    });
+
+    it("vision_state is null-honest when absent / explicit null (partial-coverage group)", () => {
+      expect(regionFillForLens({ kind: "vision_state" }, {}, DOMAIN)).toBeNull();
+      const properties: RegionFillProperties = { vision_state: null };
+      expect(regionFillForLens({ kind: "vision_state" }, properties, DOMAIN)).toBeNull();
+    });
+
+    it("vision_state is null-honest for an unrecognized state string", () => {
+      const properties: RegionFillProperties = { vision_state: "not_a_real_state" };
+      expect(regionFillForLens({ kind: "vision_state" }, properties, DOMAIN)).toBeNull();
     });
   });
 

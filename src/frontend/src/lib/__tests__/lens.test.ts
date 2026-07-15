@@ -43,13 +43,17 @@ import {
 import { DATA_RAMPS } from "@/theme/colors";
 
 describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIES", () => {
-  it("has exactly the 12 numeric contract metric names, in contract order", () => {
+  it("has exactly the 13 numeric contract metric names, in contract order", () => {
     // Wave 2 Round 2 (reports/wave2-implementation-map.md): throughput_position
     // (ruling 1 — wired for real, no longer a frozen 1.0 constant) and
     // agitation (DECLARED_CONDITIONAL — legitimately 0.0 absent a crisis tick)
     // join the numeric contract, appended after solidarity_index. Audit Wave 4
     // straggler (task #76): centrality (a territory's own degree-centrality
-    // within the org-network topology) is appended after agitation.
+    // within the org-network topology) is appended after agitation. Wave 5
+    // receptivity pair: mass_receptivity (M_r, the Epistemic Horizon's
+    // honest-display receptivity) is appended after centrality; its
+    // categorical companion vision_state stays OUT of this numeric array
+    // (dedicated Lens kind, like territory_type).
     expect(MAP_METRICS).toEqual([
       "profit_rate",
       "exploitation_rate",
@@ -63,6 +67,7 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
       "throughput_position",
       "agitation",
       "centrality",
+      "mass_receptivity",
     ]);
   });
 
@@ -73,6 +78,10 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
   it("deliberately excludes territory_type (categorical — drives the territory_type Lens kind instead)", () => {
     expect(MAP_METRICS).not.toContain("territory_type");
   });
+
+  it("deliberately excludes vision_state (categorical — drives the vision_state Lens kind instead)", () => {
+    expect(MAP_METRICS).not.toContain("vision_state");
+  });
 });
 
 describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", () => {
@@ -81,7 +90,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
     expect(SELECTABLE_METRICS).not.toContain("habitability");
   });
 
-  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation/centrality", () => {
+  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation/centrality/mass_receptivity", () => {
     expect([...SELECTABLE_METRICS].sort()).toEqual(
       [
         "profit_rate",
@@ -94,6 +103,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
         "throughput_position",
         "agitation",
         "centrality",
+        "mass_receptivity",
       ].sort(),
     );
   });
@@ -334,6 +344,17 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
     expect(stops).not.toEqual(DATA_RAMPS.consciousness);
     expect(stops).not.toEqual(DATA_RAMPS.wealth);
   });
+
+  it("mass_receptivity resolves to the dedicated receptivity ramp (Wave 5 — corpus desert/mud/water direction), distinct from biocapacity's diverging ramp", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "mass_receptivity" });
+    expect(stops).toEqual(DATA_RAMPS.receptivity);
+    expect(stops).not.toEqual(DATA_RAMPS.biocapacity);
+    expect(stops).not.toEqual(DATA_RAMPS.solidarity);
+  });
+
+  it("vision_state has no fill ramp (categorical, like territory_type)", () => {
+    expect(lensRampStops({ kind: "vision_state" })).toBeNull();
+  });
 });
 
 describe("MAP_HISTORY_REPLAYABLE_METRICS mirrors web/game/map_contract.py's tuple of the same name", () => {
@@ -367,6 +388,7 @@ describe("lensMetricName — the single MapMetric a lens directly names, or null
     expect(lensMetricName({ kind: "habitability" })).toBeNull();
     expect(lensMetricName({ kind: "class_composition" })).toBeNull();
     expect(lensMetricName({ kind: "territory_type" })).toBeNull();
+    expect(lensMetricName({ kind: "vision_state" })).toBeNull();
     expect(lensMetricName({ kind: "field_flow", field: "exploitation" })).toBeNull();
   });
 });
@@ -394,6 +416,11 @@ describe("isReplayableLens — gates the RadarLoopPanel scrubber's availability"
     expect(isReplayableLens({ kind: "habitability" })).toBe(false);
     expect(isReplayableLens({ kind: "class_composition" })).toBe(false);
     expect(isReplayableLens({ kind: "territory_type" })).toBe(false);
+    expect(isReplayableLens({ kind: "vision_state" })).toBe(false);
     expect(isReplayableLens({ kind: "field_flow", field: "exploitation" })).toBe(false);
+  });
+
+  it("is false for the mass_receptivity metric (hex_latest-only, no append-only history — mirrors the backend tuple)", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "mass_receptivity" })).toBe(false);
   });
 });

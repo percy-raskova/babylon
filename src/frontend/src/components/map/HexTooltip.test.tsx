@@ -57,4 +57,45 @@ describe("HexTooltip", () => {
     const stats = screen.getAllByTestId("hex-tooltip-stat-label");
     expect(stats[0]).toHaveTextContent(/population/i);
   });
+
+  it("prioritizes receptivity first for the mass_receptivity metric lens (Wave 5)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ mass_receptivity: 0.56, vision_state: "mud" })}
+        x={0}
+        y={0}
+        lens={{ kind: "metric", metric: "mass_receptivity" }}
+      />,
+    );
+    const stats = screen.getAllByTestId("hex-tooltip-stat-label");
+    expect(stats[0]).toHaveTextContent(/receptivity/i);
+    expect(screen.getByText("0.56")).toBeInTheDocument();
+  });
+
+  it("prioritizes vision first for the vision_state lens, rendering the real state string (Wave 5)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ mass_receptivity: 0.06, vision_state: "desert" })}
+        x={0}
+        y={0}
+        lens={{ kind: "vision_state" }}
+      />,
+    );
+    const stats = screen.getAllByTestId("hex-tooltip-stat-label");
+    expect(stats[0]).toHaveTextContent(/vision/i);
+    expect(screen.getByText("desert")).toBeInTheDocument();
+  });
+
+  it("renders an honest em-dash for absent receptivity values, never a fabricated 0 (Constitution III.11)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ mass_receptivity: null, vision_state: null })}
+        x={0}
+        y={0}
+        lens={{ kind: "vision_state" }}
+      />,
+    );
+    const values = screen.getAllByText("—");
+    expect(values.length).toBeGreaterThan(0);
+  });
 });

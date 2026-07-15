@@ -60,6 +60,19 @@ import type { MapLayer } from "@/types/game";
  * (`_centrality_by_territory`/`_org_network_centrality`, bridge-derived,
  * reusing the NETWORK-scope `get_org_network` centrality formula). Numeric
  * like `agitation`, appended last.
+ *
+ * Wave 5 receptivity pair (Epistemic Horizon Phase 1 honest display,
+ * `project/research/epistemic-horizon-program-proposal.md`):
+ * `mass_receptivity` — M_r, the population-weighted per-territory mean of
+ * `(1 - P(S|A)) x class_consciousness x class_factor` written by
+ * `EpistemicHorizonSystem` (engine position 27) and re-injected onto the
+ * persisted graph by `_carry_epistemic_horizon`. Numeric, appended last.
+ * Its categorical companion `vision_state` (the corpus's desert/mud/water
+ * partition) is — like `dominant_class`/`territory_type` — excluded from
+ * this numeric-only array and drives the dedicated `vision_state` `Lens`
+ * kind instead. `intel_confidence` has NO lens at all (uniformly 0.1
+ * today, C_p=0 everywhere — a flat lens would be decorative; it rides the
+ * territory serializer/inspector payloads only).
  */
 export const MAP_METRICS = [
   "profit_rate",
@@ -74,6 +87,7 @@ export const MAP_METRICS = [
   "throughput_position",
   "agitation",
   "centrality",
+  "mass_receptivity",
 ] as const;
 
 export type MapMetric = (typeof MAP_METRICS)[number];
@@ -130,11 +144,23 @@ export type LensMode = (typeof LENS_MODES)[number];
  * magnitude render as animated flow geometry (width/opacity), never a fill
  * ramp (`lensRampStops` returns `null`, like every categorical kind).
  */
+/**
+ * `vision_state` (Wave 5 receptivity pair): the corpus's fog-of-war
+ * three-state partition — desert (`M_r < 0.2`, "you are blind and
+ * exposed") / mud (partial information) / water (`M_r >= 0.8`, "the
+ * masses are your eyes") — threshold-derived from `mass_receptivity` by
+ * `EpistemicHorizonSystem`. Categorical like `territory_type` and for the
+ * same reason: a three-value enum string, not a numeric ramp, so it gets
+ * its own top-level kind rather than a `{kind:"metric"}` sub-select. It is
+ * territory-local (a native per-territory graph attr), never
+ * balkanization-derived.
+ */
 export type Lens =
   | { kind: LensMode }
   | { kind: "metric"; metric: MapMetric }
   | { kind: "class_composition" }
   | { kind: "territory_type" }
+  | { kind: "vision_state" }
   | { kind: "field_flow"; field: string };
 
 /**
@@ -195,6 +221,7 @@ const METRIC_LABELS: Record<MapMetric, string> = {
   throughput_position: "Throughput Position · Circulation Intensity",
   agitation: "Agitation · Political Energy",
   centrality: "Centrality · Org-Network Criticality",
+  mass_receptivity: "Mass Receptivity · Epistemic Horizon",
 };
 
 /** Title-cases a single word (`"exploitation"` -> `"Exploitation"`) — `field_flow`'s legend label only. */
@@ -207,6 +234,7 @@ export function lensLegendLabel(lens: Lens): string {
   if (lens.kind === "metric") return METRIC_LABELS[lens.metric];
   if (lens.kind === "class_composition") return "Class Composition · Dominant Social Role";
   if (lens.kind === "territory_type") return "Territory Type · Settler-Colonial Hierarchy";
+  if (lens.kind === "vision_state") return "Vision State · Desert / Mud / Water";
   if (lens.kind === "field_flow") return `Gradient Wind · ${titleCase(lens.field)} Field`;
   return MODE_LEGEND_LABELS[lens.kind];
 }
@@ -215,27 +243,64 @@ export function lensLegendLabel(lens: Lens): string {
  * The `MapLayer` a metric name reuses for its data ramp. `MapMetric` and
  * `MapLayer` overlap on every metric except `habitability`/`solidarity_index`
  * (spec-109 A2 / spec-113 Lane B additions), `throughput_position`/
- * `agitation` (Wave 2 Round 2), and `centrality` (audit Wave 4 straggler,
- * task #76) — all five predate/sit outside `MapLayer` and have no ramp of
- * their own there — each resolves its real ramp directly in
- * `lensRampStops` instead of through `rampForLayer`.
+ * `agitation` (Wave 2 Round 2), `centrality` (audit Wave 4 straggler,
+ * task #76), and `mass_receptivity` (Wave 5 receptivity pair) — all six
+ * predate/sit outside `MapLayer` and have no ramp of their own there —
+ * each resolves its real ramp directly in `lensRampStops` instead of
+ * through `rampForLayer`.
  */
 function metricToMapLayer(metric: MapMetric): MapLayer | null {
   return metric === "habitability" ||
     metric === "solidarity_index" ||
     metric === "throughput_position" ||
     metric === "agitation" ||
-    metric === "centrality"
+    metric === "centrality" ||
+    metric === "mass_receptivity"
     ? null
     : (metric as MapLayer);
 }
 
 /**
+ * The `{kind:"metric"}` half of `lensRampStops` — extracted so the parent
+ * switch stays inside the complexity budget as the metric roster grows.
+ *
+ * Wave 2 Round 2: throughput_position picks the wealth ramp (an
+ * economic-circulation metric, distinct from rent's extraction/violence
+ * terminal already claimed by imperial_rent/exploitation_rate) and
+ * agitation picks the consciousness ramp (raw political energy — the same
+ * "awakening" ramp org_presence uses — distinct from heat's alarm terminal
+ * and solidarity's green, its nearest struggle-group cousins). Both are of
+ * the 3 canonical ramps (consciousness/wealth/population) not yet bound to
+ * any REGISTERED lens before that round; population was left unclaimed
+ * until the audit Wave 4 straggler claimed it: centrality takes the
+ * population ramp — giving it a visual identity distinct from every
+ * existing metric lens rather than reusing agitation's/org_presence's
+ * consciousness ramp.
+ *
+ * Wave 5: mass_receptivity gets its own dedicated receptivity ramp
+ * (theme/colors.ts) — the corpus's desert->mud->water direction is a
+ * DIVERGING read no existing ramp encodes (biocapacity diverges
+ * red<->green, but its green terminal aliases solidarity and reads
+ * "ecology", not "fish in water"); the new ramp's stop positions align
+ * with the EpistemicHorizonDefines thresholds by construction.
+ */
+function metricRampStops(metric: MapMetric): string[] {
+  if (metric === "solidarity_index") return DATA_RAMPS.solidarity;
+  if (metric === "throughput_position") return DATA_RAMPS.wealth;
+  if (metric === "agitation") return DATA_RAMPS.consciousness;
+  if (metric === "centrality") return DATA_RAMPS.population;
+  if (metric === "mass_receptivity") return DATA_RAMPS.receptivity;
+  const layer = metricToMapLayer(metric);
+  return layer === null ? DATA_RAMPS.biocapacity : rampForLayer(layer);
+}
+
+/**
  * Resolve the canon ramp (hex stops) for a lens, or `null` for the
  * categorical kinds (stance/faction/collapse/class_composition/
- * territory_type) whose fill is a discrete per-entity color, not a single
- * continuous ramp — and for `field_flow`, whose direction/magnitude render
- * as flow geometry (DESIGN_BIBLE.md §11 law 1), never a fill ramp at all.
+ * territory_type/vision_state) whose fill is a discrete per-entity color,
+ * not a single continuous ramp — and for `field_flow`, whose
+ * direction/magnitude render as flow geometry (DESIGN_BIBLE.md §11 law 1),
+ * never a fill ramp at all.
  */
 export function lensRampStops(lens: Lens): string[] | null {
   switch (lens.kind) {
@@ -244,35 +309,15 @@ export function lensRampStops(lens: Lens): string[] | null {
     case "collapse":
     case "class_composition":
     case "territory_type":
+    case "vision_state":
     case "field_flow":
       return null;
     case "habitability":
       return DATA_RAMPS.biocapacity;
     case "heat":
       return DATA_RAMPS.heat;
-    case "metric": {
-      if (lens.metric === "solidarity_index") return DATA_RAMPS.solidarity;
-      // Wave 2 Round 2: throughput_position picks the wealth ramp (an
-      // economic-circulation metric, distinct from rent's extraction/
-      // violence terminal already claimed by imperial_rent/
-      // exploitation_rate) and agitation picks the consciousness ramp
-      // (raw political energy — the same "awakening" ramp org_presence
-      // uses — distinct from heat's alarm terminal and solidarity's green,
-      // its nearest struggle-group cousins). Both are of the 3 canonical
-      // ramps (consciousness/wealth/population) not yet bound to any
-      // REGISTERED lens before this round; population was left unclaimed
-      // until the audit Wave 4 straggler below claimed it.
-      if (lens.metric === "throughput_position") return DATA_RAMPS.wealth;
-      if (lens.metric === "agitation") return DATA_RAMPS.consciousness;
-      // Audit Wave 4 straggler (task #76): centrality claims the population
-      // ramp — the one canonical ramp (of consciousness/wealth/population)
-      // no registered lens had bound yet, giving it a visual identity
-      // distinct from every existing metric lens rather than reusing
-      // agitation's/org_presence's consciousness ramp.
-      if (lens.metric === "centrality") return DATA_RAMPS.population;
-      const layer = metricToMapLayer(lens.metric);
-      return layer === null ? DATA_RAMPS.biocapacity : rampForLayer(layer);
-    }
+    case "metric":
+      return metricRampStops(lens.metric);
   }
 }
 
@@ -304,10 +349,10 @@ export const MAP_HISTORY_REPLAYABLE_METRICS: readonly MapMetric[] = [
 /**
  * The single `MapMetric` a lens directly names, or `null` for a lens with
  * no single-metric shape (stance/faction/collapse/class_composition/
- * territory_type/field_flow/habitability — none of these read one scalar
- * per territory the way `{kind:"heat"}`/`{kind:"metric"}` do). `heat` has
- * its own dedicated `Lens` kind (see this module's docstring), so it is
- * special-cased rather than routed through `SELECTABLE_METRICS`.
+ * territory_type/vision_state/field_flow/habitability — none of these read
+ * one scalar per territory the way `{kind:"heat"}`/`{kind:"metric"}` do).
+ * `heat` has its own dedicated `Lens` kind (see this module's docstring),
+ * so it is special-cased rather than routed through `SELECTABLE_METRICS`.
  */
 export function lensMetricName(lens: Lens): MapMetric | null {
   if (lens.kind === "heat") return "heat";

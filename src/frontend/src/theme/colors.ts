@@ -18,7 +18,14 @@ export type RGBAColor = [number, number, number, number];
 
 /** Map layers that own a canonical data ramp. */
 export type RampLayer =
-  "heat" | "consciousness" | "rent" | "biocapacity" | "wealth" | "population" | "solidarity";
+  | "heat"
+  | "consciousness"
+  | "rent"
+  | "biocapacity"
+  | "wealth"
+  | "population"
+  | "solidarity"
+  | "receptivity";
 
 /**
  * The six canonical data ramps.
@@ -51,6 +58,23 @@ export const DATA_RAMPS: Record<RampLayer, string[]> = {
   // same terminal `mapLensLayers.ts`'s STANCE_COLOR.ABOLISH already uses, so
   // "high solidarity" reads consistently with the stance lens's ABOLISH tone.
   solidarity: ["#0d1016", "#132a1c", "#1e4a2a", "#2f7a3f", "#48a85c", "#5fbf7a"],
+  // Wave 5 receptivity ramp (Epistemic Horizon mass_receptivity M_r lens):
+  // a diverging desert->mud->water read straight off the corpus's own
+  // territory-overlay direction (ai/epochs/epoch3/fog-of-war.yaml:780-794 —
+  // desert "Red/gray tint", mud "Brown/amber tint", water "Blue-green glow").
+  // Six stops land at t = 0/0.2/0.4/0.6/0.8/1.0, so the corpus's OWN
+  // thresholds sit exactly ON stops: desert_threshold=0.2 is the last
+  // red-family stop, water_threshold=0.8 the first blue-green stop — the
+  // numeric ramp and the categorical vision_state lens partition at the
+  // same values by construction. Stops 0/2/3 reuse canon tokens
+  // (--babylon-thermal collapse-red; the heat ramp's brown/amber body for
+  // mud); stops 1/4/5 are NEW hexes, sanctioned because the corpus names a
+  // direction no existing terminal covers — #3ecfb2 is deliberately
+  // BLUE-green ("fish in water"), distinct from solidarity's pure green
+  // (#5fbf7a) and the spire's pure cyan (#4dd9e6), so water never aliases
+  // either neighbor lens. Diverging like biocapacity — a ratified exception
+  // class, not a rainbow (§9b harmony kept: muted body, one glow terminal).
+  receptivity: ["#b8321f", "#7a3a30", "#7a4720", "#b8581f", "#1f6b62", "#3ecfb2"],
 };
 
 /** Fill alpha for deck.gl hex layers (near-opaque, as pre-090). */

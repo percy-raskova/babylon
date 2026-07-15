@@ -34,6 +34,7 @@ from babylon.engine.formula_registry import (  # noqa: F401 — re-exported, see
 from babylon.engine.observers import EndgameDetector
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
+from babylon.engine.topology_monitor import calculate_component_metrics, extract_solidarity_subgraph
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
@@ -50,7 +51,13 @@ from babylon.ooda.npc_stub import select_npc_actions
 # exactly one home.
 from babylon.persistence.county_aggregation import _ideology_to_ternary
 from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
-from babylon.topology.graph import BabylonGraph
+from babylon.topology.graph import BabylonGraph, BabylonUGraph
+from babylon.topology.graph_algorithms import (
+    betweenness_centrality,
+    closeness_centrality,
+    degree_centrality,
+    is_connected,
+)
 
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
 
@@ -2978,6 +2985,159 @@ class EngineBridge:
         ][:_STATE_APPARATUS_ACTIONS_LIMIT]
 
         return _build_state_apparatus_dashboard(state, organizations, recent_actions)
+
+    # ------------------------------------------------------------------ #
+    # AW4-R1 (audit Wave 4, "Topology & the Gramscian Wire"): Spatial
+    # Multi-Scale — org-network graph + hypergraph-community stub.
+    # Mirrors urls.py's "API: Spatial Multi-Scale" grouping.
+    # ------------------------------------------------------------------ #
+
+    def get_org_network(
+        self, session_id: UUID, *, territory_filter: str | None = None
+    ) -> dict[str, Any]:
+        """Return the org-network graph (spec-113 Multi-Scale Spatial Rendering).
+
+        Serves the frontend's ``OrgNetworkPayload`` contract
+        (``src/frontend/src/types/game.ts`` ~614-631:
+        ``{tick, nodes: OrgNetworkNode[], edges: OrgNetworkEdge[]}``,
+        ``OrgNetworkNode.type: "organization" | "institution" | "territory"``).
+        AW4-R1 verified two divergences from the brief that shaped this
+        implementation:
+
+        1. The typed ``OrgNetworkNode.type`` union has NO ``"social_class"``
+           member. Serving class nodes under a type value outside that
+           union would be exactly the "classified dishonestly" failure mode
+           the Seam Observatory exists to catch (``sentinels/seam/
+           registry.py`` module docstring), so nodes here are strictly
+           organizations/institutions/territories — the union's own three
+           values, also what this endpoint's pre-existing view docstring
+           already promised ("nodes (orgs, institutions, territories)",
+           ``api.py::org_network``).
+        2. ``EdgeType.MEMBERSHIP`` (Organization -> SocialClass — the one
+           edge type that WOULD connect an org to a class node) has NO
+           production writer anywhere in ``src/babylon`` today (verified by
+           search: only ever queried, by ``CommunitySystem``/
+           ``ReactionarySystem``/the OODA cost helpers/
+           ``domain.organizations.composition``; ``WorldState.to_graph()``
+           never creates one). ``EdgeType.CLIENT_STATE`` (the brief's other
+           named example) is likewise not org-related on inspection — it
+           connects two **social_class** nodes (comprador bourgeoisie ->
+           periphery proletariat subsidy, see
+           ``engine/scenarios/_legacy.py``), not an org to anything. So the
+           class-node scoping question above is moot against real data
+           today; flagged here for a frontend follow-up if a future spec
+           wants class nodes in this specific lens.
+
+        Nodes are organizations/institutions/territories connected via the
+        real graph-materialized org edges (``PRESENCE`` org/institution ->
+        territory, ``HOUSES`` institution -> org — both seeded by
+        ``WorldState.to_graph()``); any future ``ANTAGONISTIC``/
+        ``TRANSACTIONAL``/``SOLIDARISTIC``/``SOLIDARITY`` edge a player's
+        NEGOTIATE action or a later scenario creates between two included
+        nodes is picked up automatically (see :func:`_build_org_network`) —
+        no per-edge-type allowlist to maintain. ``territory_filter``
+        restricts to organizations/institutions whose ``territory_ids``
+        contains the given territory (matching the pre-existing view
+        docstring) plus that territory itself.
+
+        ``mode`` on each edge carries the mechanical ``EdgeType`` value
+        (lowercase — ``"presence"``, ``"houses"``, …), the same convention
+        :func:`_serialize_edge` already uses for the main graph/map lens
+        (``rel.edge_type`` -> ``"mode"``) — NOT the dialectical
+        ``EdgeMode`` (EXPLOITATION/SOLIDARITY-only, written by
+        ``EdgeTransitionSystem``), which, on the rare edge that carries
+        one, rides in ``attributes["edge_mode"]`` instead (never
+        fabricated when absent — Constitution III.11).
+
+        AW4-R1 Deliverable 3 additions (audit brief's "critical-nodes/
+        centrality map lens" + "percolation-ratio HUD chip"): ``centrality``
+        (per-node degree/betweenness/closeness over the undirected
+        projection of exactly this response's own nodes/edges — see
+        :func:`_org_network_centrality`) and ``percolation_ratio`` (the
+        real solidarity-network giant-component ratio — see
+        :func:`_solidarity_percolation_ratio`) are BOTH additive keys with
+        no field in the declared ``OrgNetworkPayload`` today; a frontend
+        follow-up needs to type them. Bridge-altitude computation of these
+        pure topology reads (precedent: :func:`_build_solidarity_communities`)
+        — never engine adjudication math.
+
+        Args:
+            session_id: The game session UUID.
+            territory_filter: Optional territory id; restricts nodes to
+                organizations/institutions present there plus the
+                territory itself.
+
+        Returns:
+            ``{"tick", "nodes", "edges", "centrality", "percolation_ratio"}``.
+            ``nodes``/``edges`` sorted deterministically by id / (source,
+            target, mode) — Constitution III.7.
+        """
+        state, graph = self.hydrate_state(session_id)
+        nodes, edges = _build_org_network(state, graph, territory_filter=territory_filter)
+        return {
+            "tick": state.tick,
+            "nodes": nodes,
+            "edges": edges,
+            "centrality": _org_network_centrality(nodes, edges),
+            "percolation_ratio": _solidarity_percolation_ratio(state, graph),
+        }
+
+    def get_hypergraph_communities(
+        self,
+        session_id: UUID,
+        *,
+        territory_filter: str | None = None,  # noqa: ARG002 — see docstring
+    ) -> dict[str, Any]:
+        """Return the hypergraph community payload — honest, permanently empty.
+
+        Serves the frontend's ``HypergraphPayload`` contract
+        (``src/frontend/src/types/game.ts`` ~648-660:
+        ``{tick, hyperedges: HypergraphCommunity[]}``) — AW4-R1 verified the
+        field is ``hyperedges``, not ``communities``.
+
+        AW4-R1 Deliverable 2: before this method existed, ``GET
+        /api/games/{id}/hypergraph/communities/`` (``api.py::
+        hypergraph_communities``, wired since before this Wave) called
+        ``bridge.get_hypergraph_communities`` on a bridge that had no such
+        method -> guaranteed ``AttributeError`` -> 500, on BOTH bridges
+        (verified 2026-07-15). ``StubEngineBridge`` even already carried a
+        docstring on its ``get_field_state`` calling this exact gap out by
+        name as a cautionary tale to not repeat (see that method's
+        docstring, ``game/stub_bridge.py``).
+
+        The underlying data source is real but never populated:
+        ``SocialClass.community_memberships`` (the XGI hypergraph
+        community layer) is never assigned by any production scenario
+        builder — verified by search, no writer exists outside the model's
+        own tests — so ``CommunitySystem.step`` (``engine/systems/
+        community.py`` position 6) no-ops every tick
+        (``if not all_memberships: return``, see its ``_collect_memberships``
+        helper). This is the SAME gap :func:`_build_solidarity_communities`'s
+        docstring already documents for :meth:`get_communities_dashboard` —
+        both explicitly reason that reading the real (permanently empty)
+        source here would be "an honest but *permanently* empty list,
+        identical to the prior stub." Per this Wave's explicit brief, this
+        endpoint does exactly that instead of relabeling
+        :meth:`get_communities_dashboard`'s real SOLIDARITY-edge clusters
+        as hypergraph communities — those are a distinct, real structure;
+        conflating them would misrepresent a hypergraph community as
+        existing when it does not.
+
+        ``territory_filter`` is accepted for signature parity with the
+        view (``api.py`` forwards the ``?territory=`` query param
+        unconditionally) but has no effect while the underlying layer is
+        unseeded.
+
+        Args:
+            session_id: The game session UUID.
+            territory_filter: Accepted, currently inert (see above).
+
+        Returns:
+            ``{"tick": <int>, "hyperedges": []}`` — honest empty
+            (Constitution III.11), never a fabricated community.
+        """
+        state, _graph = self.hydrate_state(session_id)
+        return {"tick": state.tick, "hyperedges": []}
 
     def get_infrastructure(self, session_id: UUID) -> dict[str, Any]:
         """Return the infrastructure network overlay (transport substrate).
@@ -7046,6 +7206,166 @@ def _serialize_institution(inst: Any) -> dict[str, Any]:
             "institutionalist_bonapartist": float(balance.institutionalist_bonapartist),
         },
     }
+
+
+def _build_org_network(
+    state: WorldState, graph: Any, *, territory_filter: str | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build the org-network nodes/edges for :meth:`EngineBridge.get_org_network`.
+
+    See that method's docstring for the full node/edge-type rationale
+    (nodes strictly organization/institution/territory; edges are whatever
+    real graph edge — PRESENCE/HOUSES today, any future org-relevant type
+    tomorrow — connects two included nodes, no per-type allowlist).
+
+    Args:
+        state: The hydrated WorldState (organizations/institutions/
+            territories model dicts).
+        graph: The hydrated session graph (edges live only here — orgs
+            carry no edge collection on their Pydantic model).
+        territory_filter: Optional territory id restricting the node set.
+
+    Returns:
+        ``(nodes, edges)`` — both sorted deterministically
+        (Constitution III.7): nodes by id, edges by
+        ``(source, target, mode)``.
+    """
+    orgs = state.organizations
+    institutions = state.institutions
+    territories = state.territories
+
+    if territory_filter is not None:
+        org_ids = sorted(oid for oid, o in orgs.items() if territory_filter in o.territory_ids)
+        inst_ids = sorted(
+            iid for iid, inst in institutions.items() if territory_filter in inst.territory_ids
+        )
+        territory_ids = [territory_filter] if territory_filter in territories else []
+    else:
+        org_ids = sorted(orgs)
+        inst_ids = sorted(institutions)
+        territory_ids = sorted(
+            {tid for o in orgs.values() for tid in o.territory_ids if tid in territories}
+            | {
+                tid
+                for inst in institutions.values()
+                for tid in inst.territory_ids
+                if tid in territories
+            }
+        )
+
+    nodes: list[dict[str, Any]] = [
+        {"id": oid, "type": "organization", "attributes": _serialize_organization(orgs[oid])}
+        for oid in org_ids
+    ]
+    nodes.extend(
+        {"id": iid, "type": "institution", "attributes": _serialize_institution(institutions[iid])}
+        for iid in inst_ids
+    )
+    nodes.extend(
+        {
+            "id": tid,
+            "type": "territory",
+            "attributes": _serialize_territory(territories[tid], graph=graph),
+        }
+        for tid in territory_ids
+    )
+    nodes.sort(key=lambda n: str(n["id"]))
+
+    node_ids = set(org_ids) | set(inst_ids) | set(territory_ids)
+    edges: list[dict[str, Any]] = []
+    for source, target in graph.edges:
+        if source not in node_ids or target not in node_ids:
+            continue
+        data = graph.edges[(source, target)]
+        mode = str(data.get("edge_type", data.get("_edge_type", ""))).lower()
+        attributes = {k: v for k, v in data.items() if k not in {"edge_type", "_edge_type"}}
+        edges.append({"source": source, "target": target, "mode": mode, "attributes": attributes})
+    edges.sort(key=lambda e: (str(e["source"]), str(e["target"]), str(e["mode"])))
+
+    return nodes, edges
+
+
+def _org_network_centrality(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> dict[str, dict[str, float]]:
+    """Degree/betweenness/closeness centrality over the org-network's own
+    undirected projection (AW4-R1 Deliverable 3).
+
+    Mirrors :func:`babylon.ooda.attention.sparrow.analyze_network`'s exact
+    guard idiom (degree always computed; betweenness needs >1 node;
+    closeness needs >1 node AND a connected graph) — real rustworkx-backed
+    formulas (:mod:`babylon.topology.graph_algorithms`), never fabricated.
+
+    Computed over THIS response's own node/edge set (not the whole
+    hydrated graph) so a viewer's centrality numbers describe exactly the
+    network they can see — a deliberate scoping choice: whole-graph
+    centrality (mixing in social_class/EXPLOITATION/WAGES topology orgs
+    never touch) would answer a materially different question.
+
+    Args:
+        nodes: This response's own ``nodes`` list (id/type/attributes).
+        edges: This response's own ``edges`` list (source/target/mode).
+
+    Returns:
+        ``{node_id: {"degree": float, "betweenness"?: float,
+        "closeness"?: float}}`` — the optional keys are honestly omitted
+        (never 0.0-fabricated) when the guard condition isn't met.
+        Empty dict for an empty node set.
+    """
+    undirected = BabylonUGraph()
+    undirected.add_nodes_from([str(n["id"]) for n in nodes])
+    for edge in edges:
+        undirected.add_edge(str(edge["source"]), str(edge["target"]))
+
+    if undirected.number_of_nodes() == 0:
+        return {}
+
+    result: dict[str, dict[str, float]] = {
+        node_id: {"degree": value} for node_id, value in degree_centrality(undirected).items()
+    }
+
+    if undirected.number_of_nodes() > 1:
+        for node_id, value in betweenness_centrality(undirected).items():
+            result[node_id]["betweenness"] = value
+
+    if undirected.number_of_nodes() > 1 and is_connected(undirected):
+        for node_id, value in closeness_centrality(undirected).items():
+            result[node_id]["closeness"] = value
+
+    return result
+
+
+def _solidarity_percolation_ratio(state: WorldState, graph: Any) -> float | None:
+    """Real percolation ratio (L_max / N) over the SOLIDARITY network
+    (AW4-R1 Deliverable 3 — the audit brief's "percolation-ratio HUD chip").
+
+    Reuses :func:`babylon.engine.topology_monitor.calculate_component_metrics`
+    — the engine's own ``TopologyMonitor`` observer formula — rather than
+    reimplementing it (DRY); this is a pure topology read at bridge
+    altitude (precedent: :func:`_build_solidarity_communities`), never
+    engine adjudication math.
+
+    Args:
+        state: The hydrated WorldState (for the real social_class count).
+        graph: The hydrated session graph.
+
+    Returns:
+        The ratio rounded to 4 places, or ``None`` (never a fabricated
+        0.0) when the graph has zero social_class nodes — the ratio is
+        mathematically undefined there (Constitution III.11).
+        ``calculate_component_metrics`` itself returns a bare 0.0 for that
+        case since its engine-internal caller (``TopologyMonitor``) never
+        actually has zero classes; this bridge-altitude wrapper adds the
+        honest-null guard that context doesn't need.
+    """
+    total_social_classes = len(state.entities)
+    if total_social_classes == 0:
+        return None
+    solidarity_graph = extract_solidarity_subgraph(graph)
+    _num_components, _max_component_size, percolation_ratio = calculate_component_metrics(
+        solidarity_graph, total_social_classes
+    )
+    return round(percolation_ratio, 4)
 
 
 def _serialize_edge(rel: Any) -> dict[str, Any]:

@@ -1360,6 +1360,44 @@ _MAP_HISTORY_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# KNOWN GAP (AW4-R1, audit Wave 4 "Topology & the Gramscian Wire",
+# 2026-07-15): ``EngineBridge.get_org_network`` / ``get_hypergraph_communities``
+# (``web/game/engine_bridge.py``, the ``OrgNetworkPayload``/``HypergraphPayload``
+# contracts) and their new ``centrality``/``percolation_ratio`` fields are
+# player-observable quantities crossing the seam with NO registry row here.
+#
+# This is not an oversight: :class:`SeamScope` (``sentinels/seam/types.py``)
+# has exactly seven members (MAP, TERRITORY, ECONOMY, ENDGAME, EVENT,
+# INSPECTOR, FIELD_STATE) and none of them honestly fits an org/institution/
+# territory topology graph, a permanently-empty hypergraph-community stub, or
+# graph-structural analytics (centrality/percolation). Filing these rows under
+# an existing scope (e.g. INSPECTOR, which is drill-down payloads, not a
+# graph-panel lens) would be the exact "classified dishonestly" failure mode
+# this registry exists to catch (see the module docstring above) — so no rows
+# were added rather than force a misfit one.
+#
+# AW4-R1's file scope was ``registry.py`` only (not ``types.py``), so adding
+# the fitting new member (e.g. ``SPATIAL`` or ``TOPOLOGY``) was out of reach
+# this pass. This comment is the documented placeholder so the gap is visible
+# to the next agent who touches this file, per this module's own "the
+# registry cannot silently rot" design intent — a scope-enum amendment is the
+# correct next step, then real ``SeamEntry`` rows for:
+#   - org_network.tick / .nodes / .edges (OrgNetworkPayload)
+#   - org_network.centrality (bridge-derived, per-node degree/betweenness/
+#     closeness — see ``_org_network_centrality``)
+#   - org_network.percolation_ratio (bridge-derived, reuses
+#     ``babylon.engine.topology_monitor.calculate_component_metrics`` —
+#     see ``_solidarity_percolation_ratio``)
+#   - hypergraph_communities.hyperedges (HypergraphPayload; permanently
+#     empty today — LivenessClass.STRUCTURALLY_IMPOSSIBLE, matching the
+#     ``hex_latest`` agitation/territory_type rows' precedent above)
+# Note also: Sensor 1's gating checks (``check_map_metrics`` /
+# ``check_tick_payloads_exist`` / ``check_severity_vocabulary``) do not scan
+# these surfaces, so this gap does NOT red ``mise run check:seams`` — it is a
+# silent-documentation gap, not a silent-behavior one.
+# ---------------------------------------------------------------------------
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     _MAP_METRICS

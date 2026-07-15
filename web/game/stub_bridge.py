@@ -1069,6 +1069,54 @@ class StubEngineBridge:
             "dialectical_regime": None,
         }
 
+    # ------------------------------------------------------------------ #
+    # AW4-R1 (audit Wave 4): Spatial Multi-Scale — stub returns honest
+    # empty states (same pattern as get_field_state above).
+    # ------------------------------------------------------------------ #
+
+    def get_org_network(
+        self,
+        session_id: UUID,
+        *,
+        territory_filter: str | None = None,  # noqa: ARG002 — stub has no graph
+    ) -> dict[str, Any]:
+        """Honest empty-but-well-formed stub (AW4-R1 Deliverable 1).
+
+        The stub carries no engine, so it has no org-network graph to
+        report — empty lists/dicts and a null percolation ratio, never
+        fabricated nodes/edges/centrality. ``territory_filter`` is
+        accepted for signature parity with the real bridge (the view
+        forwards it unconditionally) but has no effect here.
+        """
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        return {
+            "tick": tick,
+            "nodes": [],
+            "edges": [],
+            "centrality": {},
+            "percolation_ratio": None,
+        }
+
+    def get_hypergraph_communities(
+        self,
+        session_id: UUID,
+        *,
+        territory_filter: str | None = None,  # noqa: ARG002 — stub has no graph
+    ) -> dict[str, Any]:
+        """Honest empty-but-well-formed stub (AW4-R1 Deliverable 2).
+
+        Closes the exact gap :meth:`get_field_state`'s docstring above
+        calls out by name as a cautionary tale: before AW4-R1 neither
+        bridge implemented ``get_hypergraph_communities`` at all, so the
+        real ``GET .../hypergraph/communities/`` route 500'd
+        unconditionally. Field name is ``hyperedges`` (``HypergraphPayload``,
+        ``src/frontend/src/types/game.ts`` ~648-651), not ``communities``.
+        """
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        return {"tick": tick, "hyperedges": []}
+
     def get_trade_flows(self, _session_id: UUID) -> dict[str, Any]:
         """Stub: no boundary_flow_register in stub mode → has_data: False."""
         return {"tick": 0, "has_data": False, "blocs": []}

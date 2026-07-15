@@ -334,3 +334,8 @@ decisions:
     status: accepted
     date: '2026-07-14'
     file: ADR070_emergent_class_partition.yaml
+  ADR071_program20_means_of_production:
+    title: 'Program 20 (Means of Production): infra-as-code subrepo + AI modernization — deploy/ extracted via subtree split into a local-only babylon-infra mount, Nix flake devshell as system layer only (Article X.1 scoped to the production host), Cloudflare Terraform grows an AI Gateway + Workers AI surface, VPS Ansible stays a validated mockup while a workstation playbook becomes the real apply target, parent CI infra jobs retire into the infra repo''s pre-commit battery'
+    status: accepted
+    date: '2026-07-15'
+    file: ADR071_program20_means_of_production.yaml

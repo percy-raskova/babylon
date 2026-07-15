@@ -244,3 +244,127 @@ class DeepSeekClient:
                 error_code="LLM_001",
                 details={"status_code": getattr(e, "status_code", None)},
             ) from e
+
+
+class WorkersAIClient:
+    """Cloudflare Workers AI client via AI Gateway (OpenAI-compatible REST).
+
+    Program 07 Decision 3 (owner, 2026-07-03): the narrator runs on Workers AI.
+    Requests route through the babylon-narrator AI Gateway for logging/rate
+    limiting (``cf-aig-gateway-id`` header). Model: ``@cf/openai/gpt-oss-20b``.
+    """
+
+    def __init__(
+        self,
+        config: type[LLMConfig] | None = None,
+        client: OpenAI | None = None,
+    ) -> None:
+        """Initialize WorkersAIClient.
+
+        Args:
+            config: LLM configuration class (defaults to LLMConfig)
+            client: Optional pre-built OpenAI client (test seam; avoids
+                network calls when injected)
+
+        Raises:
+            LLMGenerationError: If the Workers AI token is not configured
+        """
+        self._config = config or LLMConfig
+        self._name: Final[str] = "WorkersAI"
+
+        if not self._config.WORKERS_AI_TOKEN:
+            raise LLMGenerationError(
+                "Workers AI token not configured. Set WORKERS_AI_TOKEN.",
+                error_code="LLM_001",
+            )
+
+        self._client = client or OpenAI(
+            api_key=self._config.WORKERS_AI_TOKEN,
+            base_url=self._config.workers_ai_base_url(),
+            timeout=self._config.WORKERS_AI_TIMEOUT,
+            max_retries=self._config.MAX_RETRIES,
+            default_headers={"cf-aig-gateway-id": self._config.WORKERS_AI_GATEWAY_ID},
+        )
+
+    @property
+    def name(self) -> str:
+        """Provider identifier for logging."""
+        return self._name
+
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+    ) -> str:
+        """Generate text synchronously; loud LLMGenerationError on failure.
+
+        Args:
+            prompt: User prompt / context
+            system_prompt: Optional system instructions
+            temperature: Sampling temperature (0.0-1.0)
+
+        Returns:
+            Generated text response
+
+        Raises:
+            LLMGenerationError: On API or generation failure
+        """
+        messages: list[ChatCompletionMessageParam] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        try:
+            response = self._client.chat.completions.create(
+                model=self._config.WORKERS_AI_MODEL,
+                messages=messages,
+                temperature=temperature,
+            )
+            content: str | None = response.choices[0].message.content
+            if content is None:
+                raise LLMGenerationError("Workers AI returned empty response", error_code="LLM_001")
+            return content
+        except APITimeoutError as e:
+            raise LLMGenerationError(
+                f"Workers AI request timed out: {e}",
+                error_code="LLM_002",
+                details={"timeout": self._config.WORKERS_AI_TIMEOUT},
+            ) from e
+        except RateLimitError as e:
+            raise LLMGenerationError(
+                f"Workers AI rate limit exceeded: {e}", error_code="LLM_003"
+            ) from e
+        except APIError as e:
+            raise LLMGenerationError(
+                f"Workers AI API error: {e}",
+                error_code="LLM_001",
+                details={"status_code": getattr(e, "status_code", None)},
+            ) from e
+
+
+def build_llm_provider(config: type[LLMConfig] | None = None) -> LLMProvider:
+    """Select the chat provider from ``LLMConfig.PROVIDER`` (loud on unknown).
+
+    Args:
+        config: LLM configuration class (defaults to LLMConfig)
+
+    Returns:
+        The LLMProvider implementation matching ``config.PROVIDER``
+
+    Raises:
+        LLMGenerationError: If ``config.PROVIDER`` is not one of
+            ``deepseek``/``workers_ai``/``mock``
+    """
+    cfg = config or LLMConfig
+    if cfg.is_workers_ai():
+        return WorkersAIClient(config=cfg)
+    provider = cfg.PROVIDER.lower()
+    if provider == "deepseek":
+        return DeepSeekClient(config=cfg)
+    if provider == "mock":
+        return MockLLM()
+    raise LLMGenerationError(
+        f"Unknown LLM_PROVIDER: {cfg.PROVIDER!r} (expected deepseek|workers_ai|mock)",
+        error_code="LLM_001",
+    )

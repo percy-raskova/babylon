@@ -12,7 +12,6 @@ antigravity-babylon/
 assets/
 data/
 datagaps/
-deploy/
 docs/
 hack/
 htmlcov/

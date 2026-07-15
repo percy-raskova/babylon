@@ -2762,3 +2762,41 @@ tech_debt:
     status: "Partially superseded"
     notes: "Tension now tracked on Relationship edges, but legacy class still used in __main__.py"
     action: "Evaluate during Phase 3"
+
+program_20_means_of_production:
+  date: 2026-07-15
+  adr: ADR071
+  spec: docs/superpowers/specs/2026-07-15-infra-iac-ai-modernization-design.md
+  track_a_infra_subrepo: COMPLETE
+  summary: >
+    deploy/ extracted with full history (git subtree split) into the local
+    babylon-infra repo mounted at infra/ (gitignored; submodule when it gains
+    a remote, ADR069 mechanism). Infra repo: nix flake devshell (system layer
+    + infra toolchain, nixos-25.11), terraform AI Gateway + Workers AI surface
+    (cloudflare provider 5.22.0, gpt-oss-20b target), sops+age scaffold,
+    ansible cleanup (bootstrap sshd fix, vendored hetzner.yml pruned),
+    workstation playbook (mount/service/port-split guards, all exercised
+    live). Parent detached: deploy/ + infra-validate + infra-live.yml +
+    .tflint.hcl removed; dependabot deploy block removed; gitignore secret
+    guards + gitleaks history allowlists deliberately KEPT (see a11cac64).
+  owner_actions_pending:
+    - move local deploy/ remnants (tfvars/tfstate/.terraform) into infra/terraform/
+    - add 'use flake ./infra' guard line to the live checkout's .envrc
+    - run terraform plan before next apply (cloudflare provider 5.18->5.22)
+    - owner-run 'ansible-playbook -i localhost, -K ansible/workstation.yml'
+  track_b_ai_modernization: COMPLETE
+  track_b_summary: >
+    Narrator stack modernized behind BABYLON_LLM_NARRATOR (D3 intact, Mock
+    Doctrine): prompt registry (versioned artifacts, hash-derived
+    PROMPT_VERSION + drift-proof), RIOT-style event archetypes bound to
+    real+reachable EventTypes, LLMConfig provider selection, WorkersAIClient
+    (AI Gateway, @cf/openai/gpt-oss-20b, cf-aig-gateway-id) + factory,
+    NarrationRecord persistence (migration 0015), real GET /narration/
+    endpoint to the cockpit's typed contract (registry entry, sentinel
+    rails), architecture.yaml ai_narrative block rewritten to reality.
+    Flag-off wire feed byte-identical (parity tests green).
+  crown_finding: >
+    Fresh worktrees lack the untracked data/ symlink farm; sqlite
+    creates-on-connect forged a stub reference DB that data_doctor's
+    readlink -e check accepted while 30 tests failed. Doctor check 3b now
+    fails loud on a non-symlink data/sqlite (commit c857e060).

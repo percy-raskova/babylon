@@ -258,6 +258,56 @@ export function lensRampStops(lens: Lens): string[] | null {
   }
 }
 
+// ---------------------------------------------------------------------------
+// RADAR LOOP replay (Program 17 Wave 3, Frontend-W3R3) — mirrors
+// web/game/map_contract.py's MAP_HISTORY_REPLAYABLE_METRICS
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors `web/game/map_contract.py`'s `MAP_HISTORY_REPLAYABLE_METRICS` in
+ * lockstep — the same "single source of truth per side" convention
+ * `MAP_METRICS` above follows for the backend's `MAP_METRIC_PROPERTIES`.
+ * Only these 4 of the 11 `MAP_METRICS` have a genuine append-only per-tick
+ * historical store (`territory_snapshot`/`view_runtime_trace_emission`) the
+ * `GET /api/games/{id}/map/history/` scrubber can replay; every other
+ * metric exists only in the current-tick `hex_latest` cache and 422s
+ * (`"not_replayable"`) rather than serve fabricated historical nulls
+ * (Constitution III.11). A divergence here from the backend tuple would
+ * either hide a real replayable lens behind the "no history" hint or let
+ * the RadarLoopPanel offer a lens the server refuses to serve.
+ */
+export const MAP_HISTORY_REPLAYABLE_METRICS: readonly MapMetric[] = [
+  "heat",
+  "population",
+  "profit_rate",
+  "exploitation_rate",
+];
+
+/**
+ * The single `MapMetric` a lens directly names, or `null` for a lens with
+ * no single-metric shape (stance/faction/collapse/class_composition/
+ * territory_type/field_flow/habitability — none of these read one scalar
+ * per territory the way `{kind:"heat"}`/`{kind:"metric"}` do). `heat` has
+ * its own dedicated `Lens` kind (see this module's docstring), so it is
+ * special-cased rather than routed through `SELECTABLE_METRICS`.
+ */
+export function lensMetricName(lens: Lens): MapMetric | null {
+  if (lens.kind === "heat") return "heat";
+  if (lens.kind === "metric") return lens.metric;
+  return null;
+}
+
+/**
+ * True when `lens` names one of the 4 backend-replayable metrics — gates
+ * the RadarLoopPanel scrubber's availability for whichever lens is
+ * currently active on the map (`DeckGLMap`'s `replay` prop only ever
+ * applies for a lens this returns `true` for).
+ */
+export function isReplayableLens(lens: Lens): boolean {
+  const metric = lensMetricName(lens);
+  return metric !== null && MAP_HISTORY_REPLAYABLE_METRICS.includes(metric);
+}
+
 /** Sample a hex-stop ramp at normalized t in [0,1] into an RGBA tuple. */
 export function sampleRampStops(stops: string[], t: number, alpha = 220): RGBAColor {
   const clamped = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));

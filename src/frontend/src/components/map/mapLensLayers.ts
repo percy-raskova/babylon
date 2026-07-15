@@ -94,7 +94,15 @@ export interface BalkanizationBlock {
 export interface LensTerritory {
   id: string;
   h3_index: string | null;
-  heat: number;
+  /**
+   * `null` ONLY arises from a RADAR LOOP replay override (Program 17 Wave
+   * 3, `DeckGLMap.tsx`'s `territoryToLensTerritory`) when the active
+   * frame's window has no recorded value for this territory's county —
+   * honest no-data (Constitution III.11), never fabricated. A live
+   * (non-replay) merge always supplies a real `TerritoryState.heat`
+   * number.
+   */
+  heat: number | null;
   biocapacity: number;
   max_biocapacity: number;
   /**
@@ -307,6 +315,10 @@ function stanceFill(
 }
 
 function heatFill(territory: LensTerritory): RGBAColor {
+  // territory.heat is null only under an active RADAR LOOP replay override
+  // for a county the current frame carries no reading for — honest NO_DATA
+  // (Constitution III.11), never a fabricated ramp-floor color.
+  if (territory.heat === null) return NO_DATA;
   return sampleRampStops(DATA_RAMPS.heat, territory.heat);
 }
 

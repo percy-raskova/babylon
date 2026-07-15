@@ -16,12 +16,13 @@ beforeEach(() => {
 });
 
 describe("ui slice", () => {
-  it("defaults: outliner/eventTray/objectives/bifurcation open, bottom drawer 'trends', composer open, no focus, no takeover", () => {
+  it("defaults: outliner/eventTray/objectives/bifurcation/radarLoop open, bottom drawer 'trends', composer open, no focus, no takeover", () => {
     const { ui } = useStore.getState();
     expect(ui.chrome.outlinerOpen).toBe(true);
     expect(ui.chrome.eventTrayOpen).toBe(true);
     expect(ui.chrome.objectivesOpen).toBe(true);
     expect(ui.chrome.bifurcationOpen).toBe(true);
+    expect(ui.chrome.radarLoopOpen).toBe(true);
     expect(ui.chrome.bottomDrawer).toBe("trends");
     expect(ui.chrome.composerOpen).toBe(true);
     expect(ui.focusedPanelId).toBeNull();
@@ -54,6 +55,13 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.chrome.bifurcationOpen).toBe(false);
     useStore.getState().ui.toggleBifurcation();
     expect(useStore.getState().ui.chrome.bifurcationOpen).toBe(true);
+  });
+
+  it("toggleRadarLoop flips radarLoopOpen", () => {
+    useStore.getState().ui.toggleRadarLoop();
+    expect(useStore.getState().ui.chrome.radarLoopOpen).toBe(false);
+    useStore.getState().ui.toggleRadarLoop();
+    expect(useStore.getState().ui.chrome.radarLoopOpen).toBe(true);
   });
 
   it("toggleComposer flips composerOpen", () => {

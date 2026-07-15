@@ -35,6 +35,9 @@ import {
   lensKey,
   lensLegendLabel,
   lensRampStops,
+  MAP_HISTORY_REPLAYABLE_METRICS,
+  lensMetricName,
+  isReplayableLens,
   type Lens,
 } from "../lens";
 import { DATA_RAMPS } from "@/theme/colors";
@@ -313,5 +316,67 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
     const throughput = lensRampStops({ kind: "metric", metric: "throughput_position" });
     const agitation = lensRampStops({ kind: "metric", metric: "agitation" });
     expect(throughput).not.toEqual(agitation);
+  });
+});
+
+describe("MAP_HISTORY_REPLAYABLE_METRICS mirrors web/game/map_contract.py's tuple of the same name", () => {
+  it("lists exactly heat/population/profit_rate/exploitation_rate", () => {
+    expect([...MAP_HISTORY_REPLAYABLE_METRICS].sort()).toEqual(
+      ["heat", "population", "profit_rate", "exploitation_rate"].sort(),
+    );
+  });
+
+  it("every entry is a real MAP_METRICS member (no invented metric names)", () => {
+    for (const metric of MAP_HISTORY_REPLAYABLE_METRICS) {
+      expect(MAP_METRICS).toContain(metric);
+    }
+  });
+});
+
+describe("lensMetricName — the single MapMetric a lens directly names, or null", () => {
+  it("resolves {kind:'heat'} to 'heat'", () => {
+    expect(lensMetricName({ kind: "heat" })).toBe("heat");
+  });
+
+  it("resolves {kind:'metric', metric} to that metric", () => {
+    expect(lensMetricName({ kind: "metric", metric: "population" })).toBe("population");
+    expect(lensMetricName({ kind: "metric", metric: "occ" })).toBe("occ");
+  });
+
+  it("returns null for every lens kind with no single-metric shape", () => {
+    expect(lensMetricName({ kind: "stance" })).toBeNull();
+    expect(lensMetricName({ kind: "faction" })).toBeNull();
+    expect(lensMetricName({ kind: "collapse" })).toBeNull();
+    expect(lensMetricName({ kind: "habitability" })).toBeNull();
+    expect(lensMetricName({ kind: "class_composition" })).toBeNull();
+    expect(lensMetricName({ kind: "territory_type" })).toBeNull();
+    expect(lensMetricName({ kind: "field_flow", field: "exploitation" })).toBeNull();
+  });
+});
+
+describe("isReplayableLens — gates the RadarLoopPanel scrubber's availability", () => {
+  it("is true for the heat mode lens", () => {
+    expect(isReplayableLens({ kind: "heat" })).toBe(true);
+  });
+
+  it("is true for the 3 replayable metric sub-selects", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "population" })).toBe(true);
+    expect(isReplayableLens({ kind: "metric", metric: "profit_rate" })).toBe(true);
+    expect(isReplayableLens({ kind: "metric", metric: "exploitation_rate" })).toBe(true);
+  });
+
+  it("is false for a non-replayable metric sub-select", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "occ" })).toBe(false);
+    expect(isReplayableLens({ kind: "metric", metric: "imperial_rent" })).toBe(false);
+  });
+
+  it("is false for every categorical/vector lens kind", () => {
+    expect(isReplayableLens({ kind: "stance" })).toBe(false);
+    expect(isReplayableLens({ kind: "faction" })).toBe(false);
+    expect(isReplayableLens({ kind: "collapse" })).toBe(false);
+    expect(isReplayableLens({ kind: "habitability" })).toBe(false);
+    expect(isReplayableLens({ kind: "class_composition" })).toBe(false);
+    expect(isReplayableLens({ kind: "territory_type" })).toBe(false);
+    expect(isReplayableLens({ kind: "field_flow", field: "exploitation" })).toBe(false);
   });
 });

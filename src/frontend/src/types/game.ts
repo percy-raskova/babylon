@@ -938,3 +938,40 @@ export interface FieldStatePayload {
   principal_field: string | null;
   dialectical_regime: DialecticalRegime | null;
 }
+
+/**
+ * One tick's per-county values for a replayable map metric — one entry of
+ * `MapHistoryPayload.frames` (Program 17 Wave 3, Backend-W3R3's
+ * `GET /api/games/{id}/map/history/`, `EngineBridge.get_map_history`).
+ * Keyed by `county_fips`, NOT `h3_index` — both persisted sources
+ * (`territory_snapshot`/`view_runtime_trace_emission`) are county-grained,
+ * unlike the live hex-zoom `/map/` payload. `null` is an honest per-county
+ * no-data entry for this tick (Constitution III.11) — the RADAR LOOP
+ * scrubber must render it as an empty, never interpolate/fall back to a
+ * neighboring tick or the live value.
+ */
+export interface MapHistoryFrame {
+  tick: number;
+  values: Record<string, number | null>;
+}
+
+/**
+ * `GET /api/games/{id}/map/history/?metric=<name>[&from_tick=][&to_tick=]`
+ * — the RADAR LOOP tick scrubber's real data source (Program 17 Wave 3,
+ * Frontend-W3R3). Only `MAP_HISTORY_REPLAYABLE_METRICS` (`lib/lens.ts`,
+ * mirroring the backend's `map_contract.py` tuple of the same name) —
+ * heat/population/profit_rate/exploitation_rate — resolve without an
+ * error; every other `MapMetric` 422s (`"not_replayable"`) because it
+ * exists only in the current-tick `hex_latest` cache, not an append-only
+ * history table (see `EngineBridge.get_map_history`'s docstring for the
+ * full verified split). `frames` is tick-ascending. `capped` is `true`
+ * when the served window is narrower than requested — the backend's
+ * 128-tick window cap (`_MAP_HISTORY_WINDOW_CAP`).
+ */
+export interface MapHistoryPayload {
+  metric: string;
+  from_tick: number;
+  to_tick: number;
+  capped: boolean;
+  frames: MapHistoryFrame[];
+}

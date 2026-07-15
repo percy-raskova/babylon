@@ -35,6 +35,10 @@ export interface ChromeState {
    *  affordance as `objectivesOpen`, no keyboard hotkey (none of this
    *  family has one; `useSpeedShortcut`'s number keys are unrelated). */
   bifurcationOpen: boolean;
+  /** The RADAR LOOP tick-scrubber HUD widget (Program 17 Wave 3,
+   *  Frontend-W3R3) — same collapse/expand affordance as `bifurcationOpen`,
+   *  no keyboard hotkey. */
+  radarLoopOpen: boolean;
   bottomDrawer: BottomDrawerState;
   composerOpen: boolean;
 }
@@ -51,6 +55,7 @@ export interface UiSlice {
     toggleEventTray: () => void;
     toggleObjectives: () => void;
     toggleBifurcation: () => void;
+    toggleRadarLoop: () => void;
     toggleComposer: () => void;
     setBottomDrawer: (state: BottomDrawerState) => void;
     setFocusedPanel: (id: string | null) => void;
@@ -66,6 +71,7 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
       eventTrayOpen: true,
       objectivesOpen: true,
       bifurcationOpen: true,
+      radarLoopOpen: true,
       bottomDrawer: "trends",
       composerOpen: true,
     },
@@ -87,6 +93,10 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
     toggleBifurcation: () =>
       set((s) => ({
         ui: { ...s.ui, chrome: { ...s.ui.chrome, bifurcationOpen: !s.ui.chrome.bifurcationOpen } },
+      })),
+    toggleRadarLoop: () =>
+      set((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, radarLoopOpen: !s.ui.chrome.radarLoopOpen } },
       })),
     toggleComposer: () =>
       set((s) => ({

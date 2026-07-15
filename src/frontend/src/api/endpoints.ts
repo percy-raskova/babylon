@@ -40,6 +40,7 @@ import type {
   ActionPreviewResult,
   ClassHistoryPayload,
   FieldStatePayload,
+  MapHistoryPayload,
 } from "@/types/game";
 import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/types/dialectic";
 import type { TradeFlowsPayload } from "@/types/trade";
@@ -114,6 +115,10 @@ export const endpoints = {
   summary: ep<GameSummaryPayload>("/api/games/:id/summary/"),
   timeseries: ep<TimeseriesPayload>("/api/games/:id/timeseries/"),
   map: ep<FeatureCollection>("/api/games/:id/map/"),
+  // Program 17 Wave 3 (Backend-W3R3): the RADAR LOOP replay scrubber's data
+  // source — see MapHistoryPayload's docstring for the 4-of-11 replayable
+  // metric split (`lib/lens.ts`'s MAP_HISTORY_REPLAYABLE_METRICS).
+  mapHistory: ep<MapHistoryPayload>("/api/games/:id/map/history/"),
 
   // ---- Domain dashboards ------------------------------------------------ //
   economy: ep<EconomyDashboardPayload>("/api/games/:id/economy/"),

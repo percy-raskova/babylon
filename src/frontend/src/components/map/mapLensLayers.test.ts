@@ -134,6 +134,21 @@ describe("buildLensLayers", () => {
     expect(heat.legendLabel.toLowerCase()).toContain("heat");
   });
 
+  it("heat lens renders honest NO_DATA for a null heat (RADAR LOOP replay override with no reading for this county)", () => {
+    const territories: LensTerritory[] = [
+      { id: "T1", h3_index: "872a3072cffffff", heat: null, biocapacity: 40, max_biocapacity: 100 },
+    ];
+    const result = buildLensLayers({
+      territories,
+      balkanization: BALKANIZATION,
+      lens: { kind: "heat" },
+    });
+
+    // Mirrors mapLensLayers.ts's private NO_DATA constant — never a
+    // fabricated ramp-floor color for a genuinely missing reading.
+    expect(result.getFillColor("T1")).toEqual([58, 53, 48, 160]);
+  });
+
   it("habitability lens diverges low (crimson) vs high (green) territories", () => {
     const result = buildLensLayers({
       territories: TERRITORIES,

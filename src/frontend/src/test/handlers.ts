@@ -22,6 +22,7 @@ import {
   makeJournalPayload,
   makeClassHistoryPayload,
   makeFieldStatePayload,
+  makeMapHistoryPayload,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -212,6 +213,19 @@ export const handlers = [
       status: "ok",
       data: { type: "FeatureCollection", features: [] },
     });
+  }),
+
+  // Program 17 Wave 3 (Backend-W3R3) — RADAR LOOP's map-history replay
+  // frames. Honest empty-but-well-formed by default (mirrors
+  // `stub_bridge.py::get_map_history`'s `frames: []` — this handler does
+  // NOT emulate the real bridge's 400/422 validation, since the frontend
+  // gates `metric` client-side via `isReplayableLens` before ever fetching;
+  // tests exercising a specific frame set or an error response override
+  // with `server.use()`.
+  http.get("/api/games/:id/map/history/", ({ request }) => {
+    logRequest("GET map:history");
+    const metric = new URL(request.url).searchParams.get("metric") ?? "heat";
+    return HttpResponse.json({ status: "ok", data: makeMapHistoryPayload({ metric }) });
   }),
 
   // Spec-113 Lane Carto's cartographic substrate (`lib/geo/topology.ts`) —

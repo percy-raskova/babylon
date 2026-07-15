@@ -24,6 +24,7 @@ import { InspectionStack } from "@/components/inspect/InspectionStack";
 import { EventTray } from "@/components/chrome/EventTray";
 import { ObjectivesTray } from "@/components/chrome/ObjectivesTray";
 import { BifurcationGauge } from "@/components/chrome/BifurcationGauge";
+import { RadarLoopPanel } from "@/components/chrome/RadarLoopPanel";
 import { ActionDock } from "@/components/chrome/ActionDock";
 import { BottomDrawer } from "@/components/chrome/BottomDrawer";
 import { EventToasts } from "@/components/chrome/EventToasts";
@@ -69,6 +70,11 @@ export function AppShell({ gameId }: AppShellProps): React.JSX.Element {
               append point (no new screen position invented). */}
           <div className="pointer-events-auto shrink-0">
             <BifurcationGauge gameId={gameId} />
+          </div>
+          {/* RADAR LOOP tick scrubber (Program 17 Wave 3, Frontend-W3R3) —
+              same right-column chrome stack append point as BifurcationGauge. */}
+          <div className="pointer-events-auto shrink-0">
+            <RadarLoopPanel gameId={gameId} />
           </div>
         </div>
 

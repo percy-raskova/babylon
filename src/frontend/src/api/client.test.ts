@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { get, post, postForm, fetchExplain } from "./client";
+import { get, post, postForm, fetchExplain, fetchMapHistory } from "./client";
 import { server } from "@/test/server";
 import { http, HttpResponse } from "msw";
 
@@ -169,6 +169,49 @@ describe("API client", () => {
       expect(res.status).toBe("ok");
       expect(capturedUrl).toContain("metric=exploitation_rate");
       expect(capturedUrl).toContain("scope=org%3AC%20001");
+    });
+  });
+
+  describe("fetchMapHistory", () => {
+    it("encodes metric into the query string and returns the frames envelope", async () => {
+      let capturedUrl = "";
+      server.use(
+        http.get("/api/games/:id/map/history/", ({ request }) => {
+          capturedUrl = request.url;
+          return HttpResponse.json({
+            status: "ok",
+            data: {
+              metric: "population",
+              from_tick: 0,
+              to_tick: 1,
+              capped: false,
+              frames: [{ tick: 0, values: { "26163": 12000 } }],
+            },
+          });
+        }),
+      );
+
+      const res = await fetchMapHistory("game-001", "population");
+
+      expect(res.status).toBe("ok");
+      expect(capturedUrl).toContain("metric=population");
+      expect(res.data).toMatchObject({ metric: "population", capped: false });
+    });
+
+    it("degrades to the standard error envelope for a 422 not_replayable response", async () => {
+      server.use(
+        http.get("/api/games/:id/map/history/", () =>
+          HttpResponse.json(
+            { status: "error", message: "Metric 'occ' has no persisted per-tick history" },
+            { status: 422 },
+          ),
+        ),
+      );
+
+      const res = await fetchMapHistory("game-001", "occ");
+
+      expect(res.status).toBe("error");
+      expect(res.http_status).toBe(422);
     });
   });
 

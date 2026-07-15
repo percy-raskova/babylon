@@ -31,6 +31,8 @@ import type {
   FieldStateNode,
   FieldStateEdge,
   FieldStatePayload,
+  MapHistoryFrame,
+  MapHistoryPayload,
 } from "@/types/game";
 import type { WireFeed, WireStoryIndex } from "@/types/wire";
 import { EMPTY_WIRE_FEED } from "@/types/wire";
@@ -482,6 +484,32 @@ export function makeFieldStatePayload(overrides?: Partial<FieldStatePayload>): F
     edges: [],
     principal_field: null,
     dialectical_regime: null,
+    ...overrides,
+  };
+}
+
+/** One `frames[]` entry of GET /api/games/{id}/map/history/ (Program 17 Wave 3, Frontend-W3R3). */
+export function makeMapHistoryFrame(overrides?: Partial<MapHistoryFrame>): MapHistoryFrame {
+  return {
+    tick: 1,
+    values: { "26163": 0.4 },
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/map/history/ payload — defaults to the honest
+ * empty-but-well-formed shape (mirrors `stub_bridge.py::get_map_history`'s
+ * `frames: []`); tests needing real frames override with `server.use()` or
+ * pass `frames` directly.
+ */
+export function makeMapHistoryPayload(overrides?: Partial<MapHistoryPayload>): MapHistoryPayload {
+  return {
+    metric: "heat",
+    from_tick: 0,
+    to_tick: 0,
+    capped: false,
+    frames: [],
     ...overrides,
   };
 }

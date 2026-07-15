@@ -74,7 +74,7 @@ import {
   availableMetricsFromMapData,
   type HexMapFeatureProperties,
 } from "@/lib/mapMetadata";
-import { lensKey, type Lens } from "@/lib/lens";
+import { lensKey, type Lens, type MapMetric } from "@/lib/lens";
 import { lensDefForLens } from "@/lib/lenses/registry";
 import { territoryToHexInline } from "@/lib/inspect/adapters/hex";
 import type {
@@ -176,6 +176,41 @@ function buildClaimsHullLayers(hulls: HullSpec[], h3Territories: H3Territory[]):
   return layers;
 }
 
+/**
+ * RADAR LOOP replay override (Program 17 Wave 3, Frontend-W3R3) — the one
+ * piece of state `MapStage.tsx` threads down when the tick scrubber is
+ * actively replaying a frame for the map's CURRENTLY ACTIVE lens (`null`
+ * whenever replay is inactive, loading, or the active lens's metric
+ * doesn't match the replay window's own metric — see this prop's docstring
+ * on `DeckGLMapProps`). `metric` is resolved once by the caller via
+ * `lensMetricName(lens)`, so this module never needs to re-derive it.
+ */
+export interface MapReplayFillOverride {
+  metric: MapMetric;
+  /**
+   * The active frame's per-county values (`county_fips` keys). A county
+   * absent here, or explicitly `null`, is honest no-data — the override
+   * NEVER falls back to the territory/feature's live value (Constitution
+   * III.11: a replayed tick with no recorded reading renders empty, not
+   * the present).
+   */
+  valuesByCounty: Record<string, number | null>;
+}
+
+/**
+ * The active replay frame's value for one county, or `null` for
+ * absent/explicit no-data — collapses "missing key" and "explicit null"
+ * into the same honest outcome exactly once, shared by both the hex- and
+ * region-framing override paths below.
+ */
+function replayValueForCounty(
+  replay: MapReplayFillOverride,
+  countyFips: string | null | undefined,
+): number | null {
+  if (!countyFips) return null;
+  return replay.valuesByCounty[countyFips] ?? null;
+}
+
 /** `null` -> `undefined` (the `LensTerritory.metrics` bag's "absent" spelling — see its docstring). */
 function nullToUndefined(v: number | null | undefined): number | undefined {
   return v ?? undefined;
@@ -208,9 +243,10 @@ function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["me
 function territoryToLensTerritory(
   t: TerritoryState,
   hexFeaturesByH3: Map<string, HexMapFeatureProperties>,
+  replay: MapReplayFillOverride | null | undefined,
 ): LensTerritory {
   const hexProps = t.h3_index ? hexFeaturesByH3.get(t.h3_index) : undefined;
-  return {
+  const base: LensTerritory = {
     id: t.id,
     h3_index: t.h3_index,
     heat: t.heat,
@@ -225,6 +261,41 @@ function territoryToLensTerritory(
     territoryType: hexProps?.territory_type ?? null,
     metrics: hexProps ? hexPropsToMetrics(hexProps) : undefined,
   };
+  return replay ? applyHexReplayOverride(base, replay, t.county_fips) : base;
+}
+
+/**
+ * RADAR LOOP's hex/scatter-framing override — the ONE injection point for
+ * both framings (`buildHexFramingLayers`/`buildScatterFallbackLayers` both
+ * fill from `lensResult.getFillColor`, which closes over territories built
+ * by `territoryToLensTerritory`). Overrides ONLY `replay.metric`'s value
+ * with the current frame's reading for `countyFips`, leaving every other
+ * field — including every OTHER metric — exactly as the live merge
+ * produced it. `heat` is `LensTerritory`'s own top-level (nullable) field;
+ * every other replayable metric goes through the existing `metrics` bag,
+ * reusing `metricFill`'s established "absent key = honest NO_DATA"
+ * convention instead of inventing a second nullable-number path.
+ */
+function applyHexReplayOverride(
+  base: LensTerritory,
+  replay: MapReplayFillOverride,
+  countyFips: string,
+): LensTerritory {
+  const value = replayValueForCounty(replay, countyFips);
+  if (replay.metric === "heat") {
+    return { ...base, heat: value };
+  }
+  const metrics = { ...base.metrics };
+  if (value === null) {
+    // Dynamic-key delete is disallowed (@typescript-eslint/no-dynamic-delete)
+    // — Reflect.deleteProperty is the same operation via a plain call, not
+    // a `delete` expression, and reproduces metricFill's "absent key =
+    // honest NO_DATA" convention exactly (never a fabricated null value).
+    Reflect.deleteProperty(metrics, replay.metric);
+  } else {
+    metrics[replay.metric] = value;
+  }
+  return { ...base, metrics };
 }
 
 /**
@@ -383,17 +454,37 @@ function resolveLegendStatusText(
  * (h3-js's `cellsToMultiPolygon` internally), since the backend ships
  * `geometry: null` for aggregated features.
  */
+/**
+ * RADAR LOOP's region-framing override counterpart to
+ * `applyHexReplayOverride` — `RegionFillProperties`' `MapMetric` keys
+ * (heat included) are ALREADY `number | null` (`regionFill.ts`), so no
+ * `LensTerritory`-style nullable-heat type widening was needed on this
+ * side.
+ */
+function overrideRegionMetric(
+  properties: RegionFillProperties,
+  replay: MapReplayFillOverride | null | undefined,
+  countyFips: string,
+): RegionFillProperties {
+  if (!replay) return properties;
+  return { ...properties, [replay.metric]: replayValueForCounty(replay, countyFips) };
+}
+
 function buildRegionLayer(
   features: RegionFeature[],
   lens: Lens,
   domain: FillDomain,
   layerOpacity: number,
+  replay: MapReplayFillOverride | null | undefined,
 ): H3ClusterLayer<RegionFeature> {
   return new H3ClusterLayer<RegionFeature>({
     id: "region-clusters",
     data: features,
     getHexagons: (f) => f.properties.member_h3 ?? [],
-    getFillColor: (f) => regionFillForLens(lens, f.properties, domain) ?? REGION_NO_DATA_FILL,
+    getFillColor: (f) => {
+      const properties = overrideRegionMetric(f.properties, replay, f.properties.county_fips);
+      return regionFillForLens(lens, properties, domain) ?? REGION_NO_DATA_FILL;
+    },
     getLineColor: REGION_LINE_COLOR,
     lineWidthMinPixels: 1,
     getElevation: 0,
@@ -403,7 +494,7 @@ function buildRegionLayer(
     autoHighlight: true,
     highlightColor: [200, 168, 96, 180],
     updateTriggers: {
-      getFillColor: [lens, domain],
+      getFillColor: [lens, domain, replay],
     },
   });
 }
@@ -467,6 +558,20 @@ interface DeckGLMapProps {
   framing?: AdminLevel;
   /** Called when the user clicks a framing-scale button. Uncontrolled if omitted. */
   onFramingChange?: (level: AdminLevel) => void;
+  /**
+   * RADAR LOOP replay override (Program 17 Wave 3, Frontend-W3R3 — the
+   * second amendment to `DeckGLMap`'s frozen contract after `gameId`/
+   * `field_flow`). `MapStage.tsx` computes this ready-made from the
+   * `mapReplay` slice + the active `lens` (via `lensMetricName`) and
+   * passes it down — `null` whenever replay is inactive/loading/erroring,
+   * OR the active lens's metric doesn't match the replay window's own
+   * metric (an honest silent revert to live fill, never a crash, if the
+   * player switches lenses mid-replay). When non-null, the hex/region fill
+   * for the active lens uses the current frame's per-county values instead
+   * of the live snapshot — see `territoryToLensTerritory`/
+   * `buildRegionLayer`'s docstrings for the exact injection points.
+   */
+  replay?: MapReplayFillOverride | null;
 }
 
 /** Discriminates a hex-territory hover from an aggregated-region hover. */
@@ -782,6 +887,7 @@ function buildRegionFramingLayers(params: {
   rings: RingSpec[];
   hulls: HullSpec[];
   h3Territories: H3Territory[];
+  replay: MapReplayFillOverride | null | undefined;
 }) {
   const {
     politicalLayers,
@@ -792,10 +898,11 @@ function buildRegionFramingLayers(params: {
     rings,
     hulls,
     h3Territories,
+    replay,
   } = params;
   return [
     ...politicalLayers,
-    buildRegionLayer(regionFeatures, lens, fillDomain, layerOpacity),
+    buildRegionLayer(regionFeatures, lens, fillDomain, layerOpacity, replay),
     ...buildRingLayers(rings, h3Territories),
     ...buildClaimsHullLayers(hulls, h3Territories),
   ];
@@ -895,6 +1002,13 @@ export function DeckGLMap({
   framing = "hex",
   onFramingChange,
   gameId,
+  // Deliberately no `= null` default here: a default *value* is itself a
+  // branch (ESLint's core `complexity` rule counts a default parameter as
+  // +1), and this component's cyclomatic complexity is already at its cap.
+  // `replay` is `MapReplayFillOverride | null | undefined` at every
+  // downstream consumer instead — functionally identical (all of them
+  // already treat a falsy `replay` as "no override").
+  replay,
 }: DeckGLMapProps) {
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
 
@@ -998,12 +1112,12 @@ export function DeckGLMap({
   const lensResult = useMemo(
     () =>
       buildLensLayers({
-        territories: territories.map((t) => territoryToLensTerritory(t, hexFeaturesByH3)),
+        territories: territories.map((t) => territoryToLensTerritory(t, hexFeaturesByH3, replay)),
         balkanization,
         lens,
         factionFilter,
       }),
-    [territories, balkanization, lens, factionFilter, hexFeaturesByH3],
+    [territories, balkanization, lens, factionFilter, hexFeaturesByH3, replay],
   );
 
   // Only show the legend-label chip for balkanization lenses when there's
@@ -1067,6 +1181,7 @@ export function DeckGLMap({
         rings: lensResult.rings,
         hulls: lensResult.hulls,
         h3Territories,
+        replay,
       });
     }
 
@@ -1103,6 +1218,7 @@ export function DeckGLMap({
     regionFeatures,
     effectiveFillDomain,
     politicalLayers,
+    replay,
   ]);
 
   // Critical-event pulses, storm markers, and the gradient wind ride ABOVE

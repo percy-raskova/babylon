@@ -78,12 +78,33 @@ These are data-free presentation policy; they go in `DESIGN_BIBLE` and govern ev
   **R1b (task #66, engine-side, own session):** mirror the `opposition_states` pattern — a
   WorldState-field channel written by the systems, carried by from_graph/to_graph (P19
   `pole_readings` byte-safety precedent); flip the 5 rows live; qa:regression 5/5 MANDATORY.
+  **✅ R1b LANDED `722ed92e`** — WorldState gains `field_stack`/`principal_field`/
+  `dialectical_regime` (read/write via the `state_finances` idiom — `opposition_states` turned
+  out to be WRITE-ONLY, a deviation the implementer flagged); `to_graph()` re-stamps the
+  per-node/per-edge attrs from the snapshot so persisted graphs match live engine graphs
+  (idempotence test pinned). Registry re-tier: fields/laplacian/gradient → MUST_BE_LIVE;
+  df_dt/principal_field/dialectical_regime → DECLARED_CONDITIONAL (df_dt still needs
+  `contradiction_history` to survive across HTTP calls — `persistent_context` resets per
+  request; the remaining, separate gap). **qa:regression 5/5 byte-identical, baselines
+  UNMODIFIED** (headless_runner never round-trips mid-run — traced, then verified).
+  **✅ R2a-fix LANDED `beb00a2a`** — `_serialize_event` enriches uprising events with
+  `territory_id` (TENANCY resolution, honest null); one enrichment point covers
+  journal/toasts/ruptures (data↔detail round-trips verbatim); stormMarkers.ts anchors on
+  `territory_id` first — storms now land on the map in production.
 - **Round 2 — the instruments (frontend), SPLIT on the R1b dependency:**
-  **R2a (unblocked, task #67, in flight):** storm markers (uprising anchored via the
-  criticalPulse conventions; rupture is global — no fabricated anchor) + bifurcation gauge v1
-  (bifurcation_score + live fascist_alignment; honest "solidarity density" label) + the typed
-  `fieldState` endpoints.ts row. **R2b (task #63, blocked by R1b):** vector lens + front lines —
-  pointless until gradients/laplacian arrive live.
+  **✅ R2a LANDED `76224750`** (storm markers static/hard-cut riding the toast stream +
+  BifurcationGauge chrome panel + typed `fieldState` row; anchor gap → R2a-fix `beb00a2a`).
+  **✅ R2b vector lens LANDED `ac63b301`** — `field_flow` lens kind (lens 13): TripsLayer
+  animated trail over a static dashed PathLayer + arrowhead (reduced-motion = static base only);
+  new `{kind:"vector"}` LensLegend variant (direction/width key, not color stops);
+  `FIELD_FLOW_COLOR` shared constant; same-territory gradients render as a static swirl ring;
+  per-tick keyed fetch that fires zero requests on other lenses. 979 vitest green. Notable
+  deviations (all recorded in the R2b report): flow resolution lives in DeckGLMap beside
+  pulses/storms (preserves mapLensLayers' no-WebGL purity), `resolveEntityPosition` widened to a
+  structural `TerritoryPositionSource`, MapStage's "frozen" prop-contract docstring updated.
+  **Front lines v1 still pending** (needs per-node territory anchors on `field_state.nodes` —
+  small backend addition via `_class_to_territory` — then hex-boundary strokes where projected
+  laplacian deltas spike). Fronts v2 (`derived_class_cell`) still rides Program 19's merge.
   - *Vector lens kind* — the grammar's first extensive citizen: animated flow along projected
     gradient arcs (LineLayer/TripsLayer + PathStyleExtension, zero new deps; follow
     `criticalPulse.ts` transitions + prefers-reduced-motion convention). New `kind` touches:
@@ -100,6 +121,19 @@ These are data-free presentation policy; they go in `DESIGN_BIBLE` and govern ev
 - **Round 3 — radar loop:** backend hex-history endpoint reading `v_hex_state_asof` (sparse-table
   gotcha) + the W2 class_snapshot table; type + consume the stub `inspectorTerritoryHistory`;
   frontend tick scrubber replaying any lens (one-shot fetch idiom, then scrub client-side).
+  **✅ R3 backend LANDED `1a99088e`** — `GET /map/history/?metric=` (window cap 128, honest
+  `capped` flag, 422 for non-replayable metrics). **Key finding: only 4 of 13 map metrics are
+  honestly replayable** — heat + population (`territory_snapshot`) and
+  profit_rate + exploitation_rate (`view_runtime_trace_emission`, the spec-089 fill-forward
+  view) — keyed by county_fips; the other 9 live only in `hex_latest`, a current-tick cache
+  with no history. `MAP_HISTORY_REPLAYABLE_METRICS` (map_contract.py) is the SoT; registry
+  now 64 observables (12 new rows: 2 MUST_BE_LIVE / 2 DECLARED_CONDITIONAL / 8
+  STRUCTURALLY_IMPOSSIBLE). Corrections vs this map's own draft: `/territory/:id/history/`
+  IS fully backed (not a stub); per-hex replay has no persisted store at all.
+  **🐛 → task #70:** `_persist_snapshots_safe` calls `_serialize_territory` WITHOUT `graph=`,
+  so `territory_snapshot`'s occ/imperial_rent/profit_rate/exploitation_rate columns are
+  all-NULL in every session — the one-line fix later promotes occ/imperial_rent to replayable.
+  Frontend scrubber (RadarLoopPanel, 4 replayable lenses, county-grain override) in flight.
 - **Round 4 — forecast overlay (OWNER RULING NEEDED before build):** deterministic N-tick
   lookahead endpoint (deep-copy graph, run engine, discard — never persist), translucent future
   field + per-verb ensemble spread. Decisions: tick horizon, compute budget per request, cache

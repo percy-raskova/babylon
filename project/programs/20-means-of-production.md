@@ -27,7 +27,7 @@ modernize what exists. Evidence base: 13-agent read-only recon (workflow `wf_fc8
   parent until it has a remote, then converted to a real git submodule at the same path (the
   ADR069 / babylon-cockpit precedent). Adds a Nix flake devshell (system layer only — Python,
   Poetry, Node, GEOS/GDAL/PROJ, OpenBLAS, Rust, git-lfs, Playwright browsers), grows the Cloudflare
-  Terraform with an `cloudflare_ai_gateway` + Workers AI surface, keeps VPS Ansible roles as a
+  Terraform with a `cloudflare_ai_gateway` + Workers AI surface, keeps VPS Ansible roles as a
   validated mockup, and adds a workstation playbook (the real, owner-run apply target) codifying
   the 2026-07-13 mount-displacement incident learnings. Parent CI's `infra-validate` and
   `infra-live.yml` retire; their checks are reborn as the infra repo's own pre-commit + mise

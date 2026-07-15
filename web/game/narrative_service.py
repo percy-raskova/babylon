@@ -79,6 +79,13 @@ FEATURE_FLAG_ENV = "BABYLON_LLM_NARRATOR"
 # prompt artifacts (babylon.intelligence.ai.prompt_registry) — manual bumps
 # are retired; editing CORPORATE_SYSTEM_PROMPT / LIBERATED_SYSTEM_PROMPT
 # (src/babylon/data/game/prompts/narrator/*.txt) changes this automatically.
+#
+# STARTUP COUPLING (deliberate, III.11): this module-level read means Django
+# app boot — via EngineBridge.__init__ -> NarrativeService() -> this import —
+# now depends on the prompt/archetype artifacts being present and valid,
+# REGARDLESS of the feature flag. A missing/malformed artifact fails the whole
+# app loudly at startup rather than silently at first narration. The artifacts
+# are committed and pinned by tests (test_prompt_registry, test_event_archetypes).
 PROMPT_VERSION = get_prompt_registry().version()
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})

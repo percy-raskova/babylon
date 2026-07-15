@@ -74,6 +74,20 @@ it has built relationships. Mechanically:
   honest node/graph attrs + seam rows, NO masking yet (byte-identical-safe by the P19
   shadow-attr precedent); probe CLI reports the three-state partition across scenarios —
   the data, not a threshold, is the deliverable.
+  **✅ EXECUTED `483c4265` (2026-07-15, pre-ratification — ruling-free by construction).**
+  `EpistemicHorizonSystem` (position 27, last), `EpistemicHorizonDefines` (8 fields),
+  transient territory attrs `mass_receptivity`/`intel_confidence`/`vision_state`.
+  qa:regression: all tick values byte-identical; baselines regenerated for the
+  `defines_hash` metadata only (+ a harness warning-prefix bug fixed — an advisory
+  hash-change was mis-counted as a hard diff). **Phase-1 findings:** wayne_county's 81
+  territories = 65 desert / 16 mud / 0 water, `I_c` uniformly 0.1 — because `C_p`=0
+  everywhere: NO org model outside PoliticalFaction carries a player marker (CivilSocietyOrg
+  ORG001 has 2 real PRESENCE edges but no `is_player`) → **new ruling 6: promote `is_player`
+  to the base Organization model or add `WorldState.player_org_id`** (prereq for Phase 2).
+  Also flagged: the corpus's base_area example (M_r=0.665) says "Water" in prose but "Mud"
+  by its own ≥0.8 threshold table — the system implements the table; I_a is proxied by
+  `class_consciousness` (documented); 4 corpus-unnamed roles fall to an explicit
+  `class_factor_default=0.0` (Phase-2 judgment call, esp. CARCERAL_ENFORCER).
 - **Phase 2** — reveal gating: bridge serialization filters by vision state (Mud
   approximation with markers); Investigate wired to raise `I_c` (finally reading its own
   `revealed` channel).

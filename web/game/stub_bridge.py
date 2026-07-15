@@ -19,6 +19,8 @@ import random
 from typing import Any
 from uuid import UUID, uuid4
 
+from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
+
 logger = logging.getLogger(__name__)
 
 # Session-local state for the stub
@@ -765,6 +767,58 @@ class StubEngineBridge:
                 ],
             },
             "features": features,
+        }
+
+    def get_map_history(
+        self,
+        _session_id: UUID,
+        *,
+        metric: str,
+        from_tick: int | None = None,
+        to_tick: int | None = None,
+    ) -> dict[str, Any]:
+        """Stub parity for GET /api/games/{id}/map/history/ (Backend-W3R3).
+
+        The stub bridge persists nothing, so there is no historical map
+        data to replay under any metric — mirrors the real
+        ``EngineBridge.get_map_history``'s validation (unknown/
+        non-replayable metric -> the same ``error``/``message`` shape) and
+        its degrade-to-empty path when a persistence layer lacks the query
+        capability (Constitution III.11: never fabricate frames).
+        """
+        if metric not in MAP_METRIC_PROPERTIES:
+            return {
+                "metric": metric,
+                "from_tick": from_tick or 0,
+                "to_tick": to_tick or 0,
+                "capped": False,
+                "frames": [],
+                "error": "unknown_metric",
+                "message": (
+                    f"Invalid metric {metric!r}. Valid metrics: {sorted(MAP_METRIC_PROPERTIES)}"
+                ),
+            }
+        if metric not in MAP_HISTORY_REPLAYABLE_METRICS:
+            return {
+                "metric": metric,
+                "from_tick": from_tick or 0,
+                "to_tick": to_tick or 0,
+                "capped": False,
+                "frames": [],
+                "error": "not_replayable",
+                "message": (
+                    f"Metric {metric!r} has no persisted per-tick history — it is only "
+                    "computed live at serialize time (Constitution III.11: never replayed "
+                    f"as fabricated nulls). Replayable metrics: "
+                    f"{sorted(MAP_HISTORY_REPLAYABLE_METRICS)}"
+                ),
+            }
+        return {
+            "metric": metric,
+            "from_tick": from_tick or 0,
+            "to_tick": to_tick or 0,
+            "capped": False,
+            "frames": [],
         }
 
     def get_explain(self, _session_id: UUID, metric: str, scope: str) -> dict[str, Any] | None:

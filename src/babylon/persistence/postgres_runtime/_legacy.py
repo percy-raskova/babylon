@@ -1711,6 +1711,153 @@ class PostgresRuntime:
             )
             return [dict(row) for row in cur.fetchall()]
 
+    def query_territory_snapshot_latest_tick(self, game_id: UUID) -> int | None:
+        """Return the highest tick with a ``territory_snapshot`` row for this game.
+
+        Backs :meth:`~babylon.persistence.protocols.RuntimePersistence`'s
+        (duck-typed) map-history default window — see
+        ``EngineBridge.get_map_history`` (Program 17 Wave 3, Backend-W3R3).
+        ``territory_snapshot`` is written densely every resolved tick (one
+        row per ``(game_id, tick, county_fips)`` — unlike the SPARSE
+        ``dynamic_hex_state`` delta table other modules' docstrings warn
+        about), so ``MAX(tick)`` is a safe "latest committed tick" proxy
+        here.
+
+        Args:
+            game_id: Game session UUID.
+
+        Returns:
+            The highest persisted tick, or ``None`` when the game has no
+            ``territory_snapshot`` rows yet (honest empty, Constitution
+            III.11).
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT MAX(tick) AS max_tick FROM territory_snapshot WHERE game_id = %s",
+                (game_id,),
+            )
+            row = cur.fetchone()
+            return row["max_tick"] if row and row["max_tick"] is not None else None
+
+    def query_territory_snapshot_metric_frames(
+        self,
+        game_id: UUID,
+        from_tick: int,
+        to_tick: int,
+        *,
+        limit: int = 200_000,
+    ) -> list[dict[str, Any]]:
+        """Return ``{tick, county_fips, heat, pop_total}`` rows across a tick range.
+
+        Backs the two ``territory_snapshot``-sourced ``GET /map/history/``
+        metrics (``heat``, ``population``) — see
+        ``EngineBridge.get_map_history``. Oldest-tick-first then
+        county_fips, matching the deterministic-ordering contract every
+        ``/map/history/`` frame needs (Constitution III.7).
+
+        Args:
+            game_id: Game session UUID.
+            from_tick: Inclusive lower tick bound.
+            to_tick: Inclusive upper tick bound.
+            limit: A generous safety cap on rows returned — NOT the
+                caller's tick-range window cap (see
+                ``_MAP_HISTORY_WINDOW_CAP`` in engine_bridge.py for that).
+
+        Returns:
+            List of dicts with ``tick``/``county_fips``/``heat``/``pop_total`` keys.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, county_fips, heat, pop_total
+                FROM territory_snapshot
+                WHERE game_id = %s AND tick BETWEEN %s AND %s
+                ORDER BY tick, county_fips
+                LIMIT %s
+                """,
+                (game_id, from_tick, to_tick, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def query_county_trace_latest_tick(self, session_id: UUID) -> int | None:
+        """Return the highest tick with a county-level ``view_runtime_trace_emission`` row.
+
+        Sibling of :meth:`query_territory_snapshot_latest_tick` for the
+        second ``GET /map/history/`` source (the spec-089 hex-delta
+        fill-forward view, ``entity_kind='county'``). The view's own
+        ``spine`` CTE (``tick_commit`` UNION ``dynamic_hex_state`` ticks)
+        makes it dense across every committed tick, so ``MAX(tick)`` here
+        is likewise safe — unlike the raw ``dynamic_hex_state`` table this
+        view derives from (that table IS sparse; see its module docstrings).
+
+        Args:
+            session_id: Game session UUID (the same value passed as
+                ``game_id`` elsewhere on this class —
+                ``view_runtime_trace_emission``'s underlying tables use the
+                ``session_id`` column name instead).
+
+        Returns:
+            The highest tick, or ``None`` when the game has no hex-economics
+            history yet.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT MAX(tick) AS max_tick FROM view_runtime_trace_emission
+                WHERE session_id = %s AND entity_kind = 'county'
+                """,
+                (session_id,),
+            )
+            row = cur.fetchone()
+            return row["max_tick"] if row and row["max_tick"] is not None else None
+
+    def query_county_trace_metric_frames(
+        self,
+        session_id: UUID,
+        from_tick: int,
+        to_tick: int,
+        *,
+        limit: int = 200_000,
+    ) -> list[dict[str, Any]]:
+        """Return ``{tick, county_fips, profit_rate, exploitation_rate}`` rows across a tick range.
+
+        Backs the two ``view_runtime_trace_emission``-sourced
+        ``GET /map/history/`` metrics (``profit_rate``,
+        ``exploitation_rate``) — see ``EngineBridge.get_map_history``.
+        These are genuine ``SUM(s)/(SUM(c)+SUM(v))`` and ``SUM(s)/SUM(v)``
+        county aggregates over every hex in the county (unlike
+        ``territory_snapshot``'s ``heat``/``population``, which collapse
+        onto whichever single hex-territory happened to write first per
+        ``ON CONFLICT (game_id, tick, county_fips) DO NOTHING`` — see
+        ``query_territory_snapshot_history``'s docstring for that
+        pre-existing, documented grain limitation).
+
+        Args:
+            session_id: Game session UUID.
+            from_tick: Inclusive lower tick bound.
+            to_tick: Inclusive upper tick bound.
+            limit: A generous safety cap on rows returned (see
+                :meth:`query_territory_snapshot_metric_frames`'s note on
+                this being a safety cap, not the caller's window cap).
+
+        Returns:
+            List of dicts with ``tick``/``county_fips``/``profit_rate``/
+            ``exploitation_rate`` keys.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, entity_id AS county_fips, profit_rate, exploitation_rate
+                FROM view_runtime_trace_emission
+                WHERE session_id = %s AND entity_kind = 'county'
+                  AND tick BETWEEN %s AND %s
+                ORDER BY tick, entity_id
+                LIMIT %s
+                """,
+                (session_id, from_tick, to_tick, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def persist_edge_snapshots(
         self,
         game_id: UUID,

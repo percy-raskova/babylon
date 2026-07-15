@@ -20,6 +20,7 @@ from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
+    _MAP_HISTORY_WINDOW_CAP,
     EngineBridge,
     _build_initial_state_for_scenario,
     _heat_delta_by_territory,
@@ -2617,3 +2618,216 @@ class TestSerializeEventUprisingTerritoryAnchoring:
         snapshot = _state_to_snapshot(mock_state, uuid.uuid4(), graph=graph)
 
         assert snapshot["events"][0]["data"]["territory_id"] == "T001"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Backend-W3R3 (Program 17 Wave 3): GET /api/games/{id}/map/history/.
+# Verified against a running canonical session (2026-07-15, tick 987):
+# only heat/population (territory_snapshot) and profit_rate/
+# exploitation_rate (view_runtime_trace_emission) have a genuine
+# append-only per-tick historical source; the other 9 MAP_METRIC_PROPERTIES
+# exist only in hex_latest (current-tick-only cache) and are rejected here
+# with an honest "not_replayable" result rather than served as fabricated
+# null frames (Constitution III.11).
+# ══════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.unit
+class TestGetMapHistory:
+    """get_map_history: the map lens scrubber's real data source."""
+
+    def test_unknown_metric_is_a_loud_error(self) -> None:
+        bridge = EngineBridge(_make_mock_persistence())
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="not_a_real_metric")
+
+        assert result["error"] == "unknown_metric"
+        assert "not_a_real_metric" in result["message"]
+        assert result["frames"] == []
+
+    def test_non_replayable_metric_is_an_honest_error(self) -> None:
+        """occ/imperial_rent/habitability/... exist only in hex_latest (live-only)."""
+        bridge = EngineBridge(_make_mock_persistence())
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="occ")
+
+        assert result["error"] == "not_replayable"
+        assert "occ" in result["message"]
+        # The error names what IS replayable, not just what isn't.
+        assert "heat" in result["message"]
+        assert "profit_rate" in result["message"]
+        assert result["frames"] == []
+
+    def test_degrades_to_honest_empty_when_persistence_lacks_query_methods(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick = None
+        mock_persistence.query_territory_snapshot_metric_frames = None
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result == {
+            "metric": "heat",
+            "from_tick": 0,
+            "to_tick": 0,
+            "capped": False,
+            "frames": [],
+        }
+
+    def test_frames_sorted_by_tick_and_values_keyed_by_county(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 1
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = [
+            {"tick": 1, "county_fips": "26163", "heat": 0.2, "pop_total": 8000},
+            {"tick": 0, "county_fips": "26163", "heat": 0.1, "pop_total": 8000},
+            {"tick": 0, "county_fips": "26099", "heat": 0.05, "pop_total": 4000},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["metric"] == "heat"
+        assert [f["tick"] for f in result["frames"]] == [0, 1]
+        assert result["frames"][0]["values"] == {"26099": 0.05, "26163": 0.1}
+        assert list(result["frames"][0]["values"].keys()) == ["26099", "26163"]
+        assert result["frames"][1]["values"] == {"26163": 0.2}
+
+    def test_population_metric_reads_pop_total_column(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 0
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "heat": 0.1, "pop_total": 8000},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="population")
+
+        assert result["frames"][0]["values"] == {"26163": 8000.0}
+        mock_persistence.query_territory_snapshot_metric_frames.assert_called_once()
+
+    def test_county_trace_metric_reads_profit_rate_column(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_county_trace_latest_tick.return_value = 987
+        mock_persistence.query_county_trace_metric_frames.return_value = [
+            {
+                "tick": 987,
+                "county_fips": "26163",
+                "profit_rate": 0.5398,
+                "exploitation_rate": 1.3033,
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
+
+        assert result["frames"][0]["values"] == {"26163": pytest.approx(0.5398)}
+        # profit_rate must never read the sibling exploitation_rate column.
+        mock_persistence.query_county_trace_metric_frames.assert_called_once()
+
+    def test_null_value_in_a_frame_stays_null_not_fabricated(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_county_trace_latest_tick.return_value = 0
+        mock_persistence.query_county_trace_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "profit_rate": None, "exploitation_rate": None},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
+
+        assert result["frames"][0]["values"] == {"26163": None}
+
+    def test_explicit_range_within_cap_is_not_capped(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = []
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat", from_tick=10, to_tick=20)
+
+        assert result["capped"] is False
+        assert result["from_tick"] == 10
+        assert result["to_tick"] == 20
+        mock_persistence.query_territory_snapshot_metric_frames.assert_called_once_with(
+            mock_persistence.query_territory_snapshot_metric_frames.call_args[0][0], 10, 20
+        )
+        # Explicit range never triggers the "latest tick" lookup.
+        mock_persistence.query_territory_snapshot_latest_tick.assert_not_called()
+
+    def test_explicit_range_beyond_cap_is_honestly_clamped(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = []
+        bridge = EngineBridge(mock_persistence)
+        to_tick = _MAP_HISTORY_WINDOW_CAP + 50
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat", from_tick=0, to_tick=to_tick)
+
+        assert result["capped"] is True
+        assert result["to_tick"] == to_tick
+        assert result["from_tick"] == to_tick - _MAP_HISTORY_WINDOW_CAP + 1
+        span = result["to_tick"] - result["from_tick"] + 1
+        assert span == _MAP_HISTORY_WINDOW_CAP
+
+    def test_default_window_ends_at_latest_committed_tick(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 5
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = []
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["to_tick"] == 5
+        assert result["from_tick"] == 0
+        assert result["capped"] is False
+
+    def test_default_window_beyond_cap_is_capped_even_with_no_explicit_range(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        latest = _MAP_HISTORY_WINDOW_CAP + 100
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = latest
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = []
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["capped"] is True
+        assert result["to_tick"] == latest
+        assert result["from_tick"] == latest - _MAP_HISTORY_WINDOW_CAP + 1
+
+    def test_no_committed_ticks_yet_is_honest_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = None
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["frames"] == []
+        assert result["capped"] is False
+
+    def test_query_failure_degrades_to_empty_not_a_crash(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 0
+        mock_persistence.query_territory_snapshot_metric_frames.side_effect = RuntimeError("boom")
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["frames"] == []
+
+    def test_stub_bridge_parity(self) -> None:
+        """StubEngineBridge serves the same envelope shape — honest empty."""
+        from game.stub_bridge import StubEngineBridge
+
+        stub = StubEngineBridge()
+
+        replayable = stub.get_map_history(uuid.uuid4(), metric="heat")
+        assert replayable == {
+            "metric": "heat",
+            "from_tick": 0,
+            "to_tick": 0,
+            "capped": False,
+            "frames": [],
+        }
+
+        not_replayable = stub.get_map_history(uuid.uuid4(), metric="occ")
+        assert not_replayable["error"] == "not_replayable"
+
+        unknown = stub.get_map_history(uuid.uuid4(), metric="not_a_real_metric")
+        assert unknown["error"] == "unknown_metric"

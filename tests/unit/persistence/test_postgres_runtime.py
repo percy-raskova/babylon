@@ -1196,3 +1196,135 @@ class TestMakeSerializable:
         attrs = {"field": None}
         result = PostgresRuntime._make_serializable(attrs)
         assert result["field"] is None
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Backend-W3R3 (Program 17 Wave 3): GET /api/games/{id}/map/history/ query
+# methods. Two sources: territory_snapshot (heat/population, dense,
+# game_id-keyed) and view_runtime_trace_emission (profit_rate/
+# exploitation_rate, session_id-keyed spec-089 hex-delta fill-forward view,
+# entity_kind='county'). Mirrors TestPersistHexState's mock_cursor pattern —
+# no query_*_history method (query_class_snapshot_history et al.) has a
+# dedicated persistence-layer test today (verified: they're only exercised
+# indirectly via test_engine_bridge.py mocks), so this class is new
+# ground, not a pre-existing pattern extension.
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestQueryTerritorySnapshotLatestTick:
+    """Tests for PostgresRuntime.query_territory_snapshot_latest_tick."""
+
+    def test_returns_max_tick(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchone.return_value = {"max_tick": 42}
+
+        result = runtime.query_territory_snapshot_latest_tick(session_id)
+
+        assert result == 42
+        sql = mock_cursor.execute.call_args[0][0]
+        params = mock_cursor.execute.call_args[0][1]
+        assert "MAX(tick)" in sql
+        assert "territory_snapshot" in sql
+        assert params == (session_id,)
+
+    def test_returns_none_when_no_rows(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchone.return_value = {"max_tick": None}
+
+        result = runtime.query_territory_snapshot_latest_tick(session_id)
+
+        assert result is None
+
+
+class TestQueryTerritorySnapshotMetricFrames:
+    """Tests for PostgresRuntime.query_territory_snapshot_metric_frames."""
+
+    def test_issues_ranged_query(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchall.return_value = [
+            {"tick": 0, "county_fips": "26163", "heat": 0.1, "pop_total": 8000},
+            {"tick": 1, "county_fips": "26163", "heat": 0.2, "pop_total": 8000},
+        ]
+
+        result = runtime.query_territory_snapshot_metric_frames(session_id, 0, 1)
+
+        assert result[0]["heat"] == 0.1
+        assert result[1]["pop_total"] == 8000
+        sql = mock_cursor.execute.call_args[0][0]
+        params = mock_cursor.execute.call_args[0][1]
+        assert "territory_snapshot" in sql
+        assert "BETWEEN" in sql
+        assert params[:3] == (session_id, 0, 1)
+
+
+class TestQueryCountyTraceLatestTick:
+    """Tests for PostgresRuntime.query_county_trace_latest_tick."""
+
+    def test_returns_max_tick_scoped_to_county_entity_kind(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchone.return_value = {"max_tick": 987}
+
+        result = runtime.query_county_trace_latest_tick(session_id)
+
+        assert result == 987
+        sql = mock_cursor.execute.call_args[0][0]
+        assert "view_runtime_trace_emission" in sql
+        assert "entity_kind" in sql
+
+    def test_returns_none_when_no_rows(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchone.return_value = None
+
+        result = runtime.query_county_trace_latest_tick(session_id)
+
+        assert result is None
+
+
+class TestQueryCountyTraceMetricFrames:
+    """Tests for PostgresRuntime.query_county_trace_metric_frames."""
+
+    def test_issues_ranged_query_aliasing_entity_id(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchall.return_value = [
+            {
+                "tick": 986,
+                "county_fips": "26163",
+                "profit_rate": 0.5398,
+                "exploitation_rate": 1.3033,
+            }
+        ]
+
+        result = runtime.query_county_trace_metric_frames(session_id, 986, 987)
+
+        assert result[0]["county_fips"] == "26163"
+        assert result[0]["profit_rate"] == 0.5398
+        sql = mock_cursor.execute.call_args[0][0]
+        params = mock_cursor.execute.call_args[0][1]
+        assert "view_runtime_trace_emission" in sql
+        assert "entity_id AS county_fips" in sql
+        assert "entity_kind" in sql
+        assert params[:3] == (session_id, 986, 987)

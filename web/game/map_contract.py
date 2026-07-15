@@ -60,3 +60,24 @@ MAP_METRIC_PROPERTIES: tuple[str, ...] = (
     "agitation",
     "territory_type",
 )
+
+# Backend-W3R3 (Program 17 Wave 3): the MAP_METRIC_PROPERTIES subset
+# genuinely backed by an append-only per-tick persisted store, so
+# ``GET /api/games/{id}/map/history/`` can replay it honestly (Constitution
+# III.11 — the other 9 exist only in ``hex_latest``, a current-tick-only
+# cache overwritten every tick by ``_persist_hex_state_safe``, with no
+# historical table at all). Verified against a running canonical session
+# (2026-07-15, tick 987): ``heat``/``population`` off ``territory_snapshot``
+# (dense, written every resolve — ``_territory_snapshot_rows``);
+# ``profit_rate``/``exploitation_rate`` off ``view_runtime_trace_emission``
+# (the spec-089 hex-delta fill-forward view — a genuine county-wide SUM
+# aggregate, confirmed real non-null across 987 ticks by direct SELECT).
+# Separately-flagged finding (see EngineBridge.get_map_history's docstring):
+# even ``occ``/``imperial_rent`` — declared ``territory_snapshot`` COLUMNS —
+# persist as NULL on every row today, because ``_persist_snapshots_safe``
+# calls ``_serialize_territory(t)`` without the ``graph=`` kwarg those
+# columns' ``tick_occ``/``tick_phi_hour`` reads need; that gap is reported,
+# not fixed here, so this tuple stays at 4, not 6.
+MAP_HISTORY_REPLAYABLE_METRICS: frozenset[str] = frozenset(
+    {"heat", "population", "profit_rate", "exploitation_rate"}
+)

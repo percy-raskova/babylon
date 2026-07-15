@@ -498,6 +498,73 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_map_history(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/map/history/ — per-tick map-metric replay frames.
+
+    Program 17 Wave 3 (Backend-W3R3): the map lens scrubber's real data
+    source. See ``EngineBridge.get_map_history``'s docstring for the
+    verified replayable/non-replayable metric split — only
+    ``MAP_HISTORY_REPLAYABLE_METRICS`` (``heat``/``population``/
+    ``profit_rate``/``exploitation_rate``) has a genuine per-tick
+    historical source; the other 9 ``MAP_METRIC_PROPERTIES`` 422 rather
+    than serve a frame of fabricated nulls (Constitution III.11).
+
+    Query parameters:
+        metric (str, required): One of ``MAP_METRIC_PROPERTIES``. 400 if
+            missing or unknown; 422 if known but not historically
+            replayable.
+        from_tick / to_tick (int, optional): Inclusive tick bounds.
+            Default: a window ending at the latest committed tick, capped
+            at ``EngineBridge``'s window cap (``capped: true`` in the
+            response when the served range is narrower than requested).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    metric = request.query_params.get("metric")
+    if not metric:
+        return _error(
+            f"metric query parameter is required. Valid metrics: {sorted(VALID_MAP_LAYERS)}",
+            http_status=400,
+        )
+    if metric not in VALID_MAP_LAYERS:
+        return _error(
+            f"Invalid metric '{metric}'. Valid metrics: {sorted(VALID_MAP_LAYERS)}",
+            http_status=400,
+        )
+
+    try:
+        from_tick_query = request.query_params.get("from_tick")
+        from_tick = int(from_tick_query) if from_tick_query is not None else None
+        to_tick_query = request.query_params.get("to_tick")
+        to_tick = int(to_tick_query) if to_tick_query is not None else None
+    except ValueError:
+        return _error("Invalid from_tick/to_tick parameter", http_status=400)
+
+    if (from_tick is not None and from_tick < 0) or (to_tick is not None and to_tick < 0):
+        return _error("from_tick/to_tick must be non-negative", http_status=400)
+    if from_tick is not None and to_tick is not None and from_tick > to_tick:
+        return _error("from_tick must be <= to_tick", http_status=400)
+
+    bridge = _get_bridge()
+    data = bridge.get_map_history(
+        uuid.UUID(str(session.id)), metric=metric, from_tick=from_tick, to_tick=to_tick
+    )
+
+    error = data.get("error")
+    if error == "unknown_metric":
+        # Unreachable given the VALID_MAP_LAYERS gate above — defense in
+        # depth, matches the bridge's own honest-error contract (III.11).
+        return _error(data["message"], http_status=400)
+    if error == "not_replayable":
+        return _error(data["message"], http_status=422)
+
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
 # ---------------------------------------------------------------------- #
 # Dashboards and Analytics
 # ---------------------------------------------------------------------- #

@@ -31,6 +31,12 @@ urlpatterns: list[URLPattern] = [
     path("games/<str:game_id>/summary/", api.game_summary, name="game-summary"),
     path("games/<str:game_id>/timeseries/", api.game_timeseries, name="game-timeseries"),
     path("games/<str:game_id>/map/", api.game_map, name="game-map"),
+    # API: Program 17 Wave 3 (Backend-W3R3) — map lens replay history
+    path(
+        "games/<str:game_id>/map/history/",
+        api.game_map_history,
+        name="game-map-history",
+    ),
     # API: Domain Dashboards
     path("games/<str:game_id>/economy/", api.game_economy, name="game-economy"),
     path("games/<str:game_id>/communities/", api.game_communities, name="game-communities"),

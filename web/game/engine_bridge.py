@@ -52,7 +52,7 @@ from babylon.persistence.county_aggregation import _ideology_to_ternary
 from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
 from babylon.topology.graph import BabylonGraph
 
-from .map_contract import MAP_METRIC_PROPERTIES
+from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
 
 if TYPE_CHECKING:
     from game.narrative_service import NarrativeService
@@ -82,6 +82,34 @@ _ACTION_HISTORY_CAP = 50
 # Spec 092: journal/alerts dashboards.
 # Max rows returned by get_journal_dashboard (newest tick first).
 _JOURNAL_LIMIT = 200
+
+# Program 17 Wave 3 (Backend-W3R3): GET /api/games/{id}/map/history/.
+# Generously capped per-request tick-range width — mirrors _JOURNAL_LIMIT's
+# role for the journal dashboard (a simple module constant, not a
+# GameDefines coefficient: this bounds an HTTP response, it does not tune
+# simulation behavior). See get_map_history's docstring for the verified
+# replayable/non-replayable metric split.
+_MAP_HISTORY_WINDOW_CAP = 128
+
+# Which persisted store backs each of MAP_HISTORY_REPLAYABLE_METRICS, and
+# which column on that store carries it. territory_snapshot is dense
+# (game_id, tick, county_fips) — heat/population are direct Territory
+# model fields, no graph needed (_serialize_territory). Both dicts'
+# combined keys must equal MAP_HISTORY_REPLAYABLE_METRICS exactly — see
+# TestGetMapHistory / test_map_history_source_dicts_match_contract.
+_MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS: dict[str, str] = {
+    "heat": "heat",
+    "population": "pop_total",
+}
+# view_runtime_trace_emission (spec-089 hex-delta fill-forward view,
+# entity_kind='county') — a genuine SUM(s)/(SUM(c)+SUM(v)) /
+# SUM(s)/SUM(v) county aggregate, distinct from territory_snapshot's
+# same-named columns (which are NULL today — see get_map_history's
+# docstring for the confirmed wiring gap).
+_MAP_HISTORY_COUNTY_TRACE_METRICS: dict[str, str] = {
+    "profit_rate": "profit_rate",
+    "exploitation_rate": "exploitation_rate",
+}
 # Severities surfaced by get_alerts_dashboard — "informational" is routine
 # flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
 _ALERT_SEVERITIES = frozenset({"critical", "warning"})
@@ -2568,6 +2596,190 @@ class EngineBridge:
                 logger.exception("get_territory_history: query_territory_snapshot_history failed")
                 rows = []
         return {"county_fips": county_fips, "history": rows}
+
+    def get_map_history(
+        self,
+        session_id: UUID,
+        *,
+        metric: str,
+        from_tick: int | None = None,
+        to_tick: int | None = None,
+    ) -> dict[str, Any]:
+        """Return one MAP metric's per-tick, per-county replay frames.
+
+        Backs ``GET /api/games/{id}/map/history/`` (Program 17 Wave 3,
+        Backend-W3R3) — the map lens scrubber's real data source.
+
+        **The verified replayable/non-replayable split** (checked against a
+        running canonical session, not assumed — a live ``territory_snapshot``
+        SELECT and a live ``view_runtime_trace_emission`` SELECT, 2026-07-15):
+        only 4 of the 13 ``MAP_METRIC_PROPERTIES``
+        (:data:`MAP_HISTORY_REPLAYABLE_METRICS`) have a genuine append-only
+        historical source:
+
+        * ``heat``/``population`` off ``territory_snapshot`` (dense, one row
+          per ``(tick, county_fips)`` — :func:`_territory_snapshot_rows`;
+          direct ``Territory.heat``/``Territory.population`` fields, no
+          graph needed, so these are reliably non-null).
+        * ``profit_rate``/``exploitation_rate`` off
+          ``view_runtime_trace_emission`` (the spec-089 hex-delta
+          fill-forward view; a genuine ``SUM(s)/(SUM(c)+SUM(v))`` /
+          ``SUM(s)/SUM(v)`` county aggregate over every hex — confirmed
+          real non-null values across 987 ticks on a running session).
+
+        The remaining 9 (``occ``/``imperial_rent``/``org_presence``/
+        ``habitability``/``dominant_class``/``solidarity_index``/
+        ``throughput_position``/``agitation``/``territory_type``) exist
+        ONLY in ``hex_latest``, a current-tick-only cache (PK
+        ``game_id, h3_index`` — overwritten every tick, see
+        :func:`_persist_hex_state_safe`) with no historical table at all —
+        this method rejects them with ``{"error": "not_replayable", ...}``
+        rather than serving a frame of fabricated nulls (Constitution
+        III.11). Unknown metrics (not in ``MAP_METRIC_PROPERTIES`` at all)
+        get ``{"error": "unknown_metric", ...}``.
+
+        **A separately-flagged real finding, not fixed here:** even
+        ``occ``/``imperial_rent`` — DECLARED ``territory_snapshot``
+        COLUMNS — persist as NULL on every row today, confirmed via a live
+        SELECT. Root cause: ``_persist_snapshots_safe`` (which fills
+        ``territory_snapshot``) calls ``_serialize_territory(t)`` WITHOUT
+        the ``graph=`` kwarg its ``tick_occ``/``tick_phi_hour`` reads need
+        (contrast the SAME tick's ``_persist_hex_state_safe`` call, which
+        DOES pass ``graph=new_graph`` via ``snapshot["territories"]`` —
+        that is why the LIVE ``/map/`` endpoint shows real values for
+        these while their history is blank). Out of this endpoint's scope
+        to fix; flagged so it is not mistaken for "never computed".
+
+        **Keys are ``county_fips``**, not ``h3_index``: both sources are
+        county-grained (no persisted per-tick store carries a per-hex
+        value for any of these 4 metrics either), which diverges from the
+        live hex-zoom ``/map/`` payload's ``h3_index`` keys — a reported
+        divergence from the endpoint's original hex-or-territory-id
+        assumption, not an oversight. ``heat``/``population`` additionally
+        inherit ``territory_snapshot``'s pre-existing, documented grain
+        caveat (see :meth:`get_territory_history`'s docstring): its
+        composite PK + ``ON CONFLICT ... DO NOTHING`` collapses a
+        hex-resolution scenario's many same-county territories onto
+        whichever one wrote first each tick, so those two metrics are NOT
+        a true county aggregate the way ``profit_rate``/
+        ``exploitation_rate`` genuinely are.
+
+        Args:
+            session_id: The game session UUID.
+            metric: One MAP metric name (``MAP_METRIC_PROPERTIES``).
+            from_tick: Inclusive lower tick bound; ``None`` combines with
+                ``to_tick`` to pick the default/capped window (see below).
+            to_tick: Inclusive upper tick bound; ``None`` defaults to the
+                latest tick this game has a row for.
+
+        Returns:
+            On success: ``{"metric", "from_tick", "to_tick", "capped",
+            "frames"}`` — ``frames`` sorted by tick ascending, each
+            ``values`` dict keyed by county_fips (sorted), values
+            ``float | None``. ``capped`` is ``True`` whenever the served
+            range is narrower than what was asked for (explicitly or via
+            the implicit "everything up to latest" default) because it
+            exceeds :data:`_MAP_HISTORY_WINDOW_CAP` ticks. On a metric
+            this method cannot serve: the same shape with empty frames
+            plus an ``"error"``/``"message"`` pair (``api.py`` maps
+            ``"unknown_metric"`` -> 400, ``"not_replayable"`` -> 422) —
+            this method never raises, matching the bridge class's "plain
+            dict" contract.
+        """
+        if metric not in MAP_METRIC_PROPERTIES:
+            return {
+                "metric": metric,
+                "from_tick": from_tick or 0,
+                "to_tick": to_tick or 0,
+                "capped": False,
+                "frames": [],
+                "error": "unknown_metric",
+                "message": (
+                    f"Invalid metric {metric!r}. Valid metrics: {sorted(MAP_METRIC_PROPERTIES)}"
+                ),
+            }
+        if metric not in MAP_HISTORY_REPLAYABLE_METRICS:
+            return {
+                "metric": metric,
+                "from_tick": from_tick or 0,
+                "to_tick": to_tick or 0,
+                "capped": False,
+                "frames": [],
+                "error": "not_replayable",
+                "message": (
+                    f"Metric {metric!r} has no persisted per-tick history — it is only "
+                    "computed live at serialize time (Constitution III.11: never replayed "
+                    f"as fabricated nulls). Replayable metrics: "
+                    f"{sorted(MAP_HISTORY_REPLAYABLE_METRICS)}"
+                ),
+            }
+
+        if metric in _MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS:
+            latest_fn = getattr(self._persistence, "query_territory_snapshot_latest_tick", None)
+            frames_fn = getattr(self._persistence, "query_territory_snapshot_metric_frames", None)
+            value_key = _MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS[metric]
+        else:
+            latest_fn = getattr(self._persistence, "query_county_trace_latest_tick", None)
+            frames_fn = getattr(self._persistence, "query_county_trace_metric_frames", None)
+            value_key = _MAP_HISTORY_COUNTY_TRACE_METRICS[metric]
+
+        empty: dict[str, Any] = {
+            "metric": metric,
+            "from_tick": from_tick or 0,
+            "to_tick": to_tick or 0,
+            "capped": False,
+            "frames": [],
+        }
+        if not callable(latest_fn) or not callable(frames_fn):
+            # SQLite-backed RuntimeDatabase / StubEngineBridge parity: honest empty.
+            return empty
+
+        if to_tick is not None:
+            requested_to = to_tick
+        else:
+            try:
+                latest_tick = latest_fn(session_id)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_map_history: latest-tick lookup failed for %r", metric)
+                latest_tick = None
+            if latest_tick is None:
+                return empty
+            requested_to = latest_tick
+
+        requested_from = from_tick if from_tick is not None else 0
+        span = requested_to - requested_from + 1
+        if span > _MAP_HISTORY_WINDOW_CAP:
+            resolved_from = requested_to - _MAP_HISTORY_WINDOW_CAP + 1
+            capped = True
+        else:
+            resolved_from = requested_from
+            capped = False
+
+        rows: list[dict[str, Any]] = []
+        try:
+            rows = frames_fn(session_id, resolved_from, requested_to)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_map_history: frame query failed for %r", metric)
+            rows = []
+
+        by_tick: dict[int, dict[str, float | None]] = {}
+        for row in rows:
+            tick_val = int(row["tick"])
+            county = str(row["county_fips"])
+            raw_value = row.get(value_key)
+            by_tick.setdefault(tick_val, {})[county] = (
+                float(raw_value) if raw_value is not None else None
+            )
+
+        frames = [{"tick": t, "values": dict(sorted(by_tick[t].items()))} for t in sorted(by_tick)]
+
+        return {
+            "metric": metric,
+            "from_tick": resolved_from,
+            "to_tick": requested_to,
+            "capped": capped,
+            "frames": frames,
+        }
 
     def get_class_history(self, session_id: UUID, node_id: str) -> dict[str, Any]:
         """Return one social class's per-tick history + rupture markers.

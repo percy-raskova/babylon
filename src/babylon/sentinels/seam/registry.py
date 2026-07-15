@@ -1088,7 +1088,233 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# MAP-history replay scope — ``GET /api/games/{id}/map/history/`` (Program 17
+# Wave 3, Backend-W3R3). Registered under TERRITORY scope, not a fresh
+# SeamScope member (adding one touches types.py, outside this row's file
+# budget) — these are, like the rest of TERRITORY, per-territory/per-county
+# quantities the bridge reads back, distinct from the live MAP-scope
+# ``/map/`` feature emission above.
+#
+# Verified against a running canonical session (2026-07-15, tick 987 — a
+# live ``territory_snapshot`` SELECT and a live
+# ``view_runtime_trace_emission`` SELECT, not assumed): only 4 of the 13
+# ``MAP_METRIC_PROPERTIES`` have a genuine append-only per-tick historical
+# source — ``heat``/``population`` off ``territory_snapshot`` (dense,
+# written every resolve by ``_persist_snapshots_safe``), and
+# ``profit_rate``/``exploitation_rate`` off ``view_runtime_trace_emission``
+# (the spec-089 hex-delta fill-forward view). The other 9 exist ONLY in
+# ``hex_latest``, a current-tick-only cache (PK game_id+h3_index,
+# overwritten every tick by ``_persist_hex_state_safe``) with no historical
+# table at all — GET /map/history/ 422s for them (Constitution III.11:
+# never a frame of fabricated/permanent nulls).
+#
+# A separate, real finding this section flags but does NOT fix: even
+# ``occ``/``imperial_rent`` — declared ``territory_snapshot`` COLUMNS —
+# persist as NULL on every row today, because ``_persist_snapshots_safe``
+# (engine_bridge.py :6044-ish, ``_persist_snapshots_safe``) calls
+# ``_serialize_territory(t)`` WITHOUT the ``graph=`` kwarg its
+# ``tick_occ``/``tick_phi_hour`` reads need — confirmed via a live
+# ``territory_snapshot`` SELECT (every row's profit_rate/exploitation_rate/
+# occ/imperial_rent is blank). The live MAP-scope rows above are
+# unaffected: they read the graph-carrying
+# ``_serialize_territory(t, graph=new_graph)`` call
+# (``_state_to_snapshot`` -> ``_persist_hex_state_safe``) instead.
+#
+# ``throughput_position`` is deliberately NOT re-registered here: it
+# already has a TERRITORY-scope row above (Wave 2 owner ruling 1) and this
+# registry's ``key`` (``scope.wire_key``) would collide. It is equally
+# STRUCTURALLY_IMPOSSIBLE for map-history replay (same hex_latest-only
+# status as the 9 metrics below) — GET /map/history/ 422s for it too.
+# ---------------------------------------------------------------------------
+
+_MAP_HISTORY_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_map_history",
+)
+
+_MAP_HISTORY_NOT_PERSISTED: str = (
+    "STRUCTURALLY_IMPOSSIBLE for map-history replay: computed only at live serialize time "
+    "into hex_latest (PK game_id+h3_index — a current-tick cache _persist_hex_state_safe "
+    "overwrites every tick), never landing in any append-only per-tick table. "
+    "GET /map/history/ 422s rather than serving a frame of fabricated nulls "
+    "(Constitution III.11)."
+)
+
+_MAP_HISTORY_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="territory_snapshot.heat",
+        wire_keys=("heat",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (territory_snapshot, _territory_snapshot_rows)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=(
+            "Real per-(tick, county_fips) heat, direct Territory.heat field (no graph needed). "
+            "Grain caveat (pre-existing, documented on get_territory_history): territory_snapshot's "
+            "composite PK is (game_id, tick, county_fips) with ON CONFLICT ... DO NOTHING, so a "
+            "hex-resolution scenario's many same-county territories collapse onto whichever one "
+            "wrote first each tick — not a true county aggregate, unlike profit_rate/"
+            "exploitation_rate below."
+        ),
+    ),
+    SeamEntry(
+        payload="territory_snapshot.pop_total",
+        wire_keys=("population",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (territory_snapshot, _territory_snapshot_rows)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="int",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=(
+            "Real per-(tick, county_fips) population (direct Territory.population field). Same "
+            "one-hex-per-county grain caveat as heat above."
+        ),
+    ),
+    SeamEntry(
+        payload="view_runtime_trace_emission.profit_rate",
+        wire_keys=("profit_rate",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="persistence view (spec-089 hex-delta fill-forward, 0030_views_current.sql)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires the session's hex economics to be wired (dynamic_hex_state rows for the "
+            "county) — absent for abstract scenarios (two_node, imperial_circuit) with no h3 "
+            "territories; confirmed real non-null on a running canonical session (SUM(s)/"
+            "(SUM(c)+SUM(v)) per county, 987 ticks observed)"
+        ),
+        dtype="float",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=(
+            "A genuine county-wide SUM aggregate over every hex (unlike territory_snapshot's "
+            "one-hex-per-county grain above) — distinct source from MAP-scope profit_rate "
+            "(tick_profit_rate, year-boundary-only, and NULL in territory_snapshot today per "
+            "the section header's flagged wiring gap)."
+        ),
+    ),
+    SeamEntry(
+        payload="view_runtime_trace_emission.exploitation_rate",
+        wire_keys=("exploitation_rate",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="persistence view (spec-089 hex-delta fill-forward, 0030_views_current.sql)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same condition as view_runtime_trace_emission.profit_rate above "
+            "(SUM(s)/SUM(v) per county)"
+        ),
+        dtype="float",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes="Genuine county-wide SUM aggregate, sibling of profit_rate above.",
+    ),
+    SeamEntry(
+        payload="hex_latest.occ",
+        wire_keys=("occ",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (hex_latest current-tick cache only)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="float",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=(
+            _MAP_HISTORY_NOT_PERSISTED + " Also NULL in territory_snapshot's own `occ` column "
+            "today (section header wiring gap)."
+        ),
+    ),
+    SeamEntry(
+        payload="hex_latest.imperial_rent",
+        wire_keys=("imperial_rent",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (hex_latest current-tick cache only)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="float",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=(
+            _MAP_HISTORY_NOT_PERSISTED + " Also NULL in territory_snapshot's own "
+            "`imperial_rent` column today (same wiring gap)."
+        ),
+    ),
+    SeamEntry(
+        payload="hex_latest.org_count",
+        wire_keys=("org_presence",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (hex_latest current-tick cache only)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="int",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=_MAP_HISTORY_NOT_PERSISTED,
+    ),
+    SeamEntry(
+        payload="hex_latest.attributes.habitability",
+        wire_keys=("habitability",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (hex_latest current-tick cache only)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="float",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=_MAP_HISTORY_NOT_PERSISTED,
+    ),
+    SeamEntry(
+        payload="hex_latest.dominant_class",
+        wire_keys=("dominant_class",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (hex_latest current-tick cache only)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="enum:SocialRole",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=_MAP_HISTORY_NOT_PERSISTED,
+    ),
+    SeamEntry(
+        payload="hex_latest.attributes.solidarity_index",
+        wire_keys=("solidarity_index",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (hex_latest current-tick cache only)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="float",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=_MAP_HISTORY_NOT_PERSISTED,
+    ),
+    SeamEntry(
+        payload="hex_latest.attributes.agitation",
+        wire_keys=("agitation",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (hex_latest current-tick cache only)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="float",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=(
+            _MAP_HISTORY_NOT_PERSISTED + " Distinct from INSPECTOR-scope agitation (per-class "
+            "raw ideology.agitation) — this is the MAP-scope territory-level "
+            "population-weighted mean (_agitation_index_by_territory)."
+        ),
+    ),
+    SeamEntry(
+        payload="hex_latest.attributes.territory_type",
+        wire_keys=("territory_type",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="web-bridge (hex_latest current-tick cache only)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="enum:TerritoryType",
+        read_paths=_MAP_HISTORY_EMITTERS,
+        spec_ref="Program 17 Wave 3 · Backend-W3R3",
+        notes=_MAP_HISTORY_NOT_PERSISTED,
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
-    _MAP_METRICS + _TERRITORY_TICK_METRICS + _INSPECTOR_METRICS + _FIELD_STATE_METRICS
+    _MAP_METRICS
+    + _TERRITORY_TICK_METRICS
+    + _INSPECTOR_METRICS
+    + _FIELD_STATE_METRICS
+    + _MAP_HISTORY_METRICS
 )

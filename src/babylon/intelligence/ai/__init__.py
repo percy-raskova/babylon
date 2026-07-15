@@ -13,6 +13,8 @@ Components:
 - LLMProvider: Protocol for swappable LLM backends
 - MockLLM: Deterministic mock for testing
 - DeepSeekClient: Production DeepSeek API client
+- WorkersAIClient: Cloudflare Workers AI client via AI Gateway (program-20)
+- build_llm_provider: Factory selecting the provider from LLMConfig.PROVIDER
 - NarrativeCommissar: LLM-as-judge for narrative evaluation
 - JudgmentResult: Evaluation metrics from Commissar
 - MetaphorFamily: Metaphor category enum

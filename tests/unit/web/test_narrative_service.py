@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from babylon.config import LLMConfig
 from babylon.intelligence.ai.llm_provider import LLMProvider, MockLLM
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole, WorldState
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
@@ -396,6 +397,53 @@ class TestScheduleNonBlocking:
         future.result(timeout=5)
 
         assert service.get_result(session_id, tick=1) is not None
+
+
+# --------------------------------------------------------------------------- #
+# _resolve_llm() — provider factory wiring (program-20 Track B)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestProviderFactoryWiring:
+    """No injected llm= → the provider comes from build_llm_provider().
+
+    Program 20 Track B rewired NarrativeService._resolve_llm from a
+    hardcoded DeepSeekClient() to build_llm_provider() (selects on
+    LLMConfig.PROVIDER). With PROVIDER monkeypatched to "mock", the
+    factory-built MockLLM's fixed default response landing in the cached
+    NarrativeResult proves the factory is actually consulted.
+    """
+
+    def test_unset_llm_resolves_via_factory(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        session_id: uuid.UUID,
+        previous_state: WorldState,
+        new_state_with_uprising: WorldState,
+    ) -> None:
+        from django.conf import settings as django_settings
+
+        monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
+        monkeypatch.setattr(LLMConfig, "PROVIDER", "mock")
+        service = NarrativeService()  # deliberately NO llm= — exercises the factory path
+
+        # Direct check: the lazily-resolved provider is the factory's MockLLM,
+        # not a hardcoded DeepSeekClient (which would raise LLM_001 here —
+        # no API key is configured in the test environment).
+        assert service._resolve_llm().name == "MockLLM"
+
+        # End-to-end: the full schedule/_generate path uses the factory-built
+        # provider, and its canonical default response lands in the result.
+        future = service.schedule(session_id, previous_state, new_state_with_uprising)
+        assert future is not None
+        future.result(timeout=5)
+
+        result = service.get_result(session_id, tick=1)
+        assert result is not None
+        assert result.degraded is False
+        assert result.corporate == "Mock LLM response"
+        assert result.liberated == "Mock LLM response"
 
 
 # --------------------------------------------------------------------------- #

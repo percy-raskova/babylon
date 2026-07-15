@@ -357,9 +357,9 @@ def build_llm_provider(config: type[LLMConfig] | None = None) -> LLMProvider:
             ``deepseek``/``workers_ai``/``mock``
     """
     cfg = config or LLMConfig
-    provider = cfg.PROVIDER.lower()
-    if provider == "workers_ai":
+    if cfg.is_workers_ai():
         return WorkersAIClient(config=cfg)
+    provider = cfg.PROVIDER.lower()
     if provider == "deepseek":
         return DeepSeekClient(config=cfg)
     if provider == "mock":
